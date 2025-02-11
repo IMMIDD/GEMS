@@ -1,0 +1,43 @@
+/* Style the sidebar */
+#TOC {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 250px; /* Adjust the width as needed */
+    height: 100%;
+    overflow-y: scroll;
+    background-color: #f0f0f0;
+    padding: 20px;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Style the TOC links */
+#TOC a {
+    text-decoration: none; /* Remove underlines from TOC links */
+    color: #333; /* Adjust link color */
+    display: block; /* Make TOC links block-level for better spacing */
+    padding: 5px 0; /* Add spacing between TOC links */
+}
+
+/* Style TOC headings */
+#TOC h2 {
+    font-size: 18px; /* Adjust the font size for TOC headings */
+    margin: 0;
+}
+
+/* Style TOC list items */
+#TOC ul {
+    list-style-type: none; /* Remove bullet points from TOC items */
+    padding-left: 0; /* Remove default left padding for better alignment */
+}
+
+/* Style the subtitle with the class "subtitle" */
+h1.subtitle {
+    font-size: 18px; /* Font size for subtitles (smaller than titles) */
+    margin: 10px 0; /* Adjust margin for spacing */
+}
+
+
+body {
+    margin-left: 270px; /* Set it to the width of the sidebar plus any additional spacing you want */
+}

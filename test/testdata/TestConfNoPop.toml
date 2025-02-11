@@ -1,0 +1,81 @@
+[Simulation]
+
+    seed = 1234
+    tickunit = 'd'
+    GlobalSetting = true
+    startdate = '2024.1.1'
+    enddate = '2024.12.31'
+    [Simulation.StartCondition]
+    type = "InfectedFraction"
+    fraction = 0.05
+    pathogen = "Test"   # BE AWARE, THAT NAME MUST BE THE SAME AS IN TOML SECTION
+
+    [Simulation.StopCriterion]
+    type = "TimesUp"
+    limit = 240
+
+[Pathogens]
+
+    [Pathogens.Test]
+        [Pathogens.Test.transmission_function]
+            type = "ConstantTransmissionRate"
+            [Pathogens.Test.transmission_function.parameters]
+                transmission_rate = 0.04
+                
+        [Pathogens.Test.time_to_recovery]
+            distribution = "Poisson"
+            parameters = [24]
+
+        [Pathogens.Test.mild_death_rate]
+            distribution = "Uniform"
+            parameters = [0.1,0.2]
+
+        [Pathogens.Test.critical_death_rate]
+            distribution = "Uniform"
+            parameters = [0.98,0.99]
+
+        [Pathogens.Test.dpr]
+        # Matrix with Disease Progression
+            age_groups = ["0-40", "40-80", "80+"]
+            disease_compartments = ["Asymptomatic", "Mild", "Severe", "Critical"]
+            stratification_matrix = [[1.0, 0.0, 0.0, 0.0], 
+                                     [0.0, 1.0, 0.0, 0.0], 
+                                     [0.0, 0.0, 0.0, 1.0]]
+            
+
+[Settings]
+
+    [Settings.Household]
+        [Settings.Household.contact_sampling_method]
+                type = "ContactparameterSampling"
+
+                [Settings.Household.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.Office]
+        [Settings.Office.contact_sampling_method]
+                type = "ContactparameterSampling"
+
+                [Settings.Office.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+                    
+    [Settings.School]
+        [Settings.School.contact_sampling_method]
+                type = "ContactparameterSampling"
+
+                [Settings.School.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.SchoolClass]
+        [Settings.SchoolClass.contact_sampling_method]
+                type = "ContactparameterSampling"
+
+                [Settings.SchoolClass.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+                    
+    [Settings.GlobalSetting]
+        [Settings.GlobalSetting.contact_sampling_method]
+                type = "ContactparameterSampling"
+
+                [Settings.GlobalSetting.contact_sampling_method.parameters]
+                    contactparameter = 1.0

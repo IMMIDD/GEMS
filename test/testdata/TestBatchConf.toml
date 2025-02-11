@@ -1,0 +1,93 @@
+[BatchParameters]
+
+    seed = 1234
+    repetitions = 2
+
+    [BatchParameters.base_config_file]
+        [BatchParameters.base_config_file.Simulation]
+            tickunit = 'd'
+
+            [BatchParameters.base_config_file.Simulation.StartCondition]
+                type = "InfectedFraction"
+                fraction = 0.05
+                pathogen = "CovidMocosTest"
+
+            [BatchParameters.base_config_file.Simulation.StopCriterion]
+                type = "TimesUp"
+                limit = 120
+
+        [BatchParameters.base_config_file.Pathogens]
+            [BatchParameters.base_config_file.Pathogens.CovidMocosTest]
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.infection_rate]
+                    parameters = [0.01] 
+                    distribution = "Exponential"
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.onset_of_symptoms]
+                    distribution = "LogNormal"
+                    parameters = [1.366, 0.497]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.onset_of_severeness]
+                    distribution = "Poisson"
+                    parameters = [0]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.infectious_offset]
+                    distribution = "Poisson"
+                    parameters = [0]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.mild_death_rate]
+                    distribution = "Uniform"
+                    parameters = [0.0,0.00000001]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.severe_death_rate]
+                    distribution = "Uniform"
+                    parameters = [0.0,0.00000001]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.critical_death_rate]
+                    distribution = "Uniform"
+                    parameters = [0.489,0.49]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.hospitalization_rate]
+                    distribution = "Uniform"
+                    parameters = [0.99,1.0]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.time_to_recovery]
+                    distribution = "Uniform"
+                    parameters = [1,14]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.length_of_stay]
+                    distribution = "Uniform"
+                    parameters = [1,14]
+
+                [BatchParameters.base_config_file.Pathogens.CovidMocosTest.dpr]
+                    age_groups = ["0-40", "40-50", "50-60", "60-70", "70-80", "80+"]
+                    disease_compartments = ["Asymptomatic", "Mild", "Severe", "Critical"]
+                    stratification_matrix = [[0.006, 0.846, 0.144, 0.004],
+                                            [0.006, 0.842, 0.144, 0.008],
+                                            [0.006, 0.826, 0.141, 0.027],
+                                            [0.006, 0.787, 0.134, 0.073],
+                                            [0.005, 0.711, 0.121, 0.163],
+                                            [0.004, 0.593, 0.101, 0.302]]
+
+        [BatchParameters.base_config_file.Settings.Household.contact_sampling_method]
+            type = "ContactparameterSampling"
+
+                [BatchParameters.base_config_file.Settings.Household.contact_sampling_method.parameters]
+                contactparameter = 1.0
+
+        [BatchParameters.base_config_file.Settings.GlobalSetting.contact_sampling_method]
+            type = "ContactparameterSampling"
+
+                [BatchParameters.base_config_file.Settings.GlobalSetting.contact_sampling_method.parameters]
+                contactparameter = 1.0
+
+    [[BatchParameters.VariedParameters]]
+            key = "Pathogens.CovidMocosTest.time_to_recovery.parameters"
+            bounds = [10,20] 
+            number = 2
+            function = "x -> [x, x + 6]"
+
+    [[BatchParameters.VariedParameters]]
+            key = "Settings.Household.contact_sampling_method.parameters.contactparameter"
+            bounds = [1.0,5.0] 
+            number = 2
+            # function = "x -> x + 0.5"
