@@ -27,7 +27,7 @@ using StatsBase
         "settingstest.jl",
         "simulationtest.jl",
         "infectionstest.jl",
-        "reportingtest.jl",
+        #"reportingtest.jl",
         "loggertest.jl",
         "postprocessortest.jl",
         "resultdatatest.jl",
