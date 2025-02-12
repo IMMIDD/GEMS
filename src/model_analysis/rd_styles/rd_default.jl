@@ -169,6 +169,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     # TODO: This list should be determined dynamically depending on what settings are present in the simulation
                     "Household" => () -> mean_contacts_per_age_group(pP, Household, 5),
                     "SchoolClass" => () -> mean_contacts_per_age_group(pP, SchoolClass, 2),
+                    "SchoolYear" => () -> mean_contacts_per_age_group(pP, SchoolYear, 2),
                     "School" => () -> mean_contacts_per_age_group(pP, School, 2),
                     "SchoolComplex" => () -> mean_contacts_per_age_group(pP, SchoolComplex, 2),
                     "Office" => () -> mean_contacts_per_age_group(pP, Office, 5), 
