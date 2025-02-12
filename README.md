@@ -11,7 +11,7 @@ GEMS provides interfaces to load custom populations, adapt infection rules, or c
 It also comes with comprehensive post-processing and plotting features.
 All simulated data can be easily exported to be used in other applications. 
 
-![Header](./docs/src/assets/landing-page-header.png)
+<img src="./docs/src/assets/landing-page-header.png" width ="90%" />
 
 This page contains a few examples on how to use GEMS.
 You'll find an extensive list of tutorials and examples in the official [GEMS documentation](https://immidd.github.io/GEMS/).
