@@ -144,7 +144,7 @@ end
 b = Batch(sims...)
 run!(b)
 rd = ResultData(b)
-gemsplot(rd, type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size = (600, 600)) |> png("tut_batches_sweeping.png")
+gemsplot(rd, type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size = (600, 600))
 ```
 
 ![Sweeping Parameter Spaces](./docs/src/assets/tutorials/tut_batches_sweeping.png)
