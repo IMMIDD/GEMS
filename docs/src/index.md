@@ -2,13 +2,13 @@
 
 ## Welcome
 
-This is the documentation of the GEMS (German Epidemic Micro-Simulation System) package as part of the optim-agent project.
+This is the documentation of the GEMS (German Epidemic Microsimulation System) package as part of the optim-agent project.
 After installing the package, epidemic simulations can be run and different parameters and infection dynamics can be tested.
 This documentation provides a theoretical background to the underlying model, a guide through the most important features and simulation options, a detailed description of all included functionalities, and information about the Julia package itself. Please use the table of content below or the sidebar on the left to navigate through the different sections.
 
 ## Introduction to GEMS
 
-The [*GEMS*](https://gitlab.rlp.net/optim-agent/gems) provides a system to simulate epidemic dynamics on a given population.
+The [*GEMS*](https://github.com/IMMIDD/GEMS) provides a system to simulate epidemic dynamics on a given population.
 The system will be able to:
 
 * simulate different pathogens on the same population (multipathogen) 
@@ -39,7 +39,7 @@ Depth = 1
 To import the GEMS package to your environment, please execute the following:
 ```julia
 using Pkg
-Pkg.add("GEMS")
+Pkg.add(url = "https://github.com/IMMIDD/GEMS")
 using GEMS
 ```
 After loading the package, GEMS is ready for use. Happy simulating!
