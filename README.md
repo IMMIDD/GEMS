@@ -161,6 +161,36 @@ The above example scratch the surface of GEMS.
 For more examples, please refer to the tutorials in the [package documentation](https://immidd.github.io/GEMS/).
 
 
+## Intervention Scenarios
+
+GEMS integrates a highly versatile intervention modeling framework, called TriSM.
+The *Trigger - Strategy - Measre* formalization allows to model complex intervention strategies in a unified framework.
+Here's an example where we compare an unmitigated baseline scenario with an isolation scenario where individuals who experience symptoms go into self-isolation (no contacts outside of the household) for seven days:
+
+```julia
+using GEMS
+# simulation without interventions
+baseline = Simulation(label = "Baseline")
+
+# simulation with 14-day isolation (at home) upon experiencing symptoms
+scenario = Simulation(label = "Scenario")
+self_isolation = IStrategy("Self Isolation", scenario)
+add_measure!(self_isolation, SelfIsolation(14))
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario, trigger)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsolations))
+```
+
+![Self-Isolation Scenario](./docs/src/assets/tutorials/tut_npi_self-isolation.png)
+
+
 ## Resources Requirements
 
 To run GEMS, you will need ~1GB per million agents.
