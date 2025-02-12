@@ -3,6 +3,7 @@
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://immidd.github.io/GEMS)
 ![Docs CI](https://github.com/IMMIDD/GEMS/actions/workflows/documenter.yaml/badge.svg)
 ![Tests](https://github.com/IMMIDD/GEMS/actions/workflows/runtests.yaml/badge.svg)
+![Coverage](https://codecov.io/github/IMMIDD/GEMS/badge.svg)
 
 The **G**erman **E**pidemic **M**icrosimulation **S**ystem (GEMS) is a high-performance geo-referential agent-based infectious disease modeling framework developed in Julia.
 It is a research outcome of the BMBF-funded OptimAgent project.
