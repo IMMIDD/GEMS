@@ -55,6 +55,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 - `rd::ResultData`: Input data used to generate plot
 - `settingtype::Union{DataType, Nothing} = nothing` *(optional)*: Setting type (e.g. "Household"). If nothing is passed, all
     setting types in the `ResultData` object are being ploted.
+- `show_values = true` *(optional)*: If true, values will be printed in the contact matrix
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
@@ -63,7 +64,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 """
 function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
-    settingtype::Union{DataType, Nothing} = nothing, plotargs...)
+    settingtype::Union{DataType, Nothing} = nothing, show_values = true, plotargs...)
 
     # check if a particular setting type was passed
     st = isnothing(settingtype) ? plt.settingtype : settingtype
@@ -149,10 +150,13 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
             # from randomly trying, this fits best (80% of the interval steps)
             pointsize = Int(ceil(interval_steps * 0.8))
 
-            for i in 1:size(contact_matrix_data, 1)
-                for j in 1:size(contact_matrix_data, 2)
-                    # display each cell value rounded to 2 decimals in the center of each plot cell
-                    annotate!(y_coords[j], x_coords[i], Plots.text(string(round(contact_matrix_data[i, j]; digits = 2)), pointsize = pointsize, :white,  "Times Roman"))
+            # add values to heatmap, if wanted
+            if show_values
+                for i in 1:size(contact_matrix_data, 1)
+                    for j in 1:size(contact_matrix_data, 2)
+                        # display each cell value rounded to 2 decimals in the center of each plot cell
+                        annotate!(y_coords[j], x_coords[i], Plots.text(string(round(contact_matrix_data[i, j]; digits = 2)), pointsize = pointsize, :white,  "Times Roman"))
+                    end
                 end
             end
         else 
