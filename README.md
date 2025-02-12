@@ -64,7 +64,9 @@ gemsplot(rd, xlims = (0, 200))
 
 **Plot**
 
-![Hello World Simulation](./docs/src/assets/tutorials/tut_gs_hello-world.png)
+<p align="center">
+    <img src="./docs/src/assets/tutorials/tut_gs_hello-world.png" width ="80%" />
+</p>
 
 The `gemsplot()` function takes post-processed data (the `ResultData` object) and generates plots.
 You can pass an optional type argument(e.g., `type = :TickCases`) to generate a specific plot.
@@ -81,8 +83,9 @@ rd = ResultData(sim)
 gemsplot(rd, type = :TickCases, xlims = (0, 200), size = (600, 300))
 ```
 
-![Custom Parameter Simulation](./docs/src/assets/tutorials/tut_gs_custom-parameters.png)
-
+<p align="center">
+    <img src="./docs/src/assets/tutorials/tut_gs_custom-parameters.png" width ="80%" />
+</p>
 
 ## Populations
 
@@ -136,7 +139,9 @@ rd = ResultData(b)
 gemsplot(rd, type = :TickCases, xlims = (0, 200), size = (600, 200))
 ```
 
-![Simple Batch](./docs/src/assets/tutorials/tut_batches_repeats.png)
+<p align="center">
+    <img src="./docs/src/assets/tutorials/tut_batches_repeats.png" width ="80%" />
+</p>
 
 
 Using batches, you can also sweep parameter spaces, e.g., for the transmission rate that applies when two individuals meet:
@@ -156,7 +161,9 @@ rd = ResultData(b)
 gemsplot(rd, type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size = (600, 600))
 ```
 
-![Sweeping Parameter Spaces](./docs/src/assets/tutorials/tut_batches_sweeping.png)
+<p align="center">
+    <img src="./docs/src/assets/tutorials/tut_batches_sweeping.png" width ="80%" />
+</p>
 
 The above example scratch the surface of GEMS.
 For more examples, please refer to the tutorials in the [package documentation](https://immidd.github.io/GEMS/).
@@ -189,7 +196,9 @@ rd_s = ResultData(scenario)
 gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsolations))
 ```
 
-![Self-Isolation Scenario](./docs/src/assets/tutorials/tut_npi_self-isolation.png)
+<p align="center">
+    <img src="./docs/src/assets/tutorials/tut_npi_self-isolation.png" width ="80%" />
+</p>
 
 
 ## Resources Requirements
