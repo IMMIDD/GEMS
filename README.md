@@ -1,6 +1,7 @@
 # German Epidemic Microsimulation System
 
-Link to Documentation / Pipeline Badge / Coverage Badge
+![Docs](https://github.com/IMMIDD/GEMS/actions/workflows/documenter.yaml/badge.svg)
+![Tests](https://github.com/IMMIDD/GEMS/actions/workflows/runtests.yaml/badge.svg)
 
 The **G**erman **E**pidemic **M**icrosimulation **S**ystem (GEMS) is a high-performance geo-referential agent-based infectious disease modeling framework developed in Julia.
 It is a research outcome of the BMBF-funded OptimAgent projejct.
