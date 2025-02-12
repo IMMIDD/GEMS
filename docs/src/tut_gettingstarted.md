@@ -5,11 +5,9 @@ Load the package manager and install the GEMS-package:
 
 ```julia
 using Pkg
-Pkg.add("GEMS")
+Pkg.add(url = "https://github.com/IMMIDD/GEMS")
 using GEMS
 ```
-
-!!! warning "TODO: CHANGE INSTALLATION COMMAND TO REPO"
 
 The tutorials make intense use of Julia's pipelining feature, utilized through the `|>` operator.
 It allows for the output of one function to be seamlessly passed as the input to another, enabling a clear and concise expression of a sequence of operations.
