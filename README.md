@@ -66,7 +66,7 @@ gemsplot(rd, xlims = (0, 200))
 
 ![Hello World Simulation](./docs/src/assets/tutorials/tut_gs_hello-world.png)
 
-The `gemsplot()` takes post-processed data (the `ResultData` object) and generates plots.
+The `gemsplot()` function takes post-processed data (the `ResultData` object) and generates plots.
 You can pass an optional type argument(e.g., `type = :TickCases`) to generate a specific plot.
 Look up the documentation for the plot types that are available.
 
@@ -87,8 +87,8 @@ gemsplot(rd, type = :TickCases, xlims = (0, 200), size = (600, 300))
 ## Populations
 
 The above examples use a default (radom) population which is being generated on-the-fly.
-GEMS comes with population models for all German states and a full population model.
-This example loads the population model for the state of Schleswig-Holstein and prints a map of the population density:
+GEMS comes with population models for all German states and a full-country population model.
+This example loads the population model for the state of Schleswig-Holstein (SH) and prints a map of the population density:
 
 ```julia
 using GEMS
