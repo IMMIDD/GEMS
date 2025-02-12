@@ -41,7 +41,7 @@ rd = ResultData(sim)
 gemsplot(rd, xlims = (0, 200))
 ```
 
-Output:
+**Output**
 
 ```
 [ Info: 09:52:18 | Initializing Simulation [Simulation 1]
@@ -53,7 +53,7 @@ Output:
         09:52:22 | └ Done  
 ```
 
-Plot:
+**Plot**
 
 ![Hello World Simulation](./docs/src/assets/tutorials/tut_gs_hello-world.png)
 
