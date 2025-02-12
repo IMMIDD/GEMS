@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>9 - Modeling Interventions · GEMS.jl</title><meta name="title" content="9 - Modeling Interventions · GEMS.jl"/><meta property="og:title" content="9 - Modeling Interventions · GEMS.jl"/><meta property="twitter:title" content="9 - Modeling Interventions · GEMS.jl"/><meta name="description" content="Documentation for GEMS.jl."/><meta property="og:description" content="Documentation for GEMS.jl."/><meta property="twitter:description" content="Documentation for GEMS.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.jpeg" alt="GEMS.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">GEMS.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><span class="tocitem">Base Model</span><ul><li><a class="tocitem" href="../base-population/">Population</a></li><li><a class="tocitem" href="../base-contacts/">Contacts</a></li><li><a class="tocitem" href="../base-disease/">Disease</a></li><li><a class="tocitem" href="../TriSM/">Interventions</a></li></ul></li><li><span class="tocitem">Running Simulations</span><ul><li><a class="tocitem" href="../tut_Intro/">Tutorials</a></li><li><a class="tocitem" href="../tut_gettingstarted/">1 - Getting Started</a></li><li><a class="tocitem" href="../tut_exploring/">2 - Exploring Models</a></li><li><a class="tocitem" href="../tut_plotting/">3 - Plotting</a></li><li><a class="tocitem" href="../tut_batches/">4 - Running Batches</a></li><li><a class="tocitem" href="../tut_pops/">5 - Creating Populations</a></li><li><a class="tocitem" href="../tut_configfiles/">6 - Advanced Parameterization</a></li><li><a class="tocitem" href="../tut_postprocessing/">7 - Logging &amp; Post-Processing</a></li><li><a class="tocitem" href="../tut_reporting/">8 - Reporting</a></li><li class="is-active"><a class="tocitem" href>9 - Modeling Interventions</a><ul class="internal"><li><a class="tocitem" href="#Self-Isolation-With-Symptoms"><span>Self-Isolation With Symptoms</span></a></li><li><a class="tocitem" href="#Household-Isolation"><span>Household Isolation</span></a></li><li><a class="tocitem" href="#Testing-and-Isolation"><span>Testing and Isolation</span></a></li><li><a class="tocitem" href="#Varying-Test-Sensitivity-(or-Specificity)"><span>Varying Test Sensitivity (or Specificity)</span></a></li><li><a class="tocitem" href="#Pool-Testing"><span>Pool Testing</span></a></li><li><a class="tocitem" href="#Recurrent-Testing"><span>Recurrent Testing</span></a></li><li><a class="tocitem" href="#Multiple-Test-Types"><span>Multiple Test Types</span></a></li><li><a class="tocitem" href="#Contact-Reduction"><span>Contact Reduction</span></a></li><li><a class="tocitem" href="#Setting-Closure"><span>Setting Closure</span></a></li><li><a class="tocitem" href="#Delayed-Interventions"><span>Delayed Interventions</span></a></li><li><a class="tocitem" href="#Conditional-Interventions"><span>Conditional Interventions</span></a></li><li><a class="tocitem" href="#Custom-Measures"><span>Custom Measures</span></a></li><li><a class="tocitem" href="#Varying-Mandate-Adherence"><span>Varying Mandate Adherence</span></a></li><li><a class="tocitem" href="#Adapting-Behavior"><span>Adapting Behavior</span></a></li></ul></li><li><a class="tocitem" href="../tut_behavior/">10 - Modeling Behavior</a></li><li><a class="tocitem" href="../tut_contacts/">11 - Contact Structures</a></li><li><a class="tocitem" href="../tut_infections/">12 - Infections &amp; Immunity</a></li><li><a class="tocitem" href="../cheat-sheet/">Cheat Sheet</a></li></ul></li><li><a class="tocitem" href="../config-files/">Config Files</a></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../docstrings-overview/">Overview</a></li><li><a class="tocitem" href="../api_batch/">Batch Runs</a></li><li><a class="tocitem" href="../api_contacts/">Contacts</a></li><li><a class="tocitem" href="../api_individuals/">Individuals</a></li><li><a class="tocitem" href="../api_infections/">Infections and Immunity</a></li><li><a class="tocitem" href="../api_interventions/">Interventions</a></li><li><a class="tocitem" href="../api_logger/">Logger</a></li><li><a class="tocitem" href="../api_mapping/">Mapping</a></li><li><a class="tocitem" href="../api_misc/">Misc</a></li><li><a class="tocitem" href="../api_movie/">Movie</a></li><li><a class="tocitem" href="../api_pathogens/">Pathogens</a></li><li><a class="tocitem" href="../api_plotting/">Plotting</a></li><li><a class="tocitem" href="../api_population/">Population</a></li><li><a class="tocitem" href="../api_postproc/">Post Processing</a></li><li><a class="tocitem" href="../api_reporting/">Reporting</a></li><li><a class="tocitem" href="../api_resultdata/">Result Data</a></li><li><a class="tocitem" href="../api_settings/">Settings</a></li><li><a class="tocitem" href="../api_simulation/">Simulation</a></li></ul></li><li><a class="tocitem" href="../package-structure/">Package Structure</a></li><li><a class="tocitem" href="../contributing-guide/">Contributing to GEMS</a></li><li><a class="tocitem" href="../faq-page/">FAQ</a></li><li><a class="tocitem" href="../glossary/">Glossary</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Running Simulations</a></li><li class="is-active"><a href>9 - Modeling Interventions</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>9 - Modeling Interventions</a></li></ul></nav><div class="docs-right"><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="9-Intervention-Strategies"><a class="docs-heading-anchor" href="#9-Intervention-Strategies">9 - Intervention Strategies</a><a id="9-Intervention-Strategies-1"></a><a class="docs-heading-anchor-permalink" href="#9-Intervention-Strategies" title="Permalink"></a></h1><p>GEMS offers extensive options for intervention modeling. We represent interventions using the <strong>&quot;Trigger-Strategy-Measure&quot;</strong> notation.</p><div class="admonition is-warning"><header class="admonition-header">TODO: ADD LINK TO TRISM EXPLANATION</header><div class="admonition-body"></div></div><p>TriSM is more of a modeling paradigm and as such offers countless scenarios that could be modeled. This chapter contains a selection of examples to give you a broad idea. The examples will always compare an invervention scenario with a non-restricted baseline scnario to verify that there is an effect.</p><div class="admonition is-info"><header class="admonition-header">Where&#39;s the list of measures I can use to build up strategies?</header><div class="admonition-body"><p>Run <code>i_measuretypes()</code> to get a list of all measures that apply to individuals or <code>s_measuretypes()</code> for a list of all measures that apply to settings. If you want to learn more about any of the measure types, put a <code>?</code> into the Julia REPL and call <code>help?&gt; SelfIsolation</code> (replace <code>SelfIsolation</code> with the measure name you want to learn about). </p></div></div><h2 id="Self-Isolation-With-Symptoms"><a class="docs-heading-anchor" href="#Self-Isolation-With-Symptoms">Self-Isolation With Symptoms</a><a id="Self-Isolation-With-Symptoms-1"></a><a class="docs-heading-anchor-permalink" href="#Self-Isolation-With-Symptoms" title="Permalink"></a></h2><p>Here&#39;s an example that sends individuals into household-isolation for 14 days, if they are symptomatic. To do so, we set up an <code>IStrategy</code> called &quot;self_isolation&quot; and add an instance of the <code>SelfIsolation</code> measure with the duration parameter set to <code>14</code>.</p><p><strong>Scenario Summary</strong>:</p><ul><li>Individuals go into self-isolation for 14 days, immediately upon experiencing symptoms</li><li>Isolation prevents out-household contacts, but not in-household contacts</li><li>Individuals end their isolation after 14 days, regardless of their infection state</li></ul><pre><code class="language-julia hljs">using GEMS
+# simulation without interventions
+baseline = Simulation(label = &quot;Baseline&quot;)
+
+# simulation with 14-day isolation (at home) upon experiencing symptoms
+scenario = Simulation(label = &quot;Scenario&quot;)
+self_isolation = IStrategy(&quot;Self Isolation&quot;, scenario)
+add_measure!(self_isolation, SelfIsolation(14))
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario, trigger)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsolations))</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT PLOT HERE AS IMAGE</header><div class="admonition-body"></div></div><p>The results show the difference between daily cases in both scenarios. It also displays that there are around one third of asymptomatic cases in both experiments that would not be affected by this measure. Using the <code>:CumulativeIsolations</code> plot, you can inspect the number of people who are currently in isolation at any given time.</p><h2 id="Household-Isolation"><a class="docs-heading-anchor" href="#Household-Isolation">Household Isolation</a><a id="Household-Isolation-1"></a><a class="docs-heading-anchor-permalink" href="#Household-Isolation" title="Permalink"></a></h2><p>The previous example let a symptomatic individual stay at home but did not force the other household members to do too. If you want to isolate the entire household of symptomatic individuals, the following code will help you. It is very similar to the previous example but instead of triggering the isolation strategy directly, an individual becoming symptomatic will trigger the &quot;find_household_members&quot; strategy that contains a <code>FindSettingMembers</code> measure. This measure is parameterized to detect all members of the individual&#39;s <code>Household</code> setting. The members are then all isolated individually, the same way as in the previous example. This can also be considered a form of contact tracing.</p><p><strong>Scenario Summary</strong>:</p><ul><li>One individual experiencing symptoms will cause all household members to go into isolation for 14 days</li><li>This prevents all out-household contacts, within household contacts are still possible</li><li>After 14 days, all household members end their isolation, regardless of any of their infection states</li></ul><pre><code class="language-julia hljs">using GEMS
+# simulation without interventions
+baseline = Simulation(label = &quot;Baseline&quot;)
+
+# simulation with 14-day isolation for all household members
+scenario = Simulation(label = &quot;Scenario&quot;)
+self_isolation = IStrategy(&quot;Self Isolation&quot;, scenario)
+add_measure!(self_isolation, SelfIsolation(14))
+# identify list of household members
+find_household_members = IStrategy(&quot;Find Household Members&quot;, scenario)
+add_measure!(find_household_members, FindSettingMembers(Household, self_isolation))
+# trigger &quot;household tracing&quot;
+trigger = SymptomTrigger(find_household_members)
+add_symptom_trigger!(scenario, trigger)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeIsolations))</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT PLOT HERE AS IMAGE</header><div class="admonition-body"></div></div><p>The numbers suggest, that isolating the entire household prevents more cases, compared to isolating only the symptomatic individual, but also causes more isolations. Using <code>gemsplot</code>, you can compare both scenarios and the baseline. The following code combines the previous two examples:</p><pre><code class="language-julia hljs">using GEMS
+# simulation without interventions
+baseline = Simulation(label = &quot;Baseline&quot;)
+
+# simulation with 14-day isolation (at home) upon experiencing symptoms
+scenario_1 = Simulation(label = &quot;Symptomatic Isolation&quot;)
+self_isolation = IStrategy(&quot;Self Isolation&quot;, scenario_1)
+add_measure!(self_isolation, SelfIsolation(14))
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario_1, trigger)
+
+# simulation with 14-day isolation for all household members
+scenario_2 = Simulation(label = &quot;Household Isolation&quot;)
+self_isolation = IStrategy(&quot;Self Isolation&quot;, scenario_2)
+add_measure!(self_isolation, SelfIsolation(14))
+find_household_members = IStrategy(&quot;Find Household Members&quot;, scenario_2)
+add_measure!(find_household_members, FindSettingMembers(Household, self_isolation))
+trigger = SymptomTrigger(find_household_members)
+add_symptom_trigger!(scenario_2, trigger)
+
+run!(baseline)
+run!(scenario_1)
+run!(scenario_2)
+
+rd_b = ResultData(baseline)
+rd_s1 = ResultData(scenario_1)
+rd_s2 = ResultData(scenario_2)
+
+gemsplot([rd_b, rd_s1, rd_s2],
+    type = (:TickCases, :CumulativeIsolations, :EffectiveReproduction),
+    legend = :topright)</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT PLOT HERE AS IMAGE</header><div class="admonition-body"></div></div><h2 id="Testing-and-Isolation"><a class="docs-heading-anchor" href="#Testing-and-Isolation">Testing and Isolation</a><a id="Testing-and-Isolation-1"></a><a class="docs-heading-anchor-permalink" href="#Testing-and-Isolation" title="Permalink"></a></h2><p>GEMS comes with pre-defined building blocks for modeling testing strategies. The following example subjects symptomatic individuals to a test and isolates them for <code>14</code> days, once the test is positive. For that, a <code>TestType</code> is being defined, providing a name (&quot;PCR_Test&quot;), the pathogen (taken from the <code>Simulation</code> object), and the <code>Simulation</code> object itself. The self-isolation strategy is the same as in the first example. However, it is only fired, once an individual is tested positive. This is configured via a second strategy that we call &quot;testing&quot; where we add a <code>Test</code> measure that should use the previously defined &quot;PCR<em>Test&quot; and follow a positive test up with the &quot;self\</em>isolation&quot; strategy. A <code>SymptomTrigger</code> fires the &quot;testing&quot; strategy once an individual becomes symptomatic.</p><p><strong>Scenario Summary</strong>:</p><ul><li>Upon experiencing symptoms, individuals are being tested immediately</li><li>The test has a 100% sensitivity and 100% specificity</li><li>Test results are available immediately</li><li>If the test result is positive, the individual goes into isolation for 14 days</li></ul><pre><code class="language-julia hljs">using GEMS
+# simulation without interventions
+baseline = Simulation(label = &quot;Baseline&quot;)
+
+# simulation with 14-day isolation after positive test
+scenario = Simulation(label = &quot;Scenario&quot;)
+# define test type (PCR test)
+PCR_Test = TestType(&quot;PCR Test&quot;, pathogen(scenario), scenario)
+# define self isolation strategy
+self_isolation = IStrategy(&quot;Self Isolation&quot;, scenario)
+add_measure!(self_isolation, SelfIsolation(14))
+# define testing strategy that triggers self isolation
+testing = IStrategy(&quot;Testing&quot;, scenario)
+add_measure!(testing, Test(&quot;Test&quot;, PCR_Test, positive_followup = self_isolation))
+
+trigger = SymptomTrigger(testing)
+add_symptom_trigger!(scenario, trigger)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = (:TickCases, :TickTests, :ActiveDarkFigure), size = (800, 800))</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT PLOT HERE AS IMAGE</header><div class="admonition-body"></div></div><p>The results are very similar to the first example as all symptomatic individuals are immediately screened with a &quot;perfect&quot; test (100% sensitivity &amp; specificity) and immediately sent in isolation. Of course, in reality this not very realistic. Therefore, GEMS offers options to delay measures (e.g., only getting a test one day after symptom onset). Please look up the respective tutorial.</p><h2 id="Varying-Test-Sensitivity-(or-Specificity)"><a class="docs-heading-anchor" href="#Varying-Test-Sensitivity-(or-Specificity)">Varying Test Sensitivity (or Specificity)</a><a id="Varying-Test-Sensitivity-(or-Specificity)-1"></a><a class="docs-heading-anchor-permalink" href="#Varying-Test-Sensitivity-(or-Specificity)" title="Permalink"></a></h2><p>Here&#39;s an example of how you can vary intervention-related parameter such as the sensitivity of a test and inspect their influence on the overall dynamics. The code below defines what we call a &quot;scenario-function&quot; (<code>testing_scenario!()</code>). It takes the <code>Simulation</code> object and a sensitivity argument to parameterize the test. That way, it is much easier to set up multiple intervention scenarios with varying parameters. Moreover, the example uses the <code>Batch</code> functionality to easily aggregate all simulations and facilitate the execution and post-processing.</p><pre><code class="language-julia hljs">using GEMS
+
+# to facilitate parameterization, set up a function
+# that adds a scenario to a simulation object
+function testing_scenario!(sim, sens)
+    # define test type (PCR test) and pass sensitivity
+    PCR_Test = TestType(&quot;PCR Test&quot;, pathogen(sim), sim, sensitivity = sens)
+    # define self isolation strategy
+    self_isolation = IStrategy(&quot;Self Isolation&quot;, sim)
+    add_measure!(self_isolation, SelfIsolation(14))
+    # define testing strategy that triggers self isolation
+    testing = IStrategy(&quot;Testing&quot;, sim)
+    add_measure!(testing, Test(&quot;Test&quot;, PCR_Test, positive_followup = self_isolation))
+
+    trigger = SymptomTrigger(testing)
+    add_symptom_trigger!(sim, trigger)
+end
+
+# use batch functionality to compare results
+sims = Simulation[]
+push!(sims, Simulation(label = &quot;Baseline&quot;))
+
+# add scenarios with varying test sensitivities between 50% and 100%
+for i in 0.5:0.1:1.0
+    s = Simulation(label = &quot;Sensitivity: $(100 * i)%&quot;)
+    testing_scenario!(s, i)
+    push!(sims, s)
+end
+
+b = Batch(sims...)
+run!(b)
+rd = ResultData(b)
+
+gemsplot(rd, type = (:TickCases, :CumulativeIsolations), legend = :topright)</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT PLOT HERE AS IMAGE</header><div class="admonition-body"></div></div><div class="admonition is-info"><header class="admonition-header">Can I run experiments that vary a test&#39;s specificity the same way?</header><div class="admonition-body"><p>Yes. </p></div></div><h2 id="Pool-Testing"><a class="docs-heading-anchor" href="#Pool-Testing">Pool Testing</a><a id="Pool-Testing-1"></a><a class="docs-heading-anchor-permalink" href="#Pool-Testing" title="Permalink"></a></h2><p>Besides individual testing, GEMS also offers the option to perform so-called &quot;pool tests&quot;. Such tests return a positive result if at least one individual in a given setting is infected. Working with pool tests is very similar to other testing scenarios with the main difference being, that pool tests are applied to settings, not to individuals. Consequently, a positive pool test does not provide any information about whom of the individuals is infected. The example below tests all school classes every seven days and closes the class for the following week if the pool test result is positive. We furthermore add a <code>CustomLogger</code> to track the number of currently closed school classes.</p><p><strong>Scenario Summary</strong>:</p><ul><li>Pool-testing every school class once a week</li><li>If test is positive, school class is closed for the week</li></ul><pre><code class="language-julia hljs">using GEMS
+# simulation without interventions
+baseline = Simulation(label = &quot;Baseline&quot;)
+
+# simulation with school class closure for 7 days if pool test positive
+scenario = Simulation(label = &quot;Scenario&quot;)
+# define test type (PCR test)
+PCR_Test = TestType(&quot;PCR Test&quot;, pathogen(scenario), scenario)
+# strategy that closes classes for the next 6 days
+class_close_and_reopen = SStrategy(&quot;Class Close and Reopen&quot;, scenario)
+add_measure!(class_close_and_reopen, CloseSetting())
+add_measure!(class_close_and_reopen, OpenSetting(), offset = 6)
+# strategy that tests whether at least one infected individual is in class
+class_pool_test = SStrategy(&quot;Class Monday Pool Testing&quot;, scenario)
+add_measure!(class_pool_test, PoolTest(&quot;monday_pool_testing&quot;, PCR_Test,
+    positive_followup = class_close_and_reopen))
+# add trigger that is being fired every 7 days for each school class
+stt = STickTrigger(SchoolClass, class_pool_test, interval = Int16(7))
+add_tick_trigger!(scenario, stt)
+
+b = Batch(baseline, scenario)
+
+# add logger to track number of currently closed school classes
+cl = CustomLogger(closed_classes = sim -&gt; sum(.!is_open.(schoolclasses(sim))))
+customlogger!(b, cl)
+
+run!(b)
+rd = ResultData(b)
+
+gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT PLOT HERE AS IMAGE</header><div class="admonition-body"></div></div><h2 id="Recurrent-Testing"><a class="docs-heading-anchor" href="#Recurrent-Testing">Recurrent Testing</a><a id="Recurrent-Testing-1"></a><a class="docs-heading-anchor-permalink" href="#Recurrent-Testing" title="Permalink"></a></h2><h2 id="Multiple-Test-Types"><a class="docs-heading-anchor" href="#Multiple-Test-Types">Multiple Test Types</a><a id="Multiple-Test-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Multiple-Test-Types" title="Permalink"></a></h2><h2 id="Contact-Reduction"><a class="docs-heading-anchor" href="#Contact-Reduction">Contact Reduction</a><a id="Contact-Reduction-1"></a><a class="docs-heading-anchor-permalink" href="#Contact-Reduction" title="Permalink"></a></h2><h2 id="Setting-Closure"><a class="docs-heading-anchor" href="#Setting-Closure">Setting Closure</a><a id="Setting-Closure-1"></a><a class="docs-heading-anchor-permalink" href="#Setting-Closure" title="Permalink"></a></h2><h2 id="Delayed-Interventions"><a class="docs-heading-anchor" href="#Delayed-Interventions">Delayed Interventions</a><a id="Delayed-Interventions-1"></a><a class="docs-heading-anchor-permalink" href="#Delayed-Interventions" title="Permalink"></a></h2><h2 id="Conditional-Interventions"><a class="docs-heading-anchor" href="#Conditional-Interventions">Conditional Interventions</a><a id="Conditional-Interventions-1"></a><a class="docs-heading-anchor-permalink" href="#Conditional-Interventions" title="Permalink"></a></h2><h2 id="Custom-Measures"><a class="docs-heading-anchor" href="#Custom-Measures">Custom Measures</a><a id="Custom-Measures-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Measures" title="Permalink"></a></h2><h2 id="Varying-Mandate-Adherence"><a class="docs-heading-anchor" href="#Varying-Mandate-Adherence">Varying Mandate Adherence</a><a id="Varying-Mandate-Adherence-1"></a><a class="docs-heading-anchor-permalink" href="#Varying-Mandate-Adherence" title="Permalink"></a></h2><h2 id="Adapting-Behavior"><a class="docs-heading-anchor" href="#Adapting-Behavior">Adapting Behavior</a><a id="Adapting-Behavior-1"></a><a class="docs-heading-anchor-permalink" href="#Adapting-Behavior" title="Permalink"></a></h2></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_reporting/">« 8 - Reporting</a><a class="docs-footer-nextpage" href="../tut_behavior/">10 - Modeling Behavior »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Wednesday 12 February 2025 10:14">Wednesday 12 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
