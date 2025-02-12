@@ -81,6 +81,6 @@ makedocs(
 
 deploydocs(;
     repo = "github.com/IMMIDD/GEMS.git",
-    versions = ["stable" => "v^", "v#.#", "dev" => "master"],
-    push_preview=true,
+    versions = ["stable" => "main", "v#.#", "dev" => "development"],
+    push_preview = true
 )
