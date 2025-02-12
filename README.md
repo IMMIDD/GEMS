@@ -2,8 +2,8 @@
 
 Link to Documentation / Pipeline Badge / Coverage Badge
 
-The **G**erman **E**pidemic **M**icrosimulation **S**ystem (GEMS) is a high-performance geo-referential agent-based infectious disease modeling framework with.
-It is being developed in the BMBF-funded OptimAgent research projejct.
+The **G**erman **E**pidemic **M**icrosimulation **S**ystem (GEMS) is a high-performance geo-referential agent-based infectious disease modeling framework developed in Julia.
+It is a research outcome of the BMBF-funded OptimAgent projejct.
 It comes with a full model of the German Population and allows to simulate the spread of infectious diseases and potential countermeasures such as isolation, testing, school- or workplace closure, contact-tracing, and many others.
 GEMS provides interfaces to load custom populations, adapt infection rules, or change contact patterns.
 It also comes with comprehensive post-processing and plotting features.
@@ -12,6 +12,14 @@ All simulated data can be easily exported to be used in other applications.
 This page contains a few examples on how to use GEMS.
 You'll find an extensive list of tutorials and examples in the official [GEMS documentation](https://immidd.github.io/GEMS/).
 
+
+## Background
+
+GEMS' core architecture and the integrated intervention modeling framework are discussed in these publications:
+
+> Ponge, J., Horstkemper, D., Hellingrath, B., Bayer, L., Bock, W. and Karch, A., 2023, December. Evaluating Parallelization Strategies for Large-Scale Individual-based Infectious Disease Simulations. In *2023 Winter Simulation Conference (WSC)* (pp. 1088-1099). IEEE. https://doi.org/10.1109/WSC60868.2023.10407633
+
+> Ponge, J., Suer, J., Hellingrath, B. and Karch, A., 2024, December. A Standardized Framework for Modeling Non-Pharmaceutical Interventions in Individual-Based Infectious Disease Simulations. In *2024 Winter Simulation Conference (WSC)* (pp. 1106-1117). IEEE. https://doi.org/10.1109/WSC63780.2024.10838778
 
 
 ## Quick Start
