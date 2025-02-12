@@ -19,22 +19,13 @@ jobs:
           version: '1.11.3'                         
           show-versioninfo: false              
       - uses: julia-actions/cache@v2
-      - name: Install dependencies
-        run: julia --project -e 
-            'using Pkg; 
-             Pkg.instantiate();
-             Pkg.add("Test");
-             Pkg.add("Coverage")'
-      - name: Run Tests
-        run: julia --project -e '
-          using Pkg;
-          Pkg.test(coverage=true)'
-      # - uses: julia-actions/julia-buildpkg@v1
-      # - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-processcoverage@v1
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: IMMIDD/GEMS
-          file: lcov.info
-          fail_ci_if_error: true
+          # slug: IMMIDD/GEMS
+          # file: lcov.info
+          # fail_ci_if_error: true
