@@ -25,8 +25,8 @@ Pkg.add(url = "https://github.com/IMMIDD/GEMS")
 using GEMS
 ```
 
-> [!NOTE] Multi-Threading
-    Simulations in GEMS and the post-processing routines are optimizeed for [multi-threading](https://docs.julialang.org/en/v1/manual/multi-threading/). Taking advantage of these features requires the Julia process to be started with multiple threads like `$ julia --threads 4` or like this to automatically start Julia with the maximum number of threads `$ julia --threads auto`.
+> [!NOTE]
+> Simulations in GEMS and the post-processing routines are optimizeed for [multi-threading](https://docs.julialang.org/en/v1/manual/multi-threading/). Taking advantage of these features requires the Julia process to be started with multiple threads like `$ julia --threads 4` or like this to automatically start Julia with the maximum number of threads `$ julia --threads auto`.
 
 
 ## Simulations
