@@ -55,7 +55,7 @@ Output:
 
 Plot:
 
-![Hello World Simulation](./assets/tutorials/tut_gs_hello-world.png)
+![Hello World Simulation](./docs/src/assets/tutorials/tut_gs_hello-world.png)
 
 The `gemsplot()` takes post-processed data (the `ResultData` object) and generates plots.
 You can pass an optional type argument(e.g., `type = :TickCases`) to generate a specific plot.
@@ -72,7 +72,7 @@ rd = ResultData(sim)
 gemsplot(rd, type = :TickCases, xlims = (0, 200), size = (600, 300))
 ```
 
-![Custom Parameter Simulation](./assets/tutorials/tut_gs_custom-parameters.png)
+![Custom Parameter Simulation](./docs/src/assets/tutorials/tut_gs_custom-parameters.png)
 
 
 ## Populations
@@ -87,7 +87,7 @@ sim = Simulation(population = "SH")
 gemsmap(sim, type = :PopDensityMap, clims = (0, 250))
 ```
 
-![SH Density Map](./assets/tutorials/tut_pops_SH_map.png)
+![SH Density Map](./docs/src/assets/tutorials/tut_pops_SH_map.png)
 
 
 If you want to add your own population, you can do that via a CSV-file or pass a `DataFrame` like this:
@@ -124,10 +124,10 @@ end
 b = Batch(sims...)
 run!(b)
 rd = ResultData(b)
-gemsplot(rd, type = :TickCases, xlims = (0, 200), size = (600, 300))
+gemsplot(rd, type = :TickCases, xlims = (0, 200), size = (600, 200))
 ```
 
-![Simple Batch](./assets/tutorials/tut_batches_repeats.png)
+![Simple Batch](./docs/src/assets/tutorials/tut_batches_repeats.png)
 
 
 Using batches, you can also sweep parameter spaces, e.g., for the transmission rate that applies when two individuals meet:
@@ -144,10 +144,10 @@ end
 b = Batch(sims...)
 run!(b)
 rd = ResultData(b)
-gemsplot(rd, type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size = (600, 300))
+gemsplot(rd, type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size = (600, 600)) |> png("tut_batches_sweeping.png")
 ```
 
-![Sweeping Parameter Spaces](./assets/tutorials/tut_batches_sweeping.png)
+![Sweeping Parameter Spaces](./docs/src/assets/tutorials/tut_batches_sweeping.png)
 
 The above example scratch the surface of GEMS.
 For more examples, please refer to the tutorials in the [package documentation](https://immidd.github.io/GEMS/).
