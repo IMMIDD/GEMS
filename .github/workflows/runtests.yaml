@@ -22,7 +22,7 @@ jobs:
       - name: Install Pandoc
         run: |
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            apt-get update -qq && apt-get install -y pandoc
+            sudo apt-get update -qq && sudo apt-get install -y pandoc
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
             choco install pandoc -y
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
@@ -32,7 +32,7 @@ jobs:
       - name: Install TeX
         run: |
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            apt-get update -qq && apt-get install -y texlive texlive-xetex
+            sudo apt-get update -qq && sudo apt-get install -y texlive texlive-xetex
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
             choco install miktex -y && xetex --version
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
