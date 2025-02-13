@@ -34,6 +34,7 @@ jobs:
         run: |
           if ($Env:RUNNER_OS -eq "Windows") {
             choco install miktex -y
+            Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
             refreshenv
           } elseif ($Env:RUNNER_OS -eq "Linux") {
             sudo apt-get update -qq
