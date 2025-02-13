@@ -22,7 +22,7 @@ jobs:
       - name: Install Pandoc
         run: |
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            sudo apt-get update -qq && sudo apt-get install -y pandoc
+            apt-get update -qq && apt-get install -y pandoc
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
             choco install pandoc -y
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
@@ -32,11 +32,11 @@ jobs:
       - name: Install TeX
         run: |
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            sudo apt-get update -qq && sudo apt-get install -y texlive texlive-xetex
+            apt-get update -qq && apt-get install -y texlive texlive-xetex
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
-            choco install miktex -y && mpm --install=xetex
+            choco install miktex -y && xetex --version
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            brew install --cask mactex && export PATH="/Library/TeX/texbin:$PATH" && sudo tlmgr install xetex
+            brew install --cask mactex && tlmgr update --self
           fi
         shell: bash
       - uses: julia-actions/setup-julia@v2
