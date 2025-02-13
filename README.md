@@ -124,7 +124,7 @@ The above example generates a population of 100,000 agents in 50,000 two-person 
 
 ## Batches
 
-In most cases, you probably want to run you simulation experiment multiple times.
+In most cases, you probably want to run your simulation experiment multiple times.
 Here's how to do that using GEMS' `Batch(...)` construct:
 
 ```julia
@@ -175,7 +175,7 @@ For more examples, please refer to the tutorials in the [package documentation](
 ## Intervention Scenarios
 
 GEMS integrates a highly versatile intervention modeling framework, called TriSM.
-The *Trigger - Strategy - Measre* formalization allows to model complex intervention strategies in a unified framework.
+The *Trigger - Strategy - Measure* formalization allows to model complex intervention strategies in a unified framework.
 Here's an example where we compare an unmitigated baseline scenario with an isolation scenario where individuals who experience symptoms go into self-isolation (no contacts outside of the household) for seven days:
 
 ```julia
