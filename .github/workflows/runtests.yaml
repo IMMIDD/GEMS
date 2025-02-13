@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install MiKTeX
-        run: sudo apt-get update && sudo apt-get install -y miktex
+      - name: Install TeX Live
+        run: sudo apt-get update && sudo apt-get install -y texlive texlive-latex-recommended
       - name: Install Pandoc
         run: sudo apt-get update && sudo apt-get install -y pandoc
       - uses: julia-actions/setup-julia@v2
