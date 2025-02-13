@@ -450,7 +450,7 @@ function generate(report::Report, directory::AbstractString)
     end
 
     # generate PDF
-    @suppress begin
+    #@suppress begin
         weave(mdfilepath; out_path = directory * "/report.pdf", doctype = "pandoc2pdf", 
         pandoc_options = 
             [
@@ -458,7 +458,7 @@ function generate(report::Report, directory::AbstractString)
             "-f", "markdown-implicit_figures"
             ]
         )
-    end
+    #end
         # generate HTML
     @suppress begin
         BASE_FOLDER = dirname(dirname(pathof(GEMS)))
