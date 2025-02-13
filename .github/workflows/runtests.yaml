@@ -34,11 +34,10 @@ jobs:
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             sudo apt-get update -qq && sudo apt-get install -y texlive texlive-xetex
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
-            choco install miktex -y
+            choco install miktex -y && elatexPath=$(find /c/Program\ Files/ /c/MiKTeX/ -type f -name 'xelatex.exe' | head -n 1) && echo "$(dirname "$xelatexPath")" >> $GITHUB_PATH
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            brew install --cask mactex
+            brew install --cask mactex && echo "/Library/TeX/texbin" >> $GITHUB_PATH
           fi
-          source ~/.bashrc
         shell: bash
       - uses: julia-actions/setup-julia@v2
         with:
