@@ -11,13 +11,31 @@ permissions:
 jobs:
   Tests:
     name: Run Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
     steps:
       - uses: actions/checkout@v4
       - name: Install Pandoc
-        run: sudo apt-get update -qq && sudo apt-get install -y pandoc
-      - name: Install TeX Live
-        run: sudo apt-get update -qq && sudo apt-get install -y texlive && sudo apt-get install -y texlive-xetex
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y pandoc
+          elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+            choco install pandoc -y
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            brew install pandoc
+          fi
+      - name: Install TeX
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y texlive texlive-xetex
+          elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+            choco install miktex -y
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            brew install miktex
+          fi
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11.3'                         
@@ -27,6 +45,7 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
       - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
