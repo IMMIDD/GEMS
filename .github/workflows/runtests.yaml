@@ -32,7 +32,7 @@ jobs:
         shell: pwsh
       - name: Install TeX
         run: |
-          if $Env:RUNNER_OS -eq "Windows") {
+          if ($Env:RUNNER_OS -eq "Windows") {
             choco install miktex -y
             refreshenv
           } elseif ($Env:RUNNER_OS -eq "Linux") {
