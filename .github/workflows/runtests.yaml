@@ -27,6 +27,7 @@ jobs:
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
             brew install pandoc
           fi
+        shell: bash
       - name: Install TeX
         run: |
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
@@ -34,8 +35,9 @@ jobs:
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
             choco install miktex -y
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            brew install miktex
+            brew install --cask mactex
           fi
+        shell: bash
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11.3'                         
