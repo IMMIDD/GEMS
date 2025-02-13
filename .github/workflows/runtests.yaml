@@ -21,24 +21,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Pandoc
         run: |
-          if ($Env:GITHUB_WORKFLOW -match "windows-latest") {
+          if ($Env:RUNNER_OS -eq "Windows") {
             choco install pandoc -y
-          } elseif ($Env:GITHUB_WORKFLOW -match "ubuntu-latest") {
+          } elseif ($Env:RUNNER_OS -eq "Linux") {
             sudo apt-get update -qq  
             sudo apt-get install -y pandoc
-          } elseif ($Env:GITHUB_WORKFLOW -match "macos-latest") {
+          } elseif ($Env:RUNNER_OS -eq "macOS") {
             brew install pandoc
           }
         shell: pwsh
       - name: Install TeX
         run: |
-          if ($Env:GITHUB_WORKFLOW -match "windows-latest") {
+          if $Env:RUNNER_OS -eq "Windows") {
             choco install miktex -y
             refreshenv
-          } elseif ($Env:GITHUB_WORKFLOW -match "ubuntu-latest") {
+          } elseif ($Env:RUNNER_OS -eq "Linux") {
             sudo apt-get update -qq
             sudo apt-get install -y texlive texlive-xetex
-          } elseif ($Env:GITHUB_WORKFLOW -match "macos-latest") {
+          } elseif ($Env:RUNNER_OS -eq "macOS") {
             brew install --cask mactex
             Add-Content -Path $Env:GITHUB_PATH -Value "/Library/TeX/texbin"
           }
