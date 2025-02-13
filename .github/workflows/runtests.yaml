@@ -36,6 +36,7 @@ jobs:
             choco install miktex -y
             Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
             refreshenv
+            xetex --version
           } elseif ($Env:RUNNER_OS -eq "Linux") {
             sudo apt-get update -qq
             sudo apt-get install -y texlive texlive-xetex
@@ -52,6 +53,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
+        if: matrix.os == 'ubuntu-latest'
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v5
