@@ -11,13 +11,13 @@ permissions:
 jobs:
   Tests:
     name: Run Unit Tests
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install MiKTeX
-        run: choco install miktex -y
       - name: Install Pandoc
-        run: choco install pandoc -y
+        run: sudo apt-get update -qq && sudo apt-get install -y pandoc
+      - name: Install TeX Live
+        run: sudo apt-get update -qq && sudo apt-get install -y texlive && sudo apt-get install -y texlive-xetex
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11.3'                         
