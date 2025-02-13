@@ -19,6 +19,7 @@ makedocs(
     pages    = [
         # Start - Overview, Intro, installation, configuration
         "Home" => "index.md", #TODO add What's New? but only show later when there are actually new features added
+        "Installation" => "installation.md",
         # Background - basis model, model setup & structs
         "Base Model" => [
             "Population" => "base-population.md",
