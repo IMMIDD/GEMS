@@ -34,9 +34,9 @@ jobs:
           if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             sudo apt-get update -qq && sudo apt-get install -y texlive texlive-xetex
           elif [ "${{ matrix.os }}" == "windows-latest" ]; then
-            choco install miktex -y
+            choco install miktex -y && mpm --install=xetex
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            brew install --cask mactex
+            brew install --cask mactex && export PATH="/Library/TeX/texbin:$PATH" && sudo tlmgr install xetex
           fi
         shell: bash
       - uses: julia-actions/setup-julia@v2
