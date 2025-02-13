@@ -34,13 +34,14 @@ jobs:
         run: |
           if ($Env:GITHUB_WORKFLOW -match "windows-latest") {
             choco install miktex -y
+            refreshenv
           } elseif ($Env:GITHUB_WORKFLOW -match "ubuntu-latest") {
             sudo apt-get update -qq
             sudo apt-get install -y texlive texlive-xetex
           } elseif ($Env:GITHUB_WORKFLOW -match "macos-latest") {
             brew install --cask mactex
+            Add-Content -Path $Env:GITHUB_PATH -Value "/Library/TeX/texbin"
           }
-          refreshenv
         shell: pwsh
       - uses: julia-actions/setup-julia@v2
         with:
