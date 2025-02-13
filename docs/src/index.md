@@ -9,9 +9,12 @@ GEMS provides interfaces to load custom populations, adapt infection rules, or c
 It also comes with comprehensive post-processing and plotting features.
 All simulated data can be easily exported and used in other applications. 
 
+```@raw html
 <img src="./assets/landing-page-header.png" width ="90%" />
+```
 
 This documentation provides a theoretical background to the underlying model, a guide through the most important features and simulation options, a detailed description of all included functionalities, and information about the Julia package itself. Please use the table of content below or the sidebar on the left to navigate through the different sections.
+
 
 ## Background
 
@@ -22,28 +25,12 @@ GEMS' core architecture and the integrated intervention modeling framework are d
 > Ponge, J., Suer, J., Hellingrath, B. and Karch, A., 2024, December. A Standardized Framework for Modeling Non-Pharmaceutical Interventions in Individual-Based Infectious Disease Simulations. In *2024 Winter Simulation Conference (WSC)* (pp. 1106-1117). IEEE. https://doi.org/10.1109/WSC63780.2024.10838778
 
 
-## Overview
-
-```@contents
-Pages = [
-     "index.md",
-     "underlying-model.md",
-     "tut_Intro.md",
-     "config-files.md",
-     "docstrings-overview.md",
-     "package-structure.md",
-     "contributing-guide.md",
-     "faq-page.md",
-     "glossary.md"
-     ]
-Depth = 1
-```
-
 ## Requirements
 
 GEMS requires [Julia](https://julialang.org/downloads/) v1.11.3+.
 
 You will need roughly 1GB of system memory for every million agents.
+
 
 ## Quick Installation
 
@@ -68,6 +55,7 @@ gemsplot(rd)
     GEMS allows to generate PDF-reports of simulation experiments. These features require [Pandoc](https://pandoc.org/installing.html) and [MiKTeX](https://miktex.org/download) (or any other distribution containing xelatex) to be installed on your machine. If you're happy using GEMS without its PDF-reporting features, installing the Julia package is all you need and you can skip this part!
 
 If you need support with the installation, have a look at this more detailed [installation guide](@ref installation).
+
 
 ## License
 
