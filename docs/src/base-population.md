@@ -73,7 +73,7 @@ Container Settings are added via so-called "settings files".
 
 # [Inbuilt Population Generator](@id pop-generator)
 
-If you setup a simulation without a custom population file like `sim = Simulation()`, GEMS will generate a baseline population on-the-fly.
+If you setup a simulation without a custom population file like `sim = Simulation()`, GEMS will generate a **non-representative** baseline population on-the-fly.
 You can pass arguments `pop_size` (called `n` in the explanation below), `avg_household_size`, `avg_office_size`, and `avg_school_size` to the engine.
 
 ```@raw html

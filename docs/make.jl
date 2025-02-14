@@ -26,6 +26,7 @@ makedocs(
             "Contacts" => "base-contacts.md",
             "Disease" => "base-disease.md",
             "Interventions" => "TriSM.md",
+            "Default Parameters" => "base-config.md"
         ],
         # running simulations - step by step guide, tutorials
         "Running Simulations" => [ #cf Wiki
