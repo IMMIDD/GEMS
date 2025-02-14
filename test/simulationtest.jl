@@ -461,7 +461,7 @@
         catch e
             @test e == "The remote download attempted to overwrite the settingsfile you provided. You need to define the populationfile you want to use locally."
         end
-        @test_throws Any Simulation(startdate="2020.01.01", enddate="2020.01.01")
+        @test_throws Any Simulation(startdate="2020.01.01", enddate="2019.12.31")
         @test_throws Any Simulation(startdate="2025.01.01", enddate="2020.01.01")
         @test_throws Any Simulation(startdate="2020/01/01")
         try

@@ -30,9 +30,9 @@
 
         # test interval_steps > 1
         @test_throws ArgumentError aggregate_matrix(matrix,1,2)
+    end
 
-
-        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), 604800, 'S') == Date("2024.1.8", dateformat"y.m.d")
-
+    @testset "Auxiliary" begin
+        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), 168, 'h') == Date("2024.1.8", dateformat"y.m.d")
     end
 end
