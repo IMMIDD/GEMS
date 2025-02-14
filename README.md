@@ -7,7 +7,7 @@
 
 The **G**erman **E**pidemic **M**icrosimulation **S**ystem (GEMS) is a high-performance geo-referential agent-based infectious disease modeling framework developed in Julia.
 It is a research outcome of the BMBF-funded OptimAgent project.
-It comes with a full model of the German Population and allows to simulate the spread of infectious diseases and potential countermeasures such as isolation, testing, school- or workplace closure, contact-tracing, and many others.
+It comes with a full model of the German population and allows to simulate the spread of infectious diseases and potential countermeasures such as isolation, testing, school- or workplace closure, contact-tracing, and many others.
 GEMS provides interfaces to load custom populations, adapt infection rules, or change contact patterns.
 It also comes with comprehensive post-processing and plotting features.
 All simulated data can be easily exported and used in other applications. 
@@ -169,9 +169,6 @@ gemsplot(rd, type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size
     <img src="./docs/src/assets/tutorials/tut_batches_sweeping.png" width ="80%" />
 </p>
 
-The above example scratch the surface of GEMS.
-For more examples, please refer to the tutorials in the [package documentation](https://immidd.github.io/GEMS/).
-
 
 ## Intervention Scenarios
 
@@ -204,6 +201,8 @@ gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeDiseaseProgressions, :Cumu
     <img src="./docs/src/assets/tutorials/tut_npi_self-isolation.png" width ="80%" />
 </p>
 
+The above example scratch the surface of GEMS.
+For more examples, please refer to the tutorials in the [package documentation](https://immidd.github.io/GEMS/).
 
 ## Resources Requirements
 
