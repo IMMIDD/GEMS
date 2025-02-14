@@ -6,7 +6,7 @@ export InfectedFraction
 export TimesUp
 export Simulation
 
-export tick, current_date, label, start_condition, stop_criterion, settingscontainer, settings, population
+export tick, startdate, current_date, label, start_condition, stop_criterion, settingscontainer, settings, population
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogen, pathogen!
@@ -1157,12 +1157,8 @@ function calculate_ticks(startdate::Date, enddate::Date, tickunit::Char)
         return Dates.value(enddate - startdate) + 1
     elseif tickunit == 'h'
         return (Dates.value(enddate - startdate) + 1) * 24
-    elseif tickunit == 'M'
-        return (Dates.value(enddate - startdate) + 1) * 24 * 60
-    elseif tickunit == 'S'
-        return (Dates.value(enddate - startdate) + 1) * 24 * 60 * 60
     else
-        throw("Invalid tickunit: $tickunit. Use 'y', 'm', 'w', 'd', 'h', 'M', or 'S'.")
+        throw("Invalid tickunit: $tickunit. Use 'y', 'm', 'w', 'd' or 'h'.")
     end
 end
 
@@ -1288,10 +1284,6 @@ function tickunit(simulation::Simulation)::String
         return "week"
     elseif ut == 'h'
         return "hour"
-    elseif ut == 'M'
-        return "minute"
-    elseif ut == 'S'
-        return "second"
     else
         return "tick"
     end

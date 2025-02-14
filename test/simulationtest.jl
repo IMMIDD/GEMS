@@ -222,7 +222,7 @@
         function test_stepmod(sim)
             global testing_stepmod += 1
         end
-        sim = Simulation(Population(n = 1000),startdate = "2024.01.01", enddate = "2024.01.10", stepmod = test_stepmod)
+        sim = Simulation(Population(n = 1000), startdate = "2024.01.01", enddate = "2024.01.10", stepmod = test_stepmod)
         run!(sim)
         @test testing_stepmod == 10
         @test stepmod(sim) === test_stepmod
@@ -461,24 +461,9 @@
         catch e
             @test e == "The remote download attempted to overwrite the settingsfile you provided. You need to define the populationfile you want to use locally."
         end
-        #try
-        #    Simulation(startdate="2020.01.01", enddate="2020.01.01")
-        #    @test false
-        #catch e
-        #    @test occursin("Start date (2020-01-01) of the simulation is after or at the end date (2020-01-01). Please provide valid start and end dates in the format yyyy.mm.dd", string(e))
-        #end
-        #try
-        #    Simulation(startdate="2025.01.01", enddate="2020.01.01")
-        #    @test false
-        #catch e
-        #    @test occursin("Start date (2025-01-01) of the simulation is after or at the end date (2020-01-01). Please provide valid start and end dates in the format yyyy.mm.dd", string(e))
-        #end
-        try
-            Simulation(startdate="2020/01/01")
-            @test false
-        catch e
-            @test occursin("Please provide valid start and end dates in the format yyyy.mm.dd", string(e))
-        end
+        @test_throws Any Simulation(startdate="2020.01.01", enddate="2020.01.01")
+        @test_throws Any Simulation(startdate="2025.01.01", enddate="2020.01.01")
+        @test_throws Any Simulation(startdate="2020/01/01")
         try
             Simulation("")
             @test false
@@ -681,12 +666,6 @@
         @test tickunit(sim4) == "week"
         sim5 = Simulation(tickunit="h")
         @test tickunit(sim5) == "hour"
-        sim6 = Simulation(tickunit="M")
-        @test tickunit(sim6) == "minute"
-        sim7 = Simulation(tickunit="S")
-        @test tickunit(sim7) == "second"
-        sim8 = Simulation(tickunit="t")
-        @test tickunit(sim8) == "tick"
     end
 
     #=

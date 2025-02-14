@@ -66,13 +66,13 @@
         @test length(logger_ids) == length(unique(logger_ids))
     end
 
-    sims5 = Simulation[Simulation() for i in 1:3]
+    sims5 = Simulation[Simulation(startdate = "2024.01.01", enddate = "2024.01.10") for i in 1:3]
     batch5 = Batch(sims5...)
     @testset "Run" begin
         run!(batch5)
 
         for sim in simulations(batch5)
-            @test tick(sim) == 365
+            @test tick(sim) == 10
         end
     end
 
