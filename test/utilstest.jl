@@ -32,7 +32,7 @@
         @test_throws ArgumentError aggregate_matrix(matrix,1,2)
 
 
-        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), 604800. 'S') == Date("2024.1.8", dateformat"y.m.d")
+        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), 604800, 'S') == Date("2024.1.8", dateformat"y.m.d")
 
     end
 end
