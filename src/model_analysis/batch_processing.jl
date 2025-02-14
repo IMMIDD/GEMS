@@ -2,7 +2,7 @@
 export BatchProcessor
 
 export rundata, run_ids, config_files, population_files
-export tick_unit, start_conditions, stop_criteria, number_of_individuals, pathogens, pathogens_by_name
+export tick_unit, start_conditions, stop_criteria, start_dates, final_ticks, number_of_individuals, pathogens, pathogens_by_name
 export runtime, allocations
 export total_infections, total_tests, attack_rate, settingdata, parameterset, strategies
 export setting_age_contacts
@@ -161,6 +161,28 @@ Values are unique and can originate from multiple simulation runs.
 """
 function stop_criteria(batchProcessor::BatchProcessor)
     return(extract_unique(batchProcessor, stop_criterion))
+end
+
+"""
+    start_dates(batchProcessor::BatchProcessor)
+
+Returns a vector of `start_dates` that were used in the associated simulations.
+Values are unique and can originate from multiple simulation runs.
+"""
+function start_dates(batchProcessor::BatchProcessor)
+    return(extract_unique(batchProcessor, start_date))
+end
+
+
+
+"""
+    final_ticks(batchProcessor::BatchProcessor)
+
+Returns a vector of `final ticks` of the associated simulations.
+Values are unique and can originate from multiple simulation runs.
+"""
+function final_ticks(batchProcessor::BatchProcessor)
+    return(extract_unique(batchProcessor, final_tick))
 end
 
 """

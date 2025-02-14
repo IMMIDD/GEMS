@@ -24,6 +24,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         
     - `sim_data::Dict{String, Any}`
         - `label::String`: Label of this simulation run (needed for plotting)
+        - `start_date::String`: Start date of the simulation run
         - `final_tick::Int16`: Tick counter at the end of the simulation run
         - `number_of_individuals::Int64`: Total number of individuals in the population model
         - `initial_infections::Int64`: Number of initial infected individuals
@@ -111,6 +112,7 @@ mutable struct LightRD <: ResultDataStyle
             "sim_data" =>
                 Dict(
                     "label" => () -> pP |> simulation |> label,    
+                    "start_date" => () -> pP |> simulation |> startdate |> x -> Dates.format(x, "yyyy-mm-dd"),
                     "final_tick" => () -> pP |> simulation |> tick,
                     "number_of_individuals" => () -> pP |> simulation |> population |> individuals |> length,
                     "initial_infections" => () -> (pP |> infectionsDF |> nrow) - (pP |> sim_infectionsDF |> nrow),

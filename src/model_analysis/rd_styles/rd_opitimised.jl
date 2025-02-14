@@ -21,7 +21,8 @@ mutable struct OptimisedResultData <: ResultDataStyle
                 ),
             "sim_data" =>
                 Dict(
-                    "label" => () -> pP |> simulation |> label,     
+                    "label" => () -> pP |> simulation |> label, 
+                    "start_date" => () -> pP |> simulation |> startdate |> x -> Dates.format(x, "yyyy-mm-dd"),    
                     "final_tick" => () -> pP |> simulation |> tick,
                     "number_of_individuals" => () -> pP |> simulation |> population |> individuals |> length,
                     "initial_infections" => () -> (pP |> infectionsDF |> nrow) - (pP |> sim_infectionsDF |> nrow),

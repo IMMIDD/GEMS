@@ -63,6 +63,7 @@
         @test rd |> GEMS_version |> string |> length > 0
         @test rd |> config_file |> isfile
         @test rd |> population_file |> isfile
+        @test rd |> start_date == sim |> startdate
         @test rd |> final_tick == sim |> tick
         @test rd |> number_of_individuals == sim |> population |> size
         @test rd |> total_infections > 0

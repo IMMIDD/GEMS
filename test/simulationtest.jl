@@ -75,11 +75,20 @@
         @test abs(fraction(inf) * length(individuals(population(s))) - noi) <= 1
 
         # test simulation run with criterion TimesUp after 10 ticks
-        s = run!(s, with_progressbar=false)
-        @test tick(s) == 10
+        #s = run!(s, with_progressbar=false)
+        #@test tick(s) == 10
 
         # simulation should have exceeded target tick
-        @test evaluate(s, tu) == true
+        #@test evaluate(s, tu) == true
+
+        s = Simulation(Population(n = 1000), startdate = "2021.03.1", enddate = "2021.03.10")
+        run!(s, with_progressbar = false)
+        @test tick(s) == 10
+
+        s = Simulation(Population(n = 1000), startdate = "2021.03.1", enddate = 15)
+        run!(s, with_progressbar = false)
+        @test tick(s) == 15
+
     end
 
 
@@ -213,9 +222,9 @@
         function test_stepmod(sim)
             global testing_stepmod += 1
         end
-        sim = Simulation(Population(n=1000), stepmod=test_stepmod)
+        sim = Simulation(Population(n = 1000),startdate = "2024.01.01", enddate = "2024.01.10", stepmod = test_stepmod)
         run!(sim)
-        @test testing_stepmod == 365
+        @test testing_stepmod == 10
         @test stepmod(sim) === test_stepmod
 
         # sim = Simulation(Population(n = 1000), seed = 1111)
@@ -224,12 +233,12 @@
         sim = Simulation(Population(n=1000), global_setting=true)
         @test settings(sim, GlobalSetting) |> length == 1
 
-        # TODO adapt next two when reworking dates
-        sim = Simulation(Population(n=1000), startdate="2021.03.01")
+        sim = Simulation(Population(n = 1000), startdate = "2021.03.01", enddate = "2021.03.10")
         @test sim.startdate == Date("2021.03.01", dateformat"y.m.d")
+        @test sim.duration == 10
 
-        #sim = Simulation(Population(n=1000), enddate="2025.03.01")
-        #@test sim.enddate == Date("2025.03.01", dateformat"y.m.d")
+        sim = Simulation(Population(n = 1000), startdate = "2021.03.01", enddate = 15)
+        @test sim.duration == 15
 
         sim = Simulation(Population(n=1000), infected_fraction = 0.05)
         @test sim |> start_condition |> fraction == 0.05

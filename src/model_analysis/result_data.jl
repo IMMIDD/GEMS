@@ -4,7 +4,7 @@ export ResultData
 
 export ResultDataFunction, ResultDataStyle
 
-export meta_data, execution_date, GEMS_version, config_file, config_file_val, population_file, population_params, final_tick
+export meta_data, execution_date, GEMS_version, config_file, config_file_val, population_file, population_params, start_date, final_tick
 export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data
 export setting_sizes, globalsetting_flag, pathogens, vaccine, vaccination_strategy, total_quarantines, total_tests
 export tick_unit, start_condition, stop_criterion, strategies, kernel, julia_version
@@ -388,6 +388,18 @@ Returns an empty dictionary if the data is not available in the input `ResultDat
 function sim_data(rd::ResultData)
     return(get(rd.data, "sim_data", Dict()))
 end
+
+"""
+    start_date(rd::ResultData)
+
+Returns the startdate of the simulation.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function start_date(rd::ResultData)
+    return(get(rd |> sim_data, "start_date", Dict()))
+end
+
+
 
 """
     final_tick(rd::ResultData)

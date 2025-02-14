@@ -1,7 +1,7 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
 export concrete_subtypes, is_existing_subtype, find_subtype
-export isdate
+export isdate, date_at_tick
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
 export read_git_repo, read_git_branch, read_git_commit
 export aggregate_matrix
@@ -54,6 +54,32 @@ function isdate(x)
         return false
     end
 end
+
+"""
+    date_at_tick(startdate, tick, tickunit)
+
+Returns the simulation date at `tick` ticks after startdate
+"""
+function date_at_tick(startdate::Date, tick::Int16, tickunit::Char)
+    if tickunit == 'y'
+        return startdate + Year(tick)
+    elseif tickunit == 'm'
+        return startdate + Month(tick)
+    elseif tickunit == 'w'
+        return startdate + Week(tick)
+    elseif tickunit == 'd'
+        return startdate + Day(tick)
+    elseif tickunit == 'h'
+        return startdate + Hour(tick)
+    elseif tickunit == 'M'
+        return startdate + Minute(tick)
+    elseif tickunit == 'S'
+        return startdate + Second(tick)
+    else
+        throw("Invalid tickunit: $(tickunit).")
+    end
+end
+
 
 """
     foldercount(directory)

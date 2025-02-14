@@ -6,7 +6,7 @@ export InfectedFraction
 export TimesUp
 export Simulation
 
-export tick, label, start_condition, stop_criterion, settingscontainer, settings, population
+export tick, current_date, label, start_condition, stop_criterion, settingscontainer, settings, population
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogen, pathogen!
@@ -45,7 +45,7 @@ A struct for the management of a single run, holding all necessary informations.
     - `tick::Int16`: Current tick/timestep
     - `tickunit::Char`: Time unit of one simulation step (tick)
     - `startdate::Date`: Start date of the simulation
-    - `enddate::Date`: End date of the simulation
+    - `duration::Int16`: Number of total ticks of the simulation. When reached, the simulation should be terminated.
     - `start_condition::StartCondition`: Starting condition that sets the initial situation
     - `stop_criterion::StopCriterion`: Criterion that terminates a simulation run
     - `label::String`: Label for plot visualizations
@@ -80,7 +80,7 @@ mutable struct Simulation
     tick::Int16
     tickunit::Char
     startdate::Date
-    enddate::Date
+    duration::Int16
     start_condition::StartCondition
     stop_criterion::StopCriterion
     label::String
@@ -129,7 +129,7 @@ mutable struct Simulation
          0, # tick::Int16
          'd', # tickunit::Char
          Date(2024), # startdate::Date
-         Date(2025), # enddate::Date
+         365, # duration::Int16
          start_condition, # start_condition::StartCondition
          stop_criterion, # stop_criterion::StopCriterion
          label, # label::String
@@ -217,9 +217,9 @@ mutable struct Simulation
     | `label`                         | `String`               | Label used to name simulation runs during analysis                                                                                    |
     | `stepmod`                       | `Function`             | One-agument function which will be executed each simulation step, called on the `Simulation` object                                   |
     | `seed`                          | `Int64`                | Random seed                                                                                                                           |
-    | `global_setting`                 | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
-    | `startdate`                     | `Date`, `String`       | Simulation start date (format: `YYYY.MM.DD`)                                                                                          |
-    | `enddate`                       | `Date`, `String`       | Simulation end date (format: `YYYY.MM.DD`)                                                                                            |
+    | `global_setting`                | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
+    | `startdate`                     | `String`               | Simulation start date (format: `YYYY.MM.DD`)                                                                                          |
+    | `enddate`                       | `String`, `Int16`      | Simulation end date (format: `YYYY.MM.DD`) or the number of total ticks of the simulation                                             |                                                                                  |
     | `infected_fraction`             | `Float64`              | Fraction of the initially infected agents for the `InfectedFraction` start condition                                                  |
     | `transmission_rate`             | `Float64`              | Infection probability (0-1) during a contact where one individual is infectious                                                       |
     | `onset_of_symptoms`             | `Float64`              | Average time from exposure to onset of symptoms (Poisson-distributed)                                                                 |
@@ -263,7 +263,7 @@ mutable struct Simulation
         seed::Union{Int64, Nothing} = nothing,
         global_setting::Union{Bool, Nothing} = nothing,
         startdate::Union{String, Nothing} = nothing,
-        enddate::Union{String, Nothing} = nothing,
+        enddate::Union{String, Int, Nothing} = nothing,
         infected_fraction::Union{Real, Nothing} = nothing,
         transmission_rate::Union{Real, Nothing} = nothing,
         onset_of_symptoms::Union{Real, Nothing} = nothing,
@@ -340,7 +340,7 @@ mutable struct Simulation
             "Simulation.seed" => seed,
             "Simulation.GlobalSetting" => global_setting,
             "Simulation.startdate" => startdate,
-            #"Simulation.enddate" => enddate,
+            "Simulation.enddate" => enddate,
             "Simulation.tickunit" => tickunit,
             "Simulation.StartCondition.fraction" => infected_fraction,        
             "Pathogens.Covid19.transmission_function.parameters.transmission_rate" => transmission_rate,
@@ -621,15 +621,19 @@ mutable struct Simulation
         if haskey(properties["Simulation"], "startdate") 
             try
                 startdate = Date(get(properties["Simulation"], "startdate", "2024.1.1"), dateformat"y.m.d")
-                enddate = Date(get(properties["Simulation"], "enddate", "2025.1.1"), dateformat"y.m.d")
-                if startdate >= enddate
-                    throw("Start date ($startdate) of the simulation is after or at the end date ($enddate). Please provide valid start and end dates in the format yyyy.mm.dd")
+                enddate = get(properties["Simulation"], "enddate", "2024.12.31")
+
+                #convert Date to offset
+                duration = enddate isa Integer ? enddate : calculate_ticks(startdate, Date(enddate, dateformat"y.m.d"), sim.tickunit)
+                
+                if duration <= 0
+                    throw("Start date of the simulation is after or at the end date. Please provide a valid start date (yyyy.mm.dd) and end date either as a date (yyyy.mm.dd) or the number of ticks.")
                 else
                     sim.startdate = startdate
-                    sim.enddate = enddate
+                    sim.duration = duration
                 end
             catch e
-                throw("Please provide valid start and end dates in the format yyyy.mm.dd.
+                throw("Please provide a valid start date (yyyy.mm.dd) and end date either as a date (yyyy.mm.dd) or the number of ticks.
                 Stack: $e")
             end
 
@@ -1137,6 +1141,32 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
     return (peoplelocal(identifier) , settingslocal(identifier))       
 end
 
+"""
+    calculate_ticks(startdate::Date, enddate::Date, tickunit::Char)
+
+Returns the number of ticks between startdate and enddate (including enddate)
+"""
+function calculate_ticks(startdate::Date, enddate::Date, tickunit::Char)
+    if tickunit == 'y'
+        return length(startdate:Year(1):enddate)
+    elseif tickunit == 'm'
+        return length(startdate:Month(1):enddate)
+    elseif tickunit == 'w'
+        return div(Dates.value(enddate - startdate), 7) + 1
+    elseif tickunit == 'd'
+        return Dates.value(enddate - startdate) + 1
+    elseif tickunit == 'h'
+        return (Dates.value(enddate - startdate) + 1) * 24
+    elseif tickunit == 'M'
+        return (Dates.value(enddate - startdate) + 1) * 24 * 60
+    elseif tickunit == 'S'
+        return (Dates.value(enddate - startdate) + 1) * 24 * 60 * 60
+    else
+        throw("Invalid tickunit: $tickunit. Use 'y', 'm', 'w', 'd', 'h', 'M', or 'S'.")
+    end
+end
+
+
 ### INTERFACE FOR CONDITION AND CRITERIA ###
 
 # TODO REMOVE
@@ -1161,6 +1191,15 @@ Evaluates whether the specified stop criterion is met for the simulation model.
 function evaluate(simulation::Simulation, criterion::StopCriterion)
     error("`evaluate` not implemented for stop criterion "
         *string(typeof(criterion)))
+end
+
+"""
+    is_finished(simulation)
+
+Returns `True` if the number of total ticks is reached. 
+"""
+function is_finished(sim::Simulation)
+    sim.tick >= sim.duration
 end
 
 
@@ -1193,6 +1232,34 @@ Returns current tick of the simulation run.
 function tick(simulation::Simulation)
     return simulation.tick
 end
+
+"""
+    current_date(simulation)
+
+Returns the current simulation date.
+"""
+function current_date(simulation::Simulation)
+    return date_at_tick(simulation.startdate, simulation.tick, simulation.tickunit)
+end
+
+"""
+    startdate(simulation)
+
+Returns the startdate of the simulation run.
+"""
+function startdate(simulation::Simulation)
+    return simulation.startdate
+end
+
+"""
+    duration(simulation)
+
+Returns the duration in number of ticks associated with the simulation run.
+"""
+function duration(simulation::Simulation)
+    return simulation.duration
+end
+
 
 """
     label(simulation::Simulation)
