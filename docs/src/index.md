@@ -1,4 +1,4 @@
-# GEMS Package
+# [GEMS Package](@id home)
 
 ## Welcome
 
