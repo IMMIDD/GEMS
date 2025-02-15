@@ -332,9 +332,12 @@ function generate(section::PlotSection, depth::Int64, rd::AbstractResultData, di
     
     @info "\r$(subinfo(section |> plt |> title))" # console info outpupt
 
+    # content function genertes title so must be run in advance
+    plotcontent = @suppress generate_content(section, rd, directory)
+
     # markdown title
     res  = generate_title(section, depth)   
-    @suppress res *= generate_content(section, rd, directory)
+    res *= plotcontent
 
     return(res)
 
