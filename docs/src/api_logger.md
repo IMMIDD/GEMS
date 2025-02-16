@@ -22,7 +22,6 @@ PoolTestLogger
 QuarantineLogger
 TestLogger
 TickLogger
-VaccinationLogger
 ```
 
 ## Functions
@@ -45,8 +44,5 @@ save(::DeathLogger, ::AbstractString)
 save(::InfectionLogger, ::AbstractString)
 save(::PoolTestLogger, ::AbstractString)
 save(::TestLogger, ::AbstractString)
-save(::VaccinationLogger, ::AbstractString)
 save_JLD2
-
-duplicate(<:Logger)
 ```
