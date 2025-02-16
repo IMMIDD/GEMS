@@ -25,6 +25,7 @@ SymptomTrigger
 
 ```@docs
 strategy
+switch_tick
 ```
 
 
@@ -112,4 +113,11 @@ EventQueue
 Handover
 IMeasureEvent
 SMeasureEvent
+```
+
+### Functions
+
+```@docs
+dequeue!(::EventQueue)
+enqueue!(::EventQueue, ::Event, ::Int16)
 ```

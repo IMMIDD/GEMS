@@ -14,11 +14,13 @@ Order   = [:function]
 ## Structs
 ```@docs
 Pathogen
+DiseaseProgressionStrat
 ```
 
 ## Functions
 ```@docs
 critical_death_rate(::Pathogen)
+DiseaseProgressionStrat()
 disease_progression_strat(::Pathogen)
 hospitalization_rate(::Pathogen)
 icu_rate(::Pathogen)

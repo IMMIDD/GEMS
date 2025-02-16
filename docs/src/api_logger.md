@@ -45,4 +45,5 @@ save(::InfectionLogger, ::AbstractString)
 save(::PoolTestLogger, ::AbstractString)
 save(::TestLogger, ::AbstractString)
 save_JLD2
+ticks(::InfectionLogger)
 ```

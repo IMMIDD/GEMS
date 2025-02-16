@@ -30,6 +30,8 @@ AgeDependentTransmissionRate(;transmission_rate, ageGroups, ageTransmissions, di
 disease_progression!(::Individual, ::Pathogen, ::Int16)
 estimate_disease_progression(::DiseaseProgressionStrat, ::Individual)
 infect!
+spread_infection!(::Setting, ::Simulation, ::Pathogen)
 transmission_probability
+try_to_infect!
 update_individual!(::Individual, ::Int16, ::Simulation)
 ```

@@ -2,7 +2,7 @@
 ### SIMULATION (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export StartCondition, StopCriterion
-export InfectedFraction
+export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
