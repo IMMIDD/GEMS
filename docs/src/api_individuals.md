@@ -21,6 +21,7 @@ Individual
 ## Constructors
 ```@docs
 Individual(::Dict)
+Individual(::DataFrameRow)
 ```
 
 ## Functions
