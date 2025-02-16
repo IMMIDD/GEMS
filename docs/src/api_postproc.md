@@ -37,6 +37,7 @@ hospital_df(::PostProcessor)
 household_attack_rates(::PostProcessor; ::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
 in_cache(::PostProcessor, ::String)
 individuals_per_age_group
+infections(::PostProcessor)
 load_cache(::PostProcessor, ::String)
 observed_R(::PostProcessor)
 pooltestsDF(::PostProcessor)

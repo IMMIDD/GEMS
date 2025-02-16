@@ -211,8 +211,13 @@ function simulation(postProcessor::PostProcessor)
     return postProcessor.simulation
 end
 
+
+function infectionsDF(postProcessor::PostProcessor)
+    return postProcessor.infectionsDF
+end
+
 """
-    infectionsDF(postProcessor::PostProcessor)
+    infections(postProcessor::PostProcessor)
 
 Returns the internal flat infections `DataFrame`.
 
@@ -262,7 +267,7 @@ Returns the internal flat infections `DataFrame`.
 | `schoolclass_b`            | `Int32`   | Infectee associated schoolclass                                 |
 | `household_ags_b`          | `Int32`   | Infectee household German Community Identification Number       |
 """
-function infectionsDF(postProcessor::PostProcessor)
+function infections(postProcessor::PostProcessor)
     return postProcessor.infectionsDF
 end
 
