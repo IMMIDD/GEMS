@@ -1,5 +1,5 @@
 export FindMembers
-export sample_size, sample_fraction, condition, follow_up
+export sample_size, sample_fraction, condition, follow_up, selectionfilter
 
 ###
 ### STRUCT

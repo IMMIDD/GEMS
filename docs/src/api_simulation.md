@@ -102,6 +102,7 @@ step!
 steps
 stepmod
 stop_criterion(::Simulation)
+strategies(::Simulation)
 switch_tick
 symptom_triggers(::Simulation)
 test_sim

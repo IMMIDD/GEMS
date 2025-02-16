@@ -11,72 +11,84 @@ Pages   = ["api_interventions.md"]
 Order   = [:function]
 ```
 
-## Structs
+## Triggers
+
+### Structs
+
 ```@docs
-AbstractWaning
+ITickTrigger
+STickTrigger
+SymptomTrigger
+```
+
+### Functions
+
+```@docs
+strategy
+```
+
+
+## Strategies
+
+### Constructors
+
+```@docs
+IStrategy(::String, ::Simulation; ::Function)
+SStrategy(::String, ::Simulation; ::Function)
+MeasureEntry
+```
+
+
+### Functions
+
+```@docs
+add_measure!
+condition
+delay(::MeasureEntry)
+measure(::MeasureEntry)
+measures(::Strategy)
+name(::Strategy)
+offset(::MeasureEntry)
+```
+
+
+## Measures
+
+### Constructors
+
+```@docs
 CancelSelfIsolation
 ChangeContactMethod
 CloseSetting
 CustomIMeasure
 CustomSMeasure
-DailyDoseStrategy
-DiscreteWaning
-EventQueue
 FindMembers
 FindSetting
 FindSettingMembers
-Handover
-IMeasureEvent
-IStrategy
-ITickTrigger
 IsOpen
-MeasureEntry
 OpenSetting
 PoolTest
-SMeasureEvent
-SStrategy
-STickTrigger
 SelfIsolation
-SymptomTrigger
 Test
 TestAll
 TestType
 TraceInfectiousContacts
-VaccinationScheduler
-VaccinationStrategy
-Vaccine
 ```
 
-## Constructors
-```@docs
-IStrategy(::String, ::Simulation; ::Function)
-SStrategy(::String, ::Simulation; ::Function)
-```
+### Functions
 
-## Functions
 ```@docs
-add_measure!
 apply_pool_test
 apply_test
-condition
-delay(::MeasureEntry)
-duration
+duration(::SelfIsolation)
 follow_up
-home_quarantine!(::Individual)
-measure(::MeasureEntry)
-measure_logic
-measures(::Strategy)
 name(::PoolTest)
-name(::Strategy)
 name(::TestAll)
 name(::TestType)
 name(::Test)
 negative_followup
 nonself(::FindSettingMembers)
-offset(::MeasureEntry)
 positive_followup
-process_event(::IMeasureEvent, ::Simulation)
-process_event(::SMeasureEvent, ::Simulation)
 process_measure
 reportable(::Test)
 reportable(::TestAll)
@@ -86,13 +98,18 @@ sampling_method(::ChangeContactMethod)
 selectionfilter(::FindMembers)
 sensitivity(::TestType)
 specificity(::TestType)
-strategies
-strategy
 success_rate(::TraceInfectiousContacts)
-time_to_effectiveness(waning)
-trigger_strategy(::IStrategy, ::Individual, ::Simulation)
-trigger_strategy(::SStrategy, ::Setting, ::Simulation)
-trigger_strategy
 type
-waning(::Vaccine)
+```
+
+
+## Event Handling
+
+### Constructors
+
+```@docs
+EventQueue
+Handover
+IMeasureEvent
+SMeasureEvent
 ```
