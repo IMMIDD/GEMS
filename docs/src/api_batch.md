@@ -13,7 +13,7 @@ Order   = [:function]
 
 ## Batch
 
-### Structs
+### Constructors
 
 ```@docs
 Batch(;::Integer::Bool, simargs...)
@@ -36,7 +36,7 @@ simulations(::Batch)
 
 ## Batch Processor
 
-### Structs
+### SConstructors
 
 ```@docs
 BatchProcessor(::Vector{ResultData})
@@ -78,7 +78,7 @@ total_tests(::BatchProcessor)
 
 ## Batch Data
 
-### Structs
+### Constructors
 
 ```@docs
 BatchData(::BatchProcessor; ::String)
