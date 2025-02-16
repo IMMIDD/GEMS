@@ -49,6 +49,5 @@ time_to_hospitalization(::Pathogen)
 time_to_icu(::Pathogen)
 transmission_function!(::Pathogen, ::TransmissionFunction)
 transmission_function(::Pathogen)
-validate_pathogens
 ventilation_rate(::Pathogen)
 ```
