@@ -29,8 +29,6 @@ SinglesMap
 agsmap
 gemsmap
 generate_map
-lat(::Geolocated)
-lon(::Geolocated)
 prepare_map_df!
 region_range(::DataFrame)
 ```
