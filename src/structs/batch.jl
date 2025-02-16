@@ -85,7 +85,7 @@ end
 
 """
     merge(batches::Batch...)
-    merge(batches::Vctor{Batch})
+    merge(batches::Vector{Batch})
 
 Generates a new `Batch` that contains all simulations of the input `Batch`es. 
 """

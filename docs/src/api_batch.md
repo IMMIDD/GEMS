@@ -1,4 +1,4 @@
-# Batch Runs
+# Batches
 
 ## Overview Structs
 ```@index
@@ -11,87 +11,124 @@ Pages   = ["api_batch.md"]
 Order   = [:function]
 ```
 
-## Structs
+## Batch
+
+### Structs
+
 ```@docs
-Batch
-BatchData
-BatchProcessor
-DefaultBatchData
-DefaultBatchDataStyle
+Batch(;::Integer::Bool, simargs...)
+Batch(::Simulation...)
+Batch(::Batch...)
+Batch(::Vector{Batch})
 ```
-## Constructors
+
+### Functions
+
 ```@docs
+add!(::Simulation, ::Batch)
+append!(::Batch, ::Batch)
+customlogger!(::Batch, ::CustomLogger)
+remove!(::Simulation, ::Batch)
+run!(::Batch; ::Function)
+simulations(::Batch)
+```
+
+
+## Batch Processor
+
+### Structs
+
+```@docs
+BatchProcessor(::Vector{ResultData})
 BatchProcessor(::Batch; ::Bool)
 ```
 
-## Functions
-```@docs
-add!(::Simulation, ::Batch)
-customlogger!(::Batch, ::CustomLogger)
-exportJLD(::BatchData, ::AbstractString)
-exportJSON(::BatchData, ::AbstractString)
-import_batchdata(::AbstractString)
-remove!(::Simulation, ::Batch)
-run!(::Batch; ::Function)
-runs(::BatchData)
-sim_data(::BatchData)
-simulations(::Batch)
-system_data(::BatchData)
-```
+### Functions
 
-
-## Deprecated Batches
 ```@docs
-allocations
-attack_rate(::BatchData)
+allocations(::BatchProcessor)
 attack_rate(::BatchProcessor)
-batch
-config_files
-cpu_data(::BatchData)
-create_batch_configs
+config_files(::BatchProcessor)
 cumulative_disease_progressions(::BatchProcessor)
-cumulative_disease_progressions(::BatchData)
-cumulative_quarantines
-cumulative_quarantines(::BatchData)
 cumulative_quarantines(::BatchProcessor)
-dataframes(::BatchData)
-effectiveR(::BatchData)
 effectiveR(::BatchProcessor)
-execution_date(::BatchData)
-generate_batch_info
-id(::BatchData)
-julia_version(::BatchData)
-meta_data(::BatchData)
 number_of_individuals(::BatchProcessor)
-number_of_runs(::BatchData)
 parameterset(::BatchProcessor, ::Vector{String})
 pathogens(::BatchProcessor)
-pathogens_by_name
-population_files
+pathogens_by_name(::BatchProcessor)
+population_files(::BatchProcessor)
 population_pyramid(::BatchProcessor)
-run_ids
-rundata
-runtime
+run_ids(::BatchProcessor)
+rundata(::BatchProcessor)
+runtime(::BatchProcessor)
+setting_age_contacts(::BatchProcessor, ::DataType)
 settingdata(::BatchProcessor)
-start_conditions
-stop_criteria
+start_conditions(::BatchProcessor)
+stop_criteria(::BatchProcessor)
+strategies(::BatchProcessor)
 symptom_triggers(::BatchProcessor)
-systemdata(::BatchData)
-tests(::BatchData)
 tests(::BatchProcessor)
 testtypes(::BatchProcessor)
-threads(::BatchData)
-tick_cases(::BatchData)
 tick_cases(::BatchProcessor)
 tick_unit(::BatchProcessor)
-total_infections(::BatchData)
 total_infections(::BatchProcessor)
+total_quarantines(::BatchProcessor)
+total_tests(::BatchProcessor)
+```
+
+## Batch Data
+
+### Structs
+
+```@docs
+BatchData(::BatchProcessor; ::String)
+BatchData(::Batch; ::String, ::String)
+BatchData(::Vector{ResultData}; ::String)
+BatchData(::BatchData...; ::String)
+BatchData(::Vector{BatchData}; ::String)
+```
+
+### Functions
+
+```@docs
+allocations(::BatchData)
+attack_rate(::BatchData)
+cpu_data(::BatchData)
+cumulative_disease_progressions(::BatchData)
+cumulative_quarantines(::BatchData)
+dataframes(::BatchData)
+effectiveR(::BatchData)
+execution_date(::BatchData)
+exportJLD(::BatchData, ::AbstractString)
+free_mem_size(::BatchData)
+GEMS_version(::BatchData)
+git_branch(::BatchData)
+git_commit(::BatchData)
+git_repo(::BatchData)
+id(::BatchData)
+import_batchdata(::AbstractString)
+info(::BatchData)
+julia_version(::BatchData)
+kernel(::BatchData)
+merge(::BatchData...; ::String)
+meta_data(::BatchData)
+number_of_runs(::BatchData)
+runs(::BatchData)
+runtime(::BatchData)
+sim_data(::BatchData)
+system_data(::BatchData)
+tests(::BatchData)
+tick_cases(::BatchData)
+threads(::BatchData)
+total_infections(::BatchData)
 total_mem_size(::BatchData)
 total_quarantines(::BatchData)
-total_quarantines(::BatchProcessor)
 total_tests(::BatchData)
-total_tests(::BatchProcessor)
-totalonly!(::BatchTickTests, ::Bool)
-totalonly(::BatchTickTests)
 word_size(::BatchData)
+```
+
+## Batch Data Styles
+
+```@docs
+DefaultBatchData
 ```

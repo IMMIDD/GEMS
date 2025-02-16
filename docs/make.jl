@@ -50,7 +50,7 @@ makedocs(
         "API" => [
             "Overview" => "docstrings-overview.md",
             #"Analysis" => "api_analysis.md", #TODO delete?
-            "Batch Runs" => "api_batch.md",
+            "Batches" => "api_batch.md",
             #"Constants" => "api_constants.md", #TODO delete?
             "Contacts" => "api_contacts.md",
             "Individuals" => "api_individuals.md",
