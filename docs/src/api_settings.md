@@ -54,6 +54,10 @@ get_containers!
 get_open_contained!
 household(::Individual, ::Simulation)
 id(::Setting)
+individuals!
+individuals(::IndividualSetting)
+individuals(::IndividualSetting, simulation::Simulation)
+individuals(::ContainerSetting, ::Vector{Individual}, ::Simulation)
 isopen(::Setting)
 isactive(::Setting)
 load_setting_attributes!(::SettingsContainer, ::Dict)
@@ -64,6 +68,7 @@ new_setting_ids!(::SettingsContainer, ::Dict)
 open!
 present_individuals
 schoolclass(::Individual, ::Simulation)
+sample_individuals
 setting(::SettingsContainer, ::DataType, ::Int32)
 setting_sizes
 settingchar(::Setting)

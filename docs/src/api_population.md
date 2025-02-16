@@ -23,7 +23,9 @@ dataframe(::Population)
 each!
 get_individual_by_id(::Population, ::Int32)
 group_by_age(::DataFrame)
+individuals(::Population)
 is_pop_file
+issubset(::Vector{Individual}, ::Vector{Individual})
 maxage(::Population)
 num_of_infected(::Population)
 obtain_remote_files(::String; ::Bool)
