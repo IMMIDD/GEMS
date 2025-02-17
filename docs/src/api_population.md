@@ -11,31 +11,28 @@ Pages   = ["api_population.md"]
 Order   = [:function]
 ```
 
-## Structs
+## Constructors
 ```@docs
 Population
+Population(::Vector{Individual})
+Population(::DataFrame)
+Population(::String)
+Population(;::Int64, ::Int6, ::Int64, ::Int64, ::Bool)
 ```
 
 ## Functions
 ```@docs
 add!(::Population, ::Individual)
+count(::Any, ::Population)
 dataframe(::Population)
 each!
+first(::Population)
 get_individual_by_id(::Population, ::Int32)
-group_by_age(::DataFrame)
 individuals(::Population)
-is_pop_file
 issubset(::Vector{Individual}, ::Vector{Individual})
 maxage(::Population)
 num_of_infected(::Population)
-obtain_remote_files(::String; ::Bool)
-obtain_remote_files(::String)
 params(::Population)
-populationDF(::PostProcessor)
-populationDF(::Simulation)
-population_size(::ResultData)
-populationfile(::BatchPopulationPyramid)
-populationfile(::BatchSettingAgeContacts)
 populationfile(::Population)
 remove!(::Population, ::Individual)
 save(::Population, ::AbstractString)

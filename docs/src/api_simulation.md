@@ -63,6 +63,7 @@ pathogen
 pooltests
 pooltestlogger
 population(::Simulation)
+populationDF(::Simulation)
 populationfile(::Simulation)
 quarantinelogger(::Simulation)
 quarantines

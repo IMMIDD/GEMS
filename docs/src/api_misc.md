@@ -49,6 +49,7 @@ aggregate_dfs_multcol
 foldercount(::AbstractString)
 func_from_string(::String)
 get_nested_value
+group_by_age(::DataFrame)
 print_aggregates
 printinfo(::String)
 remove_kw

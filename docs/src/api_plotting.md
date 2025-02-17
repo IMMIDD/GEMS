@@ -57,7 +57,7 @@ generate(::InfectionDuration, ::ResultData)
 InfectiousHistogram
 generate(::InfectiousHistogram, ::ResultData)
 LatencyHistogram
-generate(::ActiveDarkFigure, ::ResultData)
+generate(::LatencyHistogram, ::ResultData)
 ObservedReproduction
 generate(::ObservedReproduction, ::ResultData)
 ObservedSerialInterval

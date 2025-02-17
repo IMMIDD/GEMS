@@ -7,6 +7,7 @@ export add!, remove!, individuals, maxage, num_of_infected, issubset
 export save, dataframe
 export size, count, each!, first
 export get_individual_by_id
+export issubset
 
 """
     Population
