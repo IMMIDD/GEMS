@@ -29,6 +29,7 @@ SinglesMap
 agsmap
 gemsmap
 generate_map
+germanshapes(::Int64)
 prepare_map_df!
 region_range(::DataFrame)
 ```

@@ -39,6 +39,7 @@ description!(::ReportPlot, ::String)
 description(::ReportPlot)
 dpi
 dpi!(::Report, ::Int64)
+escape_markdown(::String)
 filename!(::ReportPlot, ::String)
 filename(::ReportPlot)
 fontfamily!
@@ -46,6 +47,7 @@ fontfamily
 generate(::Report, ::AbstractString)
 glossary!
 glossary
+markdown
 plotpackage(::PlotSection)
 plt
 reportdata(::Report)
