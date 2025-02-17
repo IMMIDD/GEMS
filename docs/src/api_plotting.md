@@ -11,17 +11,21 @@ Pages   = ["api_plotting.md"]
 Order   = [:function]
 ```
 
-## Structs
+
+## Plotting
+```@docs
+gemsplot
+emptyplot(::String)
+plotseries!
+saveplot
+splitlabel
+splitplot
+```
+
+## Plot Types
 ```@docs
 ActiveDarkFigure
 AggregatedSettingAgeContacts
-BatchEffectiveReproduction
-BatchPlot
-BatchPopulationPyramid
-BatchSettingAgeContacts
-BatchTickCases
-BatchTickIsolations
-BatchTickTests
 CompartmentFill
 CumulativeCases
 CumulativeDiseaseProgressions
@@ -50,20 +54,4 @@ TickCasesBySetting
 TickTests
 TimeToDetection
 TotalTests
-```
-
-## Functions
-```@docs
-emptyplot(::String)
-gemsplot
-plot_ageGroup_contact_distribution
-plot_age_contact_distribution
-plot_all_age_contact_distributions
-plot_multiple_ageGroup_contact_distributions
-plot_multiple_age_contact_distributions
-plot_specific_age_contact_distributions
-plotseries!
-saveplot
-splitlabel
-splitplot
 ```
