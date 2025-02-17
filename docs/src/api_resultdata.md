@@ -18,6 +18,7 @@ Order   = [:function]
 ```@docs
 ResultData(::Simulation; ::String)
 ResultData(::PostProcessor; ::String)
+ResultData(::Vector{PostProcessor}; ::String, ::Bool)
 ResultData(::Vector{Simulation}; ::String, ::Bool)
 ResultData(::Batch; ::String, ::Bool)
 ```
@@ -60,6 +61,7 @@ id(::ResultData)
 import_resultdata
 infections(::ResultData)
 infections_hash(::ResultData)
+info(::ResultData)
 initial_infections(::ResultData)
 julia_version(::ResultData)
 kernel(::ResultData)

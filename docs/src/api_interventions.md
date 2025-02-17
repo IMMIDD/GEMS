@@ -83,6 +83,8 @@ apply_pool_test
 apply_test
 duration(::SelfIsolation)
 follow_up
+i_measuretypes
+measure_logic
 name(::PoolTest)
 name(::TestAll)
 name(::TestType)
@@ -93,6 +95,7 @@ positive_followup
 process_measure
 reportable(::Test)
 reportable(::TestAll)
+s_measuretypes
 sample_fraction(::FindMembers)
 sample_size(::FindMembers)
 sampling_method(::ChangeContactMethod)

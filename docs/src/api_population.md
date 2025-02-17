@@ -36,4 +36,5 @@ params(::Population)
 populationfile(::Population)
 remove!(::Population, ::Individual)
 save(::Population, ::AbstractString)
+size(::Population)
 ```

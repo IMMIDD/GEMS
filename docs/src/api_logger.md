@@ -36,6 +36,7 @@ dataframe(::VaccinationLogger)
 duplicate(::CustomLogger)
 get_infections_between(::InfectionLogger, ::Int32, ::Int16, ::Int16)
 infectionlogger(::Simulation)
+length
 log!
 lognow
 save(::DeathLogger, ::AbstractString)
