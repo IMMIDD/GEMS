@@ -13,6 +13,9 @@ export _int
 export remove_kw
 export germanshapes
 
+# contact stuff
+export calculate_absolute_error
+
 function concrete_subtypes(type::Type)::Vector{Type}
     if subtypes(type) == []
         if !isabstracttype(type)
