@@ -7,7 +7,6 @@ export add!, remove!, individuals, maxage, num_of_infected, issubset
 export save, dataframe
 export size, count, each!, first
 export get_individual_by_id
-export issubset
 
 """
     Population
@@ -358,7 +357,7 @@ end
 Checks whether a vector of individuals A is a subset of individuals B based on the individual's IDs.
 Does only work if all individuals have unique IDs.
 """
-function issubset(individuals_a::Vector{Individual}, individuals_b::Vector{Individual})
+function Base.issubset(individuals_a::Vector{Individual}, individuals_b::Vector{Individual})
     return(
         Base.issubset(
             map(x -> id(x), individuals_a) |> sort,
