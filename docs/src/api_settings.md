@@ -56,12 +56,11 @@ household(::Individual, ::Simulation)
 id(::Setting)
 individuals!
 individuals(::IndividualSetting)
-individuals(::IndividualSetting, simulation::Simulation)
-individuals(::ContainerSetting, ::Vector{Individual}, ::Simulation)
-isopen(::Setting)
+individuals(::IndividualSetting, ::Simulation)
+individuals(::ContainerSetting, ::Simulation)
+is_open(::Setting)
 isactive(::Setting)
 lat(::Geolocated)
-load_setting_attributes!(::SettingsContainer, ::Dict)
 lon(::Geolocated)
 max_individuals(::Vector{Setting}, ::Simulation)
 min_individuals(::Vector{Setting}, ::Simulation)
@@ -72,12 +71,11 @@ present_individuals
 schoolclass(::Individual, ::Simulation)
 sample_individuals
 setting(::SettingsContainer, ::DataType, ::Int32)
-setting_sizes
 settingchar(::Setting)
-settings
+settings(::SettingsContainer)
+settings(::SettingsContainer, ::DataType)
 settings_from_jld2!(::String, ::SettingsContainer, ::Dict)
 settings_from_population(::Population, ::Bool)
 settingstring(::Char)
-settingtype
 settingtypes
 ```

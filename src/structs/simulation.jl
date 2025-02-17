@@ -1288,7 +1288,7 @@ function settings(simulation::Simulation)
 end
 
 """
-    settings(simulation, settingtype)
+    settings(simulation::Simulation, settingtype::DataType)
 
 Returns all settings of `settingtype` of the simulation.
 """

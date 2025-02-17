@@ -70,6 +70,8 @@ remove_empty_settings!(::Simulation)
 reset!(::Simulation)
 region_info(::Simulation)
 run!(::Simulation; ::Function, ::Bool)
+settings(::Simulation)
+settings(::Simulation, ::DataType)
 should_fire
 start_condition
 step!

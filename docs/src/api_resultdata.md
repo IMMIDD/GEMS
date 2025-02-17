@@ -84,6 +84,7 @@ population_pyramid(::ResultData)
 region_info(::ResultData)
 rolling_observed_SI(::ResultData)
 setting_data(::ResultData)
+setting_sizes(::ResultData)
 sim_data(::ResultData)
 someempty
 start_condition(::ResultData)
