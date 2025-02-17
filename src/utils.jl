@@ -70,7 +70,7 @@ function date_at_tick(startdate::Date, tick::Int16, tickunit::Char)
     elseif tickunit == 'd'
         return startdate + Day(tick)
     elseif tickunit == 'h'
-        return startdate + Hour(tick)
+        return Date(DateTime(startdate) + Hour(tick))
     else
         throw("Invalid tickunit: $(tickunit).")
     end

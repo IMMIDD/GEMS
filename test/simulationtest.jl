@@ -235,9 +235,12 @@
 
         sim = Simulation(Population(n = 1000), startdate = "2021.03.01", enddate = "2021.03.10")
         @test sim.startdate == Date("2021.03.01", dateformat"y.m.d")
+        @test sim |> enddate == Date("2021.03.10", dateformat"y.m.d")
         @test sim.duration == 10
 
         sim = Simulation(Population(n = 1000), startdate = "2021.03.01", enddate = 15)
+        @test sim.startdate == Date("2021.03.01", dateformat"y.m.d")
+        @test sim |> enddate == Date("2021.03.15", dateformat"y.m.d")
         @test sim.duration == 15
 
         sim = Simulation(Population(n=1000), infected_fraction = 0.05)

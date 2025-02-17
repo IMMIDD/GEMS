@@ -6,7 +6,7 @@ export InfectedFraction
 export TimesUp
 export Simulation
 
-export tick, startdate, current_date, label, start_condition, stop_criterion, settingscontainer, settings, population
+export tick, startdate, enddate, currentdate, label, start_condition, stop_criterion, settingscontainer, settings, population
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogen, pathogen!
@@ -1230,11 +1230,11 @@ function tick(simulation::Simulation)
 end
 
 """
-    current_date(simulation)
+    currentdate(simulation)
 
 Returns the current simulation date.
 """
-function current_date(simulation::Simulation)
+function currentdate(simulation::Simulation)
     return date_at_tick(simulation.startdate, simulation.tick, simulation.tickunit)
 end
 
@@ -1245,6 +1245,15 @@ Returns the startdate of the simulation run.
 """
 function startdate(simulation::Simulation)
     return simulation.startdate
+end
+
+"""
+    enddate(simulation)
+
+Returns the enddate of the simulation run.
+"""
+function enddate(simulation::Simulation)
+    return date_at_tick(simulation.startdate, Int16(simulation.duration - 1), simulation.tickunit)
 end
 
 """

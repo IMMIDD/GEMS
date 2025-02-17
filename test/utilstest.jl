@@ -33,6 +33,10 @@
     end
 
     @testset "Auxiliary" begin
+        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(5), 'y') == Date("2029.1.1", dateformat"y.m.d")
+        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(5), 'm') == Date("2024.6.1", dateformat"y.m.d")
+        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(5), 'w') == Date("2024.2.5", dateformat"y.m.d")
+        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(7), 'd') == Date("2024.1.8", dateformat"y.m.d")
         @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(168), 'h') == Date("2024.1.8", dateformat"y.m.d")
     end
 end
