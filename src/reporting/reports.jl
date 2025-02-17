@@ -112,7 +112,7 @@ A Type for generating a single-run simulation report.
 end
 
 """
-    reportdata(report)
+    reportdata(report::Report)
 
 Returns the associated `ReportData` object from a `Report`.
 """
@@ -121,7 +121,7 @@ function reportdata(report::Report)
 end
 
 """
-    title(report)
+    title(report::Report)
 
 Returns the title of a `Report`.
 """
@@ -130,7 +130,7 @@ function title(report::Report)
 end
 
 """
-    title!(report, title)
+    title!(report::Report, title::String)
 
 Sets the title of a `Report`.
 """
@@ -139,7 +139,7 @@ function title!(report::Report, title::String)
 end
 
 """
-    subtitle(report)
+    subtitle(report::Report)
 
 Returns the subtitle of a `Report`.
 """
@@ -148,7 +148,7 @@ function subtitle(report::Report)
 end
 
 """
-    subtitle!(report, subtitle)
+    subtitle!(report::Report, subtitle::String)
 
 Sets the subtitle of a `Report`.
 """
@@ -158,7 +158,7 @@ end
 
 
 """
-    author(report)
+    author(report::Report)
 
 Returns the author of a `Report`.
 """
@@ -167,7 +167,7 @@ function author(report::Report)
 end
 
 """
-    author!(report, author)
+    author!(report::Report, author::String)
 
 Sets the author of a `Report`.
 """
@@ -176,7 +176,7 @@ function author!(report::Report, author::String)
 end
 
 """
-    date(report)
+    date(report::Report)
 
 Returns the date of a `Report`.
 """
@@ -185,7 +185,7 @@ function date(report::Report)
 end
 
 """
-    date!(report, date)
+    date!(report::Report, date::String)
 
 Sets the date of a `Report`.
 """
@@ -194,7 +194,7 @@ function date!(report::Report, date::String)
 end
 
 """
-    abstract(report)
+    abstract(report::Report)
 
 Returns the abstract of a `Report`.
 """
@@ -203,7 +203,7 @@ function abstract(report::Report)
 end
 
 """
-    abstract!(report, abstract)
+    abstract!(report::Report, abstract::String)
 
 setss the abstract of a `Report`.
 """
@@ -212,7 +212,7 @@ function abstract!(report::Report, abstract::String)
 end
 
 """
-    sections(report)
+    sections(report::Report)
 
 Returns the array of sections of a `Report`.
 """
@@ -221,7 +221,7 @@ function sections(report::Report)
 end
 
 """
-    glossary(report)
+    glossary(report::Report)
 
 Returns the glossary flag of a `Report`.
 """
@@ -230,7 +230,7 @@ function glossary(report::Report)
 end
 
 """
-    glossary!(report, glossary)
+    glossary!(report::Report, glossary::Bool)
 
 Sets the glossary flag of a `Report`.
 If true, the glossary will be copied into the report upon generation.
@@ -240,7 +240,7 @@ function glossary!(report::Report, glossary::Bool)
 end
 
 """
-    addsection!(report, section)
+    addsection!(report::Report, section::AbstractSection)
 
 Adds a `Section` to a `Report`.
 It can either be a regular section or a plot section.
@@ -250,7 +250,7 @@ function addsection!(report::Report, section::AbstractSection)
 end
 
 """
-    addstimer!(report, timeroutput)
+    addtimer!(rep::SimulationReport, to::TimerOutput)
 
 Generates a `Section` from the consolue output
 of a `TimerOutput` object and adds it to a `SimulationReport`.
@@ -339,7 +339,7 @@ end
 
 
 """
-    generate(report, directory)
+    generate(report::Report, directory::AbstractString)
 
 Generates markdown string from a `Report` object including its
 nested subsections. The report will be stored as PDF, HTML, and MD
@@ -479,7 +479,7 @@ end
 ###
 
 """
-    buildreport(rd::ResultData, config::Dict = Dict())
+    buildreport(data::Union{ResultData,BatchData}, style::String = "")
 
 Initializes and configures a simulation report with the tile, abstract, sections etc. provided in config.
 If config is an empty dictionary all available standard sections, plots, and the glossary etc. will be used.
