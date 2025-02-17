@@ -37,8 +37,6 @@ duplicate(::CustomLogger)
 get_infections_between(::InfectionLogger, ::Int32, ::Int16, ::Int16)
 infectionlogger(::Simulation)
 log!
-log_quarantines(::Simulation)
-logger
 lognow
 save(::DeathLogger, ::AbstractString)
 save(::InfectionLogger, ::AbstractString)
