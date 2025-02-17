@@ -2,7 +2,7 @@
 ### SIMULATION (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export StartCondition, StopCriterion
-export InfectedFraction
+export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
@@ -1288,7 +1288,7 @@ function settings(simulation::Simulation)
 end
 
 """
-    settings(simulation, settingtype)
+    settings(simulation::Simulation, settingtype::DataType)
 
 Returns all settings of `settingtype` of the simulation.
 """

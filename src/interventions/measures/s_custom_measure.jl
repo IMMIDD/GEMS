@@ -1,4 +1,4 @@
-export CustomSMeasure
+export CustomSMeasure, measure_logic
 
 ###
 ### STRUCT

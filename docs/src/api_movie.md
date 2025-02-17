@@ -7,7 +7,5 @@ Order   = [:function]
 ```
 ## Functions
 ```@docs
-generate_frame
 generate_movie
-steps
 ```

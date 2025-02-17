@@ -5,7 +5,7 @@ Please consult the following pages to find information about the respective topi
 
 | Section                  | Description                                    |
 |:--------------------------|:------------------------------------------------|
-| [Batch Runs](api_batch.md) | Structs and Functions used for running different scenarios (a batch of simulations). |
+| [Batches](api_batch.md) | Structs and Functions used for running different scenarios (a batch of simulations). |
 | [Contacts](api_contacts.md) | Structs and Functions used for creating and analyzing contact structures within the simulation. |
 | [Individuals](api_individuals.md) | Individual agents and all related structs and functions for their behavior and characteristics. |
 | [Infections and Immunity](api_infections.md) | Transmission and infection related functions. |

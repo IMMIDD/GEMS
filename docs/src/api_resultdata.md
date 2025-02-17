@@ -11,41 +11,34 @@ Pages   = ["api_resultdata.md"]
 Order   = [:function]
 ```
 
-## Structs
-```@docs
-DefaultResultData
-EssentialResultData
-LightRD
-OptimisedResultData
-ResultData
-ResultDataStyle
-```
+## ResultData
 
-## Constructors
+### Constructors
+
 ```@docs
 ResultData(::Simulation; ::String)
+ResultData(::PostProcessor; ::String)
+ResultData(::Vector{PostProcessor}; ::String, ::Bool)
 ResultData(::Vector{Simulation}; ::String, ::Bool)
+ResultData(::Batch; ::String, ::Bool)
 ```
 
-## Functions
+### Functions
 ```@docs
 aggregated_compartment_periods
 allempty
 attack_rate(::ResultData)
-clean_result!(::Dict)
 compartment_fill(::ResultData)
 compartment_periods(::ResultData)
 config_file(::ResultData)
 config_file_val
 cpu_data(::ResultData)
-cpudata
 cumulative_cases(::ResultData)
 cumulative_deaths(::ResultData)
 cumulative_disease_progressions(::ResultData)
 cumulative_quarantines(::ResultData)
 cumulative_vaccinations(::ResultData)
 customlogger(::ResultData)
-data(runinfo)
 data_hash(::ResultData)
 dataframes(::ResultData)
 deaths(::ResultData)
@@ -55,12 +48,12 @@ effectiveR(::ResultData)
 execution_date(::ResultData)
 execution_date_formatted
 exportJLD(::ResultData, ::AbstractString)
-exportJSON(::ResultData, ::AbstractString)
-extract
-extract_unique
 final_tick(::ResultData)
+free_mem_size(::ResultData)
 GEMS_version(::ResultData)
-get_style(::String)
+git_branch(::ResultData)
+git_commit(::ResultData)
+git_repo(::ResultData)
 hashes(::ResultData)
 hospital_df(::ResultData)
 household_attack_rates(::ResultData)
@@ -68,20 +61,24 @@ id(::ResultData)
 import_resultdata
 infections(::ResultData)
 infections_hash(::ResultData)
+info(::ResultData)
+initial_infections(::ResultData)
 julia_version(::ResultData)
+kernel(::ResultData)
 label(::ResultData)
 meta_data(::ResultData)
+model_size(::ResultData)
 number_of_individuals(::ResultData)
 observed_R(::ResultData)
-obtain_fields(::ResultData, ::Dict)
-obtain_fields(::ResultData, ::String)
 pathogens(::ResultData)
 population_file(::ResultData)
 population_params(::ResultData)
 population_pyramid(::ResultData)
+population_size(::ResultData)
 region_info(::ResultData)
 rolling_observed_SI(::ResultData)
 setting_data(::ResultData)
+setting_sizes(::ResultData)
 sim_data(::ResultData)
 someempty
 start_condition(::ResultData)
@@ -108,8 +105,14 @@ total_infections(::ResultData)
 total_mem_size(::ResultData)
 total_quarantines(::ResultData)
 total_tests(::ResultData)
-vaccinations(::ResultData)
-vaccination_strategy(::ResultData)
-vaccine(::ResultData)
 word_size(::ResultData)
+```
+
+## ResultDataStyle
+
+### Constructors
+```@docs
+ResultDataStyle
+DefaultResultData
+LightRD
 ```

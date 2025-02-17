@@ -13,6 +13,9 @@ export _int
 export remove_kw
 export germanshapes
 
+# contact stuff
+export calculate_absolute_error
+
 function concrete_subtypes(type::Type)::Vector{Type}
     if subtypes(type) == []
         if !isabstracttype(type)
@@ -91,7 +94,7 @@ end
 
 
 """
-    aggregate_dfs(dataframes, key)
+    aggregate_dfs(dfs::Vector{DataFrame}, key::Symbol)
 
 Joins the input vector of `dataframes` on the `key` and
 aggregates the residual data. Requires all dataframes to 
@@ -123,7 +126,7 @@ function aggregate_dfs(dfs::Vector{DataFrame}, key::Symbol)
     )
 end
 """
-    aggregate_dfs_multcol(dataframes, key)
+    aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
 
 Aggregates data on the columns of the dataframes contained in the 
 provided vector for each value in the key column.
@@ -221,7 +224,7 @@ end
 
 
 """
-    aggregate_dfs(dataframe, key)
+    aggregate_df(df::DataFrame, key::Symbol)
 
 Groups dataframes (with numerical values) on the provided `key`
 column and applies the `aggregate_values` function to each of them.

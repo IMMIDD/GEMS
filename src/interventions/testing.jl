@@ -1,5 +1,5 @@
 export TestType
-export pathogen, sensitivity, name
+export pathogen, sensitivity, specificity, name
 
 export apply_test, apply_pool_test
 

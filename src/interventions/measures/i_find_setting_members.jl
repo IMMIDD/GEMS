@@ -1,5 +1,5 @@
 export FindSettingMembers
-export settingtype, follow_up
+export settingtype, follow_up, nonself
 
 ###
 ### STRUCT

@@ -21,7 +21,7 @@ gemsplot(rd, type = :CumulativeCases)
 !!! warning "TODO: PUT PLOT HERE AS IMAGE"
 
 !!! info "Where do I find an explanation available plot types?"
-    Put a `?` into the Julia REPL and call `help?> gemsplot` to get an overview of graphs you can generate using the `gemsplot()` function or look up the Plotting section of the API documentation.
+    Put a `?` into the Julia REPL and call `help?> gemsplot` to get an overview of graphs you can generate using the [`gemsplot`](@ref) function or look up the Plotting section of the API documentation.
 
 Additonally, it is possible to pass multiple types as a tuple to make them appear in the same plot:
 

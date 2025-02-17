@@ -11,7 +11,7 @@ export age, id, education, occupation, sex
 # behaviour
 export mandate_compliance, mandate_compliance!, social_factor, social_factor!
 # settings
-export setting_id, household_id, class_id, office_id, municipality_id
+export setting_id, setting_id!, household_id, class_id, office_id, municipality_id
 export is_working, is_student, has_municipality
 # health status
 export comorbidities, dead, kill!, hospital_status

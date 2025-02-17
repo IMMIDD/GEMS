@@ -28,9 +28,10 @@ AgeDependentTransmissionRate(;transmission_rate, ageGroups, ageTransmissions, di
 ## Functions
 ```@docs
 disease_progression!(::Individual, ::Pathogen, ::Int16)
-get_infections_between(::InfectionLogger, ::Int32, ::Int16, ::Int16)
-id(::Vaccine)
-infectionsDF(::PostProcessor)
-name(::Vaccine)
+estimate_disease_progression(::DiseaseProgressionStrat, ::Individual)
+infect!
+spread_infection!(::Setting, ::Simulation, ::Pathogen)
 transmission_probability
+try_to_infect!
+update_individual!(::Individual, ::Int16, ::Simulation)
 ```

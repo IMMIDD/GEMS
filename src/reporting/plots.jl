@@ -291,14 +291,14 @@ Some of the plots have keyword arguments that are only applicable to that very p
 Here are some examples of the `Plots.jl` package's keyword arguments that you can
 also pass to the `gemsplot()` function and might find helpful:
 
-    - `xlims = (0, 100)`: Setting the X-axis range between 0 and 100
-    - `ylims = (0, 200)`: Setting the Y-axis range between 0 and 200
-    - `size = (300, 400)`: Resizing the plot
-    - `plot_title = "My New Title"`: Changing the plot title
-    - `xlabel = "New X-label"`: Changing the x-axis label
-    - `ylabel = "New Y-label"`: Changing the y-axis label
-    - `legend = :topright`: Changing the legend position (`false` to disable)
-    - `aspect_ratio = :equal`: Having the axis of equal size
+- `xlims = (0, 100)`: Setting the X-axis range between 0 and 100
+- `ylims = (0, 200)`: Setting the Y-axis range between 0 and 200
+- `size = (300, 400)`: Resizing the plot
+- `plot_title = "My New Title"`: Changing the plot title
+- `xlabel = "New X-label"`: Changing the x-axis label
+- `ylabel = "New Y-label"`: Changing the y-axis label
+- `legend = :topright`: Changing the legend position (`false` to disable)
+- `aspect_ratio = :equal`: Having the axis of equal size
 
 *Please consult the `Plots.jl` package documentation for a comprehensive list*
 
