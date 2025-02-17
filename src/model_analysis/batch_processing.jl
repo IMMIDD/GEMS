@@ -4,7 +4,7 @@ export BatchProcessor
 export rundata, run_ids, config_files, population_files
 export tick_unit, start_conditions, stop_criteria, number_of_individuals, pathogens, pathogens_by_name
 export runtime, allocations
-export total_infections, total_tests, attack_rate, settingdata, parameterset, strategies
+export total_infections, total_tests, attack_rate, settingdata, strategies
 export setting_age_contacts
 export tick_cases, effectiveR
 
@@ -280,43 +280,6 @@ function settingdata(batchProcessor::BatchProcessor)
     end
 
     return(res)
-end
-
-"""
-    parameterset(batchProcessor::BatchProcessor, parameters::Vector{String})
-
-Takes the batchProcessor and a vector of strings corresponding to the keys of parameter values in 
-the config file(in the format key.key.key...). Returns a `DataFrame` containing the columns `id`
-with the individual simulation ids and `parameter_set` with the parameter values corresponding to
-the provided keys. The parameter_set dictionaries have the same keys as the provided strings.
-
-# Dataframe Columns
-
-| Name            | Type     | Description                                                 |
-| :---------------| :------- | :---------------------------------------------------------- |
-| `run_id`        | `String` | id of the simulation run                                    |
-| `parameter_set` | `Dict`   | Parameter set of the provided parameter keys.               |
-
-"""
-function parameterset(batchProcessor::BatchProcessor, parameters::Vector{String})
-    df = DataFrame(run_id = String[], parameter_set = Dict[])
-
-    for rd in batchProcessor |> rundata
-
-        run_id = rd |> id
-        config = rd |> config_file_val
-        paramset = Dict()
-        for param in parameters
-            val = get_nested_value(config, param)
-            if !isnothing(val)
-                paramset[param] = val
-            end
-        end
-        push!(df, [run_id, paramset])
-    end
-
-    return(df)
-    
 end
 
 """
