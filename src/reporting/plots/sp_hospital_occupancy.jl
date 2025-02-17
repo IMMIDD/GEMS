@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Hospital Occupancy plot
 """
-function generate(plt::HospitalOccupancy, rd::ResultData; plotargs...)
+function generate(plt::HospitalOccupancy, rd::ResultData; dates::Bool = true,  plotargs...)
     # Get Hospital DataFrame
     h_df = rd |> hospital_df
 
@@ -70,6 +70,9 @@ function generate(plt::HospitalOccupancy, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return p
 end

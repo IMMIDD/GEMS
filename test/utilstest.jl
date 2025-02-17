@@ -32,11 +32,36 @@
         @test_throws ArgumentError aggregate_matrix(matrix,1,2)
     end
 
-    @testset "Auxiliary" begin
-        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(5), 'y') == Date("2029.1.1", dateformat"y.m.d")
-        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(5), 'm') == Date("2024.6.1", dateformat"y.m.d")
-        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(5), 'w') == Date("2024.2.5", dateformat"y.m.d")
-        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(7), 'd') == Date("2024.1.8", dateformat"y.m.d")
-        @test date_at_tick(Date("2024.1.1", dateformat"y.m.d"), Int16(168), 'h') == Date("2024.1.8", dateformat"y.m.d")
+    @testset "Tick-Date Conversion" begin
+
+        # test number of ticks between two dates
+        @test ticks_between_dates(Date("2020-01-01"), Date("2023-01-01"), 'y') == 4 
+        @test ticks_between_dates(Date("2020-01-01"), Date("2020-12-01"), 'm') == 12 
+        @test ticks_between_dates(Date("2020-01-01"), Date("2020-02-05"), 'w') == 6  
+        @test ticks_between_dates(Date("2020-01-01"), Date("2020-01-10"), 'd') == 10 
+        @test ticks_between_dates(Date("2020-01-01"), Date("2020-01-02"), 'h') == 48 
+
+
+        # test if date at tick equals corresponding date
+        @test date_at_tick(Int16(5), Date("2024.1.1", dateformat"y.m.d"), 'y') == Date("2029.1.1", dateformat"y.m.d")
+        @test date_at_tick(Int16(5), Date("2024.1.1", dateformat"y.m.d"), 'm') == Date("2024.6.1", dateformat"y.m.d")
+        @test date_at_tick(Int16(5), Date("2024.1.1", dateformat"y.m.d"), 'w') == Date("2024.2.5", dateformat"y.m.d")
+        @test date_at_tick(Int16(7), Date("2024.1.1", dateformat"y.m.d"), 'd') == Date("2024.1.8", dateformat"y.m.d")
+        @test date_at_tick(Int16(168), Date("2024.1.1", dateformat"y.m.d"), 'h') == Date("2024.1.8", dateformat"y.m.d")
+
+        # test date intervals
+        # weekly interval
+        ticks_w = select_interval_dates(Date("2025-01-01"), Date("2025-01-31"))
+        @test length(ticks_w) == 5
+
+        # monthly interval
+        ticks_m = select_interval_dates(Date("2025-01-01"), Date("2025-12-31"))
+        @test length(ticks_m) == 12
+        @test all(day.(ticks_m) .== [day.(lastdayofmonth(t)) for t in ticks_m])
+
+        #yearly interval
+        ticks_y = select_interval_dates(Date("2025-01-01"), Date("2027-12-31"))
+        @test length(ticks_y) == 3
+        @test all(month.(ticks_y) .== 12) && all(day.(ticks_y) .== 31)
     end
 end

@@ -32,6 +32,7 @@ mutable struct OptimisedResultData <: ResultDataStyle
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "pathogens" => () -> [pP |> simulation |> pathogen],
                     "tick_unit" => () -> pP |> simulation |> tickunit,
+                    "tick_unit_char" => () -> pP |> simulation |> tickunit_char,
                     "start_condition" => () -> pP |> simulation |> start_condition,
                     "stop_criterion" =>  () -> pP |> simulation |> stop_criterion
                 ),

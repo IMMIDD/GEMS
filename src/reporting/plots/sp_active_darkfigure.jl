@@ -46,7 +46,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 - `Plots.Plot`: Active Dark Figure plot
 
 """
-function generate(plt::ActiveDarkFigure, rd::ResultData; plotargs...)
+function generate(plt::ActiveDarkFigure, rd::ResultData; dates::Bool = true,  plotargs...)
 
     data = rd |> compartment_fill
     uticks = rd |> tick_unit
@@ -63,6 +63,9 @@ function generate(plt::ActiveDarkFigure, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(plot_gt; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(plot_gt, rd) : nothing
 
     return(plot_gt)
 end
@@ -87,7 +90,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 - `Plots.Plot`: Active Dark Figure multi plot
 
 """
-function generate(plt::ActiveDarkFigure, rds::Vector{ResultData}; plotargs...)
+function generate(plt::ActiveDarkFigure, rds::Vector{ResultData}; dates::Bool = true,  plotargs...)
 
     # helper function to calculate fraction of detected cases
     calc_fraction(df) = transform(df, [:exposed_cnt, :infectious_cnt, :detected_cnt] => ByRow((e, i, d) -> 1 - (d / (e + i))) => :detected_fraction).detected_fraction
@@ -109,6 +112,9 @@ function generate(plt::ActiveDarkFigure, rds::Vector{ResultData}; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return(p)
 end

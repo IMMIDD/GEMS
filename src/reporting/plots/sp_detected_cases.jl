@@ -49,7 +49,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Detected Cases plot
 """
-function generate(plt::DetectedCases, rd::ResultData; plotargs...)
+function generate(plt::DetectedCases, rd::ResultData; dates::Bool = true,  plotargs...)
 
     detected_cases = rd |> detected_tick_cases
     
@@ -82,6 +82,9 @@ function generate(plt::DetectedCases, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(plot_ticks; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(plot_ticks, rd) : nothing
 
     return(plot_ticks)
 end

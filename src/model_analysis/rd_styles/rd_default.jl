@@ -132,6 +132,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "region_info" => () -> pP |> simulation |> region_info,
                     "pathogens" => () -> [pP |> simulation |> pathogen],
                     "tick_unit" => () -> pP |> simulation |> tickunit,
+                    "tick_unit_char" => () -> pP |> simulation |> tickunit_char,
                     "start_condition" => () -> pP |> simulation |> start_condition,
                     "stop_criterion" =>  () -> pP |> simulation |> stop_criterion,
                     "strategies" => () -> pP |> simulation |> strategies,

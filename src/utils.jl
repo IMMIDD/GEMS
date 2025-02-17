@@ -1,7 +1,7 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
 export concrete_subtypes, is_existing_subtype, find_subtype
-export isdate, date_at_tick
+export isdate, date_at_tick, select_interval_dates, ticks_between_dates
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
 export read_git_repo, read_git_branch, read_git_commit
 export aggregate_matrix
@@ -56,11 +56,32 @@ function isdate(x)
 end
 
 """
-    date_at_tick(startdate, tick, tickunit)
+    ticks_between_dates(startdate::Date, enddate::Date, tickunit::Char)
 
-Returns the simulation date at `tick` ticks after startdate
+Returns the number of ticks between startdate and enddate (including enddate)
 """
-function date_at_tick(startdate::Date, tick::Int16, tickunit::Char)
+function ticks_between_dates(startdate::Date, enddate::Date, tickunit::Char)
+    if tickunit == 'y'
+        return length(startdate:Year(1):enddate)
+    elseif tickunit == 'm'
+        return length(startdate:Month(1):enddate)
+    elseif tickunit == 'w'
+        return div(Dates.value(enddate - startdate), 7) + 1
+    elseif tickunit == 'd'
+        return Dates.value(enddate - startdate) + 1
+    elseif tickunit == 'h'
+        return (Dates.value(enddate - startdate) + 1) * 24
+    else
+        throw("Invalid tickunit: $tickunit. Use 'y', 'm', 'w', 'd' or 'h'.")
+    end
+end
+
+"""
+    date_at_tick(tick::Int16, startdate::Date, tickunit::Char)
+
+Returns the simulation date at the tick `tick` (starting at 0 for startdate)
+"""
+function date_at_tick(tick::Int16, startdate::Date, tickunit::Char)
     if tickunit == 'y'
         return startdate + Year(tick)
     elseif tickunit == 'm'
@@ -73,6 +94,24 @@ function date_at_tick(startdate::Date, tick::Int16, tickunit::Char)
         return Date(DateTime(startdate) + Hour(tick))
     else
         throw("Invalid tickunit: $(tickunit).")
+    end
+end
+
+"""
+    select_interval_dates(startdate::Date, enddate::Date)
+
+Returns an adaptive range (weekly, monthly or yearly) of dates based on the duration of the simulation. Returns the last day of each month for a monthly interval and the 31. of December for a yearly interval.
+"""
+function select_interval_dates(startdate::Date, enddate::Date)
+    range_days = Dates.value(enddate - startdate) + 1
+
+    if range_days ≤ 90
+        interval = Week(1) 
+        return collect(startdate:interval:enddate)
+    elseif range_days ≤ 730
+        return [lastdayofmonth(d) for d in startdate:Month(1):enddate] 
+    else
+        return [Date(year(d), 12, 31) for d in startdate:Year(1):enddate] 
     end
 end
 

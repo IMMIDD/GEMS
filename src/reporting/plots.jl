@@ -4,6 +4,7 @@ export title, description, description!, filename, filename!, generate
 export fontfamily!, dpi!, title!, titlefontsize!, saveplot, emptyplot
 export gemsplot
 export plottypes, splitlabel, splitplot, plotseries!
+export adddates!
 
 ###
 ### ABSTRACT HIERARCHY & TYPES
@@ -444,6 +445,28 @@ function splitlabel(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
                 color = colors[lab];
                 remove_kw(:plot_title, plotargs)...) for (lab, rd) in data]
     return plot(plts..., plot_title = title(plt), layout = (1, length(labels)); plotargs...)
+end
+
+"""
+    adddates(plot::Plots.Plot, rd::ResultData)
+
+Replaces x-axis ticks of plot with an adaptive range of dates.
+
+- `p::Plots.Plot`: Input plot object to extend
+- `rds::Vector{ResultData}`: Vector of `ResultData` objects to plot
+"""
+function adddates!(plot::Plots.Plot, rd::ResultData)
+    uticks_char = rd |> tick_unit_char
+    startd = rd |> start_date |> Date
+    ftick = rd |> final_tick
+    endd = date_at_tick(Int16(ftick - 1), startd, uticks_char)
+
+    # get adaptive tick interval
+    xticks_dates = select_interval_dates(startd, endd) 
+    xticks_position = ticks_between_dates.(Ref(startd), xticks_dates, Ref('d'))
+    xticks_labels = Dates.format.(xticks_dates, "dd.mm.yy")
+
+    xticks!(plot, xticks_position, xticks_labels)
 end
 
 """

@@ -45,7 +45,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 - `Plots.Plot`: Compartment Fill plot
 
 """
-function generate(plt::CompartmentFill, rd::ResultData; plotargs...)
+function generate(plt::CompartmentFill, rd::ResultData; dates::Bool = true,  plotargs...)
 
     comp_fill = rd |> compartment_fill
     xlab = (rd |> tick_unit |> uppercasefirst) * "s"
@@ -63,6 +63,9 @@ function generate(plt::CompartmentFill, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(plot_cum; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(plot_cum, rd) : nothing
 
     return(plot_cum)
 end

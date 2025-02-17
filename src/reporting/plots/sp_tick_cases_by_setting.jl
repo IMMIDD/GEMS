@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Tick Cases By Setting plot
 """
-function generate(plt::TickCasesBySetting, rd::ResultData; plotargs...)
+function generate(plt::TickCasesBySetting, rd::ResultData; dates::Bool = true,  plotargs...)
     
     # Assume this function exists to get the daily cases by setting
     # The returned DataFrame might have columns: "tick", "school", "office", ...
@@ -76,6 +76,9 @@ function generate(plt::TickCasesBySetting, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return p
 end

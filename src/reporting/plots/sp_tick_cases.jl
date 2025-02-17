@@ -53,16 +53,6 @@ function generate(plt::TickCases, rd::ResultData; dates::Bool = true, plotargs..
     uticks = rd |> tick_unit
     upper_ticks = uticks |> uppercasefirst
 
-    startd = rd |> start_date |> Date
-
-    xticks = 0:nrow(cases) - 1
-
-    # convert ticks to dates in string
-    convert_ticks(tick) = Dates.format(date_at_tick(startd, Int16(tick), uticks[1]), "dd.mm.yy")
-
-    xticks = dates ? convert_ticks.(xticks) : xticks
-
-
     # update title
     title!(plt, "Cases per $upper_ticks")
 
@@ -74,13 +64,16 @@ function generate(plt::TickCases, rd::ResultData; dates::Bool = true, plotargs..
     filename!(plt, "cases_per_$uticks.png")
 
     plot_ticks = plot(xlabel=upper_ticks, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
-    plot!(plot_ticks, xticks, cases[!,"exposed_cnt"], label="Exposed")
-    plot!(plot_ticks, xticks, cases[!,"infectious_cnt"], label="Infectious")
-    plot!(plot_ticks, xticks, cases[!,"removed_cnt"], label="Removed")
-    plot!(plot_ticks, xticks, deaths[!, "death_cnt"], label="Deaths", c=:black)
+    plot!(plot_ticks, cases[!,"exposed_cnt"], label="Exposed")
+    plot!(plot_ticks, cases[!,"infectious_cnt"], label="Infectious")
+    plot!(plot_ticks, cases[!,"removed_cnt"], label="Removed")
+    plot!(plot_ticks, deaths[!, "death_cnt"], label="Deaths", c=:black)
 
     # add custom arguments that were passed
     plot!(plot_ticks; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(plot_ticks, rd) : nothing
 
     return(plot_ticks)
 end
@@ -102,7 +95,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Tick Cases multi plot
 """
-function generate(plt::TickCases, rds::Vector{ResultData}; plotargs...)
+function generate(plt::TickCases, rds::Vector{ResultData}; dates::Bool = true,  plotargs...)
 
     uticks = rds[1] |> tick_unit
     upper_ticks = uticks |> uppercasefirst
@@ -115,6 +108,9 @@ function generate(plt::TickCases, rds::Vector{ResultData}; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return(p)
 end

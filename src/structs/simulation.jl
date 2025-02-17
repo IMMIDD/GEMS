@@ -14,7 +14,7 @@ export configfile, populationfile
 export evaluate
 export initialize!
 export increment!, reset!
-export tickunit
+export tickunit, tickunit_char
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, customlogger, customlogger!
 export infections, tests, deaths, quarantines, pooltests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
@@ -624,7 +624,7 @@ mutable struct Simulation
                 enddate = get(properties["Simulation"], "enddate", "2024.12.31")
 
                 #convert Date to offset
-                duration = enddate isa Integer ? enddate : calculate_ticks(startdate, Date(enddate, dateformat"y.m.d"), sim.tickunit)
+                duration = enddate isa Integer ? enddate : ticks_between_dates(startdate, Date(enddate, dateformat"y.m.d"), sim.tickunit)
                 
                 if duration <= 0
                     throw("Start date of the simulation is after or at the end date. Please provide a valid start date (yyyy.mm.dd) and end date either as a date (yyyy.mm.dd) or the number of ticks.")
@@ -1141,26 +1141,6 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
     return (peoplelocal(identifier) , settingslocal(identifier))       
 end
 
-"""
-    calculate_ticks(startdate::Date, enddate::Date, tickunit::Char)
-
-Returns the number of ticks between startdate and enddate (including enddate)
-"""
-function calculate_ticks(startdate::Date, enddate::Date, tickunit::Char)
-    if tickunit == 'y'
-        return length(startdate:Year(1):enddate)
-    elseif tickunit == 'm'
-        return length(startdate:Month(1):enddate)
-    elseif tickunit == 'w'
-        return div(Dates.value(enddate - startdate), 7) + 1
-    elseif tickunit == 'd'
-        return Dates.value(enddate - startdate) + 1
-    elseif tickunit == 'h'
-        return (Dates.value(enddate - startdate) + 1) * 24
-    else
-        throw("Invalid tickunit: $tickunit. Use 'y', 'm', 'w', 'd' or 'h'.")
-    end
-end
 
 
 ### INTERFACE FOR CONDITION AND CRITERIA ###
@@ -1235,7 +1215,7 @@ end
 Returns the current simulation date.
 """
 function currentdate(simulation::Simulation)
-    return date_at_tick(simulation.startdate, simulation.tick, simulation.tickunit)
+    return date_at_tick(simulation.tick, simulation.startdate, simulation.tickunit)
 end
 
 """
@@ -1253,7 +1233,7 @@ end
 Returns the enddate of the simulation run.
 """
 function enddate(simulation::Simulation)
-    return date_at_tick(simulation.startdate, Int16(simulation.duration - 1), simulation.tickunit)
+    return date_at_tick(Int16(simulation.duration - 1), simulation.startdate, simulation.tickunit)
 end
 
 """
@@ -1276,10 +1256,19 @@ function label(simulation::Simulation)
 end
 
 """
-    tickunit(simulation)
+    tickunit_char(simulation)
 
 Returns the unit of the ticks as a char like in date formats,
 i.e. 'd' means days, 'h' mean hours, etc.
+"""
+function tickunit_char(simulation::Simulation)::Char
+    return simulation.tickunit
+end
+
+"""
+    tickunit(simulation)
+
+Returns the unit of the ticks as a string
 """
 function tickunit(simulation::Simulation)::String
     ut = simulation.tickunit

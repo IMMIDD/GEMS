@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Cumulative Cases plot
 """
-function generate(plt::CumulativeCases, rd::ResultData; plotargs...)
+function generate(plt::CumulativeCases, rd::ResultData; dates::Bool = true,  plotargs...)
 
     cum_cases = rd |> cumulative_cases
     cum_vaccinations = rd |> cumulative_vaccinations
@@ -64,6 +64,9 @@ function generate(plt::CumulativeCases, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(plot_cum; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(plot_cum, rd) : nothing
 
     return(plot_cum)
 end
@@ -87,7 +90,7 @@ that are available in the `Plots.jl` package.
 
 - `Plots.Plot`: Cumulative Cases multi plot
 """
-function generate(plt::CumulativeCases, rds::Vector{ResultData}; plotargs...)
+function generate(plt::CumulativeCases, rds::Vector{ResultData}; dates::Bool = true,  plotargs...)
 
     uticks = rds[1] |> tick_unit
     upper_ticks = uticks |> uppercasefirst
@@ -100,6 +103,9 @@ function generate(plt::CumulativeCases, rds::Vector{ResultData}; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return(p)
 end

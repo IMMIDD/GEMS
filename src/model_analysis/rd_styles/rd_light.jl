@@ -125,6 +125,7 @@ mutable struct LightRD <: ResultDataStyle
 #                    "vaccine" => () -> pP |> simulation |> vaccine,
 #                    "vaccination_strategy" => () -> pP |> simulation |> vaccination_schedule,
                     "tick_unit" => () -> pP |> simulation |> tickunit,
+                    "tick_unit_char" => () -> pP |> simulation |> tickunit_char,
                     "start_condition" => () -> pP |> simulation |> start_condition,
                     "stop_criterion" =>  () -> pP |> simulation |> stop_criterion,
                     "strategies" => () -> pP |> simulation |> strategies,

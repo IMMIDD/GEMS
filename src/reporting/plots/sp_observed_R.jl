@@ -45,7 +45,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Observed Reproduction Number plot
 """
-function generate(plt::ObservedReproduction, rd::ResultData; plotargs...)
+function generate(plt::ObservedReproduction, rd::ResultData; dates::Bool = true,  plotargs...)
 
     # the dataframe may contain missing values
     # as R can only be calculated with enough baseline infection data
@@ -85,6 +85,9 @@ function generate(plt::ObservedReproduction, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(obs_R; plotargs...)    
+
+    # replace x-ticks with dates
+    dates ? adddates!(obs_R, rd) : nothing
 
     return(obs_R)
 end

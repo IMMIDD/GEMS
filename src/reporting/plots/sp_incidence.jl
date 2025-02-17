@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Incidence plot
 """
-function generate(plt::Incidence, rd::ResultData; plotargs...)
+function generate(plt::Incidence, rd::ResultData; dates::Bool = true,  plotargs...)
 
     incidence = rd |> age_incidence
 
@@ -71,6 +71,9 @@ function generate(plt::Incidence, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(incidence_plot; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(incidence_plot, rd) : nothing
 
     return(incidence_plot)
 end
