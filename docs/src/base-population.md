@@ -46,7 +46,7 @@ We discuss these ideas in:
 > Ponge, J., Horstkemper, D., Hellingrath, B., Bayer, L., Bock, W. and Karch, A., 2023, December. Evaluating Parallelization Strategies for Large-Scale Individual-based Infectious Disease Simulations. In *2023 Winter Simulation Conference (WSC)* (pp. 1088-1099). IEEE. https://doi.org/10.1109/WSC60868.2023.10407633
 
 
-## Hierarchical Setting Structure
+## [Hierarchical Setting Structure](@id setting-hierarchy)
 
 Many places, such as schools or workplaces, can be very large.
 However, daily contacts often just occur between class mates or office colleauges.
@@ -78,7 +78,7 @@ You can pass arguments `pop_size` (called `n` in the explanation below), `avg_ho
 
 ```@raw html
 <p align="center">
-    <img src="../assets/base-sample-population-generation.png" width="80%"/>
+    <img src="../assets/base-sample-population-generation.png" width="100%"/>
 </p>
 ```
 
