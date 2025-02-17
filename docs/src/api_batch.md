@@ -34,7 +34,7 @@ simulations(::Batch)
 ```
 
 
-## Batch Processor
+## BatchProcessor
 
 ### SConstructors
 
@@ -76,7 +76,7 @@ total_quarantines(::BatchProcessor)
 total_tests(::BatchProcessor)
 ```
 
-## Batch Data
+## BatchData
 
 ### Constructors
 
@@ -127,7 +127,7 @@ total_tests(::BatchData)
 word_size(::BatchData)
 ```
 
-## Batch Data Styles
+## BatchDataStyle
 
 ```@docs
 DefaultBatchData
