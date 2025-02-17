@@ -211,7 +211,12 @@ function simulation(postProcessor::PostProcessor)
     return postProcessor.simulation
 end
 
+"""
+    infectionsDF(postProcessor::PostProcessor)
 
+Returns the internal flat infections `DataFrame`.
+Lookup the docstring of `infections(postProcessor::PostProcessor)` for column definitions.
+"""
 function infectionsDF(postProcessor::PostProcessor)
     return postProcessor.infectionsDF
 end

@@ -43,7 +43,6 @@ generate(::DetectedCases, ::ResultData)
 EffectiveReproduction
 generate(::EffectiveReproduction, ::ResultData)
 GMTWrapper
-generate(::GMTWrapper, ::ResultData)
 GenerationTime
 generate(::GenerationTime, ::ResultData)
 HospitalOccupancy
