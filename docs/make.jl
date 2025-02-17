@@ -40,9 +40,9 @@ makedocs(
             "7 - Logging & Post-Processing" => "tut_postprocessing.md",
             "8 - Reporting" => "tut_reporting.md",
             "9 - Modeling Interventions" =>"tut_npi.md",
-            "10 - Modeling Behavior" =>"tut_behavior.md",
-            "11 - Contact Structures" =>"tut_contacts.md",
-            "12 - Infections & Immunity" =>"tut_infections.md",
+            #"10 - Modeling Behavior" =>"tut_behavior.md",
+            #"11 - Contact Structures" =>"tut_contacts.md",
+            #"12 - Infections & Immunity" =>"tut_infections.md",
             "Cheat Sheet" =>"cheat-sheet.md"
         ],
         "Config Files" => "config-files.md",
@@ -70,9 +70,9 @@ makedocs(
             "Simulation" => "api_simulation.md",
         ],
         # Folders in repo
-        "Package Structure" => "package-structure.md", #TODO add markdowns from READMEs in Repo?
+        #"Package Structure" => "package-structure.md", #TODO add markdowns from READMEs in Repo?
         # Contribution - style guides, working with git, change log, license
-        "Contributing to GEMS" => "contributing-guide.md",
+        #"Contributing to GEMS" => "contributing-guide.md",
         # FAQ
         "FAQ" => "faq-page.md",
         # Glossary
