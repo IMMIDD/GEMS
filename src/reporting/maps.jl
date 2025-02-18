@@ -343,11 +343,11 @@ household location to map the data, not the loction of infection.
 Here are some examples of the `Plots.jl` package's keyword arguments that you can
 also pass to the `gemsmap()` function and might find helpful:
 
-    - `clims = (0, 1)`: Setting the color bar range between 0 and 1
-    - `colorbar = false`: Disabling the colorbar
-    - `size = (300, 400)`: Resizing the map plot
-    - `title = "My Subtitle"`: Adding a subtitle
-    - `plot_title = "My New Title"`: Changing the map title
+- `clims = (0, 1)`: Setting the color bar range between 0 and 1
+- `colorbar = false`: Disabling the colorbar
+- `size = (300, 400)`: Resizing the map plot
+- `title = "My Subtitle"`: Adding a subtitle
+- `plot_title = "My New Title"`: Changing the map title
 
 *Please consult the `Plots.jl` package documentation for a comprehensive list*
 
