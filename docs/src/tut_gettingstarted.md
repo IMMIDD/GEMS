@@ -54,7 +54,7 @@ gemsplot(rd)
 !!! warning "TODO: PUT PLOT HERE AS IMAGE"
 
 !!! info "Where's the list of parameters I can change?"
-    Put a `?` into the Julia REPL and call `help?> Simulation` to get an overview of arguments that you can pass to customize a simulation or look up the Simulation section of the API documentation.
+    Put a `?` into the Julia REPL and call `help?> Simulation` to get an overview of arguments that you can pass to customize a simulation or look up the [Simulation](@ref Simulation(; simargs...)) section of the API documentation.
 
 
 ## Passing Parameters as Dictionaries

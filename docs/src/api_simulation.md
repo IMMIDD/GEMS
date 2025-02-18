@@ -16,10 +16,8 @@ Order   = [:function]
 
 ## Structs
 ```@docs
-HospitalizationTrigger
 InfectedFraction
 NoneInfected
-Parameter
 Simulation
 StartCondition
 StopCriterion
@@ -29,6 +27,8 @@ TimesUp
 ## Constructors
 ```@docs
 Simulation(; simargs...)
+Simulation(::Dict{Symbol, <:Any})
+Simulation(::String; simargs...)
 ```
 
 ## Functions
