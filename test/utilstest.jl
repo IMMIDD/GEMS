@@ -51,17 +51,27 @@
 
         # test date intervals
         # weekly interval
-        ticks_w = select_interval_dates(Date("2025-01-01"), Date("2025-01-31"))
-        @test length(ticks_w) == 5
+        ticks = select_interval_dates(Date("2025-01-01"), Date("2025-01-31"))
+        @test length(ticks) == 5
 
         # monthly interval
-        ticks_m = select_interval_dates(Date("2025-01-01"), Date("2025-12-31"))
-        @test length(ticks_m) == 12
-        @test all(day.(ticks_m) .== [day.(lastdayofmonth(t)) for t in ticks_m])
+        ticks = select_interval_dates(Date("2025-01-01"), Date("2025-12-31"))
+        @test length(ticks) == 12
+        @test all(day.(ticks) .== [day.(firstdayofmonth(t)) for t in ticks])
 
-        #yearly interval
-        ticks_y = select_interval_dates(Date("2025-01-01"), Date("2027-12-31"))
-        @test length(ticks_y) == 3
-        @test all(month.(ticks_y) .== 12) && all(day.(ticks_y) .== 31)
+        # yearly interval
+        ticks = select_interval_dates(Date("2025-01-01"), Date("2027-12-31"))
+        @test length(ticks) == 3
+        @test all(month.(ticks) .== 1) && all(day.(ticks) .== 1)
+
+        # test date formats
+        date_format = choose_date_format(Date("2025-01-01"), Date("2025-01-31"))
+        @test date_format == "dd.mm.yy"
+
+        date_format = choose_date_format(Date("2025-01-01"), Date("2025-12-31"))
+        @test date_format == "u yy"
+
+        date_format = choose_date_format(Date("2025-01-01"), Date("2027-12-31"))
+        @test date_format == "yyyy"
     end
 end

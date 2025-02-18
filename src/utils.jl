@@ -1,7 +1,7 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
 export concrete_subtypes, is_existing_subtype, find_subtype
-export isdate, date_at_tick, select_interval_dates, ticks_between_dates
+export isdate, date_at_tick, select_interval_dates, ticks_between_dates, choose_date_format
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
 export read_git_repo, read_git_branch, read_git_commit
 export aggregate_matrix
@@ -105,13 +105,30 @@ Returns an adaptive range (weekly, monthly or yearly) of dates based on the dura
 function select_interval_dates(startdate::Date, enddate::Date)
     range_days = Dates.value(enddate - startdate) + 1
 
-    if range_days ≤ 90
-        interval = Week(1) 
-        return collect(startdate:interval:enddate)
+    if range_days ≤ 45
+        return collect(startdate:Week(1):enddate)
+    elseif range_days ≤ 90
+        return collect(startdate:Week(2):enddate)
+    elseif range_days ≤ 365
+        return [firstdayofmonth(d) for d in startdate:Month(1):enddate] 
     elseif range_days ≤ 730
-        return [lastdayofmonth(d) for d in startdate:Month(1):enddate] 
+        return [firstdayofmonth(d) for d in startdate:Month(2):enddate]
+    elseif range_days ≤ 2920
+        return [Date(year(d), 1, 1) for d in startdate:Year(1):enddate]
     else
-        return [Date(year(d), 12, 31) for d in startdate:Year(1):enddate] 
+        return [Date(year(d), 1, 1) for d in startdate:Year(2):enddate] 
+    end
+end
+
+function choose_date_format(startdate::Date, enddate::Date)
+    range_days = Dates.value(enddate - startdate) + 1
+
+    if range_days ≤ 90
+        return "dd.mm.yy"
+    elseif range_days ≤ 730
+        return "u yy"
+    else
+        return "yyyy"
     end
 end
 

@@ -464,7 +464,8 @@ function adddates!(plot::Plots.Plot, rd::ResultData)
     # get adaptive tick interval
     xticks_dates = select_interval_dates(startd, endd) 
     xticks_position = ticks_between_dates.(Ref(startd), xticks_dates, Ref('d'))
-    xticks_labels = Dates.format.(xticks_dates, "dd.mm.yy")
+    date_format = choose_date_format(startd, endd)
+    xticks_labels = Dates.format.(xticks_dates, date_format)
 
     xticks!(plot, xticks_position, xticks_labels)
 end
