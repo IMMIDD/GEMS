@@ -408,7 +408,6 @@ end
 Returns the sum of the sizes of all contained settings.
 """
 function Base.size(setting::ContainerSetting, simulation::Simulation)::Int
-    #total_size = sum(size(settings(simulation, setting.contains_type)[s_id], simulation) for s_id in setting.contains)
     total_size = 0
     for s_id in setting.contains
         contained_setting = settings(simulation, setting.contains_type)[s_id]
