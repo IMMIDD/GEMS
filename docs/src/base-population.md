@@ -21,7 +21,7 @@ Individuals can belong to an arbitrary number of settings but only one of each t
 Settings can hold an arbitrary number of individuals.
 
 
-## Layered Architecture
+## [Layered Architecture](@id pop-layers)
 
 GEMS' base model architecture was designed with parallelization in mind.
 The model is segmented in disjunctive layers by setting type.
