@@ -90,34 +90,13 @@ bd = BatchData(b)
 total_infections(bd)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:32:43 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
 [ Info: 23:32:43 | └ Creating population
 [ Info: 23:32:45 | └ Creating simulation object
-[ Info: 23:32:46 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:46 | └ Creating population
-[ Info: 23:32:47 | └ Creating simulation object
-[ Info: 23:32:48 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:48 | └ Creating population
-[ Info: 23:32:51 | └ Creating simulation object
-[ Info: 23:32:51 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:51 | └ Creating population
-[ Info: 23:32:54 | └ Creating simulation object
-[ Info: 23:32:54 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:54 | └ Creating population
-[ Info: 23:32:56 | └ Creating simulation object
+...
 [ Info: 23:32:56 | Running Simulation 1/5 [My Experiment]
 [ Info: 23:32:57 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30&lt;00:00, 12 days/s][ Info: 23:33:26 | Running Simulation 2/5 [My Experiment]
-[ Info: 23:33:26 | Running Simulation My Experiment
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:48&lt;00:00, 8 days/s][ Info: 23:34:15 | Running Simulation 3/5 [My Experiment]
-[ Info: 23:34:15 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30&lt;00:00, 12 days/s][ Info: 23:34:44 | Running Simulation 4/5 [My Experiment]
-[ Info: 23:34:44 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:21&lt;00:00, 17 days/s][ Info: 23:35:05 | Running Simulation 5/5 [My Experiment]
-[ Info: 23:35:05 | Running Simulation My Experiment
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:39&lt;00:00, 9 days/s][ Info: 23:35:44 | Processing Simulation 1/5 in Batch
-[ Info: 23:35:53 | Processing Simulation 2/5 in Batch
-[ Info: 23:36:02 | Processing Simulation 3/5 in Batch
-[ Info: 23:36:14 | Processing Simulation 4/5 in Batch
-[ Info: 23:36:21 | Processing Simulation 5/5 in Batch
-        23:36:37 | └ Done                                                                                                        
+100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30&lt;00:00, 12 days/s]
+...
+[ Info: 23:35:44 | Processing Simulation 1/5 in Batch
+...                                                                                                        
 Dict{String, Real} with 6 entries:
   &quot;upper_95&quot; =&gt; 76052.5
   &quot;max&quot;      =&gt; 76088
@@ -143,16 +122,7 @@ Dict{String, Real} with 6 entries:
   └ total_quarantines
   └ runs
 └ system_data
-  └ cpu_data
-  └ git_commit
-  └ julia_version
-  └ total_mem_size
-  └ threads
-  └ kernel
-  └ free_mem_size
-  └ git_branch
-  └ word_size
-  └ git_repo</code></pre><p>It&#39;s also possible to directly pass <code>BatchData</code> objects to the <code>gemsplot()</code> function:</p><pre><code class="language-julia hljs">gemsplot(bd)</code></pre><p><strong>Plot</strong></p><p align="center">
+...</code></pre><p>It&#39;s also possible to directly pass <code>BatchData</code> objects to the <code>gemsplot()</code> function:</p><pre><code class="language-julia hljs">gemsplot(bd)</code></pre><p><strong>Plot</strong></p><p align="center">
     <img src="../assets/tutorials/tut_batches_batchdata.png" width="80%"/>
 </p><p>A <code>BatchData</code> object contains <code>ResultData</code> objects for each of the individual runs. Creating a <code>BatchData</code> object from a <code>Batch</code> (as in the example above), triggers the post processing for each of the simulations contained in the batch, i.e., generating their <code>ResultData</code> objects. You can access them like this:</p><pre><code class="language-julia hljs">runs(bd)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">5-element Vector{ResultData}:
  ResultData Object
@@ -168,62 +138,7 @@ Dict{String, Real} with 6 entries:
   └ Total quarantine days: 0
   └ Total tests: NamedTuple()
   └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: [&quot;Covid19&quot;]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: [&quot;Household&quot;, &quot;SchoolClass&quot;, &quot;Office&quot;]
-└ Simulation:
-  └ Total infections: 75728
-  └ Attack rate: 0.75728
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: [&quot;Covid19&quot;]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: [&quot;Household&quot;, &quot;SchoolClass&quot;, &quot;Office&quot;]
-└ Simulation:
-  └ Total infections: 75757
-  └ Attack rate: 0.75757
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: [&quot;Covid19&quot;]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: [&quot;Household&quot;, &quot;SchoolClass&quot;, &quot;Office&quot;]
-└ Simulation:
-  └ Total infections: 75733
-  └ Attack rate: 0.75733
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: [&quot;Covid19&quot;]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: [&quot;Household&quot;, &quot;SchoolClass&quot;, &quot;Office&quot;]
-└ Simulation:
-  └ Total infections: 76088
-  └ Attack rate: 0.76088
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0</code></pre><p>However, these <code>ResultData</code> objects are generated using the batch-optimized <code>LightRD</code> style (look up the tutorial on  <code>ResultDataStyle</code>s). This style does not store raw data (such as the <code>infections</code> dataframe) as they are usually not particularly relevant for batches, reducing the required memory significantly.</p><p>If you still want the raw data for each of the simulation runs, you can pass the <code>DefaultResultData</code> style to the <code>BatchData(...)</code> function. Have a look at this example showing how to still get the raw data when working with batches:</p><pre><code class="language-julia hljs">bd = BatchData(b, rd_style = &quot;DefaultResultData&quot;)
+...</code></pre><p>However, these <code>ResultData</code> objects are generated using the batch-optimized <code>LightRD</code> style (look up the tutorial on  <code>ResultDataStyle</code>s). This style does not store raw data (such as the <code>infections</code> dataframe) as they are usually not particularly relevant for batches, reducing the required memory significantly.</p><p>If you still want the raw data for each of the simulation runs, you can pass the <code>DefaultResultData</code> style to the <code>BatchData(...)</code> function. Have a look at this example showing how to still get the raw data when working with batches:</p><pre><code class="language-julia hljs">bd = BatchData(b, rd_style = &quot;DefaultResultData&quot;)
 rns = runs(bd)
 infections(rns[1])</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:38:51 | Processing Simulation 1/5 in Batch
 [ Info: 23:38:55 | Processing Simulation 2/5 in Batch
@@ -235,4 +150,4 @@ infections(rns[1])</code></pre><p><strong>Output</strong></p><pre><code class="n
    Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  death_tick  symptoms_tick  severeness_tick  hospita ⋯       │ Int32         Int16  Int32  Int32   Int16            Int16         Int16       Int16          Int16            Int16   ⋯───────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────     1 │         1134     17  88197       1               17            22          -1             19               26          ⋯     2 │        35969     56  59946       2               60            65          -1             60               -1
    ⋮   │      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮             ⋮               ⋮               ⋮ ⋱ 75362 │        36576     56  22625   99999               56            62          -1             57               -1
  75363 │         7133     34  92825  100000               36            45          -1             37               -1
-                                                                                                38 columns and 75359 rows omitted</code></pre><h2 id="Custom-*BatchDataStyles*"><a class="docs-heading-anchor" href="#Custom-*BatchDataStyles*">Custom <em>BatchDataStyles</em></a><a id="Custom-*BatchDataStyles*-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-*BatchDataStyles*" title="Permalink"></a></h2><p>t.b.d.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_plotting/">« 3 - Plotting</a><a class="docs-footer-nextpage" href="../tut_pops/">5 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Wednesday 19 February 2025 15:41">Wednesday 19 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+                                                                                                38 columns and 75359 rows omitted</code></pre><h2 id="Custom-*BatchDataStyles*"><a class="docs-heading-anchor" href="#Custom-*BatchDataStyles*">Custom <em>BatchDataStyles</em></a><a id="Custom-*BatchDataStyles*-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-*BatchDataStyles*" title="Permalink"></a></h2><p>t.b.d.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_plotting/">« 3 - Plotting</a><a class="docs-footer-nextpage" href="../tut_pops/">5 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Wednesday 19 February 2025 16:05">Wednesday 19 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

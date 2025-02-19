@@ -7,11 +7,7 @@ individuals(sim)</code></pre><p><strong>Output</strong></p><pre><code class="noh
 100000-element Vector{Individual}:
  Individual(1, 1, 6, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 1, -1, 1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(2, 2, 19, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 2, 1, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(3, 2, 59, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 3, 2, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(4, 1, 78, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 4, -1, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  ⋮
- Individual(99997, 1, 15, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 22778, -1, 58, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(99998, 1, 49, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 4271, 6402, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(99999, 2, 57, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 5082, 2348, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(100000, 2, 37, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 2975, 2905, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)</code></pre><p>Please be aware that the individual <code>id</code> is <strong>NOT</strong> necessarily matching their index in the <code>individuals</code>-vector.</p><p>If you are interested in a particular attribute (e.g., the <code>age</code>) of all individuals, you can call the respective getter-function on the vector using a <code>.</code> which applies is to all individuals:</p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
@@ -22,11 +18,7 @@ age.(inds)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlig
 100000-element Vector{Int8}:
  61
  67
- 34
- 66
   ⋮
-  7
- 17
  59
  12</code></pre><div class="admonition is-info"><header class="admonition-header">Where&#39;s the list of attributes I can access?</header><div class="admonition-body"><p>Put a <code>?</code> into the Julia REPL and call <code>help?&gt; Individual</code> to get an overview of fields that are stored for each individual or look up the Individuals section of the API documentation. Allmost every field has a function of the same name (e.g.g, <code>age()</code>) to get its value</p></div></div><p>A more comprehensive overview of the individuals in a population can be achieved via the <code>Population</code>-object. The example below generates a dataframe with one row per individual in the population:</p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
@@ -95,22 +87,7 @@ households(sim)</code></pre><p><strong>Output</strong></p><pre><code class="nohi
   isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock
-
- ⋮
-
- Household
-  id: Int32 33334
-  individuals: Array{Individual}((3,))
-  income: Int8 -1
-  dwelling: Int8 -1
-  last_infectious: Int16 -1
-  contact_sampling_method: ContactparameterSampling
-  ags: AGS
-  lon: Float32 NaN32
-  lat: Float32 NaN32
-  isactive: Bool false
-  isopen: Bool true
-  lock: ReentrantLock</code></pre><p>Similar to what we did with the individuals, you can run analyses on a collection of settings calling getter functions (e.g., <code>size(s)</code>) for a vector of settings using <code>.</code>. In the example below, we extract the size (number of assigned individuals) for each household and plot them in a histogram:</p><pre><code class="language-julia hljs">using GEMS, Plots
+ ⋮</code></pre><p>Similar to what we did with the individuals, you can run analyses on a collection of settings calling getter functions (e.g., <code>size(s)</code>) for a vector of settings using <code>.</code>. In the example below, we extract the size (number of assigned individuals) for each household and plot them in a histogram:</p><pre><code class="language-julia hljs">using GEMS, Plots
 sim = Simulation()
 hhlds = households(sim)
 hh_sizes = size.(hhlds)
@@ -128,9 +105,7 @@ id.(hh_members)</code></pre><p><strong>Output</strong></p><pre><code class="nohi
      1
  20643
  23586
- 26231
      ⋮
- 47157
  57705
  87052
- 94858</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_gettingstarted/">« 1 - Getting Started</a><a class="docs-footer-nextpage" href="../tut_plotting/">3 - Plotting »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Wednesday 19 February 2025 15:41">Wednesday 19 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 94858</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_gettingstarted/">« 1 - Getting Started</a><a class="docs-footer-nextpage" href="../tut_plotting/">3 - Plotting »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Wednesday 19 February 2025 16:05">Wednesday 19 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
