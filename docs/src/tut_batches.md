@@ -211,34 +211,13 @@ total_infections(bd)
 [ Info: 23:32:43 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
 [ Info: 23:32:43 | └ Creating population
 [ Info: 23:32:45 | └ Creating simulation object
-[ Info: 23:32:46 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:46 | └ Creating population
-[ Info: 23:32:47 | └ Creating simulation object
-[ Info: 23:32:48 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:48 | └ Creating population
-[ Info: 23:32:51 | └ Creating simulation object
-[ Info: 23:32:51 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:51 | └ Creating population
-[ Info: 23:32:54 | └ Creating simulation object
-[ Info: 23:32:54 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:54 | └ Creating population
-[ Info: 23:32:56 | └ Creating simulation object
+...
 [ Info: 23:32:56 | Running Simulation 1/5 [My Experiment]
 [ Info: 23:32:57 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30<00:00, 12 days/s][ Info: 23:33:26 | Running Simulation 2/5 [My Experiment]
-[ Info: 23:33:26 | Running Simulation My Experiment
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:48<00:00, 8 days/s][ Info: 23:34:15 | Running Simulation 3/5 [My Experiment]
-[ Info: 23:34:15 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30<00:00, 12 days/s][ Info: 23:34:44 | Running Simulation 4/5 [My Experiment]
-[ Info: 23:34:44 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:21<00:00, 17 days/s][ Info: 23:35:05 | Running Simulation 5/5 [My Experiment]
-[ Info: 23:35:05 | Running Simulation My Experiment
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:39<00:00, 9 days/s][ Info: 23:35:44 | Processing Simulation 1/5 in Batch
-[ Info: 23:35:53 | Processing Simulation 2/5 in Batch
-[ Info: 23:36:02 | Processing Simulation 3/5 in Batch
-[ Info: 23:36:14 | Processing Simulation 4/5 in Batch
-[ Info: 23:36:21 | Processing Simulation 5/5 in Batch
-        23:36:37 | └ Done                                                                                                        
+100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30<00:00, 12 days/s]
+...
+[ Info: 23:35:44 | Processing Simulation 1/5 in Batch
+...                                                                                                        
 Dict{String, Real} with 6 entries:
   "upper_95" => 76052.5
   "max"      => 76088
@@ -276,16 +255,7 @@ BatchData Entries
   └ total_quarantines
   └ runs
 └ system_data
-  └ cpu_data
-  └ git_commit
-  └ julia_version
-  └ total_mem_size
-  └ threads
-  └ kernel
-  └ free_mem_size
-  └ git_branch
-  └ word_size
-  └ git_repo
+...
 ```
 
 It's also possible to directly pass `BatchData` objects to the `gemsplot()` function:
@@ -328,62 +298,7 @@ runs(bd)
   └ Total quarantine days: 0
   └ Total tests: NamedTuple()
   └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: ["Covid19"]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: ["Household", "SchoolClass", "Office"]
-└ Simulation:
-  └ Total infections: 75728
-  └ Attack rate: 0.75728
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: ["Covid19"]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: ["Household", "SchoolClass", "Office"]
-└ Simulation:
-  └ Total infections: 75757
-  └ Attack rate: 0.75757
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: ["Covid19"]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: ["Household", "SchoolClass", "Office"]
-└ Simulation:
-  └ Total infections: 75733
-  └ Attack rate: 0.75733
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0
-
- ResultData Object
-└ Dataframes inside: 22
-└ Config file: DefaultConf.toml
-  └ Pathogens: ["Covid19"]
-└ Population file: Not available.
-  └ Individuals: 100000
-  └ Settings: ["Household", "SchoolClass", "Office"]
-└ Simulation:
-  └ Total infections: 76088
-  └ Attack rate: 0.76088
-  └ Total quarantine days: 0
-  └ Total tests: NamedTuple()
-  └ Test detection rate: 0.0
+...
 ```
 
 However, these `ResultData` objects are generated using the batch-optimized `LightRD` style (look up the tutorial on  `ResultDataStyle`s).

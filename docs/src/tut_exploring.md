@@ -22,11 +22,7 @@ individuals(sim)
 100000-element Vector{Individual}:
  Individual(1, 1, 6, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 1, -1, 1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(2, 2, 19, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 2, 1, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(3, 2, 59, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 3, 2, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(4, 1, 78, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 4, -1, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  ⋮
- Individual(99997, 1, 15, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 22778, -1, 58, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(99998, 1, 49, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 4271, 6402, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(99999, 2, 57, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 5082, 2348, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(100000, 2, 37, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 2975, 2905, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
 ```
@@ -51,11 +47,7 @@ age.(inds)
 100000-element Vector{Int8}:
  61
  67
- 34
- 66
   ⋮
-  7
- 17
  59
  12
 ```
@@ -218,22 +210,7 @@ households(sim)
   isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock
-
  ⋮
-
- Household
-  id: Int32 33334
-  individuals: Array{Individual}((3,))
-  income: Int8 -1
-  dwelling: Int8 -1
-  last_infectious: Int16 -1
-  contact_sampling_method: ContactparameterSampling
-  ags: AGS
-  lon: Float32 NaN32
-  lat: Float32 NaN32
-  isactive: Bool false
-  isopen: Bool true
-  lock: ReentrantLock
 ```
 
 Similar to what we did with the individuals, you can run analyses on a collection of settings calling getter functions (e.g., `size(s)`) for a vector of settings using `.`.
@@ -284,9 +261,7 @@ id.(hh_members)
      1
  20643
  23586
- 26231
      ⋮
- 47157
  57705
  87052
  94858

@@ -32,6 +32,8 @@ gemsplot(rd)
 ```
 
 **Output**
+
+```
 [ Info: 12:09:42 | Initializing Simulation [Simulation 0] with default configuration and one custom parameter.
 [ Info: 12:09:42 | └ Creating population
 [ Info: 12:09:43 | └ Creating simulation object
@@ -60,6 +62,7 @@ gemsplot(rd)
 ```
 
 **Output**
+
 ```
 [ Info: 12:02:08 | Initializing Simulation [Simulation 1] with default configuration and custom parameters.
 [ Info: 12:02:08 | └ Creating population
