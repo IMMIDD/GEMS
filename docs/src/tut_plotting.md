@@ -18,7 +18,13 @@ rd = ResultData(sim)
 gemsplot(rd, type = :CumulativeCases)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_CumulativeCases.png" width="80%"/>
+</p>
+``` 
 
 !!! info "Where do I find an explanation available plot types?"
     Put a `?` into the Julia REPL and call `help?> gemsplot` to get an overview of graphs you can generate using the [`gemsplot`](@ref) function or look up the Plotting section of the API documentation.
@@ -29,7 +35,13 @@ Additonally, it is possible to pass multiple types as a tuple to make them appea
 gemsplot(rd, type = (:CumulativeCases, :EffectiveReproduction))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_CumulativeCases-EffectiveReproduction.png" width="80%"/>
+</p>
+``` 
 
 Finally, you can customize your plot with the keyword arguments that are available to the `Plots.jl` package.
 In this example, we want to see the cumulative infections for the first 100 days and remove the legend:
@@ -38,8 +50,14 @@ In this example, we want to see the cumulative infections for the first 100 days
 gemsplot(rd, type = :CumulativeCases, xlims = (0, 100), legend = false)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
 
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_CumulativeCases-no-legend.png" width="80%"/>
+</p>
+``` 
 
 ## Custom Plots
 
@@ -54,8 +72,13 @@ ages = age.(inds)
 histogram(ages, xlabel = "Age", ylabel = "Number of Individuals", label = "Individuals per Age")
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
 
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_histogram.png" width="80%"/>
+</p>
+``` 
 
 ## Plotting Maps
 
@@ -71,7 +94,13 @@ sim = Simulation(population = "MV")
 gemsmap(sim, type = :PopDensityMap, clims = (0, 100))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_gemsmap.png" width="80%"/>
+</p>
+``` 
 
 !!! info "Where do I find an explanation available map types?"
     Put a `?` into the Julia REPL and call `help?> gemsmap` to get an overview of maps you can generate using the `gemsmap()` function or look up the Mapping section of the API documentation.
@@ -84,7 +113,13 @@ Here's an example to get the average age of people per county:
 gemsmap(sim, type = :AgeMap, level = 2)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_gemsmap-level2.png" width="80%"/>
+</p>
+``` 
 
 
 ## Custom Maps
@@ -110,7 +145,14 @@ combined_df = combine(grouped_df, :size => mean => :avg_size)
 agsmap(combined_df)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_agsmap.png" width="80%"/>
+</p>
+``` 
+
 
 The `agsmap` function infers the geographical level (municipality, county or state) from the input data.
 If you want to show a map on any higher-order geographical resolution, you need to transform the input data slightly:
@@ -129,7 +171,14 @@ combined_df = combine(grouped_df, :size => mean => :avg_size)
 agsmap(combined_df)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_agsmap2.png" width="80%"/>
+</p>
+``` 
 
 
 ## Combining Plots
@@ -156,7 +205,14 @@ plot(
 )
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_combined.png" width="80%"/>
+</p>
+``` 
+
 
 ## Saving Plots
 
@@ -217,7 +273,14 @@ rd = ResultData(sim)
 gp = gemsplot(rd, type = :TotalInfections)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_plotting_custom.png" width="80%"/>
+</p>
+``` 
 
 You might have seen that the `gemsplot()` function can also work with multiple `ResultData` objects.
 If you want multiple simulation runs in one custom plot, you need to define a generate-function with this signature: `generate(plt::YourNewType, rd::Vector{ResultData}; plotargs...)`.

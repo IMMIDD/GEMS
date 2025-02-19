@@ -41,7 +41,7 @@ gemsplot(rd)
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_gs_hello-world.png" width="80%"/>
+    <img src="../assets/tutorials/tut_gs_hello-world2.png" width="80%"/>
 </p>
 ``` 
 
@@ -59,16 +59,19 @@ rd = ResultData(sim)
 gemsplot(rd)
 ```
 
+**Output**
+``` log
 [ Info: 12:02:08 | Initializing Simulation [Simulation 1] with default configuration and custom parameters.
 [ Info: 12:02:08 | └ Creating population
 [ Info: 12:02:09 | └ Creating simulation object
 [ Info: 12:02:10 | Running Simulation Simulation 1
 100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:16<00:00, 23 days/s][ Info: 12:02:26 | Processing simulation data
-        12:02:36 | └ Done   
+        12:02:36 | └ Done  
+``` 
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_gs_custom-parameters.png" width="80%"/>
+    <img src="../assets/tutorials/tut_gs_custom-parameters2.png" width="80%"/>
 </p>
 ``` 
 

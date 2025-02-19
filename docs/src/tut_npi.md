@@ -43,7 +43,14 @@ rd_s = ResultData(scenario)
 gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsolations))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_self-isolation.png" width="80%"/>
+</p>
+``` 
 
 The results show the difference between daily cases in both scenarios.
 It also displays that there are around one third of asymptomatic cases in both experiments that would not be affected by this measure.
@@ -89,7 +96,14 @@ rd_s = ResultData(scenario)
 gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeIsolations))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_houshold-isolation.png" width="80%"/>
+</p>
+``` 
 
 The numbers suggest, that isolating the entire household prevents more cases, compared to isolating only the symptomatic individual, but also causes more isolations.
 Using `gemsplot`, you can compare both scenarios and the baseline.
@@ -129,7 +143,14 @@ gemsplot([rd_b, rd_s1, rd_s2],
     legend = :topright)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_houshold-isolation2.png" width="80%"/>
+</p>
+``` 
 
 
 ## Testing and Isolation
@@ -176,7 +197,14 @@ rd_s = ResultData(scenario)
 gemsplot([rd_b, rd_s], type = (:TickCases, :TickTests, :ActiveDarkFigure), size = (800, 800))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_testing.png" width="80%"/>
+</p>
+``` 
 
 The results are very similar to the first example as all symptomatic individuals are immediately screened with a "perfect" test (100% sensitivity & specificity) and immediately sent in isolation.
 Of course, in reality this not very realistic.
@@ -229,7 +257,14 @@ rd = ResultData(b)
 gemsplot(rd, type = (:TickCases, :CumulativeIsolations), legend = :topright)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_testing2.png" width="80%"/>
+</p>
+``` 
 
 !!! info "Can I run experiments that vary a test's specificity the same way?"
     Yes. 
@@ -281,7 +316,13 @@ rd = ResultData(b)
 gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_pool-testing.png" width="80%"/>
+</p>
+``` 
 
 
 
