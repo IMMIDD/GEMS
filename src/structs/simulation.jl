@@ -239,10 +239,10 @@ mutable struct Simulation
     | `office_contact_rate`           | `Float64`              | Average number of office contacts per timestep (Poisson-distributed)                                                                  |
     | `household_contact_rate`        | `Float64`              | Average number of household contacts per timestep (Poisson-distributed)                                                               |
     | `school_contact_rate`           | `Float64`              | Average number of school contacts per timestep (Poisson-distributed)                                                                  |
-    | `schoolClass_contact_rate`      | `Float64`              | Average number of school-class contacts per timestep (Poisson-distributed)                                                            |
-    | `schoolYear_contact_rate`       | `Float64`              | Average number of school-year contacts per timestep (Poisson-distributed)                                                             |
-    | `schoolComplex_contact_rate`    | `Float64`              | Average number of school-complex contacts per timestep (Poisson-distributed)                                                          |
-    | `workplaceSite_contact_rate`    | `Float64`              | Average number of workplace-site contacts per timestep (Poisson-distributed)                                                          |
+    | `school_class_contact_rate`     | `Float64`              | Average number of school-class contacts per timestep (Poisson-distributed)                                                            |
+    | `school_year_contact_rate`      | `Float64`              | Average number of school-year contacts per timestep (Poisson-distributed)                                                             |
+    | `school_complex_contact_rate`   | `Float64`              | Average number of school-complex contacts per timestep (Poisson-distributed)                                                          |
+    | `workplace_site_contact_rate`   | `Float64`              | Average number of workplace-site contacts per timestep (Poisson-distributed)                                                          |
     | `workplace_contact_rate`        | `Float64`              | Average number of workplace contacts per timestep (Poisson-distributed)                                                               |
     | `department_contact_rate`       | `Float64`              | Average number of department contacts per timestep (Poisson-distributed)                                                              |
     | `municipality_contact_rate`     | `Float64`              | Average number of municipality contacts per timestep (Poisson-distributed)                                                            |

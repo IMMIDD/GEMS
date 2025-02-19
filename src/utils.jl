@@ -285,7 +285,7 @@ end
 function read_git_repo()
     cmd = `git config --get remote.origin.url`
     try
-        result = strip(String(read(cmd)))
+        @suppress result = strip(String(read(cmd)))
         return result
     catch e
         return "No repository information available."
@@ -296,7 +296,7 @@ end
 function read_git_branch()
     cmd  = `git rev-parse --abbrev-ref HEAD`
     try
-        result = strip(String(read(cmd)))
+        @suppress result = strip(String(read(cmd)))
         return result
     catch e
         return "No branch information available."
@@ -306,7 +306,7 @@ end
 function read_git_commit()
     cmd = `git rev-parse HEAD`
     try
-        result = strip(String(read(cmd)))
+        @suppress result = strip(String(read(cmd)))
         return result
     catch e
         return "No commit information available."

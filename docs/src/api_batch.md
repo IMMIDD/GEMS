@@ -18,6 +18,7 @@ Order   = [:function]
 ```@docs
 Batch(;::Integer::Bool, simargs...)
 Batch(::Simulation...)
+Batch(::Vector{Simulation})
 Batch(::Batch...)
 Batch(::Vector{Batch})
 ```
