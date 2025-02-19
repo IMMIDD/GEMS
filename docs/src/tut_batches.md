@@ -207,6 +207,7 @@ total_infections(bd)
 
 **Output**
 
+```
 [ Info: 23:32:43 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
 [ Info: 23:32:43 | └ Creating population
 [ Info: 23:32:45 | └ Creating simulation object
@@ -245,7 +246,7 @@ Dict{String, Real} with 6 entries:
   "lower_95" => 75415.1
   "mean"     => 75733.8
   "std"      => 256.672
-
+```
 
 Run the `info(...)` function to get an overview of values that you can retrieve from a `BatchData` object by calling a function of the same name (e.g., `total_infections(...)`) on the `BatchData` object:
 
@@ -255,7 +256,7 @@ info(bd)
 
 **Output**
 
-
+```
 BatchData Entries
 └ meta_data
   └ GEMS_version
@@ -285,7 +286,7 @@ BatchData Entries
   └ git_branch
   └ word_size
   └ git_repo
-
+```
 
 It's also possible to directly pass `BatchData` objects to the `gemsplot()` function:
 
@@ -312,6 +313,7 @@ runs(bd)
 
 **Output**
 
+```
 5-element Vector{ResultData}:
  ResultData Object
 └ Dataframes inside: 22
@@ -382,7 +384,7 @@ runs(bd)
   └ Total quarantine days: 0
   └ Total tests: NamedTuple()
   └ Test detection rate: 0.0
-
+```
 
 However, these `ResultData` objects are generated using the batch-optimized `LightRD` style (look up the tutorial on  `ResultDataStyle`s).
 This style does not store raw data (such as the `infections` dataframe) as they are usually not particularly relevant for batches, reducing the required memory significantly.
@@ -398,6 +400,7 @@ infections(rns[1])
 
 **Output**
 
+```
 [ Info: 23:38:51 | Processing Simulation 1/5 in Batch
 [ Info: 23:38:55 | Processing Simulation 2/5 in Batch
 [ Info: 23:38:59 | Processing Simulation 3/5 in Batch
@@ -409,6 +412,7 @@ infections(rns[1])
    ⋮   │      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮             ⋮               ⋮               ⋮ ⋱ 75362 │        36576     56  22625   99999               56            62          -1             57               -1
  75363 │         7133     34  92825  100000               36            45          -1             37               -1
                                                                                                 38 columns and 75359 rows omitted
+```
 
 ## Custom *BatchDataStyles*
 

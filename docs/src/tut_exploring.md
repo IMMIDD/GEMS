@@ -15,6 +15,7 @@ individuals(sim)
 
 **Output**
 
+```
 [ Info: 21:36:54 | Initializing Simulation [Simulation 1] with default configuration and one custom parameter.
 [ Info: 21:36:54 | └ Creating population
 [ Info: 21:36:55 | └ Creating simulation object
@@ -28,6 +29,7 @@ individuals(sim)
  Individual(99998, 1, 49, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 4271, 6402, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(99999, 2, 57, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 5082, 2348, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
  Individual(100000, 2, 37, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 2975, 2905, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
+```
 
 Please be aware that the individual `id` is **NOT** necessarily matching their index in the `individuals`-vector.
 
@@ -42,6 +44,7 @@ age.(inds)
 
 **Output**
 
+```
 [ Info: 21:40:00 | Initializing Simulation [Simulation 2] with default configuration and one custom parameter.
 [ Info: 21:40:00 | └ Creating population
 [ Info: 21:40:02 | └ Creating simulation object
@@ -55,6 +58,7 @@ age.(inds)
  17
  59
  12
+```
 
 !!! info "Where's the list of attributes I can access?"
     Put a `?` into the Julia REPL and call `help?> Individual` to get an overview of fields that are stored for each individual or look up the Individuals section of the API documentation. Allmost every field has a function of the same name (e.g.g, `age()`) to get its value
@@ -71,6 +75,7 @@ dataframe(pop)
 
 **Output**
 
+```
 [ Info: 21:40:37 | Initializing Simulation [Simulation 3] with default configuration and one custom parameter.
 [ Info: 21:40:37 | └ Creating population
 [ Info: 21:40:39 | └ Creating simulation object
@@ -84,7 +89,7 @@ dataframe(pop)
   99999 │  99999     1     5                       0                -1         -1          -1      13529      -1           -1    
  100000 │ 100000     1    42                       0                -1         -1          -1      27570    7559           -1    
                                                                                                             99996 rows omitted   
-
+```
 
 Additionally, there are a number of functions allowing you to check an individual's infection- or quarantine status.
 This example checks if the first individual in the list of individuals is infected:
@@ -98,10 +103,12 @@ infected(first_ind)
 
 **Output**
 
+```
 [ Info: 21:42:31 | Initializing Simulation [Simulation 4] with default configuration and one custom parameter.
 [ Info: 21:42:31 | └ Creating population
 [ Info: 21:42:35 | └ Creating simulation object
 false
+```
 
 Other useful status check functions are `exposed()`, `infectious()`, `isquarantined()`, `quarantine_status()`, `hospital_status()`, `hospitalized()`, `ventilated()`, `dead()`, `isdetected()`, and `isvaccinated()`.
 For a full list, please look up the Individuals section of the API documentation.
@@ -119,6 +126,7 @@ household(first_ind, sim)
 
 **Output**
 
+```
 [ Info: 21:43:20 | Initializing Simulation [Simulation 5] with default configuration and one custom parameter.
 [ Info: 21:43:20 | └ Creating population
 [ Info: 21:43:21 | └ Creating simulation object
@@ -135,6 +143,7 @@ Household
   isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock
+```
 
 Also try `office(i)`, `schoolclass(i)`, or `municipality(i)`.
 If an individual is not assigned to the respective setting (e.g., a child not being assigned to an office), these functions will throw an exception.
@@ -172,11 +181,13 @@ settings(sim)
 
 **Output**
 
+```
 [ Info: 21:44:52 | Initializing Simulation [Simulation 6] with default configuration and one custom parameter.
 [ Info: 21:44:52 | └ Creating population
 [ Info: 21:44:54 | └ Creating simulation object
 Dict{DataType, Vector{Setting}} with 3 entries:
   Household   => [Household(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[], false, 0, 1, 1, -1, -1, -1, -1, 0, 0, 0…  SchoolClass => [SchoolClass(1, Individual[Individual(9, 1, 7, -1, -1, 0.0, 0.0, Bool[], false, 0, 9, -1, 1, -1, -1, -1, 0, 0, …  Office      => [Office(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[], false, 0, 1, 1, -1, -1, -1, -1, 0, 0, 0, 0…
+```
 
 The above example returns a dictionary where the key is the setting type and the value being the list of settings of that type.
 If you want a particular setting type, you can either pass the respective key to the settings dictionary like `settings(sim)[Household]` or use the prefined access functions, e.g., `households(sim)`:
@@ -189,6 +200,7 @@ households(sim)
 
 **Output**
 
+```
 [ Info: 21:45:33 | Initializing Simulation [Simulation 7] with default configuration and one custom parameter.
 [ Info: 21:45:33 | └ Creating population
 [ Info: 21:45:35 | └ Creating simulation object
@@ -222,7 +234,7 @@ households(sim)
   isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock
-
+```
 
 Similar to what we did with the individuals, you can run analyses on a collection of settings calling getter functions (e.g., `size(s)`) for a vector of settings using `.`.
 In the example below, we extract the size (number of assigned individuals) for each household and plot them in a histogram:
@@ -235,7 +247,7 @@ hh_sizes = size.(hhlds)
 histogram(hh_sizes, xlabel = "Household Size", label = "Number of Households")
 ```
 
-**Output**
+**Plot**
 
 ```@raw html
 <p align="center">
@@ -264,6 +276,7 @@ id.(hh_members)
 
 **Output**
 
+```
 [ Info: 21:50:17 | Initializing Simulation [Simulation 9] with default configuration and custom parameters.
 [ Info: 21:50:18 | └ Creating population
 [ Info: 21:50:20 | └ Creating simulation object
@@ -277,3 +290,4 @@ id.(hh_members)
  57705
  87052
  94858
+```

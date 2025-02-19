@@ -60,7 +60,7 @@ gemsplot(rd)
 ```
 
 **Output**
-``` log
+```
 [ Info: 12:02:08 | Initializing Simulation [Simulation 1] with default configuration and custom parameters.
 [ Info: 12:02:08 | └ Creating population
 [ Info: 12:02:09 | └ Creating simulation object
@@ -112,6 +112,7 @@ gemsplot([rd1, rd2])
 
 **Output**
 
+```
 [ Info: 12:11:49 | Initializing Simulation [Baseline] with default configuration and one custom parameter.
 [ Info: 12:11:49 | └ Creating population
 [ Info: 12:11:51 | └ Creating simulation object
@@ -124,6 +125,7 @@ gemsplot([rd1, rd2])
         12:13:15 | └ Done                                                                                                        
 [ Info: 12:13:15 | Processing simulation data
         12:13:27 | └ Done  
+```
 
 ```@raw html
 <p align="center">

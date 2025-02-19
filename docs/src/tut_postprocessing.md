@@ -19,6 +19,7 @@ dataframe(inf_logger)
 
 **Output**
 
+```
 [ Info: 23:40:26 | Initializing Simulation [Simulation 79] with default configuration and one custom parameter.
 [ Info: 23:40:26 | └ Creating population
 [ Info: 23:40:28 | └ Creating simulation object
@@ -28,6 +29,7 @@ dataframe(inf_logger)
    ⋮   │      ⋮          ⋮      ⋮      ⋮           ⋮              ⋮            ⋮             ⋮               ⋮               ⋮  ⋱ 75907 │        75907    177   4685  36171              177           183          -1             -1               -1
  75908 │        75908    181   4685  33557              185           191          -1            186               -1
                                                                                                 10 columns and 75904 rows omitted
+```
 
 !!! info "Where can I find out what these columns mean?"
     Put a `?` into the Julia REPL and call `help?> dataframe(::InfectionLogger)` to get an overview of the columns that are available in the `InfectionLogger`'s dataframe. Replace the argument `::InfectionLogger` with any of the other logger types to see their descriptions or look up the Logger section in the API documentation.
@@ -51,7 +53,7 @@ infectionsDF(pp)
 
 **Output**
 
-omitted
+```
 [ Info: 23:41:39 | Initializing Simulation [Simulation 80] with default configuration and one custom parameter.
 [ Info: 23:41:39 | └ Creating population
 [ Info: 23:41:40 | └ Creating simulation object
@@ -61,6 +63,7 @@ omitted
    ⋮   │      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮             ⋮               ⋮               ⋮ ⋱ 75797 │        68345     81  97853   99999               83            90          -1             83               -1
  75798 │        42048     60  61117  100000               64            72          -1             65               67
                                                                                                 38 columns and 75794 rows omitted
+```
 
 You might have noticed, that this dataframe contains characteristics about the infecting and infected individuals (e.g., `age` or `sex`) or whether they were detected.
 It is now much easier to use this data to calculate more sophisticated statistics such as an age-age contact matrix for infections.
@@ -78,7 +81,7 @@ effectiveR(pp)
 
 **Output**
 
-
+```
 [ Info: 23:43:16 | Initializing Simulation [Simulation 81] with default configuration and one custom parameter.
 [ Info: 23:43:16 | └ Creating population
 [ Info: 23:43:18 | └ Creating simulation object
@@ -93,6 +96,7 @@ effectiveR(pp)
  364 │   364      0.0               0.0                 0.0         0.0             0.0               0.0
  365 │   365      0.0               0.0                 0.0         0.0             0.0               0.0
                                                                                                361 rows omitted
+```
 
 
 !!! info "Where's the list of availble post-processing functions?"
@@ -124,8 +128,7 @@ old_infects_young(pp)
 
 **Output**
 
-                                                                                              361 rows omitted
-
+```
 [ Info: 23:45:19 | Initializing Simulation [Simulation 82] with default configuration and one custom parameter.
 [ Info: 23:45:19 | └ Creating population
 [ Info: 23:45:21 | └ Creating simulation object
@@ -140,6 +143,7 @@ old_infects_young(pp)
  142 │   155      1
  143 │   171      1
     139 rows omitted
+```
 
 We advise doing any post-processing via the `PostProcessor` infrastructure whenever possible, as this will make it very easy to forward you custom results to a custom `ResultData` object.
 These things will be explained in the subsequent sections.
@@ -201,6 +205,7 @@ customlogger(rd)
 
 **Output**
 
+```
 365×2 DataFrame
  Row │ infected_in_large_households  tick 
      │ Any                           Any
@@ -211,6 +216,7 @@ customlogger(rd)
  364 │ 0                             363
  365 │ 0                             364
                           361 rows omitted
+```
 
 
 You might have noticed, that loggers can severely slow down the simulation runtime if implemented inefficiently as they are executed in every step and potentially require iterations through all individuals every time.
