@@ -34,12 +34,16 @@ gemsplot(rd)
 **Output**
 
 ```
-[ Info: 12:09:42 | Initializing Simulation [Simulation 0] with default configuration and one custom parameter.
+[ Info: 12:09:42 | Initializing Simulation [Simulation 0] with default configuration 
+and one custom parameter.
 [ Info: 12:09:42 | └ Creating population
 [ Info: 12:09:43 | └ Creating simulation object
 [ Info: 12:09:43 | Running Simulation Simulation 0
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:18<00:00, 20 days/s][ Info: 12:10:02 | Processing simulation data
+100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
+365 days/365 days [00:18<00:00, 20 days/s]
+[ Info: 12:10:02 | Processing simulation data
         12:10:08 | └ Done  
+```
 
 ```@raw html
 <p align="center">
@@ -64,11 +68,14 @@ gemsplot(rd)
 **Output**
 
 ```
-[ Info: 12:02:08 | Initializing Simulation [Simulation 1] with default configuration and custom parameters.
+[ Info: 12:02:08 | Initializing Simulation [Simulation 1] with default configuration 
+and custom parameters.
 [ Info: 12:02:08 | └ Creating population
 [ Info: 12:02:09 | └ Creating simulation object
 [ Info: 12:02:10 | Running Simulation Simulation 1
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:16<00:00, 23 days/s][ Info: 12:02:26 | Processing simulation data
+100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
+365 days/365 days [00:16<00:00, 23 days/s]
+[ Info: 12:02:26 | Processing simulation data
         12:02:36 | └ Done  
 ``` 
 
@@ -116,18 +123,22 @@ gemsplot([rd1, rd2])
 **Output**
 
 ```
-[ Info: 12:11:49 | Initializing Simulation [Baseline] with default configuration and one custom parameter.
+[ Info: 12:11:49 | Initializing Simulation [Baseline] with default configuration 
+and one custom parameter.
 [ Info: 12:11:49 | └ Creating population
 [ Info: 12:11:51 | └ Creating simulation object
-[ Info: 12:11:51 | Initializing Simulation [More Infectious] with default configuration and custom parameters.
+[ Info: 12:11:51 | Initializing Simulation [More Infectious] with default 
+configuration and custom parameters.
 [ Info: 12:11:51 | └ Creating population
 [ Info: 12:11:53 | └ Creating simulation object
 [ Info: 12:11:55 | Running Simulation Baseline
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:40<00:00, 9 days/s][ Info: 12:12:35 | Running Simulation More Infectious
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:35<00:00, 10 days/s][ Info: 12:13:10 | Processing simulation data
-        12:13:15 | └ Done                                                                                                        
-[ Info: 12:13:15 | Processing simulation data
-        12:13:27 | └ Done  
+100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
+365 days/365 days [00:40<00:00, 9 days/s]
+[ Info: 12:12:35 | Running Simulation More Infectious
+100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
+365 days/365 days [00:35<00:00, 10 days/s]
+[ Info: 12:13:10 | Processing simulation data
+        12:13:15 | └ Done 
 ```
 
 ```@raw html

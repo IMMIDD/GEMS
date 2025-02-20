@@ -16,15 +16,16 @@ individuals(sim)
 **Output**
 
 ```
-[ Info: 21:36:54 | Initializing Simulation [Simulation 1] with default configuration and one custom parameter.
+[ Info: 21:36:54 | Initializing Simulation [Simulation 1] with default configuration 
+and one custom parameter.
 [ Info: 21:36:54 | └ Creating population
 [ Info: 21:36:55 | └ Creating simulation object
 100000-element Vector{Individual}:
- Individual(1, 1, 6, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 1, -1, 1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(2, 2, 19, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 2, 1, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
+ Individual(1, 1, 6, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...
+ Individual(2, 2, 19, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...
  ⋮
- Individual(99999, 2, 57, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 5082, 2348, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
- Individual(100000, 2, 37, -1, -1, 0.0f0, 0.0f0, Bool[], false, 0, 2975, 2905, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, false, -1, -1, 0, -1, 0, -1, -1)
+ Individual(99999, 2, 57, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...
+ Individual(100000, 2, 37, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...
 ```
 
 Please be aware that the individual `id` is **NOT** necessarily matching their index in the `individuals`-vector.
@@ -41,7 +42,8 @@ age.(inds)
 **Output**
 
 ```
-[ Info: 21:40:00 | Initializing Simulation [Simulation 2] with default configuration and one custom parameter.
+[ Info: 21:40:00 | Initializing Simulation [Simulation 2] with default configuration
+and one custom parameter.
 [ Info: 21:40:00 | └ Creating population
 [ Info: 21:40:02 | └ Creating simulation object
 100000-element Vector{Int8}:
@@ -68,19 +70,20 @@ dataframe(pop)
 **Output**
 
 ```
-[ Info: 21:40:37 | Initializing Simulation [Simulation 3] with default configuration and one custom parameter.
+[ Info: 21:40:37 | Initializing Simulation [Simulation 3] with default configuration 
+and one custom parameter.
 [ Info: 21:40:37 | └ Creating population
 [ Info: 21:40:39 | └ Creating simulation object
 100000×10 DataFrame
-    Row │ id      sex   age   number_of_vaccinations  vaccination_tick  education  occupation  household  office  schoolclass    
-        │ Int32   Int8  Int8  Int8                    Int16             Int8       Int8        Int32      Int32   Int32
-────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────   
-      1 │      1     2    43                       0                -1         -1          -1          1       1           -1    
-      2 │      2     1    50                       0                -1         -1          -1          2       2           -1    
-   ⋮    │   ⋮      ⋮     ⋮              ⋮                    ⋮              ⋮          ⋮           ⋮        ⋮          ⋮
-  99999 │  99999     1     5                       0                -1         -1          -1      13529      -1           -1    
- 100000 │ 100000     1    42                       0                -1         -1          -1      27570    7559           -1    
-                                                                                                            99996 rows omitted   
+    Row │ id      sex   age   number_of_vaccinations  vaccination_tick  education  ⋯
+        │ Int32   Int8  Int8  Int8                    Int16             Int8       ⋯
+────────┼─────────────────────────────────────────────────────────────────────────────
+      1 │      1     2    43                       0                -1         -1  ⋯
+      2 │      2     1    50                       0                -1         -1  ⋯
+   ⋮    │   ⋮      ⋮     ⋮              ⋮                    ⋮              ⋮          ⋮ 
+  99999 │  99999     1     5                       0                -1         -1  ⋯  
+ 100000 │ 100000     1    42                       0                -1         -1  ⋯ 
+99996 rows omitted   
 ```
 
 Additionally, there are a number of functions allowing you to check an individual's infection- or quarantine status.
@@ -96,7 +99,8 @@ infected(first_ind)
 **Output**
 
 ```
-[ Info: 21:42:31 | Initializing Simulation [Simulation 4] with default configuration and one custom parameter.
+[ Info: 21:42:31 | Initializing Simulation [Simulation 4] with default configuration
+and one custom parameter.
 [ Info: 21:42:31 | └ Creating population
 [ Info: 21:42:35 | └ Creating simulation object
 false
@@ -119,7 +123,8 @@ household(first_ind, sim)
 **Output**
 
 ```
-[ Info: 21:43:20 | Initializing Simulation [Simulation 5] with default configuration and one custom parameter.
+[ Info: 21:43:20 | Initializing Simulation [Simulation 5] with default configuration 
+and one custom parameter.
 [ Info: 21:43:20 | └ Creating population
 [ Info: 21:43:21 | └ Creating simulation object
 Household
@@ -174,11 +179,14 @@ settings(sim)
 **Output**
 
 ```
-[ Info: 21:44:52 | Initializing Simulation [Simulation 6] with default configuration and one custom parameter.
+[ Info: 21:44:52 | Initializing Simulation [Simulation 6] with default configuration 
+and one custom parameter.
 [ Info: 21:44:52 | └ Creating population
 [ Info: 21:44:54 | └ Creating simulation object
 Dict{DataType, Vector{Setting}} with 3 entries:
-  Household   => [Household(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[], false, 0, 1, 1, -1, -1, -1, -1, 0, 0, 0…  SchoolClass => [SchoolClass(1, Individual[Individual(9, 1, 7, -1, -1, 0.0, 0.0, Bool[], false, 0, 9, -1, 1, -1, -1, -1, 0, 0, …  Office      => [Office(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[], false, 0, 1, 1, -1, -1, -1, -1, 0, 0, 0, 0…
+  Household   => [Household(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[],…  
+  SchoolClass => [SchoolClass(1, Individual[Individual(9, 1, 7, -1, -1, 0.0, 0.0, Bool[],…
+  Office      => [Office(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[],…
 ```
 
 The above example returns a dictionary where the key is the setting type and the value being the list of settings of that type.
@@ -193,7 +201,8 @@ households(sim)
 **Output**
 
 ```
-[ Info: 21:45:33 | Initializing Simulation [Simulation 7] with default configuration and one custom parameter.
+[ Info: 21:45:33 | Initializing Simulation [Simulation 7] with default configuration 
+and one custom parameter.
 [ Info: 21:45:33 | └ Creating population
 [ Info: 21:45:35 | └ Creating simulation object
 33334-element Vector{Setting}:
@@ -254,7 +263,8 @@ id.(hh_members)
 **Output**
 
 ```
-[ Info: 21:50:17 | Initializing Simulation [Simulation 9] with default configuration and custom parameters.
+[ Info: 21:50:17 | Initializing Simulation [Simulation 9] with default configuration 
+and custom parameters.
 [ Info: 21:50:18 | └ Creating population
 [ Info: 21:50:20 | └ Creating simulation object
 10-element Vector{Int32}:

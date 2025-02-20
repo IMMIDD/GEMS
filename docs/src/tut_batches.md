@@ -208,16 +208,15 @@ total_infections(bd)
 **Output**
 
 ```
-[ Info: 23:32:43 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:43 | └ Creating population
-[ Info: 23:32:45 | └ Creating simulation object
+[ Info: 23:32:43 | Initializing Simulation [My Experiment] with default configuration 
 ...
 [ Info: 23:32:56 | Running Simulation 1/5 [My Experiment]
 [ Info: 23:32:57 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30<00:00, 12 days/s]
+100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
+365 days/365 days [00:30<00:00, 12 days/s]
 ...
 [ Info: 23:35:44 | Processing Simulation 1/5 in Batch
-...                                                                                                        
+...
 Dict{String, Real} with 6 entries:
   "upper_95" => 76052.5
   "max"      => 76088
@@ -321,12 +320,17 @@ infections(rns[1])
 [ Info: 23:38:59 | Processing Simulation 3/5 in Batch
 [ Info: 23:39:03 | Processing Simulation 4/5 in Batch
 [ Info: 23:39:07 | Processing Simulation 5/5 in Batch
-        23:39:12 | └ Done                                                                                                        
+        23:39:12 | └ Done                                                            
 75363×47 DataFrame
-   Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  death_tick  symptoms_tick  severeness_tick  hospita ⋯       │ Int32         Int16  Int32  Int32   Int16            Int16         Int16       Int16          Int16            Int16   ⋯───────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────     1 │         1134     17  88197       1               17            22          -1             19               26          ⋯     2 │        35969     56  59946       2               60            65          -1             60               -1
-   ⋮   │      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮             ⋮               ⋮               ⋮ ⋱ 75362 │        36576     56  22625   99999               56            62          -1             57               -1
- 75363 │         7133     34  92825  100000               36            45          -1             37               -1
-                                                                                                38 columns and 75359 rows omitted
+   Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  ⋯
+       │ Int32         Int16  Int32  Int32   Int16            Int16         ⋯ 
+       ┼───────────────────────────────────────────────────────────────────────
+     1 │         1134     17  88197       1               17                ⋯    
+     2 │        35969     56  59946       2               60                ⋯
+    ⋮  |      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮     
+ 75362 │        36576     56  22625   99999               56
+ 75363 │         7133     34  92825  100000               36                ⋯
+38 columns and 75359 rows omitted
 ```
 
 ## Custom *BatchDataStyles*

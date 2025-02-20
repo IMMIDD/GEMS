@@ -174,4 +174,4 @@ plot(df_combined.age, df_combined.vacc_fraction)
 <p align="center">
     <img src="../assets/tutorials/tut_pops_adjusting.png" width="80%"/>
 </p>
-``` 
+```
