@@ -87,16 +87,15 @@ end
 b = Batch(sims...)
 run!(b)
 bd = BatchData(b)
-total_infections(bd)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:32:43 | Initializing Simulation [My Experiment] with default configuration and one custom parameter.
-[ Info: 23:32:43 | └ Creating population
-[ Info: 23:32:45 | └ Creating simulation object
+total_infections(bd)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:32:43 | Initializing Simulation [My Experiment] with default configuration 
 ...
 [ Info: 23:32:56 | Running Simulation 1/5 [My Experiment]
 [ Info: 23:32:57 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 365 days/365 days [00:30&lt;00:00, 12 days/s]
+100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
+365 days/365 days [00:30&lt;00:00, 12 days/s]
 ...
 [ Info: 23:35:44 | Processing Simulation 1/5 in Batch
-...                                                                                                        
+...
 Dict{String, Real} with 6 entries:
   &quot;upper_95&quot; =&gt; 76052.5
   &quot;max&quot;      =&gt; 76088
@@ -145,9 +144,14 @@ infections(rns[1])</code></pre><p><strong>Output</strong></p><pre><code class="n
 [ Info: 23:38:59 | Processing Simulation 3/5 in Batch
 [ Info: 23:39:03 | Processing Simulation 4/5 in Batch
 [ Info: 23:39:07 | Processing Simulation 5/5 in Batch
-        23:39:12 | └ Done                                                                                                        
+        23:39:12 | └ Done                                                            
 75363×47 DataFrame
-   Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  death_tick  symptoms_tick  severeness_tick  hospita ⋯       │ Int32         Int16  Int32  Int32   Int16            Int16         Int16       Int16          Int16            Int16   ⋯───────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────     1 │         1134     17  88197       1               17            22          -1             19               26          ⋯     2 │        35969     56  59946       2               60            65          -1             60               -1
-   ⋮   │      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮             ⋮               ⋮               ⋮ ⋱ 75362 │        36576     56  22625   99999               56            62          -1             57               -1
- 75363 │         7133     34  92825  100000               36            45          -1             37               -1
-                                                                                                38 columns and 75359 rows omitted</code></pre><h2 id="Custom-*BatchDataStyles*"><a class="docs-heading-anchor" href="#Custom-*BatchDataStyles*">Custom <em>BatchDataStyles</em></a><a id="Custom-*BatchDataStyles*-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-*BatchDataStyles*" title="Permalink"></a></h2><p>t.b.d.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_plotting/">« 3 - Plotting</a><a class="docs-footer-nextpage" href="../tut_pops/">5 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Wednesday 19 February 2025 16:05">Wednesday 19 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+   Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  ⋯
+       │ Int32         Int16  Int32  Int32   Int16            Int16         ⋯ 
+       ┼───────────────────────────────────────────────────────────────────────
+     1 │         1134     17  88197       1               17                ⋯    
+     2 │        35969     56  59946       2               60                ⋯
+    ⋮  |      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮     
+ 75362 │        36576     56  22625   99999               56
+ 75363 │         7133     34  92825  100000               36                ⋯
+38 columns and 75359 rows omitted</code></pre><h2 id="Custom-*BatchDataStyles*"><a class="docs-heading-anchor" href="#Custom-*BatchDataStyles*">Custom <em>BatchDataStyles</em></a><a id="Custom-*BatchDataStyles*-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-*BatchDataStyles*" title="Permalink"></a></h2><p>t.b.d.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_plotting/">« 3 - Plotting</a><a class="docs-footer-nextpage" href="../tut_pops/">5 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Thursday 20 February 2025 23:18">Thursday 20 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
