@@ -3,17 +3,58 @@
 sim = Simulation()
 run!(sim)
 inf_logger = infectionlogger(sim)
-dataframe(inf_logger)</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT CONSOLE OUTPUT HERE</header><div class="admonition-body"></div></div><div class="admonition is-info"><header class="admonition-header">Where can I find out what these columns mean?</header><div class="admonition-body"><p>Put a <code>?</code> into the Julia REPL and call <code>help?&gt; dataframe(::InfectionLogger)</code> to get an overview of the columns that are available in the <code>InfectionLogger</code>&#39;s dataframe. Replace the argument <code>::InfectionLogger</code> with any of the other logger types to see their descriptions or look up the Logger section in the API documentation.</p></div></div><h2 id="The-PostProcessor"><a class="docs-heading-anchor" href="#The-PostProcessor">The PostProcessor</a><a id="The-PostProcessor-1"></a><a class="docs-heading-anchor-permalink" href="#The-PostProcessor" title="Permalink"></a></h2><p>The <code>PostProcessor</code> is the binding element between the raw data coming from the simulation&#39;s internal loggers and the <code>ResultData</code> object. It is instantiated with the <code>Simulation</code> object and performs some initial operations and joins on the raw data, and stores the results in internal dataframes (<code>infectionsDF</code>, <code>populationDF</code>, <code>deathsDF</code>, <code>testsDF</code>, <code>pooltestsDF</code>, <code>quarantinesDF</code>). An exception is the <code>sim_infectionsDF</code>-dataframe which only contains infections that happend during the simulation, exluding all initial, seeding infections. This example shows how the <code>PostProcessor</code>&#39;s internal infections-dataframe is already joined with data from the population-dataframe:</p><pre><code class="language-julia hljs">using GEMS
+dataframe(inf_logger)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:40:26 | Initializing Simulation [Simulation 79] with default configuration 
+[ Info: 23:40:26 | └ Creating population
+[ Info: 23:40:28 | └ Creating simulation object
+[ Info: 23:40:29 | Running Simulation Simulation 79
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:29&lt;00:00, 13 days/s]
+75908×19 DataFrame
+   Row │ infection_id  tick   id_a   id_b   infectious_tick  removed_tick  death_tick  ⋯
+       │ Int32         Int16  Int32  Int32  Int16            Int16         Int16       ⋯
+───────┼───────────────────────────────────────────────────────────────────────────────────
+     1 │            1      0     -1  74571                5            13          -1   ⋯         
+     2 │            2      0     -1  48307                1             7          -1   ⋯  
+   ⋮   │      ⋮          ⋮      ⋮      ⋮           ⋮              ⋮            ⋮             ⋮ 
+ 75907 │        75907    177   4685  36171              177           183          -1   ⋯ 
+ 75908 │        75908    181   4685  33557              185           191          -1   ⋯  
+                                                        10 columns and 75904 rows omitted</code></pre><div class="admonition is-info"><header class="admonition-header">Where can I find out what these columns mean?</header><div class="admonition-body"><p>Put a <code>?</code> into the Julia REPL and call <code>help?&gt; dataframe(::InfectionLogger)</code> to get an overview of the columns that are available in the <code>InfectionLogger</code>&#39;s dataframe. Replace the argument <code>::InfectionLogger</code> with any of the other logger types to see their descriptions or look up the Logger section in the API documentation.</p></div></div><h2 id="The-PostProcessor"><a class="docs-heading-anchor" href="#The-PostProcessor">The PostProcessor</a><a id="The-PostProcessor-1"></a><a class="docs-heading-anchor-permalink" href="#The-PostProcessor" title="Permalink"></a></h2><p>The <code>PostProcessor</code> is the binding element between the raw data coming from the simulation&#39;s internal loggers and the <code>ResultData</code> object. It is instantiated with the <code>Simulation</code> object and performs some initial operations and joins on the raw data, and stores the results in internal dataframes (<code>infectionsDF</code>, <code>populationDF</code>, <code>deathsDF</code>, <code>testsDF</code>, <code>pooltestsDF</code>, <code>quarantinesDF</code>). An exception is the <code>sim_infectionsDF</code>-dataframe which only contains infections that happend during the simulation, exluding all initial, seeding infections. This example shows how the <code>PostProcessor</code>&#39;s internal infections-dataframe is already joined with data from the population-dataframe:</p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
 run!(sim)
 pp = PostProcessor(sim)
 
-infectionsDF(pp)</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT CONSOLE OUTPUT HERE</header><div class="admonition-body"></div></div><p>You might have noticed, that this dataframe contains characteristics about the infecting and infected individuals (e.g., <code>age</code> or <code>sex</code>) or whether they were detected. It is now much easier to use this data to calculate more sophisticated statistics such as an age-age contact matrix for infections. Many processing functions are already available. Here&#39;s how you can calculate the effective reproduction rate per time unit using the <code>PostProcessor</code>:</p><pre><code class="language-julia hljs">using GEMS
+infectionsDF(pp)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:41:39 | Initializing Simulation [Simulation 80] with default configuration 
+[ Info: 23:41:39 | └ Creating population
+[ Info: 23:41:40 | └ Creating simulation object
+[ Info: 23:41:41 | Running Simulation Simulation 80
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [00:57&lt;00:00, 6 days/s]
+75798×47 DataFrame
+Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  ⋯
+    │ Int32         Int16  Int32  Int32   Int16            Int16         ⋯
+    ┼────────────────────────────────────────────────────────────────────────
+  1 │         7180     36  61265       1               38            44  ⋯    
+  2 │        71586     88  77749       2               91            98  ⋯
+⋮     │        ⋮          ⋮      ⋮      ⋮                 ⋮              ⋮      
+75798 │        42048     60  61117  100000             64            72  ⋯      
+38 columns and 75794 rows omitted</code></pre><p>You might have noticed, that this dataframe contains characteristics about the infecting and infected individuals (e.g., <code>age</code> or <code>sex</code>) or whether they were detected. It is now much easier to use this data to calculate more sophisticated statistics such as an age-age contact matrix for infections. Many processing functions are already available. Here&#39;s how you can calculate the effective reproduction rate per time unit using the <code>PostProcessor</code>:</p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
 run!(sim)
 pp = PostProcessor(sim)
 
-effectiveR(pp)</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT CONSOLE OUTPUT HERE</header><div class="admonition-body"></div></div><div class="admonition is-info"><header class="admonition-header">Where&#39;s the list of availble post-processing functions?</header><div class="admonition-body"><p>Look up the Post-Processor section in the API documentation for a full list of available options.</p></div></div><h2 id="Custom-Post-Processing"><a class="docs-heading-anchor" href="#Custom-Post-Processing">Custom Post-Processing</a><a id="Custom-Post-Processing-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Post-Processing" title="Permalink"></a></h2><p>In some cases, you might want to add custom functionalities to the <code>PostProcessor</code>. The following example add a new post-processor function that calculates the number of infections where a older person infected a younger person:</p><pre><code class="language-julia hljs">using GEMS, DataFrames
+effectiveR(pp)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:43:16 | Initializing Simulation [Simulation 81] with default configuration 
+[ Info: 23:43:16 | └ Creating population
+[ Info: 23:43:18 | └ Creating simulation object
+[ Info: 23:43:19 | Running Simulation Simulation 81
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [01:25&lt;00:00, 4 days/s]
+365×7 DataFrame
+ Row │ tick   effective_R  in_hh_effective_R  out_hh_effective_R  rolling_R   ⋯  
+     │ Int64  Float64      Float64            Float64             Float64     ⋯  
+─────┼──────────────────────────────────────────────────────────────────────────
+   1 │     1      2.21429           0.571429            1.64286     2.21429   ⋯  
+   2 │     2      1.45833           0.541667            0.916667    1.83631   ⋯  
+  ⋮  │   ⋮         ⋮               ⋮                  ⋮               ⋮           
+ 364 │   364      0.0               0.0                 0.0         0.0       ⋯  
+ 365 │   365      0.0               0.0                 0.0         0.0       ⋯  
+361 rows omitted</code></pre><div class="admonition is-info"><header class="admonition-header">Where&#39;s the list of availble post-processing functions?</header><div class="admonition-body"><p>Look up the Post-Processor section in the API documentation for a full list of available options.</p></div></div><h2 id="Custom-Post-Processing"><a class="docs-heading-anchor" href="#Custom-Post-Processing">Custom Post-Processing</a><a id="Custom-Post-Processing-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Post-Processing" title="Permalink"></a></h2><p>In some cases, you might want to add custom functionalities to the <code>PostProcessor</code>. The following example add a new post-processor function that calculates the number of infections where a older person infected a younger person:</p><pre><code class="language-julia hljs">using GEMS, DataFrames
 
 function old_infects_young(pp::PostProcessor)
     infs = sim_infectionsDF(pp) # load the simulated infections
@@ -27,7 +68,21 @@ sim = Simulation()
 run!(sim)
 pp = PostProcessor(sim)
 
-old_infects_young(pp)</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT CONSOLE OUTPUT HERE</header><div class="admonition-body"></div></div><p>We advise doing any post-processing via the <code>PostProcessor</code> infrastructure whenever possible, as this will make it very easy to forward you custom results to a custom <code>ResultData</code> object. These things will be explained in the subsequent sections.</p><h2 id="The-ResultData-object"><a class="docs-heading-anchor" href="#The-ResultData-object">The ResultData object</a><a id="The-ResultData-object-1"></a><a class="docs-heading-anchor-permalink" href="#The-ResultData-object" title="Permalink"></a></h2><h2 id="Custom-ResultDataStyles"><a class="docs-heading-anchor" href="#Custom-ResultDataStyles">Custom ResultDataStyles</a><a id="Custom-ResultDataStyles-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-ResultDataStyles" title="Permalink"></a></h2><ul><li>how to get custom post-processing functions in here?</li></ul><h2 id="Custom-Loggers"><a class="docs-heading-anchor" href="#Custom-Loggers">Custom Loggers</a><a id="Custom-Loggers-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Loggers" title="Permalink"></a></h2><p>A lot of data is recorded automatically, i.e., infections or deaths. If you want to collect data during the simulation run that is not available via the default loggers, you can add custom mechanics. The example below tracks how many infected individuals live in households that have 3 or more members. Doing so requires to set up a <code>CustomLogger(...)</code>. It takes an arbitrary number of arguments that must be one-argument functions whereas the argument has to be the simulation object. These functions are called once every step when running a simulation.</p><pre><code class="language-julia hljs">using GEMS
+old_infects_young(pp)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:45:19 | Initializing Simulation [Simulation 82] with default configuration 
+[ Info: 23:45:19 | └ Creating population
+[ Info: 23:45:21 | └ Creating simulation object
+[ Info: 23:45:22 | Running Simulation Simulation 82
+100.0███████████████████████████████████████████┫ 365 days/365 days [00:54&lt;00:00, 7 days/s]
+143×2 DataFrame
+ Row │ tick   count 
+     │ Int16  Int64
+─────┼──────────────
+   1 │     0      3
+   2 │     1      7
+   ⋮  │   ⋮      ⋮
+ 142 │   155      1
+ 143 │   171      1
+    139 rows omitted</code></pre><p>We advise doing any post-processing via the <code>PostProcessor</code> infrastructure whenever possible, as this will make it very easy to forward you custom results to a custom <code>ResultData</code> object. These things will be explained in the subsequent sections.</p><h2 id="The-ResultData-object"><a class="docs-heading-anchor" href="#The-ResultData-object">The ResultData object</a><a id="The-ResultData-object-1"></a><a class="docs-heading-anchor-permalink" href="#The-ResultData-object" title="Permalink"></a></h2><h2 id="Custom-ResultDataStyles"><a class="docs-heading-anchor" href="#Custom-ResultDataStyles">Custom ResultDataStyles</a><a id="Custom-ResultDataStyles-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-ResultDataStyles" title="Permalink"></a></h2><ul><li>how to get custom post-processing functions in here?</li></ul><h2 id="Custom-Loggers"><a class="docs-heading-anchor" href="#Custom-Loggers">Custom Loggers</a><a id="Custom-Loggers-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Loggers" title="Permalink"></a></h2><p>A lot of data is recorded automatically, i.e., infections or deaths. If you want to collect data during the simulation run that is not available via the default loggers, you can add custom mechanics. The example below tracks how many infected individuals live in households that have 3 or more members. Doing so requires to set up a <code>CustomLogger(...)</code>. It takes an arbitrary number of arguments that must be one-argument functions whereas the argument has to be the simulation object. These functions are called once every step when running a simulation.</p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
 
 function logging_func(sim)
@@ -48,7 +103,18 @@ customlogger!(sim, cl)
 run!(sim)
 rd = ResultData(sim)
 
-gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT PLOT HERE AS IMAGE</header><div class="admonition-body"></div></div><p>The <code>ResultData</code> object now contains a dataframe that contains the collected data of the custom logger with one column per argument function that was passed to the <code>CustomLogger(...)</code></p><pre><code class="language-julia hljs">customlogger(rd)</code></pre><div class="admonition is-warning"><header class="admonition-header">TODO: PUT CONSOLE OUTPUT HERE</header><div class="admonition-body"></div></div><p>You might have noticed, that loggers can severely slow down the simulation runtime if implemented inefficiently as they are executed in every step and potentially require iterations through all individuals every time. Julia provides a number of handy techniques that can speed up calculations significantly. If you feel confident using so-called lambda-functions, you can rewrite the above example to prevent unnecessary memory allocations. The code below does exactly the same as the code above, but takes a fraction of the time. </p><pre><code class="language-julia hljs">using GEMS
+gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_pp_plot.png" width="80%"/>
+</p><p>The <code>ResultData</code> object now contains a dataframe that contains the collected data of the custom logger with one column per argument function that was passed to the <code>CustomLogger(...)</code></p><pre><code class="language-julia hljs">customlogger(rd)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">365×2 DataFrame
+ Row │ infected_in_large_households  tick 
+     │ Any                           Any
+─────┼────────────────────────────────────
+   1 │ 82                            0
+   2 │ 92                            1
+  ⋮  │              ⋮                 ⋮
+ 364 │ 0                             363
+ 365 │ 0                             364
+                          361 rows omitted</code></pre><p>You might have noticed, that loggers can severely slow down the simulation runtime if implemented inefficiently as they are executed in every step and potentially require iterations through all individuals every time. Julia provides a number of handy techniques that can speed up calculations significantly. If you feel confident using so-called lambda-functions, you can rewrite the above example to prevent unnecessary memory allocations. The code below does exactly the same as the code above, but takes a fraction of the time. </p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
 
 pred_func(i, sim) = infected(i) &amp;&amp; size(household(i, sim)) &gt;= 3
@@ -60,4 +126,4 @@ customlogger!(sim, cl)
 run!(sim)
 rd = ResultData(sim)
 
-gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_configfiles/">« 6 - Advanced Parameterization</a><a class="docs-footer-nextpage" href="../tut_reporting/">8 - Reporting »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Thursday 20 February 2025 15:01">Thursday 20 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_configfiles/">« 6 - Advanced Parameterization</a><a class="docs-footer-nextpage" href="../tut_reporting/">8 - Reporting »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Friday 21 February 2025 11:52">Friday 21 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
