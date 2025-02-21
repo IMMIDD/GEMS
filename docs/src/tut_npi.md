@@ -324,21 +324,38 @@ gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))
 ``` 
 
 
-
 ## Recurrent Testing
+
+Tutorial coming soon ...
 
 ## Multiple Test Types
 
+Tutorial coming soon ...
+
 ## Contact Reduction
+
+Tutorial coming soon ...
 
 ## Setting Closure
 
+Tutorial coming soon ...
+
 ## Delayed Interventions
+
+Tutorial coming soon ...
 
 ## Conditional Interventions
 
+Tutorial coming soon ...
+
 ## Custom Measures
+
+Tutorial coming soon ...
 
 ## Varying Mandate Adherence
 
+Tutorial coming soon ...
+
 ## Adapting Behavior
+
+Tutorial coming soon ...
