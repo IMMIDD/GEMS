@@ -4,12 +4,10 @@ sim = Simulation()
 run!(sim)
 inf_logger = infectionlogger(sim)
 dataframe(inf_logger)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:40:26 | Initializing Simulation [Simulation 79] with default configuration 
-and one custom parameter.
 [ Info: 23:40:26 | └ Creating population
 [ Info: 23:40:28 | └ Creating simulation object
 [ Info: 23:40:29 | Running Simulation Simulation 79
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:29&lt;00:00, 13 days/s]
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:29&lt;00:00, 13 days/s]
 75908×19 DataFrame
    Row │ infection_id  tick   id_a   id_b   infectious_tick  removed_tick  death_tick  ⋯
        │ Int32         Int16  Int32  Int32  Int16            Int16         Int16       ⋯
@@ -25,12 +23,11 @@ run!(sim)
 pp = PostProcessor(sim)
 
 infectionsDF(pp)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:41:39 | Initializing Simulation [Simulation 80] with default configuration 
-and one custom parameter.
 [ Info: 23:41:39 | └ Creating population
 [ Info: 23:41:40 | └ Creating simulation object
 [ Info: 23:41:41 | Running Simulation Simulation 80
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:57&lt;00:00, 6 days/s]75798×47 DataFrame
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [00:57&lt;00:00, 6 days/s]
+75798×47 DataFrame
 Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  ⋯
     │ Int32         Int16  Int32  Int32   Int16            Int16         ⋯
     ┼────────────────────────────────────────────────────────────────────────
@@ -44,12 +41,11 @@ run!(sim)
 pp = PostProcessor(sim)
 
 effectiveR(pp)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:43:16 | Initializing Simulation [Simulation 81] with default configuration 
-and one custom parameter.
 [ Info: 23:43:16 | └ Creating population
 [ Info: 23:43:18 | └ Creating simulation object
 [ Info: 23:43:19 | Running Simulation Simulation 81
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [01:25&lt;00:00, 4 days/s]365×7 DataFrame
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [01:25&lt;00:00, 4 days/s]
+365×7 DataFrame
  Row │ tick   effective_R  in_hh_effective_R  out_hh_effective_R  rolling_R   ⋯  
      │ Int64  Float64      Float64            Float64             Float64     ⋯  
 ─────┼──────────────────────────────────────────────────────────────────────────
@@ -73,18 +69,17 @@ run!(sim)
 pp = PostProcessor(sim)
 
 old_infects_young(pp)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 23:45:19 | Initializing Simulation [Simulation 82] with default configuration 
-and one custom parameter.
 [ Info: 23:45:19 | └ Creating population
 [ Info: 23:45:21 | └ Creating simulation object
 [ Info: 23:45:22 | Running Simulation Simulation 82
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:54&lt;00:00, 7 days/s]143×2 DataFrame
+100.0███████████████████████████████████████████┫ 365 days/365 days [00:54&lt;00:00, 7 days/s]
+143×2 DataFrame
  Row │ tick   count 
      │ Int16  Int64
 ─────┼──────────────
    1 │     0      3
    2 │     1      7
-  ⋮  │   ⋮      ⋮
+   ⋮  │   ⋮      ⋮
  142 │   155      1
  143 │   171      1
     139 rows omitted</code></pre><p>We advise doing any post-processing via the <code>PostProcessor</code> infrastructure whenever possible, as this will make it very easy to forward you custom results to a custom <code>ResultData</code> object. These things will be explained in the subsequent sections.</p><h2 id="The-ResultData-object"><a class="docs-heading-anchor" href="#The-ResultData-object">The ResultData object</a><a id="The-ResultData-object-1"></a><a class="docs-heading-anchor-permalink" href="#The-ResultData-object" title="Permalink"></a></h2><h2 id="Custom-ResultDataStyles"><a class="docs-heading-anchor" href="#Custom-ResultDataStyles">Custom ResultDataStyles</a><a id="Custom-ResultDataStyles-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-ResultDataStyles" title="Permalink"></a></h2><ul><li>how to get custom post-processing functions in here?</li></ul><h2 id="Custom-Loggers"><a class="docs-heading-anchor" href="#Custom-Loggers">Custom Loggers</a><a id="Custom-Loggers-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Loggers" title="Permalink"></a></h2><p>A lot of data is recorded automatically, i.e., infections or deaths. If you want to collect data during the simulation run that is not available via the default loggers, you can add custom mechanics. The example below tracks how many infected individuals live in households that have 3 or more members. Doing so requires to set up a <code>CustomLogger(...)</code>. It takes an arbitrary number of arguments that must be one-argument functions whereas the argument has to be the simulation object. These functions are called once every step when running a simulation.</p><pre><code class="language-julia hljs">using GEMS
@@ -131,4 +126,4 @@ customlogger!(sim, cl)
 run!(sim)
 rd = ResultData(sim)
 
-gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_configfiles/">« 6 - Advanced Parameterization</a><a class="docs-footer-nextpage" href="../tut_reporting/">8 - Reporting »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Thursday 20 February 2025 23:18">Thursday 20 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_configfiles/">« 6 - Advanced Parameterization</a><a class="docs-footer-nextpage" href="../tut_reporting/">8 - Reporting »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Friday 21 February 2025 10:17">Friday 21 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
