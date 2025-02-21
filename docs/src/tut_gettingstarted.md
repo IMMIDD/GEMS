@@ -31,9 +31,24 @@ rd = ResultData(sim)
 gemsplot(rd)
 ```
 
-!!! warning "TODO: PUT CONSOLE OUTPUT HERE"
+**Output**
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+```
+[ Info: 12:09:42 | Initializing Simulation [Simulation 0] with default configuration 
+and one custom parameter.
+[ Info: 12:09:42 | └ Creating population
+[ Info: 12:09:43 | └ Creating simulation object
+[ Info: 12:09:43 | Running Simulation Simulation 0
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:18<00:00, 20 days/s]
+[ Info: 12:10:02 | Processing simulation data
+        12:10:08 | └ Done  
+```
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_gs_hello-world2.png" width="80%"/>
+</p>
+``` 
 
 
 ## Changing Parameters
@@ -49,9 +64,24 @@ rd = ResultData(sim)
 gemsplot(rd)
 ```
 
-!!! warning "TODO: PUT CONSOLE OUTPUT HERE"
+**Output**
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+```
+[ Info: 12:02:08 | Initializing Simulation [Simulation 1] with default configuration 
+and custom parameters.
+[ Info: 12:02:08 | └ Creating population
+[ Info: 12:02:09 | └ Creating simulation object
+[ Info: 12:02:10 | Running Simulation Simulation 1
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:16<00:00, 23 days/s]
+[ Info: 12:02:26 | Processing simulation data
+        12:02:36 | └ Done  
+``` 
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_gs_custom-parameters2.png" width="80%"/>
+</p>
+``` 
 
 !!! info "Where's the list of parameters I can change?"
     Put a `?` into the Julia REPL and call `help?> Simulation` to get an overview of arguments that you can pass to customize a simulation or look up the [Simulation](@ref Simulation(; simargs...)) section of the API documentation.
@@ -88,9 +118,30 @@ rd2 = ResultData(sim2)
 gemsplot([rd1, rd2])
 ```
 
-!!! warning "TODO: PUT CONSOLE OUTPUT HERE"
+**Output**
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+```
+[ Info: 12:11:49 | Initializing Simulation [Baseline] with default configuration 
+and one custom parameter.
+[ Info: 12:11:49 | └ Creating population
+[ Info: 12:11:51 | └ Creating simulation object
+[ Info: 12:11:51 | Initializing Simulation [More Infectious] with default 
+configuration and custom parameters.
+[ Info: 12:11:51 | └ Creating population
+[ Info: 12:11:53 | └ Creating simulation object
+[ Info: 12:11:55 | Running Simulation Baseline
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [00:40<00:00, 9 days/s]
+[ Info: 12:12:35 | Running Simulation More Infectious
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:35<00:00, 10 days/s]
+[ Info: 12:13:10 | Processing simulation data
+        12:13:15 | └ Done 
+```
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_gs_comparing-scenarios.png" width="80%"/>
+</p>
+``` 
 
 Pass the `combined = :bylabel` keyword to show the results side-by-side:
 
@@ -98,13 +149,17 @@ Pass the `combined = :bylabel` keyword to show the results side-by-side:
 gemsplot([rd1, rd2], combined = :bylabel)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_gs_comparing-scenarios-combined.png" width="80%"/>
+</p>
+``` 
 
 
 ## Getting the Raw Data
 
 Both raw data (via the internal loggers) and processed data (via the `ResultData` object) are accessible.
-Try this to run a simulation and get the infections as a dataframe. Then visualize it using VSCode's internal table printing feature:
+Try this to run a simulation and get the infections as a dataframe. Then visualize it using VSCode's internal table printing feature (of course only if you are using [Visual Studio Code](https://code.visualstudio.com/) as your IDE):
 
 ```julia
 using GEMS
@@ -114,7 +169,11 @@ df = sim |> infectionlogger |> dataframe
 vscodedisplay(df)
 ```
 
-!!! warning "TODO: PUT VSCODE SCREENSHOT HERE AS IMAGE"
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_gs_vs_code_table.png" width="80%"/>
+</p>
+``` 
 
 !!! info "What do the columns mean?"
     Put a `?` into the Julia REPL and call `help?> InfectionLogger` to get an overview of what the `InfectionLogger` stores or look up the Logger section of the API documentation.
