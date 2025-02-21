@@ -135,7 +135,7 @@ gemsplot(rd, type = :TickCases, combined = :bylabel, ylims = (0, 2000))
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_batches_combined.png" width="80%"/>
+    <img src="../assets/tutorials/tut_batches_combined.png" width="60%"/>
 </p>
 ``` 
 
@@ -177,7 +177,7 @@ gemsplot(rd, type = :TickCases)
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_batches_2.png" width="80%"/>
+    <img src="../assets/tutorials/tut_batches_2.png" width="60%"/>
 </p>
 ``` 
 
@@ -212,8 +212,7 @@ total_infections(bd)
 ...
 [ Info: 23:32:56 | Running Simulation 1/5 [My Experiment]
 [ Info: 23:32:57 | Running Simulation My Experiment
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:30<00:00, 12 days/s]
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:30<00:00, 12 days/s]
 ...
 [ Info: 23:35:44 | Processing Simulation 1/5 in Batch
 ...

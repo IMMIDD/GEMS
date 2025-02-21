@@ -1,9 +1,8 @@
 # 9 - Intervention Strategies
 
 GEMS offers extensive options for intervention modeling.
-We represent interventions using the **"Trigger-Strategy-Measure"** notation.
-
-!!! warning "TODO: ADD LINK TO TRISM EXPLANATION"
+We represent interventions using the **"Trigger-Strategy-Measure"** (TriSM) notation.
+Find an introduction to the TriSM notation [here](@ref trism).
 
 TriSM is more of a modeling paradigm and as such offers countless scenarios that could be modeled.
 This chapter contains a selection of examples to give you a broad idea.
@@ -101,7 +100,7 @@ gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeIsolations))
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_houshold-isolation.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_household-isolation.png" width="80%"/>
 </p>
 ``` 
 
@@ -148,7 +147,7 @@ gemsplot([rd_b, rd_s1, rd_s2],
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_houshold-isolation2.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_household-isolation2.png" width="80%"/>
 </p>
 ``` 
 

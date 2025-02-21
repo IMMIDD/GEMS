@@ -39,8 +39,7 @@ and one custom parameter.
 [ Info: 12:09:42 | └ Creating population
 [ Info: 12:09:43 | └ Creating simulation object
 [ Info: 12:09:43 | Running Simulation Simulation 0
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:18<00:00, 20 days/s]
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:18<00:00, 20 days/s]
 [ Info: 12:10:02 | Processing simulation data
         12:10:08 | └ Done  
 ```
@@ -73,8 +72,7 @@ and custom parameters.
 [ Info: 12:02:08 | └ Creating population
 [ Info: 12:02:09 | └ Creating simulation object
 [ Info: 12:02:10 | Running Simulation Simulation 1
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:16<00:00, 23 days/s]
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:16<00:00, 23 days/s]
 [ Info: 12:02:26 | Processing simulation data
         12:02:36 | └ Done  
 ``` 
@@ -132,11 +130,9 @@ configuration and custom parameters.
 [ Info: 12:11:51 | └ Creating population
 [ Info: 12:11:53 | └ Creating simulation object
 [ Info: 12:11:55 | Running Simulation Baseline
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:40<00:00, 9 days/s]
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [00:40<00:00, 9 days/s]
 [ Info: 12:12:35 | Running Simulation More Infectious
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:35<00:00, 10 days/s]
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:35<00:00, 10 days/s]
 [ Info: 12:13:10 | Processing simulation data
         12:13:15 | └ Done 
 ```
@@ -163,7 +159,7 @@ gemsplot([rd1, rd2], combined = :bylabel)
 ## Getting the Raw Data
 
 Both raw data (via the internal loggers) and processed data (via the `ResultData` object) are accessible.
-Try this to run a simulation and get the infections as a dataframe. Then visualize it using VSCode's internal table printing feature:
+Try this to run a simulation and get the infections as a dataframe. Then visualize it using VSCode's internal table printing feature (of course only if you are using [Visual Studio Code](https://code.visualstudio.com/) as your IDE):
 
 ```julia
 using GEMS
@@ -173,7 +169,11 @@ df = sim |> infectionlogger |> dataframe
 vscodedisplay(df)
 ```
 
-!!! warning "TODO: PUT VSCODE SCREENSHOT HERE AS IMAGE"
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_gs_vs_code_table.png" width="80%"/>
+</p>
+``` 
 
 !!! info "What do the columns mean?"
     Put a `?` into the Julia REPL and call `help?> InfectionLogger` to get an overview of what the `InfectionLogger` stores or look up the Logger section of the API documentation.

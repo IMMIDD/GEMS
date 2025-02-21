@@ -22,7 +22,7 @@ gemsplot(rd, type = :CumulativeCases)
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_plotting_CumulativeCases.png" width="80%"/>
+    <img src="../assets/tutorials/tut_plotting_CumulativeCases.png" width="60%"/>
 </p>
 ``` 
 
@@ -55,7 +55,7 @@ gemsplot(rd, type = :CumulativeCases, xlims = (0, 100), legend = false)
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_plotting_CumulativeCases-no-legend.png" width="80%"/>
+    <img src="../assets/tutorials/tut_plotting_CumulativeCases-no-legend.png" width="60%"/>
 </p>
 ``` 
 
@@ -209,7 +209,7 @@ plot(
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_plotting_combined.png" width="80%"/>
+    <img src="../assets/tutorials/tut_plotting_combined.png" width="60%"/>
 </p>
 ``` 
 

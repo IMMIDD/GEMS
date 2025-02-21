@@ -1,4 +1,4 @@
-# Base Intervention Model
+# [Base Intervention Model](@id trism)
 
 ```@raw html
 <img src="../assets/TriSM-overview.png" width="100%"/>

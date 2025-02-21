@@ -21,12 +21,10 @@ dataframe(inf_logger)
 
 ```
 [ Info: 23:40:26 | Initializing Simulation [Simulation 79] with default configuration 
-and one custom parameter.
 [ Info: 23:40:26 | └ Creating population
 [ Info: 23:40:28 | └ Creating simulation object
 [ Info: 23:40:29 | Running Simulation Simulation 79
-100.0%┣██████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:29<00:00, 13 days/s]
+100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:29<00:00, 13 days/s]
 75908×19 DataFrame
    Row │ infection_id  tick   id_a   id_b   infectious_tick  removed_tick  death_tick  ⋯
        │ Int32         Int16  Int32  Int32  Int16            Int16         Int16       ⋯
@@ -63,12 +61,11 @@ infectionsDF(pp)
 
 ```
 [ Info: 23:41:39 | Initializing Simulation [Simulation 80] with default configuration 
-and one custom parameter.
 [ Info: 23:41:39 | └ Creating population
 [ Info: 23:41:40 | └ Creating simulation object
 [ Info: 23:41:41 | Running Simulation Simulation 80
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:57<00:00, 6 days/s]75798×47 DataFrame
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [00:57<00:00, 6 days/s]
+75798×47 DataFrame
 Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  ⋯
     │ Int32         Int16  Int32  Int32   Int16            Int16         ⋯
     ┼────────────────────────────────────────────────────────────────────────
@@ -97,12 +94,11 @@ effectiveR(pp)
 
 ```
 [ Info: 23:43:16 | Initializing Simulation [Simulation 81] with default configuration 
-and one custom parameter.
 [ Info: 23:43:16 | └ Creating population
 [ Info: 23:43:18 | └ Creating simulation object
 [ Info: 23:43:19 | Running Simulation Simulation 81
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [01:25<00:00, 4 days/s]365×7 DataFrame
+100.0%┣█████████████████████████████████████████┫ 365 days/365 days [01:25<00:00, 4 days/s]
+365×7 DataFrame
  Row │ tick   effective_R  in_hh_effective_R  out_hh_effective_R  rolling_R   ⋯  
      │ Int64  Float64      Float64            Float64             Float64     ⋯  
 ─────┼──────────────────────────────────────────────────────────────────────────
@@ -146,18 +142,17 @@ old_infects_young(pp)
 
 ```
 [ Info: 23:45:19 | Initializing Simulation [Simulation 82] with default configuration 
-and one custom parameter.
 [ Info: 23:45:19 | └ Creating population
 [ Info: 23:45:21 | └ Creating simulation object
 [ Info: 23:45:22 | Running Simulation Simulation 82
-100.0%┣███████████████████████████████████████████████████████████████████████████████┫ 
-365 days/365 days [00:54<00:00, 7 days/s]143×2 DataFrame
+100.0███████████████████████████████████████████┫ 365 days/365 days [00:54<00:00, 7 days/s]
+143×2 DataFrame
  Row │ tick   count 
      │ Int16  Int64
 ─────┼──────────────
    1 │     0      3
    2 │     1      7
-  ⋮  │   ⋮      ⋮
+   ⋮  │   ⋮      ⋮
  142 │   155      1
  143 │   171      1
     139 rows omitted
