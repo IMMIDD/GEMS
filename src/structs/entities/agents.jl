@@ -1087,3 +1087,44 @@ function reset!(individual::Individual)
     individual.quarantine_release_tick = DEFAULT_TICK
     individual.quarantine_tick = DEFAULT_TICK
 end
+
+
+
+
+### printing
+
+function Base.show(io::IO, individual::Individual)
+    sex_str = individual.sex == 1 ? "Female" : individual.sex == 2 ? "Male" : "Diverse"
+
+    labels = [
+        "ID:", "Age:", "Sex:", "Education:", "Occupation:", "Social Factor:",
+        "Mandate Compliance:", "Dead:", "Hospital Status:", "Household ID:",
+        "Office ID:", "School Class ID:", "Municipality ID:"
+    ]
+
+    values = [
+        individual.id, individual.age, sex_str, individual.education,
+        individual.occupation, individual.social_factor,
+        individual.mandate_compliance, individual.dead,
+        individual.hospital_status, individual.household,
+        individual.office, individual.schoolclass,
+        individual.municipality
+    ]
+
+    max_label_length = maximum(length, labels) 
+
+    for (label, value) in zip(labels, values)
+        println(io, rpad(label, max_label_length + 2), value)
+    end
+end
+
+function Base.show(io::IO, individuals::Vector{Individual})
+    for individual in individuals
+        sex_str = individual.sex == 1 ? "Female" : individual.sex == 2 ? "Male" : "Diverse"
+        println(io, "Individual(ID=", individual.id, 
+                ", Age=", individual.age, 
+                ", Sex=", sex_str, 
+                ", Education=", individual.education, 
+                ", Occupation=", individual.occupation, ")")
+    end
+end
