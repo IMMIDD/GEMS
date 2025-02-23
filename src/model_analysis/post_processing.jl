@@ -63,7 +63,7 @@ mutable struct PostProcessor
                 renamecols = "" => "_source") |>
             x -> transform(x,
                 [:tick, :tick_source] => ByRow(-) => :generation_time,
-                [:symptoms_tick, :symptoms_tick_source] => ByRow(-) => :serial_interval,
+                [:symptoms_tick, :symptoms_tick_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval,
                 copycols = false) |>
             x -> DataFrames.select(x, Not([:tick_source, :symptoms_tick_source]))
 
