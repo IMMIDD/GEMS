@@ -124,7 +124,7 @@ A type to represent individuals, that act as agents inside the simulation.
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
 """
-@with_kw mutable struct Individual <: Agent
+@with_kw_noshow mutable struct Individual <: Agent
     # GENERAL
     id::Int32  # 4 bytes
     sex::Int8  # 1 byte
