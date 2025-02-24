@@ -493,6 +493,16 @@
 
         @test min_max_avg_individuals(Setting[], sim) === (nothing, nothing, nothing)
 
+        # test size function for containersettings
+        sim = Simulation(population = "ST")
+
+        set = sim |> settings
+        
+        workplace = set[Workplace][1]
+        @test size(workplace, sim) == sum(size(set[Office][office_id], sim) for office_id in workplace.contains)
+
+        schoolyear = set[SchoolYear][1]
+        @test size(schoolyear, sim) == sum(size(set[SchoolClass][schoolclass_id], sim) for schoolclass_id in schoolyear.contains)
     end
 
     @testset "Geolocated tests" begin
