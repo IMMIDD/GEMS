@@ -287,6 +287,11 @@ using GEMS
 # simulation without interventions
 baseline = Simulation(label = "Baseline")
 
+self_isolation = IStrategy("Self Isolation", scenario_1)
+add_measure!(self_isolation, SelfIsolation(14))
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario_1, trigger)
+
 # simulation with school class closure for 7 days if pool test positive
 scenario = Simulation(label = "Scenario")
 # define test type (PCR test)
@@ -326,7 +331,76 @@ gemsplot(rd, type = (:TickCases, :CustomLoggerPlot))
 
 ## Recurrent Testing
 
-Tutorial coming soon ...
+Let's consider an example where individuals can get tested multiple times.
+The code below compares two scenarios where individuals go into self-isolation for 10 days upon experiencing symptoms.
+In the second example, individuals can get tested after five days and leave isolation if the test is negative.
+With a positive test, individuals can get another test two days later.
+We neglect the fact that this will cause some tests to be performed on day 11.
+
+**Scenario Summary**:
+  - A symptomatic individual goes into self-isolation for 10 days
+  - After day 5, they can get a test
+  - If the test is negative, the individual may leave isolation
+  - If the test is positive, the individual remains isolated and may test again after 48 hours
+  - Individuals will get tested in a two-day interval as long as they are infected
+
+```julia
+using GEMS
+
+# SCENARIO 1: simulation with self-isolation only
+scenario_1 = Simulation(label = "Isolation Only")
+self_isolation = IStrategy("Self Isolation", scenario_1)
+add_measure!(self_isolation, SelfIsolation(14))
+trigger_1 = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario_1, trigger_1)
+
+# SCENARIO 2: simulation with self-isolation and recurrent testing
+scenario_2 = Simulation(label = "Recurrent Testing")
+# define test type (PCR test)
+PCR_test = TestType("PCR Test", pathogen(scenario_2), scenario_2)
+# strategy that ends isolation
+end_isolation = IStrategy("End Isolation", scenario_2)
+add_measure!(end_isolation, CancelSelfIsolation())
+# testing strategy that triggers itself after two days if positive
+recurrent_test = IStrategy("Recurrent Testing", scenario_2)
+add_measure!(recurrent_test,
+    Test("Recurrent Test", PCR_test,
+        positive_followup = recurrent_test,
+        negative_followup = end_isolation),
+    offset = 2)
+# self-isolation and initial testing strategy
+isolation_and_test = IStrategy("Self Isolation", scenario_2)
+add_measure!(isolation_and_test, SelfIsolation(10))
+add_measure!(isolation_and_test,
+    Test("First Test", PCR_test,
+        positive_followup = recurrent_test,
+        negative_followup = end_isolation),
+    offset = 5)
+trigger_2 = SymptomTrigger(isolation_and_test)
+add_symptom_trigger!(scenario_2, trigger_2)
+
+b = Batch(scenario_1, scenario_2)
+run!(b)
+rd = ResultData(b)
+
+gemsplot(rd, type = (:DetectedCases, :CumulativeIsolations))
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_intreventions_recurrent_tests.png" width="80%"/>
+</p>
+``` 
+
+The results show that the overall case numbers are similar in both scenarios.
+The extensive testing can lower the person-days spent in isolation as not all individuals will stay in isolation for the full 10 days.
+However, as all positive tests lead to a reported new case, we observe a substantial number of double reports (green area in the "Detected Cases"-plot).
+The testing measure only tests an individual for a pathogen but cannot differentiate whether it is the same infection or not.
+It is possible to specify that a test should not lead to a new case being reported.
+Please look up the [Test](@ref Test) measure's parameterization options.
+The next tutorial considers two test types where one of them does not lead to a reported case (self-applied test).
 
 ## Multiple Test Types
 
