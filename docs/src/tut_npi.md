@@ -56,9 +56,140 @@ It also displays that there are around one third of asymptomatic cases in both e
 Using the `:CumulativeIsolations` plot, you can inspect the number of people who are currently in isolation at any given time.
 
 
+## Conditioned Measures (Isolation)
+
+The execution of measures and strategies can be conditioned.
+Here's the self-isolation scenario again but it shall only apply to students.
+School kids that are symptomatic shall be isolated for 14 days.
+We can achieve this by passing the optional `condition`-argument to the `add_measure!()` function.
+The condition itself must be a one-argument predicate function (a function that returns `true` or `false`) that is being evaluated once the measure is being triggered.
+In the example below, we pass the `is_student(individual)` function that returns `true` if an individual is a student.
+
+**Scenario Summary**:
+  - Students go into self-isolation for 14 days, immediately upon experiencing symptoms
+  - Isolation prevents out-household contacts, but not in-household contacts
+  - Students end their isolation after 14 days, regardless of their infection state
+
+```julia
+using GEMS
+# simulation without interventions
+baseline = Simulation(label = "Baseline")
+
+# simulation with 14-day isolation (at home)
+# upon experiencing symptoms if you are a student
+scenario = Simulation(label = "Isolate Students")
+self_isolation = IStrategy("Self Isolation", scenario)
+add_measure!(self_isolation, SelfIsolation(14), condition = is_student)
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario, trigger)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = :TickCases)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_conditioned-isolation-1.png" width="60%"/>
+</p>
+```
+
+You can also setup a custom condition-function.
+Here's an example where people who are older than 50 should be isolated.
+
+**Scenario Summary**:
+  - Individuals of age 50+ go into self-isolation for 14 days, immediately upon experiencing symptoms
+  - Isolation prevents out-household contacts, but not in-household contacts
+  - Students end their isolation after 14 days, regardless of their infection state
+
+```julia
+using GEMS
+# simulation without interventions
+baseline = Simulation(label = "Baseline")
+
+# function to evaluate whether an individual is over 50
+function is_over_50(individual)
+    return age(individual) >= 50
+end
+
+# simulation with 14-day isolation (at home)
+# upon experiencing symptoms if you are 50+
+scenario = Simulation(label = "Isolate 50+")
+self_isolation = IStrategy("Self Isolation", scenario)
+add_measure!(self_isolation, SelfIsolation(14), condition = is_over_50)
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario, trigger)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = :TickCases)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_conditioned-isolation-2.png" width="60%"/>
+</p>
+```
+
+It's also possible to pass (one-argument) lambda functions where the argument will be the individual.
+In this is example, we only send people into self-isolation who are living in households larger than 5.
+
+
+**Scenario Summary**:
+  - Individuals living in households of size 5+ go into self-isolation for 14 days, immediately upon experiencing symptoms
+  - Isolation prevents out-household contacts, but not in-household contacts
+  - Students end their isolation after 14 days, regardless of their infection state
+
+```julia
+using GEMS
+# simulation without interventions
+baseline = Simulation(label = "Baseline")
+
+# simulation with 14-day isolation (at home)
+# upon experiencing symptoms if you are a in a 5+ household
+scenario = Simulation(label = "Isolate if in Large Hosuehold")
+self_isolation = IStrategy("Self Isolation", scenario)
+add_measure!(self_isolation, SelfIsolation(14),
+    condition = i -> size(household(i, scenario)) > 5)
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario, trigger)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = :TickCases)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_conditioned-isolation-3.png" width="60%"/>
+</p>
+```
+
+!!! info "Does it work the same way for SStrategies and SMeasures?"
+    Yes. In the above examples, we condition measures that apply to individuals (`IMeasure`s). The argument in the condition-functions is the focus individual that this measure applies to. For `SMeasure`s, the argument for the condition-functions is the respective setting.
+
+
 ## Household Isolation
 
-The previous example let a symptomatic individual stay at home but did not force the other household members to do too.
+The previous examples let a symptomatic individual stay at home but did not force the other household members to do too.
 If you want to isolate the entire household of symptomatic individuals, the following code will help you.
 It is very similar to the previous example but instead of triggering the isolation strategy directly, an individual becoming symptomatic will trigger the "find\_household\_members" strategy that contains a `FindSettingMembers` measure.
 This measure is parameterized to detect all members of the individual's `Household` setting.
