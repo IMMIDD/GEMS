@@ -61,7 +61,7 @@ Using the `:CumulativeIsolations` plot, you can inspect the number of people who
 The execution of measures and strategies can be conditioned.
 Here's the self-isolation scenario again but it shall only apply to students.
 School kids that are symptomatic shall be isolated for 14 days.
-We can achieve this by passing the optional `condition`-argument to the `add_measure!()` function.
+We can achieve this by passing the optional `condition`-argument to the `add_measure!(...)` function.
 The condition itself must be a one-argument predicate function (a function that returns `true` or `false`) that is being evaluated once the measure is being triggered.
 In the example below, we pass the `is_student(individual)` function that returns `true` if an individual is a student.
 
@@ -159,7 +159,7 @@ baseline = Simulation(label = "Baseline")
 
 # simulation with 14-day isolation (at home)
 # upon experiencing symptoms if you are a in a 5+ household
-scenario = Simulation(label = "Isolate if in Large Hosuehold")
+scenario = Simulation(label = "Isolate if in Large Household")
 self_isolation = IStrategy("Self Isolation", scenario)
 add_measure!(self_isolation, SelfIsolation(14),
     condition = i -> size(household(i, scenario)) > 5)
@@ -327,7 +327,6 @@ rd_s = ResultData(scenario)
 gemsplot([rd_b, rd_s], type = (:TickCases, :TickTests, :ActiveDarkFigure), size = (800, 800))
 ```
 
-
 **Plot**
 
 ```@raw html
@@ -341,6 +340,72 @@ Of course, in reality this not very realistic.
 Therefore, GEMS offers options to delay measures (e.g., only getting a test one day after symptom onset).
 Please look up the respective tutorial.
 
+
+## Delayed Measures (Testing)
+
+The timing of intervention strategies is crucial in most applications.
+GEMS has two mechanisms to define the execution time of a measure.
+Both can be passed as optional arguments to the `add_measure!(...)` function.
+The `offset` defines how many ticks should be between the trigger event of a measure's parent strategy and the execution of the respective measure.
+It's default value is `0`.
+The `delay` takes a one-argument function that is being evaluated at runtime and needs to return an integer value.
+These functions work very similar to the `condition`-function.
+Please look up the previous example on conditioned measures.
+The results of this delay-function is added on top of the offset.
+It can be used to delay the execution of measures, e.g., based on  an individual's personal characteristics.
+In the following scenarios, we compare two scenarios: (1) where individuals get a test immediately and go into isolation if the results come back positive (as in the previous tutorial) and (2) where individuals below the age of 50 get the test immediately an 50+ individuals get them one day after.
+
+**Scenario Summary**:
+  - Upon experiencing symptoms, individuals are being tested
+  - In scenario 1, tests are being applied immediately. In scenario 2, tests are being applied with a one-day delay for people above the age of 50
+  - The test has a 100% sensitivity and 100% specificity
+  - Test results are available immediately
+  - If the test result is positive, the individual goes into isolation for 14 days
+
+```julia
+using GEMS, Plots
+
+# SCENARIO 1: No testing delay
+scenario_1 = Simulation(label = "No Delay")
+PCR_Test_1 = TestType("PCR Test", pathogen(scenario_1), scenario_1)
+self_isolation_1 = IStrategy("Self Isolation", scenario_1)
+add_measure!(self_isolation_1, SelfIsolation(14))
+testing_1 = IStrategy("Testing", scenario_1)
+add_measure!(testing_1, Test("Test", PCR_Test_1, positive_followup = self_isolation_1))
+trigger_1 = SymptomTrigger(testing_1)
+add_symptom_trigger!(scenario_1, trigger_1)
+
+# SCENARIO 2: 1-day delay for 50+ people
+scenario_2 = Simulation(label = "1-Day delay for 50+")
+PCR_Test_2 = TestType("PCR Test", pathogen(scenario_2), scenario_2)
+self_isolation_2 = IStrategy("Self Isolation", scenario_2)
+add_measure!(self_isolation_2, SelfIsolation(14))
+testing_2 = IStrategy("Testing", scenario_2)
+add_measure!(testing_2, Test("Test", PCR_Test_2, positive_followup = self_isolation_2),
+    delay = i -> age(i) >= 50 ? 1 : 0) # delay function
+trigger_2 = SymptomTrigger(testing_2)
+add_symptom_trigger!(scenario_2, trigger_2)
+
+# run everything
+b = Batch(scenario_1, scenario_2)
+run!(b)
+rd = ResultData(b)
+
+plot(
+    gemsplot(rd, type = :TickCases),
+    gemsplot(rd, type = :TimeToDetection, ylims = (0, 6)),
+    layout = (2, 1),
+    size = (800, 800)
+)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_delayed-testing.png" width="80%"/>
+</p>
+``` 
 
 ## Varying Test Sensitivity (or Specificity)
 
@@ -542,14 +607,6 @@ Tutorial coming soon ...
 Tutorial coming soon ...
 
 ## Setting Closure
-
-Tutorial coming soon ...
-
-## Delayed Interventions
-
-Tutorial coming soon ...
-
-## Conditional Interventions
 
 Tutorial coming soon ...
 
