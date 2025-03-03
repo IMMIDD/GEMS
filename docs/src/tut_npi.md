@@ -407,6 +407,10 @@ plot(
 </p>
 ``` 
 
+The above plot shows that just a one-day delay for just a fraction of the individuals can have a substantial impact on the overall daily cases.
+The Time-To-Detection plot visualizes the average time between exposure and a positive test result.
+You can see that the average time is around half a day longer in the delayed scenario.
+
 ## Varying Test Sensitivity (or Specificity)
 
 Here's an example of how you can vary intervention-related parameter such as the sensitivity of a test and inspect their influence on the overall dynamics.
@@ -451,7 +455,6 @@ rd = ResultData(b)
 
 gemsplot(rd, type = (:TickCases, :CumulativeIsolations), legend = :topright)
 ```
-
 
 **Plot**
 
