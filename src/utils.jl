@@ -105,27 +105,25 @@ Returns an adaptive range (weekly, monthly or yearly) of dates based on the dura
 function select_interval_dates(startdate::Date, enddate::Date)
     range_days = Dates.value(enddate - startdate) + 1
 
-    if range_days ≤ 45
+    if range_days ≤ 46
         return collect(startdate:Week(1):enddate)
-    elseif range_days ≤ 90
+    elseif range_days ≤ 91
         return collect(startdate:Week(2):enddate)
-    elseif range_days ≤ 365
-        return [firstdayofmonth(d) for d in startdate:Month(1):enddate] 
-    elseif range_days ≤ 730
-        return [firstdayofmonth(d) for d in startdate:Month(2):enddate]
-    elseif range_days ≤ 2920
-        return [Date(year(d), 1, 1) for d in startdate:Year(1):enddate]
+    elseif range_days ≤ 274
+        return firstdayofmonth.(startdate:Month(1):enddate)
+    elseif range_days ≤ 731
+        return firstdayofmonth.(startdate:Month(3):enddate)
     else
-        return [Date(year(d), 1, 1) for d in startdate:Year(2):enddate] 
+        return Date.(year.(startdate:Year(1):enddate), 1, 1)
     end
 end
 
 function choose_date_format(startdate::Date, enddate::Date)
     range_days = Dates.value(enddate - startdate) + 1
 
-    if range_days ≤ 90
+    if range_days ≤ 91
         return "dd.mm.yy"
-    elseif range_days ≤ 730
+    elseif range_days ≤ 731
         return "u yy"
     else
         return "yyyy"
