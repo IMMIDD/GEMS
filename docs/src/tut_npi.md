@@ -405,11 +405,85 @@ plot(
 <p align="center">
     <img src="../assets/tutorials/tut_interventions_delayed-testing.png" width="80%"/>
 </p>
-``` 
+```
 
 The above plot shows that just a one-day delay for just a fraction of the individuals can have a substantial impact on the overall daily cases.
 The Time-To-Detection plot visualizes the average time between exposure and a positive test result.
 You can see that the average time is around half a day longer in the delayed scenario.
+
+
+## Subpar Test (Poor Specificity)
+
+Mass-testing strategies can lead to a large number of individuals in isolation who are not actually infected if the test has a low specificity (false-positive-rate).
+In GEMS you can easily estimate the impact of subpar testing kits.
+In the example below, we assume a test with a 20% false-positive-rate (80% specificity).
+Once an individual experiences symptoms, all members of their household (including themselves) are subjected to a test and sent into household isolation for two weeks if the results are positive.
+
+**Scenario Summary**:
+  - Upon experiencing symptoms, all people in the symptomatc individual's household get tested (including the index individual)
+  - The test has a specificity of 80%. It will identify a non-infected individual as infected in 20% of the cases (false positives)
+  - If multiple people in the household are infected, each individual will get tested multiple times
+  - Test results are available immediately
+  - With a positive test result, the individual will go into self-isolation for 14 days
+
+```julia
+using GEMS, Plots
+
+scenario = Simulation(label = "Household Testing")
+
+# isolation strategy (14 days)
+self_isolation = IStrategy("Self Isolation", scenario)
+add_measure!(self_isolation, SelfIsolation(14)) 
+
+# subpar test (80% specificity)
+antigen_test = TestType("Antigen Test", pathogen(scenario), scenario, specificity = 0.8)
+
+# testing strategy
+testing = IStrategy("Testing", scenario)
+add_measure!(testing, Test("Household Screening", antigen_test,
+    positive_followup = self_isolation))
+
+# strategy to detect household members
+find_household = IStrategy("find Household Members", scenario)
+add_measure!(find_household, FindSettingMembers(Household, testing))
+
+# trigger houshold member identification
+trigger = SymptomTrigger(find_household)
+add_symptom_trigger!(scenario, trigger)
+
+# setup count functions & custom logger
+cnt_isolated_infected(sim) =
+    count(i -> (isquarantined(i) && infected(i)), population(sim))
+cnt_isolated_non_infected(sim) =
+    count(i -> (isquarantined(i) && !infected(i)), population(sim))
+cl = CustomLogger(
+    isolated_infected = cnt_isolated_infected,
+    isolated_non_infected = cnt_isolated_non_infected)
+customlogger!(scenario, cl)
+
+# run simulation & plot results
+run!(scenario)
+rd = ResultData(scenario)
+plot(
+    gemsplot(rd, type = :DetectedCases),
+    gemsplot(rd, type = :CustomLoggerPlot, ylims = (0, 1500)),
+    layout = (2, 1),
+    size = (800, 800))
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_subpar_test.png" width="80%"/>
+</p>
+```
+
+The "detected cases" plot now shows that there are more reported cases (sum of the stacked areas) than true new cases (black dotted line).
+This is interesting considering, that only 60% of the individual will trigger the strategy (40% are asymptomatic).
+The extensive testing strategy combined with the poor test quality leads to a substantial number of double reports (individuals who are tested positive multiple times) and false positives (individuals who tested positive without being infected).
+It can be seen that the number of isolated non-infected individuals peak higher than actually infected individuals in isolation, even though we only send people into isolation if they produced a positive test result.
+
 
 ## Varying Test Sensitivity (or Specificity)
 

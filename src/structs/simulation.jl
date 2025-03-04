@@ -1468,7 +1468,7 @@ Calls the `dataframe()` function on the internal simulation's `QuarantineLogger`
 quarantines(simulation::Simulation) = simulation |> quarantinelogger |> dataframe
 
 """
-    customlogger(simulation, customlogger)
+    customlogger!(simulation, customlogger)
 
 Sets the Simulation's `CustomLogger`.
 """
