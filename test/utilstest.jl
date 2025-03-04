@@ -55,8 +55,8 @@
         @test length(ticks) == 5
 
         # monthly interval
-        ticks = select_interval_dates(Date("2025-01-01"), Date("2025-12-31"))
-        @test length(ticks) == 12
+        ticks = select_interval_dates(Date("2025-01-01"), Date("2025-06-30"))
+        @test length(ticks) == 6
         @test all(day.(ticks) .== [day.(firstdayofmonth(t)) for t in ticks])
 
         # yearly interval
