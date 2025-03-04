@@ -38,7 +38,7 @@ function compartment_fill(postProcessor::PostProcessor)::DataFrame
     for i in 1:nrow(res)
         res[i, "exposed_cnt"] = i == 1 ? cases[1, "exposed_cnt"] - cases[1, "infectious_cnt"] : res[i-1, "exposed_cnt"] + cases[i, "exposed_cnt"] - cases[i, "infectious_cnt"]
         res[i, "infectious_cnt"] = i == 1 ? cases[1, "infectious_cnt"] : res[i-1, "infectious_cnt"] + cases[i, "infectious_cnt"] - cases[i, "removed_cnt"]
-        res[i, "detected_cnt"] = sum((infs.tick .<= i .< infs.removed_tick) .& (coalesce.(infs.first_detected_tick, Inf) .<= i))
+        res[i, "detected_cnt"] = isempty(infs) ? 0 : sum((infs.tick .<= i .< infs.removed_tick) .& (coalesce.(infs.first_detected_tick, Inf) .<= i))
     end
     res[!, "deaths_cnt"] = cumsum(deaths[!, "death_cnt"])
     res[!, "recovered_cnt"] = cumsum(cases[!, "removed_cnt"]) .- res[!, "deaths_cnt"]
