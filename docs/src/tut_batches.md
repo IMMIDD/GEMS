@@ -57,7 +57,7 @@ gemsplot(rd)
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_batches_label.png" width="80%"/>
+    <img src="../assets/tutorials/tut_batches_labels.png" width="80%"/>
 </p>
 ``` 
 

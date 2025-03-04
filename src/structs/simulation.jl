@@ -1657,9 +1657,9 @@ function info(sim::Simulation)
     res = "Simulation [$(sim |> label)] (current $(sim |> tickunit): $(sim |> tick))\n"
 
     res *= "\u2514 Config File: $(sim |> configfile)\n"
-    res *= "\u2514 Popuation File: $(sim |> population |> populationfile)\n"
+    res *= "\u2514 Population File: $(sim |> population |> populationfile)\n"
 
-    res *= "\u2514 Popuation ($(sim |> population |> size) individuals):\n"
+    res *= "\u2514 Population ($(sim |> population |> size) individuals):\n"
     for st in settingtypes(settingscontainer(sim))
         res *= "  \u2514 $(st)s: $(settings(sim, st) |> length)\n"
     end
