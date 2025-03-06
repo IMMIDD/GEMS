@@ -605,6 +605,85 @@ gemsplot(rd, type = (:TickCases, :CumulativeIsolations), legend = :topright)
     Yes. 
 
 
+## Limited Capacity (Testing)
+
+In public health practice, working with limited resource capacities is often a challenging factor.
+This example demonstrates the impact of a capacity limit (regarding tests) on the overall observed progression.
+We compare two scenarios in which symptomatic individuals are tested (no other intervention applied).
+However, in the second scenario, only 50 tests can be applied per day.
+
+**Scenario Summary**:
+  - 15% transmission rate (to spread out the curve)
+  - Symptomatic individuals are tested in both scenarios
+  - No further interventions apply
+  - In the second scenarios, only the first 50 symptomatic individuals per day are tested 
+
+```julia
+using GEMS, Plots
+
+# BASELINE: simulation with unlimited testing capacity
+baseline = Simulation(label = "Unlimited Testing", transmission_rate = 0.15)
+PCR_Test_b = TestType("PCR Test", pathogen(baseline), baseline)
+testing_b = IStrategy("Testing", baseline)
+add_measure!(testing_b, Test("Test", PCR_Test_b))
+trigger_b = SymptomTrigger(testing_b)
+add_symptom_trigger!(baseline, trigger_b)
+
+# helper struct to count daily tests
+mutable struct TestCounter
+    tick
+    count
+end
+
+# helper function to add up daily tests
+# returns true until test capacity for the day (50) is used up
+function test_available!(sim, tc)
+    if tick(sim) > tc.tick
+        tc.tick = tick(sim)
+        tc.count = 1
+    else
+        tc.count += 1
+    end
+    tc.count < 50 ? true : false
+end
+
+# SCENARIO: simulation with 50 tests per day
+tc = TestCounter(0,0) # test counter (tick, tests)
+scenario = Simulation(label = "Limited Testing Capacity", transmission_rate = 0.15)
+PCR_Test_s = TestType("PCR Test", pathogen(scenario), scenario)
+testing_s = IStrategy("Testing", scenario)
+add_measure!(testing_s, Test("Test", PCR_Test_s),
+    condition = i -> test_available!(scenario, tc)) # condition "adds up" daily tests
+trigger_s = SymptomTrigger(testing_s)
+add_symptom_trigger!(scenario, trigger_s)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s],
+    type = (:TickCases, :EffectiveReproduction, :ObservedReproduction, :ActiveDarkFigure),
+    size = (1000, 1200))
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_limited_capacity.png" width="80%"/>
+</p>
+```
+
+We see that both simulations have a very similar true infection- and effective reproduction number curves.
+The observed reproduction number, however, differs significantly once the daily-testing threshold of 50 cases is reached.
+In the second scenario, the observed reproduction number is constantly at exactly 1, suggesting that the growth of the epidemic is linear instead of exponential.
+This is due to the fact that we get the limited 50 positive tests each day, every day.
+The active dark figure reveals that once the threshold is reached, the number of undetected cases siddenly spikes.
+While this example considers capacity limits with regard to testing, you can apply the same mechanics to other capacity-constrained measures such as contact-tracing or vaccination.
+
+
 ## Pool Testing
 
 Besides individual testing, GEMS also offers the option to perform so-called "pool tests".
