@@ -485,6 +485,69 @@ The extensive testing strategy combined with the poor test quality leads to a su
 It can be seen that the number of isolated non-infected individuals peak higher than actually infected individuals in isolation, even though we only send people into isolation if they produced a positive test result.
 
 
+## _Ghost_ Epidemic
+
+In this example, we show how a test with low specificity can cause a "ghost" epidemic.
+We start with the initial 100 infections in the default model and set the `transmission_rate` to `0`, effectively preventing all further infections.
+For each of the 100 initial infections, we sample 10 random individuals ("contacts") from the `GlobalSetting` (the setting that contains _all_ individuals in the simulation).
+We subject these selected contacts to a test with low specificity (85%), which causes a false positive result in 15% of the cases.
+A positive test will again trigger the selection of 10 more random contacts.
+We assume that this is a very basic form of "contact tracing".
+
+**Note:** In the example below, we first define all strategies and add measures later.
+That's necessary enable the recursive execution of strategies (they have to be "known" in order to reference them in measures).
+
+**Scenario Summary**:
+  - No transmissions, only the initial 100 infections are actually ill
+  - Upon experiencing symptoms, we select 10 random individuals from the global setting with a 1-5 day delay
+  - Each individual will be subjected to a 85%-specificity test
+  - A positive test result will again cause the sampling of 10 random "contacts" 
+
+```julia
+using GEMS
+
+# simulation with no transmissions and switched on global setting
+sim = Simulation(transmission_rate = 0.0, global_setting = true)
+# strategy definitions
+find_globalsetting = IStrategy("find setting", sim)
+find_contacts = SStrategy("find contacts", sim)
+testing = IStrategy("testing", sim)
+# test with 85% specificity
+poor_test = TestType("Poor Test", pathogen(sim), sim, specificity = 0.85)
+# identify global setting
+add_measure!(find_globalsetting, FindSetting(GlobalSetting, find_contacts))
+# sample 10 contacts grom global setting with 1-5 day delay
+add_measure!(find_contacts,
+    FindMembers(testing, sample_size = 10), delay = x -> rand(1:5))
+# test individual if unreported or last report more than 6 months old
+# run "contact tracing" for positive test results
+add_measure!(testing,
+    Test("poor-test", poor_test, positive_followup = find_globalsetting),
+    condition = i -> (last_reported_at(i) <= 0 || tick(sim) - last_reported_at(i) >= 180))
+
+trigger = SymptomTrigger(find_globalsetting)
+add_symptom_trigger!(sim, trigger)
+
+run!(sim)
+rd = ResultData(sim)
+gemsplot(rd,
+    type = (:CompartmentFill, :EffectiveReproduction, :DetectedCases),
+    legend = :topright)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_ghost_epidemic.png" width="80%"/>
+</p>
+```
+
+The results show that except for the initial 100 infections, no transmission dynamics are present in the simulation.
+The effective reproduction number is constantly at zero.
+However, we see an exponential growth in "detected cases" that mimicks an epidemic curve and at some point detects more than 2% of the overall individuals as new infections each day although 100% of the "detection" are false positives.
+
+
 ## Varying Test Sensitivity (or Specificity)
 
 Here's an example of how you can vary intervention-related parameter such as the sensitivity of a test and inspect their influence on the overall dynamics.
