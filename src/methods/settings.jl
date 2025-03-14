@@ -403,6 +403,24 @@ function geolocation(stng::Geolocated)::Vector{Float32}
 end
 
 """
+    size(setting::ContainerSetting, simulation::Simulation)
+
+Returns the sum of the sizes of all contained settings.
+"""
+function Base.size(setting::ContainerSetting, simulation::Simulation)::Int
+    total_size = 0
+    for s_id in setting.contains
+        contained_setting = settings(simulation, setting.contains_type)[s_id]
+        total_size += size(contained_setting, simulation)
+    end
+    return total_size
+end
+
+function Base.size(setting::IndividualSetting, simulation::Simulation)::Int
+    return length(individuals(setting, simulation))
+end
+
+"""
     min_individuals(stngs::Vector{Setting}, simulation::Simulation)
 
 Returns the minimum number of individuals across all provided settings.
