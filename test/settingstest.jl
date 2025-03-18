@@ -350,10 +350,50 @@
         h = Household(id=1, contact_sampling_method=rs)
         gs = GlobalSetting(contact_sampling_method=rs)
         wp = Office(id=1, contact_sampling_method=rs)
+        m = Municipality(id = 1)
+        s = School(id = 1)
+        w = Workplace(id = 1)
+        sc = SchoolComplex(id = 1)
+        sy = SchoolYear(id = 1)
+        d = Department(id = 1)
+        ws = WorkplaceSite(id = 1)
 
+        struct newSetting <: Setting end
+        ns = newSetting()        
+
+        @test '?' == settingchar(ns)
         @test 'h' == settingchar(h)
         @test 'g' == settingchar(gs)
         @test 'o' == settingchar(wp)
+        @test 'm' == settingchar(m)
+        @test 's' == settingchar(s)
+        @test 'x' == settingchar(sc)
+        @test 'y' == settingchar(sy)
+        @test 'd' == settingchar(d)
+        @test 'p' == settingchar(ws)
+        @test 'w' == settingchar(w)
+
+        @test settingstring('h') == "Household"
+        @test settingstring('s') == "School"
+        @test settingstring('c') == "Schoolclass"
+        @test settingstring('x') == "Schoolcomplex"
+        @test settingstring('y') == "Schoolyear"
+        @test settingstring('w') == "Workplace"
+        @test settingstring('p') == "WorkplaceSite"
+        @test settingstring('d') == "Department"
+        @test settingstring('o') == "Office"
+        @test settingstring('m') == "Municipality"
+        @test settingstring('g') == "GlobalSetting"
+        @test settingstring('a') == "Unknown"
+
+        @test contact_sampling_method(h) === rs
+        rs2 = RandomSampling()
+        contact_sampling_method!(h, rs2) 
+        @test contact_sampling_method(h) === rs2
+        
+        @test contained(w) == -1
+        @test contained_type(w) == WorkplaceSite
+ 
     end
 
 
