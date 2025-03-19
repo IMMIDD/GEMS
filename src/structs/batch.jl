@@ -61,6 +61,16 @@ mutable struct Batch
     end
 
     @doc """
+        Batch(simulations::Vector{Simulation})
+
+    Creates a `Batch` object from a vector of `Simulation` objects.
+    **Note**: All `Simulation` objects must be unique.
+    You cannot pass the same simulation twice.
+    """
+    Batch(simulations::Vector{Simulation}) = Batch(simulations...)
+
+
+    @doc """
         Batch(batches::Batch...)
 
     Merge multiple `Batch`es into one.

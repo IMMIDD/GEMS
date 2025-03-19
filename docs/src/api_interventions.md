@@ -16,6 +16,7 @@ Order   = [:function]
 ### Structs
 
 ```@docs
+HospitalizationTrigger
 ITickTrigger
 STickTrigger
 SymptomTrigger

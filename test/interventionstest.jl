@@ -258,9 +258,12 @@
 
         result2 = process_measure(sim, gs, find_members2)
 
-        @test typeof(result2) == Tuple{Vector{Individual},IStrategy}
+        @test typeof(result2) == Handover
 
-        individuals, strategy = result2
+        individuals = result2.focal_objects
+        strategy = result2.follow_up
+        
+        @test typeof(individuals) <: AbstractVector{<:Individual}
         @test length(individuals) == 0
 
         @test typeof(strategy) <: IStrategy
@@ -280,9 +283,12 @@
 
         result3 = process_measure(sim, gs, find_members3)
 
-        @test typeof(result3) == Tuple{Vector{Individual},IStrategy}
+        @test typeof(result3) == Handover
 
-        individuals, strategy = result3
+        individuals = result3.focal_objects
+        strategy = result3.follow_up
+        
+        @test typeof(individuals) <: AbstractVector{<:Individual}
         @test length(individuals) == 0
 
         @test typeof(strategy) <: IStrategy
