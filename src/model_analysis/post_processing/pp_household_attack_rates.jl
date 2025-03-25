@@ -107,6 +107,9 @@ function household_attack_rates_fast(postProcessor::PostProcessor)
     select!(infs, :tick, :id_b, :household_b, :infection_id, :source_infection_id, :setting_type)
 
     n = nrow(infs)
+    if n == 0
+        return DataFrame(first_introduction = Int16[], hh_id = Int32[], hh_size = Int16[], chain_size = Int32[], hh_attack_rate = Float64[])
+    end
     infs.home_chain = zeros(Int32, n)  # size of household infection subtree
     infs.started_chain = fill(true, n) # true if this infection started a household chain
 
@@ -130,9 +133,9 @@ function household_attack_rates_fast(postProcessor::PostProcessor)
         parent_id == -1 && continue
         infs.setting_type[i] != 'h' && continue
 
-        # find parent row (if exists in the dataset)
-        parent_row = get(id_to_row, parent_id, 0)
-        parent_row == 0 && continue  # Parent not found (invalid or non-household)
+        # find parent row 
+        parent_row = get(id_to_row, parent_id, -1)
+        parent_row == -1 && continue 
 
         # propagate chain size upward and mark as secondary
         infs.home_chain[parent_row] += 1 + infs.home_chain[i]
