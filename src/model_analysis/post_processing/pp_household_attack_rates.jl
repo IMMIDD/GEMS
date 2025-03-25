@@ -105,6 +105,7 @@ end
 function household_attack_rates_fast(postProcessor::PostProcessor)
     infs = copy(postProcessor |> infectionsDF)
     select!(infs, :tick, :id_b, :household_b, :infection_id, :source_infection_id, :setting_type)
+    sort!(infs, :infection_id)
 
     n = nrow(infs)
     if n == 0
@@ -138,8 +139,10 @@ function household_attack_rates_fast(postProcessor::PostProcessor)
         parent_row == -1 && continue 
 
         # propagate chain size upward and mark as secondary
-        infs.home_chain[parent_row] += 1 + infs.home_chain[i]
-        infs.started_chain[i] = false
+        if infs.household_b[i] == infs.household_b[parent_row]
+            infs.home_chain[parent_row] += 1 + infs.home_chain[i]
+            infs.started_chain[i] = false
+        end
     end
 
     # generate dataframe of households
@@ -149,7 +152,7 @@ function household_attack_rates_fast(postProcessor::PostProcessor)
         hh_size = Int16.(size.((i -> household(i, postProcessor |> simulation)).(postProcessor |> simulation |> individuals))))
 
 
-    return infs |> 
+        return infs |> 
         # join infections with household data
         x -> leftjoin(x, hh_sizes, on = [:id_b => :ind_id]) |>
         x -> DataFrames.select(x, :tick, :hh_id, :home_chain, :started_chain, :hh_size) |>
@@ -159,8 +162,8 @@ function household_attack_rates_fast(postProcessor::PostProcessor)
         x -> groupby(x, :hh_id) |>
         x -> combine(x,
             :tick => minimum => :first_introduction,
-            [:tick, :home_chain] => ((tick, chain) -> chain[argmin(tick)]) => :chain_size,
-            [:tick, :hh_size] => ((tick, size) -> size[argmin(tick)]) => :hh_size) |>
+            [:tick, :home_chain] => ((tick, chain) -> isempty(chain) ? 0 : chain[argmin(tick)]) => :chain_size,
+            [:tick, :hh_size] => ((tick, size) -> isempty(size) ? 0 : size[argmin(tick)]) => :hh_size) |>
         # calculate household attack rate
         x -> transform(x, [:chain_size, :hh_size] => ByRow((c, h) -> (h == 0 ? 0 : c / (h - 1))) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>
