@@ -51,6 +51,7 @@ Ventilated critical case have also a probability to need ICU (intensive care uni
 While asymptotic cases can't die by means of the disease, all other symptom categories
 are assigned a certain death probability as seen in the graphic.
 
+
 ## Infectiousness
 
 The infectiousness of an individual is tracked seperately from the disease state. Generally
@@ -58,7 +59,9 @@ an individual should become infectious some time after becoming exposed and befo
 symptoms. In asymptomatic cases, the individual will become infectious between becoming
 exposed and recovering from a disease.
 
+
 ## Age Stratifiction
+
 To estimate the disease progression, we make use of age-stratified stochastic matrices.
 
 As an example consider the age groups 0-40, 40-80 and 80+ as well as the above mentioned
@@ -74,3 +77,9 @@ be given by the following $3x4$ matrix.
 In this example the first row contains the probability of an individual between 0 and 40 years
 of age to end up in the symptom categories "Asymptomatic", "Mild", "Severe" or "Critical" in this
 order.
+
+
+## True- vs. Observed Cases
+
+We generally differentiate "true" cases and "observed" cases.
+While a true case is an actual infection.
