@@ -1,5 +1,5 @@
 @testset "Reporting" begin
-    
+
     basefolder = dirname(dirname(pathof(GEMS)))
 
     # load example simulation to perform tests
@@ -7,8 +7,18 @@
     run!(sim)
     rd = sim |> PostProcessor |> ResultData
 
+    sims = Simulation[]
+    for i in 1:5
+        sim = Simulation(label="My Experiment")
+        push!(sims, sim)
+    end
+
+    b = Batch(sims...)
+    run!(b)
+    bd = BatchData(b)
+
     @testset "Markdown Conversion" begin
-    
+
         # escaping
         @test escape_markdown("_*") == "\\_\\*"
         @test savepath("C:\\Test") == "C:/Test"
@@ -19,29 +29,29 @@
 
         # start conditions
         @test InfectedFraction(0.01, sim |> pathogen) |> markdown |> typeof == String
-        
+
         # stop criteria
         @test TimesUp(10) |> markdown |> typeof == String
-        
+
         # pathogens
         @test sim |> pathogen |> markdown |> typeof == String
 
         # Distributions
-        @test Uniform(0,1) |> markdown |> typeof == String
+        @test Uniform(0, 1) |> markdown |> typeof == String
         @test Poisson(4) |> markdown |> typeof == String
 
         # Settings SettingsContainer
         @test sim |> settings |> markdown |> typeof == String#
-        
+
     end
-    
+
     @testset "Sections" begin
 
         # sections
 
         s1 = Section(
-            title = "First Heading",
-            content = "Test Content"
+            title="First Heading",
+            content="Test Content"
         )
 
         @test s1 |> title == "First Heading"
@@ -56,8 +66,8 @@
         # subsections
 
         s2 = Section(
-            title = "Subsection",
-            content = "Sub Content"
+            title="Subsection",
+            content="Sub Content"
         )
         addsection!(s1, s2)
 
@@ -91,11 +101,11 @@
     @testset "Reports" begin
 
         rep = SimulationReport(
-            data = rd,
-            title = "Test Report",
-            author = "Tester",
-            date = rd |> execution_date,
-            abstract = "Test Abstract"
+            data=rd,
+            title="Test Report",
+            author="Tester",
+            date=rd |> execution_date,
+            abstract="Test Abstract"
         )
 
         # meta info
@@ -125,7 +135,7 @@
 
         # sections
 
-        s = Section(title = "Test Section")
+        s = Section(title="Test Section")
         addsection!(rep, s)
         @test rep |> sections == [s]
 
@@ -144,17 +154,35 @@
     @testset "Plotting" begin
         # array of all available plots
         plts = [
-            PopulationPyramid(),
-            # SettingAgeContacts(Household), # (superseded by AggregatedSettingAgeContacts)
-            # SettingAgeContacts(GlobalSetting),
-            AggregatedSettingAgeContacts(Household),
-            TickCases(),
-            CumulativeCases(),
-            SymptomCategories(),
-            LatencyHistogram(),
-            InfectiousHistogram(),
-            EffectiveReproduction(),
+            ActiveDarkFigure()
+            #AggregatedSettingAgeContacts(Household)
+            CompartmentFill()
+            CumulativeCases()
+            CumulativeDiseaseProgressions()
+            CumulativeIsolations()
+            CustomLoggerPlot()
+            DetectedCases()
+            EffectiveReproduction()
+            GenerationTime()
+            #HospitalOccupancy()
+            HouseholdAttackRate()
             Incidence()
+            InfectionDuration()
+            InfectionMap()
+            InfectiousHistogram()
+            LatencyHistogram()
+            ObservedReproduction()
+            ObservedSerialInterval()
+            PopulationPyramid()
+            #SettingAgeContacts(Household)
+            SettingSizeDistribution()
+            SymptomCategories()
+            TestPositiveRate()
+            TickCases()
+            TickCasesBySetting()
+            TickTests()
+            TimeToDetection()
+            TotalTests()
         ]
 
         # generate each plot
@@ -169,6 +197,63 @@
 
             # generate plots (maybe there's a better idea for actual tests here?)
             generate(p, rd)
+        end
+
+        @testset "Plots with ResultData-Array" begin
+            plts = [
+                ActiveDarkFigure()
+                CumulativeCases()
+                CumulativeIsolations()
+                CustomLoggerPlot()
+                EffectiveReproduction()
+                GenerationTime()
+                HouseholdAttackRate()
+                InfectionDuration()
+                TickCases()
+                TotalTests()
+            ]
+            sim2 = Simulation()
+            run!(sim2)
+            rd2 = sim |> PostProcessor |> ResultData
+
+            # generate each plot
+            for p in plts
+                @test p |> title |> typeof == String
+                @test p |> description |> typeof == String
+
+                description!(p, "TEST")
+                @test p |> description == "TEST"
+                @test p |> filename |> typeof == String
+                @test occursin(r".png$", filename(p)) # filename must end in *.png
+
+                # generate plots (maybe there's a better idea for actual tests here?)
+                generate(p, [rd, rd2])
+            end
+        end
+
+        @testset "Batch Plots" begin
+            #array of all availible batch plots
+            plts = [
+                #BatchEffectiveReproduction()
+                #BatchPopulationPyramid(basefolder * "/test/testdata/TestPop.csv")
+                #BatchSettingAgeContacts(Household, basefolder * "/test/testdata/TestPop.csv")
+                #BatchTickCases()
+                BatchTickIsolations()
+                BatchTickTests()
+            ]
+            # generate each plot
+            for p in plts
+                @test p |> title |> typeof == String
+                @test p |> description |> typeof == String
+
+                description!(p, "TEST")
+                @test p |> description == "TEST"
+                @test p |> filename |> typeof == String
+                @test occursin(r".png$", filename(p)) # filename must end in *.png
+
+                # generate plots (maybe there's a better idea for actual tests here?)
+                generate(p, bd)
+            end
         end
 
     end
@@ -192,8 +277,8 @@
             sections
             glossary
             abstract
-            function TestReportStyle(;data)
-                rep = new(data,"Test","Test","Test","Test",[],false,"Test")
+            function TestReportStyle(; data)
+                rep = new(data, "Test", "Test", "Test", "Test", [], false, "Test")
                 return rep
             end
         end
@@ -228,7 +313,7 @@
     #     @test length(rep.sections) == 0
     # end
     @testset "File Handling" begin
-        
+
         # temporary testing directory (timestamp for uniqueness)
         BASE_FOLDER = dirname(dirname(pathof(GEMS)))
         directory = BASE_FOLDER * "/test_" * string(datetime2unix(now()))
@@ -237,15 +322,15 @@
 
         @test rep |> typeof == SimulationReport
 
-         generate(rep, directory)
-  
-         # check file existence
-         @test isfile(directory * "/report.md")
-         @test isfile(directory * "/report.html")
-         @test isfile(directory * "/report.pdf")
- 
-         # finally, remove all test files
-         rm(directory, recursive=true)
+        generate(rep, directory)
+
+        # check file existence
+        @test isfile(directory * "/report.md")
+        @test isfile(directory * "/report.html")
+        @test isfile(directory * "/report.pdf")
+
+        # finally, remove all test files
+        rm(directory, recursive=true)
 
     end
 end
