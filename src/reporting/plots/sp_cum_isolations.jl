@@ -45,7 +45,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Cumulative Isolations plot
 """
-function generate(plt::CumulativeIsolations, rd::ResultData; plotargs...)
+function generate(plt::CumulativeIsolations, rd::ResultData; dates::Bool = true,  plotargs...)
 
     # return empty plot with message, if result data does not contain any isolations
     if (rd |> cumulative_quarantines).quarantined |> sum <= 0
@@ -81,6 +81,9 @@ function generate(plt::CumulativeIsolations, rd::ResultData; plotargs...)
     # add custom arguments that were passed
     plot!(cum_iso; plotargs...)
 
+    # replace x-ticks with dates
+    dates ? adddates!(cum_iso, rd) : nothing
+
     return cum_iso
 end
 
@@ -107,7 +110,7 @@ The `series` argument allows to specifcy if quarantined `:workers`, `:students`,
 - `Plots.Plot`: Cumulative Isolations multi plot
 """
 function generate(plt::CumulativeIsolations, rds::Vector{ResultData};
-    series::Symbol = :all, plotargs...)
+    dates::Bool = true, series::Symbol = :all, plotargs...)
 
 
     uticks = rds[1] |> tick_unit
@@ -135,6 +138,9 @@ function generate(plt::CumulativeIsolations, rds::Vector{ResultData};
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return(p)
 end

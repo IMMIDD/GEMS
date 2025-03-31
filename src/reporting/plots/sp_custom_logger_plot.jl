@@ -49,7 +49,7 @@ subplots individually.
 
 - `Plots.Plot`: Custom Logger Plot plot
 """
-function generate(plt::CustomLoggerPlot, rd::ResultData; plotargs...)
+function generate(plt::CustomLoggerPlot, rd::ResultData; dates::Bool = true,  plotargs...)
 
     # data
     ticks = (rd |> customlogger).tick
@@ -73,6 +73,8 @@ function generate(plt::CustomLoggerPlot, rd::ResultData; plotargs...)
     
     p = plot(plts..., layout = (1, cl_data |> names |> length))
     plot!(p; plotargs...)
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
     return p
 end
 
@@ -94,7 +96,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Cumulative Isolations multi plot
 """
-function generate(plt::CustomLoggerPlot, rds::Vector{ResultData}; plotargs...)
+function generate(plt::CustomLoggerPlot, rds::Vector{ResultData}; dates::Bool = true,  plotargs...)
 
     # throw exception if rds-Vector is empty
     isempty(rds) ? throw("The passed ResultData vector is empty.") : nothing
@@ -138,6 +140,8 @@ function generate(plt::CustomLoggerPlot, rds::Vector{ResultData}; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return(p)
 end

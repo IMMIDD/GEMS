@@ -185,15 +185,15 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
     printinfo("Running Simulation $(label(simulation))")
 
     # Use a progressbar for the most common stop criterion
-    if with_progressbar && isa(stop_criterion(simulation), TimesUp)
+    if with_progressbar
 
         # Progressbar for the simulation if time limit is set
-        for i in ProgressBar((simulation |> tick) : (simulation |> stop_criterion |> limit) - 1, unit= " $(simulation |> tickunit)s")
+        for i in ProgressBar((simulation |> tick) : (simulation |> duration) - 1, unit= " $(simulation |> tickunit)s")
             step!(simulation)
         end
     else
         # while the simulation's stop criterion is not met, perform next step
-        while !evaluate(simulation, stop_criterion(simulation))
+        while !is_finished(simulation)
 
             # Print current tick
             @info "\r  \u2514 Currently simulating $(simulation |> tickunit): $(tick(simulation) + 1)"

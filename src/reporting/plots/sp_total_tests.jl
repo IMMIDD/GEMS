@@ -46,7 +46,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Total Tests plot
 """
-function generate(plt::TotalTests, rd::ResultData; plotargs...)
+function generate(plt::TotalTests, rd::ResultData; dates::Bool = true,  plotargs...)
 
     # return empty plot with message, if result data does not contain tests
     if rd |> tick_tests |> isempty
@@ -86,6 +86,9 @@ function generate(plt::TotalTests, rd::ResultData; plotargs...)
     # add custom arguments that were passed
     plot!(plot_tests; plotargs...)
 
+    # replace x-ticks with dates
+    dates ? adddates!(plot_tests, rd) : nothing
+
     return(plot_tests)
 end
 
@@ -106,7 +109,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Total Tests multi plot
 """
-function generate(plt::TotalTests, rds::Vector{ResultData}; plotargs...)
+function generate(plt::TotalTests, rds::Vector{ResultData}; dates::Bool = true,  plotargs...)
 
     # get all tests types available in any of the result data objects
     ttypes = []
@@ -148,6 +151,9 @@ function generate(plt::TotalTests, rds::Vector{ResultData}; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return(p)
 end

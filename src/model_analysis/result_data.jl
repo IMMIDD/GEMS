@@ -4,10 +4,10 @@ export ResultData
 
 export ResultDataFunction, ResultDataStyle
 
-export meta_data, execution_date, execution_date_formatted, GEMS_version, config_file, config_file_val, population_file, population_params, final_tick
+export meta_data, execution_date, execution_date_formatted, GEMS_version, config_file, config_file_val, population_file, population_params, start_date, final_tick
 export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data
 export setting_sizes, globalsetting_flag, pathogens, vaccine, vaccination_strategy, total_quarantines, total_tests
-export tick_unit, start_condition, stop_criterion, strategies, kernel, julia_version
+export tick_unit, tick_unit_char, start_condition, stop_criterion, strategies, kernel, julia_version
 export system_data, word_size, threads, cpu_data, total_mem_size, free_mem_size, model_size
 export git_repo, git_branch, git_commit
 export dataframes, population_size, setting_age_contacts, infections, vaccinations, deaths, effectiveR,aggregated_setting_age_contacts
@@ -390,6 +390,18 @@ function sim_data(rd::ResultData)
 end
 
 """
+    start_date(rd::ResultData)
+
+Returns the startdate of the simulation.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function start_date(rd::ResultData)
+    return(get(rd |> sim_data, "start_date", Dict()))
+end
+
+
+
+"""
     final_tick(rd::ResultData)
 
 Returns the tick counter at the end of the simulation run.
@@ -500,6 +512,16 @@ Returns an empty dictionary if the data is not available in the input `ResultDat
 """
 function tick_unit(rd::ResultData)
     return(get(rd |> sim_data, "tick_unit", Dict()))
+end
+
+"""
+    tick_unit_char(rd::ResultData)
+
+Returns the unit of time that one tick corresponds to as Char.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function tick_unit_char(rd::ResultData)
+    return(get(rd |> sim_data, "tick_unit_char", Dict()))
 end
 
 """

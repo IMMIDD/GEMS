@@ -47,7 +47,7 @@ subplots individually.
 
 - `Plots.Plot`: Household Attack Rate plot
 """
-function generate(plt::HouseholdAttackRate, rd::ResultData; plotargs...)
+function generate(plt::HouseholdAttackRate, rd::ResultData; dates::Bool = true, plotargs...)
 
     # group attack rate data by household size, time of first introduction,
     # and look at change in attack rates and change in mean houeshold sizes
@@ -111,6 +111,9 @@ function generate(plt::HouseholdAttackRate, rd::ResultData; plotargs...)
     # add custom arguments that were passed
     plot!(ar_plot; plotargs...)
 
+    # replace x-ticks with dates
+    dates ? adddates!(ar_plot, rd) : nothing
+
     return ar_plot    
 end
 
@@ -135,7 +138,7 @@ subplots individually.
 
 - `Plots.Plot`: Household Attack Rate multi plot
 """
-function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; plotargs...)
+function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; dates::Bool = true, plotargs...)
 
 
     # prepare colors & data per label
@@ -190,6 +193,9 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; plotargs...
     end
 
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rd) : nothing
 
     return p
 end

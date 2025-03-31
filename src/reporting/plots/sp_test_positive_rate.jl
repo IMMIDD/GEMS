@@ -45,7 +45,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Test Positive Rate plot
 """
-function generate(plt::TestPositiveRate, rd::ResultData; plotargs...)
+function generate(plt::TestPositiveRate, rd::ResultData; dates::Bool = true,  plotargs...)
 
     # return empty plot with message, if result data does not contain tests
     if rd |> tick_tests |> isempty
@@ -78,6 +78,9 @@ function generate(plt::TestPositiveRate, rd::ResultData; plotargs...)
 
     # add custom arguments that were passed
     plot!(plot_tests; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(plot_tests, rd) : nothing
 
     return(plot_tests)
 end

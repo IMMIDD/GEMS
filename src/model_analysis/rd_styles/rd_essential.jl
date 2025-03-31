@@ -18,7 +18,8 @@ mutable struct EssentialResultData <: ResultDataStyle
                 ),
             "sim_data" =>
                 Dict(
-                "label" => () -> pP |> simulation |> label,     
+                "label" => () -> pP |> simulation |> label,
+                "start_date" => () -> pP |> simulation |> startdate |> x -> Dates.format(x, "yyyy-mm-dd"),     
                 "final_tick" => () -> pP |> simulation |> tick
                 ),
             "dataframes" =>

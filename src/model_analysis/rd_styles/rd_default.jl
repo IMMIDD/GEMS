@@ -20,6 +20,7 @@ and computationally intensive (memory & runtime) option.
         
     - `sim_data::Dict{String, Any}`
         - `label::String`: Label of this simulation run (needed for plotting)
+        - `start_date::String`: Start date of the simulation run
         - `final_tick::Int16`: Tick counter at the end of the simulation run
         - `number_of_individuals::Int64`: Total number of individuals in the population model
         - `initial_infections::Int64`: Number of initial infected individuals
@@ -120,6 +121,7 @@ mutable struct DefaultResultData <: ResultDataStyle
             "sim_data" =>
                 Dict(
                     "label" => () -> pP |> simulation |> label,
+                    "start_date" => () -> pP |> simulation |> startdate |> x -> Dates.format(x, "yyyy-mm-dd"),
                     "final_tick" => () -> pP |> simulation |> tick,
                     "number_of_individuals" => () -> pP |> simulation |> population |> individuals |> length,
                     "initial_infections" => () -> (pP |> infectionsDF |> nrow) - (pP |> sim_infectionsDF |> nrow),
@@ -130,6 +132,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "region_info" => () -> pP |> simulation |> region_info,
                     "pathogens" => () -> [pP |> simulation |> pathogen],
                     "tick_unit" => () -> pP |> simulation |> tickunit,
+                    "tick_unit_char" => () -> pP |> simulation |> tickunit_char,
                     "start_condition" => () -> pP |> simulation |> start_condition,
                     "stop_criterion" =>  () -> pP |> simulation |> stop_criterion,
                     "strategies" => () -> pP |> simulation |> strategies,
