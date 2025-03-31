@@ -124,7 +124,7 @@ A type to represent individuals, that act as agents inside the simulation.
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
 """
-@with_kw mutable struct Individual <: Agent
+@with_kw_noshow mutable struct Individual <: Agent
     # GENERAL
     id::Int32  # 4 bytes
     sex::Int8  # 1 byte
@@ -1086,4 +1086,109 @@ function reset!(individual::Individual)
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
     individual.quarantine_release_tick = DEFAULT_TICK
     individual.quarantine_tick = DEFAULT_TICK
+end
+
+
+
+
+### printing
+
+function Base.show(io::IO, individual::Individual)
+    sex_str = individual.sex == 1 ? "Female" : individual.sex == 2 ? "Male" : "Diverse"
+
+    labels = [
+        "ID:", "Age:", "Sex:", "Education:", "Occupation:", "Social Factor:",
+        "Mandate Compliance:", "Dead:", "Hospital Status:", "Household ID:",
+        "Office ID:", "School Class ID:", "Municipality ID:", "Pathogen ID:",
+        "Infection ID:", "Disease State:", "Symptom Category:", "Infectiousness:",
+        "Number of Infections:", "Exposed Tick:", "Infectious Tick:",
+        "Onset of Symptoms:", "Onset of Severeness:", "Hospitalized Tick:",
+        "Ventilation Tick:", "ICU Tick:", "Death Tick:", "Removed Tick:",
+        "Last Test:", "Last Test Result:", "Last Reported At:", "Vaccine ID:",
+        "Number of Vaccinations:", "Vaccination Tick:", "Quarantine Status:",
+        "Quarantine Tick:", "Quarantine Release Tick:"
+    ]
+
+    values = [
+        individual.id, individual.age, sex_str, individual.education,
+        individual.occupation, individual.social_factor,
+        individual.mandate_compliance, individual.dead,
+        individual.hospital_status, individual.household,
+        individual.office, individual.schoolclass,
+        individual.municipality, individual.pathogen_id,
+        individual.infection_id, individual.disease_state,
+        individual.symptom_category, individual.infectiousness,
+        individual.number_of_infections, individual.exposed_tick,
+        individual.infectious_tick, individual.onset_of_symptoms,
+        individual.onset_of_severeness, individual.hospitalized_tick,
+        individual.ventilation_tick, individual.icu_tick, individual.death_tick,
+        individual.removed_tick, individual.last_test, individual.last_test_result,
+        individual.last_reported_at, individual.vaccine_id,
+        individual.number_of_vaccinations, individual.vaccination_tick,
+        individual.quarantine_status, individual.quarantine_tick,
+        individual.quarantine_release_tick
+    ]
+
+    max_label_length = maximum(length, labels)
+
+    println("Individual")
+    for (label, value) in zip(labels, values)
+        println(io, "  ", rpad(label, max_label_length + 2), value)
+    end
+end
+
+function Base.show(io::IO, individuals::Vector{Individual})
+    println(io, "$(length(individuals))-element Vector{Individual}:")
+    println(io, "[")
+    
+    for (i, individual) in enumerate(individuals)
+        sex_str = individual.sex == 1 ? "Female" : individual.sex == 2 ? "Male" : "Diverse"
+        
+        attributes = [
+            "ID = $(individual.id)",
+            "Age = $(individual.age)",
+            "Sex = $sex_str",
+            "Education = $(individual.education)",
+            "Occupation = $(individual.occupation)",
+            "Social Factor = $(individual.social_factor)",
+            "Mandate Compliance = $(individual.mandate_compliance)",
+            "Dead = $(individual.dead)",
+            "Hospital Status = $(individual.hospital_status)",
+            "Household ID = $(individual.household)",
+            "Office ID = $(individual.office)",
+            "School Class ID = $(individual.schoolclass)",
+            "Municipality ID = $(individual.municipality)",
+            "Pathogen ID = $(individual.pathogen_id)",
+            "Infection ID = $(individual.infection_id)",
+            "Disease State = $(individual.disease_state)",
+            "Symptom Category = $(individual.symptom_category)",
+            "Infectiousness = $(individual.infectiousness)",
+            "Number of Infections = $(individual.number_of_infections)",
+            "Exposed Tick = $(individual.exposed_tick)",
+            "Infectious Tick = $(individual.infectious_tick)",
+            "Onset of Symptoms = $(individual.onset_of_symptoms)",
+            "Onset of Severeness = $(individual.onset_of_severeness)",
+            "Hospitalized Tick = $(individual.hospitalized_tick)",
+            "Ventilation Tick = $(individual.ventilation_tick)",
+            "ICU Tick = $(individual.icu_tick)",
+            "Death Tick = $(individual.death_tick)",
+            "Removed Tick = $(individual.removed_tick)",
+            "Last Test = $(individual.last_test)",
+            "Last Test Result = $(individual.last_test_result)",
+            "Last Reported At = $(individual.last_reported_at)",
+            "Vaccine ID = $(individual.vaccine_id)",
+            "Number of Vaccinations = $(individual.number_of_vaccinations)",
+            "Vaccination Tick = $(individual.vaccination_tick)",
+            "Quarantine Status = $(individual.quarantine_status)",
+            "Quarantine Tick = $(individual.quarantine_tick)",
+            "Quarantine Release Tick = $(individual.quarantine_release_tick)"
+        ]
+        
+        individual_str = "  Individual(\n    " * join(attributes, ",\n    ") * ")"
+        
+        eol = i < length(individuals) ? "," : ""
+        println(io, "$individual_str$eol")
+    end
+    
+    println(io, "]")
 end
