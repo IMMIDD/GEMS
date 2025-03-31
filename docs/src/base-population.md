@@ -85,7 +85,7 @@ You can pass arguments `pop_size` (called `n` in the explanation below), `avg_ho
 The population generator will first set up an empty dataframe with one row per individual (Step 1) and add the required number of households with one index individual per household (Step 2).
 Their ages will be randomly sampled from the German age distribution.
 We then iteratevly create the remainig individuals.
-To get a somewhat realistic household age-coupling of individuals, we first select on of the index individuals and sample the age for a new household member based on household contact data from the [COVIMOD study](https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-021-02139-6)(Step 3).
+To get a somewhat realistic household age-coupling of individuals, we first select on of the index individuals and sample the age for a new household member based on household contact data from the [COVIMOD study](https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-021-02139-6) (Step 3).
 In the last step, we sample a school ID for every agent between the ages of 6 and 18, and an office for all agents between the ages of 18 and 65.
 While the example refers to "schools", they are internally handled as `SchoolClass`es.
 

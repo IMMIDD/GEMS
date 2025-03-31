@@ -26,6 +26,11 @@ after exposure, 20 individuals were latent, 47 were presymptomatic
 """
 function cumulative_disease_progressions(postProcessor::PostProcessor)
 
+    # return an empty DataFrame if there are no infections
+    if nrow(postProcessor |> infectionsDF) == 0
+        return DataFrame(tick=Int[], latent=Int[], pre_symptomatic=Int[], symptomatic=Int[], asymptomatic=Int[])
+    end
+
     # calculating the time points (ticks) where an individual switches to the next disease state
     inf = postProcessor |> infectionsDF |>
         x -> transform(x,

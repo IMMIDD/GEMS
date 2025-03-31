@@ -37,10 +37,11 @@ function detected_tick_cases(postProcessor::PostProcessor)
         # whether a test should be counted as "true new detected case"
         x -> leftjoin(x,
             x[x.infection_id .> 0, :] |> # filter for true positives
-                y -> groupby(y, :infection_id) |> # determine the test-ID of the test that first detected an infection (to filter out double reports)
-                y-> combine(y,
-                    [:test_tick, :test_id] => ((tick, id) -> id[argmin(tick)]) => :detection_test_id,
-                    :test_tick => minimum => :first_detected_at), # determine time of detection
+                (y -> isempty(y) ? DataFrame(infection_id = [], detection_test_id = [], first_detected_at = []) : # return empty dataframe if no infection has been reported
+                    groupby(y, :infection_id) |> # determine the test-ID of the test that first detected an infection (to filter out double reports)
+                    z-> combine(z,
+                        [:test_tick, :test_id] => ((tick, id) -> id[argmin(tick)]) => :detection_test_id,
+                        :test_tick => minimum => :first_detected_at)), # determine time of detection
             on = :infection_id) |> 
         # attribute tests for whether they are a true new detection
         x -> transform(x,

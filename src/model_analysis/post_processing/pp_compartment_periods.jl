@@ -115,7 +115,7 @@ function aggregated_compartment_periods(postProcessor::PostProcessor)
 
     # empty dataframe with all possible "durations" (in ticks)
     res = DataFrame(
-        duration = Int16(0):Int16(maximum(map(cps -> maximum(cps.duration), cps_vector)))
+        duration = Int16(0):Int16(maximum(map(cps -> isempty(cps.duration) ? 0 : maximum(cps.duration), cps_vector)))
     )
 
     # join each previously generated dataframe
