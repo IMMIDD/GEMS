@@ -2,7 +2,7 @@
 ### SIMULATION (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export StartCondition, StopCriterion
-export InfectedFraction
+export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
@@ -239,10 +239,10 @@ mutable struct Simulation
     | `office_contact_rate`           | `Float64`              | Average number of office contacts per timestep (Poisson-distributed)                                                                  |
     | `household_contact_rate`        | `Float64`              | Average number of household contacts per timestep (Poisson-distributed)                                                               |
     | `school_contact_rate`           | `Float64`              | Average number of school contacts per timestep (Poisson-distributed)                                                                  |
-    | `schoolClass_contact_rate`      | `Float64`              | Average number of school-class contacts per timestep (Poisson-distributed)                                                            |
-    | `schoolYear_contact_rate`       | `Float64`              | Average number of school-year contacts per timestep (Poisson-distributed)                                                             |
-    | `schoolComplex_contact_rate`    | `Float64`              | Average number of school-complex contacts per timestep (Poisson-distributed)                                                          |
-    | `workplaceSite_contact_rate`    | `Float64`              | Average number of workplace-site contacts per timestep (Poisson-distributed)                                                          |
+    | `school_class_contact_rate`     | `Float64`              | Average number of school-class contacts per timestep (Poisson-distributed)                                                            |
+    | `school_year_contact_rate`      | `Float64`              | Average number of school-year contacts per timestep (Poisson-distributed)                                                             |
+    | `school_complex_contact_rate`   | `Float64`              | Average number of school-complex contacts per timestep (Poisson-distributed)                                                          |
+    | `workplace_site_contact_rate`   | `Float64`              | Average number of workplace-site contacts per timestep (Poisson-distributed)                                                          |
     | `workplace_contact_rate`        | `Float64`              | Average number of workplace contacts per timestep (Poisson-distributed)                                                               |
     | `department_contact_rate`       | `Float64`              | Average number of department contacts per timestep (Poisson-distributed)                                                              |
     | `municipality_contact_rate`     | `Float64`              | Average number of municipality contacts per timestep (Poisson-distributed)                                                            |
@@ -1345,7 +1345,7 @@ function settings(simulation::Simulation)
 end
 
 """
-    settings(simulation, settingtype)
+    settings(simulation::Simulation, settingtype::DataType)
 
 Returns all settings of `settingtype` of the simulation.
 """
@@ -1525,7 +1525,7 @@ Calls the `dataframe()` function on the internal simulation's `QuarantineLogger`
 quarantines(simulation::Simulation) = simulation |> quarantinelogger |> dataframe
 
 """
-    customlogger(simulation, customlogger)
+    customlogger!(simulation, customlogger)
 
 Sets the Simulation's `CustomLogger`.
 """
@@ -1714,9 +1714,9 @@ function info(sim::Simulation)
     res = "Simulation [$(sim |> label)] (current $(sim |> tickunit): $(sim |> tick))\n"
 
     res *= "\u2514 Config File: $(sim |> configfile)\n"
-    res *= "\u2514 Popuation File: $(sim |> population |> populationfile)\n"
+    res *= "\u2514 Population File: $(sim |> population |> populationfile)\n"
 
-    res *= "\u2514 Popuation ($(sim |> population |> size) individuals):\n"
+    res *= "\u2514 Population ($(sim |> population |> size) individuals):\n"
     for st in settingtypes(settingscontainer(sim))
         res *= "  \u2514 $(st)s: $(settings(sim, st) |> length)\n"
     end

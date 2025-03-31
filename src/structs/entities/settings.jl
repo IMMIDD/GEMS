@@ -14,6 +14,7 @@ export update_infected_agents!
 export settings_from_population
 export activate!, deactivate!, isactive
 export open!, close!
+export contained, contained_type, contains_type
 
 ###
 ### ABSTRACT TYPES

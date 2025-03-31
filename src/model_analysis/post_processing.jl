@@ -63,7 +63,7 @@ mutable struct PostProcessor
                 renamecols = "" => "_source") |>
             x -> transform(x,
                 [:tick, :tick_source] => ByRow(-) => :generation_time,
-                [:symptoms_tick, :symptoms_tick_source] => ByRow(-) => :serial_interval,
+                [:symptoms_tick, :symptoms_tick_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval,
                 copycols = false) |>
             x -> DataFrames.select(x, Not([:tick_source, :symptoms_tick_source]))
 
@@ -215,6 +215,16 @@ end
     infectionsDF(postProcessor::PostProcessor)
 
 Returns the internal flat infections `DataFrame`.
+Lookup the docstring of `infections(postProcessor::PostProcessor)` for column definitions.
+"""
+function infectionsDF(postProcessor::PostProcessor)
+    return postProcessor.infectionsDF
+end
+
+"""
+    infections(postProcessor::PostProcessor)
+
+Returns the internal flat infections `DataFrame`.
 
 # Columns
 
@@ -262,7 +272,7 @@ Returns the internal flat infections `DataFrame`.
 | `schoolclass_b`            | `Int32`   | Infectee associated schoolclass                                 |
 | `household_ags_b`          | `Int32`   | Infectee household German Community Identification Number       |
 """
-function infectionsDF(postProcessor::PostProcessor)
+function infections(postProcessor::PostProcessor)
     return postProcessor.infectionsDF
 end
 

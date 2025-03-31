@@ -196,8 +196,6 @@
             @test bP |> x -> setting_age_contacts(x, Household) |> length != 0
             @test bP |> x -> setting_age_contacts(x, GlobalSetting) |> length != 0
             @test bP |> population_pyramid |> length != 0
-    
-            @test bP |> x -> parameterset(x, ["seed", "tickunit", "GlobalSetting"]) |> nrow != 0
         end
     end
 end

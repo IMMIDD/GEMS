@@ -19,7 +19,6 @@ PlotSection
 Report
 ReportPlot
 Section
-SectionBuilder
 SimulationReport
 ```
 
@@ -36,46 +35,27 @@ content!
 content
 date!
 date
-debugrep(::ResultData)
 description!(::ReportPlot, ::String)
 description(::ReportPlot)
 dpi
 dpi!(::Report, ::Int64)
+escape_markdown(::String)
 filename!(::ReportPlot, ::String)
 filename(::ReportPlot)
 fontfamily!
 fontfamily
-generalrep
-generate
+generate(::Report, ::AbstractString)
 glossary!
 glossary
-inputfilesrep
-memory_sec
-modelconfigrep
-observationsummaryrep(::ResultData)
-pathogensrep
+markdown
 plotpackage(::PlotSection)
 plt
-population_pyramid_rep(::BatchData)
-population_pyramid_sec(::BatchData)
-processor_sec(::ResultData)
 reportdata(::Report)
-repository_sec(::ResultData)
-resourcesrep(::BatchData)
-runtime_sec(::BatchData)
 savepath(::String)
 sections(::Report)
-setting_age_contacts_rep
-setting_age_contacts_sec
-settingrep
-simoverviewrep
 subsections(::Section)
 subtitle!(::Report, ::String)
 subtitle(::Report)
-sysinformationsec
-sys_information_sec
 title!
 title
-vaccinationrep(::ResultData)
-varied_parameters_sec
 ```

@@ -26,11 +26,11 @@ SinglesMap
 
 ## Functions
 ```@docs
-agsmap
 gemsmap
+agsmap
 generate_map
-lat(::Geolocated)
-lon(::Geolocated)
+germanshapes(::Int64)
+maptypes
 prepare_map_df!
 region_range(::DataFrame)
 ```

@@ -4,7 +4,7 @@ export ResultData
 
 export ResultDataFunction, ResultDataStyle
 
-export meta_data, execution_date, GEMS_version, config_file, config_file_val, population_file, population_params, start_date, final_tick
+export meta_data, execution_date, execution_date_formatted, GEMS_version, config_file, config_file_val, population_file, population_params, start_date, final_tick
 export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data
 export setting_sizes, globalsetting_flag, pathogens, vaccine, vaccination_strategy, total_quarantines, total_tests
 export tick_unit, tick_unit_char, start_condition, stop_criterion, strategies, kernel, julia_version
@@ -326,7 +326,7 @@ function config_file(rd::ResultData)
 end
 
 """
-    config_file_val(resultData)
+    config_file_val(rd::ResultData)
 
 Returns the parsed config file.
 Returns an empty dictionary if the data is not available in the input `ResultData` object.

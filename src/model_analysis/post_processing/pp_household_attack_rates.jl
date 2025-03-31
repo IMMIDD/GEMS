@@ -30,7 +30,6 @@ in `constants.jl`
 function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
     # exception handling
     hh_samples <= 100 ? throw("Sample too low. You need at least 100 households to proceed with the calculation") : nothing
-    # TODO this whole thing will probably crash if we don't have at least 1 infection
 
     # randomly sample the required number of households from the infections dataframe
     hh_selection = (postProcessor |> infectionsDF).household_b |> unique |>
@@ -47,6 +46,11 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         x -> x[.!ismissing.(x.select), :] |>
         x -> sort(x, :infection_id) |>
         copy
+
+    # return an empty DataFrame if there are no infections
+    if nrow(infs) == 0
+        return DataFrame(first_introduction = Int16[], hh_id = Int32[], hh_size = Int16[], chain_size = Int32[], hh_attack_rate = Float64[])
+    end
 
     # size of infection chain this particular infection
     # started in a household
@@ -90,8 +94,8 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         x -> groupby(x, :hh_id) |>
         x -> combine(x,
             :tick => minimum => :first_introduction,
-            [:tick, :home_chain] => ((tick, chain) -> chain[argmin(tick)]) => :chain_size,
-            [:tick, :hh_size] => ((tick, size) -> size[argmin(tick)]) => :hh_size) |>
+            [:tick, :home_chain] => ((tick, chain) -> isempty(chain) ? 0 : chain[argmin(tick)]) => :chain_size,
+            [:tick, :hh_size] => ((tick, size) -> isempty(size) ? 0 : size[argmin(tick)]) => :hh_size) |>
         # calculate household attack rate
         x -> transform(x, [:chain_size, :hh_size] => ByRow((c, h) -> (h == 0 ? 0 : c / (h - 1))) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>

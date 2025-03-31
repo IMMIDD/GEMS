@@ -13,16 +13,15 @@ Order   = [:function]
 
 ## Structs
 ```@docs
+Logger
 CustomLogger
 DeathLogger
 EventLogger
 InfectionLogger
-Logger
 PoolTestLogger
 QuarantineLogger
 TestLogger
 TickLogger
-VaccinationLogger
 ```
 
 ## Functions
@@ -35,16 +34,15 @@ dataframe(::QuarantineLogger)
 dataframe(::TestLogger)
 dataframe(::VaccinationLogger)
 duplicate(::CustomLogger)
-hasfuncs(::CustomLogger)
+get_infections_between(::InfectionLogger, ::Int32, ::Int16, ::Int16)
 infectionlogger(::Simulation)
+length
 log!
-log_quarantines(::Simulation)
-logger
 lognow
 save(::DeathLogger, ::AbstractString)
 save(::InfectionLogger, ::AbstractString)
 save(::PoolTestLogger, ::AbstractString)
 save(::TestLogger, ::AbstractString)
-save(::VaccinationLogger, ::AbstractString)
 save_JLD2
+ticks(::InfectionLogger)
 ```

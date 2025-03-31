@@ -11,59 +11,76 @@ Pages   = ["api_plotting.md"]
 Order   = [:function]
 ```
 
-## Structs
-```@docs
-ActiveDarkFigure
-AggregatedSettingAgeContacts
-BatchEffectiveReproduction
-BatchPlot
-BatchPopulationPyramid
-BatchSettingAgeContacts
-BatchTickCases
-BatchTickIsolations
-BatchTickTests
-CompartmentFill
-CumulativeCases
-CumulativeDiseaseProgressions
-CumulativeIsolations
-CustomLoggerPlot
-DetectedCases
-EffectiveReproduction
-GMTWrapper
-GenerationTime
-HospitalOccupancy
-HouseholdAttackRate
-Incidence
-InfectionDuration
-InfectiousHistogram
-LatencyHistogram
-ObservedReproduction
-ObservedSerialInterval
-PopulationPyramid
-SettingAgeContacts
-SettingSizeDistribution
-SimulationPlot
-SymptomCategories
-TestPositiveRate
-TickCases
-TickCasesBySetting
-TickTests
-TimeToDetection
-TotalTests
-```
 
-## Functions
+## Plotting
 ```@docs
-emptyplot(::String)
 gemsplot
-plot_ageGroup_contact_distribution
-plot_age_contact_distribution
-plot_all_age_contact_distributions
-plot_multiple_ageGroup_contact_distributions
-plot_multiple_age_contact_distributions
-plot_specific_age_contact_distributions
+emptyplot(::String)
 plotseries!
 saveplot
 splitlabel
 splitplot
+```
+
+## Plot Types
+```@docs
+ActiveDarkFigure
+generate(::ActiveDarkFigure, ::ResultData)
+AggregatedSettingAgeContacts
+generate(::AggregatedSettingAgeContacts, ::ResultData)
+CompartmentFill
+generate(::CompartmentFill, ::ResultData)
+CumulativeCases
+generate(::CumulativeCases, ::ResultData)
+CumulativeDiseaseProgressions
+generate(::CumulativeDiseaseProgressions, ::ResultData)
+CumulativeIsolations
+generate(::CumulativeIsolations, ::ResultData)
+CustomLoggerPlot
+generate(::CustomLoggerPlot, ::ResultData)
+DetectedCases
+generate(::DetectedCases, ::ResultData)
+EffectiveReproduction
+generate(::EffectiveReproduction, ::ResultData)
+GMTWrapper
+GenerationTime
+generate(::GenerationTime, ::ResultData)
+HospitalOccupancy
+generate(::HospitalOccupancy, ::ResultData)
+HouseholdAttackRate
+generate(::HouseholdAttackRate, ::ResultData)
+Incidence
+generate(::Incidence, ::ResultData)
+InfectionDuration
+generate(::InfectionDuration, ::ResultData)
+InfectiousHistogram
+generate(::InfectiousHistogram, ::ResultData)
+LatencyHistogram
+generate(::LatencyHistogram, ::ResultData)
+ObservedReproduction
+generate(::ObservedReproduction, ::ResultData)
+ObservedSerialInterval
+generate(::ObservedSerialInterval, ::ResultData)
+PopulationPyramid
+generate(::PopulationPyramid, ::ResultData)
+SettingAgeContacts
+generate(::SettingAgeContacts, ::ResultData)
+SettingSizeDistribution
+generate(::SettingSizeDistribution, ::ResultData)
+SimulationPlot
+generate(::SimulationPlot, ::ResultData)
+SymptomCategories
+generate(::SymptomCategories, ::ResultData)
+TestPositiveRate
+generate(::TestPositiveRate, ::ResultData)
+TickCases
+generate(::TickCases, ::ResultData)
+TickCasesBySetting
+generate(::TickCasesBySetting, ::ResultData)
+TickTests
+generate(::TickTests, ::ResultData)
+TimeToDetection
+generate(::TimeToDetection, ::ResultData)
+TotalTests
+generate(::TotalTests, ::ResultData)
 ```

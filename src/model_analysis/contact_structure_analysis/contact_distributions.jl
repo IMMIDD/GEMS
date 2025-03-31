@@ -3,6 +3,10 @@ export AgeContactDistribution, AgeGroupContactDistribution
 export get_age_contact_distribution
 export get_age_contact_distribution_matrix
 export get_ageGroup_contact_distribution
+export calculate_ageGroup_contact_distribution
+export calculate_age_contact_distribution
+export calculate_zero_contact_distribution
+
 
 """
     AgeContactDistribution

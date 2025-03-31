@@ -49,7 +49,14 @@ hh_sizes = size.(households(sim))
 histogram(hh_sizes, xlims = (0, 10))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_pops_households.png" width="80%"/>
+</p>
+``` 
+
 
 We don't need to run this simulation as there is no setting except households.
 Therefore we won't see many infections.
@@ -75,7 +82,15 @@ The inbuilt models are geo-referencal, therefore they can be visualized using th
 gemsmap(sim, type = :PopDensityMap, clims = (0, 100))
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_pops_popdensity.png" width="80%"/>
+</p>
+``` 
+
 
 Geo-referential models are fundamentally the same as all other models but have the AGS-field (german community identification number) set for geo-referenced settings.
 Additionally, they can have a `lat`/`lon` value pair stored, which allows to track infection locations.
@@ -153,4 +168,10 @@ df_combined = combine(df_grouped, :vaccinations => (v -> sum(v) / length(v)) => 
 plot(df_combined.age, df_combined.vacc_fraction)
 ```
 
-!!! warning "TODO: PUT PLOT HERE AS IMAGE"
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_pops_adjusting.png" width="80%"/>
+</p>
+```

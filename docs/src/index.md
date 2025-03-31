@@ -15,6 +15,8 @@ All simulated data can be easily exported and used in other applications.
 
 This documentation provides a theoretical background to the underlying model, a guide through the most important features and simulation options, a detailed description of all included functionalities, and information about the Julia package itself. Please use the table of content below or the sidebar on the left to navigate through the different sections.
 
+The code is on [GitHub](https://github.com/IMMIDD/GEMS/).
+
 
 ## Background
 

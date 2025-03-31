@@ -11,7 +11,7 @@ A simulation plot type for generating an incidence plot.
 """
 @with_kw mutable struct Incidence <: SimulationPlot
 
-    title::String = "" # default title
+    title::String = "Incidence" # default title
     description::String = "" # default description empty
     filename::String = "incidence.png" # default filename
     
