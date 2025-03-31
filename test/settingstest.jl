@@ -533,6 +533,26 @@
 
         @test min_max_avg_individuals(Setting[], sim) === (nothing, nothing, nothing)
 
+        # test size function for containersettings
+        sc = SettingsContainer()
+        add_types!(sc, [Department, Office])
+
+        inds = [Individual(id=j, age=1, sex=1) for j in 1:15]
+
+        index = 1
+        for i in 1:5
+            add!(sc, Office(id=i, individuals=inds[index:(index + i - 1)]))
+            index += i  
+        end
+
+        department = Department(id = 1, contains = 1:5)
+        add!(sc, department)
+        
+        sim = Simulation()
+        sim.settings = sc
+        
+        department = settings(sc, Department)[1]
+        @test size(department, sim) == 15
     end
 
     @testset "Geolocated tests" begin
