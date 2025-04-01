@@ -44,15 +44,15 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
     number_of_contacts = rand(Poisson(contactparameter_sampling.contactparameter))
     # number_of_contacts = Int64(contactparameter_sampling.contactparameter)
     res = Vector{Individual}(undef, number_of_contacts)
-
-    cnt = 0
-    # Draw until contact list is filled, skip whenever the index individual was selected
-    while cnt < number_of_contacts
-        contact = rand(present_inds)
-        # if contact is NOT index individual, add them to contact list
-        if Ref(contact) .!== Ref(individual)
-            res[cnt + 1] = contact
-            cnt += 1
+    
+    # sample contacts (excluding last individual in present_inds)
+    for i in 1:number_of_contacts
+        contact = present_inds[rand(1:length(inds)-1)]
+        if contact == individual
+            # replace self sampled individual with last individual in present_inds
+            res[i] = present_inds[length(inds)]
+        else
+            res[i] = contact
         end
     end
     
