@@ -41,8 +41,42 @@
         @test Poisson(4) |> markdown |> typeof == String
 
         # Settings SettingsContainer
-        @test sim |> settings |> markdown |> typeof == String#
+        @test sim |> settings |> markdown |> typeof == String
 
+        @test GEMS.print_arr([]) == ""
+        @test GEMS.print_arr([1, 2]) == "[1, 2]"
+
+        @test markdown([2.0, 3.0]) == "[2, 3]"
+
+        # Test for markdown(Distribution)
+        dist = Normal(0, 1)
+        md_dist = markdown(dist)
+        @test occursin("Normal", md_dist)
+        @test occursin("σ", md_dist)  # Checks if parameters appear
+
+        # Test for markdown(SettingsContainer, Simulation)
+        sim = Simulation()
+        stngs = SettingsContainer()
+        md_settings = markdown(stngs, sim)
+        @test occursin("| Setting | Number", md_settings)
+        @test occursin("Table: Setting Summary", md_settings)
+
+        # Test for markdown(Vaccine)
+        dw = DiscreteWaning(7, 30)
+        v = Vaccine(id=1, name="Antitest", waning=dw)
+        md_vaccine = markdown(v)
+        @test occursin("| Property | Value", md_vaccine)
+        @test occursin("Antitest", md_vaccine)
+        @test occursin("Waning", md_vaccine)
+
+        # Test for markdown(DiscreteWaning)
+        md_waning = markdown(dw)
+        @test occursin("ticks after vaccination", md_waning)
+
+        # Test for markdown(VaccinationScheduler)
+        scheduler = VaccinationScheduler()
+        md_scheduler = markdown(scheduler)
+        @test occursin("To be implemented.", md_scheduler)
     end
 
     @testset "Sections" begin
@@ -197,8 +231,8 @@
 
             # generate plots (maybe there's a better idea for actual tests here?)
             generate(p, rd)
-            #TODO gemsplot
-            #gemsplot([rd], type = typeof(p))
+            println(typeof(p))
+            gemsplot(rd)
         end
 
         @testset "Plots with ResultData-Array" begin
@@ -230,6 +264,10 @@
 
                 # generate plots (maybe there's a better idea for actual tests here?)
                 generate(p, [rd, rd2])
+                splitplot(p, [rd, rd2])
+                if typeof(p) != CustomLoggerPlot
+                    splitlabel(p, [rd])
+                end
             end
         end
 
@@ -298,6 +336,7 @@
 
                 # generate plots (maybe there's a better idea for actual tests here?)
                 generate(p, bd)
+                gemsplot(bd)
             end
             @testset "Specific Batch Plots" begin
                 #Isolation and Test Scenario
@@ -327,7 +366,7 @@
                 @test occursin(r".png$", filename(p)) # filename must end in *.png
 
                 # generate plots (maybe there's a better idea for actual tests here?)
-                #generate(p, bd) not working
+                #generate(p, bd) not working TODO
 
                 p2 = BatchTickTests()
 
@@ -459,37 +498,37 @@
         end
         using Test, DataFrames
 
-     #=   @testset "generate_map tests" begin
-            dest = joinpath(pwd(), "test_map.png") 
+        #=   @testset "generate_map tests" begin
+               dest = joinpath(pwd(), "test_map.png") 
 
-            # Test: Normale Nutzung mit gültigen Koordinaten
-            df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
-            result = generate_map(df, dest)
-            @test result isa GMTWrapper
-            @test isfile(dest)  # Datei sollte erstellt worden sein
+               # Test: Normale Nutzung mit gültigen Koordinaten
+               df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
+               result = generate_map(df, dest)
+               @test result isa GMTWrapper
+               @test isfile(dest)  # Datei sollte erstellt worden sein
 
-            # Test: Leeres DataFrame ohne plotempty -> Sollte Fehler werfen
-            df_empty = DataFrame(lat=[], lon=[])
-            @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
+               # Test: Leeres DataFrame ohne plotempty -> Sollte Fehler werfen
+               df_empty = DataFrame(lat=[], lon=[])
+               @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
 
-            # Test: plotempty=True aber ohne region -> Sollte Fehler werfen
-            @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
+               # Test: plotempty=True aber ohne region -> Sollte Fehler werfen
+               @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
 
-            # Test: plotempty=True mit definierter region -> Sollte eine leere Karte erzeugen
-            region = [7, 11, 49, 53]  # Bounding Box um die Test-Koordinaten
-            result = generate_map(df_empty, dest; region=region, plotempty=true)
-            @test result isa GMTWrapper
-            @test isfile(dest)
+               # Test: plotempty=True mit definierter region -> Sollte eine leere Karte erzeugen
+               region = [7, 11, 49, 53]  # Bounding Box um die Test-Koordinaten
+               result = generate_map(df_empty, dest; region=region, plotempty=true)
+               @test result isa GMTWrapper
+               @test isfile(dest)
 
-            # Test: Nutzung eines spezifischen Regionsbereichs
-            custom_region = [7, 11, 49, 53]
-            result = generate_map(df, dest; region=custom_region)
-            @test result isa GMTWrapper
-            @test isfile(dest)
+               # Test: Nutzung eines spezifischen Regionsbereichs
+               custom_region = [7, 11, 49, 53]
+               result = generate_map(df, dest; region=custom_region)
+               @test result isa GMTWrapper
+               @test isfile(dest)
 
-            # Cleanup nach den Tests
-            rm(dest; force=true)
-        end =#
+               # Cleanup nach den Tests
+               rm(dest; force=true)
+           end =#
 
         @testset "agsmap tests" begin
             # Beispiel AGS-Werte mit exakt 8 Ziffern
