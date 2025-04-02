@@ -197,6 +197,8 @@
 
             # generate plots (maybe there's a better idea for actual tests here?)
             generate(p, rd)
+            #TODO gemsplot
+            #gemsplot([rd], type = typeof(p))
         end
 
         @testset "Plots with ResultData-Array" begin
@@ -689,7 +691,7 @@
             @test result isa Plots.Plot
         end
 
-        @test "Map Plots" begin
+        @testset "Map Plots" begin
             # plots with no gelocated data
             plts = [
                 AgeMap(),
@@ -726,7 +728,54 @@
             case_fatality_map = CaseFatalityMap()
             generate(attack_rate_map, rd)
             generate(case_fatality_map, rd)
+        end
 
+    end
+
+    @testset "Plots Test" begin
+
+        @testset "GMTWrapper Tests" begin
+            # Test: GMTWrapper speichert den korrekten Pfad
+            wrapper = GMTWrapper("/tmp/test_map.png")
+            @test wrapper isa GMTWrapper
+            @test wrapper.path_to_map == "/tmp/test_map.png"
+        end
+
+        @testset "generate() Function Tests" begin
+
+            struct DummyPlot <: SimulationPlot end
+
+            sim = Simulation()
+            run!(sim)
+            rd = sim |> PostProcessor |> ResultData
+
+            dummy_plot = DummyPlot()
+            @test_throws "generate(...) is not defined for concrete report plot type DummyPlot" generate(dummy_plot, rd)
+        end
+
+        @testset "Plot Formatting Functions" begin
+            # Test: fontfamily! für Plots.jl
+            p = plot(rand(10))
+            fontfamily!(p, "Arial")
+            @test p.attr[:fontfamily] == "Arial"
+
+            fontfamily!(p, "Times New Roman")
+            @test p.attr[:fontfamily] == "Times Roman"
+
+            # Test: fontfamily! für VegaLite (nur println, kein echter Test möglich)
+            # vl = VegaLite.VLSpec()
+            # @test_logs (:info, "Custom fontfamily cannot be set for VegaLite plots") fontfamily!(vl, "Arial")
+
+            # Test: dpi! für Plots.jl
+            dpi!(p, 300)
+            @test p.attr[:dpi] == 300
+
+            # Test: dpi! für VegaLite (nur println, kein echter Test möglich)
+            # @test_logs (:info, "Custom dpi cannot be set for VegaLite plots") dpi!(vl, 300)
+
+            # TODO: Test: title! für Plots.jl
+            GEMS.title!(p, "Test Title")
+            GEMS.titlefontsize!(p, 18)
         end
 
     end
