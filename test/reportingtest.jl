@@ -460,7 +460,7 @@
         using Test, DataFrames
 
         @testset "generate_map tests" begin
-            dest = "test_map.png"
+            dest = joinpath(pwd(), "test_map.png") 
 
             # Test: Normale Nutzung mit gültigen Koordinaten
             df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
