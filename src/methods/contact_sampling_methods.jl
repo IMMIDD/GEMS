@@ -47,10 +47,10 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
     
     # sample contacts (excluding last individual in present_inds)
     for i in 1:number_of_contacts
-        contact = present_inds[rand(1:length(inds)-1)]
+        contact = present_inds[rand(1:length(present_inds)-1)]
         if contact == individual
             # replace self sampled individual with last individual in present_inds
-            res[i] = present_inds[length(inds)]
+            res[i] = present_inds[length(present_inds)]
         else
             res[i] = contact
         end
