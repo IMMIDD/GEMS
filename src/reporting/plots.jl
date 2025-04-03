@@ -1,5 +1,5 @@
 # CREATION OF PLOTS AND FIGURES FOR THE REPORT
-export ReportPlot, SimulationPlot, BatchPlot, GMTWrapper
+export ReportPlot, SimulationPlot, GMTWrapper
 export title, description, description!, filename, filename!, generate
 export fontfamily!, dpi!, title!, titlefontsize!, saveplot, emptyplot
 export gemsplot
@@ -14,9 +14,6 @@ abstract type ReportPlot end
 
 "Supertype for all plots that go into single-run simulation reports"
 abstract type SimulationPlot <: ReportPlot end
-
-"Supertype for all plots that go into batch-run simulation reports"
-abstract type BatchPlot <: ReportPlot end
 
 """
     GMTWrapper
