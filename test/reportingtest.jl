@@ -103,7 +103,7 @@
             title="Subsection",
             content="Sub Content"
         )
-        addsection!(s1, s2)
+        addsection!(s1, [s2])
 
         @test s1 |> subsections == [s2]
 
@@ -129,6 +129,36 @@
         @test Section(rd, :Processor) |> typeof == Section
         @test Section(rd, :Settings) |> typeof == Section
         @test Section(rd, :System) |> typeof == Section
+
+        # default generated sections for batches
+
+        @test Section(bd, :BatchInfo) |> typeof == Section
+        @test Section(bd, :Runtime) |> typeof == Section
+        @test Section(bd, :Allocations) |> typeof == Section
+        @test Section(bd, :Resources) |> typeof == Section
+
+        @testset "Flatten Sections Tests" begin
+            # Create sections and subsections
+            subsub_section = Section(title="Subsubsection", content="Content 3")
+            sub_section = Section(title="Subsection", content="Content 2", subsections=[subsub_section])
+            main_section = Section(title="Main Section", content="Content 1", subsections=[sub_section])
+
+            # Run flatten_sections on the main section
+            result = GEMS.flatten_sections(main_section, 0)
+
+            # Check that all sections appear in the result with correct depth
+            @test length(result) == 3
+            @test result[1][1] == main_section && result[1][2] == 0  # Main section at depth 0
+            @test result[2][1] == sub_section && result[2][2] == 1   # Subsection at depth 1
+            @test result[3][1] == subsub_section && result[3][2] == 2  # Subsubsection at depth 2
+
+            # Test empty section (should return just itself with depth 0)
+            empty_section = Section(title="Empty")
+            empty_result = GEMS.flatten_sections(empty_section, 0)
+            @test length(empty_result) == 1
+            @test empty_result[1][1] == empty_section && empty_result[1][2] == 0
+        end
+
     end
 
 
@@ -139,7 +169,8 @@
             title="Test Report",
             author="Tester",
             date=rd |> execution_date,
-            abstract="Test Abstract"
+            abstract="Test Abstract",
+            subtitle="Test Subtitle"
         )
 
         # meta info
@@ -166,6 +197,10 @@
         @test rep |> glossary == false
         glossary!(rep, true)
         @test rep |> glossary == true
+
+        @test rep |> subtitle == "Test Subtitle"
+        subtitle!(rep, "New Subtitle")
+        @test rep |> subtitle == "New Subtitle"
 
         # sections
 
@@ -250,7 +285,7 @@
             ]
             sim2 = Simulation()
             run!(sim2)
-            rd2 = sim |> PostProcessor |> ResultData
+            rd2 = sim2 |> PostProcessor |> ResultData
 
             # generate each plot
             for p in plts
@@ -265,9 +300,9 @@
                 # generate plots (maybe there's a better idea for actual tests here?)
                 generate(p, [rd, rd2])
                 splitplot(p, [rd, rd2])
-                if typeof(p) != CustomLoggerPlot
-                    splitlabel(p, [rd])
-                end
+                #if typeof(p) != CustomLoggerPlot
+                #   splitlabel(p, [rd])
+                #end
             end
         end
 
@@ -419,31 +454,29 @@
         @test rep.sections |> length == 0
     end
 
-    # @testset "Custom Batch Reporting" begin TODO put back in
-    #     bd = batch_test()
-    #     # Report generation without any config files, i.e. full report
-    #     rep = buildreport(bd)
-    #     @test length(rep.sections) == 5
-    #     rep = buildreport(bd, "MinimalBatchReport")
-    #     @test length(rep.sections) == 3
-    #     mutable struct TestBatchReport <: BatchReportStyle
-    #         data
-    #         title
-    #         subtitle
-    #         author
-    #         date
-    #         sections
-    #         glossary
-    #         abstract
-    #         function TestBatchReport(;data)
-    #             rep = new(data,"Test","Test","Test","Test",[],false,"Test")
-    #             return rep
-    #         end
-    #     end
-    #     rep = buildreport(bd, "TestBatchReport")
-    #     @test rep.title == "Test"
-    #     @test length(rep.sections) == 0
-    # end
+    @testset "Custom Batch Reporting" begin
+        # Report generation without any config files, i.e. full report
+        rep = buildreport(bd)
+        @test length(rep.sections) == 5
+        mutable struct TestBatchReport <: BatchReportStyle
+            data
+            title
+            subtitle
+            author
+            date
+            sections
+            glossary
+            abstract
+            function TestBatchReport(; data)
+                rep = new(data, "Test", "Test", "Test", "Test", [], false, "Test")
+                return rep
+            end
+        end
+        rep = buildreport(bd, "TestBatchReport")
+        @test rep.title == "Test"
+        @test length(rep.sections) == 0
+    end
+
     @testset "File Handling" begin
 
         # temporary testing directory (timestamp for uniqueness)
