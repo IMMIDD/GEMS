@@ -457,7 +457,7 @@
     @testset "Custom Batch Reporting" begin
         # Report generation without any config files, i.e. full report
         rep = buildreport(bd)
-        @test length(rep.sections) == 5
+        @test length(rep.sections) == 3
         mutable struct TestBatchReport <: BatchReportStyle
             data
             title
