@@ -455,8 +455,8 @@
         end
         using Test, DataFrames
 
-        #=   @testset "generate_map tests" begin
-               dest = joinpath(pwd(), "test_map.png") 
+          @testset "generate_map tests" begin
+               dest = joinpath(basefolder, "test_map.png")
 
                # Test: Normale Nutzung mit gültigen Koordinaten
                df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
@@ -485,7 +485,7 @@
 
                # Cleanup nach den Tests
                rm(dest; force=true)
-           end =#
+           end
 
         @testset "agsmap tests" begin
             # Beispiel AGS-Werte mit exakt 8 Ziffern
@@ -758,16 +758,9 @@
             fontfamily!(p, "Times New Roman")
             @test p.attr[:fontfamily] == "Times Roman"
 
-            # Test: fontfamily! für VegaLite (nur println, kein echter Test möglich)
-            # vl = VegaLite.VLSpec()
-            # @test_logs (:info, "Custom fontfamily cannot be set for VegaLite plots") fontfamily!(vl, "Arial")
-
             # Test: dpi! für Plots.jl
             dpi!(p, 300)
             @test p.attr[:dpi] == 300
-
-            # Test: dpi! für VegaLite (nur println, kein echter Test möglich)
-            # @test_logs (:info, "Custom dpi cannot be set for VegaLite plots") dpi!(vl, 300)
 
             # TODO: Test: title! für Plots.jl
             GEMS.title!(p, "Test Title")
