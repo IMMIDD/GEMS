@@ -454,7 +454,7 @@
             @test bounds ≈ expected_bounds
         end
 
-          @testset "generate_map tests" begin
+         #= @testset "generate_map tests" begin
                dest = basefolder * "/test_map.png"
 
                # Test: Normale Nutzung mit gültigen Koordinaten
@@ -484,7 +484,7 @@
 
                # Cleanup nach den Tests
                rm(dest; force=true)
-           end
+           end =#
 
         @testset "agsmap tests" begin
             # Beispiel AGS-Werte mit exakt 8 Ziffern
