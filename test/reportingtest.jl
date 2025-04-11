@@ -453,10 +453,9 @@
             expected_bounds = [-22.0, 22.0, -11.0, 11.0]
             @test bounds ≈ expected_bounds
         end
-        using Test, DataFrames
 
           @testset "generate_map tests" begin
-               dest = joinpath(basefolder, "test_map.png")
+               dest = basefolder * "/test_map.png"
 
                # Test: Normale Nutzung mit gültigen Koordinaten
                df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
