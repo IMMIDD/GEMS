@@ -454,38 +454,43 @@
             @test bounds ≈ expected_bounds
         end
 
-         @testset "generate_map tests" begin
-               dest = tempname() * ".png"
-
-               # Test: Normale Nutzung mit gültigen Koordinaten
-               df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
-               result = generate_map(df, dest)
-               @test result isa GMTWrapper
-               @test isfile(dest)  # Datei sollte erstellt worden sein
-
-               # Test: Leeres DataFrame ohne plotempty -> Sollte Fehler werfen
-               df_empty = DataFrame(lat=[], lon=[])
-               @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
-
-               # Test: plotempty=True aber ohne region -> Sollte Fehler werfen
-               @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
-
-               # Test: plotempty=True mit definierter region -> Sollte eine leere Karte erzeugen
-               region = [7, 11, 49, 53]  # Bounding Box um die Test-Koordinaten
-               result = generate_map(df_empty, dest; region=region, plotempty=true)
-               @test result isa GMTWrapper
-               @test isfile(dest)
-
-               # Test: Nutzung eines spezifischen Regionsbereichs
-               custom_region = [7, 11, 49, 53]
-               result = generate_map(df, dest; region=custom_region)
-               @test result isa GMTWrapper
-               @test isfile(dest)
-
-               # Cleanup nach den Tests
-               rm(dest; force=true)
-           end
-
+        @testset "generate_map tests" begin
+            mktempdir() do tmpdir
+                dest = joinpath(tmpdir, "testmap.png")
+        
+                try
+                    df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
+                    result = generate_map(df, dest)
+                    @test result isa GMTWrapper
+                    @test isfile(dest)
+        
+                    df_empty = DataFrame(lat=[], lon=[])
+                    @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
+        
+                    @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
+        
+                    region = [7, 11, 49, 53]
+                    result = generate_map(df_empty, dest; region=region, plotempty=true)
+                    @test result isa GMTWrapper
+                    @test isfile(dest)
+        
+                    custom_region = [7, 11, 49, 53]
+                    result = generate_map(df, dest; region=custom_region)
+                    @test result isa GMTWrapper
+                    @test isfile(dest)
+        
+                finally
+                    GC.gc()
+                    sleep(1)  # Give the system time to unlock the file
+                    try
+                        isfile(dest) && rm(dest; force=true)
+                    catch e
+                        @warn "Failed to delete $dest — maybe still in use" exception=(e, catch_backtrace())
+                    end
+                end
+            end
+        end
+        
         @testset "agsmap tests" begin
             # Beispiel AGS-Werte mit exakt 8 Ziffern
             ags_states = [AGS("01000000"), AGS("02000000"), AGS("03000000")]  # Bundesländer (Level 1)
