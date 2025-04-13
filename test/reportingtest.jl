@@ -454,37 +454,37 @@
             @test bounds ≈ expected_bounds
         end
 
-         #= @testset "generate_map tests" begin
-               dest = basefolder * "/test_map.png"
+        #= @testset "generate_map tests" begin
+              dest = basefolder * "/test_map.png"
 
-               # Test: Normale Nutzung mit gültigen Koordinaten
-               df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
-               result = generate_map(df, dest)
-               @test result isa GMTWrapper
-               @test isfile(dest)  # Datei sollte erstellt worden sein
+              # Test: Normale Nutzung mit gültigen Koordinaten
+              df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
+              result = generate_map(df, dest)
+              @test result isa GMTWrapper
+              @test isfile(dest)  # Datei sollte erstellt worden sein
 
-               # Test: Leeres DataFrame ohne plotempty -> Sollte Fehler werfen
-               df_empty = DataFrame(lat=[], lon=[])
-               @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
+              # Test: Leeres DataFrame ohne plotempty -> Sollte Fehler werfen
+              df_empty = DataFrame(lat=[], lon=[])
+              @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
 
-               # Test: plotempty=True aber ohne region -> Sollte Fehler werfen
-               @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
+              # Test: plotempty=True aber ohne region -> Sollte Fehler werfen
+              @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
 
-               # Test: plotempty=True mit definierter region -> Sollte eine leere Karte erzeugen
-               region = [7, 11, 49, 53]  # Bounding Box um die Test-Koordinaten
-               result = generate_map(df_empty, dest; region=region, plotempty=true)
-               @test result isa GMTWrapper
-               @test isfile(dest)
+              # Test: plotempty=True mit definierter region -> Sollte eine leere Karte erzeugen
+              region = [7, 11, 49, 53]  # Bounding Box um die Test-Koordinaten
+              result = generate_map(df_empty, dest; region=region, plotempty=true)
+              @test result isa GMTWrapper
+              @test isfile(dest)
 
-               # Test: Nutzung eines spezifischen Regionsbereichs
-               custom_region = [7, 11, 49, 53]
-               result = generate_map(df, dest; region=custom_region)
-               @test result isa GMTWrapper
-               @test isfile(dest)
+              # Test: Nutzung eines spezifischen Regionsbereichs
+              custom_region = [7, 11, 49, 53]
+              result = generate_map(df, dest; region=custom_region)
+              @test result isa GMTWrapper
+              @test isfile(dest)
 
-               # Cleanup nach den Tests
-               rm(dest; force=true)
-           end =#
+              # Cleanup nach den Tests
+              rm(dest; force=true)
+          end =#
 
         @testset "agsmap tests" begin
             # Beispiel AGS-Werte mit exakt 8 Ziffern
@@ -768,4 +768,33 @@
 
     end
 
+end
+
+@testset "Movie Tests" begin
+    @testset "steps function" begin
+        @test GEMS.steps(3, 10) ≈ [10.25, 10.5, 10.75]
+        @test GEMS.steps(0, 5) == []
+    end
+
+    @testset "generate_frame creates image file" begin
+        df_coords = DataFrame(lat=[52.52, 48.13], lon=[13.405, 11.582], show=[true, true])
+        active_inf = DataFrame(time=[0.0, 1.0], count=[0.0, 2.0])
+        region = [10.0, 15.0, 45.0, 55.0]  # lon_min, lon_max, lat_min, lat_max
+        plot_xmax = 10
+        plot_ymax = 5
+        xlabel = "Days"
+
+        mktempdir() do dir
+            path = joinpath(dir, "frame_test.png")
+            result = GEMS.generate_frame(df_coords, path, region, active_inf, plot_xmax, plot_ymax, xlabel)
+
+            @test isfile(path)
+            @test result isa GMTWrapper
+
+            # Optional: Lade das Bild und prüfe Größe
+            img = load(path)
+            @test size(img)[1] > 0
+            @test size(img)[2] > 0
+        end
+    end
 end
