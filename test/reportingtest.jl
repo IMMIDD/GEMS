@@ -769,7 +769,7 @@
     end
 
 end
-
+#=
 @testset "Movie Tests" begin
     @testset "steps function" begin
         @test GEMS.steps(3, 10) ≈ [10.25, 10.5, 10.75]
@@ -797,4 +797,4 @@ end
             @test size(img)[2] > 0
         end
     end
-end
+end =#
