@@ -233,7 +233,7 @@
             DetectedCases()
             EffectiveReproduction()
             GenerationTime()
-            #HospitalOccupancy()
+            HospitalOccupancy()
             HouseholdAttackRate()
             Incidence()
             InfectionDuration()
@@ -266,7 +266,6 @@
 
             # generate plots (maybe there's a better idea for actual tests here?)
             generate(p, rd)
-            println(typeof(p))
             gemsplot(rd)
         end
 
