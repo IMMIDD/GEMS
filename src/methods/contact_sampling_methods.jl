@@ -114,6 +114,7 @@ function sample_contacts(contactparameter_sampling::ContactAgeBasedparameterSamp
     if number_of_contacts < 1
         return Individual[]
     end
+    number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
     res = Vector{Individual}(undef, number_of_contacts)
     sample!(present_inds, res; replace=false)
     for i = 1:length(res)
