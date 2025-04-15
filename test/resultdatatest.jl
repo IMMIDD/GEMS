@@ -218,7 +218,7 @@
         @test tick_pooltests(rd) == Dict()
         @test time_to_detection(rd) isa DataFrame && size(time_to_detection(rd)) == (0, 0)
         @test tick_serial_intervals(rd) isa DataFrame && size(tick_serial_intervals(rd)) == (0, 0)
-        @test hospital_df(rd) isa DataFrame
+        @test tick_hosptitalizations(rd) isa DataFrame
         @test tests(rd) isa DataFrame && size(tests(rd)) == (0, 17)
         @test customlogger(rd) isa DataFrame && size(customlogger(rd)) == (0, 1)
         @test hashes(rd) == Dict()

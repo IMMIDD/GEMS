@@ -98,7 +98,7 @@ and computationally intensive (memory & runtime) option.
         - `population_pyramid::DataFrame`: Data required to plot population pyramid (age, sex, count)
         - `rolling_observed_SI::DataFrame`: Serial interval estimation based on the last 14 days of detected cases
         - `observed_R::DataFrame`: Reproduction number estimation based on detected cases and the SI estimation
-        - `hospital_df::DataFrame`: DataFrame containing the daily hospitalizations etc.
+        - `tick_hosptitalizations::DataFrame`: DataFrame containing the daily hospitalizations etc.
         - `time_to_detection::DataFrame`: Statistics on the time between exposure and first detection of an infection through a test
         - `household_attack_rates::DataFrame`: Statistics on the seconary infections in households
         - `customlogger::DataFrame`: Dataframe obtained from any custom logger that might have been set
@@ -208,7 +208,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
-                    "hospital_df" => () -> pP |> hospital_df
+                    "tick_hosptitalizations" => () -> pP |> hospital_df
                 )      
         )
 
