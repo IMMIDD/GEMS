@@ -330,17 +330,14 @@ function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :a
 
     # SINGLE PLOTTING
     # throw exception if type unknown
-    type ∉ Symbol.(subtypes(SimulationPlot)) ? throw("There's no plot type that matches $type") : nothing
-
-    # get index in subtype list
-    i = findfirst(x -> x == type, Symbol.(subtypes(SimulationPlot)))
+    !is_subtype(type, SimulationPlot) ? throw("There's no plot type that matches $type") : nothing
 
     plt = try 
         # instantiate plot
         # we go via the subtypes function as it evaluates the "known"
         # subtypes at runtime, not compilation time. This allows
         # to also add user-defined plots.
-        subtypes(SimulationPlot)[i]()
+        get_subtype(type, SimulationPlot)()
     catch
         # throws exception if the plot type doesn't have a 0-argument constructor
         throw("$type plots cannot be create using the gemsplot-function as they require additional arguments in their constructor. Please use generate($type(args...), rd) instead to generate this plot.")
