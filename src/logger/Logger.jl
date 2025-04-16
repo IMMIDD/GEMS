@@ -893,7 +893,7 @@ end
 
 Returns the number of entries in a `QuarantineLogger`.
 """
-Base.length(logger::QuarantineLogger) = length(logger.test)
+Base.length(logger::QuarantineLogger) = length(logger.tick)
 
 ###
 ### CUSTOM LOGGERS

@@ -775,4 +775,33 @@
         @test GEMS.incidence(sim, 100) == 0.0 #?
     end
 
+    @testset "Parameter Tests" begin
+
+        @testset "AGS Test" begin
+            @test_throws "The state (first two digits) must be between 1 and 16" AGS(Int(123))
+            @test_throws "The state (first two digits) must be between 1 and 16" AGS(Int32(123))
+            @test_throws "The AGS (Amtlicher Gemeindeschlüssel, eng: Community Identification Number) must consist of exactly 8 digits" AGS("123")
+
+            münster = AGS("05515000")
+            @test state(münster) == AGS("05000000")
+            @test district(münster) == AGS("05500000")
+            @test county(münster) == AGS("05515000")
+            @test municipality(münster) == AGS("05515000")
+            @test !is_state(münster)
+            @test !is_district(münster)
+            @test is_county(münster)
+            nrw = AGS("05000000")
+            regierungsbezirks_ms = AGS("05500000")
+            @test in_state(münster, nrw)
+            @test in_district(münster, regierungsbezirks_ms)
+            @test in_county(münster, münster)
+            @test !isunset(münster)
+        end
+
+        @testset "contact parameter sampling tests" begin
+            @test_throws ArgumentError("'contactparameter' is -1.0, but the 'contactparameter' has to be non-negative!") ContactparameterSampling(-1.0)
+            @test_throws ArgumentError("'contactparameter' is -1, but the 'contactparameter' has to be non-negative!") ContactparameterSampling(-1)
+        end
+    end
+
 end

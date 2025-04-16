@@ -1,5 +1,5 @@
 # CREATION OF PLOTS AND FIGURES FOR THE REPORT
-export ReportPlot, SimulationPlot, BatchPlot, GMTWrapper
+export ReportPlot, SimulationPlot, GMTWrapper
 export title, description, description!, filename, filename!, generate
 export fontfamily!, dpi!, title!, titlefontsize!, saveplot, emptyplot
 export gemsplot
@@ -14,9 +14,6 @@ abstract type ReportPlot end
 
 "Supertype for all plots that go into single-run simulation reports"
 abstract type SimulationPlot <: ReportPlot end
-
-"Supertype for all plots that go into batch-run simulation reports"
-abstract type BatchPlot <: ReportPlot end
 
 """
     GMTWrapper
@@ -124,9 +121,9 @@ function fontfamily!(plot::Plots.Plot, fontfamily::String)
 end
 
 
-function fontfamily!(plot::VegaLite.VLSpec, fontfamily::String)
-    println("Custom fontfamily cannot be set for VegaLite plots")
-end
+#function fontfamily!(plot::VegaLite.VLSpec, fontfamily::String)
+#    println("Custom fontfamily cannot be set for VegaLite plots")
+#end
 
 
 function dpi!(plot::Plots.Plot, dpi::Int)
@@ -134,9 +131,9 @@ function dpi!(plot::Plots.Plot, dpi::Int)
 end
 
 
-function dpi!(plot::VegaLite.VLSpec, dpi::Int)
-    println("Custom dpi cannot be set for VegaLite plots")
-end
+#function dpi!(plot::VegaLite.VLSpec, dpi::Int)
+#    println("Custom dpi cannot be set for VegaLite plots")
+#end
 
 
 title!(plot::Plots.Plot, title::String) = plot!(plot, title = title)
@@ -162,9 +159,9 @@ end
 
 Stores a plot from the VegaLite package to the provided path.
 """
-function saveplot(plot::VegaLite.VLSpec, path::AbstractString)
-    plot |> FileIO.save(path)
-end
+#function saveplot(plot::VegaLite.VLSpec, path::AbstractString)
+#    plot |> FileIO.save(path)
+#end
 
 """
     saveplot(plot::GMTWrapper, path::AbstractString)

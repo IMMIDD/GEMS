@@ -46,7 +46,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 """
 function generate(plt::HospitalOccupancy, rd::ResultData; plotargs...)
     # Get Hospital DataFrame
-    h_df = rd |> hospital_df
+    h_df = rd |> tick_hosptitalizations
 
     # Determine the tickunit to use it for the xlabel
     uticks = rd |> tick_unit |> uppercasefirst
