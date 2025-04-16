@@ -69,9 +69,13 @@ name of the `ContactSamplingMethod` struct to be used.
 Optionaly the Dict can have the key "parameters". These will be used, to construct the CSM defined by "type". When "type" doesn't have attributes, "parameters" can be ommited.
 """
 function create_contact_sampling_method(config::Dict)       
-    
-    # find id of the concrete subtype matching "type" from `config`
-    id = findfirst(x -> x == get(config, "type", ""), string.(subtypes(ContactSamplingMethod)))
+
+    type_string = get(config, "type", "")
+    gems_string = string(nameof(@__MODULE__))
+    # we need to check the TF-name with and without the "GEMS.xxx" namespace
+    # qualifier as the module name will be present if GEMS is imported as
+    # a depenedncy into another module
+    id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", string.(subtypes(ContactSamplingMethod)))
     if isnothing(id)
         error("The provided type is not a valid subtype of $ContactSamplingMethod use '$(join(string.(subtypes(ContactSamplingMethod)), "', '", "' or '"))'!")
     end
