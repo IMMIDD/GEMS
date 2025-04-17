@@ -2,7 +2,7 @@
 
     # seed = 1234
     tickunit = 'd'
-    GlobalSetting = false
+    GlobalSetting = true
     startdate = '2024.01.01'
     enddate = '2024.12.31'
     [Simulation.StartCondition]
@@ -27,7 +27,7 @@
         [Pathogens.Covid19.transmission_function]
             type = "ConstantTransmissionRate"
             [Pathogens.Covid19.transmission_function.parameters]
-                transmission_rate = 0.2
+                transmission_rate = 0.1
 
         [Pathogens.Covid19.onset_of_symptoms]
             distribution = "Poisson"
@@ -162,7 +162,8 @@
                     
     [Settings.GlobalSetting]
         [Settings.GlobalSetting.contact_sampling_method]
-                type = "ContactparameterSampling"
-
+                type = "ContactAgeBasedparameterSampling"
                 [Settings.GlobalSetting.contact_sampling_method.parameters]
                     contactparameter = 1.0
+                    interval = 5
+                    contact_matrix_file = "data/age_group_contact.txt"
