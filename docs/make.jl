@@ -72,7 +72,7 @@ makedocs(
         # Folders in repo
         #"Package Structure" => "package-structure.md", #TODO add markdowns from READMEs in Repo?
         # Contribution - style guides, working with git, change log, license
-        #"Contributing to GEMS" => "contributing-guide.md",
+        "Contributing to GEMS" => "contributing-guide.md",
         # FAQ
         "FAQ" => "faq-page.md",
         # Glossary
