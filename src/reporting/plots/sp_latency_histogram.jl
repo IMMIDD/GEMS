@@ -77,6 +77,7 @@ function generate(plt::LatencyHistogram, rd::ResultData; plotargs...)
         label="Latency Period",
         xlabel=uppercasefirst(uticks) * "s",
         ylabel="Number of Infections", 
+        xlims = (0, max(5, maximum(comp[!,"exposed"]))),
         fontfamily="Times Roman",
         dpi = 300) 
 
