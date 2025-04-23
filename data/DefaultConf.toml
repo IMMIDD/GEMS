@@ -2,7 +2,7 @@
 
     # seed = 1234
     tickunit = 'd'
-    GlobalSetting = true
+    GlobalSetting = false
     startdate = '2024.01.01'
     enddate = '2024.12.31'
     [Simulation.StartCondition]
@@ -27,7 +27,7 @@
         [Pathogens.Covid19.transmission_function]
             type = "ConstantTransmissionRate"
             [Pathogens.Covid19.transmission_function.parameters]
-                transmission_rate = 0.1
+                transmission_rate = 0.2
 
         [Pathogens.Covid19.onset_of_symptoms]
             distribution = "Poisson"
