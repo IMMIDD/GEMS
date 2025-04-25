@@ -236,6 +236,7 @@
             HospitalOccupancy()
             HouseholdAttackRate()
             Incidence()
+            IncubationHistogram()
             InfectionDuration()
             InfectionMap()
             InfectiousHistogram()
