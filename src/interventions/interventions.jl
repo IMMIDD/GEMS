@@ -1,4 +1,5 @@
 include("testing.jl")
+include("seroprevalence_testing.jl")
 include("strategies.jl")
 include("measures.jl")
 include("triggers.jl")
