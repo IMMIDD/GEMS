@@ -6,7 +6,7 @@ export create_contact_sampling_method
 
 Abstract function as Fallback if no specific method is available.
 """
-function sample_contacts(contact_sampling_method::ContactSamplingMethod, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::ErrorException
+function sample_contacts(contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::ErrorException
     error("Currently, no specific implementation of this function is known. Please provide a method for type: $(typeof(contact_sampling_method))")
 end
 
@@ -15,7 +15,7 @@ end
 
 Sample exactly 1 random contact from the individuals in `setting`.
 """
-function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -30,7 +30,7 @@ end
 
 Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`.
 """
-function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -47,13 +47,9 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
     
     # sample contacts (excluding last individual in present_inds)
     for i in 1:number_of_contacts
-        contact = present_inds[rand(1:length(present_inds)-1)]
-        if contact == individual
-            # replace self sampled individual with last individual in present_inds
-            res[i] = present_inds[length(present_inds)]
-        else
-            res[i] = contact
-        end
+        offset = rand(1:length(present_inds)-1)
+        contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+        res[i] = present_inds[contact_index]
     end
     
     return res
