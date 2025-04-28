@@ -21,7 +21,9 @@ function sample_contacts(random_sampling_method::RandomSampling, setting::Settin
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
-    return sample(present_inds, 1; replace=true)
+    offset = rand(1:length(present_inds)-1)
+    contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+    return [present_inds[contact_index]]
 end
 
 
