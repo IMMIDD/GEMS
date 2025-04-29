@@ -24,10 +24,25 @@ the course of the simuation.
 | `hh_attack_rate`     | `Float64` | Number of infected individuals divided by household size              |
 """
 
-function household_attack_rates(postProcessor::PostProcessor)
-    infs = copy(postProcessor |> infectionsDF)
-    select!(infs, :tick, :id_b, :household_b, :infection_id, :source_infection_id, :setting_type)
-    sort!(infs, :infection_id)
+function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
+    # exception handling
+    hh_samples <= 100 ? throw("Sample too low. You need at least 100 households to proceed with the calculation") : nothing
+
+    # randomly sample the required number of households from the infections dataframe
+    hh_selection = (postProcessor |> infectionsDF).household_b |> unique |>
+        x -> sample(x, min(hh_samples, length(x)), replace = false) |>
+        x -> DataFrame(household_b = x, select = fill(true, length(x)))
+
+    # make a copy of the infections dataframe to
+    # not add this calculation to the internal infections dataframe
+    # and take only a subset based on the specified sample size
+    infs = postProcessor |> infectionsDF |>
+        x -> DataFrames.select(x, :tick, :id_b, :household_b, :infection_id, :source_infection_id, :setting_type) |>
+        # filter for infections of agents with selected households
+        x -> leftjoin(x, hh_selection, on = :household_b) |>
+        x -> x[.!ismissing.(x.select), :] |>
+        x -> sort(x, :infection_id) |>
+        copy
 
     n = nrow(infs)
     if n == 0
