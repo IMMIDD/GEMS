@@ -38,6 +38,23 @@ function is_existing_subtype(subtype::String, type::Type)::Bool
     # return subtype in string.(concrete_subtypes(type))
 end
 
+"""
+    is_subtype(type::String, parent::DataType)
+    is_subtype(type::Symbol, parent::DataType)
+
+Returns `true` if the specified string in `type` is a subtype of the struct class `parent`.
+If will check both, the type itself and `GEMS.type`, to resolve any namespacing problems.
+This function supersedes `is_existing_subtype(...)`
+"""
+function is_subtype(type::String, parent::DataType)
+    parent_strings = string.(subtypes(parent))
+    gems_string = string(nameof(@__MODULE__))
+    return (type in parent_strings) || ("$gems_string.$type" in parent_strings)
+end
+
+is_subtype(type::Symbol, parent::DataType) = is_subtype(string(type), parent)
+
+
 function find_subtype(subtype::String, type::Type)::Type
     subtypes = concrete_subtypes(type)
     idx = findfirst(item -> item[end] == subtype, split.(string.(subtypes),"."))
@@ -47,6 +64,25 @@ function find_subtype(subtype::String, type::Type)::Type
         return subtypes[idx]
     end
 end
+
+"""
+    get_subtype(type::String, parent::DataType)
+
+Returns the `DataType` which is a subtype of `parent` specified by the `type` string.
+This function supersedes `find_subtype(...)`
+
+"""
+function get_subtype(type::String, parent::DataType)
+    stypes = subtypes(parent)
+    gems_string = string(nameof(@__MODULE__))
+    # find index of matching type
+    i = findfirst(x -> x == type || x == "$gems_string.$type", string.(stypes))
+    # return index
+    return stypes[i]
+end
+
+get_subtype(type::Symbol, parent::DataType) = get_subtype(string(type), parent)
+
 
 # helper function to check whether input is valid date format
 function isdate(x)

@@ -55,7 +55,7 @@ git_branch(::ResultData)
 git_commit(::ResultData)
 git_repo(::ResultData)
 hashes(::ResultData)
-hospital_df(::ResultData)
+tick_hosptitalizations(::ResultData)
 household_attack_rates(::ResultData)
 id(::ResultData)
 import_resultdata

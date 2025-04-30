@@ -207,17 +207,14 @@ end
 
 # unifying usage with gemsplot typing
 function PlotSection(type::Symbol)
-    type ∉ Symbol.(subtypes(SimulationPlot)) ? throw("There's no plot type that matches $type") : nothing
-
-    # get index in subtype list
-    i = findfirst(x -> x == type, Symbol.(subtypes(SimulationPlot)))
+    !is_subtype(type, SimulationPlot) ? throw("There's no plot type that matches $type") : nothing
 
     plt = try 
         # instantiate plot
         # we go via the subtypes function as it evaluates the "known"
         # subtypes at runtime, not compilation time. This allows
         # to also add user-defined plots.
-        subtypes(SimulationPlot)[i]()
+        get_subtype(type, SimulationPlot)()
     catch
         # throws exception if the plot type doesn't have a 0-argument constructor
         throw("$type cannot be used via PlotSection(:$type), please intantiate the object with its required arguments instead, like: PlotSection($type(args...))")

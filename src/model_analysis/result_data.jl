@@ -13,7 +13,7 @@ export git_repo, git_branch, git_commit
 export dataframes, population_size, setting_age_contacts, infections, vaccinations, deaths, effectiveR,aggregated_setting_age_contacts
 export compartment_periods, aggregated_compartment_periods, cumulative_disease_progressions, tick_cases, tick_deaths, tick_vaccinations
 export cumulative_cases, compartment_fill, cumulative_deaths, cumulative_vaccinations, age_incidence
-export tests, tick_pooltests, detected_tick_cases,rolling_observed_SI, time_to_detection, detection_rate, cumulative_quarantines, hospital_df
+export tests, tick_pooltests, detected_tick_cases,rolling_observed_SI, time_to_detection, detection_rate, cumulative_quarantines, tick_hosptitalizations
 export customlogger, household_attack_rates
 export population_pyramid, timer_output, timer_output!, infections_hash, data_hash, id, hashes
 export exportJLD, exportJSON
@@ -1043,14 +1043,14 @@ function cumulative_vaccinations(rd::ResultData)
 end
 
 """
-    hospital_df(rd::ResultData)
+    tick_hosptitalizations(rd::ResultData)
 
 Returns the tests per tick DataFrame.
 Look up the `PostProcessor` docs to find the column definitions.
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
-function hospital_df(rd::ResultData)
-    return(get(rd |> dataframes, "hospital_df", Dict()))
+function tick_hosptitalizations(rd::ResultData)
+    return(get(rd |> dataframes, "tick_hosptitalizations", Dict()))
 end
 
 """
