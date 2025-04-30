@@ -55,6 +55,12 @@ end
     ContactAgeBasedparameterSampling <: ContactSamplingMethod
 
 Sample random contacts based on a Poissoin-Distribution spread around `contactparameter_sampling.contactparameter` with weighted sampling based on age distance.
+
+# Parameters
+
+- `contactparameter::Float64`: Expected value of a Poisson-Distribution used to draw the number of contacts
+- `contact_matrix_file::String`: String path to a file with an `NxN` contact probability matrix
+- `interval::Int64`: Year-intervals of contact matrix (e.g., 5 means, the data contains age-age-couplings for 5-year age groups)
 """
 mutable struct ContactAgeBasedparameterSampling <: ContactSamplingMethod
     contactparameter::Float64
