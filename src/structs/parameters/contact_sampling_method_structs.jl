@@ -2,7 +2,7 @@ export ContactSamplingMethod
 export RandomSampling
 export TestSampling
 export ContactparameterSampling
-export ContactAgeBasedparameterSampling
+export AgeBasedContactSampling
 
 
 """
@@ -52,7 +52,7 @@ Sample random contacts based on a Poisson-Distribution spread around `contactpar
 end
 
 """
-    ContactAgeBasedparameterSampling <: ContactSamplingMethod
+    AgeBasedContactSampling <: ContactSamplingMethod
 
 Sample random contacts based on a Poissoin-Distribution spread around `contactparameter_sampling.contactparameter` with weighted sampling based on age distance.
 
@@ -62,13 +62,13 @@ Sample random contacts based on a Poissoin-Distribution spread around `contactpa
 - `contact_matrix_file::String`: String path to a file with an `NxN` contact probability matrix
 - `interval::Int64`: Year-intervals of contact matrix (e.g., 5 means, the data contains age-age-couplings for 5-year age groups)
 """
-mutable struct ContactAgeBasedparameterSampling <: ContactSamplingMethod
+mutable struct AgeBasedContactSampling <: ContactSamplingMethod
     contactparameter::Float64
     interval::Int64
     contact_matrix::ContactMatrix{Float64}
     age_pyramid::Vector{Float64} #it will be computed in sample_contacts method
 
-    function ContactAgeBasedparameterSampling(; contactparameter::Float64, contact_matrix_file::String, interval::Int64)
+    function AgeBasedContactSampling(; contactparameter::Float64, contact_matrix_file::String, interval::Int64)
         if contactparameter < 0
             throw(ArgumentError("'contactparameter' is $contactparameter, but the 'contactparameter' has to be non-negative!"))
         end
@@ -83,7 +83,7 @@ mutable struct ContactAgeBasedparameterSampling <: ContactSamplingMethod
         return new(contactparameter, interval, contact_matrix, Float64[])
     end
 
-    function ContactAgeBasedparameterSampling(contactparameter::Float64, interval::Int64, contact_matrix::ContactMatrix{Float64}, age_pyramid::Vector{Float64})
+    function AgeBasedContactSampling(contactparameter::Float64, interval::Int64, contact_matrix::ContactMatrix{Float64}, age_pyramid::Vector{Float64})
         if contactparameter < 0
             throw(ArgumentError("'contactparameter' is $contactparameter, but the 'contactparameter' has to be non-negative!"))
         end

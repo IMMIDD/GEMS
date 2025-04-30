@@ -97,9 +97,23 @@
                 [Settings.Household.contact_sampling_method.parameters]
                     contactparameter = 1.0
                     
+    [Settings.SchoolClass]
+        [Settings.SchoolClass.contact_sampling_method]
+                type = "ContactparameterSampling"
+
+                [Settings.SchoolClass.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.Office]
+        [Settings.Office.contact_sampling_method]
+                type = "ContactparameterSampling"
+
+                [Settings.Office.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
     [Settings.GlobalSetting]
         [Settings.GlobalSetting.contact_sampling_method]
-                type = "ContactAgeBasedparameterSampling"
+                type = "AgeBasedContactSampling"
                 [Settings.GlobalSetting.contact_sampling_method.parameters]
                     contactparameter = 1.0
                     interval = 5

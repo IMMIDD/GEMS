@@ -74,7 +74,7 @@ Firstly, we sample uniformly with probability pi = e * wi * qi * m_max / N
 m_max - maximal mixing factor between age groups
 Secondly, we sample with adapted probability mi = mi / m_max
 """
-function sample_contacts(contactparameter_sampling::ContactAgeBasedparameterSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
