@@ -114,7 +114,7 @@ function generate(plt::ActiveDarkFigure, rds::Vector{ResultData}; dates::Bool = 
     plot!(p; plotargs...)
 
     # replace x-ticks with dates
-    dates ? adddates!(p, rd) : nothing
+    dates ? adddates!(p, rds[1]) : nothing
 
     return(p)
 end

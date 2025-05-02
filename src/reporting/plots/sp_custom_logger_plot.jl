@@ -141,7 +141,7 @@ function generate(plt::CustomLoggerPlot, rds::Vector{ResultData}; dates::Bool = 
     # add custom arguments that were passed
     plot!(p; plotargs...)
     # replace x-ticks with dates
-    dates ? adddates!(p, rd) : nothing
+    dates ? adddates!(p, rds[1]) : nothing
 
     return(p)
 end

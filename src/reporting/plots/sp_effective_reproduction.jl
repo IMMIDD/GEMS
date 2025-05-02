@@ -109,7 +109,7 @@ function generate(plt::EffectiveReproduction, rds::Vector{ResultData}; dates::Bo
     plot!(p; plotargs...)
 
     # replace x-ticks with dates
-    dates ? adddates!(p, rd) : nothing
+    dates ? adddates!(p, rds[1]) : nothing
 
     return(p)
 end

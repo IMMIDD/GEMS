@@ -110,7 +110,7 @@ function generate(plt::TickCases, rds::Vector{ResultData}; dates::Bool = true,  
     plot!(p; plotargs...)
 
     # replace x-ticks with dates
-    dates ? adddates!(p, rd) : nothing
+    dates ? adddates!(p, rds[1]) : nothing
 
     return(p)
 end
