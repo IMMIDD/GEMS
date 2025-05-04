@@ -1,5 +1,6 @@
 using Documenter, GEMS
 # using Documenter.DocChecks
+using GitHubMarkdown
 
 using DataFrames, TimerOutputs
 DocMeta.setdocmeta!(GEMS, :DocTestSetup, :(using GEMS); recursive=true, warn = false) # activate GEMS for all "jldoctests"
@@ -9,6 +10,7 @@ DocMeta.setdocmeta!(GEMS, :DocTestSetup, :(using GEMS); recursive=true, warn = f
 # DocChecks.checkdocs(GEMS)
 # GEMS.getundocumented
 
+write("src/changelog.md", github_changelog("IMMIDD", "GEMS"; prereleases=false, drafts=false))
 
 makedocs(
     sitename = "GEMS.jl",
@@ -74,6 +76,8 @@ makedocs(
         # Contribution - style guides, working with git, change log, license
         "Contributing to GEMS" => "contributing-guide.md",
         # FAQ
+        "Changelog" => "changelog.md",
+        # Changelog
         "FAQ" => "faq-page.md",
         # Glossary
         "Glossary" => "glossary.md",
