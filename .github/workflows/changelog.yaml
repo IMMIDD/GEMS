@@ -15,7 +15,7 @@ jobs:
           fetch-depth: 0
       - uses: rhysd/changelog-from-release/action@v3
         with:
-          file: docs/changelog.md
+          file: docs/src/changelog.md
           github_token: ${{ secrets.GITHUB_TOKEN }}
           header: |
             # Changelog
