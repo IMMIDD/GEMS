@@ -22,8 +22,6 @@ jobs:
             # Changelog
 
             This page lists the changes and release notes for GEMS.jl, automatically generated from [GitHub Releases](https://github.com/IMMIDD/GEMS/releases).
-          no_version_id: true
-          no_signature: true
       - name: Trigger Documenter Workflow
         run: |
           curl -X POST \
