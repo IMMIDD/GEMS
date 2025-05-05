@@ -21,11 +21,11 @@ jobs:
             # Changelog
 
             This page lists the changes and release notes for GEMS.jl, automatically generated from [GitHub Releases](https://github.com/IMMIDD/GEMS/releases).
-      - name: Commit docs/changelog.md
+      - name: Commit docs/src/changelog.md
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/changelog.md
+          git add docs/src/changelog.md
           git commit -m 'docs(changelog): update changelog from GitHub Releases' || echo "No changes to commit"
           git push
         env:
