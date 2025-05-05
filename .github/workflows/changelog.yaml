@@ -3,6 +3,8 @@ on:
   release:
     types: [created, edited]
   workflow_dispatch:
+permissions:
+  contents: write
 
 jobs:
   generate-changelog:
