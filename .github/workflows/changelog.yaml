@@ -1,0 +1,27 @@
+name: Generate Changelog
+on:
+  release:
+    types: [created, edited]
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: rhysd/changelog-from-release/action@v3
+        with:
+          file: docs/changelog.md
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          header: |
+            # Changelog
+
+            This page lists the changes and release notes for GEMS.jl, automatically generated from [GitHub Releases](https://github.com/IMMIDD/GEMS/releases).
+      - name: Commit docs/changelog.md
+        run: |
+          git add docs/changelog.md
+          git commit -m 'docs(changelog): update changelog from GitHub Releases' || echo "No changes to commit"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

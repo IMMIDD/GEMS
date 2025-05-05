@@ -3,6 +3,8 @@ on:
   push:
     branches: [main, development]
     tags: [v*]
+    paths:
+      - 'docs/**'
   pull_request:
 
 jobs:
