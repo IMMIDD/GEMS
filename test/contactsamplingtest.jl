@@ -64,5 +64,12 @@
             contacts = sample_contacts(cps, h, i_index, individuals(h), GEMS.DEFAULT_TICK)
             @test all(contact.id != i.id for contact in contacts)
         end
+
+        # Test that sample_contacts with replace=false avoids self-sampling and produces unique contacts
+        for _ in 1:10
+            contacts = sample_contacts(cps, h, i_index, individuals(h), GEMS.DEFAULT_TICK, replace=false)
+            @test all(contact.id != i.id for contact in contacts)
+            @test length(unique([contact.id for contact in contacts])) == length(contacts)
+        end
     end
 end

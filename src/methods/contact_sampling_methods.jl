@@ -32,7 +32,7 @@ end
 
 Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`. The `replace` parameter determines whether contacts are sampled with replacement (`true`) or without replacement (`false`).
 """
-function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool = true)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
