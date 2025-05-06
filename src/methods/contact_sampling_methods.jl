@@ -30,9 +30,9 @@ end
 """
     sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual::Individual, tick::Int16)::Vector{Individual}
 
-Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`.
+Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`. The `replace` parameter determines whether contacts are sampled with replacement (`true`) or without replacement (`false`).
 """
-function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool = true)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -45,13 +45,29 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
     # get number of contacts
     number_of_contacts = rand(Poisson(contactparameter_sampling.contactparameter))
     # number_of_contacts = Int64(contactparameter_sampling.contactparameter)
-    res = Vector{Individual}(undef, number_of_contacts)
-    
-    # sample contacts (excluding last individual in present_inds)
-    for i in 1:number_of_contacts
-        offset = rand(1:length(present_inds)-1)
-        contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-        res[i] = present_inds[contact_index]
+
+
+    if replace
+        res = Vector{Individual}(undef, number_of_contacts)
+        
+        # sample contacts 
+        for i in 1:number_of_contacts
+            offset = rand(1:length(present_inds)-1)
+            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+            res[i] = present_inds[contact_index]
+        end
+    else
+        number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
+        res = Vector{Individual}(undef, number_of_contacts)
+
+        sample!(present_inds[1:end-1], res; replace=false)
+        for i = 1:length(res)
+            if res[i] === present_inds[individual_index]
+                res[i] = present_inds[end]
+                break
+            end
+        end
+
     end
     
     return res
