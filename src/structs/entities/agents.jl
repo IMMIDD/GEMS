@@ -65,7 +65,7 @@ A type to represent individuals, that act as agents inside the simulation.
     - `sex::Int8`: Sex  (Female (1), Male(2), Diverse (3))
     - `age::Int8`: Age
     - `education::Int8`: Education class (i.e. highest degree)
-    - `occupation::Int8`: Occupation class (i.e. manual labour, office job, etc...)
+    - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
 
 - Behaviour
     - `social_factor::Float32`: Parameter for the risk-willingness. Can be anywhere between
@@ -130,7 +130,7 @@ A type to represent individuals, that act as agents inside the simulation.
     sex::Int8  # 1 byte
     age::Int8  # 1 byte
     education::Int8 = DEFAULT_SETTING_ID # 1 byte
-    occupation::Int8 = DEFAULT_SETTING_ID # 1 byte
+    occupation::Int16 = DEFAULT_SETTING_ID # 2 byte
 
     # BEHAVIOR
     social_factor::Float32 = 0 # 4 bytes
@@ -264,7 +264,7 @@ end
 
 Returns an individual's occupation class.
 """
-function occupation(individual::Individual)::Int8
+function occupation(individual::Individual)::Int16
     return individual.occupation
 end
 

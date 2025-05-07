@@ -392,7 +392,7 @@ Returns a DataFrame representing the given population.
 | `sex`        | `Int8`  | Individual sex                    |
 | `age`        | `Int8`  | Individual age                    |
 | `education`  | `Int8`  | Individual education level        |
-| `occupation` | `Int8`  | Individual occupation group       |
+| `occupation` | `Int16` | Individual occupation group       |
 | `household`  | `Int32` | Individual associated household   |
 | `office`     | `Int32` | Individual associated office      |
 | `school`     | `Int32` | Individual associated school      |
