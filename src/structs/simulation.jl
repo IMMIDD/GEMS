@@ -945,11 +945,20 @@ end
 
 Creates statistical distributions to be used by other parts of the `Simulation` object.
 """
-function create_distribution(params::Vector{<:Real}, type::String)::Distribution
-    try 
-        return eval(Symbol(type))(params...)
-    catch
-        throw("Distribution $type cannot be created with parameters: $params")
+
+function create_distribution(params::Vector{<:Real}, type::String)
+    gems_string = string(nameof(@__MODULE__))
+    id = findfirst(x -> x == type || x == "$gems_string.$type", string.(subtypes(Distribution)))
+
+    dist_type = nothing
+    if !isnothing(id)
+        dist_type = subtypes(Distribution)[id]
+    end
+
+    try
+        return dist_type(params...)
+    catch e
+        error("Failed to create distribution '$type' with parameters $params: $e")
     end
 end
 
