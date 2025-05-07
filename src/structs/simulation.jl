@@ -150,7 +150,8 @@ mutable struct Simulation
          EventQueue(), # event_queue::EventQueue
          [], # strategies::Vector{Strategy}
          [], # testtypes::Vector{AbstractTestType}
-         x -> x # stepmod::Function
+         x -> x, # stepmod::Function
+         Xoshiro(rand(Int64)) # rng::AbstractRNG
          ) 
     end
 
@@ -579,9 +580,6 @@ mutable struct Simulation
         end
 
         # 7 We create the sim object with the parameters
-
-        # create random number generator
-        rng = initialize_rng(properties["Simulation"])
     
         # 8 create all necessary pathogens
         pathogens = create_pathogens(properties["Pathogens"])
@@ -606,6 +604,11 @@ mutable struct Simulation
         printinfo("\u2514 Creating simulation object")
         
         sim = Simulation(configfile, start_condition, stop_criterion, population, settings, label)
+
+        if haskey(properties["Simulation"], "seed") 
+            seed = properties["Simulation"]["seed"]
+            Random.seed!(sim.rng, seed)
+        end
 
         # Remove empty containersettings
         if settingsfile != ""
@@ -1067,21 +1070,6 @@ function load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
     end
 end
 
-
-"""
-    initialize_rng(simulation_dict::Dict)
-
-Creates a random value based on the seed provided
-"""
-function initialize_rng(simulation_dict::Dict)::AbstractRNG
-    if "seed" in keys(simulation_dict)
-        seed = simulation_dict["seed"]
-    else
-        seed = rand(Int64)
-    end
-
-    return Xoshiro(seed)
-end
 
 """
     obtain_remote_files(identifier::String; forcedownload::Bool = false)

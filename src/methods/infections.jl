@@ -162,7 +162,7 @@ function try_to_infect!(infctr::Individual,
     if !infected(infctd) && !dead(infctd)
         infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick)
 
-        if rand() < infection_probability
+        if rand(sim.rng) < infection_probability
             infect!(infctd, tick(sim), pathogen,
                 sim = sim,
                 infecter_id = id(infctr),
