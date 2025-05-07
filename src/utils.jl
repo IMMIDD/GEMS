@@ -12,6 +12,7 @@ export lognow, printinfo, subinfo
 export _int
 export remove_kw
 export germanshapes
+export set_global_seed
 
 # contact stuff
 export calculate_absolute_error
@@ -942,4 +943,8 @@ function germanshapes(level::Int64)
 
     # return shapefile
     return(Shapefile.Table(filename))
+end
+
+function set_global_seed(seed::Int64)
+    Random.seed!(seed)
 end

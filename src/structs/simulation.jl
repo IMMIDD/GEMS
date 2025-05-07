@@ -109,6 +109,8 @@ mutable struct Simulation
     # StepMod
     stepmod::Function
 
+    # RNG
+    rng::AbstractRNG
     
     ### INNER CONSTRUCTOR
 
@@ -217,7 +219,7 @@ mutable struct Simulation
     | `label`                         | `String`               | Label used to name simulation runs during analysis                                                                                    |
     | `stepmod`                       | `Function`             | One-agument function which will be executed each simulation step, called on the `Simulation` object                                   |
     | `seed`                          | `Int64`                | Random seed                                                                                                                           |
-    | `global_setting`                 | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
+    | `global_setting`                | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
     | `startdate`                     | `Date`, `String`       | Simulation start date (format: `YYYY.MM.DD`)                                                                                          |
     | `enddate`                       | `Date`, `String`       | Simulation end date (format: `YYYY.MM.DD`)                                                                                            |
     | `infected_fraction`             | `Float64`              | Fraction of the initially infected agents for the `InfectedFraction` start condition                                                  |
@@ -578,12 +580,8 @@ mutable struct Simulation
 
         # 7 We create the sim object with the parameters
 
-        
-        if "seed" in keys(properties["Simulation"])
-            seed = properties["Simulation"]["seed"]
-            # println(seed)
-            initialize_seed(seed)
-        end
+        # create random number generator
+        rng = initialize_rng(properties["Simulation"])
     
         # 8 create all necessary pathogens
         pathogens = create_pathogens(properties["Pathogens"])
@@ -1071,12 +1069,18 @@ end
 
 
 """
-    initialize_seed(x::Int64)
+    initialize_rng(simulation_dict::Dict)
 
 Creates a random value based on the seed provided
 """
-function initialize_seed(x::Int64)
-    return Random.seed!(x)
+function initialize_rng(simulation_dict::Dict)::AbstractRNG
+    if "seed" in keys(simulation_dict)
+        seed = simulation_dict["seed"]
+    else
+        seed = rand(Int64)
+    end
+
+    return Xoshiro(seed)
 end
 
 """
