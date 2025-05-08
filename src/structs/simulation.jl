@@ -646,10 +646,14 @@ mutable struct Simulation
     
 
         # Append the StepMod! Function
-
         sim.stepmod = stepmod
-
-        initialize!(sim)
+        if "seed" in keys(properties["Simulation"])
+            seed = properties["Simulation"]["seed"]
+            initialize!(sim; seed)
+        else
+            # No seed provided, using default
+            initialize!(sim)
+        end
 
         return sim
     end
@@ -1519,8 +1523,8 @@ end
 
 Initializes the simulation model with a provided start condition.
 """
-function initialize!(simulation::Simulation)
-    initialize!(simulation, start_condition(simulation))
+function initialize!(simulation::Simulation; seed::Int64 = 0)
+    initialize!(simulation, start_condition(simulation); seed = seed)
 end
 
 ###
