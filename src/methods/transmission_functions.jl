@@ -2,17 +2,17 @@ export transmission_probability
 export create_transmission_function
 
 """
-    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)
+    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)
 
 General function for TransmissionFunction struct. Should be overwritten for newly created structs, as it only serves
 to catch undefined `transmission_probability` functions.
 """
-function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
+function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
     @error "The transmission_probability function is not defined for the provided TransmissionFunction struct!"
 end
 
 """
-    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)
+    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)
 
 Calculates the transmission probability for the `ConstantTransmissionRate`. Returns the `transmission_rate`
 for all individuals who have not been infected in the past. If the individual has already recovered,
@@ -31,7 +31,7 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 
 """
-function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
+function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
     if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
@@ -40,7 +40,7 @@ function transmission_probability(transFunc::ConstantTransmissionRate, infecter:
 end
 
 """
-    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)
+    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)
 
 Calculates the transmission probability for the `AgeDependentTransmissionRate`. Selects the correct distribution 
 dependent on the age of the potentially infected agent from the `AgeDependentTransmissionRate`, draws from it and
@@ -59,17 +59,17 @@ If the individual has already recovered, the function returns `0.0`, assuming fu
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
-function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
+function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
     if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
     for (i,ageGroup) in enumerate(transFunc.ageGroups)
         if ageGroup[1] <= infected.age <= ageGroup[2]
-            return rand(transFunc.ageTransmissions[i])
+            return rand(sim.rng, transFunc.ageTransmissions[i])
         end
     end
-    return rand(transFunc.transmission_rate)
+    return rand(sim.rng, transFunc.transmission_rate)
 end
 
 """

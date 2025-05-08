@@ -18,138 +18,138 @@ export sample_self_quarantine_rate
 ###
 
 """
-    sample_mild_death_rate(pathogen::Pathogen, indiv::Individual)
+    sample_mild_death_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn value from the death rate distribution for cases 
 with mild symptoms.
 """
-function sample_mild_death_rate(pathogen::Pathogen, indiv::Individual)::Float32
-    return rand(pathogen.mild_death_rate)
+function sample_mild_death_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)::Float32
+    return rand(sim.rng, pathogen.mild_death_rate)
 end
 
 """
-    sample_severe_death_rate(pathogen::Pathogen, indiv::Individual)
+    sample_severe_death_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn value from the death rate distribution for severe 
 disease progressions.
 """
-function sample_severe_death_rate(pathogen::Pathogen, indiv::Individual)::Float32
-    return rand(pathogen.severe_death_rate)
+function sample_severe_death_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)::Float32
+    return rand(sim.rng, pathogen.severe_death_rate)
 end
 
 """
-    sample_critical_death_rate(pathogen::Pathogen, indiv::Individual)
+    sample_critical_death_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn value from the death rate distribution for critical 
 disease progressions.
 """
-function sample_critical_death_rate(pathogen::Pathogen, indiv::Individual)::Float32
-    return rand(pathogen.critical_death_rate)
+function sample_critical_death_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)::Float32
+    return rand(sim.rng, pathogen.critical_death_rate)
 end
 
 """
-    sample_hospitalization_rate(pathogen::Pathogen, indiv::Individual)
+    sample_hospitalization_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn value from the hospitalization rate distribution.
 """
-function sample_hospitalization_rate(pathogen::Pathogen, indiv::Individual)::Float32
-    return rand(pathogen.hospitalization_rate)
+function sample_hospitalization_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)::Float32
+    return rand(sim.rng, pathogen.hospitalization_rate)
 end
 
 """
-    sample_ventilation_rate(pathogen::Pathogen, indiv::Individual)
+    sample_ventilation_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn value from the Ventilation rate distribution.
 """
-function sample_ventilation_rate(pathogen::Pathogen, indiv::Individual)::Float32
-    return rand(pathogen.ventilation_rate)
+function sample_ventilation_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)::Float32
+    return rand(sim.rng, pathogen.ventilation_rate)
 end
 
 """
-    sample_icu_rate(pathogen::Pathogen, indiv::Individual)
+    sample_icu_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn value from the ICU rate distribution.
 """
-function sample_icu_rate(pathogen::Pathogen, indiv::Individual)::Float32
-    return rand(pathogen.icu_rate)
+function sample_icu_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)::Float32
+    return rand(sim.rng, pathogen.icu_rate)
 end
 
 """
-    sample_self_quarantine_rate(pathogen::Pathogen, indiv::Individual)
+    sample_self_quarantine_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn value from the ICU rate distribution.
 """
-function sample_self_quarantine_rate(pathogen::Pathogen, indiv::Individual)::Float32
-    return rand(pathogen.self_quarantine_rate)
+function sample_self_quarantine_rate(pathogen::Pathogen, indiv::Individual, sim::Simulation)::Float32
+    return rand(sim.rng, pathogen.self_quarantine_rate)
 end
 
 ###
 ### SAMPLING & CALCULATION OF TICKS
 ###
 """
-    sample_time_to_recovery(pathogen::Pathogen,  indiv::Individual)
+    sample_time_to_recovery(pathogen::Pathogen,  indiv::Individual, sim::Simulation)
     
 Returns a randomly drawn (rounded) value from the `time_to_recovery` distribution.
 """
-function sample_time_to_recovery(pathogen::Pathogen,  indiv::Individual)::Int16
-    return round(rand(pathogen.time_to_recovery))
+function sample_time_to_recovery(pathogen::Pathogen,  indiv::Individual, sim::Simulation)::Int16
+    return round(rand(sim.rng, pathogen.time_to_recovery))
 end
 
 """
-    sample_onset_of_symptoms(pathogen::Pathogen,  indiv::Individual)
+    sample_onset_of_symptoms(pathogen::Pathogen,  indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn (rounded) value from the `onset_of_symptoms` distribution.
 """
-function sample_onset_of_symptoms(pathogen::Pathogen,  indiv::Individual)::Int16
-    return round(rand(pathogen.onset_of_symptoms))
+function sample_onset_of_symptoms(pathogen::Pathogen,  indiv::Individual, sim::Simulation)::Int16
+    return round(rand(sim.rng, pathogen.onset_of_symptoms))
 end
 
 """
-    sample_infectious_offset(pathogen::Pathogen,  indiv::Individual)
+    sample_infectious_offset(pathogen::Pathogen,  indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn (rounded) value from the infectious offset distribution.
 """
-function sample_infectious_offset(pathogen::Pathogen,  indiv::Individual)::Int16
-    return round(rand(pathogen.infectious_offset))
+function sample_infectious_offset(pathogen::Pathogen,  indiv::Individual, sim::Simulation)::Int16
+    return round(rand(sim.rng, pathogen.infectious_offset))
 end
 
 """
-    sample_onset_of_severeness(pathogen::Pathogen,  indiv::Individual)
+    sample_onset_of_severeness(pathogen::Pathogen,  indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn (rounded) value from the `onset_of_symptoms` distribution.
 """
-function sample_onset_of_severeness(pathogen::Pathogen,  indiv::Individual)::Int16
-    return round(rand(pathogen.onset_of_severeness))
+function sample_onset_of_severeness(pathogen::Pathogen,  indiv::Individual, sim::Simulation)::Int16
+    return round(rand(sim.rng, pathogen.onset_of_severeness))
 end
 
 """
-    sample_time_to_hospitalization(pathogen::Pathogen,  indiv::Individual)
+    sample_time_to_hospitalization(pathogen::Pathogen,  indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn (rounded) value from the `time_to_hospitalization` distribution
 for cases with severe disease progression.
 """
-function sample_time_to_hospitalization(pathogen::Pathogen,  indiv::Individual)::Int16
-    return round(rand(pathogen.time_to_hospitalization))
+function sample_time_to_hospitalization(pathogen::Pathogen,  indiv::Individual, sim::Simulation)::Int16
+    return round(rand(sim.rng, pathogen.time_to_hospitalization))
 end
 
 """
-    sample_length_of_stay(pathogen::Pathogen,  indiv::Individual)
+    sample_length_of_stay(pathogen::Pathogen,  indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn (rounded) value from the `time_to_hopsitalization` distribution
 for cases with severe disease progression.
 """
-function sample_length_of_stay(pathogen::Pathogen,  indiv::Individual)::Int16
-    return round(rand(pathogen.length_of_stay))
+function sample_length_of_stay(pathogen::Pathogen,  indiv::Individual, sim::Simulation)::Int16
+    return round(rand(sim.rng, pathogen.length_of_stay))
 end
 
 """
-    sample_time_to_icu(pathogen::Pathogen,  indiv::Individual)
+    sample_time_to_icu(pathogen::Pathogen,  indiv::Individual, sim::Simulation)
 
 Returns a randomly drawn (rounded) value from the `time_to_icu` distribution for cases
 with critical disease progression.
 """
-function sample_time_to_icu(pathogen::Pathogen,  indiv::Individual)::Int16
-    return round(rand(pathogen.time_to_icu))
+function sample_time_to_icu(pathogen::Pathogen,  indiv::Individual, sim::Simulation)::Int16
+    return round(rand(sim.rng, pathogen.time_to_icu))
 end
 
 ###
@@ -157,16 +157,16 @@ end
 ###
 
 """
-    estimate_disease_progression(dpr::DiseaseProgressionStrat, indiv::Individual)
+    estimate_disease_progression(dpr::DiseaseProgressionStrat, indiv::Individual, sim::Simulation)
 
 Estimates the final status an individual reaches during the progression of a disease.
 """
-function estimate_disease_progression(dpr::DiseaseProgressionStrat, indiv::Individual)::DataType
+function estimate_disease_progression(dpr::DiseaseProgressionStrat, indiv::Individual, sim::Simulation)::DataType
     ag = agegroup(dpr.age_groups, indiv)
     probabilities = dpr.stratification_matrix[ag]
     ranges = cumsum(probabilities)
 
-    r = rand()
+    r = rand(sim.rng)
 
     current = 1
     for (i, value) in enumerate(ranges)
@@ -210,19 +210,20 @@ end
 
 
 """
-    disease_progression!(infectee::Individual, pathogen::Pathogen, exposedtick::Int16)
+    disease_progression!(infectee::Individual, pathogen::Pathogen, exposedtick::Int16, sim::Simulation)
 
 Assigns a disease progression to the `infectee` by assigning event ticks based on the 
 `exposedtick`.
 """
-function disease_progression!(infectee::Individual, pathogen::Pathogen, exposedtick::Int16)
+function disease_progression!(infectee::Individual, pathogen::Pathogen, exposedtick::Int16, sim::Simulation)
     estimated_symptom_category = 
         estimate_disease_progression(
             disease_progression_strat(pathogen), 
-            infectee
+            infectee,
+            sim
         )
     # dispatch on the type of symptom category to the correct function
-    disease_progression!(infectee, pathogen, exposedtick, estimated_symptom_category)
+    disease_progression!(infectee, pathogen, exposedtick, sim, estimated_symptom_category)
 end
 
 
@@ -230,16 +231,17 @@ function disease_progression!(
     infectee::Individual,
     pathogen::Pathogen,
     exposedtick::Int16, 
+    sim::Simulation,
     ::Type{Asymptomatic}
 )
     # calc infectious_tick from onset_of_symptoms like in Mild case, but ignore onset_of_symptoms
-    theoretical_onset_of_symptoms = sample_onset_of_symptoms(pathogen, infectee)
+    theoretical_onset_of_symptoms = sample_onset_of_symptoms(pathogen, infectee, sim)
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
         max(exposedtick + Int16(1), exposedtick + 
             theoretical_onset_of_symptoms -
-            sample_infectious_offset(pathogen, infectee))
+            sample_infectious_offset(pathogen, infectee, sim))
     )
 
     # Calculate Asymptomatic Recovery tick.
@@ -247,7 +249,7 @@ function disease_progression!(
         infectee,
         exposedtick + 
             theoretical_onset_of_symptoms +
-            sample_time_to_recovery(pathogen, infectee)
+            sample_time_to_recovery(pathogen, infectee, sim)
     )
 
     #TODO: JP: the onset_of_symptoms parameter is not set/reset
@@ -263,37 +265,38 @@ function disease_progression!(
     infectee::Individual,
     pathogen::Pathogen,
     exposedtick::Int16,
+    sim::Simulation,
     ::Type{Mild}
 )
     # TODOS
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee, sim))
     )
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee, sim))
     )
     # removed tick as normal
     removed_tick!(
         infectee,
-        onset_of_symptoms(infectee) + sample_time_to_recovery(pathogen, infectee)
+        onset_of_symptoms(infectee) + sample_time_to_recovery(pathogen, infectee, sim)
     )
 
     # estimate death probability
-    death_probability = sample_mild_death_rate(pathogen, infectee)
+    death_probability = sample_mild_death_rate(pathogen, infectee, sim)
 
     # calculate mild death or recovery rate. Sample length of symptoms for this.
-    if rand() < death_probability
+    if rand(sim.rng) < death_probability
         death_tick!(infectee, removed_tick(infectee))
     end
 
     #=
     # estimate self quarantine probability
-    if rand() < sample_self_quarantine_rate(pathogen, infectee)
+    if rand(sim.rng) < sample_self_quarantine_rate(pathogen, infectee)
         quarantine_tick!(infectee, onset_of_symptoms(infectee))
         quarantine_release_tick!(infectee, removed_tick(infectee))
     end
@@ -307,43 +310,44 @@ function disease_progression!(
     infectee::Individual,
     pathogen::Pathogen,
     exposedtick::Int16,
+    sim::Simulation,
     ::Type{Severe}
 )
 
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee, sim))
     )
 
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee, sim))
     )
 
     # calculate onset of severe symptoms as increment on onset of symptoms
     onset_of_severeness!(
         infectee,
-        onset_of_symptoms(infectee) + sample_onset_of_severeness(pathogen, infectee)
+        onset_of_symptoms(infectee) + sample_onset_of_severeness(pathogen, infectee, sim)
     )
 
     # random value to determine if hospitalized or not -> distribution from probability from the pathogen
         # calculate hospitalization tick if needed. If lower than onset_of_severeness, take minimum.
-    hospitalization_probability = sample_hospitalization_rate(pathogen, infectee)
+    hospitalization_probability = sample_hospitalization_rate(pathogen, infectee, sim)
     
-    death_probability = sample_severe_death_rate(pathogen, infectee)
+    death_probability = sample_severe_death_rate(pathogen, infectee, sim)
 
     # estimate death probability
-    willdie = rand() < death_probability
+    willdie = rand(sim.rng) < death_probability
 
-    if rand() < hospitalization_probability
+    if rand(sim.rng) < hospitalization_probability
 
         hospitalized_tick!(
             infectee,
             onset_of_symptoms(infectee) +
-                sample_time_to_hospitalization(pathogen, infectee)
+                sample_time_to_hospitalization(pathogen, infectee, sim)
         )
         
         # fix if hospitalization would be before onset of onset_of_severeness
@@ -355,7 +359,7 @@ function disease_progression!(
         # calculate severe death or recovery rate. If hospitalized, as "end of hospital". Sample length of symptoms for this.
         removed_tick!(
             infectee,
-            hospitalized_tick(infectee) + sample_length_of_stay(pathogen, infectee)
+            hospitalized_tick(infectee) + sample_length_of_stay(pathogen, infectee, sim)
         )
 
         #=
@@ -371,12 +375,12 @@ function disease_progression!(
         # calculate severe death or recovery rate. If hospitalized, as "end of hospital". Sample length of symptoms for this.
         removed_tick!(
             infectee,
-            onset_of_symptoms(infectee) + sample_time_to_recovery(pathogen, infectee)
+            onset_of_symptoms(infectee) + sample_time_to_recovery(pathogen, infectee, sim)
         )
 
         #=
         # estimate self quarantine probability
-        if rand() < sample_self_quarantine_rate(pathogen, infectee)
+        if rand(sim.rng) < sample_self_quarantine_rate(pathogen, infectee)
             quarantine_tick!(infectee, onset_of_symptoms(infectee))
             quarantine_release_tick!(infectee, removed_tick(infectee))
         end
@@ -395,32 +399,33 @@ function disease_progression!(
     infectee::Individual,
     pathogen::Pathogen,
     exposedtick::Int16,
+    sim::Simulation,
     ::Type{Critical}
 )
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee, sim))
     )
 
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee, sim))
     )
 
     # calculate onset of severe symptoms as increment on onset of symptoms
     onset_of_severeness!(
         infectee,
-        onset_of_symptoms(infectee) + sample_onset_of_severeness(pathogen, infectee)
+        onset_of_symptoms(infectee) + sample_onset_of_severeness(pathogen, infectee, sim)
     )
 
     # calculate hospitalization tick. If lower than onset_of_severeness, take minimum.
     hospitalized_tick!(
         infectee,
         onset_of_symptoms(infectee) +
-            sample_time_to_hospitalization(pathogen, infectee)
+            sample_time_to_hospitalization(pathogen, infectee, sim)
     )
 
     # fix if hospitalization would be before onset of onset_of_severeness
@@ -432,20 +437,20 @@ function disease_progression!(
     # calculate death or recovery as "end of hospital"
     removed_tick!(
         infectee,
-        hospitalized_tick(infectee) + sample_length_of_stay(pathogen, infectee)
+        hospitalized_tick(infectee) + sample_length_of_stay(pathogen, infectee, sim)
     )
 
     # random value to determine ventilation. If yes, directly when hospitalized.
-    ventilation_probability = sample_ventilation_rate(pathogen, infectee)
-    if rand() < ventilation_probability
+    ventilation_probability = sample_ventilation_rate(pathogen, infectee, sim)
+    if rand(sim.rng) < ventilation_probability
         ventilation_tick!(infectee, hospitalized_tick(infectee))
 
         # ICU only if ventilated and determined randomly. Then ICU tick as increment on hospitalization tick
-        icu_probability = sample_icu_rate(pathogen, infectee)
-        if rand()<icu_probability
+        icu_probability = sample_icu_rate(pathogen, infectee, sim)
+        if rand(sim.rng)<icu_probability
             icu_tick!(
                 infectee,
-                hospitalized_tick(infectee) + sample_time_to_icu(pathogen, infectee)
+                hospitalized_tick(infectee) + sample_time_to_icu(pathogen, infectee, sim)
             )
         end
     end
@@ -457,10 +462,10 @@ function disease_progression!(
     =#
 
     # estimate death probability
-    death_probability = sample_critical_death_rate(pathogen, infectee)
+    death_probability = sample_critical_death_rate(pathogen, infectee, sim)
 
     # calculate mild death or recovery rate. Sample length of symptoms for this.
-    if rand() < death_probability
+    if rand(sim.rng) < death_probability
         death_tick!(infectee, removed_tick(infectee))
     end
 

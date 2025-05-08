@@ -64,10 +64,11 @@
         i3 = Individual(age=1, id=3, sex=1)
         pop = Population([i1, i2, i3])
         p = Pathogen(id = 1, name = "COVID")
+        sim = Simulation(population=pop)
 
-        infect!(i1, Int16(0), p)
+        infect!(i1, Int16(0), p, sim)
         @test 1 == num_of_infected(pop)
-        infect!(i3, Int16(0), p)
+        infect!(i3, Int16(0), p, sim)
         @test 2 == num_of_infected(pop)
         recover!(i1)
         @test 1 == num_of_infected(pop)

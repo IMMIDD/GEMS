@@ -69,7 +69,7 @@
             il = infectionlogger(sim)
             h = household(infectee, sim)
 
-            infect!(infecter, t, pathogen(sim), sim=sim)
+            infect!(infecter, t, pathogen(sim), sim)
 
             @test il.tick[end] == t
             @test il.id_a[end] == -1
@@ -81,7 +81,7 @@
 
             t = il.infectious_tick[end]
 
-            infect!(infectee, t, pathogen(sim); sim=sim, infecter_id=id(infecter), setting_id=id(h), setting_type=settingchar(h))
+            infect!(infectee, t, pathogen(sim), sim; infecter_id=id(infecter), setting_id=id(h), setting_type=settingchar(h))
             @test il.tick[end] == t
             @test il.id_a[end] == id(infecter)
             @test il.id_b[end] == id(infectee)

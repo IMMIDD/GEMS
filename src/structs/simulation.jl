@@ -151,7 +151,7 @@ mutable struct Simulation
          [], # strategies::Vector{Strategy}
          [], # testtypes::Vector{AbstractTestType}
          x -> x, # stepmod::Function
-         Xoshiro(rand(Int64)) # rng::AbstractRNG
+         Xoshiro(rand(UInt)) # rng::AbstractRNG
          ) 
     end
 
@@ -219,7 +219,7 @@ mutable struct Simulation
     | `settingsfile`                  | `String`               | Path to a setting-file                                                                                                                |
     | `label`                         | `String`               | Label used to name simulation runs during analysis                                                                                    |
     | `stepmod`                       | `Function`             | One-agument function which will be executed each simulation step, called on the `Simulation` object                                   |
-    | `seed`                          | `Int64`                | Random seed                                                                                                                           |
+    | `seed`                          | `UInt`                 | Random seed                                                                                                                           |
     | `global_setting`                | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
     | `startdate`                     | `Date`, `String`       | Simulation start date (format: `YYYY.MM.DD`)                                                                                          |
     | `enddate`                       | `Date`, `String`       | Simulation end date (format: `YYYY.MM.DD`)                                                                                            |
@@ -263,7 +263,7 @@ mutable struct Simulation
         label::String = "",
         tickunit::String = "d",
         stepmod::Function = x -> x, # Providing  stepmod function to the sim object later
-        seed::Union{Int64, Nothing} = nothing,
+        seed::Union{UInt, Nothing} = nothing,
         global_setting::Union{Bool, Nothing} = nothing,
         startdate::Union{String, Nothing} = nothing,
         enddate::Union{String, Nothing} = nothing,

@@ -44,7 +44,7 @@ end
 
 """
     infect!(infectee::Individual, tick::Int16, pathogen::Pathogen;
-        sim::Union{Simulation, Nothing} = nothing,
+        sim::Simulation,
         infecter_id::Int32 = Int32(-1), setting_id::Int32 = Int32(-1), lon::Float32 = NaN32,
         lat::Float32 = NaN32, setting_type::Char = '?', ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)
@@ -76,9 +76,9 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 """
 function infect!(infectee::Individual,
         tick::Int16,
-        pathogen::Pathogen;
+        pathogen::Pathogen,
+        sim::Simulation;
         # optional keyword arguments (mainly needed for logging)
-        sim::Union{Simulation, Nothing} = nothing,
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
         lon::Float32 = NaN32,
@@ -94,7 +94,7 @@ function infect!(infectee::Individual,
     infectee.exposed_tick = tick
 
     # calculate disease progression
-    disease_progression!(infectee, pathogen, tick)
+    disease_progression!(infectee, pathogen, tick, sim)
 
     if isnothing(sim)
         return -1

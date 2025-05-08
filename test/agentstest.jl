@@ -62,7 +62,8 @@
 
                 @test exposed(i) == false
                 p = Pathogen(id = 1, name = "COVID")
-                infect!(i, Int16(0), p)
+                sim = Simulation()
+                infect!(i, Int16(0), p, sim)
                 @test exposed(i) == true
 
                 # setters should be exclusive to each other

@@ -945,6 +945,6 @@ function germanshapes(level::Int64)
     return(Shapefile.Table(filename))
 end
 
-function set_global_seed(seed::Int64)
+function set_global_seed(seed::UInt)
     Random.seed!(seed)
 end

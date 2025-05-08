@@ -177,7 +177,7 @@
 
         @test follow_up_strategy === i_strategy
 
-        infect!(i, Int16(0), pathogen(sim))
+        infect!(i, Int16(0), pathogen(sim), sim)
         result2 = process_measure(sim, i, test_measure2)
         follow_up_strategy2 = result2.follow_up
 
@@ -207,7 +207,7 @@
         sim3 = Simulation(population=pop, transmission_rate=1.0, household_contact_rate=1.0)
         i_strategy3 = IStrategy("i_strategy3", sim3)
         trace_infectious2 = TraceInfectiousContacts(i_strategy3, success_rate=1.0)
-        infect!(first(individuals(sim3)), Int16(0), pathogen(sim3))
+        infect!(first(individuals(sim3)), Int16(0), pathogen(sim3), sim3)
         #step!(sim3)
         contacts = process_measure(sim3, first(individuals(sim3)), trace_infectious2)
         #println(contacts) #contacts always nothing TODO
@@ -418,7 +418,7 @@
         @test follow_up_strategy === s_strategy
 
         for ind in indis
-            infect!(ind, Int16(0), pathogen(sim))
+            infect!(ind, Int16(0), pathogen(sim), sim)
         end
         result2 = process_measure(sim, gs, pool_test2)
         follow_up_strategy2 = result2.follow_up
@@ -465,7 +465,7 @@
         @test follow_up_strategy === s_strategy
 
         for ind in indis2
-            infect!(ind, Int16(0), pathogen(sim))
+            infect!(ind, Int16(0), pathogen(sim), sim)
         end
         result2 = process_measure(sim, gs2, test_all2)
         follow_up_strategy2 = result2.follow_up

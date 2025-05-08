@@ -77,22 +77,26 @@ end
 
 ### NECESSARY INTERFACE
 """
-    initialize!(simulation, infectedFraction)
+    initialize!(simulation, infectedFraction; seed)
 
-Initializes the simulation model with a fraction of infected individuals, provided by the start condition.
+Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
+Uses the simulation's RNG if `seed` is `nothing` (default), otherwise an uncoupled RNG with the provided seed.
 """
-function initialize!(simulation::Simulation, condition::InfectedFraction)
+function initialize!(simulation::Simulation, condition::InfectedFraction; seed::Union{UInt,Nothing}=nothing)
+    # use simulation.rng if no seed, create uncoupled RNG otherwise
+    rng = isnothing(seed) ? simulation.rng : Xoshiro(seed)
+
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
-    to_infect = sample(ind, to_sample, replace=false)
+    to_infect = sample(rng, ind, to_sample, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), sim = simulation)
+        infect!(i, tick(simulation), pathogen(condition), simulation)
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -104,17 +108,20 @@ end
 
 
 #TODO docs
-function initialize!(simulation::Simulation, condition::PatientZero)
+function initialize!(simulation::Simulation, condition::PatientZero; seed::Union{UInt,Nothing}=nothing)
+    # use simulation.rng if no seed, create uncoupled RNG otherwise
+    rng = isnothing(seed) ? simulation.rng : Xoshiro(seed)
+
     # number of individuals to infect
     ind = individuals(population(simulation))
-    to_infect = sample(ind, 1, replace=false)
+    to_infect = sample(rng, ind, 1, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(condition), simulation)
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -122,7 +129,10 @@ function initialize!(simulation::Simulation, condition::PatientZero)
     end
 end
 
-function initialize!(simulation::Simulation, condition::PatientZeros)
+function initialize!(simulation::Simulation, condition::PatientZeros; seed::Union{UInt,Nothing}=nothing)
+    # use simulation.rng if no seed, create uncoupled RNG otherwise
+    rng = isnothing(seed) ? simulation.rng : Xoshiro(seed)
+
     # number of individuals to infect
     to_infect = []
     for a in ags(condition)
@@ -137,7 +147,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
             error("No individuals found in the given ags")
         end
         # Sample one individual from the list of individuals
-        to_infect = push!( to_infect, sample(inds, 1, replace=false) |> Base.first)
+        to_infect = push!( to_infect, sample(rng, inds, 1, replace=false) |> Base.first)
     end
     
     # overwrite pathogen in simulation struct
@@ -145,7 +155,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(condition), simulation)
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
         end

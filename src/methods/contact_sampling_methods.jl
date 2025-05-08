@@ -15,13 +15,13 @@ end
 
 Sample exactly 1 random contact from the individuals in `setting`.
 """
-function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16, sim::Simulation)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
-    return sample(present_inds, 1; replace=true)
+    return sample(sim.rng, present_inds, 1; replace=true)
 end
 
 
@@ -30,7 +30,7 @@ end
 
 Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`.
 """
-function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16, sim::Simulation)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -41,14 +41,14 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
     end
 
     # get number of contacts
-    number_of_contacts = rand(Poisson(contactparameter_sampling.contactparameter))
+    number_of_contacts = rand(sim.rng, Poisson(contactparameter_sampling.contactparameter))
     # number_of_contacts = Int64(contactparameter_sampling.contactparameter)
     res = Vector{Individual}(undef, number_of_contacts)
 
     cnt = 0
     # Draw until contact list is filled, skip whenever the index individual was selected
     while cnt < number_of_contacts
-        contact = rand(present_inds)
+        contact = rand(sim.rng, present_inds)
         # if contact is NOT index individual, add them to contact list
         if Ref(contact) .!== Ref(individual)
             res[cnt + 1] = contact
