@@ -1096,7 +1096,7 @@ end
 function Base.show(io::IO, individual::Individual)
     sex_str = individual.sex == 1 ? "Female" : individual.sex == 2 ? "Male" : "Diverse"
 
-    attributes = Dict(
+    attributes = [
         "ID:" => individual.id,
         "Age:" => individual.age,
         "Sex:" => sex_str,
@@ -1134,9 +1134,9 @@ function Base.show(io::IO, individual::Individual)
         "Quarantine Status:" => individual.quarantine_status,
         "Quarantine Tick:" => individual.quarantine_tick,
         "Quarantine Release Tick:" => individual.quarantine_release_tick
-    )
+    ]
 
-    max_label_length = maximum(length, keys(attributes))
+    max_label_length = maximum(length ∘ first, attributes)
 
     println(io, "Individual")
     for (label, value) in attributes
@@ -1144,10 +1144,26 @@ function Base.show(io::IO, individual::Individual)
     end
 end
 
-function Base.show(io::IO, individuals::Vector{Individual})
-    println(io, "$(length(individuals))-element Vector{Individual}:")
-    for individual in individuals
-        sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
-        println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+function Base.show(io::IO, ::MIME"text/plain", individuals::Vector{Individual})
+    n = length(individuals)
+    println(io, "$(n)-element Vector{Individual}:")
+    
+    if n <= 50
+        for individual in individuals
+            sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+        end
+    else
+        for individual in individuals[1:20]
+            sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+        end
+        
+        println(io, "  ⋮")
+        
+        for individual in individuals[end-19:end]
+            sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+        end
     end
 end
