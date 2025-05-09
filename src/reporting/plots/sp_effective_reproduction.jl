@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Effective Reproduction Number plot
 """
-function generate(plt::EffectiveReproduction, rd::ResultData; plotargs...)
+function generate(plt::EffectiveReproduction, rd::ResultData; dates::Bool = true,  plotargs...)
 
     # calculate effective R over time from post processor data
     eff_r = rd |> effectiveR
@@ -69,6 +69,9 @@ function generate(plt::EffectiveReproduction, rd::ResultData; plotargs...)
     
     # add custom arguments that were passed
     plot!(plot_eff_R; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(plot_eff_R, rd) : nothing
     
     return(plot_eff_R)    
 end
@@ -90,7 +93,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Effective Reproduction Number multi plot
 """
-function generate(plt::EffectiveReproduction, rds::Vector{ResultData}; plotargs...)
+function generate(plt::EffectiveReproduction, rds::Vector{ResultData}; dates::Bool = true,  plotargs...)
 
     uticks = rds[1] |> tick_unit
     upper_ticks = uticks |> uppercasefirst
@@ -104,6 +107,9 @@ function generate(plt::EffectiveReproduction, rds::Vector{ResultData}; plotargs.
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rds[1]) : nothing
 
     return(p)
 end

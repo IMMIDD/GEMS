@@ -517,7 +517,7 @@ function Section(rd::ResultData, ::Type{sec_General})
             "| :-------------------- | :-------------------------------------------------- |\n" *
             "| Tick Unit (Length)    | $(rd |> tick_unit)                                  |\n" *
             "| Start Condition       | $(markdown(rd |> start_condition))                  |\n" *
-            "| Stop Criterion        | $(markdown(rd |> stop_criterion))                   |\n" *
+            "| Simulation Duration   | $(format(rd |> final_tick, commas=true))            |\n" *
             "| Number of Individuals | $(format(rd |> number_of_individuals, commas=true)) |\n" *
             "Table: General Sytem Properties")
 end

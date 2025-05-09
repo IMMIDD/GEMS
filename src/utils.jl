@@ -1,7 +1,7 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
 export concrete_subtypes, is_existing_subtype, find_subtype
-export isdate
+export isdate, date_at_tick, select_interval_dates, ticks_between_dates, choose_date_format
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
 export read_git_repo, read_git_branch, read_git_commit
 export aggregate_matrix
@@ -93,6 +93,82 @@ function isdate(x)
         return false
     end
 end
+
+"""
+    ticks_between_dates(startdate::Date, enddate::Date, tickunit::Char)
+
+Returns the number of ticks between startdate and enddate (including enddate)
+"""
+function ticks_between_dates(startdate::Date, enddate::Date, tickunit::Char)
+    if tickunit == 'y'
+        return length(startdate:Year(1):enddate)
+    elseif tickunit == 'm'
+        return length(startdate:Month(1):enddate)
+    elseif tickunit == 'w'
+        return div(Dates.value(enddate - startdate), 7) + 1
+    elseif tickunit == 'd'
+        return Dates.value(enddate - startdate) + 1
+    elseif tickunit == 'h'
+        return (Dates.value(enddate - startdate) + 1) * 24
+    else
+        throw("Invalid tickunit: $tickunit. Use 'y', 'm', 'w', 'd' or 'h'.")
+    end
+end
+
+"""
+    date_at_tick(tick::Int16, startdate::Date, tickunit::Char)
+
+Returns the simulation date at the tick `tick` (starting at 0 for startdate)
+"""
+function date_at_tick(tick::Int16, startdate::Date, tickunit::Char)
+    if tickunit == 'y'
+        return startdate + Year(tick)
+    elseif tickunit == 'm'
+        return startdate + Month(tick)
+    elseif tickunit == 'w'
+        return startdate + Week(tick)
+    elseif tickunit == 'd'
+        return startdate + Day(tick)
+    elseif tickunit == 'h'
+        return Date(DateTime(startdate) + Hour(tick))
+    else
+        throw("Invalid tickunit: $(tickunit).")
+    end
+end
+
+"""
+    select_interval_dates(startdate::Date, enddate::Date)
+
+Returns an adaptive range (weekly, monthly or yearly) of dates based on the duration of the simulation. Returns the last day of each month for a monthly interval and the 31. of December for a yearly interval.
+"""
+function select_interval_dates(startdate::Date, enddate::Date)
+    range_days = Dates.value(enddate - startdate) + 1
+
+    if range_days ≤ 46
+        return collect(startdate:Week(1):enddate)
+    elseif range_days ≤ 91
+        return collect(startdate:Week(2):enddate)
+    elseif range_days ≤ 274
+        return firstdayofmonth.(startdate:Month(1):enddate)
+    elseif range_days ≤ 731
+        return firstdayofmonth.(startdate:Month(3):enddate)
+    else
+        return Date.(year.(startdate:Year(1):enddate), 1, 1)
+    end
+end
+
+function choose_date_format(startdate::Date, enddate::Date)
+    range_days = Dates.value(enddate - startdate) + 1
+
+    if range_days ≤ 91
+        return "dd.mm.yy"
+    elseif range_days ≤ 731
+        return "u yy"
+    else
+        return "yyyy"
+    end
+end
+
 
 """
     foldercount(directory)

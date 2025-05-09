@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Tick Cases plot
 """
-function generate(plt::TickCases, rd::ResultData; plotargs...)
+function generate(plt::TickCases, rd::ResultData; dates::Bool = true, plotargs...)
 
     cases = rd |> tick_cases
     deaths = rd |> tick_deaths
@@ -72,6 +72,9 @@ function generate(plt::TickCases, rd::ResultData; plotargs...)
     # add custom arguments that were passed
     plot!(plot_ticks; plotargs...)
 
+    # replace x-ticks with dates
+    dates ? adddates!(plot_ticks, rd) : nothing
+
     return(plot_ticks)
 end
 
@@ -92,7 +95,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Tick Cases multi plot
 """
-function generate(plt::TickCases, rds::Vector{ResultData}; plotargs...)
+function generate(plt::TickCases, rds::Vector{ResultData}; dates::Bool = true,  plotargs...)
 
     uticks = rds[1] |> tick_unit
     upper_ticks = uticks |> uppercasefirst
@@ -105,6 +108,9 @@ function generate(plt::TickCases, rds::Vector{ResultData}; plotargs...)
 
     # add custom arguments that were passed
     plot!(p; plotargs...)
+
+    # replace x-ticks with dates
+    dates ? adddates!(p, rds[1]) : nothing
 
     return(p)
 end
