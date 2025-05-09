@@ -7,10 +7,9 @@
 
             i = Individual(id = 1, sex = 0, age = 31, household=1)
             p = Pathogen(id = 1, name = "COVID")
-            sim = Simulation()
 
             # testing infection routines
-            infect!(i, Int16(0), p, sim)
+            infect!(i, Int16(0), p)
 
             @test pathogen_id(i) == id(p)
             @test disease_state(i) == 1
@@ -79,7 +78,7 @@
             # unable to infect, when already infected
             Random.seed!(sim.rng, 1)
             i = Individual(id = 1, sex = 0, age = 31, household = 1)
-            infect!(i, Int16(0), p, sim)
+            infect!(i, Int16(0), p, rng=sim.rng)
             @test false == try_to_infect!(infctr, infctd, sim, pathogen(sim), h)
 
             # unable to infect, when already dead

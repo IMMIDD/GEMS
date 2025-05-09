@@ -44,7 +44,8 @@ end
 
 """
     infect!(infectee::Individual, tick::Int16, pathogen::Pathogen;
-        sim::Simulation,
+        sim::Union{Simulation, Nothing} = nothing,
+        rng::AbstractRNG = Random.default_rng(),
         infecter_id::Int32 = Int32(-1), setting_id::Int32 = Int32(-1), lon::Float32 = NaN32,
         lat::Float32 = NaN32, setting_type::Char = '?', ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)
@@ -76,9 +77,10 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 """
 function infect!(infectee::Individual,
         tick::Int16,
-        pathogen::Pathogen,
-        sim::Simulation;
+        pathogen::Pathogen;
         # optional keyword arguments (mainly needed for logging)
+        sim::Union{Simulation, Nothing} = nothing,
+        rng::AbstractRNG = Random.default_rng(),
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
         lon::Float32 = NaN32,
@@ -94,7 +96,7 @@ function infect!(infectee::Individual,
     infectee.exposed_tick = tick
 
     # calculate disease progression
-    disease_progression!(infectee, pathogen, tick, sim)
+    disease_progression!(infectee, pathogen, tick, rng=rng)
 
     if isnothing(sim)
         return -1
@@ -160,11 +162,12 @@ function try_to_infect!(infctr::Individual,
 
     # Basic infection function. No vaccination or stratification
     if !infected(infctd) && !dead(infctd)
-        infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick)
+        infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, rng=sim.rng)
 
         if rand(sim.rng) < infection_probability
             infect!(infctd, tick(sim), pathogen,
                 sim = sim,
+                rng = sim.rng,
                 infecter_id = id(infctr),
                 setting_id = id(setting),
                 lat = geolocation(settings(sim, Household)[household_id(infctd)], sim)[2],
@@ -256,7 +259,7 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
             # if infectious and setting is open try to infect others
             if infectious(ind) && open && (!isquarantined(ind) || ((quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household)))
                 # sample contacts based on setting specific "ContactSamplingMethod"
-                contacts = sample_contacts(setting.contact_sampling_method, setting, ind, present_inds, tick(sim))
+                contacts = sample_contacts(setting.contact_sampling_method, setting, ind, present_inds, tick(sim), rng=sim.rng)
                 for c in contacts
                     # try to infect
                     if !isquarantined(c) || ((quarantine_status(c) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household))

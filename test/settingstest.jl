@@ -527,7 +527,7 @@
 
         sim = Simulation(pop_size = 100)
         inds = individuals(workplace1, sim)
-        @test sample_individuals(inds, 200), sim==inds
+        @test sample_individuals(inds, 200)==inds
 
         @test avg_individuals(Setting[], sim) === nothing
 
