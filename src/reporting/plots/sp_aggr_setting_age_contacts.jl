@@ -176,11 +176,23 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
     # calcuate plot layout
     num_columns = min(4, length(stypes)) 
     num_rows = ceil(Int, length(stypes) / num_columns) 
-    
-    p = plot(plts..., layout=(num_rows, num_columns), size=(200 * num_columns, 250 * num_rows))
 
-     # add custom arguments that were passed
-     plot!(p; plotargs...)
+    data_plot = plot(plts..., layout=(num_rows, num_columns), size=(200 * num_columns, 250 * num_rows))
+
+    if haskey(plotargs, :title)
+        t_plot = plot(
+            title = "\n$(plotargs[:title])",
+            legend=false,
+            grid=false,
+            showaxis=false,
+            size = (200, 30))
+        p = plot(t_plot, data_plot, layout = grid(2, 1, heights=[0.1 ,0.9]))
+    else
+        p = data_plot
+    end
+
+    # add custom arguments that were passed
+    plot!(p; remove_kw(:title, plotargs)...)
 
     return(p)
 end
