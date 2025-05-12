@@ -129,12 +129,12 @@
             Individual(age=21, id=2, sex=1),
             Individual(age=1, id=3, sex=1)
         ]
-    
+
         io = IOBuffer()
-        @test show(io, inds[1]); !isempty(String(take!(io)))
-    
+        @test (show(io, inds[1]); !isempty(String(take!(io))))
+
         io = IOBuffer()
-        @test show(io, MIME("text/plain"), inds); !isempty(String(take!(io)))
+        @test (show(io, MIME("text/plain"), inds); !isempty(String(take!(io))))
     end
 
 end
