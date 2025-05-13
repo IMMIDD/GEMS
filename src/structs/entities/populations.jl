@@ -231,7 +231,6 @@ mutable struct Population
         pop.params["avg_household_size"] = avg_household_size
         pop.params["avg_office_size"] = avg_office_size
         pop.params["avg_school_size"] = avg_school_size
-        pop.minid = minimum(x -> x.id, individuals)
 
         return pop
     end
