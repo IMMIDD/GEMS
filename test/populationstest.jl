@@ -73,4 +73,21 @@
         @test 1 == num_of_infected(pop)
     end
     
+
+    @testset "get_individual_by_id" begin
+
+        pop = Population([Individual(id=100, age=0, sex=0), Individual(id=101, age=0, sex=0), Individual(id=102, age=0, sex=0)])
+        @test get_individual_by_id(pop, Int32(100)) === pop.individuals[1] 
+        @test get_individual_by_id(pop, Int32(101)) === pop.individuals[2] 
+        @test get_individual_by_id(pop, Int32(102)) === pop.individuals[3]  
+        
+        # invalid ids
+        @test get_individual_by_id(pop, Int32(99)) === nothing
+        @test get_individual_by_id(pop, Int32(103)) === nothing 
+        
+        # empty population
+        empty_pop = Population(Individual[])
+        @test get_individual_by_id(empty_pop, Int32(100)) === nothing 
+
+    end
 end
