@@ -88,7 +88,7 @@ mutable struct Population
         end
 
         pop.params["populationfile"] = path
-        pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals(pop))
+        pop.minid = isempty(individuals(pop)) ? -1 : minimum(x -> x.id, individuals(pop))
 
         return pop
     end
