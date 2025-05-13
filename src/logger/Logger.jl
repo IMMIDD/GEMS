@@ -207,13 +207,18 @@ Returns the id of infected individuals who's infection time `t` is `start_tick <
 function get_infections_between(logger::InfectionLogger, infecter::Int32, start_tick::Int16, end_tick::Int16)
     start_idx = searchsortedfirst(logger.tick, start_tick)
     end_idx = searchsortedlast(logger.tick, end_tick)
-
-    result = Int32[]
+    
+    result = Vector{Int32}(undef, end_idx - start_idx + 1)
+    count = 0
+    
     @inbounds for i in start_idx:end_idx
         if logger.id_a[i] == infecter
-            push!(result, logger.id_b[i])
+            count += 1
+            result[count] = logger.id_b[i]
         end
     end
+    
+    resize!(result, count)
     return result
 end
 
