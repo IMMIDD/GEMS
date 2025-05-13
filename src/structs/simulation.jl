@@ -948,7 +948,7 @@ Creates statistical distributions to be used by other parts of the `Simulation` 
 
 function create_distribution(params::Vector{<:Real}, type::String)
     gems_string = string(nameof(@__MODULE__))
-    id = findfirst(x -> x == type || x == "$gems_string.$type", string.(subtypes(Distribution)))
+    id = findfirst(x -> x == type || x == "$gems_string.$type" || x == "Distributions.$type", string.(subtypes(Distribution)))
 
     dist_type = nothing
     if !isnothing(id)
