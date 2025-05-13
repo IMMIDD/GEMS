@@ -33,7 +33,7 @@ mutable struct Population
         # Create the Population object
         pop = new(individuals, Dict("populationfile" => "Not available."), -1)
         maxage(pop)
-        pop.minid = minimum(x -> x.id, individuals)
+        pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
         return pop
     end
 
@@ -88,7 +88,7 @@ mutable struct Population
         end
 
         pop.params["populationfile"] = path
-        pop.minid = minimum(x -> x.id, individuals(pop))
+        pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals(pop))
 
         return pop
     end
