@@ -1,4 +1,6 @@
 @testset "Disease Progression" begin
+    test_rng = Xoshiro()
+
     @testset "Sampling Times" begin
         p = Pathogen(   
             id = 1,
@@ -89,9 +91,9 @@
         )
         dpr = DiseaseProgressionStrat(dict)
 
-        Random.seed!(42)
-        @test GEMS.Severe == estimate_disease_progression(dpr, i1)
-        @test GEMS.Mild == estimate_disease_progression(dpr, i1)
+        Random.seed!(test_rng, 42)
+        @test GEMS.Severe == estimate_disease_progression(dpr, i1, rng=test_rng)
+        @test GEMS.Mild == estimate_disease_progression(dpr, i1, rng=test_rng)
     end
 
     @testset "Progressions" begin
@@ -136,8 +138,8 @@
         end
         @testset "Mild" begin
             reset!(ind)
-            Random.seed!(0127)
-            disease_progression!(ind, p, exposedtick, GEMS.Mild)
+            Random.seed!(test_rng, 0127)
+            disease_progression!(ind, p, exposedtick, GEMS.Mild, rng=test_rng)
             @test symptom_category(ind) == GEMS.SYMPTOM_CATEGORY_MILD
             # test unset times
             @test onset_of_severeness(ind) == GEMS.DEFAULT_TICK
@@ -151,14 +153,14 @@
             @test death_tick(ind) == removed_tick(ind) # dies on this seed with this mild death reate
             # and now a seed where he doesnt die
             reset!(ind)
-            Random.seed!(42)
-            disease_progression!(ind, p, exposedtick, GEMS.Mild)
+            Random.seed!(test_rng, 42)
+            disease_progression!(ind, p, exposedtick, GEMS.Mild, rng=test_rng)
             @test death_tick(ind) == GEMS.DEFAULT_TICK
         end
         @testset "Severe" begin
             reset!(ind)
-            Random.seed!(6)
-            disease_progression!(ind, p, exposedtick, GEMS.Severe)
+            Random.seed!(test_rng, 6)
+            disease_progression!(ind, p, exposedtick, GEMS.Severe, rng=test_rng)
             @test symptom_category(ind) == GEMS.SYMPTOM_CATEGORY_SEVERE
             # test unset times
             @test ventilation_tick(ind) == GEMS.DEFAULT_TICK
@@ -176,16 +178,16 @@
 
             # no death
             reset!(ind)
-            Random.seed!(1234)
-            disease_progression!(ind, p, exposedtick, GEMS.Severe)
+            Random.seed!(test_rng, 1234)
+            disease_progression!(ind, p, exposedtick, GEMS.Severe, rng=test_rng)
             @test death_tick(ind) == GEMS.DEFAULT_TICK
             @test hospitalized_tick(ind) == GEMS.DEFAULT_TICK
 
             # hopsitalized and no death
             p.hospitalization_rate = Uniform(0.98, 0.99)
             reset!(ind)
-            Random.seed!(1234)
-            disease_progression!(ind, p, exposedtick, GEMS.Severe)
+            Random.seed!(test_rng, 1234)
+            disease_progression!(ind, p, exposedtick, GEMS.Severe, rng=test_rng)
             @test death_tick(ind) == GEMS.DEFAULT_TICK
             @test hospitalized_tick(ind) >= onset_of_severeness(ind)
             @test hospitalized_tick(ind) + minimum(length_of_stay(p)) <= removed_tick(ind) <= hospitalized_tick(ind) + maximum(length_of_stay(p))
@@ -194,8 +196,8 @@
 
             # hospitalized and death
             reset!(ind)
-            Random.seed!(42)
-            disease_progression!(ind, p, exposedtick, GEMS.Severe)
+            Random.seed!(test_rng, 42)
+            disease_progression!(ind, p, exposedtick, GEMS.Severe, rng=test_rng)
             @test hospitalized_tick(ind) >= onset_of_severeness(ind)
             @test hospitalized_tick(ind) + minimum(length_of_stay(p)) <= removed_tick(ind) <= hospitalized_tick(ind) + maximum(length_of_stay(p))
             #@test quarantine_tick(ind) == hospitalized_tick(ind)
@@ -205,8 +207,8 @@
        
         @testset "Critical" begin
             reset!(ind)
-            Random.seed!(42)
-            disease_progression!(ind, p, exposedtick, GEMS.Critical)
+            Random.seed!(test_rng, 42)
+            disease_progression!(ind, p, exposedtick, GEMS.Critical, rng=test_rng)
             @test symptom_category(ind) == GEMS.SYMPTOM_CATEGORY_CRITICAL
             # no death, no ventilation, no icu
             @test infectious_tick(ind) >= 0
@@ -223,23 +225,23 @@
 
             # death, but nothing else
             reset!(ind)
-            Random.seed!(6)
-            disease_progression!(ind, p, exposedtick, GEMS.Critical)
+            Random.seed!(test_rng, 6)
+            disease_progression!(ind, p, exposedtick, GEMS.Critical, rng=test_rng)
             @test death_tick(ind) == removed_tick(ind) 
 
             # ventilation no death
             p.ventilation_rate = Uniform(0.98,0.99)
             reset!(ind)
-            Random.seed!(42)
-            disease_progression!(ind, p, exposedtick, GEMS.Critical)
+            Random.seed!(test_rng, 42)
+            disease_progression!(ind, p, exposedtick, GEMS.Critical, rng=test_rng)
             @test ventilation_tick(ind) == hospitalized_tick(ind)
             @test death_tick(ind) == GEMS.DEFAULT_TICK
             @test icu_tick(ind) == GEMS.DEFAULT_TICK
 
             # ventilation and death
             reset!(ind)
-            Random.seed!(312)
-            disease_progression!(ind, p, exposedtick, GEMS.Critical)
+            Random.seed!(test_rng, 312)
+            disease_progression!(ind, p, exposedtick, GEMS.Critical, rng=test_rng)
             @test ventilation_tick(ind) == hospitalized_tick(ind)
             @test death_tick(ind) == removed_tick(ind) 
             @test icu_tick(ind) == GEMS.DEFAULT_TICK
@@ -247,8 +249,8 @@
             # ICU no death
             p.icu_rate = Uniform(0.98, 0.99)
             reset!(ind)
-            Random.seed!(42)
-            disease_progression!(ind, p, exposedtick, GEMS.Critical)
+            Random.seed!(test_rng, 42)
+            disease_progression!(ind, p, exposedtick, GEMS.Critical, rng=test_rng)
             @test ventilation_tick(ind) == hospitalized_tick(ind)
             @test death_tick(ind) == GEMS.DEFAULT_TICK
             @test removed_tick(ind) >= icu_tick(ind) >= ventilation_tick(ind)
@@ -256,8 +258,8 @@
             # ICU and death
             p.critical_death_rate = Uniform(0.98,0.99)
             reset!(ind)
-            Random.seed!(42)
-            disease_progression!(ind, p, exposedtick, GEMS.Critical)
+            Random.seed!(test_rng, 42)
+            disease_progression!(ind, p, exposedtick, GEMS.Critical, rng=test_rng)
             @test ventilation_tick(ind) == hospitalized_tick(ind)
             @test death_tick(ind) == removed_tick(ind)
             @test removed_tick(ind) >= icu_tick(ind) >= ventilation_tick(ind)
@@ -276,8 +278,8 @@
             indiv.number_of_infections += 1
             indiv.pathogen_id = id(p)
 
-            Random.seed!(1234)
-            disease_progression!(indiv, p, exposedtick, GEMS.Asymptomatic)
+            Random.seed!(test_rng, 1234)
+            disease_progression!(indiv, p, exposedtick, GEMS.Asymptomatic, rng=test_rng)
 
             for tick in range(exposedtick, removed_tick(indiv)-Int16(1))
                 progress_disease!(indiv, tick)
@@ -302,8 +304,8 @@
             indiv.number_of_infections += 1
             indiv.pathogen_id = id(p)
 
-            Random.seed!(1234)
-            disease_progression!(indiv, p, exposedtick, GEMS.Mild)
+            Random.seed!(test_rng, 1234)
+            disease_progression!(indiv, p, exposedtick, GEMS.Mild, rng=test_rng)
 
             for tick in range(exposedtick, removed_tick(indiv)-Int16(1))
                 progress_disease!(indiv, tick)
@@ -334,8 +336,8 @@
 
             # should hospitalize
             p.hospitalization_rate = Uniform(0.98, 0.99)
-            Random.seed!(42)
-            disease_progression!(indiv, p, exposedtick, GEMS.Severe)
+            Random.seed!(test_rng, 42)
+            disease_progression!(indiv, p, exposedtick, GEMS.Severe, rng=test_rng)
 
             for tick in range(exposedtick, removed_tick(indiv)-Int16(1))
                 progress_disease!(indiv, tick)
@@ -375,8 +377,8 @@
             p.icu_rate = Uniform(0.98, 0.99)
             p.ventilation_rate = Uniform(0.98,0.99)
 
-            Random.seed!(42)
-            disease_progression!(indiv, p, exposedtick, GEMS.Critical)
+            Random.seed!(test_rng, 42)
+            disease_progression!(indiv, p, exposedtick, GEMS.Critical, rng=test_rng)
             for tick in range(exposedtick, removed_tick(indiv)-Int16(1))
                 progress_disease!(indiv, tick)
                 if tick < infectious_tick(indiv)
@@ -488,10 +490,10 @@
     #     exposedtick = Int16(0)
     #     p = Pathogen(id = 1, name = "COVID", self_quarantine_rate=Uniform(0.99,0.999))
 
-    #     Random.seed!(123)
+    #     Random.seed!(test_rng, 123)
     #     ind.exposed_tick = exposedtick
     #     presymptomatic!(ind)
-    #     disease_progression!(ind, p, exposedtick, GEMS.Mild)
+    #     disease_progression!(ind, p, exposedtick, GEMS.Mild, rng=test_rng)
     #     @test quarantine_tick(ind) == onset_of_symptoms(ind) != GEMS.DEFAULT_TICK
     #     @test quarantine_release_tick(ind) == removed_tick(ind) != GEMS.DEFAULT_TICK
     #     @test quarantine_status(ind) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
