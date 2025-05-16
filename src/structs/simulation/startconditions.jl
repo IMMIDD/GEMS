@@ -77,19 +77,20 @@ end
 
 ### NECESSARY INTERFACE
 """
-    initialize!(simulation, infectedFraction; seed)
+    initialize!(simulation, infectedFraction; seed_sample)
 
 Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
-Uses the simulation's RNG if `seed` is `nothing` (default), otherwise an uncoupled RNG with the provided seed.
+For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
+the seed is drawn from `simulation.rng`. Otherwise, the provided `seed_sample` is used.
 """
-function initialize!(simulation::Simulation, condition::InfectedFraction; seed::Union{UInt,Nothing}=nothing)
-    # use simulation.rng if no seed, create uncoupled RNG otherwise
-    rng = isnothing(seed) ? simulation.rng : Xoshiro(seed)
+function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{UInt,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, UInt)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
-    to_infect = sample(rng, ind, to_sample, replace=false)
+    to_infect = sample(rng_sample, ind, to_sample, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
@@ -108,13 +109,13 @@ end
 
 
 #TODO docs
-function initialize!(simulation::Simulation, condition::PatientZero; seed::Union{UInt,Nothing}=nothing)
-    # use simulation.rng if no seed, create uncoupled RNG otherwise
-    rng = isnothing(seed) ? simulation.rng : Xoshiro(seed)
+function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{UInt,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, UInt)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     ind = individuals(population(simulation))
-    to_infect = sample(rng, ind, 1, replace=false)
+    to_infect = sample(rng_sample, ind, 1, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
@@ -129,9 +130,9 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed::Union
     end
 end
 
-function initialize!(simulation::Simulation, condition::PatientZeros; seed::Union{UInt,Nothing}=nothing)
-    # use simulation.rng if no seed, create uncoupled RNG otherwise
-    rng = isnothing(seed) ? simulation.rng : Xoshiro(seed)
+function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{UInt,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, UInt)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     to_infect = []
@@ -147,7 +148,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros; seed::Unio
             error("No individuals found in the given ags")
         end
         # Sample one individual from the list of individuals
-        to_infect = push!( to_infect, sample(rng, inds, 1, replace=false) |> Base.first)
+        to_infect = push!(to_infect, sample(rng_sample, inds, 1, replace=false) |> Base.first)
     end
     
     # overwrite pathogen in simulation struct
