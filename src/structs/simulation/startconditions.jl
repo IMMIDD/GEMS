@@ -83,9 +83,9 @@ Initialize the simulation model with a fraction of infected individuals, provide
 For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
 the seed is drawn from `simulation.rng`. Otherwise, the provided `seed_sample` is used.
 """
-function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{UInt,Nothing}=nothing)
+function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
     # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
-    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, UInt)) : Xoshiro(seed_sample)
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, Int64)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     ind = individuals(population(simulation))
@@ -109,9 +109,9 @@ end
 
 
 #TODO docs
-function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{UInt,Nothing}=nothing)
+function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{Int64,Nothing}=nothing)
     # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
-    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, UInt)) : Xoshiro(seed_sample)
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, Int64)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     ind = individuals(population(simulation))
@@ -130,9 +130,9 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed_sample
     end
 end
 
-function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{UInt,Nothing}=nothing)
+function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{Int64,Nothing}=nothing)
     # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
-    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, UInt)) : Xoshiro(seed_sample)
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, Int64)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     to_infect = []

@@ -946,10 +946,10 @@ function germanshapes(level::Int64)
 end
 
 """
-    set_global_seed(seed::Integer)
+    set_global_seed(seed::Int64)
     
 Wrapper to set seed of global RNG
 """
-function set_global_seed(seed::UInt)
+function set_global_seed(seed::Int64)
     Random.seed!(seed)
 end
