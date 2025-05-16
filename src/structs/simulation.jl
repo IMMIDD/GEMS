@@ -109,6 +109,8 @@ mutable struct Simulation
     # StepMod
     stepmod::Function
 
+    # RNG
+    rng::AbstractRNG
     
     ### INNER CONSTRUCTOR
 
@@ -148,7 +150,8 @@ mutable struct Simulation
          EventQueue(), # event_queue::EventQueue
          [], # strategies::Vector{Strategy}
          [], # testtypes::Vector{AbstractTestType}
-         x -> x # stepmod::Function
+         x -> x, # stepmod::Function
+         Xoshiro(rand(Int64)) # rng::AbstractRNG
          ) 
     end
 
@@ -217,7 +220,7 @@ mutable struct Simulation
     | `label`                         | `String`               | Label used to name simulation runs during analysis                                                                                    |
     | `stepmod`                       | `Function`             | One-agument function which will be executed each simulation step, called on the `Simulation` object                                   |
     | `seed`                          | `Int64`                | Random seed                                                                                                                           |
-    | `global_setting`                 | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
+    | `global_setting`                | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
     | `startdate`                     | `Date`, `String`       | Simulation start date (format: `YYYY.MM.DD`)                                                                                          |
     | `enddate`                       | `Date`, `String`       | Simulation end date (format: `YYYY.MM.DD`)                                                                                            |
     | `infected_fraction`             | `Float64`              | Fraction of the initially infected agents for the `InfectedFraction` start condition                                                  |
@@ -577,13 +580,6 @@ mutable struct Simulation
         end
 
         # 7 We create the sim object with the parameters
-
-        
-        if "seed" in keys(properties["Simulation"])
-            seed = properties["Simulation"]["seed"]
-            # println(seed)
-            initialize_seed(seed)
-        end
     
         # 8 create all necessary pathogens
         pathogens = create_pathogens(properties["Pathogens"])
@@ -608,6 +604,11 @@ mutable struct Simulation
         printinfo("\u2514 Creating simulation object")
         
         sim = Simulation(configfile, start_condition, stop_criterion, population, settings, label)
+
+        if haskey(properties["Simulation"], "seed") 
+            seed = properties["Simulation"]["seed"]
+            Random.seed!(sim.rng, seed)
+        end
 
         # Remove empty containersettings
         if settingsfile != ""
@@ -1078,15 +1079,6 @@ function load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
     end
 end
 
-
-"""
-    initialize_seed(x::Int64)
-
-Creates a random value based on the seed provided
-"""
-function initialize_seed(x::Int64)
-    return Random.seed!(x)
-end
 
 """
     obtain_remote_files(identifier::String; forcedownload::Bool = false)
