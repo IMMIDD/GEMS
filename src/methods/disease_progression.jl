@@ -237,7 +237,7 @@ function disease_progression!(
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, exposedtick + 
+        max(exposedtick + Int16(1), exposedtick + 
             theoretical_onset_of_symptoms -
             sample_infectious_offset(pathogen, infectee))
     )
@@ -269,13 +269,13 @@ function disease_progression!(
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        exposedtick + sample_onset_of_symptoms(pathogen, infectee)
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
     )
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
     )
     # removed tick as normal
     removed_tick!(
@@ -313,14 +313,14 @@ function disease_progression!(
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        exposedtick + sample_onset_of_symptoms(pathogen, infectee)
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
     )
 
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
     )
 
     # calculate onset of severe symptoms as increment on onset of symptoms
@@ -400,14 +400,14 @@ function disease_progression!(
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        exposedtick + sample_onset_of_symptoms(pathogen, infectee)
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
     )
 
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
     )
 
     # calculate onset of severe symptoms as increment on onset of symptoms

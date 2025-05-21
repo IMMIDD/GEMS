@@ -257,7 +257,7 @@ Returns the internal flat infections `DataFrame`.
 | `number_of_vaccinations_a` | `Int8`    | Infecter number of previous vaccinations                        |
 | `vaccination_tick_a`       | `Int16`   | Infecter last time of vaccination                               |
 | `education_a`              | `Int8`    | Infecter education level                                        |
-| `occupation_a`             | `Int8`    | Infecter occupation group                                       |
+| `occupation_a`             | `Int16`   | Infecter occupation group                                       |
 | `household_a`              | `Int32`   | Infecter associated household                                   |
 | `office_a`                 | `Int32`   | Infecter associated office                                      |
 | `schoolclass_a`            | `Int32`   | Infecter associated school                                      |
@@ -266,7 +266,7 @@ Returns the internal flat infections `DataFrame`.
 | `number_of_vaccinations_a` | `Int8`    | Infecter number of previous vaccinations                        |
 | `vaccination_tick_a`       | `Int16`   | Infecter last time of vaccination                               |
 | `education_b`              | `Int8`    | Infectee education level                                        |
-| `occupation_b`             | `Int8`    | Infectee occupation group                                       |
+| `occupation_b`             | `Int16`   | Infectee occupation group                                       |
 | `household_b`              | `Int32`   | Infectee associated household                                   |
 | `office_b`                 | `Int32`   | Infectee associated office                                      |
 | `schoolclass_b`            | `Int32`   | Infectee associated schoolclass                                 |
@@ -289,7 +289,7 @@ Returns the internal flat population `DataFrame`.
 | `sex`        | `Int8`  | Individual sex                  |
 | `age`        | `Int8`  | Individual age                  |
 | `education`  | `Int8`  | Individual education level      |
-| `occupation` | `Int8`  | Individual occupation group     |
+| `occupation` | `Int16` | Individual occupation group     |
 | `household`  | `Int32` | Individual associated household |
 | `office`     | `Int32` | Individual associated office    |
 | `school`     | `Int32` | Individual associated school    |
@@ -312,7 +312,7 @@ Returns the internal flat deaths `DataFrame`.
 | `sex`             | `Int8`  | Individual's sex                                  |
 | `age`             | `Int8`  | Individual's age                                  |
 | `education`       | `Int8`  | Individual's education level                      |
-| `occupation`      | `Int8`  | Individual's occupation group                     |
+| `occupation`      | `Int16` | Individual's occupation group                     |
 | `household`       | `Int32` | Individual's associated household                 |
 | `office`          | `Int32` | Individual's associated office                    |
 | `school`          | `Int32` | Individual's associated school                    |
@@ -345,7 +345,7 @@ obtain personal characteristics about the testees.
 | `number_of_vaccinations` | `Int8`   | Individual's number of vaccinations                |
 | `vaccination_tick`       | `Int16`  | Tick when the individual was last vaccinated       |
 | `education`              | `Int8`   | Individual's education level                       |
-| `occupation`             | `Int8`   | Individual's occupation group                      |
+| `occupation`             | `Int16`  | Individual's occupation group                      |
 | `household`              | `Int32`  | Individual's associated household                  |
 | `office`                 | `Int32`  | Individual's associated office                     |
 | `school`                 | `Int32`  | Individual's associated school                     |

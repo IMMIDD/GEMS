@@ -1,0 +1,31 @@
+name: Generate Changelog
+on:
+  release:
+    types: [created, edited]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: rhysd/changelog-from-release/action@v3
+        with:
+          file: docs/src/changelog.md
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          header: |
+            # Changelog
+
+            This page lists the changes and release notes for GEMS.jl, automatically generated from [GitHub Releases](https://github.com/IMMIDD/GEMS/releases).
+      - name: Trigger Documenter Workflow
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/IMMIDD/GEMS/actions/workflows/documenter.yaml/dispatches \
+            -d '{"ref":"main"}'

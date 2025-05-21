@@ -65,7 +65,7 @@ A type to represent individuals, that act as agents inside the simulation.
     - `sex::Int8`: Sex  (Female (1), Male(2), Diverse (3))
     - `age::Int8`: Age
     - `education::Int8`: Education class (i.e. highest degree)
-    - `occupation::Int8`: Occupation class (i.e. manual labour, office job, etc...)
+    - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
 
 - Behaviour
     - `social_factor::Float32`: Parameter for the risk-willingness. Can be anywhere between
@@ -124,13 +124,13 @@ A type to represent individuals, that act as agents inside the simulation.
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
 """
-@with_kw mutable struct Individual <: Agent
+@with_kw_noshow mutable struct Individual <: Agent
     # GENERAL
     id::Int32  # 4 bytes
     sex::Int8  # 1 byte
     age::Int8  # 1 byte
     education::Int8 = DEFAULT_SETTING_ID # 1 byte
-    occupation::Int8 = DEFAULT_SETTING_ID # 1 byte
+    occupation::Int16 = DEFAULT_SETTING_ID # 2 byte
 
     # BEHAVIOR
     social_factor::Float32 = 0 # 4 bytes
@@ -264,7 +264,7 @@ end
 
 Returns an individual's occupation class.
 """
-function occupation(individual::Individual)::Int8
+function occupation(individual::Individual)::Int16
     return individual.occupation
 end
 
@@ -1086,4 +1086,84 @@ function reset!(individual::Individual)
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
     individual.quarantine_release_tick = DEFAULT_TICK
     individual.quarantine_tick = DEFAULT_TICK
+end
+
+
+
+
+### printing
+
+function Base.show(io::IO, individual::Individual)
+    sex_str = individual.sex == 1 ? "Female" : individual.sex == 2 ? "Male" : "Diverse"
+
+    attributes = [
+        "ID" => individual.id,
+        "Age" => individual.age,
+        "Sex" => sex_str,
+        "Education" => individual.education,
+        "Occupation" => individual.occupation,
+        "Social Factor" => individual.social_factor,
+        "Mandate Compliance" => individual.mandate_compliance,
+        "Dead" => individual.dead,
+        "Hospital Status" => individual.hospital_status,
+        "Household ID" => individual.household,
+        "Office ID" => individual.office,
+        "School Class ID" => individual.schoolclass,
+        "Municipality ID" => individual.municipality,
+        "Pathogen ID" => individual.pathogen_id,
+        "Infection ID" => individual.infection_id,
+        "Disease State" => individual.disease_state,
+        "Symptom Category" => individual.symptom_category,
+        "Infectiousness" => individual.infectiousness,
+        "Number of Infections" => individual.number_of_infections,
+        "Exposed Tick" => individual.exposed_tick,
+        "Infectious Tick" => individual.infectious_tick,
+        "Onset of Symptoms" => individual.onset_of_symptoms,
+        "Onset of Severeness" => individual.onset_of_severeness,
+        "Hospitalized Tick" => individual.hospitalized_tick,
+        "Ventilation Tick" => individual.ventilation_tick,
+        "ICU Tick" => individual.icu_tick,
+        "Death Tick" => individual.death_tick,
+        "Removed Tick" => individual.removed_tick,
+        "Last Test" => individual.last_test,
+        "Last Test Result" => individual.last_test_result,
+        "Last Reported At" => individual.last_reported_at,
+        "Vaccine ID" => individual.vaccine_id,
+        "Number of Vaccinations" => individual.number_of_vaccinations,
+        "Vaccination Tick" => individual.vaccination_tick,
+        "Quarantine Status" => individual.quarantine_status,
+        "Quarantine Tick" => individual.quarantine_tick,
+        "Quarantine Release Tick" => individual.quarantine_release_tick
+    ]
+
+    max_label_length = maximum(length ∘ first, attributes)
+
+    println(io, "Individual")
+    for (label, value) in attributes
+        println(io, "  ", rpad(label * ":", max_label_length + 3), value)
+    end
+end
+
+function Base.show(io::IO, ::MIME"text/plain", individuals::Vector{Individual})
+    n = length(individuals)
+    println(io, "$(n)-element Vector{Individual}:")
+    
+    if n <= 50
+        for individual in individuals
+            sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+        end
+    else
+        for individual in individuals[1:20]
+            sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+        end
+        
+        println(io, "  ⋮")
+        
+        for individual in individuals[end-19:end]
+            sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+        end
+    end
 end
