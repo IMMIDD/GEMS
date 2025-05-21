@@ -323,5 +323,15 @@ function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simu
     test_pos = was_infected && rand() <= sensitivity(testtype) ||
                !was_infected && rand() > specificity(testtype)
 
+    # log test in sim object
+    log!(
+        sim |> seroprevalencelogger,
+        ind |> id,
+        sim |> tick,
+        test_pos,
+        ind |> infected,
+        infected(ind) ? infection_id(ind) : DEFAULT_INFECTION_ID,
+        testtype |> name)
+
     return test_pos
 end
