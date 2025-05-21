@@ -1,5 +1,5 @@
 # DEFINE LOGGER STRUCTURE AND FUNCTIONALITY
-export Logger, TickLogger, EventLogger, InfectionLogger, VaccinationLogger, DeathLogger, TestLogger, PoolTestLogger
+export Logger, TickLogger, EventLogger, InfectionLogger, VaccinationLogger, DeathLogger, TestLogger, PoolTestLogger, SeroprevalenceLogger
 export QuarantineLogger, CustomLogger
 export tick, log!, save, save_JLD2, dataframe
 export get_infections_between
@@ -801,6 +801,110 @@ end
 Returns the number of entries in a `PoolTestLogger`.
 """
 Base.length(logger::PoolTestLogger) = length(logger.test_tick)
+
+###
+### SeroprevalenceLogger
+###
+
+
+@with_kw mutable struct SeroprevalenceLogger <: EventLogger
+
+    test_id::Vector{Int32} = Vector{Int32}(undef, 0)
+    id::Vector{Int32} = Vector{Int32}(undef, 0)
+    test_tick::Vector{Int16} = Vector{Int16}(undef, 0)
+    test_result::Vector{Bool} = Vector{Bool}(undef, 0)
+    infected::Vector{Bool} = Vector{Bool}(undef, 0)
+    infection_id::Vector{Int32} = Vector{Int32}(undef, 0)
+    test_type::Vector{String} = Vector{String}(undef, 0)
+    
+    lock::ReentrantLock = ReentrantLock()
+end
+
+function log!(
+        logger::SeroprevalenceLogger,
+        id::Int32,
+        test_tick::Int16,
+        test_result::Bool,
+        infected::Bool,
+        infection_id::Int32,
+        test_type::String
+    )
+    lock(logger.lock) do
+        new_test_id = Int32((logger.test_id |> length) + 1)
+
+        push!(logger.test_id, new_test_id)
+        push!(logger.id, id)
+        push!(logger.test_tick, test_tick)
+        push!(logger.test_result, test_result)
+        push!(logger.infected, infected)
+        push!(logger.infection_id, infection_id)
+        push!(logger.test_type, test_type)
+    end
+end
+
+"""
+    save(logger::SeroprevalenceLogger, path::AbstractString)
+
+Save the seroprevalence logger to a CSV file.
+"""
+function save(logger::SeroprevalenceLogger, path::AbstractString)
+    CSV.write(path, dataframe(logger))
+end
+
+"""
+    save_JLD2(logger::SeroprevalenceLogger, path::AbstractString)
+
+Save the seroprevalence logger to a JLD2 file.
+"""
+function save_JLD2(logger::SeroprevalenceLogger, path::AbstractString)
+    jldopen(path,"w") do file
+        file["test_id"] = logger.test_id
+        file["test_tick"] = logger.test_tick
+        file["id"] = logger.id
+        file["test_result"] = logger.test_result
+        file["infected"] = logger.infected
+        file["infection_id"] = logger.infection_id
+        file["test_type"] = logger.test_type
+    end
+end
+
+"""
+    dataframe(logger::SeroprevalenceLogger)
+
+Return a DataFrame holding the information of the seroprevalence logger.
+
+# Returns
+
+- `DataFrame` with the following columns:
+
+| Name           | Type     | Description                               |
+| :------------- | :------- | :---------------------------------------- |
+| `test_id`      | `Int32`  | ID of test in this logger                 |
+| `test_tick`    | `Int16`  | Tick of the test                          |
+| `id`           | `Int32`  | Individual ID                             |
+| `test_result`  | `Bool`   | Serology result (positive/negative)       |
+| `infected`     | `Bool`   | Was ever infected (or antibody present)   |
+| `infection_id` | `Int32`  | Infection event ID (if tracked)           |
+| `test_type`    | `String` | Name of test type                         |
+"""
+function dataframe(logger::SeroprevalenceLogger)::DataFrame
+    return DataFrame(
+        test_id = logger.test_id,
+        test_tick = logger.test_tick,
+        id = logger.id,
+        test_result = logger.test_result,
+        infected = logger.infected,
+        infection_id = logger.infection_id,
+        test_type = logger.test_type
+    )
+end
+
+"""
+    length(logger::SeroprevalenceLogger)
+
+Returns the number of entries in a `SeroprevalenceLogger`.
+"""
+Base.length(logger::SeroprevalenceLogger) = length(logger.test_tick)
 
 
 ###
