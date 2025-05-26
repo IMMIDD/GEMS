@@ -15,6 +15,7 @@ Order   = [:function]
 
 ## Structs
 ```@docs
+AgeBasedContactSampling
 AgeContactDistribution
 AgeGroupContactDistribution
 ContactMatrix
