@@ -43,7 +43,7 @@ strategy for a negative test, you can of couse have both.
 """
 struct Test <: IMeasure
     name::String    # name of testing measure (i.e. "test_after_symptoms")
-    type::TestType  # test type / brand / make
+    type:: Union{TestType, SeroprevalenceTestType}  # test type / brand / make
     positive_followup::Union{IStrategy, Nothing}
     negative_followup::Union{IStrategy, Nothing}
     reportable::Bool # whether a positive test from this event shall lead to a "detected case"
