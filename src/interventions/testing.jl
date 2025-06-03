@@ -79,7 +79,7 @@ struct SeroprevalenceTestType <: AbstractTestType
 
     @doc """
         SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation;
-            sensitivity::Float64 = 1.0, specificity::Float64 = 1.0, reportable::Bool = true)
+            sensitivity::Float64 = 1.0, specificity::Float64 = 1.0)
 
     Creates a SeroprevalenceTestType object.
 
