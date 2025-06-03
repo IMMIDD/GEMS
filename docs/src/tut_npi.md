@@ -17,6 +17,13 @@ Here's an example that sends individuals into household-isolation for 14 days, i
 To do so, we set up an `IStrategy` called "self\_isolation" and add an instance of the `SelfIsolation` measure with the duration parameter set to `14`.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_self_isolation_with_symptoms.png" width="30%"/>
+</p>
+``` 
+
   - Individuals go into self-isolation for 14 days, immediately upon experiencing symptoms
   - Isolation prevents out-household contacts, but not in-household contacts
   - Individuals end their isolation after 14 days, regardless of their infection state
@@ -66,6 +73,13 @@ The condition itself must be a one-argument predicate function (a function that 
 In the example below, we pass the `is_student(individual)` function that returns `true` if an individual is a student.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_conditioned_measure_1.png" width="50%"/>
+</p>
+``` 
+
   - Students go into self-isolation for 14 days, immediately upon experiencing symptoms
   - Isolation prevents out-household contacts, but not in-household contacts
   - Students end their isolation after 14 days, regardless of their infection state
@@ -104,6 +118,13 @@ You can also setup a custom condition-function.
 Here's an example where people who are older than 50 should be isolated.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_conditioned_measure_2.png" width="50%"/>
+</p>
+``` 
+
   - Individuals of age 50+ go into self-isolation for 14 days, immediately upon experiencing symptoms
   - Isolation prevents out-household contacts, but not in-household contacts
   - Students end their isolation after 14 days, regardless of their infection state
@@ -148,6 +169,13 @@ In this is example, we only send people into self-isolation who are living in ho
 
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets\tutorials\tut_interventions_trism_conditioned_measure_3.png" width="50%"/>
+</p>
+``` 
+
   - Individuals living in households of size 5+ go into self-isolation for 14 days, immediately upon experiencing symptoms
   - Isolation prevents out-household contacts, but not in-household contacts
   - Students end their isolation after 14 days, regardless of their infection state
@@ -197,6 +225,13 @@ The members are then all isolated individually, the same way as in the previous 
 This can also be considered a form of contact tracing.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_household_isolation.png" width="60%"/>
+</p>
+``` 
+
   - One individual experiencing symptoms will cause all household members to go into isolation for 14 days
   - This prevents all out-household contacts, within household contacts are still possible
   - After 14 days, all household members end their isolation, regardless of any of their infection states
@@ -294,6 +329,13 @@ This is configured via a second strategy that we call "testing" where we add a `
 A `SymptomTrigger` fires the "testing" strategy once an individual becomes symptomatic.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_testing_isolation.png" width="50%"/>
+</p>
+``` 
+
   - Upon experiencing symptoms, individuals are being tested immediately
   - The test has a 100% sensitivity and 100% specificity
   - Test results are available immediately
@@ -356,6 +398,13 @@ It can be used to delay the execution of measures, e.g., based on  an individual
 In the following scenarios, we compare two scenarios: (1) where individuals get a test immediately and go into isolation if the results come back positive (as in the previous tutorial) and (2) where individuals below the age of 50 get the test immediately an 50+ individuals get them one day after.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_delayed_measure.png" width="80%"/>
+</p>
+``` 
+
   - Upon experiencing symptoms, individuals are being tested
   - In scenario 1, tests are being applied immediately. In scenario 2, tests are being applied with a one-day delay for people above the age of 50
   - The test has a 100% sensitivity and 100% specificity
@@ -498,6 +547,13 @@ We assume that this is a very basic form of "contact tracing".
 That's necessary enable the recursive execution of strategies (they have to be "known" in order to reference them in measures).
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_ghost_epidemic.png" width="100%"/>
+</p>
+``` 
+
   - No transmissions, only the initial 100 infections are actually ill
   - Upon experiencing symptoms, we select 10 random individuals from the global setting with a 1-5 day delay
   - Each individual will be subjected to a 85%-specificity test
@@ -613,6 +669,13 @@ We compare two scenarios in which symptomatic individuals are tested (no other i
 However, in the second scenario, only 50 tests can be applied per day.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_limited_capacity.png" width="50%"/>
+</p>
+``` 
+
   - 15% transmission rate (to spread out the curve)
   - Symptomatic individuals are tested in both scenarios
   - No further interventions apply
@@ -694,6 +757,13 @@ The example below tests all school classes every seven days and closes the class
 We furthermore add a `CustomLogger` to track the number of currently closed school classes.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_pool_testing.png" width="50%"/>
+</p>
+``` 
+
   - Pool-testing every school class once a week
   - If test is positive, school class is closed for the week
 
@@ -753,6 +823,13 @@ With a positive test, individuals can get another test two days later.
 We neglect the fact that this will cause some tests to be performed on day 11.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_recurrent_testing.png" width="80%"/>
+</p>
+``` 
+
   - A symptomatic individual goes into self-isolation for 10 days
   - After day 5, they can get a test
   - If the test is negative, the individual may leave isolation
@@ -816,6 +893,66 @@ The testing measure only tests an individual for a pathogen but cannot different
 It is possible to specify that a test should not lead to a new case being reported.
 Please look up the [Test](@ref Test) measure's parameterization options.
 The next tutorial considers two test types where one of them does not lead to a reported case (self-applied test).
+
+## Seroprevalence Testing
+
+In this tutorial, we demonstrate how to integrate **seroprevalence testing** into a household isolation strategy using GEMS.
+
+This scenario builds on the idea of symptom-triggered household isolation, but adds a twist: 
+Household members only go into isolation if they test negative for antibodies. The assumption is that people who already have antibodies (i.e., tested seropositive) are less likely to be at risk and therefore exempt from isolation.
+In the standard simulation setup, seropositive individuals are assumed to be immune and cannot be reinfected, which justifies their exclusion from isolation measures.
+
+**Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_seroprevalence_testing.png" width="80%"/>
+</p>
+```
+
+- When an individual becomes symptomatic, they are immediately isolated for 14 days.
+- All **other members** of their household are given a **seroprevalence test**.
+- If a household member **tests negative (no antibodies)**, they are also isolated for 14 days.
+- If a household member **tests positive (has antibodies)**, they are **not isolated**.
+- The seroprevalence tests are "perfect", i.e. 100% sensitivity & specificity.
+
+```julia
+using GEMS
+
+# Create a simulation
+sim = Simulation(label = "Seroprevalence Testing")
+
+# Define the seroprevalence test (defaults to 100% sensitivity and specificity)
+sero_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(sim), sim)
+
+# Define a self-isolation strategy (used for both index case and seronegative contacts)
+isolation = IStrategy("Isolation", sim)
+add_measure!(isolation, SelfIsolation(14))
+
+# Define a testing strategy using the seroprevalence test
+# Household members are only isolated if they test NEGATIVE (no antibodies)
+testing = IStrategy("Seroprevalence Screening", sim)
+add_measure!(testing, Test("Sero Test", sero_test, negative_followup = isolation))
+
+# Define strategy to identify household members of the symptomatic individual
+trace_household = IStrategy("Household Tracing", sim)
+add_measure!(trace_household, FindSettingMembers(Household, testing, nonself = true))
+# The symptomatic individual isolates immediately
+add_measure!(trace_household, SelfIsolation(14))
+
+# Trigger the household tracing strategy when an individual develops symptoms
+trigger = SymptomTrigger(trace_household)
+add_symptom_trigger!(sim, trigger)
+
+# Run the simulation
+run!(sim)
+
+# Visualize the results
+rd = ResultData(sim)
+gemsplot(rd, type = (:TickCases, :TickTests, :ActiveDarkFigure), size = (800, 800))
+```
+
+**TODO:** Plots 
 
 ## Multiple Test Types
 

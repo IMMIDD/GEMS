@@ -1,14 +1,6 @@
 @testset "Interventions" begin
     #setup of the simulation object:
-    basefolder = dirname(dirname(pathof(GEMS)))
-
-    popfile = "test/testdata/TestPop.csv"
-    populationpath = joinpath(basefolder, popfile)
-
-    confile = "test/testdata/TestConf.toml"
-    configpath = joinpath(basefolder, confile)
-
-    sim = Simulation(configpath, populationpath)
+    sim = Simulation()
 
     #setup of the strategies
     condition = (_) -> true
@@ -184,12 +176,67 @@
         @test follow_up_strategy2 === i_strategy
     end
 
+    @testset "Seroprevalence Testing" begin
+
+        s_test = SeroprevalenceTestType("Sero Test", pathogen(sim), sim)
+        s_test_measure = GEMS.Test("test", s_test)
+        add_measure!(i_strategy, s_test_measure)
+        add_testtype!(sim, s_test)
+        @test testtypes(sim)[3] == s_test
+        println(testtypes(sim))
+
+        @test_throws ArgumentError SeroprevalenceTestType("Test", pathogen(sim), sim, sensitivity=2.0)
+        @test_throws ArgumentError SeroprevalenceTestType("Test", pathogen(sim), sim, specificity=2.0)
+
+        #Testtype Tests
+        @test name(s_test) == "Sero Test"
+        @test pathogen(s_test) == pathogen(sim)
+        @test sensitivity(s_test) == 1.0
+        @test GEMS.specificity(s_test) == 1.0
+
+        #Measure Tests
+        @test length(i_strategy.measures) == 6
+        @test i_strategy.measures[6].measure === s_test_measure
+
+        @test name(s_test_measure) === "test"
+        @test type(s_test_measure) === s_test
+        @test positive_followup(s_test_measure) === nothing
+        @test negative_followup(s_test_measure) === nothing
+        @test GEMS.reportable(s_test_measure) == true
+
+        #test with follow_up strategies
+        s_test_measure2 = GEMS.Test("test", s_test, i_strategy, nothing, reportable=false)
+        s_test_measure3 = GEMS.Test("test", s_test, nothing, i_strategy)
+        s_test_measure4 = GEMS.Test("test", s_test, i_strategy, i_strategy)
+
+        @test positive_followup(s_test_measure2) === i_strategy
+        @test negative_followup(s_test_measure2) === nothing
+        @test GEMS.reportable(s_test_measure2) === false
+        @test positive_followup(s_test_measure3) === nothing
+        @test negative_followup(s_test_measure3) === i_strategy
+        @test positive_followup(s_test_measure4) === i_strategy
+        @test negative_followup(s_test_measure4) === i_strategy
+
+        #test with no input
+        @test_throws "Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'" begin
+            s_test_measure5 = GEMS.Test()
+        end
+
+        #test processing measure
+        infect!(i, Int16(0), pathogen(sim))
+        result = process_measure(sim, i, s_test_measure2)
+        follow_up_strategy = result.follow_up
+
+        @test follow_up_strategy === i_strategy
+
+    end
+
     @testset "Trace Infectious Contacts" begin
         trace_infectious = TraceInfectiousContacts(i_strategy)
         add_measure!(i_strategy, trace_infectious)
 
-        @test length(i_strategy.measures) == 6
-        @test i_strategy.measures[6].measure === trace_infectious
+        @test length(i_strategy.measures) == 7
+        @test i_strategy.measures[7].measure === trace_infectious
 
         @test success_rate(trace_infectious) == 1.0
         @test follow_up(trace_infectious) === i_strategy
@@ -262,7 +309,7 @@
 
         individuals = result2.focal_objects
         strategy = result2.follow_up
-        
+
         @test typeof(individuals) <: AbstractVector{<:Individual}
         @test length(individuals) == 0
 
@@ -274,7 +321,8 @@
             "FindSetting",
             "FindSettingMembers",
             "GEMS.Test",
-            "TraceInfectiousContacts"
+            "TraceInfectiousContacts",
+            "GEMS.Test"
         ]
 
         strategy_names = map(x -> string(typeof(measure(x))), getfield(strategy, :measures))
@@ -287,7 +335,7 @@
 
         individuals = result3.focal_objects
         strategy = result3.follow_up
-        
+
         @test typeof(individuals) <: AbstractVector{<:Individual}
         @test length(individuals) == 0
 
@@ -299,7 +347,8 @@
             "FindSetting",
             "FindSettingMembers",
             "GEMS.Test",
-            "TraceInfectiousContacts"
+            "TraceInfectiousContacts",
+            "GEMS.Test"
         ]
 
         strategy_names = map(x -> string(typeof(measure(x))), getfield(strategy, :measures))
