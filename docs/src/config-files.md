@@ -610,7 +610,7 @@ Setting type-specific definitions are introduced by a new subsection with the se
     ...
 ```
 
-#### `contact_sampling_method`
+#### [`contact_sampling_method`](@id config-contact-sampling)
 
 Defines the routine which is used to draw contacts in settings of the respective type in each timestep (tick).
 
