@@ -51,6 +51,8 @@ HouseholdAttackRate
 generate(::HouseholdAttackRate, ::ResultData)
 Incidence
 generate(::Incidence, ::ResultData)
+IncubationHistogram
+generate(::IncubationHistogram, ::ResultData)
 InfectionDuration
 generate(::InfectionDuration, ::ResultData)
 InfectiousHistogram
