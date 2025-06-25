@@ -13,7 +13,7 @@
 | Generation Time | The time interval between the infections of the infector and infectee, two immediate successors in an infection chain. |
 | Hospitalization Status | States if an individual is hospitalized and if additional measures have to be applied (vetilation, ICU). |
 | Hospitalization Rate | The probability of an individual with severe symptoms to need hospitalization. |
-| ICU | Short for Intensive Care Unit. An hospitalization state. Individuals are in the hospital, ventilated and are in ICU. |
+| ICU | Short for Intensive Care Unit. An hospitalization state. Individuals are in the hospital and in the ICU. |
 | ICU Rate | The probabilityof an individual in critical condition to need ICU. |
 | Individual | The representation of a person. It has different attributes and can become infected inside settings. |
 | Infection Rate | Basic risk of getting infected upon infectious contact |
@@ -44,5 +44,5 @@
 | Time to Hospitalization | If an individual will need hospitalization eventually, this defines the time between the onset of symptoms and hospitalization. |
 | Time to ICU | If an individual will need ICU eventually, this defines the time between the time to hospitalization and the delivery into ICU. |
 | Time to Recovery | The time it takes an individual to recover from an infection as an increment from the onset of symptoms. If an individual will die at the end of the natural disease progression, this will (also) define the time of death. |
-| Ventilated | An hospitalization state. Individuals are in the hospital and receive ventilation. |
-| Ventilation Rate | The probability of an individual in critical condition to need ventilation. |
+| Ventilated | An hospitalization state. Individuals are in the hospital, in the ICU and receive ventilation. |
+| Ventilation Rate | The probability of an individual in the ICU to need ventilation. |

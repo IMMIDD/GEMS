@@ -435,20 +435,22 @@ function disease_progression!(
         hospitalized_tick(infectee) + sample_length_of_stay(pathogen, infectee)
     )
 
-    # random value to determine ventilation. If yes, directly when hospitalized.
-    ventilation_probability = sample_ventilation_rate(pathogen, infectee)
-    if rand() < ventilation_probability
-        ventilation_tick!(infectee, hospitalized_tick(infectee))
 
-        # ICU only if ventilated and determined randomly. Then ICU tick as increment on hospitalization tick
-        icu_probability = sample_icu_rate(pathogen, infectee)
-        if rand()<icu_probability
-            icu_tick!(
-                infectee,
-                hospitalized_tick(infectee) + sample_time_to_icu(pathogen, infectee)
-            )
+    # random value to determine icu admission. If yes, sample offset from hospitalization
+    icu_probability = sample_icu_rate(pathogen, infectee)
+    if rand() < icu_probability
+        icu_tick!(
+            infectee,
+            hospitalized_tick(infectee) + sample_time_to_icu(pathogen, infectee)
+        )
+
+        # Ventilation only if in ICU. If yes, directly ventilate when admitted to ICU.
+        ventilation_probability = sample_ventilation_rate(pathogen, infectee)
+        if rand() < ventilation_probability
+            ventilation_tick!(infectee, icu_tick(infectee))
         end
     end
+
 
     #=
     # hospital is a form of quarantine
