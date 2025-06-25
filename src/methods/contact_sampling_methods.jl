@@ -67,7 +67,6 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
                 break
             end
         end
-
     end
     
     return res
@@ -88,7 +87,7 @@ Firstly, we sample uniformly with probability pi = e * wi * qi * m_max / N
 m_max - maximal mixing factor between age groups
 Secondly, we sample with adapted probability mi = mi / m_max
 """
-function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -97,6 +96,8 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
     if length(present_inds) == 1
         return Individual[]
     end
+
+    individual = present_inds[individual_index]
 
     # get sampling parameters
     expected_number_of_contacts = contactparameter_sampling.contactparameter
@@ -128,17 +129,29 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
     if number_of_contacts < 1
         return Individual[]
     end
-    number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
-    res = Vector{Individual}(undef, number_of_contacts)
-    sample!(present_inds, res; replace=false)
-    for i = 1:length(res)
-        if Ref(individual) == Ref(res[i])
-            while Ref(individual) == Ref(res[i])
-                res[i] = rand(present_inds)
+
+    if replace
+        res = Vector{Individual}(undef, number_of_contacts)
+        
+        # sample contacts 
+        for i in 1:number_of_contacts
+            offset = rand(1:length(present_inds)-1)
+            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+            res[i] = present_inds[contact_index]
+        end
+    else
+        number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
+        res = Vector{Individual}(undef, number_of_contacts)
+
+        sample!(present_inds[1:end-1], res; replace=false)
+        for i = 1:length(res)
+            if res[i] === present_inds[individual_index]
+                res[i] = present_inds[end]
+                break
             end
-            break
         end
     end
+
     # Second order sampling (i.e. structural one)
     out = Individual[]
     for i = 1:number_of_contacts
