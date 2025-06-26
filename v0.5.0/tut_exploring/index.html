@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>2 - Exploring Models · GEMS.jl</title><meta name="title" content="2 - Exploring Models · GEMS.jl"/><meta property="og:title" content="2 - Exploring Models · GEMS.jl"/><meta property="twitter:title" content="2 - Exploring Models · GEMS.jl"/><meta name="description" content="Documentation for GEMS.jl."/><meta property="og:description" content="Documentation for GEMS.jl."/><meta property="twitter:description" content="Documentation for GEMS.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.jpeg" alt="GEMS.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">GEMS.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../installation/">Installation</a></li><li><span class="tocitem">Base Model</span><ul><li><a class="tocitem" href="../base-population/">Population</a></li><li><a class="tocitem" href="../base-contacts/">Contacts</a></li><li><a class="tocitem" href="../base-disease/">Disease</a></li><li><a class="tocitem" href="../TriSM/">Interventions</a></li><li><a class="tocitem" href="../base-config/">Default Parameters</a></li></ul></li><li><span class="tocitem">Running Simulations</span><ul><li><a class="tocitem" href="../tut_Intro/">Tutorials</a></li><li><a class="tocitem" href="../tut_gettingstarted/">1 - Getting Started</a></li><li class="is-active"><a class="tocitem" href>2 - Exploring Models</a><ul class="internal"><li><a class="tocitem" href="#Exploring-Individuals"><span>Exploring Individuals</span></a></li><li><a class="tocitem" href="#Adjusting-Individuals"><span>Adjusting Individuals</span></a></li><li><a class="tocitem" href="#Exploring-Settings"><span>Exploring Settings</span></a></li><li><a class="tocitem" href="#Traversing"><span>Traversing</span></a></li></ul></li><li><a class="tocitem" href="../tut_plotting/">3 - Plotting</a></li><li><a class="tocitem" href="../tut_batches/">4 - Running Batches</a></li><li><a class="tocitem" href="../tut_pops/">5 - Creating Populations</a></li><li><a class="tocitem" href="../tut_configfiles/">6 - Advanced Parameterization</a></li><li><a class="tocitem" href="../tut_postprocessing/">7 - Logging &amp; Post-Processing</a></li><li><a class="tocitem" href="../tut_reporting/">8 - Reporting</a></li><li><a class="tocitem" href="../tut_npi/">9 - Modeling Interventions</a></li><li><a class="tocitem" href="../cheat-sheet/">Cheat Sheet</a></li></ul></li><li><a class="tocitem" href="../config-files/">Config Files</a></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../docstrings-overview/">Overview</a></li><li><a class="tocitem" href="../api_batch/">Batches</a></li><li><a class="tocitem" href="../api_contacts/">Contacts</a></li><li><a class="tocitem" href="../api_individuals/">Individuals</a></li><li><a class="tocitem" href="../api_infections/">Infections and Immunity</a></li><li><a class="tocitem" href="../api_interventions/">Interventions</a></li><li><a class="tocitem" href="../api_logger/">Logger</a></li><li><a class="tocitem" href="../api_mapping/">Mapping</a></li><li><a class="tocitem" href="../api_misc/">Misc</a></li><li><a class="tocitem" href="../api_movie/">Movie</a></li><li><a class="tocitem" href="../api_pathogens/">Pathogens</a></li><li><a class="tocitem" href="../api_plotting/">Plotting</a></li><li><a class="tocitem" href="../api_population/">Population</a></li><li><a class="tocitem" href="../api_postproc/">Post Processing</a></li><li><a class="tocitem" href="../api_reporting/">Reporting</a></li><li><a class="tocitem" href="../api_resultdata/">Result Data</a></li><li><a class="tocitem" href="../api_settings/">Settings</a></li><li><a class="tocitem" href="../api_simulation/">Simulation</a></li></ul></li><li><a class="tocitem" href="../contributing-guide/">Contributing to GEMS</a></li><li><a class="tocitem" href="../changelog/">Changelog</a></li><li><a class="tocitem" href="../faq-page/">FAQ</a></li><li><a class="tocitem" href="../glossary/">Glossary</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Running Simulations</a></li><li class="is-active"><a href>2 - Exploring Models</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>2 - Exploring Models</a></li></ul></nav><div class="docs-right"><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="2-Exploring-Models"><a class="docs-heading-anchor" href="#2-Exploring-Models">2 - Exploring Models</a><a id="2-Exploring-Models-1"></a><a class="docs-heading-anchor-permalink" href="#2-Exploring-Models" title="Permalink"></a></h1><p>This tutorial shows you how to easily navigate through model components.</p><h2 id="Exploring-Individuals"><a class="docs-heading-anchor" href="#Exploring-Individuals">Exploring Individuals</a><a id="Exploring-Individuals-1"></a><a class="docs-heading-anchor-permalink" href="#Exploring-Individuals" title="Permalink"></a></h2><p>Using the <code>individuals()</code> function on the simulation object is the easiest way to access the agents. The example below returns the vector of individuals:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+individuals(sim)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:36:54 | Initializing Simulation [Simulation 1] with default configuration 
+and one custom parameter.
+[ Info: 21:36:54 | └ Creating population
+[ Info: 21:36:55 | └ Creating simulation object
+100000-element Vector{Individual}:
+ Individual(1, 1, 6, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...
+ Individual(2, 2, 19, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...
+ ⋮
+ Individual(99999, 2, 57, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...
+ Individual(100000, 2, 37, -1, -1, 0.0f0, 0.0f0, Bool[], false, ...</code></pre><p>Please be aware that the individual <code>id</code> is <strong>NOT</strong> necessarily matching their index in the <code>individuals</code>-vector.</p><p>If you are interested in a particular attribute (e.g., the <code>age</code>) of all individuals, you can call the respective getter-function on the vector using a <code>.</code> which applies is to all individuals:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+inds = individuals(sim)
+age.(inds)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:40:00 | Initializing Simulation [Simulation 2] with default configuration
+and one custom parameter.
+[ Info: 21:40:00 | └ Creating population
+[ Info: 21:40:02 | └ Creating simulation object
+100000-element Vector{Int8}:
+ 61
+ 67
+  ⋮
+ 59
+ 12</code></pre><div class="admonition is-info" id="Where&#39;s-the-list-of-attributes-I-can-access?-d9aa086e8c2938c5"><header class="admonition-header">Where&#39;s the list of attributes I can access?<a class="admonition-anchor" href="#Where&#39;s-the-list-of-attributes-I-can-access?-d9aa086e8c2938c5" title="Permalink"></a></header><div class="admonition-body"><p>Put a <code>?</code> into the Julia REPL and call <code>help?&gt; Individual</code> to get an overview of fields that are stored for each individual or look up the Individuals section of the API documentation. Allmost every field has a function of the same name (e.g.g, <code>age()</code>) to get its value</p></div></div><p>A more comprehensive overview of the individuals in a population can be achieved via the <code>Population</code>-object. The example below generates a dataframe with one row per individual in the population:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+pop = population(sim)
+dataframe(pop)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:40:37 | Initializing Simulation [Simulation 3] with default configuration 
+and one custom parameter.
+[ Info: 21:40:37 | └ Creating population
+[ Info: 21:40:39 | └ Creating simulation object
+100000×10 DataFrame
+    Row │ id      sex   age   number_of_vaccinations  vaccination_tick  education  ⋯
+        │ Int32   Int8  Int8  Int8                    Int16             Int8       ⋯
+────────┼─────────────────────────────────────────────────────────────────────────────
+      1 │      1     2    43                       0                -1         -1  ⋯
+      2 │      2     1    50                       0                -1         -1  ⋯
+   ⋮    │   ⋮      ⋮     ⋮              ⋮                    ⋮              ⋮          ⋮ 
+  99999 │  99999     1     5                       0                -1         -1  ⋯  
+ 100000 │ 100000     1    42                       0                -1         -1  ⋯ 
+99996 rows omitted   </code></pre><p>Additionally, there are a number of functions allowing you to check an individual&#39;s infection- or quarantine status. This example checks if the first individual in the list of individuals is infected:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+first_ind = individuals(sim) |&gt; first
+infected(first_ind)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:42:31 | Initializing Simulation [Simulation 4] with default configuration
+and one custom parameter.
+[ Info: 21:42:31 | └ Creating population
+[ Info: 21:42:35 | └ Creating simulation object
+false</code></pre><p>Other useful status check functions are <code>exposed()</code>, <code>infectious()</code>, <code>isquarantined()</code>, <code>quarantine_status()</code>, <code>hospital_status()</code>, <code>hospitalized()</code>, <code>ventilated()</code>, <code>dead()</code>, <code>isdetected()</code>, and <code>isvaccinated()</code>. For a full list, please look up the Individuals section of the API documentation.</p><p>Individuals are associated with at least one setting (the household). You can access them using the respective access functions. Please note, that these setting access functions require the <code>Simulation</code> object to be passed (for internal performance reasons).</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+first_ind = individuals(sim) |&gt; first
+household(first_ind, sim)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:43:20 | Initializing Simulation [Simulation 5] with default configuration 
+and one custom parameter.
+[ Info: 21:43:20 | └ Creating population
+[ Info: 21:43:21 | └ Creating simulation object
+Household
+  id: Int32 1
+  individuals: Array{Individual}((3,))
+  income: Int8 -1
+  dwelling: Int8 -1
+  last_infectious: Int16 -1
+  contact_sampling_method: ContactparameterSampling
+  ags: AGS
+  lon: Float32 NaN32
+  lat: Float32 NaN32
+  isactive: Bool false
+  isopen: Bool true
+  lock: ReentrantLock</code></pre><p>Also try <code>office(i)</code>, <code>schoolclass(i)</code>, or <code>municipality(i)</code>. If an individual is not assigned to the respective setting (e.g., a child not being assigned to an office), these functions will throw an exception. You can make sure to not call these functions for individuals without a valid assignment by verifying <code>is_working(i)</code> or <code>is_student(i)</code> first.</p><h2 id="Adjusting-Individuals"><a class="docs-heading-anchor" href="#Adjusting-Individuals">Adjusting Individuals</a><a id="Adjusting-Individuals-1"></a><a class="docs-heading-anchor-permalink" href="#Adjusting-Individuals" title="Permalink"></a></h2><p>You can esaily adjust individuals&#39; attribute values. This example selects the first individual from the list of individuals and updates its <code>age</code> to <code>15</code>:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+first_ind = individuals(sim) |&gt; first
+first_ind.age = 15</code></pre><div class="admonition is-warning" id="Caution-1c83761144fb067e"><header class="admonition-header">Caution<a class="admonition-anchor" href="#Caution-1c83761144fb067e" title="Permalink"></a></header><div class="admonition-body"><p>Please only touch individuals&#39; attribute values if you really know what you are doing. This can potentially invalidate input population models or result in errors when the internal model structure is compromised (e.g., by assigning individuals to non-existent settings)</p></div></div><p>More elaborate ajustments can be made using the <code>each!</code> function on the <code>Population</code> object. Please look up the &quot;Creating Populations&quot; tutorial to learn how to ajust populations.</p><h2 id="Exploring-Settings"><a class="docs-heading-anchor" href="#Exploring-Settings">Exploring Settings</a><a id="Exploring-Settings-1"></a><a class="docs-heading-anchor-permalink" href="#Exploring-Settings" title="Permalink"></a></h2><p>Here&#39;s how you access all settings that are available in a given simulation:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+settings(sim)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:44:52 | Initializing Simulation [Simulation 6] with default configuration 
+and one custom parameter.
+[ Info: 21:44:52 | └ Creating population
+[ Info: 21:44:54 | └ Creating simulation object
+Dict{DataType, Vector{Setting}} with 3 entries:
+  Household   =&gt; [Household(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[],…  
+  SchoolClass =&gt; [SchoolClass(1, Individual[Individual(9, 1, 7, -1, -1, 0.0, 0.0, Bool[],…
+  Office      =&gt; [Office(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[],…</code></pre><p>The above example returns a dictionary where the key is the setting type and the value being the list of settings of that type. If you want a particular setting type, you can either pass the respective key to the settings dictionary like <code>settings(sim)[Household]</code> or use the prefined access functions, e.g., <code>households(sim)</code>:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation()
+households(sim)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:45:33 | Initializing Simulation [Simulation 7] with default configuration 
+and one custom parameter.
+[ Info: 21:45:33 | └ Creating population
+[ Info: 21:45:35 | └ Creating simulation object
+33334-element Vector{Setting}:
+ Household
+  id: Int32 1
+  individuals: Array{Individual}((2,))
+  income: Int8 -1
+  dwelling: Int8 -1
+  last_infectious: Int16 -1
+  contact_sampling_method: ContactparameterSampling
+  ags: AGS
+  lon: Float32 NaN32
+  lat: Float32 NaN32
+  isactive: Bool false
+  isopen: Bool true
+  lock: ReentrantLock
+ ⋮</code></pre><p>Similar to what we did with the individuals, you can run analyses on a collection of settings calling getter functions (e.g., <code>size(s)</code>) for a vector of settings using <code>.</code>. In the example below, we extract the size (number of assigned individuals) for each household and plot them in a histogram:</p><pre><code class="language-julia hljs">using GEMS, Plots
+sim = Simulation()
+hhlds = households(sim)
+hh_sizes = size.(hhlds)
+histogram(hh_sizes, xlabel = &quot;Household Size&quot;, label = &quot;Number of Households&quot;)</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_em_histogram.png" width="80%"/>
+</p><h2 id="Traversing"><a class="docs-heading-anchor" href="#Traversing">Traversing</a><a id="Traversing-1"></a><a class="docs-heading-anchor-permalink" href="#Traversing" title="Permalink"></a></h2><p>The previous examples demonstrated how you get from an individual to its settings. Of course, you can go the other way around and access all individuals of a setting. Moreover, you can traverse through the bi-partite graph (of individuals and settings) which is an important feature, e.g., to propagate intervention measures. Here&#39;s an example how to get the household members of an individual. To make sure, the individual is not living in a single-person houshold, we increase the average household size in our experiment. the <code>id.()</code> function gives us the IDs of all members (just for better readability). You see that the first ID is <code>1</code>, as we select the first individual in the list and look into their household:</p><pre><code class="language-julia hljs">using GEMS
+sim = Simulation(avg_household_size = 10)
+first_ind = individuals(sim) |&gt; first
+hh = household(first_ind, sim)
+hh_members = individuals(hh)
+id.(hh_members)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:50:17 | Initializing Simulation [Simulation 9] with default configuration 
+and custom parameters.
+[ Info: 21:50:18 | └ Creating population
+[ Info: 21:50:20 | └ Creating simulation object
+10-element Vector{Int32}:
+     1
+ 20643
+ 23586
+     ⋮
+ 57705
+ 87052
+ 94858</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_gettingstarted/">« 1 - Getting Started</a><a class="docs-footer-nextpage" href="../tut_plotting/">3 - Plotting »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.13.0 on <span class="colophon-date" title="Thursday 26 June 2025 12:48">Thursday 26 June 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
