@@ -19,18 +19,7 @@ jobs:
         
     steps:
       - uses: actions/checkout@v4
-      - name: Cache Pandoc
-        id: cache-pandoc
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ runner.os == 'Windows' && 'C:\ProgramData\chocolatey\bin\pandoc.exe' || '' }}
-            ${{ runner.os == 'Linux' && '/usr/bin/pandoc' || '' }}
-            ${{ runner.os == 'macOS' && '/usr/local/bin/pandoc' || '' }}
-          key: pandoc-${{ runner.os }}-${{ hashFiles('**/runtests.yaml') }}
-          restore-keys: pandoc-${{ runner.os }}-
       - name: Install Pandoc
-        if: steps.cache-pandoc.outputs.cache-hit != 'true'
         run: |
           if ($Env:RUNNER_OS -eq "Windows") {
             choco install pandoc -y
@@ -41,18 +30,7 @@ jobs:
             brew install pandoc
           }
         shell: pwsh
-      - name: Cache TeX
-        id: cache-tex
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ runner.os == 'Windows' && 'C:\Program Files\MiKTeX' || '' }}
-            ${{ runner.os == 'Linux' && '/usr/share/texlive' || '' }}
-            ${{ runner.os == 'macOS' && '/Library/TeX' || '' }}
-          key: latex-${{ runner.os }}-${{ hashFiles('**/runtests.yaml') }}
-          restore-keys: latex-${{ runner.os }}-
       - name: Install TeX
-        if: steps.cache-tex.outputs.cache-hit != 'true'
         run: |
           if ($Env:RUNNER_OS -eq "Windows") {
             choco install miktex -y
