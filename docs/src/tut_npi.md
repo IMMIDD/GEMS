@@ -469,6 +469,13 @@ In the example below, we assume a test with a 20% false-positive-rate (80% speci
 Once an individual experiences symptoms, all members of their household (including themselves) are subjected to a test and sent into household isolation for two weeks if the results are positive.
 
 **Scenario Summary**:
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_subpartest.png" width="50%"/>
+</p>
+``` 
+
   - Upon experiencing symptoms, all people in the symptomatc individual's household get tested (including the index individual)
   - The test has a specificity of 80%. It will identify a non-infected individual as infected in 20% of the cases (false positives)
   - If multiple people in the household are infected, each individual will get tested multiple times
@@ -611,6 +618,13 @@ The code below defines what we call a "scenario-function" (`testing_scenario!()`
 It takes the `Simulation` object and a sensitivity argument to parameterize the test.
 That way, it is much easier to set up multiple intervention scenarios with varying parameters.
 Moreover, the example uses the `Batch` functionality to easily aggregate all simulations and facilitate the execution and post-processing.
+
+
+```@raw html
+<p align="center">
+    <img src="assets/tutorials/tut_interventions_trism_varyingtestsensitivity.png" width="50%"/>
+</p>
+``` 
 
 ```julia
 using GEMS
@@ -901,6 +915,7 @@ In this tutorial, we demonstrate how to integrate **seroprevalence testing** int
 This scenario builds on the idea of symptom-triggered household isolation, but adds a twist: 
 Household members only go into isolation if they test negative for antibodies. The assumption is that people who already have antibodies (i.e., tested seropositive) are less likely to be at risk and therefore exempt from isolation.
 In the standard simulation setup, seropositive individuals are assumed to be immune and cannot be reinfected, which justifies their exclusion from isolation measures.
+We are comparing the results with the previous household isolation scenario.
 
 **Scenario Summary**:
 
@@ -920,7 +935,8 @@ In the standard simulation setup, seropositive individuals are assumed to be imm
 using GEMS
 
 # Create a simulation
-sim = Simulation(label = "Seroprevalence Testing")
+#We set the average household size to 4 to better observe its effect
+sim = Simulation(label = "Seroprevalence Testing", avg_household_size=4, transmission_rate = 0.4)
 
 # Define the seroprevalence test (defaults to 100% sensitivity and specificity)
 sero_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(sim), sim)
@@ -944,15 +960,34 @@ add_measure!(trace_household, SelfIsolation(14))
 trigger = SymptomTrigger(trace_household)
 add_symptom_trigger!(sim, trigger)
 
-# Run the simulation
+# the household isolation scenario to compare the results with
+household_isolation = Simulation(label = "Household Isolation", avg_household_size=4, transmission_rate = 0.4)
+self_isolation = IStrategy("Self Isolation", household_isolation)
+add_measure!(self_isolation, SelfIsolation(14))
+find_household_members = IStrategy("Find Household Members", household_isolation)
+add_measure!(find_household_members, FindSettingMembers(Household, self_isolation))
+trigger = SymptomTrigger(find_household_members)
+add_symptom_trigger!(household_isolation, trigger)
+
+# Run the simulations
 run!(sim)
+run!(household_isolation)
+
+rd_s = ResultData(sim)
+rd_i = ResultData(household_isolation)
 
 # Visualize the results
-rd = ResultData(sim)
-gemsplot(rd, type = (:TickCases, :TickTests, :ActiveDarkFigure), size = (800, 800))
+p=gemsplot([rd_s, rd_i], type = (:TickCases, :CumulativeIsolations))
 ```
 
-**TODO:** Plots 
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_seroprevalencetesting.png" width="80%"/>
+</p>
+``` 
+The results show that both scenarios lead to a similar number of cases, but the seroprevalence testing scenario results in fewer people being isolated. This means we can reduce unnecessary isolations without increasing the spread of infection.
 
 ## Multiple Test Types
 
