@@ -44,9 +44,9 @@ As the symptom category and terminal state are closely related, the terms
 "symptomatic".
 
 Furthermore the progression for some symptom categories includes the need of hospitalization.
-Severe cases will have a given probability to need hospitalization, while criticl cases
-will always be hospitalized. Critical case furthermore have probability to need ventilation.
-Ventilated critical case have also a probability to need ICU (intensive care unit).
+Severe cases will have a given probability to need hospitalization, while critical cases
+will always be hospitalized. Critical case furthermore have probability to need ICU (intensive care unit).
+Critical ICU cases also have a probability to need ventilation.
 
 While asymptotic cases can't die by means of the disease, all other symptom categories
 are assigned a certain death probability as seen in the graphic.
