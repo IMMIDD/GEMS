@@ -20,7 +20,7 @@ To do so, we set up an `IStrategy` called "self\_isolation" and add an instance 
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_self_isolation_with_symptoms.png" width="30%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_self_isolation_with_symptoms.png" width="30%"/>
 </p>
 ``` 
 
@@ -76,7 +76,7 @@ In the example below, we pass the `is_student(individual)` function that returns
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_conditioned_measure_1.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_conditioned_measure_1.png" width="50%"/>
 </p>
 ``` 
 
@@ -121,7 +121,7 @@ Here's an example where people who are older than 50 should be isolated.
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_conditioned_measure_2.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_conditioned_measure_2.png" width="50%"/>
 </p>
 ``` 
 
@@ -172,7 +172,7 @@ In this is example, we only send people into self-isolation who are living in ho
 
 ```@raw html
 <p align="center">
-    <img src="assets\tutorials\tut_interventions_trism_conditioned_measure_3.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_conditioned_measure_3.png" width="50%"/>
 </p>
 ``` 
 
@@ -228,7 +228,7 @@ This can also be considered a form of contact tracing.
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_household_isolation.png" width="60%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_household_isolation.png" width="60%"/>
 </p>
 ``` 
 
@@ -332,7 +332,7 @@ A `SymptomTrigger` fires the "testing" strategy once an individual becomes sympt
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_testing_isolation.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_testing_isolation.png" width="50%"/>
 </p>
 ``` 
 
@@ -401,7 +401,7 @@ In the following scenarios, we compare two scenarios: (1) where individuals get 
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_delayed_measure.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_delayed_measure.png" width="80%"/>
 </p>
 ``` 
 
@@ -472,7 +472,7 @@ Once an individual experiences symptoms, all members of their household (includi
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_subpartest.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_subpartest.png" width="50%"/>
 </p>
 ``` 
 
@@ -557,7 +557,7 @@ That's necessary enable the recursive execution of strategies (they have to be "
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_ghost_epidemic.png" width="100%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_ghost_epidemic.png" width="100%"/>
 </p>
 ``` 
 
@@ -622,7 +622,7 @@ Moreover, the example uses the `Batch` functionality to easily aggregate all sim
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_varyingtestsensitivity.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_varyingtestsensitivity.png" width="50%"/>
 </p>
 ``` 
 
@@ -686,7 +686,7 @@ However, in the second scenario, only 50 tests can be applied per day.
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_limited_capacity.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_limited_capacity.png" width="50%"/>
 </p>
 ``` 
 
@@ -774,7 +774,7 @@ We furthermore add a `CustomLogger` to track the number of currently closed scho
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_pool_testing.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_pool_testing.png" width="50%"/>
 </p>
 ``` 
 
@@ -840,7 +840,7 @@ We neglect the fact that this will cause some tests to be performed on day 11.
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_recurrent_testing.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_recurrent_testing.png" width="80%"/>
 </p>
 ``` 
 
@@ -908,86 +908,105 @@ It is possible to specify that a test should not lead to a new case being report
 Please look up the [Test](@ref Test) measure's parameterization options.
 The next tutorial considers two test types where one of them does not lead to a reported case (self-applied test).
 
-## Seroprevalence Testing
+## Seroprevalence Testing in School Class Isolation
 
-In this tutorial, we demonstrate how to integrate **seroprevalence testing** into a household isolation strategy using GEMS.
+In this tutorial, we demonstrate how to integrate **seroprevalence testing** into a symptom-triggered isolation strategy for **school classes** using GEMS.
 
-This scenario builds on the idea of symptom-triggered household isolation, but adds a twist: 
-Household members only go into isolation if they test negative for antibodies. The assumption is that people who already have antibodies (i.e., tested seropositive) are less likely to be at risk and therefore exempt from isolation.
-In the standard simulation setup, seropositive individuals are assumed to be immune and cannot be reinfected, which justifies their exclusion from isolation measures.
-We are comparing the results with the previous household isolation scenario.
+This example builds on a similar idea used in the household isolation scenario but applies it to school classes. When a student develops symptoms, the rest of the class is isolated. However, we now use seroprevalence testing to avoid unnecessary isolations.
 
-**Scenario Summary**:
+Instead of automatically isolating all classmates, we test them for antibodies. Only students who **do not have antibodies** (i.e., test seronegative) are isolated. The assumption is that **seropositive individuals are immune** and therefore don't need to be isolated.
+
+We compare this targeted approach with a standard school class isolation strategy in which all classmates are isolated for 14 days whenever someone develops symptoms.
+
+---
+
+**Scenario Summary**
 
 ```@raw html
 <p align="center">
-    <img src="assets/tutorials/tut_interventions_trism_seroprevalence_testing.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_seroprevalencetesting.png" />
 </p>
-```
+``` 
 
-- When an individual becomes symptomatic, they are immediately isolated for 14 days.
-- All **other members** of their household are given a **seroprevalence test**.
-- If a household member **tests negative (no antibodies)**, they are also isolated for 14 days.
-- If a household member **tests positive (has antibodies)**, they are **not isolated**.
-- The seroprevalence tests are "perfect", i.e. 100% sensitivity & specificity.
+- **Baseline: School Class Isolation**
+  - When a student shows symptoms, they and all classmates are isolated for 14 days.
+- **Seroprevalence Testing Scenario**
+  - When a student shows symptoms:
+    - They isolate for 14 days.
+    - All classmates are tested for antibodies.
+    - Only students who test **negative** are isolated.
+    - Students who test **positive** (i.e., immune) are **not isolated**.
+  - The tests are assumed to be perfect (100% sensitivity and specificity).
+
+---
+
 
 ```julia
 using GEMS
 
-# Create a simulation
-#We set the average household size to 4 to better observe its effect
-sim = Simulation(label = "Seroprevalence Testing", avg_household_size=4, transmission_rate = 0.4)
-
-# Define the seroprevalence test (defaults to 100% sensitivity and specificity)
-sero_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(sim), sim)
-
-# Define a self-isolation strategy (used for both index case and seronegative contacts)
-isolation = IStrategy("Isolation", sim)
-add_measure!(isolation, SelfIsolation(14))
-
-# Define a testing strategy using the seroprevalence test
-# Household members are only isolated if they test NEGATIVE (no antibodies)
-testing = IStrategy("Seroprevalence Screening", sim)
-add_measure!(testing, Test("Sero Test", sero_test, negative_followup = isolation))
-
-# Define strategy to identify household members of the symptomatic individual
-trace_household = IStrategy("Household Tracing", sim)
-add_measure!(trace_household, FindSettingMembers(Household, testing, nonself = true))
-# The symptomatic individual isolates immediately
-add_measure!(trace_household, SelfIsolation(14))
-
-# Trigger the household tracing strategy when an individual develops symptoms
-trigger = SymptomTrigger(trace_household)
-add_symptom_trigger!(sim, trigger)
-
-# the household isolation scenario to compare the results with
-household_isolation = Simulation(label = "Household Isolation", avg_household_size=4, transmission_rate = 0.4)
-self_isolation = IStrategy("Self Isolation", household_isolation)
+# SCENARIO 1: simulation with 14-day isolation for all individuals in the schoolclass
+isolation = Simulation(label="isolation")
+self_isolation = IStrategy("Self Isolation", isolation)
 add_measure!(self_isolation, SelfIsolation(14))
-find_household_members = IStrategy("Find Household Members", household_isolation)
-add_measure!(find_household_members, FindSettingMembers(Household, self_isolation))
-trigger = SymptomTrigger(find_household_members)
-add_symptom_trigger!(household_isolation, trigger)
 
-# Run the simulations
-run!(sim)
-run!(household_isolation)
+# identify list of students in class
+find_class_members = IStrategy("Find Schoolclass Members", isolation)
+add_measure!(find_class_members, FindSettingMembers(SchoolClass, self_isolation), condition=is_student)
 
-rd_s = ResultData(sim)
-rd_i = ResultData(household_isolation)
+# trigger "schoolclass tracing"
+trigger = SymptomTrigger(find_class_members)
+add_symptom_trigger!(isolation, trigger)
+
+# SCENARIO 2: here all students get a test and only go into isolation if it is negative
+seroprevalence_testing = Simulation(label="seroprevalence_testing")
+
+# define the test type
+seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+
+# isolation strategy
+self_isolation = IStrategy("Self Isolation", seroprevalence_testing)
+add_measure!(self_isolation, SelfIsolation(14))
+
+# define testing strategy that triggers self isolation
+testing = IStrategy("Testing", seroprevalence_testing)
+add_measure!(testing, GEMS.Test("Test", seroprevalence_test, negative_followup=self_isolation), condition = is_student)
+
+find_class_members = IStrategy("Find Class Members", seroprevalence_testing)
+add_measure!(find_class_members, FindSettingMembers(Household, testing, nonself=true), condition = is_student)
+
+# students with symptoms go in isolation anyway
+add_measure!(find_class_members, SelfIsolation(14), condition=is_student)
+
+# trigger "schoolclass tracing"
+trigger = SymptomTrigger(find_class_members)
+add_symptom_trigger!(seroprevalence_testing, trigger)
+
+# run both scenarios
+run!(isolation)
+run!(seroprevalence_testing)
+
+# get the results
+rd_i = ResultData(isolation)
+rd_s = ResultData(seroprevalence_testing)
 
 # Visualize the results
-p=gemsplot([rd_s, rd_i], type = (:TickCases, :CumulativeIsolations))
+gemsplot([rd_s, rd_i], type = (:TickCases, :CumulativeIsolations))
 ```
 
 **Plot**
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_seroprevalencetesting.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_seroprevalence_testing.png" width="80%"/>
 </p>
 ``` 
-The results show that both scenarios lead to a similar number of cases, but the seroprevalence testing scenario results in fewer people being isolated. This means we can reduce unnecessary isolations without increasing the spread of infection.
+
+**Results and Interpretation**
+
+Both scenarios result in similar numbers of cases, meaning the spread of infection is effectively controlled in both.  
+However, the seroprevalence testing scenario leads to significantly fewer isolations.
+This demonstrates that targeted testing can avoid unnecessary isolation for immune individuals without increasing transmission risk.
+
 
 ## Multiple Test Types
 
