@@ -110,7 +110,8 @@ mutable struct Simulation
     stepmod::Function
 
     # RNG
-    rng::AbstractRNG
+    main_rng::AbstractRNG
+    thread_rngs::Vector{AbstractRNG}
     
     ### INNER CONSTRUCTOR
 
@@ -151,7 +152,8 @@ mutable struct Simulation
          [], # strategies::Vector{Strategy}
          [], # testtypes::Vector{AbstractTestType}
          x -> x, # stepmod::Function
-         Xoshiro(rand(Int64)) # rng::AbstractRNG
+         Xoshiro(0), # rng::AbstractRNG
+         [Xoshiro(0) for _ in 1:Threads.nthreads()] # thread_rngs::Vector{AbstractRNG}
          ) 
     end
 
@@ -607,7 +609,10 @@ mutable struct Simulation
 
         if haskey(properties["Simulation"], "seed") 
             seed = properties["Simulation"]["seed"]
-            Random.seed!(sim.rng, seed)
+            Random.seed!(sim.main_rng, seed)
+            for i in 1:Threads.nthreads()
+                Random.seed!(sim.thread_rngs[i], rand(sim.main_rng, Int64))
+            end
         end
 
         # Remove empty containersettings
@@ -1221,6 +1226,17 @@ function tickunit(simulation::Simulation)::String
         return "tick"
     end
 end
+
+
+"""
+    rng(simulation::Simulation)
+
+Returns simulation RNG of the current thread.
+"""
+function rng(simulation::Simulation)
+    return simulation.thread_rngs[Threads.threadid()]
+end
+
 
 """
     start_condition(simulation)

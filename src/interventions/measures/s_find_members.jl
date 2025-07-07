@@ -165,7 +165,7 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
     if sample_size(measure) >= 0
         return s |> individuals |>
             x -> filter(selectionfilter(measure), x) |>
-            x -> sample_individuals(x, sample_size(measure), rng=sim.rng) |>
+            x -> sample_individuals(x, sample_size(measure), rng=rng(sim)) |>
             x -> Handover(x, measure |> follow_up)
     end
         
@@ -173,7 +173,7 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
     if sample_fraction(measure) < 1
         return s |> individuals |>
             x -> filter(selectionfilter(measure), x) |>
-            x -> sample_individuals(x, Int64(ceil((length(x) * sample_fraction(measure)))), rng=sim.rng) |>
+            x -> sample_individuals(x, Int64(ceil((length(x) * sample_fraction(measure)))), rng=rng(sim)) |>
             x -> Handover(x, measure |> follow_up)
     end
 

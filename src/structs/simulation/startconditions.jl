@@ -81,11 +81,11 @@ end
 
 Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
 For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
-the seed is drawn from `simulation.rng`. Otherwise, the provided `seed_sample` is used.
+the seed is drawn from `rng(simulation)`. Otherwise, the provided `seed_sample` is used.
 """
 function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
-    # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
-    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, Int64)) : Xoshiro(seed_sample)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(rng(simulation), Int64)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     ind = individuals(population(simulation))
@@ -97,7 +97,7 @@ function initialize!(simulation::Simulation, condition::InfectedFraction; seed_s
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), rng=simulation.rng)
+        infect!(i, tick(simulation), pathogen(condition), rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -110,8 +110,8 @@ end
 
 #TODO docs
 function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{Int64,Nothing}=nothing)
-    # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
-    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, Int64)) : Xoshiro(seed_sample)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(rng(simulation), Int64)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     ind = individuals(population(simulation))
@@ -122,7 +122,7 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed_sample
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), rng=simulation.rng)
+        infect!(i, tick(simulation), pathogen(condition), rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -131,8 +131,8 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed_sample
 end
 
 function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{Int64,Nothing}=nothing)
-    # create a new Xoshiro RNG for sampling, seeded from simulation.rng if seed_sample is nothing, or from seed_sample otherwise
-    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(simulation.rng, Int64)) : Xoshiro(seed_sample)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(rand(rng(simulation), Int64)) : Xoshiro(seed_sample)
 
     # number of individuals to infect
     to_infect = []
@@ -156,7 +156,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros; seed_sampl
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), rng=simulation.rng)
+        infect!(i, tick(simulation), pathogen(condition), rng=rng(simulation))
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
         end

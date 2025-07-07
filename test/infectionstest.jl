@@ -69,17 +69,17 @@
             )
             
             # infect with this seed
-            Random.seed!(sim.rng, 42)
+            Random.seed!(sim.thread_rngs[1], 42)
             @test false == try_to_infect!(infctr, infctd, sim, pathogen(sim), h)
             
             # This seed works
-            Random.seed!(sim.rng, 1)
+            Random.seed!(sim.thread_rngs[1], 1)
             @test true == try_to_infect!(infctr, infctd, sim, pathogen(sim), h)
 
             # unable to infect, when already infected
-            Random.seed!(sim.rng, 1)
+            Random.seed!(sim.main_rng, 1)
             i = Individual(id = 1, sex = 0, age = 31, household = 1)
-            infect!(i, Int16(0), p, rng=sim.rng)
+            infect!(i, Int16(0), p, rng=sim.main_rng)
             @test false == try_to_infect!(infctr, infctd, sim, pathogen(sim), h)
 
             # unable to infect, when already dead
@@ -160,9 +160,9 @@
         # dummy simulation for infections
         sim = Simulation(tick = time_tick, start_condition = InfectedFraction(0,p), stop_criterion = TimesUp(420), population = Population(individuals = indis), settings = stngs)
 
-        Random.seed!(sim.rng, 42)
+        Random.seed!(sim.main_rng, 42)
         # infect one and set setting as active
-        infect!(i, tick(sim), pathogen(sim), rng=sim.rng)
+        infect!(i, tick(sim), pathogen(sim), rng=sim.main_rng)
         activate!(h)
         @test isactive(h)
 
@@ -172,7 +172,7 @@
         rec_tick = removed_tick(i)
 
         # first test before the infectious tick
-        Random.seed!(sim.rng, 42)     
+        Random.seed!(sim.main_rng, 42)     
         sim.tick = safe_tick
         p_logger = logger(pathogen(sim))
         @test length(p_logger.tick) == 1 # only the initial infection is registered
@@ -188,7 +188,7 @@
         @test isactive(h) # Setting should still be active although noone is infectious
 
         # now test on the infectious tick and the update
-        Random.seed!(sim.rng, 42)
+        Random.seed!(sim.main_rng, 42)
         sim.tick = inf_tick
         # update all agents before spreading the infection
         for indiv in individuals(population(sim))    
@@ -219,7 +219,7 @@
 
         h.individuals = indis
 
-        Random.seed!(sim.rng, 42)
+        Random.seed!(sim.main_rng, 42)
         sim.tick = rec_tick
 
         l = length(p_logger.tick) # number of logs before spread_infection

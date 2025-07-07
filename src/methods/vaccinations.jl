@@ -31,7 +31,7 @@ defined in `dailydoses(dailydosestrategy)` and starting from
 `available_from(dailydosestrategy)`.
 """
 function schedule!(sim::Simulation, vaccine::Vaccine, strat::DailyDoseStrategy)
-    iter = Iterators.partition(shuffle(sim.rng, individuals(population(sim))), dailydose(strat))
+    iter = Iterators.partition(shuffle(rng(sim), individuals(population(sim))), dailydose(strat))
     for (tick, indis) in enumerate(iter)
         for ind in indis
             # tick starts at 1, but we want to vaccinate as soon as its available
