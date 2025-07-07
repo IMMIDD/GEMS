@@ -330,6 +330,7 @@ function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simu
         sim |> tick,
         test_pos,
         ind |> infected,
+        was_infected,
         infected(ind) ? infection_id(ind) : DEFAULT_INFECTION_ID,
         testtype |> name)
 

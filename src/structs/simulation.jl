@@ -1741,7 +1741,7 @@ function info(sim::Simulation)
     res *= "  \u2514 Deaths: $(sim |> deathlogger |> length)\n"
     res *= "  \u2514 Tests: $(sim |> testlogger |> length)\n"
     res *= "  \u2514 Pooltests: $(sim |> pooltestlogger |> length)\n"
-    res *= "  \u2514 Pooltests: $(sim |> seroprevalencelogger |> length)\n"
+    res *= "  \u2514 Seroprevalencetests: $(sim |> seroprevalencelogger |> length)\n"
 
     println(res)
 end

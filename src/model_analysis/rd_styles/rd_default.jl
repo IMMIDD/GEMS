@@ -201,6 +201,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "cumulative_quarantines" => () -> pP |> cumulative_quarantines,
                     "tick_tests" => () -> pP |> tick_tests,
                     "tick_pooltests" => () -> pP |> tick_pooltests,
+                    "tick_serotests" => () -> pP |> tick_serotests,
                     "detected_tick_cases" => () -> pP |> detected_tick_cases,
                     "rolling_observed_SI" => () -> pP |> rolling_observed_SI,
                     "observed_R" => () -> pP |> observed_R,
