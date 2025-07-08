@@ -347,6 +347,22 @@
                 generate(p, rd)
             end
         end
+        @testset "Seroprevalence-Testing-Plot" begin
+            seroprevalence_testing = Simulation()
+            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+            testing = IStrategy("Testing", seroprevalence_testing)
+            add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
+            trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(1))
+            add_tick_trigger!(seroprevalence_testing, trigger)
+            run!(seroprevalence_testing)
+            rd = ResultData(seroprevalence_testing)
+            sim = Simulation()
+            rd2 = ResultData(sim)
+            p1 = generate(TickSeroTests(), [rd, rd2])
+            p2 = generate(TickSeroTests(), rd; detailed=true)
+            @test p1 isa Plots.Plot
+            @test p2 isa Plots.Plot
+        end
     end
 
     @testset "Custom Report" begin
