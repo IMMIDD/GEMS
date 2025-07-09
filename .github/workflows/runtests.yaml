@@ -33,7 +33,8 @@ jobs:
       - name: Install TeX
         run: |
           if ($Env:RUNNER_OS -eq "Windows") {
-            choco install miktex.install --params "/Mirror:https://ctan.math.illinois.edu/systems/win32/miktex/tm/packages/"
+            choco config set --name commandExecutionTimeoutSeconds --value 14400
+            choco install miktex.install --params "/Mirror:https://mirror.ctan.org/systems/win32/miktex/tm/packages/" -y
             Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
             refreshenv
             $xelatexPath = (where.exe xelatex)
