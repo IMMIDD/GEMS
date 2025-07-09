@@ -33,8 +33,8 @@ jobs:
       - name: Install TeX
         run: |
           if ($Env:RUNNER_OS -eq "Windows") {
-            Invoke-WebRequest -Uri https://miktex.org/download/win/miktexsetup.exe -OutFile miktexsetup.exe
-            .\miktexsetup.exe --verbose --local-install --shared
+            Invoke-WebRequest -Uri https://mirror.easyname.at/ctan/systems/win32/miktex/setup/windows-x64/basic-miktex-24.1-x64.exe -OutFile miktexsetup.exe
+            .\basic-miktex-24.1-x64.exe --verbose --local-install --shared
             Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
             refreshenv
             $xelatexPath = (where.exe xelatex)
