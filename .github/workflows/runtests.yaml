@@ -33,7 +33,8 @@ jobs:
       - name: Install TeX
         run: |
           if ($Env:RUNNER_OS -eq "Windows") {
-            choco install miktex.install --params "/Mirror:http://ctan.math.utah.edu/ctan/tex-archive/systems/win32/miktex/tm/packages/" -y
+            Invoke-WebRequest -Uri https://miktex.org/download/win/miktexsetup.exe -OutFile miktexsetup.exe
+            .\miktexsetup.exe --verbose --local-install --shared
             Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
             refreshenv
             $xelatexPath = (where.exe xelatex)
