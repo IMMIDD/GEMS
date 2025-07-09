@@ -167,8 +167,19 @@ function agsmap(df::DataFrame, level::Int64; plotargs...)
         # there seems to be a fillcolor bug in Plots.js where the color is
         # not transferred to the shapes if it's not explicitly stated each
         # time a new shape is drawn. Thus, when fillcolor is provided, it's
-        # forwarded to the individual shape calls here.
-        haskey(argdict, :fillcolor) ? plot!(p, row.geometry, fill_z = row[4], fillcolor = argdict[:fillcolor]) : plot!(p, row.geometry, fill_z = row[4])
+        # forwarded to the individual shape calls here. The same applies 
+        # to the linecolor
+
+        # prepare keyword arguments for the plot! function
+        kwargs = Dict{Symbol, Any}(:fill_z => row[4])
+        if haskey(argdict, :fillcolor)
+            kwargs[:fillcolor] = argdict[:fillcolor]
+        end
+        if haskey(argdict, :linecolor)
+            kwargs[:linecolor] = argdict[:linecolor]
+
+        end
+        plot!(p, row.geometry; kwargs...)
     end
 
     return(p)
@@ -348,6 +359,8 @@ also pass to the `gemsmap()` function and might find helpful:
 - `size = (300, 400)`: Resizing the map plot
 - `title = "My Subtitle"`: Adding a subtitle
 - `plot_title = "My New Title"`: Changing the map title
+- `fillcolor = :blues`: Changing color scheme
+- `linecolor = nothing`: Removing the outline of the map shapes
 
 *Please consult the `Plots.jl` package documentation for a comprehensive list*
 
