@@ -33,7 +33,7 @@ jobs:
       - name: Install TeX
         run: |
           if ($Env:RUNNER_OS -eq "Windows") {
-            choco install texlive-basic -y
+            choco install miktex.install --params "/Mirror:http://ctan.math.utah.edu/ctan/tex-archive/systems/win32/miktex/tm/packages/" -y
             Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
             refreshenv
             $xelatexPath = (where.exe xelatex)
