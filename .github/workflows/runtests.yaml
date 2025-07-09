@@ -30,24 +30,8 @@ jobs:
             brew install pandoc
           }
         shell: pwsh
-      - name: Install TeX
-        run: |
-          if ($Env:RUNNER_OS -eq "Windows") {
-            choco install miktex -y
-            Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
-            refreshenv
-            $xelatexPath = (where.exe xelatex)
-            $xelatexDir = Split-Path $xelatexPath
-            Add-Content -Path $Env:GITHUB_PATH -Value $xelatexDir
-          } elseif ($Env:RUNNER_OS -eq "Linux") {
-            sudo apt-get update -qq
-            sudo apt-get install -y texlive texlive-xetex
-          } elseif ($Env:RUNNER_OS -eq "macOS") {
-            brew update
-            brew install --cask mactex
-            Add-Content -Path $Env:GITHUB_PATH -Value "/Library/TeX/texbin"
-          }
-        shell: pwsh
+      - name: Install TinyTeX
+        uses: r-lib/setup-tinytex@v2
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11.3'                         
