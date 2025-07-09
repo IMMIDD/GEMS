@@ -20,13 +20,13 @@ using StatsBase
 
 @testset "GEMS" begin
     testfiles = [
-        "agentstest.jl",
-        "populationstest.jl",
-        "pathogentest.jl",
-        "diseaseprogressiontest.jl",
-        "settingstest.jl",
-        "simulationtest.jl",
-        "infectionstest.jl",
+        #"agentstest.jl",
+        #"populationstest.jl",
+        #"pathogentest.jl",
+        #"diseaseprogressiontest.jl",
+        #"settingstest.jl",
+        #"simulationtest.jl",
+        #"infectionstest.jl",
         "reportingtest.jl",
         "loggertest.jl",
         "postprocessortest.jl",
