@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Average household size map
 """
-function generate(plt::HouseholdSizeMap, sim::Simulation; level::Int = 3, plotargs...)
+function generate(plt::HouseholdSizeMap, sim::Simulation; level::Int = 3, max_size::Int64 = 10, plotargs...)
     
     return ags.(sim |> households) |>
         # check if all of the AGS structs are unset/empty
@@ -55,6 +55,7 @@ function generate(plt::HouseholdSizeMap, sim::Simulation; level::Int = 3, plotar
             
             # build map otherwise
             DataFrame(ags = a, size = size.(sim |> households)) |>
+                x -> x[x.size .<= max_size, :] |>
                 x -> prepare_map_df!(x, level = level) |>
                 x -> groupby(x, :ags) |>
                 x -> combine(x, :size => mean => :size) |>

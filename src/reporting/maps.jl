@@ -337,14 +337,14 @@ plot(
 
 # Map Types
 
-| Type                   | Input Object | Description                                                           | Plot-Specific Parameters          |
-| :--------------------- | :----------- | :-------------------------------------------------------------------- | :-------------------------------- |
-| `:AgeMap`              | `Simulation` | Average age per region.                                               |                                   |
-| `:AttackRate`          | `ResultData` | Fraction of people who got infected per region.                       |                                   |
-| `:CaseFatalityMap`     | `ResultData` | Fraction of infections that led to death per region.                  |                                   |
-| `:HouseholdSizeMap`    | `Simulation` | Average household size per region.                                    |                                   |
-| `:PopDensityMap`       | `Simulation` | Population density per region.                                        |                                   |
-| `:SinglesMap`          | `Simulation` | Fraction of single-person households per region.                      |                                   |
+| Type                   | Input Object | Description                                                | Plot-Specific Parameters                                                                                         |
+| :--------------------- | :----------- | :--------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
+| `:AgeMap`              | `Simulation` | Average age per region.                                    |                                                                                                                  |
+| `:AttackRate`          | `ResultData` | Fraction of people who got infected per region.            |                                                                                                                  |
+| `:CaseFatalityMap`     | `ResultData` | Fraction of infections that led to death per region.       |                                                                                                                  |
+| `:HouseholdSizeMap`    | `Simulation` | Average household size per region.                         | `max_size = 10`: Maximum size of households (default = 10) considered for this graph (to exclude large outliers) |
+| `:PopDensityMap`       | `Simulation` | Population density per region.                             |                                                                                                                  |
+| `:SinglesMap`          | `Simulation` | Fraction of single-person households per region.           |                                                                                                                  |
 
 **Note:** Maps that use infection data (e.g., the `AttackRate`) use the individuals'
 household location to map the data, not the loction of infection.
