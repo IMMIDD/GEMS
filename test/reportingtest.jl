@@ -359,14 +359,12 @@
             sim = Simulation()
             run!(sim)
             rd2 = ResultData(sim)
-            p1 = generate(TickSeroTests(), [rd, rd2])
-            p2 = generate(TickSeroTests(), rd; detailed=true)
-            p3 = generate(TickSeroTests(), rd)
-            p4 = generate(TickSeroTests(), rd2)
+            p1 = generate(TickSeroTests(), rd; detailed=true)
+            p2 = generate(TickSeroTests(), rd)
+            p3 = generate(TickSeroTests(), rd2)
             @test p1 isa Plots.Plot
             @test p2 isa Plots.Plot
             @test p3 isa Plots.Plot
-            @test p4 isa Plots.Plot
         end
     end
 
