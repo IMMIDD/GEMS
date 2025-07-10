@@ -77,6 +77,7 @@ mutable struct OptimisedResultData <: ResultDataStyle
                     "cumulative_quarantines" => () -> pP |> cumulative_quarantines,
                     "tick_tests" => () -> pP |> tick_tests,
                     "tick_pooltests" => () -> pP |> tick_pooltests,
+                    "tick_serotests" => () -> pP |> tick_serotests,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe
                 )        
         )
