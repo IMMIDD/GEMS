@@ -990,16 +990,16 @@ rd_i = ResultData(isolation)
 rd_s = ResultData(seroprevalence_testing)
 
 # Visualize the results
-gemsplot([rd_s, rd_i], type = (:TickCases, :CumulativeIsolations))
+gemsplot([rd_s, rd_i], type = (:TickCases, :CumulativeIsolations, :TickSeroTests))
 ```
 
 **Plot**
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_seroprevalence_testing.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_seroprevalencetesting.png" width="80%"/>
 </p>
-``` 
+```
 
 **Results and Interpretation**
 

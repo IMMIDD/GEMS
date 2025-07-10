@@ -40,6 +40,14 @@
             @test key_rd |> model_size == "Not available!"
             @test key_rd.data["infections"] != Dict()
             @test GEMS.get_style("") == DefaultResultData
+
+            key_rd = ResultData(pp, style="EssentialResultData")
+            @test key_rd |> dataframes != Dict()
+            @test key_rd |> infections != Dict()
+            @test key_rd |> deaths != Dict()
+            @test key_rd |> final_tick != Dict()
+            @test key_rd |> config_file != Dict()
+            @test key_rd |> population_file != Dict()
         end
 
     end
@@ -376,7 +384,32 @@
         @test tot > 0
         @test 0 ≤ pos ≤ tot
         @test 0 ≤ neg ≤ tot
+    end
 
+    @testset "tick_serotests" begin
+        # Scenario Setup
+        seroprevalence_testing = Simulation()
+        seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+        testing = IStrategy("Testing", seroprevalence_testing)
+        add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
+        trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(1))
+        add_tick_trigger!(seroprevalence_testing, trigger)
+        run!(seroprevalence_testing)
+        rd = ResultData(seroprevalence_testing)
+        st = tick_serotests(rd)
+        # Tests
+        @test isa(st, Dict)
+        @test haskey(st, "Seroprevalence Test")
+
+        df = st["Seroprevalence Test"]
+        @test isa(df, DataFrame)
+        expected_cols = ["tick", "true_positives", "false_positives", "true_negatives",
+            "false_negatives", "positive_tests", "negative_tests", "total_tests"]
+        @test all(col -> col in names(df), expected_cols)
+        @test nrow(df) == 365
+        @test all(df.total_tests .== df.positive_tests .+ df.negative_tests)
+        @test all(df.false_positives .== 0)
+        @test all(df.false_negatives .== 0)
     end
 
     @testset "Hashes" begin

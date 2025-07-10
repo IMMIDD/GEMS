@@ -50,7 +50,9 @@ function generate(plt::TickSeroTests, rd::ResultData; detailed=false, plotargs..
     serotest_summary = rd |> tick_serotests
 
     if isempty(serotest_summary)
-        return emptyplot("There are no Seroprevalence Tests available in the ResultData object")
+        plot_tests = emptyplot("There are no Seroprevalence Tests\navailable in the ResultData object")
+        plot!(plot_tests; plotargs...)
+        return(plot_tests)
     end
 
     uticks = rd |> tick_unit
@@ -69,7 +71,7 @@ function generate(plt::TickSeroTests, rd::ResultData; detailed=false, plotargs..
     # Set up plot
     plot_sero = plot(
         xlabel = "$upper_ticks",
-        ylabel = "Reported Cases (Stacked)",
+        ylabel = "Tests",
         title = plt.title,
         legend = :topright,
         fontfamily = "Times Roman",
@@ -89,94 +91,32 @@ function generate(plt::TickSeroTests, rd::ResultData; detailed=false, plotargs..
             plot!(plot_sero, df.tick, base1,
                 seriestype = :path, fillrange = 0,
                 fillcolor = :red, color = :red, fillalpha = 0.5,
-                label = "True Positives $testtype")
+                label = "True Positives")
 
             plot!(plot_sero, df.tick, base2,
                 seriestype = :path, fillrange = base1,
                 fillcolor = :blue, color = :blue, fillalpha = 0.5,
-                label = "False Positives $testtype")
+                label = "False Positives")
 
             plot!(plot_sero, df.tick, base3,
                 seriestype = :path, fillrange = base2,
                 fillcolor = :green, color = :green, fillalpha = 0.5,
-                label = "True Negatives $testtype")
+                label = "True Negatives")
 
             plot!(plot_sero, df.tick, base4,
                 seriestype = :path, fillrange = base3,
                 fillcolor = :gray, color = :gray, fillalpha = 0.5,
-                label = "False Negatives $testtype")
+                label = "False Negatives")
 
             # Overlay dashed total line
             plot!(plot_sero, df.tick, df.total_tests,
                 color = :black, linewidth = 2, linestyle = :dash,
-                label = "Total Tests $testtype")
+                label = "Total Tests")
         else
             # Simplified version
             plot!(plot_sero, df.tick, df.total_tests,
-                color = :blue, label = "Total Tests $testtype", linestyle = :solid)
-            plot!(plot_sero, df.tick, df.positive_tests,
-                color = :green, label = "Positive Tests $testtype", linestyle = :dash)
-        end
-    end
-
-    plot!(plot_sero; plotargs...)
-    return plot_sero
-end
-"""
-    generate(plt::TickSeroTests, rds::Vector{ResultData}; plotargs...)
-
-Generates a combined sero-tests-per-tick plot across multiple simulations.
-
-Each simulation's total and positive test counts are plotted for comparison. Detailed outcome breakdown is not shown.
-
-# Parameters
-
-- `plt::TickSeroTests`: Plot metadata and config.
-- `rds::Vector{ResultData}`: Array of simulation result objects.
-- `plotargs...` *(optional)*: Passed to `Plots.plot`.
-
-# Returns
-
-- `Plots.Plot`: Combined tick-based sero-test plot.
-"""
-function generate(plt::TickSeroTests, rds::Vector{ResultData}; plotargs...)
-
-    if isempty(rds)
-        return emptyplot("No ResultData objects provided.")
-    end
-
-    uticks = rds[1] |> tick_unit
-    upper_ticks = uppercasefirst(uticks)
-
-    title!(plt, "Seroprevalence Test Outcomes per $upper_ticks (Multiple Sims)")
-    filename!(plt, "serotest_outcomes_per_$(uticks)_multiple.png")
-    description!(plt, "Comparison of _Total Tests_ and _Positive Tests_ per $uticks across multiple simulations.")
-
-    plot_sero = plot(
-        xlabel = "$upper_ticks",
-        ylabel = "Test Count",
-        title = plt.title,
-        legend = :topright,
-        fontfamily = "Times Roman",
-        framestyle = :box,
-        grid = :auto
-    )
-
-    for (i, rd) in enumerate(rds)
-        sero = rd |> tick_serotests
-        if isempty(sero)
-            @warn "Simulation $i has no serotest data."
-            continue
-        end
-
-        for (testtype, df) in sero
-            # Label includes sim index and test type
-            plot!(plot_sero, df.tick, df.total_tests,
-                color = :auto, linestyle = :solid,
-                label = "Total (Sim $i, $testtype)")
-            plot!(plot_sero, df.tick, df.positive_tests,
-                color = :auto, linestyle = :dash,
-                label = "Positive (Sim $i, $testtype)")
+                label = "Total Tests", color = palette(:auto)[1],linestyle = :solid)
+            plot!(plot_sero, df.tick, df.positive_tests, label = "Positive Tests", color = palette(:auto)[3], linestyle = :solid)
         end
     end
 

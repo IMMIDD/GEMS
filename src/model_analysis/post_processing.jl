@@ -383,8 +383,6 @@ function pooltestsDF(postProcessor::PostProcessor)
     return postProcessor.pooltestsDF
 end
 
-
-
 """
     serotestsDF(postProcessor::PostProcessor)
 
