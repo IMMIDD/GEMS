@@ -3,7 +3,7 @@ export region_range
 export generate_map
 
 # shapefile maps
-export agsmap, statemap, countymap, municipalitymap, prepare_map_df!
+export agsmap, statemap, countymap, municipalitymap, prepare_map_df!, prepare_map_df
 
 # gemsmap
 export gemsmap
@@ -217,6 +217,36 @@ function prepare_map_df!(df::DataFrame; level::Int = 3)
     # handle counties
     if level == 2
         df.ags = county.(df.ags)
+    end
+
+    return df
+end
+
+"""
+    prepare_map_df(df::DataFrame; level::Int = 3)
+
+Input `df` requires the format that can go into the `agsmap()` function. This means, at least
+two columns, the first one being an `AGS` column called `ags` and a second column
+with numerical values. The `level` argument converts the `AGS`s to the
+desired geographical resolution: states (`level = 1`),
+counties (`level = 2`) or municipalities (`level = 3`)
+
+# Returns
+
+- `DataFrame`: Dataframe with desired `AGS` resolution in first column.
+"""
+function prepare_map_df(df::DataFrame; level::Int = 3)
+    names(df)[1] != "ags" ? throw("The first column of the input dataframe must be named 'ags'.") : nothing
+    typeof(df[:,1]) != Vector{AGS} ? throw("The first column of the input dataframe must contain a Vector of AGS structs") : nothing
+
+    # handle states
+    if level == 1
+        return transform(df, :ags => (a -> state.(a)) => :ags)
+    end
+
+    # handle counties
+    if level == 2
+        return transform(df, :ags => (a -> county.(a)) => :ags)
     end
 
     return df
