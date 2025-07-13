@@ -26,6 +26,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `label::String`: Label of this simulation run (needed for plotting)
         - `final_tick::Int16`: Tick counter at the end of the simulation run
         - `number_of_individuals::Int64`: Total number of individuals in the population model
+        - `r0::Float64`: Basic reproduction number (does not consider immunity)
         - `initial_infections::Int64`: Number of initial infected individuals
         - `total_infections::Int64`: Row count of the PostProcessor's `infections` DataFrame
         - `attack_rate::Float64`: Fraction of overall infected individuals
@@ -113,6 +114,7 @@ mutable struct LightRD <: ResultDataStyle
                     "label" => () -> pP |> simulation |> label,    
                     "final_tick" => () -> pP |> simulation |> tick,
                     "number_of_individuals" => () -> pP |> simulation |> population |> individuals |> length,
+                    "r0" => () -> pP |> r0,
                     "initial_infections" => () -> (pP |> infectionsDF |> nrow) - (pP |> sim_infectionsDF |> nrow),
                     "total_infections" => () -> pP |> infectionsDF |> nrow,
                     "attack_rate" => () -> pP |> attack_rate,

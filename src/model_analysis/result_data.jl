@@ -420,6 +420,19 @@ function number_of_individuals(rd::ResultData)
 end
 
 """
+    r0(rd::ResultData)
+
+Returns the basic reproduction number (R0) of the simulation.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+
+Please be aware that this r0 value does not take immunity into accounts and
+is calculated under the assumption that all individuals are susceptible.
+"""
+function r0(rd::ResultData)
+    return(get(rd |> sim_data, "r0", Dict()))
+end
+
+"""
     initial_infections(rd::ResultData)
 
 Returns the number of individuals who are marked as infected during initialization.
@@ -1335,6 +1348,7 @@ function Base.show(io::IO, rd::ResultData)
         () -> "  \u2514 Settings: $((rd |> setting_data).setting_type)"
         () -> "\u2514 Simulation:"
         () -> "  \u2514 Total infections: $(rd |> total_infections)"
+        () -> "  \u2514 Basic Reproduction Number (R0): $(rd |> r0)"
         () -> "  \u2514 Attack rate: $(rd |> attack_rate)"
         () -> "  \u2514 Total quarantine days: $(rd |> total_quarantines)"
         () -> "  \u2514 Total tests: $(NamedTuple{Tuple(Symbol(k) for k in keys(rd |> total_tests))}(values(rd |> total_tests)))"
