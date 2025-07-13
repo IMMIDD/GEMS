@@ -60,7 +60,6 @@ function generate(plt::SinglesMap, sim::Simulation; level::Int = 3, plotargs...)
                 x -> groupby(x, :ags) |>
                 x -> combine(x, :size => (x -> count(y -> y == 1, x) / length(x)) => :singles) |>
                 x -> agsmap(x,
-                    level = level,
                     fontfamily = "Times Roman",
                     clims = (0, 1);
                     plotargs...)

@@ -77,7 +77,6 @@ function generate(plt::CaseFatalityMap, rd::ResultData; level::Int = 3, plotargs
         x -> transform(x, [:reg_deaths, :reg_infs] => ByRow((d, i) -> d/i) => :case_fatality_rate) |>
         x -> DataFrames.select(x, :ags, :case_fatality_rate) |>
         x -> agsmap(x,
-            level = level,
             fontfamily = "Times Roman",
             clims = (0, 1);
             plotargs...)

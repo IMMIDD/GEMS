@@ -62,7 +62,6 @@ function generate(plt::HouseholdSizeMap, sim::Simulation; level::Int = 3, max_si
                 x -> groupby(x, :ags) |>
                 x -> combine(x, :size => mean => :size) |>
                 x -> agsmap(x,
-                    level = level,
                     fontfamily = "Times Roman",
                     clims = fit_lims ? (minimum(x.size), maximum(x.size)) : (0, 5); # if fit_lims is true, set clims to min and max of size
                     plotargs...)

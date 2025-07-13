@@ -81,7 +81,6 @@ function generate(plt::AttackRateMap, rd::ResultData; level::Int = 3, plotargs..
         x -> transform(x, [:reg_infs, :pop_size] => ByRow((i, n) -> i/n) => :attack_rate) |>
         x -> DataFrames.select(x, :ags, :attack_rate) |>
         x -> agsmap(x,
-            level = 3,
             fontfamily = "Times Roman",
             clims = (0, 1);
             plotargs...)

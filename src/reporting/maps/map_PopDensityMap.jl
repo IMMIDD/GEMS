@@ -70,7 +70,6 @@ function generate(plt::PopDensityMap, sim::Simulation; level::Int = 3, plotargs.
 
         # generate map
         x -> agsmap(x,
-            level = 3,
             title="Individuals/km²",
             fontfamily = "Times Roman";
             plotargs...)

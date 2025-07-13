@@ -61,7 +61,6 @@ function generate(plt::AgeMap, sim::Simulation; level::Int = 3, plotargs...)
         
         # generate map
         x -> agsmap(x,
-            level = level,
             fontfamily = "Times Roman",
             clims = (0, 100);
             plotargs...)
