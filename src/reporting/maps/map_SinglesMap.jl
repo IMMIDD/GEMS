@@ -59,7 +59,7 @@ function generate(plt::SinglesMap, sim::Simulation; level::Int = 3, fit_lims::Bo
             DataFrame(ags = a, size = size.(sim |> households)) |>
                 x -> prepare_map_df!(x, level = level) |>
                 x -> groupby(x, :ags) |>
-                x -> combine(x, :size => (x -> count(y -> y == 1, x) / length(x)) => :singles) |>
+                x -> combine(x, :size => (x -> 100 * count(y -> y == 1, x) / length(x)) => :singles) |>
                 x -> agsmap(x,
                     fontfamily = "Times Roman",
                     # if fit_lims is true, set clims to min and max of values
