@@ -11,7 +11,7 @@ export parameters
 export lognow, printinfo, subinfo
 export _int
 export remove_kw
-export germanshapes
+export germanshapes, state_data, county_data, municipality_data
 
 # contact stuff
 export calculate_absolute_error
@@ -942,4 +942,42 @@ function germanshapes(level::Int64)
 
     # return shapefile
     return(Shapefile.Table(filename))
+end
+
+"""
+    state_data()
+
+Returns a dataframe with AGS and string-names of German states.
+"""
+function state_data()
+    return germanshapes(1) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+
+"""
+    county_data()
+
+Returns a dataframe with AGS and string-names of German counties.
+"""
+function county_data()
+    return germanshapes(2) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+
+"""
+    municipality_data()
+
+Returns a dataframe with AGS and string-names of German municipalities.
+"""
+function municipality_data()
+    return germanshapes(3) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
 end
