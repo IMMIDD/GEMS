@@ -75,7 +75,7 @@ function generate(plt::CaseFatalityMap, rd::ResultData; level::Int = 3, plotargs
         x -> groupby(x, :ags) |>
         x -> combine(x, nrow => :reg_infs, :death_tick => (d -> length(d[d .>= 0])) => :reg_deaths) |>
         #x -> transform(x, :ags => ByRow(AGS) => :ags) |>
-        x -> transform(x, [:reg_deaths, :reg_infs] => ByRow((d, i) -> d/i) => :case_fatality_rate) |>
+        x -> transform(x, [:reg_deaths, :reg_infs] => ByRow((d, i) -> 100 * d/i) => :case_fatality_rate) |>
         x -> DataFrames.select(x, :ags, :case_fatality_rate) |>
         x -> agsmap(x,
             fontfamily = "Times Roman",
