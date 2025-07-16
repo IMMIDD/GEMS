@@ -1,7 +1,7 @@
 ###
 ### INFECTEDFRACTION (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
-export fraction, pathogen
+export fraction, pathogen, seeds
 export initialize!
 export parameters
 """
@@ -32,6 +32,35 @@ struct PatientZeros <: StartCondition
     pathogen::Pathogen
     ags::Vector{Int64}
 end
+
+
+struct RegionalSeeds <: StartCondition
+    pathogen::Pathogen
+    # region and number of seeds
+    seeds::Dict{Int64, Int64}
+
+    function RegionalSeeds(pathogen::Pathogen, seeds::Dict)
+        sds = Dict{Int64, Int64}()
+        for (k, v) in seeds
+            try
+                sds[parse(Int64, k)] = typeof(v) <: Int ? v : parse(Int64, v)
+            catch
+                throw("You need to pass values that can be parsed to integers to the RegionalSeeds start condition.")
+            end
+        end
+
+        return new(pathogen, sds)
+    end
+end
+
+function pathogen(regionalseeds::RegionalSeeds)::Pathogen
+    return regionalseeds.pathogen
+end
+
+function seeds(regionalseeds::RegionalSeeds)
+    return regionalseeds.seeds
+end
+
 
 """
     pathogen(patientZero)
@@ -140,6 +169,65 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
         to_infect = push!( to_infect, sample(inds, 1, replace=false) |> Base.first)
     end
     
+    # overwrite pathogen in simulation struct
+    pathogen!(simulation, pathogen(condition))
+
+    # infect individuals
+    for i in to_infect
+        infect!(i, tick(simulation), pathogen(condition))
+        for (type, id) in settings(i, simulation)
+            activate!(settings(simulation, type)[id])
+        end
+    end
+end
+
+
+function initialize!(simulation::Simulation, condition::RegionalSeeds)
+
+    # takes an input vector of AGS and a reference AGS
+    # returns a bitvector indicating whether the respective
+    # AGS is equal to (for municipalities) or contained
+    # in the proivided "parent_ags"
+    function filter_by_ags(ags_vector, parent_ags)
+        if is_state(parent_ags)
+            return (a -> in_state(a, parent_ags)).(ags_vector)
+        elseif is_county(parent_ags)
+            return (a -> in_state(a, parent_ags)).(ags_vector)
+        else
+            return parent_ags .== ags_vector
+        end
+    end
+
+    # build dataframe referencing AGS (extracted from households)
+    # and individuals
+    ind_ags = individuals(simulation) |>
+        inds -> DataFrame(
+            ags = (i -> ags(household(i, simulation))).(inds),
+            individual = inds)
+
+    # build array of individuals to infect
+    to_infect = Individual[]
+    for (a, cnt) in seeds(condition)
+        try
+            AGS(a) |>
+                # filter individuals depending on AGS
+                # (whether its a state, county, or municipality)
+                in_ags -> ind_ags.individual[filter_by_ags(ind_ags.ags, in_ags)] |>
+                # sample required number of individuals
+                inds -> sample(inds, cnt, replace=false) |>
+                inds -> append!(to_infect, inds)
+        catch
+            throw("Getting the seeding infections crashed. You might have provided a region in the configs that is not available in the population model or asked to infect a number of people that exceeds the population size of the region.")
+        end
+    end
+
+    # theoretically, an individual can get selected multiple times
+    # if the dict has AGSs' that are contained in others
+    # we don't resample in that case but just print a warning
+    if length(unique(to_infect)) != length(to_infect)
+        @warn "One or more individuals were sampled multiple times for the seeding infections. You may have passed nested regions (AGS) to the StartCondition causing this problem."
+    end
+
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
 
