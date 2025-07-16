@@ -19,6 +19,12 @@ and excludes the seeding infection (as they have no infector ags).
 """
 function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCULATION_SAMPLE_FRACTION)
 
+
+    if postProcessor |> simulation |> municipalities |> isempty
+        #@warn "There are no regions (municipalities) in the input model. Therefore, GEMS cannot process regional incidences."
+        return DataFrame()
+    end
+
     # calcuates R for infection ids in grouped dataframe
     function calc_r(infection_ids)
         sample_size = max(Int(ceil(sample_fraction * length(infection_ids))), 1)

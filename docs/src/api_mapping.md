@@ -21,7 +21,9 @@ InfectionMap
 HouseholdSizeMap
 MapPlot
 PopDensityMap
+R0Map
 SinglesMap
+WeeklyIncidenceMap
 ```
 
 ## Functions

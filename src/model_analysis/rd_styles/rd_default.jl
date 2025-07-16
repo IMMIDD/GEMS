@@ -104,6 +104,7 @@ and computationally intensive (memory & runtime) option.
         - `household_attack_rates::DataFrame`: Statistics on the seconary infections in households
         - `customlogger::DataFrame`: Dataframe obtained from any custom logger that might have been set
         - `weekly_county_incidence::DataFrame`: DataFrame with 7-day incidence per 100,000 per county and week (only for georeferential population models)
+        - `r0_per_county::DataFrame`: DataFrame with basic reproduction number per county
 """
 mutable struct DefaultResultData <: ResultDataStyle
     data::Dict{String, Any}
@@ -212,7 +213,8 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
                     "tick_hosptitalizations" => () -> pP |> hospital_df,
-                    "weekly_county_incidence" => () -> pP |> weekly_county_incidence
+                    "weekly_county_incidence" => () -> pP |> weekly_county_incidence,
+                    "r0_per_county" => () -> pP |> r0_per_county
                 )      
         )
 

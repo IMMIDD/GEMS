@@ -14,7 +14,7 @@ export dataframes, population_size, setting_age_contacts, infections, vaccinatio
 export compartment_periods, aggregated_compartment_periods, cumulative_disease_progressions, tick_cases, tick_deaths, tick_vaccinations
 export cumulative_cases, compartment_fill, cumulative_deaths, cumulative_vaccinations, age_incidence
 export tests, tick_pooltests, detected_tick_cases,rolling_observed_SI, time_to_detection, detection_rate, cumulative_quarantines, tick_hosptitalizations
-export customlogger, household_attack_rates
+export customlogger, household_attack_rates, weekly_county_incidence, r0_per_county
 export population_pyramid, timer_output, timer_output!, infections_hash, data_hash, id, hashes
 export exportJLD, exportJSON
 export import_resultdata,determine_difference, remove_fields!, merge_rd!, resultdata_functions
@@ -1125,6 +1125,17 @@ function weekly_county_incidence(rd::ResultData)
     return(get(rd |> dataframes, "weekly_county_incidence", Dict()))
 end
 
+
+"""
+    r0_per_county(rd::ResultData)
+
+Returns a DataFrame with the basic reproduction number per county.
+Look up the `PostProcessor` docs to find the column definitions.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function r0_per_county(rd::ResultData)
+    return(get(rd |> dataframes, "r0_per_county", Dict()))
+end
 
 
 ###
