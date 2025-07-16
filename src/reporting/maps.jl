@@ -133,7 +133,7 @@ function agsmap(df::DataFrame; plotargs...)
     # check if the dataframe has the right columns
     names(df)[1] != "ags" ? throw("The first column of the input dataframe must be named 'ags'.") : nothing
     typeof(df[:,1]) != Vector{AGS} ? throw("The first column of the input dataframe must contain a Vector of AGS structs") : nothing
-    !(eltype(df[:,2]) <: Real) ? throw("The second column of the input dataframe must contain a Vector of numeric values") : nothing
+    !(all(x -> isa(x, Number), df[:,2]) ) ? throw("The second column of the input dataframe must contain a Vector of numeric values") : nothing
 
     # check if all ags values are unique
     length(df.ags) != length(unique(df.ags)) ? throw("All AGS values need to be unique! There are duplicates in the input dataframe") : nothing
@@ -346,6 +346,7 @@ plot(
 | `:HouseholdSizeMap`    | `Simulation` | Average household size per region.                         | `max_size = 10`: Maximum size of households (default = 10) considered for this graph (to exclude large outliers), `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum household size values. |
 | `:PopDensityMap`       | `Simulation` | Population density per region.                             |                                                                                                                  |
 | `:SinglesMap`          | `Simulation` | Fraction of single-person households per region.           | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
+| `:WeeklyIncidenceMap`  | `ResultData` | 7-Day incidence per 100,000 per county.                    | `week = 0`: Specify which week you would like to see.                                                            |
 
 **Note:** Maps that use infection data (e.g., the `AttackRate`) use the individuals'
 household location to map the data, not the loction of infection.
