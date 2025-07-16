@@ -1105,7 +1105,7 @@ end
 """
     household_attack_rates(rd::ResultData)
 
-Returns household_attack_rates DataFrame.
+Returns household\\_attack\\_rates DataFrame.
 Look up the `PostProcessor` docs to find the column definitions.
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
@@ -1113,7 +1113,19 @@ function household_attack_rates(rd::ResultData)
     return(get(rd |> dataframes, "household_attack_rates", Dict()))
 end
 
-household_attack_rates
+
+"""
+    weekly_county_incidence(rd::ResultData)
+
+Returns weekly\\_county\\_incidence DataFrame.
+Look up the `PostProcessor` docs to find the column definitions.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function weekly_county_incidence(rd::ResultData)
+    return(get(rd |> dataframes, "weekly_county_incidence", Dict()))
+end
+
+
 
 ###
 ### Hashes
