@@ -113,13 +113,14 @@ Find a `ResultDataStyle` data type based on its name.
 """
 function get_style(style::String)
     # Determine the style to be used
-    id = findfirst(x -> occursin(style, x), string.(concrete_subtypes(ResultDataStyle)))
+    id = findfirst(x -> occursin(style, x), string.(subtypes(ResultDataStyle)))
     if isnothing(id)
-        style = concrete_subtypes(ResultDataStyle)[1]
+        out_style = DefaultResultData
+        @warn "$style is not a registered ResultDataStyle; Defaulting to $out_style"
     else
-        style = concrete_subtypes(ResultDataStyle)[id]
+        out_style = subtypes(ResultDataStyle)[id]
     end
-    return style
+    return out_style
 end
 
 
@@ -177,7 +178,7 @@ mutable struct ResultData <: AbstractResultData
     Create a `ResultData` object using a `PostProcessor` and a key, that describes the level of detail 
     for the fields to be calculated. Post Processing requires a simulation to be done.
     """
-    function ResultData(postProcessor::PostProcessor; style::String="")
+    function ResultData(postProcessor::PostProcessor; style::String="DefaultResultData")
         printinfo("Processing simulation data")
         
         # Create the style struct
@@ -197,14 +198,14 @@ mutable struct ResultData <: AbstractResultData
 
     @doc """
 
-        ResultData(postProcessors::Vector{PostProcessor}; style::String="", print_infos::Bool = false)
+        ResultData(postProcessors::Vector{PostProcessor}; style::String="DefaultResultData", print_infos::Bool = false)
 
     Create a vector `ResultData` objects using a vector of associated `PostProcessor` objects and a key, that describes the level of detail 
     for the fields to be calculated. Post Processing requires a simulation to be done.
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
     """
-    function ResultData(postProcessors::Vector{PostProcessor}; style::String="", print_infos::Bool = false)
+    function ResultData(postProcessors::Vector{PostProcessor}; style::String="DefaultResultData", print_infos::Bool = false)
         
         prev_print_state = GEMS.PRINT_INFOS
         cnt = 0 # counter for printing
@@ -222,7 +223,7 @@ mutable struct ResultData <: AbstractResultData
 
     @doc """
 
-        ResultData(sim::Simulation; style::String = "")
+        ResultData(sim::Simulation; style::String = "DefaultResultData")
 
     Create a `ResultData` object using a `Simulation` and the name of a `ResultDataStyle`, that describes the level of detail 
     for the fields to be calculated. This constructor instantiates a default `PostProcessor` for 
@@ -230,11 +231,11 @@ mutable struct ResultData <: AbstractResultData
     you need to instantiate it first and pass the `PostProcessor` to the `ResultData` constructor instead.
     Post Processing requires a simulation to be done.
     """
-    ResultData(sim::Simulation; style::String = "") = ResultData(PostProcessor(sim), style = style)
+    ResultData(sim::Simulation; style::String = "DefaultResultData") = ResultData(PostProcessor(sim), style = style)
 
     @doc """
 
-        ResultData(sim::Vector{Simulation}; style::String = "", print_infos::Bool = false)
+        ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false)
 
     Create a vector `ResultData` objects using a vector of `Simulation` objects and the name of a `ResultDataStyle`, that describes the level of detail 
     for the fields to be calculated. If you want to manually configure the `PostProcessor`,
@@ -243,11 +244,11 @@ mutable struct ResultData <: AbstractResultData
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
     """
-    ResultData(sim::Vector{Simulation}; style::String = "", print_infos::Bool = false) = ResultData(PostProcessor(sim), style = style, print_infos = print_infos)
+    ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false) = ResultData(PostProcessor(sim), style = style, print_infos = print_infos)
 
     @doc """
 
-        ResultData(batch::Batch; style::String = "", print_infos::Bool = false)
+        ResultData(batch::Batch; style::String = "DefaultResultData", print_infos::Bool = false)
 
     Create a vector `ResultData` objects using a `Batch` object and the name of a `ResultDataStyle`, that describes the level of detail 
     for the fields to be calculated. If you want to manually configure the `PostProcessor`s,
@@ -256,7 +257,7 @@ mutable struct ResultData <: AbstractResultData
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
     """
-    ResultData(batch::Batch; style::String = "", print_infos::Bool = false) = ResultData(simulations(batch), style = style, print_infos = print_infos)
+    ResultData(batch::Batch; style::String = "DefaultResultData", print_infos::Bool = false) = ResultData(simulations(batch), style = style, print_infos = print_infos)
 end
 
 ###
