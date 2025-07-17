@@ -5,7 +5,7 @@ export R0Map
 ###
 
 """
-    WeeklyIncidenceMap <: MapPlot
+    R0Map <: MapPlot
 
 A map that shows the the basic reproduction number per county.
 """
@@ -29,7 +29,7 @@ end
 ###
 
 """
-    generate(plt::R0Map, sim::Simulation; level::Int = 3, plotargs...)
+    generate(plt::R0Map, rd::ResultData; level::Int = 3, plotargs...)
 
 Generates and returns a map showing the basic reproduction number per county for a provided simulation object.
 You can pass any additional keyword arguments using `plotargs...` that are available in the `Plots.jl` package.
@@ -44,7 +44,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Basic reproduction number per county map
 """
-function generate(plt::R0Map, rd::ResultData; level::Int = 2, week::Int = 0, plotargs...)
+function generate(plt::R0Map, rd::ResultData; level::Int = 2, plotargs...)
     
     if rd |> r0_per_county |> isempty
         @warn "This ResultData oject does not contain the data necessary to geneate this map. Generate the RD-object using e.g., the 'DefaultResultData' style."
