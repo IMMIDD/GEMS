@@ -91,6 +91,49 @@ gemsplot(rd, legend = :topright)
 </p>
 ``` 
 
+You can also vary multiple parameters at once and show the results in a heatmap.
+This example runs simulations varying the `transmission_rate` and `time_to_recovery`, and plots the calculated `r0` value of all combinations in a heatmap:
+
+```julia
+using GEMS
+
+xvals = []
+yvals = []
+outvals = []
+
+# vary transmission rate
+for tr in 0.1:0.01:0.2
+    # vary time to recovery
+    for rec in 2:10
+        sim = Simulation(transmission_rate = tr, time_to_recovery = rec)
+        run!(sim)
+        rd = ResultData(sim, style = "LightRD")
+
+        # extract data for heatmap
+        push!(xvals, tr)
+        push!(yvals, rec)
+        push!(outvals, r0(rd))
+    end
+end
+
+gemsheatmap(xvals, yvals, outvals,
+    xlabel = "Transmission Rate",
+    ylabel = "Time to Recovery (Days)",
+    colorbar_title = "Basic Reproduction Number",
+    color = :r0) 
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_sweep_heatmap.png" width="80%"/>
+</p>
+``` 
+
+
+!!! info "How can I run more than one repetition per combination?"
+    You can enclose the experiment in another loop, running each combination as many times as you want. The `gemsheatmap()` function can take multiple entries of the same (`xvals`, `yvals`) combinations. It automatically generates the mean value across observations. You can also change the aggregation function. Please lookup the `gemsheatmap()` documentation.
 
 ## Running Scenarios
 
