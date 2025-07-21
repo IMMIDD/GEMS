@@ -192,7 +192,8 @@ mutable struct LightRD <: ResultDataStyle
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
-                    "tick_hosptitalizations" => () -> pP |> hospital_df
+                    "tick_hosptitalizations" => () -> pP |> hospital_df,
+                    "r0_per_county" => () -> pP |> r0_per_county
                 )
         )
 

@@ -25,7 +25,7 @@ function r0_cgrad(outvals)
         :blue,  # 0.0
         :lightblue,  # 0.99
         :white, # 1.0
-        :yellow,    # 1.01
+        :orange,    # 1.01
         :red  # max
     ]
 
