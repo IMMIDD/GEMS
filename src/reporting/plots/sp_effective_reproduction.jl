@@ -44,7 +44,8 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Effective Reproduction Number plot
 """
-function generate(plt::EffectiveReproduction, rd::ResultData; plotargs...)
+function generate(plt::EffectiveReproduction, rd::ResultData;
+    linewidth = 1, plotargs...)
 
     # calculate effective R over time from post processor data
     eff_r = rd |> effectiveR
@@ -62,9 +63,9 @@ function generate(plt::EffectiveReproduction, rd::ResultData; plotargs...)
     description!(plt, desc)
 
     plot_eff_R = plot(xlabel=upper_ticks * "s", ylabel="Effective R", reuse = false, dpi=300, fontfamily = "Times Roman")
-    plot!(plot_eff_R, eff_r[!,"rolling_R"], label="(7-$uticks Rolling) Effective R")
-    plot!(plot_eff_R, eff_r[!,"rolling_in_hh_R"], label="(7-$uticks Rolling) Effective R (In Households)")
-    plot!(plot_eff_R, eff_r[!,"rolling_out_hh_R"], label="(7-$uticks Rolling) Effective R (Outside Households)")
+    plot!(plot_eff_R, eff_r[!,"rolling_R"], linewidth = linewidth, label="(7-$uticks Rolling) Effective R")
+    plot!(plot_eff_R, eff_r[!,"rolling_in_hh_R"], linewidth = linewidth, label="(7-$uticks Rolling) Effective R (In Households)")
+    plot!(plot_eff_R, eff_r[!,"rolling_out_hh_R"], linewidth = linewidth, label="(7-$uticks Rolling) Effective R (Outside Households)")
     hline!(plot_eff_R, [1], linewidth=1, linestyle=:dash, linecolor = :red, label="R=1") # add criticality threshold (R=1)
     
     # add custom arguments that were passed
