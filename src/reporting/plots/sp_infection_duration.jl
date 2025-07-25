@@ -43,7 +43,8 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `Plots.Plot`: Infection Duration plot
 """
-function generate(plt::InfectionDuration, rd::ResultData; plotargs...)
+function generate(plt::InfectionDuration, rd::ResultData;
+    linecolor = :black, plotargs...)
 
     data = rd |> aggregated_compartment_periods
 
@@ -72,6 +73,7 @@ function generate(plt::InfectionDuration, rd::ResultData; plotargs...)
         xlabel=uppercasefirst(uticks) * "s",
         ylabel="Fraction of Infections", 
         yformatter=formatter,
+        linecolor = linecolor,
         fontfamily="Times Roman",
         dpi = 300)
    
