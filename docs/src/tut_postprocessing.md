@@ -45,7 +45,7 @@ dataframe(inf_logger)
 
 The `PostProcessor` is the binding element between the raw data coming from the simulation's internal loggers and the `ResultData` object.
 It is instantiated with the `Simulation` object and performs some initial operations and joins on the raw data, and stores the results in internal dataframes (`infectionsDF`, `populationDF`, `deathsDF`, `testsDF`, `pooltestsDF`, `quarantinesDF`).
-An exception is the `sim_infectionsDF`-dataframe which only contains infections that happend during the simulation, exluding all initial, seeding infections.
+An exception is the `sim_infectionsDF`-dataframe which only contains infections that happened during the simulation, excluding all initial, seeding infections.
 This example shows how the `PostProcessor`'s internal infections-dataframe is already joined with data from the population-dataframe:
 
 ```julia
@@ -111,7 +111,7 @@ effectiveR(pp)
 ```
 
 
-!!! info "Where's the list of availble post-processing functions?"
+!!! info "Where's the list of available post-processing functions?"
     Look up the Post-Processor section in the API documentation for a full list of available options.
 
 

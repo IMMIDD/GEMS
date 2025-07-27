@@ -2,7 +2,7 @@
 
 ## Disease Progression 
 
-For a given pathogen we assume a disease progression following the following diagramm.
+For a given pathogen we assume a disease progression following the following diagram.
 
 ```@raw html
 <p align="center">
@@ -54,13 +54,13 @@ are assigned a certain death probability as seen in the graphic.
 
 ## Infectiousness
 
-The infectiousness of an individual is tracked seperately from the disease state. Generally
+The infectiousness of an individual is tracked separately from the disease state. Generally
 an individual should become infectious some time after becoming exposed and before getting
 symptoms. In asymptomatic cases, the individual will become infectious between becoming
 exposed and recovering from a disease.
 
 
-## Age Stratifiction
+## Age Stratification
 
 To estimate the disease progression, we make use of age-stratified stochastic matrices.
 

@@ -6,7 +6,7 @@ Find an introduction to the TriSM notation [here](@ref trism).
 
 TriSM is more of a modeling paradigm and as such offers countless scenarios that could be modeled.
 This chapter contains a selection of examples to give you a broad idea.
-The examples will always compare an invervention scenario with a non-restricted baseline scnario to verify that there is an effect.
+The examples will always compare an intervention scenario with a non-restricted baseline scenario to verify that there is an effect.
 
 !!! info "Where's the list of measures I can use to build up strategies?"
     Run `i_measuretypes()` to get a list of all measures that apply to individuals or `s_measuretypes()` for a list of all measures that apply to settings. If you want to learn more about any of the measure types, put a `?` into the Julia REPL and call `help?> SelfIsolation` (replace `SelfIsolation` with the measure name you want to learn about). 
@@ -420,7 +420,7 @@ In the example below, we assume a test with a 20% false-positive-rate (80% speci
 Once an individual experiences symptoms, all members of their household (including themselves) are subjected to a test and sent into household isolation for two weeks if the results are positive.
 
 **Scenario Summary**:
-  - Upon experiencing symptoms, all people in the symptomatc individual's household get tested (including the index individual)
+  - Upon experiencing symptoms, all people in the symptomatic individual's household get tested (including the index individual)
   - The test has a specificity of 80%. It will identify a non-infected individual as infected in 20% of the cases (false positives)
   - If multiple people in the household are infected, each individual will get tested multiple times
   - Test results are available immediately
@@ -447,7 +447,7 @@ add_measure!(testing, Test("Household Screening", antigen_test,
 find_household = IStrategy("find Household Members", scenario)
 add_measure!(find_household, FindSettingMembers(Household, testing))
 
-# trigger houshold member identification
+# trigger household member identification
 trigger = SymptomTrigger(find_household)
 add_symptom_trigger!(scenario, trigger)
 
@@ -516,7 +516,7 @@ testing = IStrategy("testing", sim)
 poor_test = TestType("Poor Test", pathogen(sim), sim, specificity = 0.85)
 # identify global setting
 add_measure!(find_globalsetting, FindSetting(GlobalSetting, find_contacts))
-# sample 10 contacts grom global setting with 1-5 day delay
+# sample 10 contacts from global setting with 1-5 day delay
 add_measure!(find_contacts,
     FindMembers(testing, sample_size = 10), delay = x -> rand(1:5))
 # test individual if unreported or last report more than 6 months old
@@ -545,7 +545,7 @@ gemsplot(rd,
 
 The results show that except for the initial 100 infections, no transmission dynamics are present in the simulation.
 The effective reproduction number is constantly at zero.
-However, we see an exponential growth in "detected cases" that mimicks an epidemic curve and at some point detects more than 2% of the overall individuals as new infections each day although 100% of the "detection" are false positives.
+However, we see an exponential growth in "detected cases" that mimics an epidemic curve and at some point detects more than 2% of the overall individuals as new infections each day although 100% of the "detection" are false positives.
 
 
 ## Varying Test Sensitivity (or Specificity)
@@ -680,7 +680,7 @@ We see that both simulations have a very similar true infection- and effective r
 The observed reproduction number, however, differs significantly once the daily-testing threshold of 50 cases is reached.
 In the second scenario, the observed reproduction number is constantly at exactly 1, suggesting that the growth of the epidemic is linear instead of exponential.
 This is due to the fact that we get the limited 50 positive tests each day, every day.
-The active dark figure reveals that once the threshold is reached, the number of undetected cases siddenly spikes.
+The active dark figure reveals that once the threshold is reached, the number of undetected cases suddenly spikes.
 While this example considers capacity limits with regard to testing, you can apply the same mechanics to other capacity-constrained measures such as contact-tracing or vaccination.
 
 
@@ -805,7 +805,7 @@ gemsplot(rd, type = (:DetectedCases, :CumulativeIsolations))
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_intreventions_recurrent_tests.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_recurrent_tests.png" width="80%"/>
 </p>
 ``` 
 

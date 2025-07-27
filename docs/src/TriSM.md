@@ -124,7 +124,7 @@ gemsplot(rd, type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsol
 
 ```@raw html
 <p align="center">
-    <img src="../assets/TriSM-example-2.png" width="90%"/>
+    <img src="../assets/TriSM-example-2.png" width="50%"/>
 </p>
 ```
 
