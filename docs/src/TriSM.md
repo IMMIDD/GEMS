@@ -86,7 +86,7 @@ The following examples show how common public health responses — like isolatio
 
 ```@raw html
 <p align="center">
-    <img src="../assets/TriSM-example-1.png" width="30%" alt="Diagram showing symptom-based isolation"/>
+    <img src="../assets/TriSM-example-1.png" width="30%" />
 </p>
 ```
 
@@ -103,39 +103,101 @@ add_measure!(self_isolation, SelfIsolation(7))
 # Create a symptom trigger that activates the self-isolation strategy
 trigger = SymptomTrigger(self_isolation)
 add_symptom_trigger!(sim, trigger)
+
+# Run the Simulation and get the Results
+run!(sim)
+rd = ResultData(sim)
+
+# Plot the Results
+gemsplot(rd, type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsolations))
+```
+
+```@raw html
+<p align="center">
+    <img src="../assets/trism-example1-plot.png" width="80%"/>
+</p>
+``` 
+
+---
+
+### Example 2: School Closure
+
+```@raw html
+<p align="center">
+    <img src="../assets/TriSM-example-2.png" width="90%"/>
+</p>
+```
+
+```julia
+using GEMS
+
+sim = Simulation(population = "SL")
+
+# Strategy for closing and reopening schools
+school_close_and_reopen = SStrategy("School Close and Reopen", sim)
+add_measure!(school_close_and_reopen, CloseSetting(), offset = 1)
+add_measure!(school_close_and_reopen, OpenSetting(), offset = 15)
+
+find_school = IStrategy("Find School", sim)
+add_measure!(find_school, FindSetting(School, school_close_and_reopen), condition = is_student)
+# TODO: fix condition
+
+trigger = SymptomTrigger(find_school)
+add_symptom_trigger!(sim, trigger)
+
+# Run the Simulation and get the Results
+run!(sim)
+rd = ResultData(sim)
+
+# Plot the Results
+gemsplot(rd, type = (:TickCases, :TickCasesBySetting, :TickTests))
 ```
 
 ---
 
-### Example 2: Weekly School-Class Testing with Reactive Closures 
+### Example 3: Weekly School-Class Testing with Reactive Closures 
 
 ```@raw html
 <p align="center">
-    <img src="../assets/TriSM-example-4.png" width="90%"/>
+    <img src="../assets/TriSM-example-3.png" width="90%"/>
 </p>
 ```
-This intervention is triggered every 7 days starting at tick 20. It checks each school class: if a class is open, all students in that class are tested. If any students test positive, the class is immediately closed and scheduled to reopen 10 days later.
+This intervention is triggered every 7 days starting at tick 20. It checks each school: if a school is open, all students in that school are tested. If any students test positive, the school is immediately closed and scheduled to reopen 10 days later.
 The code to set up this intervention scenario is as follows:
 
 ```julia
+using GEMS
 
-sim = Simulation()
+sim = Simulation(population = "SL")
 
-# Strategy for closing and reopening school classes
-class_close_and_reopen = SStrategy("Class Close and Reopen", sim)
-add_measure!(class_close_and_reopen, CloseSetting())
-add_measure!(class_close_and_reopen, OpenSetting(), offset = 10)
+# Strategy for closing and reopening schools
+school_close_and_reopen = SStrategy("School Close and Reopen", sim)
+add_measure!(school_close_and_reopen, CloseSetting())
+add_measure!(school_close_and_reopen, OpenSetting(), offset = 10)
 
-# Strategy with test-all measure for school classes
-class_test_all = SStrategy("Test all in Class", sim)
+# Strategy with test-all measure for schools
+school_test_all = SStrategy("Test all in School", sim)
 pcr_test = TestType("PCR Test", pathogen(sim), sim)
-add_measure!(class_test_all, TestAll("PCR Test", pcr_test, positive_followup = class_close_and_reopen))
+add_measure!(school_test_all, TestAll("PCR Test", pcr_test, positive_followup = school_close_and_reopen))
 
-# Strategy to check if school classes are open
-class_is_open = SStrategy("Class is Open?", sim)
-add_measure!(class_is_open, IsOpen(positive_followup = class_test_all))
+# Strategy to check if schools are open
+school_is_open = SStrategy("School is Open?", sim)
+add_measure!(school_is_open, IsOpen(positive_followup = school_test_all))
 
-# Create a tick trigger that activates the class_is_open strategy for each SchoolClass
-trigger = STickTrigger(SchoolClass, class_is_open, switch_tick = Int16(20), interval = Int16(7))
+# Create a tick trigger that activates the school_is_open strategy for each School
+trigger = STickTrigger(School, school_is_open, switch_tick = Int16(20), interval = Int16(7))
 add_tick_trigger!(sim, trigger)
+
+# Run the Simulation and get the Results
+run!(sim)
+rd = ResultData(sim)
+
+# Plot the Results
+gemsplot(rd, type = (:TickCases, :TickCasesBySetting, :TickTests))
 ```
+
+```@raw html
+<p align="center">
+    <img src="../assets/trism-example3-plot.png" width="80%"/>
+</p>
+``` 

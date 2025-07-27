@@ -819,19 +819,295 @@ The next tutorial considers two test types where one of them does not lead to a 
 
 ## Multiple Test Types
 
-Tutorial coming soon ...
+In this scenario, we combine two test types —PCR and Antigen— to balance testing accuracy, cost, and availability. PCR tests are highly accurate but may be costly or limited in supply, while antigen tests are cheaper and easier to administer but less sensitive.
+
+The testing strategy works as follows:  
+Symptomatic individuals receive a PCR test directly. If positive, they are counted as confirmed cases. To also identify asymptomatic or pre-symptomatic cases, everyone in the symptomatic individual's household is tested using an antigen test. If a household member tests positive on the antigen test, they are given a follow-up PCR test for confirmation. Only PCR tests are reportable in this scenario, which avoids double-counting cases detected via both test types.
+
+**Scenario Summary**:
+  - Symptomatic individuals are tested with a **PCR test**.
+  - All other household members are tested with an **Antigen test**.
+  - A positive Antigen test triggers a **follow-up PCR test**.
+  - Only PCR tests are reported.
+  - This allows identifying both symptomatic and some asymptomatic cases, while controlling for test availability and cost.
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_trism_multiple-test-types.png" width="90%"/>
+</p>
+``` 
+
+```julia
+using GEMS
+
+scenario = Simulation(label = "Scenario")
+
+# define test type (PCR test)
+PCR_Test = TestType("PCR Test", pathogen(scenario), scenario, sensitivity = 0.99, specificity = 0.99)
+# define second test type (Antigen test)
+Antigen_Test = TestType("Antigen Test", pathogen(scenario), scenario, sensitivity = 0.8, specificity = 0.99)
+
+# define PCR-confirm-testing strategy
+PCR_confirm_testing = IStrategy("PCR confirm Test", scenario)
+add_measure!(PCR_confirm_testing, Test("PCR Test", PCR_Test))
+
+# define antigen testing strategy
+antigen_testing = IStrategy("Antigen Testing", scenario)
+add_measure!(antigen_testing, Test("Antigen Test", Antigen_Test, positive_followup = PCR_confirm_testing, reportable = false))
+
+PCR_symptom_test = IStrategy("PCR Symptom Testing", scenario)
+add_measure!(PCR_symptom_test, Test("PCR Symptom Test", PCR_Test))
+add_measure!(PCR_symptom_test, FindSettingMembers(Household, antigen_testing, nonself = true))
+
+trigger = SymptomTrigger(PCR_symptom_test)
+add_symptom_trigger!(scenario, trigger)
+
+run!(scenario)
+
+rd_s = ResultData(scenario)
+
+gemsplot(rd_s, type = (:TickTests, :TestPositiveRate), size = (800, 800))
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_multiple-test-types.png" width="80%"/>
+</p>
+``` 
+
+The results show both the number of tests performed and the test positivity rate over time. The plot helps evaluate the effectiveness of this combined testing strategy in detecting cases without overwhelming PCR capacity.
+
 
 ## Contact Reduction
 
-Tutorial coming soon ...
+This scenario demonstrates a simple intervention: **reducing contacts** in specific settings —offices and schoolclasses— beginning three weeks into the epidemic (from tick 21 onward). 
+The reduction is modeled using a structural strategy that changes how contacts are generated within those settings.
+
+Instead of fully removing individuals or closing the settings, we apply a `ChangeContactMethod` intervention. This uses `ContactparameterSampling(1)`, which modifies the internal contact-generation model to **sample daily contacts using a Poisson distribution centered around the setting's contact parameter**. 
+This introduces stochastic variability while preserving the overall contact intensity, potentially modeling scenarios such as staggered attendance, smaller groups, or informal distancing behaviors.
+
+**Scenario Summary**:
+  - Contacts are **reduced in offices and schoolclasses** starting on **day 21** of the simulation.
+  - The intervention is implemented using a **Poisson-based contact sampling** method.
+  - This models a **soft contact reduction** rather than full setting closure.
+  - The intervention applies daily from tick 21 onward.
+  - No changes are made to household or community contacts.
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_trism_contact-reduction.png" width="60%"/>
+</p>
+``` 
+
+```julia
+using GEMS
+
+scenario = Simulation(label = "Scenario")
+
+reduce_contacts = SStrategy("Reduce Contacts", scenario)
+add_measure!(reduce_contacts, ChangeContactMethod(ContactparameterSampling(1)))
+
+trigger = STickTrigger(SchoolClass, reduce_contacts, switch_tick = Int16(21))
+add_tick_trigger!(scenario, trigger)
+
+trigger = STickTrigger(Office, reduce_contacts, switch_tick = Int16(21))
+add_tick_trigger!(scenario, trigger)
+
+# TODO: bug fix
+
+run!(scenario)
+rd_s = ResultData(scenario)
+
+gemsplot(rd_s, type = (:TickCases, :TickCasesBySetting), size = (800, 800))
+```
+
+The results show how case numbers evolve over time and how cases are distributed across settings. You can observe whether the reduction in structured settings (office, schoolclass) slows the epidemic or shifts transmission into other areas like households.
+
 
 ## Setting Closure
 
-Tutorial coming soon ...
+This section presents two examples of **closing settings** during an outbreak: one that targets all schools after a fixed time, and another that reacts dynamically by closing and reopening specific school classes based on symptoms.
+
+### Example 1: Timed School Closure
+
+In this scenario, **all schools are closed on day 14**, two weeks into the epidemic. This is a structural intervention applied using the `CloseSetting()` measure, which disables contact interactions within the affected setting. Since default populations in GEMS only include low-level settings (like SchoolClass), we use the **"SL" population** model (based on Saarland), which includes **container settings** such as full schools.
+
+**Scenario Summary**:
+  - Simulation uses the **Saarland ("SL")** population with container settings like full **schools**.
+  - All schools are **closed on tick 14** (day 14 of the outbreak).
+  - The intervention halts all school-related transmission from that point onward.
+
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_trism_setting-closure2.png" width="30%"/>
+</p>
+``` 
+
+```julia
+using GEMS
+
+scenario = Simulation(label = "Scenario", population="SL")
+
+school_closing = SStrategy("Close Schools", scenario)
+add_measure!(school_closing, CloseSetting())
+
+trigger = STickTrigger(School, school_closing, switch_tick = Int16(14))
+add_tick_trigger!(scenario, trigger)
+
+run!(scenario)
+rd_s = ResultData(scenario)
+
+gemsplot(rd_s, type = (:TickCases, :TickCasesBySetting), size = (800, 800))
+vline!([14], color = :red, linestyle = :dash, label = "School Closing")
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_setting-closure.png" width="80%"/>
+</p>
+```
+
+The results show a **drop in transmission from school settings** after day 14, and a corresponding slowdown in overall case growth. A vertical line is included in the plot to highlight the intervention point.
+
+---
+
+### Example 2: Reactive School Class Closure and Reopening
+
+This scenario models a more **granular, dynamic intervention**: when a **student develops symptoms**, their **school class is closed immediately**. After **6 days**, the class is automatically reopened. This simulates targeted closure of small units within schools, reflecting policies where only affected groups are temporarily isolated rather than entire institutions.
+
+This is implemented by:
+- Detecting symptomatic students,
+- Finding their associated **SchoolClass**,
+- Applying both `CloseSetting()` and, after a delay, `OpenSetting()`.
+
+**Scenario Summary**:
+  - If a **student becomes symptomatic**, their **school class is closed immediately**.
+  - The class is **reopened automatically after 6 days**.
+  - This approach allows **localized, temporary closures**, minimizing disruption.
+  - Other settings (e.g., households or offices) are unaffected.
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_trism_setting-closure.png" width="90%"/>
+</p>
+``` 
+
+```julia
+using GEMS
+
+scenario = Simulation(label = "Scenario")
+
+close_and_open_class = SStrategy("Close and Open Class", scenario)
+add_measure!(close_and_open_class, CloseSetting())
+add_measure!(close_and_open_class, OpenSetting(), offset = 6)
+
+find_schoolclass = IStrategy("Find Class", scenario)
+add_measure!(find_schoolclass, FindSetting(SchoolClass, close_and_open_class), condition = is_student)
+
+trigger = SymptomTrigger(find_schoolclass)
+add_symptom_trigger!(scenario, trigger)
+
+run!(scenario)
+
+rd_s = ResultData(scenario)
+
+gemsplot(rd_s, type = (:TickCases, :TickCasesBySetting))
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_setting-closure-2.png" width="80%"/>
+</p>
+``` 
+
+The results show **local reductions in school class transmission**, while allowing normal activity to resume shortly after. This reactive strategy balances containment with continuity.
 
 ## Custom Measures
 
-Tutorial coming soon ...
+In this scenario, we explore how **risk perception and behavioral change** can be modeled dynamically using a custom measure. At the start of the simulation, no one is willing to follow isolation mandates—every individual has a `mandate_compliance` of 0, meaning they will **never** voluntarily isolate, even if symptomatic.
+
+However, people begin to **adjust their behavior when someone they know is hospitalized**. 
+Specifically, if a person shares a setting (household, office, or schoolclass) with someone who is hospitalized, they become more cautious and begin to comply fully with isolation instructions (i.e., their `mandate_compliance` is set to 1.0). From that point on, if they develop symptoms, they will isolate for 14 days.
+
+This change in behavior is implemented using a custom measure that updates the `mandate_compliance` field at runtime. Additionally, a custom logger tracks the **average mandate compliance over time**, allowing us to observe the societal shift toward more cautious behavior as the epidemic progresses.
+
+We also made some modifications to the simulation parameters:
+- The simulation starts with **only 10 infected individuals**, representing a very early outbreak stage.
+- The **disease progression** is configured such that **10% of infected individuals require hospitalization**, making the consequences of spread more severe and increasing the likelihood of behavior change.
+
+**Scenario Summary**:
+  - At the beginning, **no one follows isolation rules**, even when sick.
+  - When someone is **hospitalized**, all contacts (in household, schoolclass, or office) become compliant with mandates.
+  - Compliant individuals **isolate for 14 days** if they develop symptoms.
+  - A **custom measure** is used to dynamically update individual behavior.
+  - A **custom logger** tracks the average level of compliance in the population.
+  - The simulation starts with **very few infections** and **higher severity**, emphasizing the impact of hospitalization events.
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_trism_custom_measure.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_custom_measure2.png" width="100%"/>
+</p>
+``` 
+
+```julia
+
+using GEMS
+
+scenario = Simulation(label = "Scenario", progression_categories = [0.4, 0.4, 0.1, 0.1], infected_fraction = 0.0001)
+
+# Set mandate compliance to 0 for all individuals
+mandate_compliance!.(individuals(scenario), 0.0f0)
+
+self_isolation = IStrategy("Self Isolation", scenario)
+add_measure!(self_isolation, SelfIsolation(14), condition = ind -> rand() < mandate_compliance(ind))
+
+change_mandate_compliance = IStrategy("Change Risk Behavior", scenario)
+add_measure!(change_mandate_compliance, CustomIMeasure((i, sim) -> mandate_compliance!(i, 1.0f0)))
+
+find_setting_members = IStrategy("Find Contacts", scenario)
+add_measure!(find_setting_members, FindSettingMembers(Household, change_mandate_compliance, nonself = false))
+add_measure!(find_setting_members, FindSettingMembers(SchoolClass, change_mandate_compliance, nonself = false), condition = is_student)
+add_measure!(find_setting_members, FindSettingMembers(Office, change_mandate_compliance, nonself = false), condition = is_working)
+
+symptom_trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(scenario, symptom_trigger)
+
+hospital_trigger = HospitalizationTrigger(find_setting_members)
+add_hospitalization_trigger!(scenario, hospital_trigger)
+
+# custom logger
+function avg_compliance(sim)
+    inds = individuals(sim)
+    return sum(mandate_compliance.(inds)) / length(inds)
+end
+
+cl = CustomLogger(avg_mandate_compliance = avg_compliance)
+customlogger!(scenario, cl)
+
+run!(scenario)
+rd_s = ResultData(scenario)
+
+gemsplot(rd_s, type = (:TickCases, :HospitalOccupancy, :CustomLoggerPlot), size = (800, 800))
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_custom-measure.png" width="80%"/>
+</p>
+``` 
+
+The results show how compliance evolves over time and how this shift in behavior influences overall case numbers and hospital occupancy. As more individuals experience the effects of the disease within their social circles, compliance rises—ultimately helping to control the outbreak.
+
 
 ## Varying Mandate Adherence
 
