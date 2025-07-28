@@ -1543,10 +1543,8 @@ Reinitializes the simulation model according to its start condition.
 This resets the simulation tick and re-applies the start condition.
 """
 function reinitialize!(simulation::Simulation)
-    for ind in individuals(simulation)
-        # reset individual to initial state
-        reset!(ind)
-    end
+    # reset individual to initial state
+    reset!.(individuals(simulation))
     reset!(simulation)
     simulation.infectionlogger = InfectionLogger()
     simulation.deathlogger = DeathLogger()
