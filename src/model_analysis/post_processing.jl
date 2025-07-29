@@ -4,7 +4,7 @@ These functions handle the aggregation of interesting data from a simulation run
 and combine them into specific output variables
 =#
 export PostProcessor
-export simulation, infectionsDF, sim_infectionsDF, populationDF, deathsDF, testsDF, pooltestsDF
+export simulation, infectionsDF, sim_infectionsDF, populationDF, deathsDF, testsDF, pooltestsDF, serotestsDF
 
 """
     PostProcessor
@@ -20,6 +20,7 @@ A type to provide data processing features supplying reports, plots, or other da
 - `deathsDF::DataFrame`: Output of the death logger
 - `testsDF::DataFrame`: Output of the test logger
 - `pooltestsDF::DataFrame`: Output of the pool test logger
+- `serotestsDF::DataFrame`: Output of the seroprevalence test logger
 - `quarantinesDF::DataFrame`: Output of th quarantine logger
 - `cache::Dict{String, Any}`: Internal cache to store and retrieve intermediate results
 
@@ -32,6 +33,7 @@ mutable struct PostProcessor
     deathsDF::DataFrame
     testsDF::DataFrame
     pooltestsDF::DataFrame
+    serotestsDF::DataFrame
     quarantinesDF::DataFrame
 
     # dataframe cache to speed up calculations
@@ -51,6 +53,9 @@ mutable struct PostProcessor
         
         # import tests
         tests = dataframe(testlogger(simulation))
+        
+        # import seroprevalence tests
+        serotests = dataframe(seroprevalencelogger(simulation))
 
         # join all infections with additional info from population DF
         infections = simulation |> infectionlogger |> dataframe
@@ -97,7 +102,7 @@ mutable struct PostProcessor
         quarantines = dataframe(quarantinelogger(simulation)) |>
             x -> transform(x, [:quarantined, :students, :workers] => ByRow((q, s, w) -> q - s -w) => :other)
 
-        new(simulation, infections, pop, deaths, tests, pooltests, quarantines, Dict{String, Any}())
+        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, Dict{String, Any}())
     end
 
 
@@ -378,6 +383,33 @@ function pooltestsDF(postProcessor::PostProcessor)
     return postProcessor.pooltestsDF
 end
 
+"""
+    serotestsDF(postProcessor::PostProcessor)
+
+Returns the internal flat seroprevalence tests `DataFrame`.
+
+This dataframe contains one row per seroprevalence test performed during the simulation. 
+It is based on the data logged by the `SeroprevalenceLogger`.
+
+# Returns
+- `DataFrame`: Flattened seroprevalence test results.
+
+# Columns
+
+| Name           | Type     | Description                                                    |
+| :------------- | :------- | :------------------------------------------------------------- |
+| `test_id`      | `Int32`  | Unique test ID within the logger                               |
+| `test_tick`    | `Int16`  | Tick at which the test was performed                           |
+| `id`           | `Int32`  | ID of the individual tested                                    |
+| `test_result`  | `Bool`   | Result of the test (`true` = positive, `false` = negative)     |
+| `infected`     | `Bool`   | Whether the individual was infected at the time of the test    |
+| `was_infected` | `Bool`   | Whether the individual was ever infected (IgG assumed present) |
+| `infection_id` | `Int32`  | ID of infection event (or -1 if never infected)                |
+| `test_type`    | `String` | Type of test performed (e.g. ELISA)                            |
+"""
+function serotestsDF(postProcessor::PostProcessor)
+    return postProcessor.serotestsDF
+end
 
 """
     cumulative_quarantines(postProcessor::PostProcessor)
@@ -453,6 +485,7 @@ function Base.show(io::IO, pp::PostProcessor)
     println(io, "\u2514 Deaths dataframe: $(nrow(pp.deathsDF)) rows, $(ncol(pp.deathsDF)) columns")
     println(io, "\u2514 Tests dataframe: $(nrow(pp.testsDF)) rows, $(ncol(pp.testsDF)) columns")
     println(io, "\u2514 Pooltests dataframe: $(nrow(pp.pooltestsDF)) rows, $(ncol(pp.pooltestsDF)) columns")
+    println(io, "\u2514 Serotests dataframe: $(nrow(pp.serotestsDF)) rows, $(ncol(pp.serotestsDF)) columns")
     println(io, "\u2514 Quarantines dataframe: $(nrow(pp.quarantinesDF)) rows, $(ncol(pp.quarantinesDF)) columns")
     println(io, "\u2514 Cached: $(pp.cache |> isempty ? "[]" : pp.cache |> keys |> collect)")
 end
