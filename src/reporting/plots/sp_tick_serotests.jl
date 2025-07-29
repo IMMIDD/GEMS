@@ -74,9 +74,7 @@ function generate(plt::TickSeroTests, rd::ResultData; detailed=false, plotargs..
         ylabel = "Tests",
         title = plt.title,
         legend = :topright,
-        fontfamily = "Times Roman",
-        framestyle = :box,
-        grid = :auto
+        fontfamily = "Times Roman"
     )
 
     for (testtype, df) in serotest_summary
