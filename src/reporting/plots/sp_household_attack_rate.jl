@@ -48,7 +48,8 @@ subplots individually.
 
 - `Plots.Plot`: Household Attack Rate plot
 """
-function generate(plt::HouseholdAttackRate, rd::ResultData; ar_only::Bool = false, plotargs...)
+function generate(plt::HouseholdAttackRate, rd::ResultData; ar_only::Bool = false,
+    markersize = 5, plotargs...)
 
     # group attack rate data by household size, time of first introduction,
     # and look at change in attack rates and change in mean houeshold sizes
@@ -82,6 +83,8 @@ function generate(plt::HouseholdAttackRate, rd::ResultData; ar_only::Bool = fals
         xlims = (0, 15),
         ylims = (0, 1),
         xticks = (1:1:15),
+        markersize = markersize,
+        markerstrokewidth=0,
         label = "Attack rate and household sizes",
         xlabel = "Household Size",
         ylabel = "Mean Attack Rate",
