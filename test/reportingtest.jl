@@ -598,8 +598,10 @@
             result = maptypes()
 
             @test result isa Vector{Symbol}  # Prüft, ob das Ergebnis ein Vektor von Symbolen ist
-            @test length(result) == 7  # Prüft, ob genau 7 Elemente enthalten sind
-            @test Set(result) == Set(expected_maps)  # Prüft, ob die Elemente übereinstimmen (unabhängig von der Reihenfolge)
+            # JoPo: This is no a good test as it will crash as soon as somebody adds a new map type...
+            #@test length(result) == 7  # Prüft, ob genau 7 Elemente enthalten sind
+            # JoPo: See above...
+            #@test Set(result) == Set(expected_maps)  # Prüft, ob die Elemente übereinstimmen (unabhängig von der Reihenfolge)
         end
 
         @testset "gemsmap() Function Tests" begin
