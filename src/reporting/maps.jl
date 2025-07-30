@@ -355,17 +355,14 @@ also pass to the `gemsmap()` function and might find helpful:
 function gemsmap(data::Union{Simulation, ResultData}; type = :nothing, plotargs...)
 
     # throw exception if type unknown
-    type ∉ Symbol.(subtypes(MapPlot)) ? throw("There's no plot type that matches $type") : nothing
-
-    # get index in subtype list
-    i = findfirst(x -> x == type, Symbol.(subtypes(MapPlot)))
+    !is_subtype(type, MapPlot) ? throw("There's no plot type that matches $type") : nothing
 
     plt = try 
         # instantiate plot
         # we go via the subtypes function as it evaluates the "known"
         # subtypes at runtime, not compilation time. This allows
         # to also add user-defined plots.
-        subtypes(MapPlot)[i]()
+        get_subtype(type, MapPlot)()
     catch
         # throws exception if the plot type doesn't have a 0-argument constructor
         throw("$type plots cannot be create using the gemsmap-function as they require additional arguments in their constructor. Please use generate($type(args...), data) instead to generate this map.")

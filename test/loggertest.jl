@@ -1,5 +1,5 @@
 @testset "Logger" begin
-    
+
     @testset "InfectionLogger" begin
 
         attributes = [
@@ -11,7 +11,7 @@
             "setting_id",
             "setting_type"
         ]
-        
+
         @testset "Creation and Basic Functionality" begin
             il = InfectionLogger()
 
@@ -61,15 +61,15 @@
         @testset "Logging Infections" begin
             BASE_FOLDER = dirname(dirname(pathof(GEMS)))
             sim = Simulation(BASE_FOLDER * "/test/testdata/NoInfections.toml")
-            
-            infecter = (sim |> population |> individuals)[1]
-            infectee = (sim |> population |> individuals)[2]
+
+            infecter = (sim|>population|>individuals)[1]
+            infectee = (sim|>population|>individuals)[2]
 
             t = Int16(100)
             il = infectionlogger(sim)
             h = household(infectee, sim)
 
-            infect!(infecter, t, pathogen(sim), sim = sim)
+            infect!(infecter, t, pathogen(sim), sim=sim)
 
             @test il.tick[end] == t
             @test il.id_a[end] == -1
@@ -81,7 +81,7 @@
 
             t = il.infectious_tick[end]
 
-            infect!(infectee, t, pathogen(sim); sim = sim, infecter_id=id(infecter), setting_id=id(h), setting_type=settingchar(h))
+            infect!(infectee, t, pathogen(sim); sim=sim, infecter_id=id(infecter), setting_id=id(h), setting_type=settingchar(h))
             @test il.tick[end] == t
             @test il.id_a[end] == id(infecter)
             @test il.id_b[end] == id(infectee)
@@ -170,9 +170,9 @@
             # TODO 
             rs = RandomSampling()
 
-            p = Pathogen(id = 1, name = "Test")
+            p = Pathogen(id=1, name="Test")
             exposedtick = Int16(0)
-            indiv = Individual(id = 42, sex = 1, age = 40)
+            indiv = Individual(id=42, sex=1, age=40)
 
             indiv.exposed_tick = exposedtick
             indiv.disease_state = 1
@@ -185,26 +185,67 @@
             # doesn't matter if indiv would have survived, we will kill it nonetheless
             indiv.death_tick = 1
 
-            h = Household(id = 1, individuals = [indiv], contact_sampling_method = rs)
+            h = Household(id=1, individuals=[indiv], contact_sampling_method=rs)
             stngs = SettingsContainer()
             add_type!(stngs, Household)
             add!(stngs, h)
             sim = Simulation(
                 "",
-                InfectedFraction(0,p),
+                InfectedFraction(0, p),
                 TimesUp(420),
                 Population([indiv]),
                 stngs,
-                "test"   
+                "test"
             )
-            
+
             for i in individuals(h, sim)
                 update_individual!(i, Int16(1), sim)
             end
             @test dead(indiv)
             dl = deathlogger(sim)
             @test dl.id[end] == Int32(42)
-            @test dl.tick[end] == Int16(1) 
+            @test dl.tick[end] == Int16(1)
         end
+    end
+
+    @testset "Saving Loggerfiles" begin
+        # Create logger and log a known infection
+        loggers = [InfectionLogger(), VaccinationLogger(), DeathLogger(), PoolTestLogger(), GEMS.TestLogger(), SeroprevalenceLogger()]
+
+        for logger in loggers
+            # Save to a temp file
+            path = tempname() * ".csv"
+            GEMS.save(logger, path)
+
+            # Check file exists
+            @test isfile(path)
+
+            # Load back in
+            df_written = CSV.read(path, DataFrame)
+
+            # Check that it matches dataframe(logger)
+            expected_df = dataframe(logger)
+            @test df_written == expected_df
+
+            # Cleanup
+            rm(path; force=true)
+        end
+        for logger in loggers
+            # Save to a temporary JLD2 file
+            path = tempname() * ".jld2"
+            save_JLD2(logger, path)
+
+            @test isfile(path)
+
+            # Cleanup
+            rm(path; force=true)
+        end
+        for logger in loggers
+            @test length(logger) == 0
+        end
+        logger = QuarantineLogger()
+        @test length(logger) == 0
+        custom_logger = CustomLogger()
+        @test length(custom_logger) == 0
     end
 end

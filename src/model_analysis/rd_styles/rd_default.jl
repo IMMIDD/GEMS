@@ -85,7 +85,8 @@ and computationally intensive (memory & runtime) option.
         - `tick_serial_intervals::DataFrame`: Aggregated data on serial intervals per tick
         - `tick_generation_times::DataFrame`: Aggregated data on generation timess per tick        
         - `tick_tests::DataFrame`: Number of tests performed per tick
-        - `tick_pooltests::DataFrame`: Number of (pooled) tests per tick
+        - `tick_pooltests::DataFrame`: Number of (pooled) tests per tick        
+        - `tick_serotests::DataFrame`: Number of seroprevalence-tests performed per tick
         - `tick_cases_per_setting::DataFrame`: Tick cases aggregated by settingtype,
         - `detected_tick_cases::DataFrame`: Number of detected infections per tick
         - `compartment_fill::DataFrame`: Number of individuals currently in any of the disease compartments
@@ -98,7 +99,7 @@ and computationally intensive (memory & runtime) option.
         - `population_pyramid::DataFrame`: Data required to plot population pyramid (age, sex, count)
         - `rolling_observed_SI::DataFrame`: Serial interval estimation based on the last 14 days of detected cases
         - `observed_R::DataFrame`: Reproduction number estimation based on detected cases and the SI estimation
-        - `hospital_df::DataFrame`: DataFrame containing the daily hospitalizations etc.
+        - `tick_hosptitalizations::DataFrame`: DataFrame containing the daily hospitalizations etc.
         - `time_to_detection::DataFrame`: Statistics on the time between exposure and first detection of an infection through a test
         - `household_attack_rates::DataFrame`: Statistics on the seconary infections in households
         - `customlogger::DataFrame`: Dataframe obtained from any custom logger that might have been set
@@ -201,13 +202,15 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "cumulative_quarantines" => () -> pP |> cumulative_quarantines,
                     "tick_tests" => () -> pP |> tick_tests,
                     "tick_pooltests" => () -> pP |> tick_pooltests,
+                    "tick_serotests" => () -> pP |> tick_serotests,
                     "detected_tick_cases" => () -> pP |> detected_tick_cases,
                     "rolling_observed_SI" => () -> pP |> rolling_observed_SI,
                     "observed_R" => () -> pP |> observed_R,
                     "time_to_detection" => () -> pP |> time_to_detection,
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
-                    "household_attack_rates" => () -> pP |> household_attack_rates
+                    "household_attack_rates" => () -> pP |> household_attack_rates,
+                    "tick_hosptitalizations" => () -> pP |> hospital_df
                 )      
         )
 

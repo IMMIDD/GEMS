@@ -1,5 +1,5 @@
 # CREATION OF PLOTS AND FIGURES FOR THE REPORT
-export ReportPlot, SimulationPlot, BatchPlot, GMTWrapper
+export ReportPlot, SimulationPlot, GMTWrapper
 export title, description, description!, filename, filename!, generate
 export fontfamily!, dpi!, title!, titlefontsize!, saveplot, emptyplot
 export gemsplot
@@ -14,9 +14,6 @@ abstract type ReportPlot end
 
 "Supertype for all plots that go into single-run simulation reports"
 abstract type SimulationPlot <: ReportPlot end
-
-"Supertype for all plots that go into batch-run simulation reports"
-abstract type BatchPlot <: ReportPlot end
 
 """
     GMTWrapper
@@ -124,9 +121,9 @@ function fontfamily!(plot::Plots.Plot, fontfamily::String)
 end
 
 
-function fontfamily!(plot::VegaLite.VLSpec, fontfamily::String)
-    println("Custom fontfamily cannot be set for VegaLite plots")
-end
+#function fontfamily!(plot::VegaLite.VLSpec, fontfamily::String)
+#    println("Custom fontfamily cannot be set for VegaLite plots")
+#end
 
 
 function dpi!(plot::Plots.Plot, dpi::Int)
@@ -134,9 +131,9 @@ function dpi!(plot::Plots.Plot, dpi::Int)
 end
 
 
-function dpi!(plot::VegaLite.VLSpec, dpi::Int)
-    println("Custom dpi cannot be set for VegaLite plots")
-end
+#function dpi!(plot::VegaLite.VLSpec, dpi::Int)
+#    println("Custom dpi cannot be set for VegaLite plots")
+#end
 
 
 title!(plot::Plots.Plot, title::String) = plot!(plot, title = title)
@@ -162,9 +159,9 @@ end
 
 Stores a plot from the VegaLite package to the provided path.
 """
-function saveplot(plot::VegaLite.VLSpec, path::AbstractString)
-    plot |> FileIO.save(path)
-end
+#function saveplot(plot::VegaLite.VLSpec, path::AbstractString)
+#    plot |> FileIO.save(path)
+#end
 
 """
     saveplot(plot::GMTWrapper, path::AbstractString)
@@ -271,6 +268,7 @@ Some of the plots have keyword arguments that are only applicable to that very p
 | `:HospitalOccupancy`             | Number of hospitalized, ventilated, and ICU-admitted indivudual over time.            | No         |                                                                                                                                                |
 | `:HouseholdAttackRate`           | In-Household attack rate per household size.                                          | Yes        |                                                                                                                                                |
 | `:Incidence`                     | Indicende over time by 10-year age group (stacked chart).                             | No         |                                                                                                                                                |
+| `:IncubationHistogram`           | Histogram of incubation period duratons.                                              | No         |                                                                                                                                                |
 | `:InfectionDuration`             | Histogram of total infection durations.                                               | Yes        |                                                                                                                                                |
 | `:InfectiousHistogram`           | Histogram of infectious period duratons.                                              | No         |                                                                                                                                                |
 | `:LatencyHistogram`              | Histogram of latency period durations.                                                | No         |                                                                                                                                                |
@@ -282,6 +280,7 @@ Some of the plots have keyword arguments that are only applicable to that very p
 | `:TestPositiveRate`              | Fraction of all performed tests that were positive per test type (e.g., `PCR`).       | No         |                                                                                                                                                |
 | `:TickCases`                     | New cases per time step. For single sim. also with new infectious, removed, dead.     | Yes        |                                                                                                                                                |
 | `:TickCasesBySetting`            | New cases stratified by setting type (e.g., `Household` or `Office`)                  | No         |                                                                                                                                                |
+| `:TickSeroTests`                 | Number of seroprevalence tests and their results per tick.                            | No         | `detailed::Bool = false`: Whether to show detailed breakdown (TP, FP, TN, FN).                                                                 |
 | `:TickTests`                     | Performed tests per time step, including positive and total tests and reported cases. | No         |                                                                                                                                                |
 | `:TimeToDetection`               | Average time between exposure and detected for all infections over time.              | No         |                                                                                                                                                |
 | `:TotalTests`                    | Total number of performed tests per test type (e.g., `PCR`)                           | Yes        |                                                                                                                                                |
@@ -333,17 +332,14 @@ function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :a
 
     # SINGLE PLOTTING
     # throw exception if type unknown
-    type ∉ Symbol.(subtypes(SimulationPlot)) ? throw("There's no plot type that matches $type") : nothing
-
-    # get index in subtype list
-    i = findfirst(x -> x == type, Symbol.(subtypes(SimulationPlot)))
+    !is_subtype(type, SimulationPlot) ? throw("There's no plot type that matches $type") : nothing
 
     plt = try 
         # instantiate plot
         # we go via the subtypes function as it evaluates the "known"
         # subtypes at runtime, not compilation time. This allows
         # to also add user-defined plots.
-        subtypes(SimulationPlot)[i]()
+        get_subtype(type, SimulationPlot)()
     catch
         # throws exception if the plot type doesn't have a 0-argument constructor
         throw("$type plots cannot be create using the gemsplot-function as they require additional arguments in their constructor. Please use generate($type(args...), rd) instead to generate this plot.")

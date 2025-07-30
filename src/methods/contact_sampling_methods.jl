@@ -6,7 +6,7 @@ export create_contact_sampling_method
 
 Abstract function as Fallback if no specific method is available.
 """
-function sample_contacts(contact_sampling_method::ContactSamplingMethod, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::ErrorException
+function sample_contacts(contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::ErrorException
     error("Currently, no specific implementation of this function is known. Please provide a method for type: $(typeof(contact_sampling_method))")
 end
 
@@ -15,22 +15,24 @@ end
 
 Sample exactly 1 random contact from the individuals in `setting`.
 """
-function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
-    return sample(present_inds, 1; replace=true)
+    offset = rand(1:length(present_inds)-1)
+    contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+    return [present_inds[contact_index]]
 end
 
 
 """
     sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual::Individual, tick::Int16)::Vector{Individual}
 
-Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`.
+Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`. The `replace` parameter determines whether contacts are sampled with replacement (`true`) or without replacement (`false`).
 """
-function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -43,16 +45,27 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
     # get number of contacts
     number_of_contacts = rand(Poisson(contactparameter_sampling.contactparameter))
     # number_of_contacts = Int64(contactparameter_sampling.contactparameter)
-    res = Vector{Individual}(undef, number_of_contacts)
 
-    cnt = 0
-    # Draw until contact list is filled, skip whenever the index individual was selected
-    while cnt < number_of_contacts
-        contact = rand(present_inds)
-        # if contact is NOT index individual, add them to contact list
-        if Ref(contact) .!== Ref(individual)
-            res[cnt + 1] = contact
-            cnt += 1
+
+    if replace
+        res = Vector{Individual}(undef, number_of_contacts)
+        
+        # sample contacts 
+        for i in 1:number_of_contacts
+            offset = rand(1:length(present_inds)-1)
+            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+            res[i] = present_inds[contact_index]
+        end
+    else
+        number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
+        res = Vector{Individual}(undef, number_of_contacts)
+
+        sample!(present_inds[1:end-1], res; replace=false)
+        for i = 1:length(res)
+            if res[i] === present_inds[individual_index]
+                res[i] = present_inds[end]
+                break
+            end
         end
     end
     
@@ -74,7 +87,7 @@ Firstly, we sample uniformly with probability pi = e * wi * qi * m_max / N
 m_max - maximal mixing factor between age groups
 Secondly, we sample with adapted probability mi = mi / m_max
 """
-function sample_contacts(contactparameter_sampling::ContactAgeBasedparameterSampling, setting::Setting, individual::Individual, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -83,6 +96,8 @@ function sample_contacts(contactparameter_sampling::ContactAgeBasedparameterSamp
     if length(present_inds) == 1
         return Individual[]
     end
+
+    individual = present_inds[individual_index]
 
     # get sampling parameters
     expected_number_of_contacts = contactparameter_sampling.contactparameter
@@ -114,17 +129,29 @@ function sample_contacts(contactparameter_sampling::ContactAgeBasedparameterSamp
     if number_of_contacts < 1
         return Individual[]
     end
-    number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
-    res = Vector{Individual}(undef, number_of_contacts)
-    sample!(present_inds, res; replace=false)
-    for i = 1:length(res)
-        if Ref(individual) == Ref(res[i])
-            while Ref(individual) == Ref(res[i])
-                res[i] = rand(present_inds)
+
+    if replace
+        res = Vector{Individual}(undef, number_of_contacts)
+        
+        # sample contacts 
+        for i in 1:number_of_contacts
+            offset = rand(1:length(present_inds)-1)
+            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+            res[i] = present_inds[contact_index]
+        end
+    else
+        number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
+        res = Vector{Individual}(undef, number_of_contacts)
+
+        sample!(present_inds[1:end-1], res; replace=false)
+        for i = 1:length(res)
+            if res[i] === present_inds[individual_index]
+                res[i] = present_inds[end]
+                break
             end
-            break
         end
     end
+
     # Second order sampling (i.e. structural one)
     out = Individual[]
     for i = 1:number_of_contacts
@@ -150,9 +177,13 @@ name of the `ContactSamplingMethod` struct to be used.
 Optionaly the Dict can have the key "parameters". These will be used, to construct the CSM defined by "type". When "type" doesn't have attributes, "parameters" can be ommited.
 """
 function create_contact_sampling_method(config::Dict)       
-    
-    # find id of the concrete subtype matching "type" from `config`
-    id = findfirst(x -> x == get(config, "type", ""), string.(subtypes(ContactSamplingMethod)))
+
+    type_string = get(config, "type", "")
+    gems_string = string(nameof(@__MODULE__))
+    # we need to check the TF-name with and without the "GEMS.xxx" namespace
+    # qualifier as the module name will be present if GEMS is imported as
+    # a depenedncy into another module
+    id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", string.(subtypes(ContactSamplingMethod)))
     if isnothing(id)
         error("The provided type is not a valid subtype of $ContactSamplingMethod use '$(join(string.(subtypes(ContactSamplingMethod)), "', '", "' or '"))'!")
     end

@@ -237,7 +237,7 @@ function disease_progression!(
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, exposedtick + 
+        max(exposedtick + Int16(1), exposedtick + 
             theoretical_onset_of_symptoms -
             sample_infectious_offset(pathogen, infectee))
     )
@@ -269,13 +269,13 @@ function disease_progression!(
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        exposedtick + sample_onset_of_symptoms(pathogen, infectee)
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
     )
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
     )
     # removed tick as normal
     removed_tick!(
@@ -313,14 +313,14 @@ function disease_progression!(
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        exposedtick + sample_onset_of_symptoms(pathogen, infectee)
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
     )
 
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
     )
 
     # calculate onset of severe symptoms as increment on onset of symptoms
@@ -400,14 +400,14 @@ function disease_progression!(
     # calc onset of symptoms
     onset_of_symptoms!(
         infectee,
-        exposedtick + sample_onset_of_symptoms(pathogen, infectee)
+        max(exposedtick + Int16(1), exposedtick + sample_onset_of_symptoms(pathogen, infectee))
     )
 
     # decrement by random tick value drawn for the time to infectiousness
     infectious_tick!(
         infectee,
         # prevent setting infectiouness to BEFORE infection
-        max(exposedtick, onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
+        max(exposedtick + Int16(1), onset_of_symptoms(infectee) - sample_infectious_offset(pathogen, infectee))
     )
 
     # calculate onset of severe symptoms as increment on onset of symptoms
@@ -435,20 +435,22 @@ function disease_progression!(
         hospitalized_tick(infectee) + sample_length_of_stay(pathogen, infectee)
     )
 
-    # random value to determine ventilation. If yes, directly when hospitalized.
-    ventilation_probability = sample_ventilation_rate(pathogen, infectee)
-    if rand() < ventilation_probability
-        ventilation_tick!(infectee, hospitalized_tick(infectee))
 
-        # ICU only if ventilated and determined randomly. Then ICU tick as increment on hospitalization tick
-        icu_probability = sample_icu_rate(pathogen, infectee)
-        if rand()<icu_probability
-            icu_tick!(
-                infectee,
-                hospitalized_tick(infectee) + sample_time_to_icu(pathogen, infectee)
-            )
+    # random value to determine icu admission. If yes, sample offset from hospitalization
+    icu_probability = sample_icu_rate(pathogen, infectee)
+    if rand() < icu_probability
+        icu_tick!(
+            infectee,
+            hospitalized_tick(infectee) + sample_time_to_icu(pathogen, infectee)
+        )
+
+        # Ventilation only if in ICU. If yes, directly ventilate when admitted to ICU.
+        ventilation_probability = sample_ventilation_rate(pathogen, infectee)
+        if rand() < ventilation_probability
+            ventilation_tick!(infectee, icu_tick(infectee))
         end
     end
+
 
     #=
     # hospital is a form of quarantine

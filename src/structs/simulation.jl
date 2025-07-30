@@ -15,8 +15,8 @@ export evaluate
 export initialize!, reinitialize!
 export increment!, reset!
 export tickunit
-export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, customlogger, customlogger!
-export infections, tests, deaths, quarantines, pooltests, customlogs, populationDF
+export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
@@ -59,6 +59,7 @@ A struct for the management of a single run, holding all necessary informations.
     - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
     - `testlogger::TestLogger`: A logger tracking all individual tests
     - `pooltestlogger::PoolTestLogger`: A logger tracking all pool tests
+    - `seroprevalencelogger::SeroprevalenceLogger`: A logger tracking all seroprevalence tests
     - `quarantinelogger::QuarantineLogger`: A tracking cumulative quarantines per tick
     - `customlogger::CustomLogger`: A logger running custom methods on the `Simulation` object in each tick
 - Interventions
@@ -97,6 +98,7 @@ mutable struct Simulation
     deathlogger::DeathLogger
     testlogger::TestLogger
     pooltestlogger::PoolTestLogger
+    seroprevalencelogger::SeroprevalenceLogger
     quarantinelogger::QuarantineLogger
     customlogger::CustomLogger
 
@@ -143,6 +145,7 @@ mutable struct Simulation
          DeathLogger(), # deathlogger::DeathLogger
          TestLogger(), # testlogger::TestLogger
          PoolTestLogger(), # pooltestlogger::PoolTestLogger
+         SeroprevalenceLogger(), # seroprevalencelogger::SeroprevalenceLogger
          QuarantineLogger(), # quarantinelogger::QuarantineLogger
          CustomLogger(), # customlogger::CustomLogger
          [], # symptom_triggers::Vector{ITrigger}
@@ -950,11 +953,20 @@ end
 
 Creates statistical distributions to be used by other parts of the `Simulation` object.
 """
-function create_distribution(params::Vector{<:Real}, type::String)::Distribution
-    try 
-        return eval(Symbol(type))(params...)
-    catch
-        throw("Distribution $type cannot be created with parameters: $params")
+
+function create_distribution(params::Vector{<:Real}, type::String)
+    gems_string = string(nameof(@__MODULE__))
+    id = findfirst(x -> x == type || x == "$gems_string.$type" || x == "Distributions.$type", string.(subtypes(Distribution)))
+
+    dist_type = nothing
+    if !isnothing(id)
+        dist_type = subtypes(Distribution)[id]
+    end
+
+    try
+        return dist_type(params...)
+    catch e
+        error("Failed to create distribution '$type' with parameters $params: $e")
     end
 end
 
@@ -1465,6 +1477,22 @@ Calls the `dataframe()` function on the internal simulation's `PoolTestLogger`.
 pooltests(simulation::Simulation) = simulation |> pooltestlogger |> dataframe
 
 """
+    seroprevalencelogger(simulation)
+
+Returns the `SeroprevalenceLogger` of the simulation.
+"""
+function seroprevalencelogger(simulation::Simulation)::SeroprevalenceLogger
+    return simulation.seroprevalencelogger
+end
+
+"""
+    seroprevalencetests(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `SeroprevalenceLogger`.
+"""
+seroprevalencetests(simulation::Simulation) = simulation |> seroprevalencelogger |> dataframe
+
+"""
     quarantinelogger(simulation)
 
 Returns the `QuarantineLogger` of the simulation.
@@ -1754,6 +1782,7 @@ function info(sim::Simulation)
     res *= "  \u2514 Deaths: $(sim |> deathlogger |> length)\n"
     res *= "  \u2514 Tests: $(sim |> testlogger |> length)\n"
     res *= "  \u2514 Pooltests: $(sim |> pooltestlogger |> length)\n"
+    res *= "  \u2514 Seroprevalencetests: $(sim |> seroprevalencelogger |> length)\n"
 
     println(res)
 end
