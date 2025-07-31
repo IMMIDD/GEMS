@@ -963,7 +963,7 @@ add_measure!(self_isolation, SelfIsolation(14))
 
 # define testing strategy that triggers self isolation
 testing = IStrategy("Testing", seroprevalence_testing)
-add_measure!(testing, GEMS.Test("Test", seroprevalence_test, 
+add_measure!(testing, Test("Test", seroprevalence_test, 
 negative_followup=self_isolation), condition = is_student)
 
 find_class_members = IStrategy("Find Class Members", seroprevalence_testing)
