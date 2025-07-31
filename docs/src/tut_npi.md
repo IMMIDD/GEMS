@@ -908,14 +908,11 @@ It is possible to specify that a test should not lead to a new case being report
 Please look up the [Test](@ref Test) measure's parameterization options.
 The next tutorial considers two test types where one of them does not lead to a reported case (self-applied test).
 
-## Seroprevalence Testing in School Class Isolation
+## Seroprevalence Testing
 
-In this tutorial, we demonstrate how to integrate **seroprevalence testing** into a symptom-triggered isolation strategy for **school classes** using GEMS.
-
+In this tutorial, we demonstrate how to integrate seroprevalence testing into a symptom-triggered isolation strategy for school classes using GEMS.
 This example builds on a similar idea used in the household isolation scenario but applies it to school classes. When a student develops symptoms, the rest of the class is isolated. However, we now use seroprevalence testing to avoid unnecessary isolations.
-
-Instead of automatically isolating all classmates, we test them for antibodies. Only students who **do not have antibodies** (i.e., test seronegative) are isolated. The assumption is that **seropositive individuals are immune** and therefore don't need to be isolated.
-
+Instead of automatically isolating all classmates, we test them for antibodies. Only students who do not have antibodies (i.e., test seronegative) are isolated. The assumption is that seropositive individuals are immune and therefore don't need to be isolated.
 We compare this targeted approach with a standard school class isolation strategy in which all classmates are isolated for 14 days whenever someone develops symptoms.
 
 ---
@@ -924,19 +921,14 @@ We compare this targeted approach with a standard school class isolation strateg
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_seroprevalencetesting.png" />
+    <img src="../assets/tutorials/tut_interventions_trism_seroprevalence_testing.png" />
 </p>
 ``` 
 
-- **Baseline: School Class Isolation**
-  - When a student shows symptoms, they and all classmates are isolated for 14 days.
-- **Seroprevalence Testing Scenario**
-  - When a student shows symptoms:
-    - They isolate for 14 days.
-    - All classmates are tested for antibodies.
-    - Only students who test **negative** are isolated.
-    - Students who test **positive** (i.e., immune) are **not isolated**.
-  - The tests are assumed to be perfect (100% sensitivity and specificity).
+- When a student shows symptoms: they isolate for 14 days and all their classmates are tested for antibodies.
+- Only students who test negative are isolated.
+- Students who test positive (i.e., immune) are not isolated.
+- The tests are assumed to be perfect (100% sensitivity and specificity).
 
 ---
 
@@ -951,7 +943,8 @@ add_measure!(self_isolation, SelfIsolation(14))
 
 # identify list of students in class
 find_class_members = IStrategy("Find Schoolclass Members", isolation)
-add_measure!(find_class_members, FindSettingMembers(SchoolClass, self_isolation), condition=is_student)
+add_measure!(find_class_members, FindSettingMembers(SchoolClass, self_isolation)
+, condition=is_student)
 
 # trigger "schoolclass tracing"
 trigger = SymptomTrigger(find_class_members)
@@ -961,7 +954,8 @@ add_symptom_trigger!(isolation, trigger)
 seroprevalence_testing = Simulation(label="seroprevalence_testing")
 
 # define the test type
-seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", 
+pathogen(seroprevalence_testing), seroprevalence_testing)
 
 # isolation strategy
 self_isolation = IStrategy("Self Isolation", seroprevalence_testing)
@@ -969,10 +963,12 @@ add_measure!(self_isolation, SelfIsolation(14))
 
 # define testing strategy that triggers self isolation
 testing = IStrategy("Testing", seroprevalence_testing)
-add_measure!(testing, GEMS.Test("Test", seroprevalence_test, negative_followup=self_isolation), condition = is_student)
+add_measure!(testing, Test("Test", seroprevalence_test, 
+negative_followup=self_isolation), condition = is_student)
 
 find_class_members = IStrategy("Find Class Members", seroprevalence_testing)
-add_measure!(find_class_members, FindSettingMembers(Household, testing, nonself=true), condition = is_student)
+add_measure!(find_class_members, FindSettingMembers(Household, testing, nonself=true)
+, condition = is_student)
 
 # students with symptoms go in isolation anyway
 add_measure!(find_class_members, SelfIsolation(14), condition=is_student)
@@ -997,11 +993,9 @@ gemsplot([rd_s, rd_i], type = (:TickCases, :CumulativeIsolations, :TickSeroTests
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_seroprevalencetesting.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_seroprevalence_testing.png" width="80%"/>
 </p>
 ```
-
-**Results and Interpretation**
 
 Both scenarios result in similar numbers of cases, meaning the spread of infection is effectively controlled in both.  
 However, the seroprevalence testing scenario leads to significantly fewer isolations.
