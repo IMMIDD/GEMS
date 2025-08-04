@@ -26,7 +26,7 @@ end
 A `StartCondition` that specifies a fraction of infected individuals (drawn at random).
 
 # Fields
-- `fraction::Float64`: A fraction of the whole population that has ot be infected
+- `fraction::Float64`: A fraction of the whole population that has to be infected
 - `pathogen::Pathogen`: The pathogen with which the fraction has to be infected
 """
 struct InfectedFraction <: StartCondition
@@ -97,6 +97,93 @@ function initialize!(simulation::Simulation, condition::InfectedFraction)
     end
 
 end
+
+
+##### INFECTED INDIVIDUALS
+
+"""
+    InfectedIndividuals <: StartCondition
+
+A `StartCondition` that specifies the number of initially infected individuals (drawn at random).
+
+# Fields
+- `seeds::Int64`: The number of initially infected individuals
+- `pathogen::Pathogen`: The pathogen with which the fraction has to be infected
+"""
+struct InfectedIndividuals <: StartCondition
+    seeds::Int64
+    pathogen::Pathogen
+
+    function InfectedIndividuals(seeds::Int64, pathogen::Pathogen)
+        if seeds <= 0
+            throw("The minimum number of initially infected individuals is 1.")
+        end
+        
+        return new(seeds, pathogen)
+    end
+end
+
+
+"""
+    seeds(infectedIndividuals::InfectedIndividuals)
+
+Returns number of individuals that shall be infected at the beginning using the `InfectedIndividuals` start condition.
+"""
+function seeds(infectedIndividuals::InfectedIndividuals)
+    return infectedIndividuals.seeds
+end
+
+
+"""
+    pathogen(infectedIndividuals::InfectedIndividuals)
+
+Returns pathogen used to infect individuals at the beginning using the `InfectedIndividuals` start condition.
+"""
+function pathogen(infectedIndividuals::InfectedIndividuals)::Pathogen
+    return infectedIndividuals.pathogen
+end
+
+
+"""
+    parameters(infinds::InfectedIndividuals)
+
+Returns a dictionary containing the parameters of the `InfectedIndividuals`
+start condition.
+"""
+function parameters(infinds::InfectedIndividuals)
+    return Dict(
+        "pathogen" => infinds |> pathogen |> name,
+        "pathogen_id" => infinds |> pathogen |> id,
+        "seeds" => infinds |> fraction
+        )
+end
+
+
+"""
+    initialize!(simulation::Simulation, condition::InfectedIndividuals)
+
+Initializes the simulation model with a number of infected individuals, provided by the start condition.
+"""
+function initialize!(simulation::Simulation, condition::InfectedIndividuals)
+    # number of individuals to infect
+    ind = individuals(population(simulation))
+    to_sample = seeds(condition)
+    to_infect = sample(ind, to_sample, replace=false)
+
+    # overwrite pathogen in simulation struct
+    pathogen!(simulation, pathogen(condition))
+
+    # infect individuals
+    for i in to_infect
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation)
+
+        for (type, id) in settings(i, simulation)
+            activate!(settings(simulation, type)[id])
+        end
+    end
+
+end
+
 
 
 ##### PATIENT ZERO
