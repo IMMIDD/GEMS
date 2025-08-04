@@ -1,4 +1,5 @@
 export TestType
+export SeroprevalenceTestType
 export pathogen, sensitivity, specificity, name
 
 export apply_test, apply_pool_test
@@ -25,7 +26,7 @@ struct TestType <: AbstractTestType
     pathogen::Pathogen
     sensitivity::Float64 # 0-1
     specificity::Float64 # 0-1
-    
+
     @doc """
         TestType(name::String, pathogen::Pathogen, sim::Simulation;
             sensitivity::Float64 = 1.0, specificity::Float64 = 1.0, reportable::Bool = true)
@@ -40,7 +41,7 @@ struct TestType <: AbstractTestType
       - `specificity::Float64 = 1.0` *(optional)*: Probability (0-1) that this test will negatively identify a non-infection (true negative rate)
     """
     function TestType(name::String, pathogen::Pathogen, sim::Simulation;
-        sensitivity::Float64 = 1.0, specificity::Float64 = 1.0)
+        sensitivity::Float64=1.0, specificity::Float64=1.0)
 
         # check input
         if !(0.0 <= sensitivity <= 1.0)
@@ -54,8 +55,57 @@ struct TestType <: AbstractTestType
         temp = new(name, pathogen, sensitivity, specificity)
 
         add_testtype!(sim, temp)
-        
-        return(temp)
+
+        return (temp)
+    end
+end
+
+"""
+    SeroprevalenceTestType <: AbstractTestType
+
+Represents a serological test used to detect antibodies against a specific pathogen, with configurable sensitivity and specificity.
+
+# Fields
+- `name::String`: The name of the test (e.g., "ELISA", "Rapid Test").
+- `pathogen::Pathogen`: The pathogen that the test is designed to detect antibodies for.
+- `sensitivity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who have antibodies (true positive rate).
+- `specificity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who do not have antibodies (true negative rate).
+"""
+struct SeroprevalenceTestType <: AbstractTestType
+    name::String
+    pathogen::Pathogen
+    sensitivity::Float64 # 0-1
+    specificity::Float64 # 0-1
+
+    @doc """
+        SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation;
+            sensitivity::Float64 = 1.0, specificity::Float64 = 1.0)
+
+    Creates a SeroprevalenceTestType object.
+
+    # Parameters
+      - `name::String`: The name of the test (e.g., "ELISA", "Rapid Test").
+      - `pathogen::Pathogen`: The pathogen that the test is designed to detect antibodies for.
+      - `sensitivity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who have antibodies (true positive rate).
+      - `specificity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who do not have antibodies (true negative rate).
+    """
+    function SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation;
+        sensitivity::Float64=1.0, specificity::Float64=1.0)
+
+        # check input
+        if !(0.0 <= sensitivity <= 1.0)
+            throw(ArgumentError("Test sensitivity value must be between 0 and 1"))
+        end
+
+        if !(0.0 <= specificity <= 1.0)
+            throw(ArgumentError("Test specificity value must be between 0 and 1"))
+        end
+
+        temp = new(name, pathogen, sensitivity, specificity)
+
+        add_testtype!(sim, temp)
+
+        return (temp)
     end
 end
 
@@ -65,7 +115,7 @@ end
 Returns the TestType's name.
 """
 function name(tt::TestType)
-    return(tt.name)
+    return (tt.name)
 end
 
 """
@@ -74,7 +124,7 @@ end
 Returns the TestType's associated pathogen.
 """
 function pathogen(tt::TestType)
-    return(tt.pathogen)
+    return (tt.pathogen)
 end
 
 """
@@ -83,7 +133,7 @@ end
 Returns the TestType's sensitivity.
 """
 function sensitivity(tt::TestType)
-    return(tt.sensitivity)
+    return (tt.sensitivity)
 end
 
 """
@@ -92,7 +142,44 @@ end
 Returns the TestType's specificity.
 """
 function specificity(tt::TestType)
-    return(tt.specificity)
+    return (tt.specificity)
+end
+
+
+"""
+    name(tt::TestSeroprevalenceTestTypeType)
+
+Returns the SeroprevalenceTestType's name.
+"""
+function name(tt::SeroprevalenceTestType)
+    return (tt.name)
+end
+
+"""
+    pathogen(tt::SeroprevalenceTestType)
+
+Returns the SeroprevalenceTestType's associated pathogen.
+"""
+function pathogen(tt::SeroprevalenceTestType)
+    return (tt.pathogen)
+end
+
+"""
+    sensitivity(tt::SeroprevalenceTestType)
+
+Returns the SeroprevalenceTestType's sensitivity.
+"""
+function sensitivity(tt::SeroprevalenceTestType)
+    return (tt.sensitivity)
+end
+
+"""
+    specificity(tt::SeroprevalenceTestType)
+
+Returns the TesSeroprevalenceTestTypetType's specificity.
+"""
+function specificity(tt::SeroprevalenceTestType)
+    return (tt.specificity)
 end
 
 ###
@@ -101,6 +188,7 @@ end
 
 Base.show(io::IO, tt::TestType) = print(io, "$(tt.pathogen.name)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
 
+Base.show(io::IO, tt::SeroprevalenceTestType) = print(io, "$(tt.pathogen.name)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
 
 
 ###
@@ -152,7 +240,7 @@ function apply_test(ind::Individual, testtype::TestType, sim::Simulation, report
         test_pos && reportable)
 
     return test_pos
-end     
+end
 
 
 
@@ -178,7 +266,7 @@ take all individuals assigned to the specified setting.
 - `Bool`: Test result (**Note**: Pay attention to test sensitivity and specificity of the respective `TestType` as this
     might lead to false negatives or false positives)
 """
-function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual}, Nothing} = nothing)
+function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual},Nothing}=nothing)
     # if a subset is provided, check whether subset is ACTUALLY a subset of the setting
     if subset !== nothing && !issubset(subset, setting |> individuals)
         throw("Not all individuals of the provided 'subset' are found to be members of the specified settting.")
@@ -203,6 +291,47 @@ function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; 
         test_pos,
         Int16(no_of_ind),
         Int16(no_of_inf),
+        testtype |> name)
+
+    return test_pos
+end
+
+"""
+    apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simulation, reportable::Bool)
+
+Subjects the individual to a test of the specified `SeroprevalenceTestType`. Returns a boolean; 
+`true` if test was positive and `false` otherwise. Note that this
+fuction might return false positives and false negatives, depending on the `SeroprevalenceTestType` parameterization.
+
+# Parameters
+
+- `ind::Individual`: Individual to be tested
+- `testtype::SeroprevalenceTestType`: type of test that will be used (needs to be defined as `SeroprevalenceTestType` beforehand)
+
+# Returns
+
+- `Bool`: Test result (**Note**: Pay attention to test sensitivity and specificity of the respective `SeroprevalenceTestType` as this
+    might lead to false negatives or false positives)
+"""
+function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simulation, reportable::Bool)
+
+    # apply test
+    # check if individual has ever been infected
+    was_infected = number_of_infections(ind) > 0
+
+    # simulate test result with test sensitivity and specificity
+    test_pos = was_infected && rand() <= sensitivity(testtype) ||
+               !was_infected && rand() > specificity(testtype)
+
+    # log test in sim object
+    log!(
+        sim |> seroprevalencelogger,
+        ind |> id,
+        sim |> tick,
+        test_pos,
+        ind |> infected,
+        was_infected,
+        infected(ind) ? infection_id(ind) : DEFAULT_INFECTION_ID,
         testtype |> name)
 
     return test_pos

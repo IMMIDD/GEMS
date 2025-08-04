@@ -253,13 +253,14 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
     present_inds = present_individuals(setting, sim)
     # Check if the setting is open
     open = is_open(setting)
-    for ind in present_inds
+    for ind_index in 1:length(present_inds)
+        ind = present_inds[ind_index]
         if infected(ind)
             num_infected+=1
             # if infectious and setting is open try to infect others
             if infectious(ind) && open && (!isquarantined(ind) || ((quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household)))
                 # sample contacts based on setting specific "ContactSamplingMethod"
-                contacts = sample_contacts(setting.contact_sampling_method, setting, ind, present_inds, tick(sim), rng=rng(sim))
+                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), rng=rng(sim))
                 for c in contacts
                     # try to infect
                     if !isquarantined(c) || ((quarantine_status(c) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household))

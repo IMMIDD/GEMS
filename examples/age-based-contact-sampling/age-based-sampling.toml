@@ -2,7 +2,7 @@
 
     # seed = 1234
     tickunit = 'd'
-    GlobalSetting = false
+    GlobalSetting = true
     startdate = '2024.01.01'
     enddate = '2024.12.31'
     [Simulation.StartCondition]
@@ -96,21 +96,7 @@
 
                 [Settings.Household.contact_sampling_method.parameters]
                     contactparameter = 1.0
-
-    [Settings.Office]
-        [Settings.Office.contact_sampling_method]
-                type = "ContactparameterSampling"
-
-                [Settings.Office.contact_sampling_method.parameters]
-                    contactparameter = 1.0
                     
-    [Settings.School]
-        [Settings.School.contact_sampling_method]
-                type = "ContactparameterSampling"
-
-                [Settings.School.contact_sampling_method.parameters]
-                    contactparameter = 1.0
-
     [Settings.SchoolClass]
         [Settings.SchoolClass.contact_sampling_method]
                 type = "ContactparameterSampling"
@@ -118,51 +104,17 @@
                 [Settings.SchoolClass.contact_sampling_method.parameters]
                     contactparameter = 1.0
 
-    [Settings.Municipality]
-        [Settings.Municipality.contact_sampling_method]
+    [Settings.Office]
+        [Settings.Office.contact_sampling_method]
                 type = "ContactparameterSampling"
 
-                [Settings.Municipality.contact_sampling_method.parameters]
+                [Settings.Office.contact_sampling_method.parameters]
                     contactparameter = 1.0
 
-    [Settings.WorkplaceSite]
-        [Settings.WorkplaceSite.contact_sampling_method]
-                type = "ContactparameterSampling"
-
-                [Settings.WorkplaceSite.contact_sampling_method.parameters]
-                    contactparameter = 1.0
-
-    [Settings.SchoolComplex]
-        [Settings.SchoolComplex.contact_sampling_method]
-                type = "ContactparameterSampling"
-
-                [Settings.SchoolComplex.contact_sampling_method.parameters]
-                    contactparameter = 1.0
-
-    [Settings.SchoolYear]
-        [Settings.SchoolYear.contact_sampling_method]
-                type = "ContactparameterSampling"
-
-                [Settings.SchoolYear.contact_sampling_method.parameters]
-                    contactparameter = 1.0
-
-    [Settings.Department]
-        [Settings.Department.contact_sampling_method]
-                type = "ContactparameterSampling"
-
-                [Settings.Department.contact_sampling_method.parameters]
-                    contactparameter = 1.0
-
-    [Settings.Workplace]
-        [Settings.Workplace.contact_sampling_method]
-                type = "ContactparameterSampling"
-
-                [Settings.Workplace.contact_sampling_method.parameters]
-                    contactparameter = 1.0
-                    
     [Settings.GlobalSetting]
         [Settings.GlobalSetting.contact_sampling_method]
-                type = "ContactparameterSampling"
-                
+                type = "AgeBasedContactSampling"
                 [Settings.GlobalSetting.contact_sampling_method.parameters]
                     contactparameter = 1.0
+                    interval = 5
+                    contact_matrix_file = "age_group_contact.txt"

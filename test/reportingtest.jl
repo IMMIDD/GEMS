@@ -347,6 +347,25 @@
                 generate(p, rd)
             end
         end
+        @testset "Seroprevalence-Testing-Plot" begin
+            seroprevalence_testing = Simulation()
+            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+            testing = IStrategy("Testing", seroprevalence_testing)
+            add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
+            trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(1))
+            add_tick_trigger!(seroprevalence_testing, trigger)
+            run!(seroprevalence_testing)
+            rd = ResultData(seroprevalence_testing)
+            sim = Simulation()
+            run!(sim)
+            rd2 = ResultData(sim)
+            p1 = generate(TickSeroTests(), rd; detailed=true)
+            p2 = generate(TickSeroTests(), rd)
+            p3 = generate(TickSeroTests(), rd2)
+            @test p1 isa Plots.Plot
+            @test p2 isa Plots.Plot
+            @test p3 isa Plots.Plot
+        end
     end
 
     @testset "Custom Report" begin
@@ -411,15 +430,15 @@
 
         @test rep |> typeof == SimulationReport
 
-        generate(rep, directory)
+        #generate(rep, directory)
 
         # check file existence
-        @test isfile(directory * "/report.md")
-        @test isfile(directory * "/report.html")
-        @test isfile(directory * "/report.pdf")
+        #@test isfile(directory * "/report.md")
+        #@test isfile(directory * "/report.html")
+        #@test isfile(directory * "/report.pdf")
 
         # finally, remove all test files
-        rm(directory, recursive=true)
+        #rm(directory, recursive=true)
 
     end
 

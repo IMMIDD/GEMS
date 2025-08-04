@@ -16,11 +16,13 @@ A Type for a simple population. Acts as a container for a collection of individu
 # Fields
 - `individuals::Vector{Individual}`: List of associated individuals
 - `maxage`: Age of the oldest individual
+- `minid`: smallest id of any individual
 """
 mutable struct Population
     individuals::Vector{Individual}
     params::Dict{String, Any}
     maxage # maximum age of any individual. Is updated upon first call of maxage function (for caching)
+    minid # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
 
     @doc """
         Population(individuals::Vector{Individual})
@@ -31,7 +33,7 @@ mutable struct Population
         # Create the Population object
         pop = new(individuals, Dict("populationfile" => "Not available."), -1)
         maxage(pop)
-
+        pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
         return pop
     end
 
@@ -86,6 +88,8 @@ mutable struct Population
         end
 
         pop.params["populationfile"] = path
+        pop.minid = isempty(individuals(pop)) ? -1 : minimum(x -> x.id, individuals(pop))
+
         return pop
     end
 
@@ -393,7 +397,7 @@ Returns a DataFrame representing the given population.
 | `sex`        | `Int8`  | Individual sex                    |
 | `age`        | `Int8`  | Individual age                    |
 | `education`  | `Int8`  | Individual education level        |
-| `occupation` | `Int8`  | Individual occupation group       |
+| `occupation` | `Int16` | Individual occupation group       |
 | `household`  | `Int32` | Individual associated household   |
 | `office`     | `Int32` | Individual associated office      |
 | `school`     | `Int32` | Individual associated school      |
@@ -433,12 +437,14 @@ Returns an individual contained in the `Population` selected by its `id`.
 
 """
 function get_individual_by_id(population::Population, ind::Int32)
-    for i in population |> individuals
-        if id(i) == ind
-            return i
-        end
+    # compute index with offset
+    idx = ind - population.minid + 1
+    
+    if 1 <= idx <= length(population.individuals)
+        @inbounds return population.individuals[idx]
     end
-    return nothing #TODO prevent runtime dispatches. Maybe return default ID?
+    
+    return nothing
 end
 
 
