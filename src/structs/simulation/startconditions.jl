@@ -4,6 +4,22 @@
 export fraction, pathogen, seeds
 export initialize!
 export parameters
+
+
+##### GENERAL STUFF
+
+"""
+    parameters(s::StartCondition)
+
+Returns an empty dictionary.
+"""
+function parameters(s::StartCondition)
+    return Dict()
+end
+
+
+##### INFECTED FRACTION
+
 """
     InfectedFraction <: StartCondition
 
@@ -22,91 +38,43 @@ end
 Base.show(io::IO, cnd::StartCondition) = write(io, "InfectedFraction(Random $(100*cnd.fraction)% $(cnd.pathogen.name))")
 
 
-#TODO docs
-struct PatientZero <: StartCondition
-    pathogen::Pathogen
-end
-
-
-struct PatientZeros <: StartCondition
-    pathogen::Pathogen
-    ags::Vector{Int64}
-end
-
-
-struct RegionalSeeds <: StartCondition
-    pathogen::Pathogen
-    # region and number of seeds
-    seeds::Dict{Int64, Int64}
-
-    function RegionalSeeds(pathogen::Pathogen, seeds::Dict)
-        sds = Dict{Int64, Int64}()
-        for (k, v) in seeds
-            try
-                sds[parse(Int64, k)] = typeof(v) <: Int ? v : parse(Int64, v)
-            catch
-                throw("You need to pass values that can be parsed to integers to the RegionalSeeds start condition.")
-            end
-        end
-
-        return new(pathogen, sds)
-    end
-end
-
-function pathogen(regionalseeds::RegionalSeeds)::Pathogen
-    return regionalseeds.pathogen
-end
-
-function seeds(regionalseeds::RegionalSeeds)
-    return regionalseeds.seeds
-end
-
-
 """
-    pathogen(patientZero)
+    fraction(infectedFraction::InfectedFraction)
 
-Returns pathogen used to infect individuals at the beginning in this start condition.
-"""
-function pathogen(patientzero::PatientZero)::Pathogen
-    return patientzero.pathogen
-end
-
-"""
-    fraction(infectedFraction)
-
-Returns fraction of individuals that shall be infected at the beginning in this start condition.
+Returns fraction of individuals that shall be infected at the beginning using the `InfectedFraction` start condition.
 """
 function fraction(infectedFraction::InfectedFraction)
     return infectedFraction.fraction
 end
-"""
-    pathogen(patientZeros)
 
-Returns pathogen used to infect individuals at the beginning in this start condition.
-"""
-function pathogen(patientzeros::PatientZeros)::Pathogen
-    return patientzeros.pathogen
-end
-"""
-    ags(patientZeros)
 
-Returns the vector of ags where intial seeds should be planted.
 """
-function ags(patientzeros::PatientZeros)::Vector{Int64}
-    return patientzeros.ags
-end
-"""
-    pathogen(infectedFraction)
+    pathogen(infectedFraction::InfectedFraction)
 
-Returns pathogen used to infect individuals at the beginning in this start condition.
+Returns pathogen used to infect individuals at the beginning using the `InfectedFraction` start condition.
 """
 function pathogen(infectedFraction::InfectedFraction)::Pathogen
     return infectedFraction.pathogen
 end
 
-### NECESSARY INTERFACE
+
 """
-    initialize!(simulation, infectedFraction)
+    parameters(inffrac::InfectedFraction)
+
+Returns a dictionary containing the parameters of the `InfectedFraction`
+start condition.
+"""
+function parameters(inffrac::InfectedFraction)
+    return Dict(
+        "pathogen" => inffrac |> pathogen |> name,
+        "pathogen_id" => inffrac |> pathogen |> id,
+        "fraction" => inffrac |> fraction
+        )
+end
+
+
+"""
+    initialize!(simulation::Simulation, condition::InfectedFraction)
 
 Initializes the simulation model with a fraction of infected individuals, provided by the start condition.
 """
@@ -131,8 +99,34 @@ function initialize!(simulation::Simulation, condition::InfectedFraction)
 end
 
 
+##### PATIENT ZERO
 
-#TODO docs
+"""
+    PatientZero <: StartCondition
+
+A `StartCondition` that infects exactly one individual at the beginning (drawn at random).
+
+# Fields
+- `pathogen::Pathogen`: The pathogen with which the individual has to be infected
+"""
+struct PatientZero <: StartCondition
+    pathogen::Pathogen
+end
+
+"""
+    pathogen(patientzero::PatientZero)
+
+Returns pathogen used to infect individuals at the beginning using the `PatientZero` start condition.
+"""
+function pathogen(patientzero::PatientZero)::Pathogen
+    return patientzero.pathogen
+end
+
+"""
+    initialize!(simulation::Simulation, condition::PatientZero)
+
+Initializes the simulation model with one infected individual drawn at random.
+"""
 function initialize!(simulation::Simulation, condition::PatientZero)
     # number of individuals to infect
     ind = individuals(population(simulation))
@@ -151,6 +145,83 @@ function initialize!(simulation::Simulation, condition::PatientZero)
     end
 end
 
+
+
+"""
+    parameters(p0::PatientZero)
+
+Returns a dictionary containing the parameters of the `PatientZero`
+start condition.
+"""
+function parameters(p0::PatientZero)
+    return Dict(
+        "pathogen" => p0 |> pathogen |> name,
+        "pathogen_id" => p0 |> pathogen |> id
+        )
+end
+
+
+
+##### PATIENT ZEROS
+
+"""
+    PatientZeros <: StartCondition
+
+A `StartCondition` that infects exactly one individual at the beginning (drawn at random) in each 
+of the regions provided by their AGS (community identification number) .
+
+# Fields
+- `pathogen::Pathogen`: The pathogen with which the individual(s) has to be infected
+- `ags::Vector{Int64}`: Vector of regions (AGS) as Integers
+"""
+struct PatientZeros <: StartCondition
+    pathogen::Pathogen
+    ags::Vector{Int64}
+end
+
+
+"""
+    pathogen(patientzeros::PatientZeros)
+
+Returns pathogen used to infect individuals at the beginning  using the `PatientZeros` start condition.
+"""
+function pathogen(patientzeros::PatientZeros)::Pathogen
+    return patientzeros.pathogen
+end
+
+
+"""
+    ags(patientzeros::PatientZeros)
+
+Returns the vector of ags where intial seeds should be planted.
+"""
+function ags(patientzeros::PatientZeros)::Vector{Int64}
+    return patientzeros.ags
+end
+
+
+"""
+    parameters(p0::PatientZeros)
+
+Returns a dictionary containing the parameters of the `PatientZeros`
+start condition.
+"""
+function parameters(p0::PatientZeros)
+    return Dict(
+        "pathogen" => p0 |> pathogen |> name,
+        "pathogen_id" => p0 |> pathogen |> id,
+        "ags" => p0 |> ags
+        )
+end
+
+
+"""
+    initialize!(simulation::Simulation, condition::PatientZeros)
+
+Initializes the simulation model with one infected individual drawn at random for
+each of the regions provided via their community identifaction number (AGS) in the
+`PatientZeros` start condition.
+"""
 function initialize!(simulation::Simulation, condition::PatientZeros)
     # number of individuals to infect
     to_infect = []
@@ -182,6 +253,83 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
 end
 
 
+##### REGIONAL SEEDS
+
+"""
+    RegionalSeeds <: StartCondition
+
+A `StartCondition` that infects the provided number of individual at the beginning (drawn at random) in 
+the regions provided by their AGS (community identification number).
+
+# Fields
+- `pathogen::Pathogen`: The pathogen with which the individual(s) has to be infected
+- `seeds::Dict{Int64, Int64}`: Dict that holds {AGS, NUMBER} pairs specifying the regions and the respective number of individuals that shall be infected at initialization. 
+"""
+struct RegionalSeeds <: StartCondition
+    pathogen::Pathogen
+    # region and number of seeds
+    seeds::Dict{Int64, Int64}
+
+    function RegionalSeeds(pathogen::Pathogen, seeds::Dict)
+        sds = Dict{Int64, Int64}()
+        for (k, v) in seeds
+            try
+                sds[parse(Int64, k)] = typeof(v) <: Int ? v : parse(Int64, v)
+            catch
+                throw("You need to pass values that can be parsed to integers to the RegionalSeeds start condition.")
+            end
+        end
+
+        return new(pathogen, sds)
+    end
+end
+
+"""
+    pathogen(regionalseeds::RegionalSeeds)
+
+Returns pathogen used to infect individuals at the beginning  using the `RegionalSeeds` start condition.
+"""
+function pathogen(regionalseeds::RegionalSeeds)::Pathogen
+    return regionalseeds.pathogen
+end
+
+"""
+    seeds(regionalseeds::RegionalSeeds)
+
+Returns the dictionary holding the {AGS, NUMBER} pairs, specifying the regions
+(via community identification number (AGS)) and the number of initial infections
+using the `RegionalSeeds` start condition.
+"""
+function seeds(regionalseeds::RegionalSeeds)
+    return regionalseeds.seeds
+end
+
+
+"""
+    parameters(rs::RegionalSeeds)
+
+Returns a dictionary containing the parameters of the `RegionalSeeds` 
+start condition.
+"""
+function parameters(rs::RegionalSeeds)
+    return Dict(
+        "pathogen" => rs |> pathogen |> name,
+        "pathogen_id" => rs |> pathogen |> id,
+        "seeds" => rs |> seeds
+        )
+end
+
+"""
+    initialize!(simulation::Simulation, condition::RegionalSeeds)
+
+Initializes the simulation model, infecting the number of individuals
+in the regions, both provided by the `RegionalSeeds` start condition.
+Regions can be specified as states, counties or municipalities.
+
+It would also be possible to provide, e.g., a municiaplity AND its
+surrounding county. In that case, an individual could be sampled twice.
+This function will not prevent that but throw a warning.
+"""
 function initialize!(simulation::Simulation, condition::RegionalSeeds)
 
     # takes an input vector of AGS and a reference AGS
@@ -238,54 +386,4 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds)
             activate!(settings(simulation, type)[id])
         end
     end
-end
-
-"""
-    parameters(s::StartCondition)
-
-Returns an empty dictionary.
-"""
-function parameters(s::StartCondition)
-    return Dict()
-end
-
-"""
-    parameters(inffrac::InfectedFraction)
-
-Returns a dictionary containing the parameters of the infected fraction
-start condition.
-"""
-function parameters(inffrac::InfectedFraction)
-    return Dict(
-        "pathogen" => inffrac |> pathogen |> name,
-        "pathogen_id" => inffrac |> pathogen |> id,
-        "fraction" => inffrac |> fraction
-        )
-end
-
-"""
-    parameters(p0::PatientZero)
-
-Returns a dictionary containing the parameters of the patient zero 
-start condition.
-"""
-function parameters(p0::PatientZero)
-    return Dict(
-        "pathogen" => p0 |> pathogen |> name,
-        "pathogen_id" => p0 |> pathogen |> id
-        )
-end
-
-"""
-    parameters(p0::PatientZero)
-
-Returns a dictionary containing the parameters of the patient zero 
-start condition.
-"""
-function parameters(p0::PatientZeros)
-    return Dict(
-        "pathogen" => p0 |> pathogen |> name,
-        "pathogen_id" => p0 |> pathogen |> id,
-        "ags" => p0 |> ags
-        )
 end
