@@ -1301,8 +1301,9 @@ function avg_compliance(sim)
 end
 
 cl = CustomLogger(avg_mandate_compliance = avg_compliance)
+cl2 = CustomLogger(avg_mandate_compliance = avg_compliance)
 customlogger!(scenario, cl)
-customlogger!(baseline, cl)
+customlogger!(baseline, cl2)
 
 run!(scenario)
 run!(baseline)
@@ -1310,8 +1311,8 @@ run!(baseline)
 rd_s = ResultData(scenario)
 rd_b = ResultData(baseline)
 
-gemsplot([rd_s, rd_b], type = (:TickCases, :HospitalOccupancy, :CustomLoggerPlot),
- xlims = (0, 364))
+gemsplot([rd_s, rd_b], type = (:TickCases, :HospitalOccupancy, :CustomLoggerPlot), 
+ legend = :topright)
 ```
 
 **Plot**
@@ -1324,10 +1325,85 @@ gemsplot([rd_s, rd_b], type = (:TickCases, :HospitalOccupancy, :CustomLoggerPlot
 
 The results show how compliance evolves over time and how this shift in behavior influences overall case numbers and hospital occupancy. As more individuals experience the effects of the disease within their social circles, compliance rises—ultimately helping to control the outbreak.
 
+## Decaying Mandate Adherence
 
-## Varying Mandate Adherence
+This scenario explores how decreasing adherence to public health mandates can affect the course of an epidemic. Specifically, we model a situation where individuals become progressively less likely to follow intervention rules over time.
+Each agent in the simulation has a `mandate_compliance` attribute, which defaults to 0. This value can decrease down to -1, representing complete non-compliance. In this scenario, every individual's compliance decays by 2% of its current value each day via a `stepmod` function, simulating a slow behavioral shift away from following public health rules.
+To evaluate the impact of this decay, we introduce a 14-day self-isolation measure for symptomatic individuals and compare two simulations: one where compliance decays over time, and a baseline where all individuals fully comply throughout the simulation. This allows us to observe how weakening adherence undermines the effectiveness of the same intervention.
 
-Tutorial coming soon ...
+**Scenario Summary**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_trism_decaying-compliance.png" width="60%"/>
+</p>
+``` 
+
+- Each individual's mandate compliance decreases by 2% daily via a `stepmod`, simulating behavioral fatigue.  
+- A 14-day self-isolation measure is applied to individuals who develop symptoms.  
+- The scenario is compared to a baseline in which all individuals fully comply with isolation rules throughout the epidemic.
+
+```julia
+using GEMS
+
+# define a function that reduces the mandate_compliance of every individual
+function decaying_mandate_compliance!(sim::Simulation)
+    for ind in individuals(sim)
+        current  = mandate_compliance(ind)
+        updated  = current - 0.02 * (1 + current)
+        mandate_compliance!(ind, updated)
+    end
+end
+
+baseline = Simulation(label = "Self Isolation")
+scenario = Simulation(label = "Decaying Mandate Adherence",
+ stepmod = decaying_mandate_compliance!)
+
+# setup the baseline simulation with a self isolation strategy
+self_isolation = IStrategy("Self Isolation", baseline)
+add_measure!(self_isolation, SelfIsolation(14))
+trigger = SymptomTrigger(self_isolation)
+add_symptom_trigger!(baseline, trigger)
+
+# same scenario but with decaying compliance every day
+self_isolation_scenario = IStrategy("Self Isolation with Decaying Compliance",
+ scenario)
+add_measure!(self_isolation_scenario, SelfIsolation(14), 
+ condition = i -> rand() < mandate_compliance(i))
+trigger = SymptomTrigger(self_isolation_scenario)
+add_symptom_trigger!(scenario, trigger)
+
+# custom logger
+function avg_compliance(sim)
+    inds = individuals(sim)
+    return sum(mandate_compliance.(inds)) / length(inds)
+end
+
+cl = CustomLogger(avg_mandate_compliance = avg_compliance)
+cl2 = CustomLogger(avg_mandate_compliance = avg_compliance)
+customlogger!(scenario, cl)
+customlogger!(baseline, cl2)
+
+run!(baseline)
+run!(scenario)
+
+rd_b = ResultData(baseline)
+rd_s = ResultData(scenario)
+
+gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeIsolations, :CustomLoggerPlot), 
+ legend = :topright)
+
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_interventions_decaying-compliance.png" width="80%"/>
+</p>
+``` 
+
+The results show that decaying mandate adherence significantly reduces the effectiveness of self-isolation. In the baseline simulation, where all individuals fully comply, the epidemic curve is flatter and isolation levels remain high throughout the peak period. In contrast, the scenario with decaying compliance experiences a sharper, higher peak in daily cases and fewer cumulative isolations. The custom logger confirms that average compliance steadily declines to -1, demonstrating that behavioral fatigue can undermine even well-designed interventions.
 
 ## Adapting Behavior
 

@@ -117,6 +117,7 @@ gemsplot(rd, type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsol
     <img src="../assets/trism-example1-plot.png" width="80%"/>
 </p>
 ``` 
+For full instructions on setting up an isolation scenario, see the [Self-Isolation With Symptoms](tut_npi.md#Self-Isolation-With-Symptoms) section in the tutorial.
 
 ---
 
@@ -128,10 +129,12 @@ gemsplot(rd, type = (:TickCases, :CumulativeDiseaseProgressions, :CumulativeIsol
 </p>
 ```
 
+In this scenario, the entire school is closed starting one day after a symptomatic case is detected among its students. It reopens after a fixed closure period of 15 days.
+
 ```julia
 using GEMS
 
-sim = Simulation(population = "SL")
+sim = Simulation(population = "SL", transmission_rate=0.05)
 
 # Strategy for closing and reopening schools
 school_close_and_reopen = SStrategy("School Close and Reopen", sim)
@@ -139,8 +142,8 @@ add_measure!(school_close_and_reopen, CloseSetting(), offset = 1)
 add_measure!(school_close_and_reopen, OpenSetting(), offset = 15)
 
 find_school = IStrategy("Find School", sim)
-add_measure!(find_school, FindSetting(School, school_close_and_reopen), condition = is_student)
-# TODO: fix condition
+add_measure!(find_school, FindSetting(SchoolYear, school_close_and_reopen),
+ condition = is_student)
 
 trigger = SymptomTrigger(find_school)
 add_symptom_trigger!(sim, trigger)
@@ -150,8 +153,16 @@ run!(sim)
 rd = ResultData(sim)
 
 # Plot the Results
-gemsplot(rd, type = (:TickCases, :TickCasesBySetting, :TickTests))
+gemsplot(rd, type = (:TickCases, :TickCasesBySetting))
 ```
+
+```@raw html
+<p align="center">
+    <img src="../assets/trism-example2-plot.png" width="80%"/>
+</p>
+``` 
+
+For full instructions on setting up an setting closure scenario, see the [Setting Closure](tut_npi.md#Setting-Closure) section in the tutorial.
 
 ---
 
@@ -178,7 +189,8 @@ add_measure!(school_close_and_reopen, OpenSetting(), offset = 10)
 # Strategy with test-all measure for schools
 school_test_all = SStrategy("Test all in School", sim)
 pcr_test = TestType("PCR Test", pathogen(sim), sim)
-add_measure!(school_test_all, TestAll("PCR Test", pcr_test, positive_followup = school_close_and_reopen))
+add_measure!(school_test_all, TestAll("PCR Test", pcr_test,
+ positive_followup = school_close_and_reopen))
 
 # Strategy to check if schools are open
 school_is_open = SStrategy("School is Open?", sim)
@@ -201,3 +213,5 @@ gemsplot(rd, type = (:TickCases, :TickCasesBySetting, :TickTests))
     <img src="../assets/trism-example3-plot.png" width="80%"/>
 </p>
 ``` 
+
+For full instructions on setting up an setting closure scenario, see the [Setting Closure](tut_npi.md#Setting-Closure) section in the tutorial.
