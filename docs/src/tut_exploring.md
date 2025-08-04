@@ -55,7 +55,7 @@ and one custom parameter.
 ```
 
 !!! info "Where's the list of attributes I can access?"
-    Put a `?` into the Julia REPL and call `help?> Individual` to get an overview of fields that are stored for each individual or look up the Individuals section of the API documentation. Allmost every field has a function of the same name (e.g.g, `age()`) to get its value
+    Put a `?` into the Julia REPL and call `help?> Individual` to get an overview of fields that are stored for each individual or look up the Individuals section of the API documentation. Almost every field has a function of the same name (e.g.g, `age()`) to get its value
 
 A more comprehensive overview of the individuals in a population can be achieved via the `Population`-object.
 The example below generates a dataframe with one row per individual in the population:
@@ -149,7 +149,7 @@ You can make sure to not call these functions for individuals without a valid as
 
 ## Adjusting Individuals
 
-You can esaily adjust individuals' attribute values.
+You can easily adjust individuals' attribute values.
 This example selects the first individual from the list of individuals and updates its `age` to `15`:
 
 ```julia
@@ -162,8 +162,8 @@ first_ind.age = 15
 !!! warning "Caution"
     Please only touch individuals' attribute values if you really know what you are doing. This can potentially invalidate input population models or result in errors when the internal model structure is compromised (e.g., by assigning individuals to non-existent settings)
 
-More elaborate ajustments can be made using the `each!` function on the `Population` object.
-Please look up the "Creating Populations" tutorial to learn how to ajust populations.
+More elaborate adjustments can be made using the `each!` function on the `Population` object.
+Please look up the "Creating Populations" tutorial to learn how to adjust populations.
 
 
 ## Exploring Settings
@@ -190,7 +190,7 @@ Dict{DataType, Vector{Setting}} with 3 entries:
 ```
 
 The above example returns a dictionary where the key is the setting type and the value being the list of settings of that type.
-If you want a particular setting type, you can either pass the respective key to the settings dictionary like `settings(sim)[Household]` or use the prefined access functions, e.g., `households(sim)`:
+If you want a particular setting type, you can either pass the respective key to the settings dictionary like `settings(sim)[Household]` or use the predefined access functions, e.g., `households(sim)`:
 
 ```julia
 using GEMS
@@ -247,7 +247,7 @@ The previous examples demonstrated how you get from an individual to its setting
 Of course, you can go the other way around and access all individuals of a setting.
 Moreover, you can traverse through the bi-partite graph (of individuals and settings) which is an important feature, e.g., to propagate intervention measures.
 Here's an example how to get the household members of an individual.
-To make sure, the individual is not living in a single-person houshold, we increase the average household size in our experiment.
+To make sure, the individual is not living in a single-person household, we increase the average household size in our experiment.
 the `id.()` function gives us the IDs of all members (just for better readability).
 You see that the first ID is `1`, as we select the first individual in the list and look into their household:
 

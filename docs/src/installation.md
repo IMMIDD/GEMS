@@ -79,7 +79,7 @@ The GEMS framework was developed under Julia v.1.11.3.
 
 1. Visit the [Julia](https://julialang.org/downloads/) website.
 2. Download the MacOS installer (usually a .dmg file) for your MacOS system for version v.1.11.3, i.e., the newest version, of Julia.
-3. Locate the downloaded '.dmg' file and double click on it to mount the disk image. The julia application icon should now be visible, drag the icon to the "Aplications" folder to install it. Setting the PATH variable for all users requires administration rights, so the installation of the software packages might need to be done by your IT department. If you're installing the software just for yourself, user rights are sufficient.
+3. Locate the downloaded '.dmg' file and double click on it to mount the disk image. The julia application icon should now be visible, drag the icon to the "Applications" folder to install it. Setting the PATH variable for all users requires administration rights, so the installation of the software packages might need to be done by your IT department. If you're installing the software just for yourself, user rights are sufficient.
 
 !!! info "Note"
      You can also download the current version of Julia by using the terminal . Start the terminal , execute the following command:
