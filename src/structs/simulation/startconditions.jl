@@ -97,7 +97,7 @@ function initialize!(simulation::Simulation, condition::InfectedFraction; seed_s
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), rng=rng(simulation))
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -122,7 +122,7 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed_sample
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), rng=rng(simulation))
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -156,7 +156,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros; seed_sampl
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), rng=rng(simulation))
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
         end
