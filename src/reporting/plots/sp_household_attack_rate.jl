@@ -152,7 +152,7 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; plotargs...
     # prepare colors & data per label
     # read labels from result data vector
     labels = map(label, rds) |> unique
-    colors = Dict(zip(labels, palette(:auto, length(labels))))
+    colors = Dict(zip(labels, gemscolors(length(labels))))
     data = []
 
     # process data and sort by label

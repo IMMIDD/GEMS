@@ -127,7 +127,7 @@ function generate(plt::InfectionDuration, rds::Vector{ResultData}; plotargs...)
     p = boxplot(transpose(ids), result_matrix, 
         legend = false,
         xlabel=uppercasefirst(uticks) * "s",
-        color = haskey(plotargs, :color) ? plotargs[:color] : palette(:auto, 1)[1],
+        color = haskey(plotargs, :color) ? plotargs[:color] : gemscolors(1)[1],
         ylabel="Fraction of Infections", 
         yformatter=formatter,
         fontfamily="Times Roman",

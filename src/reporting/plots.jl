@@ -425,7 +425,7 @@ simulation runs each, this function will generate two plots with
 function splitlabel(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
 
     labels = map(label, rds) |> unique
-    colors = Dict(zip(labels, palette(:auto, length(labels))))
+    colors = Dict(zip(labels, gemscolors(length(labels))))
     data = Dict(zip(labels, [Vector{ResultData}() for _ in 1:length(labels)]))
 
     # sort data by label
@@ -477,7 +477,7 @@ function plotseries!(p::Plots.Plot, extract_function::Function, rds::Vector{Resu
     # prepare colors & data per label
     # read labels from result data vector
     labels = map(label, rds) |> unique
-    colors = Dict(zip(labels, palette(:auto, length(labels))))
+    colors = Dict(zip(labels, gemscolors(length(labels))))
     data = Dict(zip(labels, [[] for _ in 1:length(labels)]))
 
     # sort data by label
