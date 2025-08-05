@@ -83,9 +83,14 @@ Initializes the simulation model with a fraction of infected individuals, provid
 """
 function initialize!(simulation::Simulation, condition::InfectedFraction)
     # number of individuals to infect
+    if isnothing(seed(simulation))
+        rng = Xoshiro()
+    else
+        rng = Xoshiro(seed(simulation))
+    end
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
-    to_infect = sample(ind, to_sample, replace=false)
+    to_infect = sample(rng, ind, to_sample, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
@@ -101,13 +106,20 @@ function initialize!(simulation::Simulation, condition::InfectedFraction)
 
 end
 
+"""
+    initialize!(simulation, PatientZero)
 
-
-#TODO docs
+Initializes the simulation model with a random infected individual.
+"""
 function initialize!(simulation::Simulation, condition::PatientZero)
     # number of individuals to infect
+    if isnothing(seed(simulation))
+        rng = Xoshiro()
+    else
+        rng = Xoshiro(seed(simulation))
+    end
     ind = individuals(population(simulation))
-    to_infect = sample(ind, 1, replace=false)
+    to_infect = sample(rng, ind, 1, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
