@@ -1,5 +1,6 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
+export duplicates
 export concrete_subtypes, is_existing_subtype, find_subtype
 export isdate
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
@@ -15,6 +16,24 @@ export germanshapes
 
 # contact stuff
 export calculate_absolute_error
+
+###
+### GENERAL UTILS
+###
+
+"""
+    duplicates(vec)
+
+Returns values that are duplicates in a provided array.
+"""
+function duplicates(vec)
+    return collect(keys(filter(x -> x[2] > 1, countmap(vec))))
+end
+
+
+###
+### TYPING AND SUBTYPES
+###
 
 function concrete_subtypes(type::Type)::Vector{Type}
     if subtypes(type) == []
@@ -37,6 +56,20 @@ function is_existing_subtype(subtype::String, type::Type)::Bool
     return subtype in [t[end] for t in split.(string.(concrete_subtypes(type)), ".")]
     # return subtype in string.(concrete_subtypes(type))
 end
+
+"""
+    structname(string::String)
+    structname(type::DataType)
+
+Returns the last part of a dot-separated series of strings or composed type.
+If input is `GEMS.Household`, it will return `Household`.
+"""
+function structname(string::String)
+    parts = split(string, ".")
+    return length(parts) > 1 ? parts[end] : string
+end
+
+structname(type::DataType) = structname(string(type))
 
 """
     is_subtype(type::String, parent::DataType)
@@ -74,9 +107,19 @@ This function supersedes `find_subtype(...)`
 """
 function get_subtype(type::String, parent::DataType)
     stypes = subtypes(parent)
-    gems_string = string(nameof(@__MODULE__))
-    # find index of matching type
-    i = findfirst(x -> x == type || x == "$gems_string.$type", string.(stypes))
+
+    # throw exception if multiple modules define a struct subtype
+    # of the same name. This can happen if GEMS is used as a dependency in
+    # another module
+    doubles = duplicates(structname.(stypes))
+    !isempty(doubles) ? throw("There are multiple $(structname(parent)) structs of the same name: $(join(doubles, ", ")). Did you (re-)define them in a custom module?") : nothing
+
+    # find right struct's index
+    i = findfirst(x -> x == structname(type), structname.(stypes))
+
+    # if type is not subtype of parent, throw exception
+    isnothing(i) ? throw("$(structname(type)) is not a known subtype of $(structname(parent)); try any of these: $(join(structname.(stypes), ", "))") : nothing
+
     # return index
     return stypes[i]
 end
@@ -108,19 +151,10 @@ type_in_collection(type::DataType, collection::Vector{DataType}) =
     type_in_collection(string(type), string.(collection))
 
 
-"""
-    structname(string::String)
-    structname(type::DataType)
 
-Returns the last part of a dot-separated series of strings or composed type.
-If input is `GEMS.Household`, it will return `Household`.
-"""
-function structname(string::String)
-    parts = split(string, ".")
-    return length(parts) > 1 ? parts[end] : string
-end
-
-structname(type::DataType) = structname(string(type))
+###
+### OTHER STUFF
+###
 
 # helper function to check whether input is valid date format
 function isdate(x)
