@@ -163,7 +163,7 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 !!! info "Example"
     The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/custom-transmission-function) with a working config file for the code snippet above.
 
-Now, run a baseline simulation and one with your custom transmission function and plot the `:tickCcasesBySetting`.
+Now, run a baseline simulation and one with your custom transmission function and plot the `:TickCasesBySetting`.
 We should see a significant difference between the number of infections that happen within and outside households.
 
 ```julia
