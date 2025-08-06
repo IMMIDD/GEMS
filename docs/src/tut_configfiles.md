@@ -173,7 +173,7 @@ run!(default)
 run!(custom)
 rd_d = ResultData(default)
 rd_c = ResultData(custom)
-gemsplot([rd_s, rd_c], type = :TickCasesBySetting)
+gemsplot([rd_d, rd_c], type = :TickCasesBySetting)
 ```
 
 **Plot**
