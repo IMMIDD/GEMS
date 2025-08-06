@@ -83,6 +83,44 @@ end
 
 get_subtype(type::Symbol, parent::DataType) = get_subtype(string(type), parent)
 
+"""
+    type_in_collection(type::String, collection::Vector{String})
+    type_in_collection(type::DataType, collection::Vector{String})
+    type_in_collection(type::String, collection::Vector{DataType})
+    type_in_collection(type::DataType, collection::Vector{DataType})
+
+
+Returns true if `Household` is in `[Household, Office]` or
+`GEMS.Household` is in `[Household, Office]` or `Household` is in
+`[GEMS.Household, GEMS.Office]` or
+"""
+function type_in_collection(type::String, collection::Vector{String})
+    return structname(type) in structname.(collection)
+end
+
+type_in_collection(type::DataType, collection::Vector{String}) =
+    type_in_collection(string(type), collection)
+
+type_in_collection(type::String, collection::Vector{DataType}) =
+    type_in_collection(type, string.(collection))
+
+type_in_collection(type::DataType, collection::Vector{DataType}) =
+    type_in_collection(string(type), string.(collection))
+
+
+"""
+    structname(string::String)
+    structname(type::DataType)
+
+Returns the last part of a dot-separated series of strings or composed type.
+If input is `GEMS.Household`, it will return `Household`.
+"""
+function structname(string::String)
+    parts = split(string, ".")
+    return length(parts) > 1 ? parts[end] : string
+end
+
+structname(type::DataType) = structname(string(type))
 
 # helper function to check whether input is valid date format
 function isdate(x)
