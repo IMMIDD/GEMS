@@ -144,7 +144,7 @@ function GEMS.transmission_probability(transFunc::SettingRate,
 end
 ```
 
-In your custom config file (the one referenced in the code above), specify the use of the `SettingRate` method and provide the parameters as you defined them.
+In your custom config file, specify the use of the `SettingRate` method and provide the parameters as you defined them.
 The example below shows the parameterization in a custom config file.
 If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
 
@@ -183,6 +183,92 @@ gemsplot([rd_s, rd_c], type = :TickCasesBySetting)
     <img src="../assets/tutorials/tut_advanced_custom-transmission.png" width="80%"/>
 </p>
 ```
+
+
+## Immunity & Waning
+
+Individuals in GEMS don't have an immunity attribute.
+Immunity is considered implicitly by the `transmission_probabilty()` function.
+Making an individual "immune" corresponds to having the transmission probability function return `0`, e.g., if we assume perfect natural immunity after infection and that the individual has been infected at least once.
+Waning (of natural immunity or vaccination protection) can be modeled the same way.
+All cases require the definition of a custom transmission function.
+We recommend doing [this](@ref custom-transmission) tutorial first, if you have not yet built a custom transmission function yourself.
+
+For this example, we want an individual to have natural immunty against a pathogen after infection for exactly 50 days.
+The example below shows a custom transmission function including that rule.
+The `FixedWaning` struct takes two parameters.
+A `rate` representing the infection probability if no immunity applies and a `waning_time` specifying the duration of immunity after recovery.
+
+```julia
+using GEMS
+using Parameters
+import GEMS.transmission_probability
+
+# define custom transmission struct
+@with_kw mutable struct FixedWaning <: GEMS.TransmissionFunction
+    rate::Float64
+    waning_time::Int64
+end
+
+# override transmission probability function for your struct
+function GEMS.transmission_probability(transFunc::FixedWaning,
+    infecter::Individual, infected::Individual,
+    setting::Setting, tick::Int16)::Float64
+
+    # if never infected before, usual rate applies
+    if number_of_infections(infected) == 0
+        return transFunc.rate
+    end
+
+    # calculate until when individual is immune if he was previously infected
+    immune_until = removed_tick(infected) + transFunc.waning_time
+    
+    # if waning date is in the future, return 0 as transmission probability,
+    # else, return provided rate
+    return immune_until > tick ? 0.0 : transFunc.rate
+end
+```
+
+We also need a custom config file to incorporate the new rules in our simulation.
+In your custom config file, specify the use of the `FixedWaning` method and provide the parameters as you defined them.
+The example below shows the parameterization in a custom config file.
+If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
+
+```@TOML
+### Pathogen section of the config file ###
+
+[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.transmission_function]
+            type = "FixedWaning"
+            [Pathogens.Covid19.transmission_function.parameters]
+                rate = 0.2
+                waning_time = 50
+```
+
+!!! info "Example"
+    The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/fixed-waning) with a working config file for the code snippet above.
+
+Run a simulation as such and inspect the results:
+
+```julia
+sim = Simulation("fixed-waning.toml")
+run!(sim)
+rd = ResultData(sim)
+gemsplot(rd)
+```
+
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_advanced_fixed-waning.png" width="80%"/>
+</p>
+```
+
+The plots show oscillating behavior of the daily infections and the effective reproduction number as individuals are becoming susceptible again a few weeks after their initial infection.
+
 
 ## Custom Start Conditions
 
