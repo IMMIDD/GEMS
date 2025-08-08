@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Config Files · GEMS.jl</title><meta name="title" content="Config Files · GEMS.jl"/><meta property="og:title" content="Config Files · GEMS.jl"/><meta property="twitter:title" content="Config Files · GEMS.jl"/><meta name="description" content="Documentation for GEMS.jl."/><meta property="og:description" content="Documentation for GEMS.jl."/><meta property="twitter:description" content="Documentation for GEMS.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.jpeg" alt="GEMS.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">GEMS.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../installation/">Installation</a></li><li><span class="tocitem">Base Model</span><ul><li><a class="tocitem" href="../base-population/">Population</a></li><li><a class="tocitem" href="../base-contacts/">Contacts</a></li><li><a class="tocitem" href="../base-disease/">Disease</a></li><li><a class="tocitem" href="../TriSM/">Interventions</a></li><li><a class="tocitem" href="../base-config/">Default Parameters</a></li></ul></li><li><span class="tocitem">Running Simulations</span><ul><li><a class="tocitem" href="../tut_Intro/">Tutorials</a></li><li><a class="tocitem" href="../tut_gettingstarted/">1 - Getting Started</a></li><li><a class="tocitem" href="../tut_exploring/">2 - Exploring Models</a></li><li><a class="tocitem" href="../tut_plotting/">3 - Plotting</a></li><li><a class="tocitem" href="../tut_batches/">4 - Running Batches</a></li><li><a class="tocitem" href="../tut_pops/">5 - Creating Populations</a></li><li><a class="tocitem" href="../tut_configfiles/">6 - Advanced Parameterization</a></li><li><a class="tocitem" href="../tut_postprocessing/">7 - Logging &amp; Post-Processing</a></li><li><a class="tocitem" href="../tut_reporting/">8 - Reporting</a></li><li><a class="tocitem" href="../tut_npi/">9 - Modeling Interventions</a></li><li><a class="tocitem" href="../cheat-sheet/">Cheat Sheet</a></li></ul></li><li class="is-active"><a class="tocitem" href>Config Files</a><ul class="internal"><li><a class="tocitem" href="#Default-Config-File"><span>Default Config File</span></a></li><li><a class="tocitem" href="#Manipulating-Config-Files"><span>Manipulating Config Files</span></a></li></ul></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../docstrings-overview/">Overview</a></li><li><a class="tocitem" href="../api_batch/">Batches</a></li><li><a class="tocitem" href="../api_contacts/">Contacts</a></li><li><a class="tocitem" href="../api_individuals/">Individuals</a></li><li><a class="tocitem" href="../api_infections/">Infections and Immunity</a></li><li><a class="tocitem" href="../api_interventions/">Interventions</a></li><li><a class="tocitem" href="../api_logger/">Logger</a></li><li><a class="tocitem" href="../api_mapping/">Mapping</a></li><li><a class="tocitem" href="../api_misc/">Misc</a></li><li><a class="tocitem" href="../api_movie/">Movie</a></li><li><a class="tocitem" href="../api_pathogens/">Pathogens</a></li><li><a class="tocitem" href="../api_plotting/">Plotting</a></li><li><a class="tocitem" href="../api_population/">Population</a></li><li><a class="tocitem" href="../api_postproc/">Post Processing</a></li><li><a class="tocitem" href="../api_reporting/">Reporting</a></li><li><a class="tocitem" href="../api_resultdata/">Result Data</a></li><li><a class="tocitem" href="../api_settings/">Settings</a></li><li><a class="tocitem" href="../api_simulation/">Simulation</a></li></ul></li><li><a class="tocitem" href="../contributing-guide/">Contributing to GEMS</a></li><li><a class="tocitem" href="../changelog/">Changelog</a></li><li><a class="tocitem" href="../faq-page/">FAQ</a></li><li><a class="tocitem" href="../glossary/">Glossary</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Config Files</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Config Files</a></li></ul></nav><div class="docs-right"><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="config-files"><a class="docs-heading-anchor" href="#config-files">Config Files</a><a id="config-files-1"></a><a class="docs-heading-anchor-permalink" href="#config-files" title="Permalink"></a></h1><p>Using a config file, you can manipulate any parameter of a GEMS simulation. Although you can spawn a simulation without a config file (e.g., by just calling <code>Simulation()</code>), GEMS will iternally load a default config file and override the values based on the custom parameter you might have provided.</p><p>This page gives an overview of what you can put into a config file and uses the default config file as demonstration. Config files use the <strong>*.TOML</strong> notation. When working with the <code>Simulation()</code> function to create a simulation, you can <strong>either</strong> use keyword arguments <strong>or</strong> a config file. Therefore, when you use a config file, you need to make sure that all parameters you want to pass are contained in the file.</p><h2 id="Default-Config-File"><a class="docs-heading-anchor" href="#Default-Config-File">Default Config File</a><a id="Default-Config-File-1"></a><a class="docs-heading-anchor-permalink" href="#Default-Config-File" title="Permalink"></a></h2><p>These are the internal defaults whenever you spawn a simulation without additional arguments. Please look up the <a href="../base-config/#default-config">Default Configuration</a> section for a more readable summary of the values. If you want to set up a custom config file, you can copy this one into your own *.TOML file and change the values to your liking.</p><pre><code class="language- hljs">[Simulation]
+
+    # seed = 1234
+    tickunit = &#39;d&#39;
+    GlobalSetting = false
+    startdate = &#39;2024.01.01&#39;
+    enddate = &#39;2024.12.31&#39;
+    [Simulation.StartCondition]
+        type = &quot;InfectedFraction&quot;
+        fraction = 0.001
+        pathogen = &quot;Covid19&quot;   # BE AWARE, THAT NAME MUST BE THE SAME AS IN TOML SECTION
+
+    [Simulation.StopCriterion]
+        type = &quot;TimesUp&quot;
+        limit = 365
+
+[Population]
+    n = 100_000
+    avg_household_size = 3
+    avg_office_size = 5
+    avg_school_size = 100
+    empty = false
+
+[Pathogens]
+
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.transmission_function]
+            type = &quot;ConstantTransmissionRate&quot;
+            [Pathogens.Covid19.transmission_function.parameters]
+                transmission_rate = 0.2
+
+        [Pathogens.Covid19.onset_of_symptoms]
+            distribution = &quot;Poisson&quot;
+            parameters = [3]
+
+
+        [Pathogens.Covid19.time_to_recovery]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+
+        [Pathogens.Covid19.onset_of_severeness]
+            distribution = &quot;Poisson&quot;
+            parameters = [3]
+
+        [Pathogens.Covid19.infectious_offset]
+            distribution = &quot;Poisson&quot;
+            parameters = [1]
+
+        [Pathogens.Covid19.mild_death_rate]
+            distribution = &quot;Binomial&quot;
+            parameters = [1, 0.0]
+
+        [Pathogens.Covid19.severe_death_rate]
+            distribution = &quot;Binomial&quot;
+            parameters = [1, 0.05]
+
+        [Pathogens.Covid19.critical_death_rate]
+            distribution = &quot;Binomial&quot;
+            parameters = [1, 0.2]
+
+        [Pathogens.Covid19.hospitalization_rate]
+            distribution = &quot;Binomial&quot;
+            parameters = [1, 0.3]
+
+        [Pathogens.Covid19.ventilation_rate]
+            distribution = &quot;Binomial&quot;
+            parameters = [1, 0.3]
+
+        [Pathogens.Covid19.icu_rate]
+            distribution = &quot;Binomial&quot;
+            parameters = [1, 0.3]
+
+        [Pathogens.Covid19.time_to_hospitalization]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+
+        [Pathogens.Covid19.time_to_icu]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+
+        [Pathogens.Covid19.length_of_stay]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+
+        [Pathogens.Covid19.dpr]
+        # Matrix with Disease Progression
+            age_groups = [&quot;0+&quot;]
+            disease_compartments = [&quot;Asymptomatic&quot;, &quot;Mild&quot;, &quot;Severe&quot;, &quot;Critical&quot;]
+            stratification_matrix = [[0.4, 0.45, 0.1, 0.05]]
+
+[Settings]
+
+    [Settings.Household]
+        [Settings.Household.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.Household.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.Office]
+        [Settings.Office.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.Office.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+                    
+    [Settings.School]
+        [Settings.School.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.School.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.SchoolClass]
+        [Settings.SchoolClass.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.SchoolClass.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.Municipality]
+        [Settings.Municipality.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.Municipality.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.WorkplaceSite]
+        [Settings.WorkplaceSite.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.WorkplaceSite.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.SchoolComplex]
+        [Settings.SchoolComplex.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.SchoolComplex.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.SchoolYear]
+        [Settings.SchoolYear.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.SchoolYear.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.Department]
+        [Settings.Department.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.Department.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+
+    [Settings.Workplace]
+        [Settings.Workplace.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.Workplace.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+                    
+    [Settings.GlobalSetting]
+        [Settings.GlobalSetting.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+
+                [Settings.GlobalSetting.contact_sampling_method.parameters]
+                    contactparameter = 1.0</code></pre><h2 id="Manipulating-Config-Files"><a class="docs-heading-anchor" href="#Manipulating-Config-Files">Manipulating Config Files</a><a id="Manipulating-Config-Files-1"></a><a class="docs-heading-anchor-permalink" href="#Manipulating-Config-Files" title="Permalink"></a></h2><p>While you can adapt many parameters via the <code>Simulation()</code> constructor, config files are required if you want to add custom mechanics (like custom transmission functions or custom contact sampling functions). Please have a look at the tutorial for <a href="../tut_configfiles/#advanced">advanced parameterization</a>.</p><p>A config file contains four sections: <code>[Simulation]</code>, <code>[Population]</code>, <code>[Pathogens]</code>, and <code>[Settings]</code>.</p><ul><li><a href="#Simulation">Simulation</a></li><li class="no-marker"><ul><li><a href="#seed"><code>seed</code></a></li><li><a href="#tickunit"><code>tickunit</code></a></li><li><a href="#GlobalSetting"><code>GlobalSetting</code></a></li><li><a href="#startdate"><code>startdate</code></a></li><li><a href="#enddate"><code>enddate</code></a></li></ul></li><li><a href="#Population">Population</a></li><li class="no-marker"><ul><li><a href="#n"><code>n</code></a></li><li><a href="#avg_household_size"><code>avg_household_size</code></a></li><li><a href="#avg_office_size"><code>avg_office_size</code></a></li><li><a href="#avg_school_size"><code>avg_school_size</code></a></li><li><a href="#empty"><code>empty</code></a></li></ul></li><li><a href="#Pathogens">Pathogens</a></li><li class="no-marker"><ul><li><a href="#transmission_function"><code>transmission_function</code></a></li><li><a href="#onset_of_symptoms"><code>onset_of_symptoms</code></a></li><li><a href="#time_to_recovery"><code>time_to_recovery</code></a></li><li><a href="#onset_of_severeness"><code>onset_of_severeness</code></a></li><li><a href="#infectious_offset"><code>infectious_offset</code></a></li><li><a href="#mild_death_rate"><code>mild_death_rate</code></a></li><li><a href="#severe_death_rate"><code>severe_death_rate</code></a></li><li><a href="#critical_death_rate"><code>critical_death_rate</code></a></li><li><a href="#hospitalization_rate"><code>hospitalization_rate</code></a></li><li><a href="#ventilation_rate"><code>ventilation_rate</code></a></li><li><a href="#icu_rate"><code>icu_rate</code></a></li><li><a href="#time_to_hospitalization"><code>time_to_hospitalization</code></a></li><li><a href="#time_to_icu"><code>time_to_icu</code></a></li><li><a href="#length_of_stay"><code>length_of_stay</code></a></li><li><a href="#dpr-(Disease-Progression)"><code>dpr</code> (Disease Progression)</a></li></ul></li><li><a href="#Settings">Settings</a></li><li class="no-marker"><ul><li><a href="#config-contact-sampling"><code>contact_sampling_method</code></a></li></ul></li></ul><h3 id="Simulation"><a class="docs-heading-anchor" href="#Simulation">Simulation</a><a id="Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Simulation" title="Permalink"></a></h3><h4 id="seed"><a class="docs-heading-anchor" href="#seed"><code>seed</code></a><a id="seed-1"></a><a class="docs-heading-anchor-permalink" href="#seed" title="Permalink"></a></h4><p>Random seed used for the simulation. The seed is being set upon creation of the <code>Simulation</code> object.</p><pre><code class="language- hljs">[Simulation]
+    seed = 12345
+    ...</code></pre><p>The seed must be an integer value.</p><h4 id="tickunit"><a class="docs-heading-anchor" href="#tickunit"><code>tickunit</code></a><a id="tickunit-1"></a><a class="docs-heading-anchor-permalink" href="#tickunit" title="Permalink"></a></h4><p>Length of a simulated timestep.</p><pre><code class="language- hljs">[Simulation]
+    tickunit = &#39;d&#39;
+    ...</code></pre><p>The tick unit can either by days(<code>&#39;d&#39;</code>), hours(<code>&#39;h&#39;</code>), or weeks(<code>&#39;w&#39;</code>).</p><h4 id="GlobalSetting"><a class="docs-heading-anchor" href="#GlobalSetting"><code>GlobalSetting</code></a><a id="GlobalSetting-1"></a><a class="docs-heading-anchor-permalink" href="#GlobalSetting" title="Permalink"></a></h4><p>Boolean flag that adds a single setting containing all individuals of the simulations, the <code>GlobalSetting</code>.</p><pre><code class="language- hljs">[Simulation]
+    GlobalSetting = false
+    ...</code></pre><p>Can be activated or deactivated with <code>true</code> or <code>false</code>.</p><h4 id="startdate"><a class="docs-heading-anchor" href="#startdate"><code>startdate</code></a><a id="startdate-1"></a><a class="docs-heading-anchor-permalink" href="#startdate" title="Permalink"></a></h4><p>t.b.d.</p><h4 id="enddate"><a class="docs-heading-anchor" href="#enddate"><code>enddate</code></a><a id="enddate-1"></a><a class="docs-heading-anchor-permalink" href="#enddate" title="Permalink"></a></h4><p>t.b.d.</p><h3 id="Population"><a class="docs-heading-anchor" href="#Population">Population</a><a id="Population-1"></a><a class="docs-heading-anchor-permalink" href="#Population" title="Permalink"></a></h3><h4 id="n"><a class="docs-heading-anchor" href="#n"><code>n</code></a><a id="n-1"></a><a class="docs-heading-anchor-permalink" href="#n" title="Permalink"></a></h4><p>The number of individuals to generate.</p><pre><code class="language- hljs">[Population]
+    n = 100_000
+    ...</code></pre><p>Must be an integer value. This parameter does not apply if you pass a dedicated population file.</p><h4 id="avg_household_size"><a class="docs-heading-anchor" href="#avg_household_size"><code>avg_household_size</code></a><a id="avg_household_size-1"></a><a class="docs-heading-anchor-permalink" href="#avg_household_size" title="Permalink"></a></h4><p>The average household size in a generated population.</p><pre><code class="language- hljs">[Population]
+    avg_household_size = 3
+    ...</code></pre><p>Must be an integer value. This parameter does not apply if you pass a dedicated population file.</p><h4 id="avg_office_size"><a class="docs-heading-anchor" href="#avg_office_size"><code>avg_office_size</code></a><a id="avg_office_size-1"></a><a class="docs-heading-anchor-permalink" href="#avg_office_size" title="Permalink"></a></h4><p>The average office size in a generated population.</p><pre><code class="language- hljs">[Population]
+    avg_office_size = 5
+    ...</code></pre><p>Must be an integer value. This parameter does not apply if you pass a dedicated population file.</p><h4 id="avg_school_size"><a class="docs-heading-anchor" href="#avg_school_size"><code>avg_school_size</code></a><a id="avg_school_size-1"></a><a class="docs-heading-anchor-permalink" href="#avg_school_size" title="Permalink"></a></h4><p>The average school size in a generated population. This is internally handled as <code>SchoolClass</code>es, as <code>School</code>s are a <code>ContainerSetting</code> that cannot directly hold individuals. Look up the explanation of <a href="../base-population/#setting-hierarchy">setting hierarchies</a>.</p><pre><code class="language- hljs">[Population]
+    avg_school_size = 100
+    ...</code></pre><p>Must be an integer value. This parameter does not apply if you pass a dedicated population file.</p><h4 id="empty"><a class="docs-heading-anchor" href="#empty"><code>empty</code></a><a id="empty-1"></a><a class="docs-heading-anchor-permalink" href="#empty" title="Permalink"></a></h4><p>If true, overrides all other arguments and returns a completely empty population object.</p><pre><code class="language- hljs">[Population]
+    empty = false
+    ...</code></pre><p>Must be a boolean value.</p><h3 id="Pathogens"><a class="docs-heading-anchor" href="#Pathogens">Pathogens</a><a id="Pathogens-1"></a><a class="docs-heading-anchor-permalink" href="#Pathogens" title="Permalink"></a></h3><p>The <code>[Pathogens]</code> section defines the pathogens contained in the simulation. You can define an arbitrary number of pathogens. However, currently only the first pathogen is being loaded. We are working on a multi-pathogen implementation.</p><p>Every pathogen must be defined via a dedicated section where the pathogen name is the section identifier:</p><pre><code class="language- hljs">[Pathogen]
+    [Pathogens.Covid19]
+        # Pathogen Parameters
+        ...</code></pre><p>The following sections present the parameters that can be specified for a named pathogen.</p><h4 id="transmission_function"><a class="docs-heading-anchor" href="#transmission_function"><code>transmission_function</code></a><a id="transmission_function-1"></a><a class="docs-heading-anchor-permalink" href="#transmission_function" title="Permalink"></a></h4><p>Defines the routine which is used to evaluate the infection probability for any contact. This can as well be used to model immunity and waning.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.transmission_function]
+            type = &quot;ConstantTransmissionRate&quot;
+            [Pathogens.Covid19.transmission_function.parameters]
+                transmission_rate = 0.2
+                ...</code></pre><p>The <code>type</code> argument specifies the <code>TransmissionFunction</code> that conditions the dispatching to the respective <code>transmission_probability(...)</code> function when running GEMS. The subsequent <code>[....parameters]</code> section holds the arguments that the GEMS engine will pass to the <code>TransmissionFunction</code> struct upon initialization. Look up the tutorial on creating <a href="../tut_configfiles/#custom-transmission">Custom Transmission Functions</a> for more explanations and examples.</p><h4 id="onset_of_symptoms"><a class="docs-heading-anchor" href="#onset_of_symptoms"><code>onset_of_symptoms</code></a><a id="onset_of_symptoms-1"></a><a class="docs-heading-anchor-permalink" href="#onset_of_symptoms" title="Permalink"></a></h4><p>Speficies the distribution that is being used to draw the duration from exposure to onset of symptoms upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.onset_of_symptoms]
+            distribution = &quot;Poisson&quot;
+            parameters = [3]
+            ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="time_to_recovery"><a class="docs-heading-anchor" href="#time_to_recovery"><code>time_to_recovery</code></a><a id="time_to_recovery-1"></a><a class="docs-heading-anchor-permalink" href="#time_to_recovery" title="Permalink"></a></h4><p>Speficies the distribution that is being used to draw the duration from onset of symptoms to recovery upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.time_to_recovery]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+            ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="onset_of_severeness"><a class="docs-heading-anchor" href="#onset_of_severeness"><code>onset_of_severeness</code></a><a id="onset_of_severeness-1"></a><a class="docs-heading-anchor-permalink" href="#onset_of_severeness" title="Permalink"></a></h4><p>Speficies the distribution that is being used to draw the duration from onset of symptoms to the onset of severeness (for a severe progression) upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.onset_of_severeness]
+            distribution = &quot;Poisson&quot;
+            parameters = [3]
+            ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="infectious_offset"><a class="docs-heading-anchor" href="#infectious_offset"><code>infectious_offset</code></a><a id="infectious_offset-1"></a><a class="docs-heading-anchor-permalink" href="#infectious_offset" title="Permalink"></a></h4><p>Speficies the distribution that is being used to draw the duration that infectiousness sets on before the onset of symptoms upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.infectious_offset]
+            distribution = &quot;Poisson&quot;
+            parameters = [1]
+            ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="mild_death_rate"><a class="docs-heading-anchor" href="#mild_death_rate"><code>mild_death_rate</code></a><a id="mild_death_rate-1"></a><a class="docs-heading-anchor-permalink" href="#mild_death_rate" title="Permalink"></a></h4><p>Speficies the distribution that determines the death probability with a mild disease progression upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19.mild_death_rate]
+        distribution = &quot;Binomial&quot;
+        parameters = [1, 0.0]
+        ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="severe_death_rate"><a class="docs-heading-anchor" href="#severe_death_rate"><code>severe_death_rate</code></a><a id="severe_death_rate-1"></a><a class="docs-heading-anchor-permalink" href="#severe_death_rate" title="Permalink"></a></h4><p>Speficies the distribution that determines the death probability with a severe disease progression upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19.severe_death_rate]
+        distribution = &quot;Binomial&quot;
+        parameters = [1, 0.05]
+        ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="critical_death_rate"><a class="docs-heading-anchor" href="#critical_death_rate"><code>critical_death_rate</code></a><a id="critical_death_rate-1"></a><a class="docs-heading-anchor-permalink" href="#critical_death_rate" title="Permalink"></a></h4><p>Speficies the distribution that determines the death probability with a critical disease progression upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19.critical_death_rate]
+        distribution = &quot;Binomial&quot;
+        parameters = [1, 0.2]
+        ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="hospitalization_rate"><a class="docs-heading-anchor" href="#hospitalization_rate"><code>hospitalization_rate</code></a><a id="hospitalization_rate-1"></a><a class="docs-heading-anchor-permalink" href="#hospitalization_rate" title="Permalink"></a></h4><p>Speficies the distribution that determines the hospitalization probability with a severe disease progression upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19.hospitalization_rate]
+        distribution = &quot;Binomial&quot;
+        parameters = [1, 0.3]
+        ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="ventilation_rate"><a class="docs-heading-anchor" href="#ventilation_rate"><code>ventilation_rate</code></a><a id="ventilation_rate-1"></a><a class="docs-heading-anchor-permalink" href="#ventilation_rate" title="Permalink"></a></h4><p>Speficies the distribution that determines the ventilation probability with a critical disease progression upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19.ventilation_rate]
+        distribution = &quot;Binomial&quot;
+        parameters = [1, 0.3]
+        ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="icu_rate"><a class="docs-heading-anchor" href="#icu_rate"><code>icu_rate</code></a><a id="icu_rate-1"></a><a class="docs-heading-anchor-permalink" href="#icu_rate" title="Permalink"></a></h4><p>Speficies the distribution that determines the probability of being admitted to ICU with a critical disease progression upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19.icu_rate]
+        distribution = &quot;Binomial&quot;
+        parameters = [1, 0.3]
+        ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="time_to_hospitalization"><a class="docs-heading-anchor" href="#time_to_hospitalization"><code>time_to_hospitalization</code></a><a id="time_to_hospitalization-1"></a><a class="docs-heading-anchor-permalink" href="#time_to_hospitalization" title="Permalink"></a></h4><p>Speficies the distribution that is being used to draw the duration from onset of symptoms to hospitalization upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.time_to_hospitalization]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+            ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="time_to_icu"><a class="docs-heading-anchor" href="#time_to_icu"><code>time_to_icu</code></a><a id="time_to_icu-1"></a><a class="docs-heading-anchor-permalink" href="#time_to_icu" title="Permalink"></a></h4><p>Speficies the distribution that is being used to draw the duration from hospitalization to ICU admittance upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.time_to_icu]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+            ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="length_of_stay"><a class="docs-heading-anchor" href="#length_of_stay"><code>length_of_stay</code></a><a id="length_of_stay-1"></a><a class="docs-heading-anchor-permalink" href="#length_of_stay" title="Permalink"></a></h4><p>Speficies the distribution that is being used to draw the duration from hospitalization to release/recovery upon infection.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.length_of_stay]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]
+            ...</code></pre><p>The <code>distribution</code> argument must be a distribution of the <code>Distributions.jl</code> package. The <code>parameters</code> argument must contain a vector of arguments that are being passed to the distribution&#39;s constructor.</p><h4 id="dpr-(Disease-Progression)"><a class="docs-heading-anchor" href="#dpr-(Disease-Progression)"><code>dpr</code> (Disease Progression)</a><a id="dpr-(Disease-Progression)-1"></a><a class="docs-heading-anchor-permalink" href="#dpr-(Disease-Progression)" title="Permalink"></a></h4><p>Defines the severity of the disease progression by age group.</p><pre><code class="language- hljs">[Pathogens]
+    [Pathogens.Covid19.dpr]
+        age_groups = [&quot;0-10&quot;, &quot;11+&quot;]
+        disease_compartments = [&quot;Asymptomatic&quot;, &quot;Mild&quot;, &quot;Severe&quot;, &quot;Critical&quot;]
+        stratification_matrix = [[0.40, 0.45, 0.10, 0.05],
+                                 [0.45, 0.30, 0.20, 0.05]]
+        ...</code></pre><p>The <code>age_groups</code> argument defines the age ranges that are differentiated when evaluating the severity of disease progressions. Make sure to pass a vector of strings that contain an integer range of age-values. The &quot;+&quot; indicates that this is an &quot;open-end&quot; age range. All possible ages must be covered, therefore, you should always have a trailing &quot;open-end&quot; age range. The <code>disease_compartments</code> argument defines the categories of disease progressions that are being simulated. In most cases, the defaults (<code>[&quot;Asymptomatic&quot;, &quot;Mild&quot;, &quot;Severe&quot;, &quot;Critical&quot;]</code>) should not be changed. The <code>stratification_matrix</code> must be a matrix representation that matches the age groups (rows) with the severity categories (columns). Each row must sum to <code>1</code>.</p><h3 id="Settings"><a class="docs-heading-anchor" href="#Settings">Settings</a><a id="Settings-1"></a><a class="docs-heading-anchor-permalink" href="#Settings" title="Permalink"></a></h3><p>The <code>[Settings]</code> section defines the rules for how contacts are being drawn in settings of the respective type. Setting type-specific definitions are introduced by a new subsection with the setting type as an identifier:</p><pre><code class="language- hljs">[Settings]
+    [Settings.Household]
+    ...</code></pre><h4 id="config-contact-sampling"><a class="docs-heading-anchor" href="#config-contact-sampling"><code>contact_sampling_method</code></a><a id="config-contact-sampling-1"></a><a class="docs-heading-anchor-permalink" href="#config-contact-sampling" title="Permalink"></a></h4><p>Defines the routine which is used to draw contacts in settings of the respective type in each timestep (tick).</p><pre><code class="language- hljs">[Settings]
+    [Settings.Household]
+        [Settings.Household.contact_sampling_method]
+                type = &quot;ContactparameterSampling&quot;
+                [Settings.Household.contact_sampling_method.parameters]
+                    contactparameter = 1.0</code></pre><p>The <code>type</code> argument specifies the <code>ContactSamplingMethod</code> that conditions the dispatching to the respective <code>sample_contacts(...)</code> function when running GEMS. The subsequent <code>[....parameters]</code> section holds the arguments that the GEMS engine will pass to the <code>ContactSamplingMethod</code> struct upon initialization. Look up the tutorial on creating <a href="../tut_configfiles/#custom-contacts">Custom Contact Functions</a> for more explanations and examples.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../cheat-sheet/">« Cheat Sheet</a><a class="docs-footer-nextpage" href="../docstrings-overview/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Friday 8 August 2025 11:53">Friday 8 August 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
