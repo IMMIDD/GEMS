@@ -1048,10 +1048,11 @@ end
 Loads the `Settings` from the `Simulation` config parameters.
 """
 function load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
+
     for (type, setting_list) in settings(stngs)
         # for every setting type we assign the given attributes
-        if string(type) in keys(attributes)
-            setting_attributes = attributes[string(type)]
+        if structname(type) in keys(attributes)
+            setting_attributes = attributes[structname(type)] # structnames() handles types like "GEMS.Houshold" that occur, if GEMS is loaded within another scope/package
             # for every provided key, we set the corresponding field
             for (key, value) in setting_attributes
                 if Symbol(key) in fieldnames(type)

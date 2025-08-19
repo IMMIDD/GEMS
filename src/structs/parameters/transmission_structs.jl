@@ -1,6 +1,7 @@
 export TransmissionFunction
 export ConstantTransmissionRate, AgeDependentTransmissionRate, SettingDependentTransmissionRate
 export parameters
+export transmission_functions
 
 
 """
@@ -93,3 +94,16 @@ function parameters(transfunc::ConstantTransmissionRate)
     return Dict("type" => string(transfunc),
                 "parameters" => Dict("transmission_rate" => transfunc.transmission_rate))
 end
+
+
+
+###
+### HELPER FUNCTIONS
+###
+
+"""
+    transmission_functions()
+
+Returns all known transmission functions (subtypes of `TransmissionFunction`).
+"""
+transmission_functions() = subtypes(TransmissionFunction)

@@ -89,17 +89,8 @@ function create_transmission_function(config::Dict)
 
     # Parse the type provided as a string
     type_string = get(config, "type", "")
-    gems_string = string(nameof(@__MODULE__))
-    # we need to check the TF-name with and without the "GEMS.xxx" namespace
-    # qualifier as the module name will be present if GEMS is imported as
-    # a depenedncy into another module
-    id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", string.(subtypes(TransmissionFunction)))
-    if isnothing(id)
-        error("The provided type is not a valid subtype of $TransmissionFunction use '$(join(string.(subtypes(TransmissionFunction)), "', '", "' or '"))'!")
-    end
-    type = subtypes(TransmissionFunction)[id]
-
-    
+    # get subtype so it can be instantiated
+    type = get_subtype(type_string, TransmissionFunction)
 
     # Convert the parameter keys to symbols for the use as keyword arguments
     parameters = Dict(Symbol(k) => v for (k, v) in get(config, "parameters", Dict()))
