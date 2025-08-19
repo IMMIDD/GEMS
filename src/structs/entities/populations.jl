@@ -94,23 +94,23 @@ mutable struct Population
     end
 
     @doc """
-        Population(; n::Int64 = 100_000, avg_household_size::Float64 = 3.0, avg_office_size::Float64 = 5.0, avg_school_size::Float64 = 100.0)
+        Population(; n::Int64 = 100_000, avg_household_size::Real = 3.0, avg_office_size::Real = 5.0, avg_school_size::Real = 100.0)
 
     Creates a `Population` object without an explicit data source and randomly generates the individuals.
     
     # Parameters
 
     - `n::Int64 = 100_000` *(optional)*: Number of individuals in the population (default = `100_000`)
-    - `avg_household_size::Float64 = 3.0` *(optional)*: Average size of households (default = `3`)
-    - `avg_office_size::Float64 = 5.0` *(optional)*: Average size of offices (default = `5`)
-    - `avg_school_size::Float64 = 100.0` *(optional)*: Average size of schools (default = `100`)
+    - `avg_household_size::Real = 3.0` *(optional)*: Average size of households (default = `3`)
+    - `avg_office_size::Real = 5.0` *(optional)*: Average size of offices (default = `5`)
+    - `avg_school_size::Real = 100.0` *(optional)*: Average size of schools (default = `100`)
     - `empty::Bool = false` *(optional)*: If true, overrides all other arguments and returns a completely empty population object
     """
     function Population(;
         n::Int64 = 100_000,
-        avg_household_size::Float64 = 3.0,
-        avg_office_size::Float64 = 5.0,
-        avg_school_size::Float64 = 100.0,
+        avg_household_size::Real = 3.0,
+        avg_office_size::Real = 5.0,
+        avg_school_size::Real = 100.0,
         empty::Bool = false)
 
         # if "empty" keyword is passed, generate an empty population object

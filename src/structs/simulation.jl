@@ -252,9 +252,9 @@ mutable struct Simulation
     | `global_contact_rate`           | `Float64`              | Average number of contacts in the global per timestep (Poisson-distributed)                                                           |
     | **Population Parameters**       |                        |                                                                                                                                       |
     | `pop_size`                      | `Int64`                | Number of individuals in the population                                                                                               |
-    | `avg_household_size`            | `Float64`              | Average size of households                                                                                                            |
-    | `avg_office_size`               | `Float64`              | Average size of offices                                                                                                               |
-    | `avg_school_size`               | `Float64`              | Average size of schools                                                                                                               |
+    | `avg_household_size`            | `Real`                 | Average size of households                                                                                                            |
+    | `avg_office_size`               | `Real`                 | Average size of offices                                                                                                               |
+    | `avg_school_size`               | `Real`                 | Average size of schools                                                                                                               |
 
     """
     function Simulation(;
@@ -295,9 +295,9 @@ mutable struct Simulation
         municipality_contact_rate::Union{Real, Nothing} = nothing,
         global_contact_rate::Union{Real, Nothing} = nothing,
         pop_size::Union{Int64, Nothing} = nothing,
-        avg_household_size::Union{Float64, Nothing} = nothing,
-        avg_office_size::Union{Float64, Nothing} = nothing,
-        avg_school_size::Union{Float64, Nothing} = nothing,
+        avg_household_size::Union{Real, Nothing} = nothing,
+        avg_office_size::Union{Real, Nothing} = nothing,
+        avg_school_size::Union{Real, Nothing} = nothing,
         simargs...)
         
 
