@@ -17,6 +17,16 @@ function household(i::Individual, sim::Simulation)::Household
 end
 
 """
+    getsetting(i::Individual, sim::Simulation, ::Type{Household})::Household
+
+Return the `Household` setting to which the individual `i` belongs, based on
+their `household` ID.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{Household})
+    return household(i, sim)
+end
+
+"""
     office(i::Individual, sim::Simulation)::Office
 
 Returns the `Office` instance referenced in an individual. 
