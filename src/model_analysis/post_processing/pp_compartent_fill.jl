@@ -28,6 +28,7 @@ function compartment_fill(postProcessor::PostProcessor)::DataFrame
     deaths = tick_deaths(postProcessor)
 
     res = DataFrame(
+        tick = cases.tick,
         exposed_cnt = zeros(nrow(cases)),
         infectious_cnt = zeros(nrow(cases)),
         deaths_cnt = zeros(nrow(cases)),
