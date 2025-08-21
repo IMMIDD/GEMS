@@ -56,6 +56,19 @@ Some measures can also trigger **follow-up strategies** — secondary interventi
 GEMS provides a wide range of built-in measures for common interventions. 
 For advanced use cases, users can also define custom measures to model specific behaviors or policy effects not covered by the defaults.
 
+## [Testtypes](@id trism-testtypes)
+
+```@raw html
+<img src="../assets/TriSM-teststypes.png" width="100%"/>
+```
+For testing measures (like individual test, pool test, or seroprevalence test), you need to specify the type of test being used. This is done by defining a Test Type. 
+
+A **Test Type** represents the properties of a diagnostic test (such as sensitivity and specificity). You define it once, and then you can reuse it in multiple testing measures.
+If you want different tests (e.g. antigen vs. PCR), you define multiple Test Types and assign them to the appropriate testing measures.
+
+In short: the Test Type defines the diagnostic test itself, while the testing measure defines how, when, and to whom it is applied.
+
+
 ## [Conditions and Delays](@id trism-condition-delay)
 
 ```@raw html

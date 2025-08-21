@@ -332,7 +332,7 @@ A `SymptomTrigger` fires the "testing" strategy once an individual becomes sympt
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_testing_isolation.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_testing_isolation.png" width="60%"/>
 </p>
 ``` 
 
@@ -401,7 +401,7 @@ In the following scenarios, we compare two scenarios: (1) where individuals get 
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_delayed_measure.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_delayed_measure.png" width="90%"/>
 </p>
 ``` 
 
@@ -410,7 +410,6 @@ In the following scenarios, we compare two scenarios: (1) where individuals get 
   - The test has a 100% sensitivity and 100% specificity
   - Test results are available immediately
   - If the test result is positive, the individual goes into isolation for 14 days
-
 ```julia
 using GEMS, Plots
 
@@ -472,7 +471,7 @@ Once an individual experiences symptoms, all members of their household (includi
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_subpartest.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_subpartest.png" width="60%"/>
 </p>
 ``` 
 
@@ -622,7 +621,7 @@ Moreover, the example uses the `Batch` functionality to easily aggregate all sim
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_varyingtestsensitivity.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_varyingtestsensitivity.png" width="60%"/>
 </p>
 ``` 
 
@@ -686,7 +685,7 @@ However, in the second scenario, only 50 tests can be applied per day.
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_limited_capacity.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_limited_capacity.png" width="60%"/>
 </p>
 ``` 
 
@@ -774,7 +773,7 @@ We furthermore add a `CustomLogger` to track the number of currently closed scho
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_pool_testing.png" width="50%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_pool_testing.png" width="70%"/>
 </p>
 ``` 
 
@@ -840,7 +839,7 @@ We neglect the fact that this will cause some tests to be performed on day 11.
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_recurrent_testing.png" width="80%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_recurrent_testing.png" width="90%"/>
 </p>
 ``` 
 
@@ -921,7 +920,7 @@ We compare this targeted approach with a standard school class isolation strateg
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_seroprevalence_testing.png" />
+    <img src="../assets/tutorials/tut_interventions_trism_seroprevalence_testing.png" width="110%"/>
 </p>
 ``` 
 
@@ -1013,7 +1012,7 @@ Symptomatic individuals receive a PCR test directly. If positive, they are count
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_interventions_trism_multiple-test-types.png" width="90%"/>
+    <img src="../assets/tutorials/tut_interventions_trism_multiple-test-types.png" width="100%"/>
 </p>
 ``` 
 
