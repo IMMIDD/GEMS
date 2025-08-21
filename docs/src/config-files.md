@@ -1,7 +1,7 @@
 # [Config Files](@id config-files)
 
 Using a config file, you can manipulate any parameter of a GEMS simulation.
-Although you can spawn a simulation without a config file (e.g., by just calling `Simulation()`), GEMS will iternally load a default config file and override the values based on the custom parameter you might have provided.
+Although you can spawn a simulation without a config file (e.g., by just calling `Simulation()`), GEMS will internally load a default config file and override the values based on the custom parameter you might have provided.
 
 This page gives an overview of what you can put into a config file and uses the default config file as demonstration.
 Config files use the **\*.TOML** notation.
@@ -362,7 +362,7 @@ Look up the tutorial on creating [Custom Transmission Functions](@ref custom-tra
 
 #### `onset_of_symptoms`
 
-Speficies the distribution that is being used to draw the duration from exposure to onset of symptoms upon infection.
+Specifies the distribution that is being used to draw the duration from exposure to onset of symptoms upon infection.
 
 ```@TOML
 [Pathogens]
@@ -379,7 +379,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `time_to_recovery`
 
-Speficies the distribution that is being used to draw the duration from onset of symptoms to recovery upon infection.
+Specifies the distribution that is being used to draw the duration from onset of symptoms to recovery upon infection.
 
 ```@TOML
 [Pathogens]
@@ -396,7 +396,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `onset_of_severeness`
 
-Speficies the distribution that is being used to draw the duration from onset of symptoms to the onset of severeness (for a severe progression) upon infection.
+Specifies the distribution that is being used to draw the duration from onset of symptoms to the onset of severeness (for a severe progression) upon infection.
 
 ```@TOML
 [Pathogens]
@@ -413,7 +413,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `infectious_offset`
 
-Speficies the distribution that is being used to draw the duration that infectiousness sets on before the onset of symptoms upon infection.
+Specifies the distribution that is being used to draw the duration that infectiousness sets on before the onset of symptoms upon infection.
 
 ```@TOML
 [Pathogens]
@@ -430,7 +430,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `mild_death_rate`
 
-Speficies the distribution that determines the death probability with a mild disease progression upon infection.
+Specifies the distribution that determines the death probability with a mild disease progression upon infection.
 
 ```@TOML
 [Pathogens]
@@ -446,7 +446,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `severe_death_rate`
 
-Speficies the distribution that determines the death probability with a severe disease progression upon infection.
+Specifies the distribution that determines the death probability with a severe disease progression upon infection.
 
 ```@TOML
 [Pathogens]
@@ -462,7 +462,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `critical_death_rate`
 
-Speficies the distribution that determines the death probability with a critical disease progression upon infection.
+Specifies the distribution that determines the death probability with a critical disease progression upon infection.
 
 ```@TOML
 [Pathogens]
@@ -478,7 +478,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `hospitalization_rate`
 
-Speficies the distribution that determines the hospitalization probability with a severe disease progression upon infection.
+Specifies the distribution that determines the hospitalization probability with a severe disease progression upon infection.
 
 ```@TOML
 [Pathogens]
@@ -494,7 +494,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `ventilation_rate`
 
-Speficies the distribution that determines the ventilation probability with a critical disease progression upon infection.
+Specifies the distribution that determines the ventilation probability with a critical disease progression upon infection.
 
 ```@TOML
 [Pathogens]
@@ -510,7 +510,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `icu_rate`
 
-Speficies the distribution that determines the probability of being admitted to ICU with a critical disease progression upon infection.
+Specifies the distribution that determines the probability of being admitted to ICU with a critical disease progression upon infection.
 
 ```@TOML
 [Pathogens]
@@ -526,7 +526,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `time_to_hospitalization`
 
-Speficies the distribution that is being used to draw the duration from onset of symptoms to hospitalization upon infection.
+Specifies the distribution that is being used to draw the duration from onset of symptoms to hospitalization upon infection.
 
 ```@TOML
 [Pathogens]
@@ -543,7 +543,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `time_to_icu`
 
-Speficies the distribution that is being used to draw the duration from hospitalization to ICU admittance upon infection.
+Specifies the distribution that is being used to draw the duration from hospitalization to ICU admittance upon infection.
 
 ```@TOML
 [Pathogens]
@@ -560,7 +560,7 @@ The `parameters` argument must contain a vector of arguments that are being pass
 
 #### `length_of_stay`
 
-Speficies the distribution that is being used to draw the duration from hospitalization to release/recovery upon infection.
+Specifies the distribution that is being used to draw the duration from hospitalization to release/recovery upon infection.
 
 ```@TOML
 [Pathogens]

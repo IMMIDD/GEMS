@@ -1,6 +1,6 @@
 # [6 - Advanced Parameterization](@id advanced)
 
-The `Simulation()` function provides a large varitey of optional arguments to parameterize models.
+The `Simulation()` function provides a large variety of optional arguments to parameterize models.
 However, in some cases, you might want to change how disease progressions are calculated, how contacts are sampled, or how infections happen.
 In those cases, we use so-called *[config files](@ref config-files)* to pass advanced parameterizations to the GEMS engine.
 Config files are also useful to keep track of all your custom parameters in one file.

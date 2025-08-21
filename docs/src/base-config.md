@@ -1,6 +1,6 @@
 # [Default Parameters](@id default-config)
 
-This list shows the parameters that are applied when spawning a simulation without additonal arguments like `sim = Simulation()`.
+This list shows the parameters that are applied when spawning a simulation without additional arguments like `sim = Simulation()`.
 
 | Parameter                            | Value                                                                                        |
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
@@ -19,16 +19,16 @@ This list shows the parameters that are applied when spawning a simulation witho
 | **Pathogen**                         |                                                                                              |
 | Name                                 | `Covid19`                                                                                    |
 | Transmission rate                    | `20%` infection chance for each contact                                                      |
-| Symptom onset                        | `3` days after infection (Poission-distributed)                                              |
-| Time to recovery                     | `7` days after symptom onset (Poission-distributed)                                          |
-| Severeness onset                     | `3` days after symptom onset (Poission-distributed)                                          |
-| Infecious offset                     | `1` days before symptom onset (Poission-distributed)                                         |
+| Symptom onset                        | `3` days after infection (Poisson-distributed)                                              |
+| Time to recovery                     | `7` days after symptom onset (Poisson-distributed)                                          |
+| Severeness onset                     | `3` days after symptom onset (Poisson-distributed)                                          |
+| Infectious offset                     | `1` days before symptom onset (Poisson-distributed)                                         |
 | Death rate with mild progression     | `0%`                                                                                         |
 | Death rate with severe progression   | `5%`                                                                                         |
 | Death rate with critical progression | `20%`                                                                                        |
 | Hospitalization rate                 | `30%` with severe- and `100%` with critical progression                                      |
-| Time to Hospitalization              | `7` days after symptom onset (Poission-distributed)                                          |
-| Length of (hospital) stay            | `7` days (Poission-distributed)                                                              |
+| Time to Hospitalization              | `7` days after symptom onset (Poisson-distributed)                                          |
+| Length of (hospital) stay            | `7` days (Poisson-distributed)                                                              |
 | Disease progressions                 | `40%` asymptomatic, `45%` mild, `10%` severe, `5%` critical, age-independent                 |
 | **Contacts**                         |                                                                                              |
 | Household contact rate               | `1` contact per day (poisson distributed), randomly drawn from member list                   |

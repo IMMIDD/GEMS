@@ -29,7 +29,7 @@ gemsplot(rd, type = :CumulativeCases)
 !!! info "Where do I find an explanation available plot types?"
     Put a `?` into the Julia REPL and call `help?> gemsplot` to get an overview of graphs you can generate using the [`gemsplot`](@ref) function or look up the Plotting section of the API documentation.
 
-Additonally, it is possible to pass multiple types as a tuple to make them appear in the same plot:
+Additionally, it is possible to pass multiple types as a tuple to make them appear in the same plot:
 
 ```julia
 gemsplot(rd, type = (:CumulativeCases, :EffectiveReproduction))
@@ -284,6 +284,6 @@ gp = gemsplot(rd, type = :TotalInfections)
 
 You might have seen that the `gemsplot()` function can also work with multiple `ResultData` objects.
 If you want multiple simulation runs in one custom plot, you need to define a generate-function with this signature: `generate(plt::YourNewType, rd::Vector{ResultData}; plotargs...)`.
-This function can exsist additionally to the single-`ResultData` implementation.
+This function can exist additionally to the single-`ResultData` implementation.
 It does not have to replace it.
 If no multi-`ResultData` generate-function is available for a particular type, calling `gemsplot()` with this type and multiple `ResultData` objects will cause the function to return a multi-plot with one subplot for each `ResultData` object.

@@ -186,7 +186,7 @@ gemsplot(rd, type = :TickCases)
 ## *BatchData* Objects
 
 While `ResultData` objects are the processed output of single simulation runs, `BatchData` objects are processed output of Batches.
-They contain aggregated data on the simulations, e.g., the average number of total infections including standard devation, confidence intervals and ranges.
+They contain aggregated data on the simulations, e.g., the average number of total infections including standard deviation, confidence intervals and ranges.
 While you do not necessarily need a `BatchData` object to plot batches, they do contain a lot of helpful data.
 Here's an example:
 
