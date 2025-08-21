@@ -1,5 +1,26 @@
 export DiseaseProgression
 
+export exposure
+export infectiousness_onset
+export symptom_onset
+export severeness_onset
+export hospital_admission
+export ICU_admission
+export ICU_discharge
+export hospital_discharge
+
+export is_infected, isinfected, infected
+export is_presymptomatic, ispresymptomatic, presymptomatic
+export is_infectious, isinfectious, infectious
+export is_asymptomatic, isasymptomatic, asymptomatic
+export is_symptomatic, issymptomatic, symptomatic
+export is_severe, issevere, severe
+export is_mild, ismild, mild
+export is_hospitalized, ishospitalized, hospitalized
+export is_ICU, isICU, ICU
+export is_recovered, isrecovered, recovered
+export is_dead, isdead, dead
+
 """
     DiseaseProgression
 
@@ -155,3 +176,215 @@ function Base.show(io::IO, dp::DiseaseProgression)
     res *= ")"
     print(io, res)
 end
+
+
+####
+#### getter
+####
+
+"""
+    exposure(dp::DiseaseProgression)
+
+Returns the exposure (infection) tick of the disease progression `dp`.
+"""
+exposure(dp::DiseaseProgression) = dp.exposure
+
+"""
+    infectiousness_onset(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` becomes infectious.
+"""
+infectiousness_onset(dp::DiseaseProgression) = dp.infectiousness_onset
+
+"""
+    symptom_onset(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` develops symptoms.
+If the individual is asymptomatic, this will return `-1`.
+"""
+symptom_onset(dp::DiseaseProgression) = dp.symptom_onset
+
+"""
+    severeness_onset(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` develops severe symptoms.
+If the individual will not develop severe symptoms, this will return `-1`.
+"""
+severeness_onset(dp::DiseaseProgression) = dp.severeness_onset
+
+"""
+    hospital_admission(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` is admitted to hospital.
+If the individual is never admitted to hospital, this will return `-1`.
+"""
+hospital_admission(dp::DiseaseProgression) = dp.hospital_admission
+
+"""
+    ICU_admission(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` is admitted to ICU.
+If the individual is never admitted to ICU, this will return `-1`.
+"""
+ICU_admission(dp::DiseaseProgression) = dp.ICU_admission
+
+"""
+    ICU_discharge(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` is discharged from ICU.
+If the individual is never admitted to ICU, this will return `-1`.
+"""
+ICU_discharge(dp::DiseaseProgression) = dp.ICU_discharge
+
+"""
+    hospital_discharge(dp::DiseaseProgression)
+Returns the tick when the individual with disease progression `dp` is discharged from hospital.
+If the individual is never admitted to hospital, this will return `-1`.
+"""
+hospital_discharge(dp::DiseaseProgression) = dp.hospital_discharge
+
+"""
+    recovery(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` recovers from the disease.
+If the individual dies instead, this will return `-1`.
+"""
+recovery(dp::DiseaseProgression) = dp.recovery
+
+"""
+    death(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp` dies from the disease.
+If the individual recovers instead, this will return `-1`.
+"""
+death(dp::DiseaseProgression) = dp.death
+
+
+
+####
+#### checking disease states
+####
+
+"""
+    is_infected(dp::DiseaseProgression, t::Int)
+    isinfected(dp::DiseaseProgression, t::Int)    
+    infected(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` is infected at tick `t`, otherwise `false`.    
+"""
+is_infected(dp::DiseaseProgression, t::Int) = dp.exposure <= t < max(dp.recovery, dp.death)
+isinfected(dp::DiseaseProgression, t::Int) = is_infected(dp, t)
+infected(dp::DiseaseProgression, t::Int) = is_infected(dp, t)
+
+"""
+    is_infectious(dp::DiseaseProgression, t::Int)
+    isinfectious(dp::DiseaseProgression, t::Int)
+    infectious(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` is infectious at tick `t`, otherwise `false`.
+"""
+is_infectious(dp::DiseaseProgression, t::Int) = dp.infectiousness_onset <= t < max(dp.recovery, dp.death)
+isinfectious(dp::DiseaseProgression, t::Int) = is_infectious(dp, t)
+infectious(dp::DiseaseProgression, t::Int) = is_infectious(dp, t)
+
+"""
+    is_presymptomatic(dp::DiseaseProgression, t::Int)
+    ispresymptomatic(dp::DiseaseProgression, t::Int)
+    presymptomatic(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` is presymptomatic at tick `t`, otherwise `false`.
+Presymptomatic means the individual is infected but has not yet developed symptoms (but will in the future).
+"""
+is_presymptomatic(dp::DiseaseProgression, t::Int) = dp.exposure <= t < dp.symptom_onset
+ispresymptomatic(dp::DiseaseProgression, t::Int) = is_presymptomatic(dp, t)
+presymptomatic(dp::DiseaseProgression, t::Int) = is_presymptomatic(dp, t)
+
+"""
+    is_symptomatic(dp::DiseaseProgression, t::Int)
+    issymptomatic(dp::DiseaseProgression, t::Int)
+    symptomatic(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` is symptomatic at tick `t`, otherwise `false`.
+"""
+is_symptomatic(dp::DiseaseProgression, t::Int) = dp.symptom_onset <= t < max(dp.recovery, dp.death)
+issymptomatic(dp::DiseaseProgression, t::Int) = is_symptomatic(dp, t)
+symptomatic(dp::DiseaseProgression, t::Int) = is_symptomatic(dp, t)
+
+"""
+    is_asymptomatic(dp::DiseaseProgression, t::Int)
+    isasymptomatic(dp::DiseaseProgression, t::Int)
+    asymptomatic(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` is asymptomatic at tick `t`, otherwise `false`.
+Asymptomatic means the individual is infected, does currently not have symptoms and will not develop symptoms in the future.
+"""
+is_asymptomatic(dp::DiseaseProgression, t::Int) = is_infected(dp, t) && !is_symptomatic(dp, t) && dp.symptom_onset > 0
+isasymptomatic(dp::DiseaseProgression, t::Int) = is_asymptomatic(dp, t)
+asymptomatic(dp::DiseaseProgression, t::Int) = is_asymptomatic(dp, t)
+
+"""
+    is_severe(dp::DiseaseProgression, t::Int)
+    issevere(dp::DiseaseProgression, t::Int)
+    severe(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` has severe symptoms at tick `t`, otherwise `false`.
+"""
+is_severe(dp::DiseaseProgression, t::Int) = dp.severeness_onset <= t < max(dp.recovery, dp.death)
+issevere(dp::DiseaseProgression, t::Int) = is_severe(dp, t)
+severe(dp::DiseaseProgression, t::Int) = is_severe(dp, t)
+
+"""
+    is_mild(dp::DiseaseProgression, t::Int)
+    ismild(dp::DiseaseProgression, t::Int)
+    mild(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` has mild symptoms at tick `t`, otherwise `false`.
+A mild case is defined as symptomatic but not severe.
+"""
+is_mild(dp::DiseaseProgression, t::Int) = is_symptomatic(dp, t) && !is_severe(dp, t)
+ismild(dp::DiseaseProgression, t::Int) = is_mild(dp, t)
+mild(dp::DiseaseProgression, t::Int) = is_mild(dp, t)
+
+"""
+    is_hospitalized(dp::DiseaseProgression, t::Int)
+    ishospitalized(dp::DiseaseProgression, t::Int)
+    hospitalized(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` is in hospital at tick `t`, otherwise `false`.
+"""
+is_hospitalized(dp::DiseaseProgression, t::Int) = dp.hospital_admission <= t < dp.hospital_discharge
+ishospitalized(dp::DiseaseProgression, t::Int) = is_hospitalized(dp, t)
+hospitalized(dp::DiseaseProgression, t::Int) = is_hospitalized(dp, t)
+
+"""
+    is_ICU(dp::DiseaseProgression, t::Int)
+    isICU(dp::DiseaseProgression, t::Int)
+    ICU(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` is in the ICU at tick `t`, otherwise `false`.
+"""
+is_ICU(dp::DiseaseProgression, t::Int) = dp.ICU_admission <= t < dp.ICU_discharge
+isICU(dp::DiseaseProgression, t::Int) = is_ICU(dp, t)
+ICU(dp::DiseaseProgression, t::Int) = is_ICU(dp, t)
+
+"""
+    is_recovered(dp::DiseaseProgression, t::Int)
+    isrecovered(dp::DiseaseProgression, t::Int)
+    recovered(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` has recovered before tick `t`, otherwise `false`.
+"""
+is_recovered(dp::DiseaseProgression, t::Int) = 0 <= dp.recovery <= t
+isrecovered(dp::DiseaseProgression, t::Int) = is_recovered(dp, t)
+recovered(dp::DiseaseProgression, t::Int) = is_recovered(dp, t)
+
+"""
+    is_dead(dp::DiseaseProgression, t::Int)
+    isdead(dp::DiseaseProgression, t::Int)
+    dead(dp::DiseaseProgression, t::Int)
+
+Returns `true` if the individual with disease progression `dp` has died before tick `t`, otherwise `false`.
+"""
+is_dead(dp::DiseaseProgression, t::Int) = 0 <= dp.death <= t
+isdead(dp::DiseaseProgression, t::Int) = is_dead(dp, t)
+dead(dp::DiseaseProgression, t::Int) = is_dead(dp, t)
