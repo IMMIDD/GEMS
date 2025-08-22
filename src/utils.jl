@@ -11,8 +11,9 @@ export get_missing_docs
 export parameters
 export lognow, printinfo, subinfo
 export _int
-export remove_kw
+export remove_kw, prepare_kw_args
 export germanshapes
+export haspath
 
 # contact stuff
 export calculate_absolute_error
@@ -69,7 +70,7 @@ function structname(string::String)
     return length(parts) > 1 ? parts[end] : string
 end
 
-structname(type::DataType) = structname(string(type))
+structname(type::Type) = structname(string(type))
 
 """
     is_subtype(type::String, parent::DataType)
@@ -105,7 +106,7 @@ Returns the `DataType` which is a subtype of `parent` specified by the `type` st
 This function supersedes `find_subtype(...)`
 
 """
-function get_subtype(type::String, parent::DataType)
+function get_subtype(type::String, parent::Type)
     stypes = subtypes(parent)
 
     # throw exception if multiple modules define a struct subtype
@@ -124,7 +125,7 @@ function get_subtype(type::String, parent::DataType)
     return stypes[i]
 end
 
-get_subtype(type::Symbol, parent::DataType) = get_subtype(string(type), parent)
+get_subtype(type::Symbol, parent::Type) = get_subtype(string(type), parent)
 
 """
     type_in_collection(type::String, collection::Vector{String})
@@ -939,6 +940,15 @@ end
 
 
 """
+    prepare_kw_args(dict::Dict)
+
+Converts a dictionary with string keys to a dictionary with Symbol keys.
+"""
+function prepare_kw_args(dict::Dict{String, <:Any})
+    return Dict(Symbol(k) => v for (k, v) in dict)
+end
+
+"""
     germanshapes(level::Int64)
 
 Returns the `Shapefile.Table` object read from the respective shapefile.
@@ -1014,4 +1024,29 @@ function germanshapes(level::Int64)
 
     # return shapefile
     return(Shapefile.Table(filename))
+end
+
+"""
+    haspath(dict::Dict, path::Vector{<:Any})
+
+Checks if a dictionary has a path of keys.
+The path is a vector of keys that should be present in the dictionary.
+
+# Example
+
+```julia
+julia> d = Dict(:a => Dict(:b => Dict(:c => 1)))
+julia> haspath(d, [:a, :b, :c])
+true
+"""
+function haspath(dict::Dict, path::Vector{<:Any})
+    d = dict
+    for p in path
+        if haskey(d, p)
+            d = d[p]
+        else
+            return false
+        end
+    end
+    return true
 end
