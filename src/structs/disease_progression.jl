@@ -1,4 +1,6 @@
 export DiseaseProgression
+export ProgressionCategory
+export ProgressionAssignmentFunction
 
 export exposure
 export infectiousness_onset
@@ -20,6 +22,10 @@ export is_hospitalized, ishospitalized, hospitalized
 export is_ICU, isICU, ICU
 export is_recovered, isrecovered, recovered
 export is_dead, isdead, dead
+
+# Abstract types for disease progression categories and progression assignment functions
+abstract type ProgressionCategory end
+abstract type ProgressionAssignmentFunction end
 
 """
     DiseaseProgression
