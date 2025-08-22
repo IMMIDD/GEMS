@@ -111,735 +111,491 @@ mutable struct Simulation
     # StepMod
     stepmod::Function
 
-    
-    ### INNER CONSTRUCTOR
-
-    @doc"""
-        Simulation(config_file::String, start_condition::StartCondition, stop_criterion::StopCriterion, population::Population, settings::SettingsContainer, label::String)
-    
-    Used as initializer and is called by the other constructors.
-    """
-    function Simulation(config_file::String, 
+    # inner default constructor
+    function Simulation(
+        configfile::String,
+        tickunit::Char,
+        startdate::Date,
+        enddate::Date,
         start_condition::StartCondition,
         stop_criterion::StopCriterion,
         population::Population,
         settings::SettingsContainer,
-        label::String)
+        pathogen::Pathogen,
+        stepmod::Function
+    )
+        sim = new(
+            # config
+            configfile,
+            Int16(0), # tick
+            tickunit,
+            startdate,
+            enddate,
+            start_condition,
+            stop_criterion,
+            "Simulation " * string(GEMS.SIMS_INSTANTIATED + 1), # label
 
-        return new(
-         config_file, # configfile::String
-         0, # tick::Int16
-         'd', # tickunit::Char
-         Date(2024), # startdate::Date
-         Date(2025), # enddate::Date
-         start_condition, # start_condition::StartCondition
-         stop_criterion, # stop_criterion::StopCriterion
-         label, # label::String
-         population, # population::Population
-         settings, # settings::SettingsContainer
-         Pathogen(id = 0, name = "TEST DEFAULT"), # pathogen::Pathogen
-         InfectionLogger(), # infectionlogger::InfectionLogger
-         DeathLogger(), # deathlogger::DeathLogger
-         TestLogger(), # testlogger::TestLogger
-         PoolTestLogger(), # pooltestlogger::PoolTestLogger
-         SeroprevalenceLogger(), # seroprevalencelogger::SeroprevalenceLogger
-         QuarantineLogger(), # quarantinelogger::QuarantineLogger
-         CustomLogger(), # customlogger::CustomLogger
-         [], # symptom_triggers::Vector{ITrigger}
-         [], # tick_triggers::Vector{TickTrigger}
-         [], # hospitalization_triggers::Vector{ITrigger}
-         EventQueue(), # event_queue::EventQueue
-         [], # strategies::Vector{Strategy}
-         [], # testtypes::Vector{AbstractTestType}
-         x -> x # stepmod::Function
-         ) 
-    end
+            # model
+            population,
+            settings,
+            pathogen,
 
-    @doc"""
-        Simulation(; simargs...)
+            # logger
+            InfectionLogger(),
+            DeathLogger(),
+            TestLogger(),
+            PoolTestLogger(),
+            SeroprevalenceLogger(),
+            QuarantineLogger(),
+            CustomLogger(),
 
-    
-    Constructor that creates and initializes a `Simulation` object based on various parameters.
+            # NPI trigger
+            [],
+            [],
+            [],
+            EventQueue(),
+            [],
+            [],
 
-    It uses the default configuration for the created run which is saved in `data/DefaultConf.toml` but should not be edited. See Usage and Examples on how to edit the simulation configuration.
-
-    - The constructor can be called without any parameters which will create a default simulation.
-    - A population can be provided. This can either be the path to a population file (.csv or .jdl2) or a `Population` object created. Either way the poulation will overwrite any population configurations in the config file.
-    - Arguments can be provided overwriting just certain parameters. For all possible arguments see the table below.
-        These arguments can be used in combination with a custom config file and will overwrite it where possible. Arguments can be combined.
-    - All arguments can alse be put into Dictionary and provided to function. This dictionary must have Symbols as keys. The keys must be the same as the argument names.
-    - All possibilities above can also be combined. Providing arguments will overwrite custom config file where possible. Custom populations will override custom arguments.
-
-    The optional `stepmod` argument allows to pass a custom single-argument
-    function that takes the simulation object as its argument and allows
-    to do custom operations on the simulation object in each step.
-
-    *Note*: Be careful with the `stepmod` option as there's no option
-    to check whether your custom code invalidates simulation outputs or
-    causes internal model inconsistencies. Please only use this option
-    if you are sure you know what you're doing :-)
-
-    # Examples
-
-    ```Julia
-    sim = Simulation() # returns a default simulation 
-    ```
-    ```Julia
-    sim = Simulation(population = "data/TestPop.csv") # returns a Simulation using the assigned population file.
-    ```
-    ```Julia
-    sim = Simulation(population = Population()) # returns a Simulation using the created Population.
-    ```
-    ```Julia
-    my_population = Population(n=1_000);
-    sim = Simulation(population = my_population) # returns a Simulation using the created Population that has its own parameters.
-    ```
-    ```Julia
-    sim = Simulation(label = "My First Simulation") # returns a Simulation with a custom label
-    ```
-    ```Julia
-    sim = Simulation(startdate = "2020.1.1", n = 100_000, transmission_rate = 0.2) # returns a Simulation starting at the 1.1.2020, having 100,000 individuals and a transmission rate of 0.2
-    ```
-    ```Julia
-    my_arguments = Dict(
-                        :transmission_rate => 0.3,
-                        :pop_size => 10_000_000
-                    )
-    sim = Simulation(my_arguments) # returns a `Simulation` the arguments provided in the dictionary.
-    ```
-    ```Julia
-    sim = Simulation(population = Population(n=100_000), label = "My First Simulation") # returns a Simulation with a custom label and a population partly overwriting the default configuration.
-    ```
-
-    # Parameters
-
-    | **Name**                        | **Type**               | **Description**                                                                                                                       |
-    | :------------------------------ | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
-    | `population`                    | `String`, `Population` | Path to a CSV or JLD2 file containing popultion data or a `Population` object                                                         |
-    | `settingsfile`                  | `String`               | Path to a setting-file                                                                                                                |
-    | `label`                         | `String`               | Label used to name simulation runs during analysis                                                                                    |
-    | `stepmod`                       | `Function`             | One-agument function which will be executed each simulation step, called on the `Simulation` object                                   |
-    | `seed`                          | `Int64`                | Random seed                                                                                                                           |
-    | `global_setting`                 | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
-    | `startdate`                     | `Date`, `String`       | Simulation start date (format: `YYYY.MM.DD`)                                                                                          |
-    | `enddate`                       | `Date`, `String`       | Simulation end date (format: `YYYY.MM.DD`)                                                                                            |
-    | `infected_fraction`             | `Float64`              | Fraction of the initially infected agents for the `InfectedFraction` start condition                                                  |
-    | `transmission_rate`             | `Float64`              | Infection probability (0-1) during a contact where one individual is infectious                                                       |
-    | `onset_of_symptoms`             | `Float64`              | Average time from exposure to onset of symptoms (Poisson-distributed)                                                                 |
-    | `onset_of_severeness`           | `Float64`              | Average time from onset of symptoms to onset of severeness (Poisson-distributed)                                                      |
-    | `infectious_offset`             | `Float64`              | Average time from onset of infectiousness to onset of symptoms (Poisson-distributed); cannot be before exposure, obviously.           |
-    | `mild_death_rate`               | `Float64`              | Probability of dying (0-1) with a mild disease progression                                                                            |
-    | `severe_death_rate`             | `Float64`              | Probability of dying (0-1) with a severe disease progression                                                                          |
-    | `critical_death_rate`           | `Float64`              | Probability of dying (0-1) with a critical disease progression                                                                        |
-    | `hospitalization_rate`          | `Float64`              | Probability of being hospitalized (0-1) with a severe disease progression                                                             |
-    | `ventilation_rate`              | `Float64`              | Probability of being ventilated (0-1) with a critical disease progression                                                             |
-    | `icu_rate`                      | `Float64`              | Probability of being admitted to ICU (0-1) with a critical disease progression                                                        |
-    | `time_to_recovery`              | `Float64`              | Average time from onset of symptoms to recovery (Poisson-distributed)                                                                 |
-    | `time_to_hospitalization`       | `Float64`              | Average time from onset of symptoms to hospitalization (Poisson-distributed)                                                          |
-    | `time_to_icu`                   | `Float64`              | Average time from hospitalization to ICU-addmitance (Poisson-distributed)                                                             |
-    | `length_of_stay`                | `Float64`              | Average duration of hospitalization (Poisson-distributed)                                                                             |
-    | `progression_categories`        | `Vector{Float64}`      | Four-value vector indicating the fraction of individuals with an asymptomatic, mild, severe, and critical progression (must sum to 1) |
-    | `office_contact_rate`           | `Float64`              | Average number of office contacts per timestep (Poisson-distributed)                                                                  |
-    | `household_contact_rate`        | `Float64`              | Average number of household contacts per timestep (Poisson-distributed)                                                               |
-    | `school_contact_rate`           | `Float64`              | Average number of school contacts per timestep (Poisson-distributed)                                                                  |
-    | `school_class_contact_rate`     | `Float64`              | Average number of school-class contacts per timestep (Poisson-distributed)                                                            |
-    | `school_year_contact_rate`      | `Float64`              | Average number of school-year contacts per timestep (Poisson-distributed)                                                             |
-    | `school_complex_contact_rate`   | `Float64`              | Average number of school-complex contacts per timestep (Poisson-distributed)                                                          |
-    | `workplace_site_contact_rate`   | `Float64`              | Average number of workplace-site contacts per timestep (Poisson-distributed)                                                          |
-    | `workplace_contact_rate`        | `Float64`              | Average number of workplace contacts per timestep (Poisson-distributed)                                                               |
-    | `department_contact_rate`       | `Float64`              | Average number of department contacts per timestep (Poisson-distributed)                                                              |
-    | `municipality_contact_rate`     | `Float64`              | Average number of municipality contacts per timestep (Poisson-distributed)                                                            |
-    | `global_contact_rate`           | `Float64`              | Average number of contacts in the global per timestep (Poisson-distributed)                                                           |
-    | **Population Parameters**       |                        |                                                                                                                                       |
-    | `pop_size`                      | `Int64`                | Number of individuals in the population                                                                                               |
-    | `avg_household_size`            | `Int64`                | Average size of households                                                                                                            |
-    | `avg_office_size`               | `Int64`                | Average size of offices                                                                                                               |
-    | `avg_school_size`               | `Int64`                | Average size of schools                                                                                                               |
-
-    """
-    function Simulation(;
-        population::Union{String, Population, Nothing} = nothing, # The potential population overwrite
-        settingsfile::String = "",
-        label::String = "",
-        tickunit::String = "d",
-        stepmod::Function = x -> x, # Providing  stepmod function to the sim object later
-        seed::Union{Int64, Nothing} = nothing,
-        global_setting::Union{Bool, Nothing} = nothing,
-        startdate::Union{String, Nothing} = nothing,
-        enddate::Union{String, Nothing} = nothing,
-        infected_fraction::Union{Real, Nothing} = nothing,
-        transmission_rate::Union{Real, Nothing} = nothing,
-        onset_of_symptoms::Union{Real, Nothing} = nothing,
-        onset_of_severeness::Union{Real, Nothing} = nothing,
-        infectious_offset::Union{Real, Nothing} = nothing,
-        mild_death_rate::Union{Real, Nothing} =  nothing,
-        severe_death_rate::Union{Real, Nothing} =  nothing,
-        critical_death_rate::Union{Real, Nothing} = nothing,
-        hospitalization_rate::Union{Real, Nothing} = nothing,
-        ventilation_rate::Union{Real, Nothing} = nothing,
-        icu_rate::Union{Real, Nothing} = nothing,
-        time_to_recovery::Union{Real, Nothing} = nothing,
-        time_to_hospitalization::Union{Real, Nothing} = nothing,
-        time_to_icu::Union{Real, Nothing} = nothing,
-        length_of_stay::Union{Real, Nothing} = nothing,
-        progression_categories::Union{Array, Nothing} = nothing,
-        household_contact_rate::Union{Real, Nothing} = nothing,
-        office_contact_rate::Union{Real, Nothing} = nothing,
-        school_contact_rate::Union{Real, Nothing} = nothing,
-        school_class_contact_rate::Union{Real, Nothing} = nothing,
-        school_year_contact_rate::Union{Real, Nothing} = nothing,
-        school_complex_contact_rate::Union{Real, Nothing} = nothing,
-        workplace_site_contact_rate::Union{Real, Nothing} = nothing,
-        workplace_contact_rate::Union{Real, Nothing} = nothing,
-        department_contact_rate::Union{Real, Nothing} = nothing,
-        municipality_contact_rate::Union{Real, Nothing} = nothing,
-        global_contact_rate::Union{Real, Nothing} = nothing,
-        pop_size::Union{Int64, Nothing} = nothing,
-        avg_household_size::Union{Int64, Nothing} = nothing,
-        avg_office_size::Union{Int64, Nothing} = nothing,
-        avg_school_size::Union{Int64, Nothing} = nothing,
-        simargs...)
-        
-
-        # 1 Check for errors in the arguments:
-
-        # Check if a config file was provided. This can be used by users who want to provide their configfile by keword. Reroute the constructor.
-        if haskey(simargs, :configfile)
-            configfile = simargs[:configfile]
-            return Simulation(configfile, isnothing(population) ? "" : population, settingsfile = settingsfile, label = label, stepmod = stepmod)
-        end
-
-        # dpr:
-        isnothing(progression_categories) ? nothing : (progression_categories[1] isa Array ? throw("Please submit a vector with 4 entries for the default disease progressuion. If you want to have a complex disease progression please provide a custom conig file.") : nothing)
-        !isnothing(progression_categories) ? !(sum(Iterators.flatten(progression_categories)) ≈ 1) ? throw("The entries of the progression_categories must add up to one.") : nothing : nothing
-        if !isnothing(progression_categories)
-            if !all(x -> 0 ≤ x ≤ 1, progression_categories)
-                throw("All entries in the progression_categories need to be between 0 and 1 (including)")
-            end
-        end
-
-        # Global contact parmater
-        if !isnothing(global_contact_rate) && !isnothing(global_setting)
-            @warn "Global setting is turned off so setting the global contact parameter will not have an impact!"
-        end
-
-        # pop_size:
-        !isnothing(pop_size) ? !(pop_size > 0) ? throw("The population must have at least one individual") : nothing : nothing
-
-        # population parameters
-        if (!isnothing(pop_size) || !isnothing(avg_household_size) || !isnothing(avg_office_size) || !isnothing(avg_school_size)) && !isnothing(population)
-            @warn "The provided population will overwrite any population parameters"
-        end
-
-        # transmission rate
-        if !isnothing(transmission_rate)
-            if transmission_rate < 0 || transmission_rate > 1  
-                throw("The transmission rate needs to be between and including 0 and 1")
-            end
-        end
-
-        # 2 Define a dictionary that mirrors the structure of the properties with the desired updates
-        parameters_to_update = Dict(
-            "Simulation.seed" => seed,
-            "Simulation.GlobalSetting" => global_setting,
-            "Simulation.startdate" => startdate,
-            #"Simulation.enddate" => enddate,
-            "Simulation.tickunit" => tickunit,
-            "Simulation.StartCondition.fraction" => infected_fraction,        
-            "Pathogens.Covid19.transmission_function.parameters.transmission_rate" => transmission_rate,
-            "Pathogens.Covid19.onset_of_symptoms.parameters" => isnothing(onset_of_symptoms) ? nothing : [onset_of_symptoms],
-            "Pathogens.Covid19.onset_of_severeness.parameters" => isnothing(onset_of_severeness) ? nothing : [onset_of_severeness],
-            "Pathogens.Covid19.infectious_offset.parameters" => isnothing(infectious_offset) ? nothing : [infectious_offset],
-            "Pathogens.Covid19.mild_death_rate.parameters" => isnothing(mild_death_rate) ? nothing : [1, mild_death_rate],
-            "Pathogens.Covid19.severe_death_rate.parameters" => isnothing(severe_death_rate) ? nothing : [1, severe_death_rate],
-            "Pathogens.Covid19.critical_death_rate.parameters" => isnothing(critical_death_rate) ? nothing : [1, critical_death_rate],
-            "Pathogens.Covid19.hospitalization_rate.parameters" => isnothing(hospitalization_rate) ? nothing : [1, hospitalization_rate],
-            "Pathogens.Covid19.ventilation_rate.parameters" => isnothing(ventilation_rate) ? nothing : [1, ventilation_rate],
-            "Pathogens.Covid19.icu_rate.parameters" => isnothing(icu_rate) ? nothing : [1, icu_rate],
-            "Pathogens.Covid19.time_to_recovery.parameters" => isnothing(time_to_recovery) ? nothing : [time_to_recovery],
-            "Pathogens.Covid19.time_to_hospitalization.parameters" => isnothing(time_to_hospitalization) ? nothing : [time_to_hospitalization],
-            "Pathogens.Covid19.time_to_icu.parameters" => isnothing(time_to_icu) ? nothing : [time_to_icu],
-            "Pathogens.Covid19.length_of_stay.parameters" => isnothing(length_of_stay) ? nothing : [length_of_stay],
-            "Pathogens.Covid19.dpr.stratification_matrix" => isnothing(progression_categories) ? nothing : [progression_categories],
-            "Settings.Household.contact_sampling_method.parameters.contactparameter" => household_contact_rate,
-            "Settings.Office.contact_sampling_method.parameters.contactparameter" => office_contact_rate,
-            "Settings.School.contact_sampling_method.parameters.contactparameter" => school_contact_rate,
-            "Settings.SchoolClass.contact_sampling_method.parameters.contactparameter" => school_class_contact_rate,
-            "Settings.Municipality.contact_sampling_method.parameters.contactparameter" => municipality_contact_rate,
-            "Settings.WorkplaceSite.contact_sampling_method.parameters.contactparameter" => workplace_site_contact_rate,
-            "Settings.SchoolComplex.contact_sampling_method.parameters.contactparameter" => school_complex_contact_rate,
-            "Settings.SchoolYear.contact_sampling_method.parameters.contactparameter" => school_year_contact_rate,
-            "Settings.Department.contact_sampling_method.parameters.contactparameter" => department_contact_rate,
-            "Settings.Workplace.contact_sampling_method.parameters.contactparameter" => workplace_contact_rate,
-            "Settings.GlobalSetting.contact_sampling_method.parameters.contactparameter" => global_contact_rate,
-            "Population.n" => pop_size,
-            "Population.avg_household_size" => avg_household_size,
-            "Population.avg_office_size" => avg_office_size,
-            "Population.avg_school_size" => avg_school_size
+            # StepMod
+            stepmod
         )
 
-        
-
-
-        # 3 Parse default configuration file
-        basefolder = dirname(dirname(pathof(GEMS)))
-        default_configfile = GEMS.DEFAULT_CONFIGFILE # "data/DefaultConf.toml"
-        default_configfile_path = joinpath(basefolder, default_configfile)
-        properties = TOML.parsefile(default_configfile_path)
-
-        if label == ""
-            label = "Simulation " * string(GEMS.SIMS_INSTANTIATED)
-        end
+        # increase simulation counter
         global GEMS.SIMS_INSTANTIATED += 1
-        
-        provided_args = filter(kv -> kv[2] !== nothing && kv[2] !== "" && kv[2] !== (x -> x), parameters_to_update)
-        if isempty(provided_args)
-            printinfo("Initializing Simulation [$label] with default configuration.")
-        else
-            # Construct the message dynamically based on the number of parameters
-            if length(provided_args) == 1
-                printinfo("Initializing Simulation [$label] with default configuration and one custom parameter.")
-            else
-                printinfo("Initializing Simulation [$label] with default configuration and custom parameters.")
-            end
-        end
-        
-
-        if !isempty(simargs)
-            @warn "Warning: Unhandled arguments provided - $simargs. Please have a look at the documentation for supported arguments when calling the constructor" # TODO eher exception?
-        end
-
-
-        # 4 Handle the individual parameters each:
-
-        # handle special key seed first
-        if !haskey(properties["Simulation"], "seed") && !isnothing(seed)
-            properties["Simulation"]["seed"] = seed
-        end
-
-        update_properties!(properties, parameters_to_update)
-
-
-        # call the deeper constructor
-        return Simulation(default_configfile_path, properties, population, settingsfile, label, stepmod)
+        return sim
     end
 
-
-    """
-        Simulation(configfile::String,
-            populationidentifier::String;
-            settingsfile::String = "",
-            label::String = "",
-            stepmod::Function = x -> x,
-            params::Dict{String, <:Any})
-
-    Outer constructor to overwrite the default config file with a custom one.
-
-    Please refer to the documentation on config files on how to create your own.
-
-    - A custom config file can be provided via its path. This file will overwrite the default configuration 
-        file and must contain all required fields.
-        Use this if you want to add more pathogens. See the documentation on the Config file for more details. It must be a .toml file.
-
-    The params dict can overwrite your provided config file. The key must contain the exact path as described in the config file and the value will be replaced.
-    # Examples
-
-    ```
-        sim = Simulation("data/ChangedConf.toml") # returns a Simulation with the changed config as parameters.
-    ```
-    ```
-        sim = Simulation("data/ChangedConf.toml", label = "My own simulation!") # returns a Simulation with the changed config and a custom label.
-    ```
-    ```
-        sim = Simulation("data/ChangedConf.toml", "data/TestPop.csv") # returns a Simulation with the changed config as parameters and a population provided by path.
-    ```
-    ```
-        sim = Simulation("data/ChangedConf.toml", "people_muenster.jld2", "settings_muenster.jld2") # returns a Simulation with the changed config as parameters and a population provided by path. It also uses custom settings for the population
-    ```
-    ```
-        sim = Simulation("data/ChangedConf.toml", "people_muenster.jld2", settings = "settings_muenster.jld2") # returns a Simulation with the changed config as parameters and a population provided by path. It also uses custom settings for the population
-    ```
-    ```
-        sim = Simulation(configfile = "data/ChangedConf.toml") # returns a Simulation with the changed config as parameters. All other parameters can then also be provided as keywords
-    ```
-
-    # Parameters
-
-    | **Name**                        | **Type**                         | **Description**                                                                                                  |
-    | :------------------------------ | :------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
-    | `settingsfile`                  | `String` (Mandatory)             | The path to a Config file. This config file will replace the default one.                                        |
-    | `population`                    | `String`                         | The path to a population .csv or .jdl22 file. Replaces any population specifications in the config               |
-    | `settingsfile`                  | `String`                         | The path to a setting file                                                                                       |
-    | `label`                         | `String` (as Keyword)            | Gives each Simulation a label as identifier in the analyis. Increments Sims by default                           |
-    | `stepmod`                       | `Function` (as Keyword)          | A function that is executed with each step of the simulation.                                                    |
-    | `params`                        | `Dict{String, <|Any}`(as Keyword)| The params dict will overwrite your provided config file. The key must contain the exact path as in the config   |
-    
-    """
-    function Simulation(configfile::String,
-        populationidentifier::String;
-        settingsfile::String = "",
-        label::String = "",
-        stepmod::Function = x -> x,
-        params::Union{Dict{String, <:Any}, Nothing} = nothing,
-        simargs...)
-
-        
-        # println("TEST: CONFIG CONSTR + POPFILE")
-
-        if !isempty(simargs)
-            throw("Warning: Unhandled arguments provided - $simargs. You cannot overwrite parameters in a provided config file")
-        end
-
-        properties = nothing
-
-        if label == ""
-            label = "Simulation " * string(GEMS.SIMS_INSTANTIATED)
-        end
-        global GEMS.SIMS_INSTANTIATED += 1
-
-        # 4 Also parse the provided config file or directly use a provided dict
-        if configfile != "No config file provided!" && configfile != "" 
-            if is_toml_file(configfile)
-                try
-                    properties = TOML.parsefile(configfile)
-                catch e
-                    throw("Please make sure that the path provided to the configfile exists and starts from the base folder.
-                    Have a look at the examples. Also please make sure the structure of the file is a correct .toml-file structure. $e")
-                end
-                 printinfo("Initializing Simulation [$label] with configuration from $(basename(configfile)).")
-            else
-                throw("Please provide a valid .toml file as config file! Refer to the documentation for explanation on the config file structure")
-            end
-        else
-            throw("No Config file provided")
-        end
-
-        # TODO update config file with provided params dict
-
-        # Call deeper constructor
-        pop = (populationidentifier == "") ? nothing : populationidentifier
-        return Simulation(configfile, properties, pop, settingsfile, label, stepmod)
-    end
-
-
-    """
-        Simulation(configfile::String,
-            properties::Dict{String, <:Any},
-            population::Union{String, Population, Nothing} = nothing,
-            settingsfile::String = "",
-            label::String = "",
-            stepmod::Function = x -> x)
-
-    Only for internal usage to provide pipeline for both available constructors
-    """
-    function Simulation(configfile::String,
-        properties::Dict{String, <:Any},
-        population::Union{String, Population, Nothing},
-        settingsfile::String,
-        label::String,
-        stepmod::Function)
-
-        # println("TEST: INNER CONSTR")
-        
-
-        # Settigns and population file paths
-        if (isa(population, Population) && settingsfile != "")
-            @warn "You provided a settingsfile for a Population object. This might not work!"
-        elseif (!isnothing(population) && settingsfile != "")
-            validate_file_paths(population, settingsfile)
-        end
-
-        validate_pathogens(properties, 1) # TODO adapt if more than one pathogen is possible, replace 1 by number of pathogens automatically
-
-        # 6 Create the population
-
-        if isnothing(population)
-            printinfo("\u2514 Creating population")
-            if haskey(properties, "Population")
-                symbolic_parameters = Dict(Symbol.(k) => v for (k, v) in properties["Population"])
-                population = Population(;symbolic_parameters...)
-            else
-                @warn "There is no Population section in your config file. Please add this and ensure it is complete. Please refer to the documentation on config files"
-                population = Population()
-            end
-        elseif isa(population, Population)
-            printinfo("\u2514 Loading provided population object")
-            population = population
-        elseif isa(population, String)
-            if is_pop_file(population)
-                #printinfo("\u2514 Loading population from $(basename(population))")
-                population = Population(population)
-            else 
-                #printinfo("\u2514 Downloading popfile and settings with remote identifier $(population)")
-                if settingsfile != ""
-                    throw("The remote download attempted to overwrite the settingsfile you provided. You need to define the populationfile you want to use locally.")
-                end
-                (populationfile, settingsfile) = obtain_remote_files(population)
-                population = Population(populationfile)
-            end
-        end
-
-        # 7 We create the sim object with the parameters
-
-        
-        if "seed" in keys(properties["Simulation"])
-            seed = properties["Simulation"]["seed"]
-            # println(seed)
-            initialize_seed(seed)
-        end
-    
-        # 8 create all necessary pathogens
-        pathogens = create_pathogens(properties["Pathogens"])
-    
-        # load start condition
-        start_condition = load_start_condition(properties["Simulation"]["StartCondition"], pathogens)
-    
-        # load stop criterion
-        stop_criterion = load_stop_criterion(properties["Simulation"]["StopCriterion"])
-
-        
-
-        global_setting = only(get(properties["Simulation"], "GlobalSetting", false))
-        settings, renaming = settings_from_population(population, global_setting)
-
-        if settingsfile != ""
-            printinfo("\u2514 Creating settings from $settingsfile")
-            settings_from_jld2!(settingsfile, settings, renaming)
-        end
-    
-        # create simulation
-        printinfo("\u2514 Creating simulation object")
-        
-        sim = Simulation(configfile, start_condition, stop_criterion, population, settings, label)
-
-        # Remove empty containersettings
-        if settingsfile != ""
-            remove_empty_settings!(sim)
-        end
-    
-        # add tick unit
-        sim.tickunit = only(properties["Simulation"]["tickunit"])
-
-        # add Date if available TODO
-        if haskey(properties["Simulation"], "startdate") 
-            try
-                startdate = Date(get(properties["Simulation"], "startdate", "2024.1.1"), dateformat"y.m.d")
-                enddate = Date(get(properties["Simulation"], "enddate", "2025.1.1"), dateformat"y.m.d")
-                if startdate >= enddate
-                    throw("Start date ($startdate) of the simulation is after or at the end date ($enddate). Please provide valid start and end dates in the format yyyy.mm.dd")
-                else
-                    sim.startdate = startdate
-                    sim.enddate = enddate
-                end
-            catch e
-                throw("Please provide valid start and end dates in the format yyyy.mm.dd.
-                Stack: $e")
-            end
-
-            
-        else
-            @warn "The used config file does not have a start and end date and might be deprecated!"
-        end
-    
-        # set setting attributes
-        load_setting_attributes!(sim.settings, properties["Settings"])
-    
-        # because we are single pathogen, set the first array entry to be simulation's pathogen
-        pathogen!(sim, pathogens[1])
     
 
-        # Append the StepMod! Function
+    function Simulation(;
+        configfile::String = "",
 
-        sim.stepmod = stepmod
+        # common parameters
+        tickunit = nothing,
+        start_date = nothing,
+        end_date = nothing,
+        label = nothing,
 
+        # population
+        population = nothing,
+        pop_size = nothing,
+        avg_household_size = nothing,
+        avg_office_size = nothing,
+        avg_school_size = nothing,
+
+        # settings
+        global_setting = nothing,
+        settingsfile = nothing,
+
+        # start condition
+        start_condition = nothing,
+        infected_fraction = nothing,
+
+        # stop criterion
+        stop_criterion = nothing,
+
+        # pathogen
+        pathogen = nothing,
+        transmission_function = nothing,
+        transmission_rate = nothing,
+
+        # stepmod
+        stepmod::Function = x -> x
+    )
+
+        # parse the config file (or default to default.toml)
+        config = load_configfile(configfile)
+
+        # GLOBAL SETTING FLAG
+        gs = determine_global_setting(config, global_setting)
+
+        # START DATE
+        sd = determine_start_date(config, start_date)
+
+        # END DATE
+        ed = determine_end_date(config, end_date)
+
+        # TICK UNIT
+        tu = determine_tick_unit(config, tickunit)
+
+        # POPULATION
+        pop, settings = determine_population_and_settings(
+            config,
+            population,
+            gs,
+            pop_size,
+            avg_household_size,
+            avg_office_size,
+            avg_school_size,
+            settingsfile
+        )
+
+        # START CONDITION
+        start_condition = determine_start_condition(
+            config,
+            start_condition,
+            infected_fraction)
+
+        # STOP CRITERION
+        stop_criterion = determine_stop_criterion(
+            config,
+            stop_criterion)
+
+        # PATHOGENS
+        pathogen = determine_pathogen(
+            config,
+            pathogen,
+            transmission_function,
+            transmission_rate
+        )
+
+        # CREATES SIMULATION OBJECT
+        sim = Simulation(
+            configfile,
+            tu,
+            sd,
+            ed,
+            start_condition,
+            stop_criterion,
+            pop,
+            settings,
+            pathogen,
+            stepmod
+        )
+
+        # update label
+        sim.label = isnothing(label) ? sim.label : string(label)
+
+        # initialize simulation
         initialize!(sim)
 
         return sim
     end
 
+
+    Simulation(params::Dict) = Simulation(params...)
+        
 end
 
-### Outer constructors:
+
+### DETERMINATION FUNCTIONS
+
+function determine_start_date(configfile_params::Dict, start_date)
+    # if start_date is provided, use it
+    if !isnothing(start_date)
+        !isa(start_date, Date) && throw(ArgumentError("Provided start_date must be an object of type Date!"))
+        return start_date
+    end
+
+    # if no start date is provided, look it up in config file
+    if !haspath(configfile_params, ["Simulation", "startdate"])
+        @warn "Start date not found in config file and not provided as argument; defualting to today."
+        return today()
+    end
+
+    sd = configfile_params["Simulation"]["startdate"]
+    return Date(sd)
+end
+
+function determine_end_date(configfile_params::Dict, end_date)
+    # if end_date is provided, use it
+    if !isnothing(end_date)
+        !isa(end_date, Date) && throw(ArgumentError("Provided end_date must be an object of type Date!"))
+        return end_date
+    end
+
+    # if no end date is provided, look it up in config file
+    if !haspath(configfile_params, ["Simulation", "enddate"])
+        @warn "End date not found in config file and not provided as argument; defualting to today + 1 year."
+        return today() + Year(1)
+    end
+
+    ed = configfile_params["Simulation"]["enddate"]
+    return Date(ed)
+end
+
+function determine_tick_unit(configfile_params::Dict, tickunit)
+    # if tickunit is provided, use it
+    if !isnothing(tickunit)
+        !isa(only(tickunit), Char) && throw(ArgumentError("Provided tickunit must be a single character!"))
+        return only(tickunit)
+    end
+
+    # if no tick unit is provided, look it up in config file
+    if !haspath(configfile_params, ["Simulation", "tickunit"])
+        @warn "Tick unit not found in config file and not provided as argument; defualting to 'd'."
+        return 'd'
+    end
+
+    tu = configfile_params["Simulation"]["tickunit"]
+    !isa(only(tu), Char) && throw(ArgumentError("Tick unit must be a single character!"))
+    return only(tu)
+end
+
 
 """
-    Simulation(file::String; simargs...)
+    determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
 
-Takes a path to a file as input and checks if it is a population or config file. Creates a simulation with that population or configuration. Further parameters can be defined.
-
-Calls a deeper constructor
+Determines the start condition for the simulation based on the provided parameters.
+If a `start_condition` is provided, it will be used.
+If not, it will check for an `infected_fraction`.
+If `infected_fraction` is provided, it will create an `InfectedFraction` start condition with the specified fraction and pathogen.
+If neither is provided, it will return the default start condition from the config file.
 """
-function Simulation(file::String; simargs...)
+function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
+    # return configfile start condition if nothing else provided
+    if isnothing(start_condition) && isnothing(infected_fraction)
+        !haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ArgumentError("No start condition found in config file!"))
+        return create_start_condition(configfile_params["Simulation"]["StartCondition"])
+    end
 
-    if is_toml_file(file)
-        # printinfo("Identified file as config file!")
-        return Simulation(file, ""; simargs...)
-    elseif is_pop_file(file)
-        # printinfo("Identified file as population file!")
-        return Simulation(population =  file; simargs...)
-    else 
-        throw("The file you provided does not match any type recognised by this simulation. Please provide a .toml, .csv, or .jdl2 file!")
+    # if start_condition is provided, use it
+    if !isnothing(start_condition)
+        !isa(start_condition, StartCondition) && throw(ArgumentError("Provided start_condition must be an object of type StartCondition! Try any of $(join(subtypes(StartCondition), ", "))"))
+        !isnothing(infected_fraction) && @warn "A start_condition was provided, therefore infected_fraction will be ignored."
+        return start_condition
+    end
+
+    # if infected_fraction is provided, use it
+    return InfectedFraction(
+        fraction = infected_fraction,
+        pathogen = ""
+    )
+
+end
+
+"""
+    determine_stop_criterion(configfile_params::Dict, stop_criterion)
+
+Determines the stop criterion for the simulation based on the provided parameters.
+If a `stop_criterion` is provided, it will be used.
+Otherwise, it will return the default stop criterion from the config file.
+"""
+function determine_stop_criterion(configfile_params::Dict, stop_criterion)
+    # return configfile stop criterion if nothing else provided
+    if isnothing(stop_criterion)
+        !haspath(configfile_params, ["Simulation", "StopCriterion"]) && throw(ArgumentError("No stop criterion found in config file!"))
+        return create_stop_criterion(configfile_params["Simulation"]["StopCriterion"])
+    end
+
+    # if stop_criterion is provided, use it
+    !isa(stop_criterion, StopCriterion) && throw(ArgumentError("Provided stop_criterion must be an object of type StopCriterion! Try any of $(join(subtypes(StopCriterion), ", "))"))
+    return stop_criterion
+end
+
+function determine_pathogen(configfile_params::Dict, pathogen, transmission_function, transmission_rate)
+    if !isnothing(pathogen)
+        !isa(pathogen, Pathogen) && throw(ArgumentError("Provided pathogen must be an object of type Pathogen!"))
+        
+        # throw warnings for unused parameters
+        !isnothing(transmission_rate) && @warn "A pathogen was provided, therefore transmission_rate will be ignored."
+        
+        return pathogen
+    end
+
+    # if no pathogen is provided, create one from config file parameters
+    !haspath(configfile_params, ["Pathogens"]) && throw(ArgumentError("No pathogens found in config file!"))
+    pg = create_pathogens(configfile_params["Pathogens"])[1]# TODO: allow multiple pathogens
+    
+    if !isnothing(transmission_function)
+        !isa(transmission_function, TransmissionFunction) && throw(ArgumentError("Provided transmission_function must be an object of type TransmissionFunction!"))
+        transmission_function!(pg, transmission_function)
+        !isnothing(transmission_rate) && @warn "A transmission_function was provided, therefore transmission_rate will be ignored."
+        return pg
+    end
+
+     # if a transmission rate is provided, set
+    if !isnothing(transmission_rate)
+        transmission_function!(pg, ConstantTransmissionRate(transmission_rate = transmission_rate))
+    end
+    
+    return pg
+end
+
+
+function determine_global_setting(configfile_params::Dict, global_setting)
+    # if global_setting is provided, use it
+    if !isnothing(global_setting)
+        !isa(global_setting, Bool) && throw(ArgumentError("global_setting flag must be a boolean value!"))
+        return global_setting
+    end
+
+    # if global_setting flag is not provided, look it up in config file
+    if !haspath(configfile_params, ["Simulation", "GlobalSetting"])
+        @warn "Global setting not found in config file and not provided as argument; defualting to 'false'."
+        return false
+    end
+
+    gs = configfile_params["Simulation"]["GlobalSetting"]
+    !isa(gs, Bool) && throw(ArgumentError("global_setting flag must be a boolean value!"))
+    return gs
+end
+
+
+function determine_population(population::String, settingsfile, global_setting)
+    # if a path was provided, load the population from the file, otherwise assume it's a population identifier
+    (pop_path, settings_path) = try
+        is_pop_file(population) ? (population, settingsfile) : obtain_remote_files(population)
+    catch
+        throw(ArgumentError("Provided population must be a valid population file path or a population model identifier (e.g., 'DE')!"))
+    end
+    
+    pop = Population(pop_path)
+    settings, renaming = settings_from_population(pop, global_setting)
+
+    # if settingsfile is provided, load the settings from the file
+    if !isnothing(settings_path)
+        !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
+        settings_from_jld2!(settings_path, settings, renaming)
+    end
+
+    return pop, settings
+end
+
+
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile)
+    # if population is provided, use it    
+    if !isnothing(population)
+        # if a Population object is provided, use it
+        if isa(population, Population)
+            # throw warning if any other parameters were provided
+            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, and settingsfile will be ignored."
+            settings, renaming = settings_from_population(population, global_setting)
+            return population, settings
+        end
+
+        # throw exception if population is neither a string nor a Population object
+        !isa(population, String) && throw(ArgumentError("Provided population must be a String path to a population file, a population identifier (e.g., 'DE') or Population object!"))
+        # throw warning if any other parameters were provided
+        !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
+            
+        # if a population file path is provided, load the population from the file
+        return determine_population(population, settingsfile, global_setting)
+    end
+
+    # if no population is provided, use the provided parameters
+    # baseline is configfile parameters
+    params = haskey(configfile_params, "Population") ? Dict{Symbol, Any}(prepare_kw_args(configfile_params["Population"])) : Dict{Symbol, Any}()
+    # update kw args
+    !isnothing(pop_size) && (params[:n] = pop_size)
+    !isnothing(avg_household_size) && (params[:avg_household_size] = avg_household_size)
+    !isnothing(avg_office_size) && (params[:avg_office_size] = avg_office_size)
+    !isnothing(avg_school_size) && (params[:avg_school_size] = avg_school_size)
+
+    # create population object
+    pop = Population(; params...)
+    settings, renaming = settings_from_population(pop, global_setting)
+    return pop, settings
+end
+
+
+
+### CREATOR FUNCTIONS
+
+function create_distribution(params::Dict)
+    # find the distribution type in the parameters
+    dist_type = GEMS.get_subtype(params["distribution"], Distribution)
+    return dist_type(params["parameters"]...)
+
+end
+
+function create_progression_parameter(params::Union{Dict, Real})
+    # If parameter is a dictionary, we assume it describes a distribution
+    # Otherwise, we assume it is a single value
+    return isa(params, Dict) ? create_distribution(params) : params
+end
+
+function create_progression(params::Dict, category::String)
+    # convert parameters to keyword arguments
+    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
+    # create the progression category using the keyword arguments
+    return GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
+end
+
+function create_progression_assignment(params::Dict)
+    pa_type = GEMS.get_subtype(params["type"], ProgressionAssignmentFunction)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return pa_type(;kw_args...)
+end
+
+function create_transmission_function(params::Dict)
+    tf_type = GEMS.get_subtype(params["type"], TransmissionFunction)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return tf_type(;kw_args...)
+end
+
+function create_pathogen(params::Dict, name, id)
+
+    # create progressions
+    progressions = [create_progression(pars, category) for (category, pars) in params["progressions"]]
+
+    # create progression assignment
+    pa = create_progression_assignment(params["progression_assignment"])
+
+    # create transmission function
+    tf = create_transmission_function(params["transmission_function"])
+
+    return Pathogen(
+        id = id,
+        name = name,
+        progressions = progressions,
+        progression_assignment = pa,
+        transmission_function = tf
+    )
+end
+
+function create_pathogens(params::Dict)
+    pathogens = []
+    for (pathogen_name, pathogen_params) in params
+        # create pathogen
+        p = create_pathogen(pathogen_params, pathogen_name, length(pathogens) + 1)
+        push!(pathogens, p)
+    end
+
+    # check if at least one pathogen was created
+    length(pathogens) == 0 && throw(ArgumentError("No pathogens were found in the config file!"))
+    return pathogens
+end
+
+
+function create_start_condition(params::Dict)
+    sc_type = get_subtype(params["type"], StartCondition)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return sc_type(;kw_args...)
+end
+
+function create_stop_criterion(params::Dict)
+    sc_type = get_subtype(params["type"], StopCriterion)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return sc_type(;kw_args...)
+end
+
+### FILE LOADERS
+
+
+"""
+    load_configfile(path::String)
+
+Loads a config file from the specified path.
+If no path is provided, it defaults to the `GEMS.DEFAULT_CONFIGFILE`.
+"""
+function load_configfile(path::String)
+    
+    # if no file path is provided, use the default config file
+    if isempty(path)
+        basefolder = dirname(dirname(pathof(GEMS)))
+        #default_configfile = GEMS.DEFAULT_CONFIGFILE # "data/DefaultConf.toml"
+        default_configfile = "data/NEWDefaultConf.toml"
+        default_configfile_path = joinpath(basefolder, default_configfile)
+        return TOML.parsefile(default_configfile_path)
+    else
+        !isfile(path) && throw(ArgumentError("Provided config file path does not point to a valid file: $path"))
+        !is_toml_file(path) && throw(ArgumentError("Provided config file path does not point to a valid .toml file: $path"))    
+        return TOML.parsefile(path)
     end
 
 end
-
-"""
-    Simulation(population::Population; simargs...)
-
-Takes a created population as input and creates a Simulation object.
-
-"""
-function Simulation(population::Population; simargs...)
-
-        return Simulation(population = population; simargs...)
-end
-
-"""
-    Simulation(argsdict::Dict{Symbol, <:Any})
-
-Takes a dict as input.
-
-The dict contains the custom parameters of the other constructors but combined as `Dict` with Symbols as keys.
-
-# Example
-
-```
-    my_arguments = Dict(
-                        :transmission_rate = 0.3,
-                        :configfile = "Data/ChangedConfig.toml",
-                        :n = 10_000_000
-                    )
-    sim = Simulation(my_arguments) # returns a `Simulation` the arguments provided in the dictionary.
-```
-
-"""
-function Simulation(params::Dict{Symbol, <:Any})
-    # printinfo("Parameters provided as dictionary, converting...")
-    return Simulation(; params...)
-end
-
-"""
-    Simulation(configfile::String, populationfile::String, settingsfile::String; simargs...)
-
-Takes the path to a configfile (.toml), a populationidentifier (either a file or remote), and a settingsfile as input and creates a Simulation object.
-
-The configfile can contain anything to overwrite the used default config file. If constructs need to be added, please also provide the layer above.
-
-Example config file:
-"""
-function Simulation(configfile::String, populationidentifier::String, settingsfile::String; simargs...)
-
-        return Simulation(configfile, populationidentifier, settingsfile = settingsfile; simargs...)
-end
-
-# """
-#     Simulation(configfile::String, populationfile::String; simargs...)
-
-# Takes 2 files as input: Must be a population containing .jdl2 or .csv file and a config file as a .toml!
-
-# Calls a deeper constructor
-# """
-# function Simulation(file1::String, file2::String; simargs...)
-#     # 1. we initialize sim object through files
-
-#     # assign files
-#     configfile::String = ""
-#     popfile::String = ""
-
-#     if is_toml_file(file1)
-#         configfile = file1
-#     elseif is_pop_file(file1)
-#         popfile = file1
-#     else 
-#         throw("The first file you provided does not match any type recognised by this simulation. Please provide a .toml, .csv, or .jdl2 file!")
-#     end
-
-#     if is_toml_file(file2)
-#         configfile = file2
-#     elseif is_pop_file(file2)
-#         popfile = file2
-#     else 
-#         throw("The second file you provided does not match any type recognised by this simulation. Please provide a .toml, .csv, or .jdl2 file!")
-#     end
-
-#     return Simulation(configfile, popfile; simargs...)
-# end
-
-# """
-#     Simulation(configfile::String, population::Population; simargs...)
-
-# Takes a configfile (.toml) and a created population as input and creates a Simulation object.
-
-# The configfile can contain anything to overwrite the used default config file. If constructs need to be added, please also provide the layer above.
-
-# Example config file:
-# """
-# function Simulation(configfile::String, population::Population; simargs...)
-
-#         return Simulation(configfile=configfile, population = population; simargs...)
-# end
-
-# """
-#     Simulation( population::Population, configfile::String; simargs...)
-
-# Takes a configfile (.toml) and a created population as input and creates a Simulation object.
-
-# The configfile can contain anything to overwrite the used default config file. If constructs need to be added, please also provide the layer above.
-
-# Example config file:
-# """
-# function Simulation(population::Population, configfile::String; simargs...)
-
-#         return Simulation(configfile=configfile, population = population; simargs...)
-# end
-
-
-### Helper Methods to adapt the config file
-
-"""
-    update_properties!(properties::Dict{String, Any}, updates::Dict{String, Any})
-
-Updates the properties dict to incorporate manual parameters provided with a sim constructor
-"""
-function update_properties!(properties::Dict{String, <:Any}, updates::Dict{String, <:Any})
-    for (path, value) in updates
-        if isnothing(value)
-            continue  # Skip parameters with `nothing` values
-        end
-
-        keys = split(path, ".")  # Split the dot-separated path into keys
-        sub_dict = properties
-        for i in 1:(length(keys) - 1)
-            key = keys[i]
-            if haskey(sub_dict, key)
-                sub_dict = sub_dict[key]  # Drill down into the nested dictionary
-            else
-                @warn "Path `$(join(keys[1:i], "."))` not found in properties dictionary."
-                break
-            end
-        end
-
-        # Update the final key if it exists
-        final_key = keys[end]
-        if haskey(sub_dict, final_key)
-            if path == "Pathogens.Covid19.dpr.stratification_matrix"
-                # Special case for the disease progression matrix validation
-                if length(properties["Pathogens"]["Covid19"]["dpr"]["disease_compartments"]) == length(value[1]) &&
-                   length(properties["Pathogens"]["Covid19"]["dpr"]["age_groups"]) == 1 && 
-                   length(value) == 1
-                    sub_dict[final_key] = value
-                else
-                    @warn "The provided disease_progression_matrix_2d does not match the compartments in properties."
-                end
-            else
-                sub_dict[final_key] = value
-            end
-        else
-            @warn "Key `$(final_key)` not found in path `$(path)` in properties dictionary."
-        end
-    end
-end
-
-
 
 ### Helper Methods to set up parts of the simulation:
 
@@ -861,6 +617,7 @@ function is_pop_file(filename::String)
     return endswith(filename, ".csv") || endswith(filename, ".jld2")
 end
 
+
 """
     validate_file_paths(population_path::String, settings_path::String)
 
@@ -880,167 +637,6 @@ function validate_file_paths(population_path::String, settings_path::String)
     end
 end
 
-"""
-    validate_pathogens(properties, num_pathogens)
-
-Checks if all pathogen names in the config file are consistent.
-"""
-function validate_pathogens(properties, num_pathogens)
-    # Extract pathogen names from the Pathogens section
-    pathogen_keys = keys(get(properties, "Pathogens", Dict()))
-    unique_pathogens = Set(pathogen_keys)
-    
-    # Check if there is more than one unique pathogen name
-    if length(unique_pathogens) > num_pathogens
-        throw("Inconsistent pathogen names found in Pathogens section: $(collect(unique_pathogens))")
-    else
-        # println("Pathogens are consistent: $(first(unique_pathogens))")
-    end
-
-    # Check if pathogen name matches Simulation.StartCondition.pathogen
-    if haskey(properties, "Simulation") && haskey(properties["Simulation"], "StartCondition")
-        start_condition_pathogen = get(properties["Simulation"]["StartCondition"], "pathogen", nothing)
-        if !isnothing(start_condition_pathogen) && start_condition_pathogen ∉ unique_pathogens
-            throw("Pathogen in StartCondition ('$(start_condition_pathogen)') does not match the pathogens in the Pathogens section: $(collect(unique_pathogens))")
-        else
-            # println("StartCondition pathogen matches Pathogens section: $start_condition_pathogen")
-        end
-    end
-end
-
-
-
-"""
-    create_pathogens(pathogens_dict::Dict)::Vector{Pathogen}
-
-Creates the pathogens for the `Simulation` object out of the simulation parameters.
-"""
-function create_pathogens(pathogens_dict::Dict)::Vector{Pathogen}
-    pathogens = []
-    id = 1      # ID will be assigned to ensure it matches position in vector
-    for (name, distributions_dict) in pathogens_dict
-        p = Pathogen(id=id, name=name)  # name is taken from configuration file as the "section name" of the TOML section
-
-        # for now, the only attributes possible are distributions
-        for (key, attr) in distributions_dict
-            #  To allow flexibility, we generate only those distributions, that are provided
-            if Symbol(key) in fieldnames(Pathogen)
-                # Treat the special cases transmissionfunction and DiseaseProgressionStrat individually
-                if key == "dpr"
-                    setfield!(p, Symbol(key), DiseaseProgressionStrat(attr))
-                elseif key == "transmission_function"
-                    setfield!(p, Symbol(key), create_transmission_function(attr))
-                else
-                    distribution = create_distribution(attr["parameters"], attr["distribution"])
-                    setfield!(p, Symbol(key), distribution)
-                end
-            end
-        end
-        push!(pathogens, p)
-        id+=1
-    end
-    return pathogens
-end
-
-
-"""
-    create_distribution(params::Vector{<:Real}, type::String)::Distribution
-
-Creates statistical distributions to be used by other parts of the `Simulation` object.
-"""
-
-function create_distribution(params::Vector{<:Real}, type::String)
-    gems_string = string(nameof(@__MODULE__))
-    id = findfirst(x -> x == type || x == "$gems_string.$type" || x == "Distributions.$type", string.(subtypes(Distribution)))
-
-    dist_type = nothing
-    if !isnothing(id)
-        dist_type = subtypes(Distribution)[id]
-    end
-
-    try
-        return dist_type(params...)
-    catch e
-        error("Failed to create distribution '$type' with parameters $params: $e")
-    end
-end
-
-"""
-    create_waning(params::Vector{<:Real}, type::String)::AbstractWaning
-
-Creates a waning effect for other parameters of the `Simulation` object.
-"""
-function create_waning(params::Vector{<:Real}, type::String)::AbstractWaning
-    if is_existing_subtype(type, AbstractWaning)
-        waning = find_subtype(type, AbstractWaning)
-        return waning(params...)
-    else
-        # If no type is found, throw an error
-        error("The waning type "*type*" provided in the configfile is not known!")
-    end
-end
-
-"""
-    load_start_condition(start_condition_dict::Dict, pathogens::Vector{Pathogen})::StartCondition
-
-Initializes the `Start Conditions` for the `Simulation` object based on the config parameters. If an infection is provided it must have a unique name.
-"""
-function load_start_condition(start_condition_dict::Dict, pathogens::Vector{Pathogen})::StartCondition
-    if start_condition_dict["type"] == "InfectedFraction"
-        # find pathogen under assumption, that the name is UNIQUE
-        pathogen = nothing
-        for p in pathogens
-            if name(p) == start_condition_dict["pathogen"]
-                pathogen = p
-            end
-        end
-        if isnothing(pathogen)
-            error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
-        end
-        return InfectedFraction(start_condition_dict["fraction"], pathogen)
-    elseif start_condition_dict["type"] == "PatientZero"
-        # find pathogen under assumption, that the name is UNIQUE
-        pathogen = nothing
-        for p in pathogens
-            if name(p) == start_condition_dict["pathogen"]
-                pathogen = p
-            end
-        end
-        if isnothing(pathogen)
-            error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
-        end
-        return PatientZero(pathogen)
-    elseif start_condition_dict["type"] == "PatientZeros"
-        # find pathogen under assumption, that the name is UNIQUE
-        pathogen = nothing
-        for p in pathogens
-            if name(p) == start_condition_dict["pathogen"]
-                pathogen = p
-            end
-        end
-        if isnothing(pathogen)
-            error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
-        end
-        return PatientZeros(pathogen, start_condition_dict["ags"])
-    else
-        error("StartCondition "*start_condition_dict["type"]*" is not implemented!")
-    end
-end
-
-"""
-    load_stop_criterion(stop_criterion_dict::Dict)::StopCriterion
-
-Initializes the `Stop Conditions` for the `Simulation` object based on the config parameters.
-"""
-function load_stop_criterion(stop_criterion_dict::Dict)::StopCriterion
-    if stop_criterion_dict["type"] == "TimesUp"
-        return TimesUp(stop_criterion_dict["limit"])
-    elseif stop_criterion_dict["type"] == "NoneInfected"
-        return NoneInfected()
-    else
-        error("StopCriterion "*stop_criterion_dict["type"]*" is not implemented!")
-    end
-end
 
 """
     load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
@@ -1381,7 +977,7 @@ end
 """
     pathogen(simulation)
 
-Retursn the pathogen of the simulation.
+Returns the pathogen of the simulation.
 """
 function pathogen(simulation::Simulation)::Pathogen
     return simulation.pathogen
