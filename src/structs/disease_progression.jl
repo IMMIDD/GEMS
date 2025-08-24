@@ -19,7 +19,7 @@ export is_symptomatic, issymptomatic, symptomatic
 export is_severe, issevere, severe
 export is_mild, ismild, mild
 export is_hospitalized, ishospitalized, hospitalized
-export is_ICU, isICU, ICU
+export is_icu, isicu, ICU
 export is_recovered, isrecovered, recovered
 export is_dead, isdead, dead
 
@@ -87,8 +87,8 @@ struct DiseaseProgression
     symptom_onset::Int16
     severeness_onset::Int16
     hospital_admission::Int16
-    ICU_admission::Int16
-    ICU_discharge::Int16
+    icu_admission::Int16
+    icu_discharge::Int16
     ventilation_admission::Int16
     ventilation_discharge::Int16
     hospital_discharge::Int16
@@ -101,8 +101,8 @@ struct DiseaseProgression
         symptom_onset = -1,
         severeness_onset = -1,
         hospital_admission = -1,
-        ICU_admission = -1,
-        ICU_discharge = -1,
+        icu_admission = -1,
+        icu_discharge = -1,
         ventilation_admission = -1,
         ventilation_discharge = -1,
         hospital_discharge = -1,
@@ -124,12 +124,12 @@ struct DiseaseProgression
         hospital_admission >= 0 && hospital_admission < severeness_onset && throw(ArgumentError("Hospital admission cannot happen before severeness onset (severeness_onset: $severeness_onset, hospital_admission: $hospital_admission)."))
         hospital_admission >= 0 && hospital_discharge < 0 && throw(ArgumentError("Hospital admission cannot be set if hospital discharge is unset (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
         # ICU admission
-        ICU_admission >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if ICU admission is set (hospital_admission: $hospital_admission, ICU_admission: $ICU_admission)."))
-        ICU_admission >= 0 && ICU_admission < hospital_admission && throw(ArgumentError("ICU admission cannot happen before hospital admission (hospital_admission: $hospital_admission, ICU_admission: $ICU_admission)."))
-        ICU_admission >= 0 && ICU_discharge < 0 && throw(ArgumentError("ICU admission cannot be set if ICU discharge is unset (ICU_admission: $ICU_admission, ICU_discharge: $ICU_discharge)."))
+        icu_admission >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if ICU admission is set (hospital_admission: $hospital_admission, icu_admission: $icu_admission)."))
+        icu_admission >= 0 && icu_admission < hospital_admission && throw(ArgumentError("ICU admission cannot happen before hospital admission (hospital_admission: $hospital_admission, icu_admission: $icu_admission)."))
+        icu_admission >= 0 && icu_discharge < 0 && throw(ArgumentError("ICU admission cannot be set if ICU discharge is unset (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
         # ICU discharge
-        ICU_discharge >= 0 && ICU_admission < 0 && throw(ArgumentError("ICU admission must be given if ICU discharge is set (ICU_admission: $ICU_admission, ICU_discharge: $ICU_discharge)."))
-        ICU_discharge >= 0 && ICU_discharge <= ICU_admission && throw(ArgumentError("ICU discharge must be at least one tick after ICU admission (ICU_admission: $ICU_admission, ICU_discharge: $ICU_discharge)."))
+        icu_discharge >= 0 && icu_admission < 0 && throw(ArgumentError("ICU admission must be given if ICU discharge is set (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
+        icu_discharge >= 0 && icu_discharge <= icu_admission && throw(ArgumentError("ICU discharge must be at least one tick after ICU admission (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
         # ventilation admission
         ventilation_admission >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if ventilation admission is set (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))
         ventilation_admission >= 0 && ventilation_admission < hospital_admission && throw(ArgumentError("Ventilation admission cannot happen before hospital admission (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))
@@ -164,8 +164,8 @@ struct DiseaseProgression
             Int16(symptom_onset),
             Int16(severeness_onset),
             Int16(hospital_admission),
-            Int16(ICU_admission),
-            Int16(ICU_discharge),
+            Int16(icu_admission),
+            Int16(icu_discharge),
             Int16(ventilation_admission),
             Int16(ventilation_discharge),
             Int16(hospital_discharge),
@@ -189,8 +189,8 @@ function Base.show(io::IO, dp::DiseaseProgression)
     res *= dp.symptom_onset >= 0 ?        "  $(spcs(dp.symptom_onset, max_width)) | symptom_onset\n" : ""
     res *= dp.severeness_onset >= 0 ?     "  $(spcs(dp.severeness_onset, max_width)) | severeness_onset\n" : ""
     res *= dp.hospital_admission >= 0 ?   "  $(spcs(dp.hospital_admission, max_width)) | hospital_admission\n" : ""
-    res *= dp.ICU_admission >= 0 ?        "  $(spcs(dp.ICU_admission, max_width)) | ICU_admission\n" : ""
-    res *= dp.ICU_discharge >= 0 ?        "  $(spcs(dp.ICU_discharge, max_width)) | ICU_discharge\n" : ""
+    res *= dp.icu_admission >= 0 ?        "  $(spcs(dp.icu_admission, max_width)) | icu_admission\n" : ""
+    res *= dp.icu_discharge >= 0 ?        "  $(spcs(dp.icu_discharge, max_width)) | icu_discharge\n" : ""
     res *= dp.ventilation_admission >= 0 ? "  $(spcs(dp.ventilation_admission, max_width)) | ventilation_admission\n" : ""
     res *= dp.ventilation_discharge >= 0 ? "  $(spcs(dp.ventilation_discharge, max_width)) | ventilation_discharge\n" : ""
     res *= dp.hospital_discharge >= 0 ?   "  $(spcs(dp.hospital_discharge, max_width)) | hospital_discharge\n" : ""
@@ -249,7 +249,7 @@ hospital_admission(dp::DiseaseProgression) = dp.hospital_admission
 Returns the tick when the individual with disease progression `dp` is admitted to ICU.
 If the individual is never admitted to ICU, this will return `-1`.
 """
-ICU_admission(dp::DiseaseProgression) = dp.ICU_admission
+ICU_admission(dp::DiseaseProgression) = dp.icu_admission
 
 """
     ICU_discharge(dp::DiseaseProgression)
@@ -257,7 +257,7 @@ ICU_admission(dp::DiseaseProgression) = dp.ICU_admission
 Returns the tick when the individual with disease progression `dp` is discharged from ICU.
 If the individual is never admitted to ICU, this will return `-1`.
 """
-ICU_discharge(dp::DiseaseProgression) = dp.ICU_discharge
+ICU_discharge(dp::DiseaseProgression) = dp.icu_discharge
 
 """
     hospital_discharge(dp::DiseaseProgression)
@@ -341,7 +341,7 @@ symptomatic(dp::DiseaseProgression, t::Int) = is_symptomatic(dp, t)
 Returns `true` if the individual with disease progression `dp` is asymptomatic at tick `t`, otherwise `false`.
 Asymptomatic means the individual is infected, does currently not have symptoms and will not develop symptoms in the future.
 """
-is_asymptomatic(dp::DiseaseProgression, t::Int) = is_infected(dp, t) && !is_symptomatic(dp, t) && dp.symptom_onset > 0
+is_asymptomatic(dp::DiseaseProgression, t::Int) = is_infected(dp, t) && !is_symptomatic(dp, t) && dp.symptom_onset >= 0
 isasymptomatic(dp::DiseaseProgression, t::Int) = is_asymptomatic(dp, t)
 asymptomatic(dp::DiseaseProgression, t::Int) = is_asymptomatic(dp, t)
 
@@ -380,15 +380,15 @@ ishospitalized(dp::DiseaseProgression, t::Int) = is_hospitalized(dp, t)
 hospitalized(dp::DiseaseProgression, t::Int) = is_hospitalized(dp, t)
 
 """
-    is_ICU(dp::DiseaseProgression, t::Int)
-    isICU(dp::DiseaseProgression, t::Int)
-    ICU(dp::DiseaseProgression, t::Int)
+    is_icu(dp::DiseaseProgression, t::Int)
+    isicu(dp::DiseaseProgression, t::Int)
+    icu(dp::DiseaseProgression, t::Int)
 
 Returns `true` if the individual with disease progression `dp` is in the ICU at tick `t`, otherwise `false`.
 """
-is_ICU(dp::DiseaseProgression, t::Int) = dp.ICU_admission <= t < dp.ICU_discharge
-isICU(dp::DiseaseProgression, t::Int) = is_ICU(dp, t)
-ICU(dp::DiseaseProgression, t::Int) = is_ICU(dp, t)
+is_icu(dp::DiseaseProgression, t::Int) = dp.icu_admission <= t < dp.icu_discharge
+isicu(dp::DiseaseProgression, t::Int) = is_icu(dp, t)
+icu(dp::DiseaseProgression, t::Int) = is_icu(dp, t)
 
 """
     is_recovered(dp::DiseaseProgression, t::Int)
