@@ -52,6 +52,8 @@ A struct to represent the disease progression of an infectious disease.
 - `hospital_admission` is optional, but if set, requires `severeness_onset`, cannot be prior to `severeness_onset`, and requires `hospital_discharge`.
 - `ICU_admission` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and requires `ICU_discharge`.
 - `ICU_discharge` is optional, but if set, requires `ICU_admission`, must be at least one tick after `ICU_admission`.
+- `ventilation_admission` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and requires `ventilation_discharge`.
+- `ventilation_discharge` is optional, but if set, requires `ventilation_admission`, must be at least one tick after `ventilation_admission`.
 - `hospital_discharge` is optional, but if set, requires `hospital_admission`, must be at least one tick after `hospital_admission`, and cannot be prior to `ICU_discharge` if set.
 - `recovery` and `death` are mutually exclusive; at least one must be set.
 - `recovery` must be at least one tick after `exposure`, `symptom_onset` if set, `severeness_onset` if set, and cannot be prior to `hospital_discharge`.
@@ -87,6 +89,8 @@ struct DiseaseProgression
     hospital_admission::Int16
     ICU_admission::Int16
     ICU_discharge::Int16
+    ventilation_admission::Int16
+    ventilation_discharge::Int16
     hospital_discharge::Int16
     recovery::Int16
     death::Int16
@@ -99,6 +103,8 @@ struct DiseaseProgression
         hospital_admission = -1,
         ICU_admission = -1,
         ICU_discharge = -1,
+        ventilation_admission = -1,
+        ventilation_discharge = -1,
         hospital_discharge = -1,
         recovery = -1,
         death = -1)
@@ -124,6 +130,13 @@ struct DiseaseProgression
         # ICU discharge
         ICU_discharge >= 0 && ICU_admission < 0 && throw(ArgumentError("ICU admission must be given if ICU discharge is set (ICU_admission: $ICU_admission, ICU_discharge: $ICU_discharge)."))
         ICU_discharge >= 0 && ICU_discharge <= ICU_admission && throw(ArgumentError("ICU discharge must be at least one tick after ICU admission (ICU_admission: $ICU_admission, ICU_discharge: $ICU_discharge)."))
+        # ventilation admission
+        ventilation_admission >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if ventilation admission is set (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))
+        ventilation_admission >= 0 && ventilation_admission < hospital_admission && throw(ArgumentError("Ventilation admission cannot happen before hospital admission (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))
+        ventilation_admission >= 0 && ventilation_discharge < 0 && throw(ArgumentError("Ventilation admission cannot be set if ventilation discharge is unset (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
+        # ventilation discharge
+        ventilation_discharge >= 0 && ventilation_admission < 0 && throw(ArgumentError("Ventilation admission must be given if ventilation discharge is set (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
+        ventilation_discharge >= 0 && ventilation_discharge <= ventilation_admission && throw(ArgumentError("Ventilation discharge must be at least one tick after ventilation admission (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
         # hospital discharge
         hospital_discharge >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if hospital discharge is set (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
         hospital_discharge >= 0 && hospital_discharge <= hospital_admission && throw(ArgumentError("Hospital discharge must be at least one tick after hospital admission (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
@@ -153,6 +166,8 @@ struct DiseaseProgression
             Int16(hospital_admission),
             Int16(ICU_admission),
             Int16(ICU_discharge),
+            Int16(ventilation_admission),
+            Int16(ventilation_discharge),
             Int16(hospital_discharge),
             Int16(recovery),
             Int16(death)
@@ -176,6 +191,8 @@ function Base.show(io::IO, dp::DiseaseProgression)
     res *= dp.hospital_admission >= 0 ?   "  $(spcs(dp.hospital_admission, max_width)) | hospital_admission\n" : ""
     res *= dp.ICU_admission >= 0 ?        "  $(spcs(dp.ICU_admission, max_width)) | ICU_admission\n" : ""
     res *= dp.ICU_discharge >= 0 ?        "  $(spcs(dp.ICU_discharge, max_width)) | ICU_discharge\n" : ""
+    res *= dp.ventilation_admission >= 0 ? "  $(spcs(dp.ventilation_admission, max_width)) | ventilation_admission\n" : ""
+    res *= dp.ventilation_discharge >= 0 ? "  $(spcs(dp.ventilation_discharge, max_width)) | ventilation_discharge\n" : ""
     res *= dp.hospital_discharge >= 0 ?   "  $(spcs(dp.hospital_discharge, max_width)) | hospital_discharge\n" : ""
     res *= dp.recovery >= 0 ?             "  $(spcs(dp.recovery, max_width)) | recovery\n" : ""
     res *= dp.death >= 0 ?                "  $(spcs(dp.death, max_width)) | death\n" : ""
