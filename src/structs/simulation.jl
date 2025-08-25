@@ -586,7 +586,7 @@ function load_configfile(path::String)
     if isempty(path)
         basefolder = dirname(dirname(pathof(GEMS)))
         #default_configfile = GEMS.DEFAULT_CONFIGFILE # "data/DefaultConf.toml"
-        default_configfile = "data/NEWDefaultConf.toml"
+        default_configfile = "data/DefaultConf.toml"
         default_configfile_path = joinpath(basefolder, default_configfile)
         return TOML.parsefile(default_configfile_path)
     else
