@@ -1,3 +1,5 @@
+export Critical
+
 """
     Critical <: ProgressionCategory
 
@@ -60,15 +62,33 @@ mutable struct Critical <: ProgressionCategory
     # if dying
     icu_admission_to_death::Union{Distribution, Real}
 
-    function Critical(; death_probability, kwargs...)
-        !(0.0 .<= death_probability .<= 1.0) && throw(ArgumentError("death_probability must be between 0 and 1."))
-        
-        return new(
-            kwargs...,
-            death_probability = death_probability
-        )
+    function Critical(; death_probability, 
+        exposure_to_infectiousness,
+        infectiousness_to_symptom_onset,
+        symptom_onset_to_severeness_onset,
+        severeness_onset_to_hospital_admission,
+        hospital_admission_to_icu_admission,
+        icu_admission_to_icu_discharge,
+        icu_discharge_to_hospital_discharge,
+        hospital_discharge_to_recovery,
+        icu_admission_to_death)
+
+        0.0 <= death_probability <= 1.0 || throw(ArgumentError("death_probability must be between 0 and 1."))
+
+        return new(exposure_to_infectiousness,
+            infectiousness_to_symptom_onset,
+            symptom_onset_to_severeness_onset,
+            severeness_onset_to_hospital_admission,
+            hospital_admission_to_icu_admission,
+            death_probability,
+            icu_admission_to_icu_discharge,
+            icu_discharge_to_hospital_discharge,
+            hospital_discharge_to_recovery,
+            icu_admission_to_death)
     end
+
 end
+
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Critical)
     # Calculate the time to infectiousness

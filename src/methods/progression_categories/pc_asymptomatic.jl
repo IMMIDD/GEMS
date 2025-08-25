@@ -1,3 +1,5 @@
+export Asymptomatic
+
 """
     Asymptomatic <: ProgressionCategory
 

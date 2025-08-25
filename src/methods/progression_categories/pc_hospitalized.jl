@@ -1,3 +1,5 @@
+export Hospitalized
+
 """
     Hospitalized <: ProgressionCategory
 
