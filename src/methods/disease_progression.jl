@@ -1,4 +1,4 @@
-
+export progress_disease!
 ###
 ### INCLUDE DISEASE PROGRESSION FUNCTIONS
 ###
@@ -39,3 +39,33 @@ include.(
         readdir(dir; join=true)
     )
 )
+
+
+
+###
+### UPDATE DISEASE PROGRESSION IN AGENTS
+###
+
+"""
+    progress_disease!(individual::Individual, tick::Int16)
+
+Updates the disease progression status flags of the individual at the given tick.
+"""
+function progress_disease!(individual::Individual, tick::Int16)
+
+    # do not update, if individual is dead
+    if is_dead(individual)
+        return
+    end
+
+    # update disease progression status flags in the individual
+    infected!(individual, is_infected(individual, tick))
+    infectious!(individual, is_infectious(individual, tick))
+    symptomatic!(individual, is_symptomatic(individual, tick))
+    severe!(individual, is_severe(individual, tick))
+    hospitalized!(individual, is_hospitalized(individual, tick))
+    icu!(individual, is_icu(individual, tick))
+    ventilated!(individual, is_ventilated(individual, tick))
+    dead!(individual, is_dead(individual, tick))
+
+end
