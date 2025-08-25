@@ -30,24 +30,27 @@ A logging structure specifically for infections. An infection event is given by 
 entries of the field-vectors at a given index.
 
 # Fields
+- `infection_id::Vector{Int32}`: Identifiers of this infection event
 - `id_a::Vector{Int32}`: Identifiers of the agents that are infecting
 - `id_b::Vector{Int32}`: Identifiers of the agents to be infected
-- `infectious_tick::Vector{Int16}`: Ticks of infected to become infectious
-- `symptoms_tick::Vector{Int16}`: Tick at which infectee develops symptoms (-1 if not at all)
-- `severeness_tick::Vector{Int16}`: Tick at which infectee develops severe symptoms (-1 if not at all)
-- `hospital_tick::Vector{Int16}`: Tick at which infectee is admitted to the hospital (-1 if not at all)
-- `icu_tick::Vector{Int16}`: Tick at which infectee is admitted to the icu (-1 if not at all)
-- `ventilation_tick::Vector{Int16}`: Tick at which infectee needs ventilation (-1 if not at all)
-- `removed_tick::Vector{Int16}`: Ticks of agents to be recovered
-- `death_tick::Vector{Int16}`: Ticks of death (if caused by this infection)
-- `symptom_category::Vector{Int8}`: Symptom Category of the disease progression 
-    of the infection
+- `infectiousness_onset::Vector{Int16}`: Tick at which infectee becomes infectious
+- `symptom_onset::Vector{Int16}`: Tick at which infectee develops symptoms (-1 if not at all)
+- `severeness_onset::Vector{Int16}`: Tick at which infectee develops severe symptoms (-1 if not at all)
+- `hospital_admission::Vector{Int16}`: Tick at which infectee is admitted to the hospital (-1 if not at all)
+- `hospital_discharge::Vector{Int16}`: Tick at which infectee is discharged from the hospital (-1 if not at all)
+- `icu_admission::Vector{Int16}`: Tick at which infectee is admitted to the icu (-1 if not at all)
+- `icu_discharge::Vector{Int16}`: Tick at which infectee is discharged from the icu (-1 if not at all)
+- `ventilation_admission::Vector{Int16}`: Tick at which infectee is admitted to ventilation (-1 if not at all)
+- `ventilation_discharge::Vector{Int16}`: Tick at which infectee is discharged from ventilation (-1 if not at all)
+- `recovery::Vector{Int16}`: Tick at which infectee recovers (-1 if not at all)
+- `death::Vector{Int16}`: Tick at which infectee dies (-1 if not at all)
 - `tick::Vector{Int16}`: Ticks of infections
 - `setting_id::Vector{Int32}`: Identifiers of settings where the infections happened
 - `setting_type::Vector{Char}`: Types of settings where the infections happened
 - `lat::Float32`: Latitude of infection event location
 - `lon::Float32`: Longitude of infection event location
 - `ags::Vector{Int32}`: AGS of the settings where the infections happened
+- `source_infection_id::Vector{Int32}`: Infection ID of the infecting individual at the time of infection
 - `lock::ReentrantLock`: A lock for parallelised code to use to guarantee data race free 
     conditions when working with this logger.
 """
@@ -64,16 +67,18 @@ entries of the field-vectors at a given index.
 
     # Infected data
     id_b::Vector{Int32} = Vector{Int32}(undef, 0)
-    infectious_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    symptoms_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    severeness_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    hospital_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    icu_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    ventilation_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    removed_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    death_tick::Vector{Int16} = Vector{Int16}(undef, 0)
-    symptom_category::Vector{Int8} = Vector{Int8}(undef, 0)
-
+    infectiousness_onset::Vector{Int16} = Vector{Int16}(undef, 0)
+    symptom_onset::Vector{Int16} = Vector{Int16}(undef, 0)
+    severeness_onset::Vector{Int16} = Vector{Int16}(undef, 0)
+    hospital_admission::Vector{Int16} = Vector{Int16}(undef, 0)
+    hospital_discharge::Vector{Int16} = Vector{Int16}(undef, 0)
+    icu_admission::Vector{Int16} = Vector{Int16}(undef, 0)
+    icu_discharge::Vector{Int16} = Vector{Int16}(undef, 0)
+    ventilation_admission::Vector{Int16} = Vector{Int16}(undef, 0)
+    ventilation_discharge::Vector{Int16} = Vector{Int16}(undef, 0)
+    recovery::Vector{Int16} = Vector{Int16}(undef, 0)
+    death::Vector{Int16} = Vector{Int16}(undef, 0)
+    
     # External data
     tick::Vector{Int16} = Vector{Int16}(undef, 0)
     setting_id::Vector{Int32} = Vector{Int32}(undef, 0)
@@ -88,11 +93,29 @@ entries of the field-vectors at a given index.
 end
 
 """
-    log!(logger::InfectionLogger, a::Int32, b::Int32, tick::Int16, infectious_tick::Int16,
-    symptoms_tick::Int16, severeness_tick::Int16, hospital_tick::Int16, icu_tick::Int16,
-    ventilation_tick::Int16, removed_tick::Int16, death_tick::Int16, symptom_category::Int8,
-    setting_id::Int32, setting_type::Char, lat::Float32, lon::Float32, ags::Int32,
-    source_infection_id::Int32)
+    log!(;
+        logger::InfectionLogger,
+        a::Int32,
+        b::Int32,
+        tick::Int16,
+        infectiousness_onset::Int16,
+        symptom_onset::Int16,
+        severeness_onset::Int16,
+        hospital_admission::Int16,
+        hospital_discharge::Int16,
+        icu_admission::Int16,
+        icu_discharge::Int16,
+        ventilation_admission::Int16,
+        ventilation_discharge::Int16,
+        recovery::Int16,
+        death::Int16,
+        setting_id::Int32,
+        setting_type::Char,
+        lat::Float32,
+        lon::Float32,
+        ags::Int32,
+        source_infection_id::Int32
+    )
 
 Logs an infection event into the specified `InfectionLogger`.
 Returns a new infection_id for the newly added infection.
@@ -104,14 +127,17 @@ Returns a new infection_id for the newly added infection.
 - `a::Int32`: ID of infecting individual
 - `b::Int32`: ID of infected individual
 - `tick::Int16`: Current simultion tick
-- `infectious_tick::Int16`: Tick of individual becoming infectious 
-- `symptoms_tick::Int16`: Tick of individual becoming symptomatic
-- `severeness_tick::Int16`: Tick of individual becoming a severe case
-- `hospital_tick::Int16`: Tick of individual being hospitalized
-- `icu_tick::Int16`:  Tick of individual being admitted to ICU
-- `ventilation_tick::Int16`: Tick of individual being admitted to ventilation
-- `removed_tick::Int16`: Tick of individual recovering/dying
-- `death_tick::Int16`: Tick of individual death (if died)
+- `infectiousness_onset::Int16`: Tick of individual becoming infectious
+- `symptom_onset::Int16`: Tick of individual becoming symptomatic
+- `severeness_onset::Int16`: Tick of individual becoming a severe case
+- `hospital_admission::Int16`: Tick of individual being hospitalized
+- `hospital_discharge::Int16`: Tick of individual being discharged from hospital
+- `icu_admission::Int16`:  Tick of individual being admitted to ICU
+- `icu_discharge::Int16`: Tick of individual being discharged from ICU
+- `ventilation_admission::Int16`: Tick of individual being admitted to ventilation
+- `ventilation_discharge::Int16`: Tick of individual being discharged from ventilation
+- `recovery::Int16`: Tick of individual recovering
+- `death::Int16`: Tick of individual death (if died)
 - `symptom_category::Int8`: Symptom category
 - `setting_id::Int32`: ID of setting this infection happend in
 - `setting_type::Char`: Setting type as char (e.g. "h" for `Household`)
@@ -124,20 +150,22 @@ Returns a new infection_id for the newly added infection.
 
 - `Int32`: New infection ID
 """
-function log!(
+function log!(;
         logger::InfectionLogger,
         a::Int32,
         b::Int32,
         tick::Int16,
-        infectious_tick::Int16,
-        symptoms_tick::Int16,
-        severeness_tick::Int16,
-        hospital_tick::Int16,
-        icu_tick::Int16,
-        ventilation_tick::Int16,
-        removed_tick::Int16,
-        death_tick::Int16,
-        symptom_category::Int8,
+        infectiousness_onset::Int16,
+        symptom_onset::Int16,
+        severeness_onset::Int16,
+        hospital_admission::Int16,
+        hospital_discharge::Int16,
+        icu_admission::Int16,
+        icu_discharge::Int16,
+        ventilation_admission::Int16,
+        ventilation_discharge::Int16,
+        recovery::Int16,
+        death::Int16,
         setting_id::Int32,
         setting_type::Char,
         lat::Float32,
@@ -157,15 +185,17 @@ function log!(
         push!(logger.id_a, a)
         push!(logger.id_b, b)
         push!(logger.tick, tick)
-        push!(logger.infectious_tick, infectious_tick)
-        push!(logger.severeness_tick, severeness_tick)
-        push!(logger.hospital_tick, hospital_tick)
-        push!(logger.icu_tick, icu_tick)
-        push!(logger.ventilation_tick, ventilation_tick)
-        push!(logger.symptoms_tick, symptoms_tick)
-        push!(logger.removed_tick, removed_tick)
-        push!(logger.death_tick, death_tick)
-        push!(logger.symptom_category, symptom_category)
+        push!(logger.infectiousness_onset, infectiousness_onset)
+        push!(logger.symptom_onset, symptom_onset)
+        push!(logger.severeness_onset, severeness_onset)
+        push!(logger.hospital_admission, hospital_admission)
+        push!(logger.hospital_discharge, hospital_discharge)
+        push!(logger.icu_admission, icu_admission)
+        push!(logger.icu_discharge, icu_discharge)
+        push!(logger.ventilation_admission, ventilation_admission)
+        push!(logger.ventilation_discharge, ventilation_discharge)
+        push!(logger.recovery, recovery)
+        push!(logger.death, death)
         push!(logger.setting_id, setting_id)
         push!(logger.setting_type, setting_type)
         push!(logger.lat, lat)
@@ -240,21 +270,27 @@ Return a DataFrame holding the informations of the logger.
 
 - `DataFrame` with the following columns:
 
-| Name                  | Type    | Description                                                 |
-| :-------------------- | :------ | :---------------------------------------------------------- |
-| `infection_id`        | `Int32` | Identifier of this infection event                          |
-| `tick`                | `Int16` | Tick of the infection event                                 |
-| `id_a`                | `Int32` | Infecter id                                                 |
-| `id_b`                | `Int32` | Infectee id                                                 |
-| `infectious_tick`     | `Int16` | Tick at which infectee becomes infectious                   |
-| `symptoms_tick`       | `Int16` | Tick at which infectee develops symptoms (-1 if not at all) |
-| `removed_tick`        | `Int16` | Tick at which infectee becomes removed (recovers)           |
-| `death_tick`          | `Int16` | Tick at which infectee dies                                 |
-| `symptom_category`    | `Int8`  | Last state of disease progression before recovery           |
-| `setting_id`          | `Int32` | Id of setting in which infection happens                    |
-| `setting_type`        | `Char`  | setting type of the infection setting                       |
-| `ags`                 | `Int32` | AGS of the infection setting                                |
-| `source_infection_id` | `Int32` | Id of the infecter's infection event                        |
+| Name                    | Type    | Description                                                               |
+| :---------------------- | :------ | :------------------------------------------------------------------------ |
+| `infection_id`          | `Int32` | Identifier of this infection event                                        |
+| `tick`                  | `Int16` | Tick of the infection event                                               |
+| `id_a`                  | `Int32` | Infecter id                                                               |
+| `id_b`                  | `Int32` | Infectee id                                                               |
+| `infectiousness_onset`  | `Int16` | Tick at which infectee becomes infectious                                 |
+| `symptom_onset`         | `Int16` | Tick at which infectee develops symptoms (-1 if not at all)               |
+| `severeness_onset`      | `Int16` | Tick at which infectee develops severe symptoms (-1 if not at all)        |
+| `hospital_admission`    | `Int16` | Tick at which infectee is admitted to the hospital (-1 if not at all)     |
+| `hospital_discharge`    | `Int16` | Tick at which infectee is discharged from the hospital (-1 if not at all) |
+| `icu_admission`         | `Int16` | Tick at which infectee is admitted to the icu (-1 if not at all)          |
+| `icu_discharge`         | `Int16` | Tick at which infectee is discharged from the icu (-1 if not at all)      |
+| `ventilation_admission` | `Int16` | Tick at which infectee is admitted to ventilation (-1 if not at all)      |
+| `ventilation_discharge` | `Int16` | Tick at which infectee is discharged from ventilation (-1 if not at all)  |
+| `recovery`              | `Int16` | Tick at which infectee recovers (-1 if not at all)                        |
+| `death`                 | `Int16` | Tick at which infectee dies (-1 if not at all)                            |
+| `setting_id`            | `Int32` | Id of setting in which infection happens                                  |
+| `setting_type`          | `Char`  | setting type of the infection setting                                     |
+| `ags`                   | `Int32` | AGS of the infection setting                                              |
+| `source_infection_id`   | `Int32` | Id of the infecter's infection event                                      |
 """
 function dataframe(logger::InfectionLogger)
     return DataFrame(
@@ -262,15 +298,17 @@ function dataframe(logger::InfectionLogger)
         tick = logger.tick,
         id_a = logger.id_a,
         id_b = logger.id_b,
-        infectious_tick = logger.infectious_tick,
-        removed_tick = logger.removed_tick,
-        death_tick = logger.death_tick,
-        symptoms_tick = logger.symptoms_tick,
-        severeness_tick= logger.severeness_tick,
-        hospital_tick= logger.hospital_tick,
-        icu_tick= logger.icu_tick,
-        ventilation_tick= logger.ventilation_tick,
-        symptom_category = logger.symptom_category,
+        infectiousness_onset = logger.infectiousness_onset,
+        symptom_onset = logger.symptom_onset,
+        severeness_onset = logger.severeness_onset,
+        hospital_admission = logger.hospital_admission,
+        hospital_discharge = logger.hospital_discharge,
+        icu_admission = logger.icu_admission,
+        icu_discharge = logger.icu_discharge,
+        ventilation_admission = logger.ventilation_admission,
+        ventilation_discharge = logger.ventilation_discharge,
+        recovery = logger.recovery,
+        death = logger.death,
         setting_id = logger.setting_id,
         setting_type = logger.setting_type,
         lat = logger.lat,
@@ -291,14 +329,22 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["tick"] = logger.tick
         file["id_a"] = logger.id_a
         file["id_b"] = logger.id_b
-        file["infectious_tick"] = logger.infectious_tick
-        file["symptoms_tick"] = logger.symptoms_tick
-        file["removed_tick"] = logger.removed_tick
-        file["symptom_category"] = logger.symptom_category
+        file["infectiousness_onset"] = logger.infectiousness_onset
+        file["symptom_onset"] = logger.symptom_onset
+        file["severeness_onset"] = logger.severeness_onset
+        file["hospital_admission"] = logger.hospital_admission
+        file["hospital_discharge"] = logger.hospital_discharge
+        file["icu_admission"] = logger.icu_admission
+        file["icu_discharge"] = logger.icu_discharge
+        file["ventilation_admission"] = logger.ventilation_admission
+        file["ventilation_discharge"] = logger.ventilation_discharge
+        file["recovery"] = logger.recovery
+        file["death"] = logger.death
         file["setting_id"] = logger.setting_id
         file["setting_type"] = logger.setting_type
         file["lat"] = logger.lat
         file["lon"] = logger.lon
+        file["ags"] = logger.ags
         file["source_infection_id"] = logger.source_infection_id
     end
 end
