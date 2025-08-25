@@ -14,6 +14,7 @@ export _int
 export remove_kw, prepare_kw_args
 export germanshapes
 export haspath
+export rand_val
 
 # contact stuff
 export calculate_absolute_error
@@ -1050,3 +1051,14 @@ function haspath(dict::Dict, path::Vector{<:Any})
     end
     return true
 end
+
+
+"""
+    rand_val(val::Real)
+    rand_val(dist::Distribution)
+
+If the input is a real number, it is returned as is.
+If the input is a distribution, a random value is drawn from it.
+"""
+rand_val(val::Real) = val
+rand_val(dist::Distribution) = rand(dist)
