@@ -9,7 +9,7 @@
         type = "InfectedFraction"
         [Simulation.StartCondition.parameters]
             fraction = 0.01
-            pathogen = "Covid19"
+            #pathogen = "Covid19"
 
     [Simulation.StopCriterion]
         type = "TimesUp"

@@ -231,6 +231,9 @@ mutable struct Simulation
             settingsfile
         )
 
+        # SETTINGS
+        determine_setting_config!(settings, config)
+
         # START CONDITION
         start_condition = determine_start_condition(
             config,
@@ -487,6 +490,17 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     pop = Population(; params...)
     settings, renaming = settings_from_population(pop, global_setting)
     return pop, settings
+end
+
+
+function determine_setting_config!(stngs::SettingsContainer, configfile_params::Dict)
+    # if no settings are provided, look them up in config file
+    if !haspath(configfile_params, ["Settings"])
+        @warn "No setting parameters found in config file; using default global setting only. This might cause 0 contacts and no infections."
+        return
+    end
+
+    load_setting_attributes!(stngs, configfile_params["Settings"])
 end
 
 

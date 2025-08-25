@@ -266,6 +266,7 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
     num_infected = 0
     # Obtain individuals present in the current setting
     present_inds = present_individuals(setting, sim)
+
     # Check if the setting is open
     open = is_open(setting)
     for ind_index in 1:length(present_inds)

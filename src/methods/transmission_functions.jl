@@ -31,7 +31,7 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 
 """
 function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
-    if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
+    if  -1 < recovery(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
@@ -59,7 +59,7 @@ If the individual has already recovered, the function returns `0.0`, assuming fu
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
 function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
-    if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
+    if  -1 < recovery(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     

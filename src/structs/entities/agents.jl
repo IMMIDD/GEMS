@@ -1322,7 +1322,7 @@ function Base.show(io::IO, individual::Individual)
     end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", individuals::Vector{Individual})
+function Base.show(io::IO, #=::MIME"text/plain",=# individuals::Vector{Individual})
     n = length(individuals)
     println(io, "$(n)-element Vector{Individual}:")
     
