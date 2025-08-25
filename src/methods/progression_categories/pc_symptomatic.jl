@@ -14,8 +14,8 @@ Providing, for example a Poisson(2) distribution would result in an average of 3
 `exposure` -> `infectiousness_onset` -> `symptom_onset` -> `recovery`.
 
 # Parameters
-- `exposure_to_infectiousness::Union{Distribution, Real}`: Time from exposure to becoming infectious.
-- `infectiousness_to_symptom_onset::Union{Distribution, Real}`: Time from becoming infectious to symptom onset.
+- `exposure_to_infectiousness_onset::Union{Distribution, Real}`: Time from exposure to becoming infectious.
+- `infectiousness_onset_to_symptom_onset::Union{Distribution, Real}`: Time from becoming infectious to symptom onset.
 - `symptom_onset_to_recovery::Union{Distribution, Real}`: Time from symptom onset to recovery.
 
 # Example
@@ -23,24 +23,24 @@ The code below instantiates a `Symptomatic` progression category with specific d
 
 ```julia
 dp = Symptomatic(
-    exposure_to_infectiousness = Poisson(3),
-    infectiousness_to_symptom_onset = Poisson(1),
+    exposure_to_infectiousness_onset = Poisson(3),
+    infectiousness_onset_to_symptom_onset = Poisson(1),
     symptom_onset_to_recovery = Poisson(7)
 )
 ```
 """
 @with_kw mutable struct Symptomatic <: ProgressionCategory
-    exposure_to_infectiousness::Union{Distribution, Real}
-    infectiousness_to_symptom_onset::Union{Distribution, Real}
+    exposure_to_infectiousness_onset::Union{Distribution, Real}
+    infectiousness_onset_to_symptom_onset::Union{Distribution, Real}
     symptom_onset_to_recovery::Union{Distribution, Real}
 end
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Symptomatic)
     # Calculate the time to infectiousness
-    infectiousness_onset = tick + Int16(1) + rand(dp.exposure_to_infectiousness)
+    infectiousness_onset = tick + Int16(1) + rand(dp.exposure_to_infectiousness_onset)
 
     # Calculate the time to symptom onset
-    symptom_onset = infectiousness_onset + rand(dp.infectiousness_to_symptom_onset)
+    symptom_onset = infectiousness_onset + rand(dp.infectiousness_onset_to_symptom_onset)
 
     # Calculate the time to recovery
     recovery = symptom_onset + rand(dp.symptom_onset_to_recovery)

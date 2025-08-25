@@ -14,8 +14,8 @@ Providing, for example a Poisson(2) distribution would result in an average of 3
 `exposure` -> `infectiousness_onset` -> `symptom_onset` -> `severeness_onset` -> `hospital_admission` -> `icu_admission` -> (`icu_discharge` -> `hospital_discharge` -> `recovery`) OR (`death`).
 
 # Parameters
-- `exposure_to_infectiousness::Union{Distribution, Real}`: Time from exposure to becoming infectious.
-- `infectiousness_to_symptom_onset::Union{Distribution, Real}`: Time from becoming infectious to symptom onset.
+- `exposure_to_infectiousness_onset::Union{Distribution, Real}`: Time from exposure to becoming infectious.
+- `infectiousness_onset_to_symptom_onset::Union{Distribution, Real}`: Time from becoming infectious to symptom onset.
 - `symptom_onset_to_severeness_onset::Union{Distribution, Real}`: Time from symptom onset to severeness onset.
 - `severeness_onset_to_hospital_admission::Union{Distribution, Real}`: Time from severeness onset to hospital admission.
 - `hospital_admission_to_icu_admission::Union{Distribution, Real}`: Time from hospital admission to ICU admission.
@@ -31,8 +31,8 @@ The code below instantiates a `Critical` progression category with specific dist
 
 ```julia
 dp = Critical(
-    exposure_to_infectiousness = Poisson(3),
-    infectiousness_to_symptom_onset = Poisson(1),
+    exposure_to_infectiousness_onset = Poisson(3),
+    infectiousness_onset_to_symptom_onset = Poisson(1),
     symptom_onset_to_severeness_onset = Poisson(2),
     severeness_onset_to_hospital_admission = Poisson(1),
     hospital_admission_to_icu_admission = Poisson(1),
@@ -45,8 +45,8 @@ dp = Critical(
 ```
 """
 mutable struct Critical <: ProgressionCategory
-    exposure_to_infectiousness::Union{Distribution, Real}
-    infectiousness_to_symptom_onset::Union{Distribution, Real}
+    exposure_to_infectiousness_onset::Union{Distribution, Real}
+    infectiousness_onset_to_symptom_onset::Union{Distribution, Real}
     symptom_onset_to_severeness_onset::Union{Distribution, Real}
     severeness_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_icu_admission::Union{Distribution, Real}
@@ -63,8 +63,8 @@ mutable struct Critical <: ProgressionCategory
     icu_admission_to_death::Union{Distribution, Real}
 
     function Critical(; death_probability, 
-        exposure_to_infectiousness,
-        infectiousness_to_symptom_onset,
+        exposure_to_infectiousness_onset,
+        infectiousness_onset_to_symptom_onset,
         symptom_onset_to_severeness_onset,
         severeness_onset_to_hospital_admission,
         hospital_admission_to_icu_admission,
@@ -75,8 +75,8 @@ mutable struct Critical <: ProgressionCategory
 
         0.0 <= death_probability <= 1.0 || throw(ArgumentError("death_probability must be between 0 and 1."))
 
-        return new(exposure_to_infectiousness,
-            infectiousness_to_symptom_onset,
+        return new(exposure_to_infectiousness_onset,
+            infectiousness_onset_to_symptom_onset,
             symptom_onset_to_severeness_onset,
             severeness_onset_to_hospital_admission,
             hospital_admission_to_icu_admission,
@@ -92,10 +92,10 @@ end
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Critical)
     # Calculate the time to infectiousness
-    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness)
+    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset)
 
     # Calculate the time to symptom onset
-    symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_to_symptom_onset)
+    symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset)
 
     # Calculate the time to severeness onset
     severeness_onset = symptom_onset + rand_val(dp.symptom_onset_to_severeness_onset)

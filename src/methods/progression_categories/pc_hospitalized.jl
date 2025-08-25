@@ -14,8 +14,8 @@ Providing, for example a Poisson(2) distribution would result in an average of 3
 `exposure` -> `infectiousness_onset` -> `symptom_onset` -> `severeness_onset` -> `hospital_admission` -> `hospital_discharge` -> `recovery`.
 
 # Parameters
-- `exposure_to_infectiousness::Union{Distribution, Real}`: Time from exposure to becoming infectious.
-- `infectiousness_to_symptom_onset::Union{Distribution, Real}`: Time from becoming infectious to symptom onset.
+- `exposure_to_infectiousness_onset::Union{Distribution, Real}`: Time from exposure to becoming infectious.
+- `infectiousness_onset_to_symptom_onset::Union{Distribution, Real}`: Time from becoming infectious to symptom onset.
 - `symptom_onset_to_severeness_onset::Union{Distribution, Real}`: Time from symptom onset to severeness onset.
 - `severeness_onset_to_hospital_admission::Union{Distribution, Real}`: Time from severeness onset to hospital admission.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Time from hospital admission to hospital discharge.
@@ -26,8 +26,8 @@ The code below instantiates a `Hospitalized` progression category with specific 
 
 ```julia
 dp = Hospitalized(
-    exposure_to_infectiousness = Poisson(3),
-    infectiousness_to_symptom_onset = Poisson(1),
+    exposure_to_infectiousness_onset = Poisson(3),
+    infectiousness_onset_to_symptom_onset = Poisson(1),
     symptom_onset_to_severeness_onset = Poisson(2),
     severeness_onset_to_hospital_admission = Poisson(1),
     hospital_admission_to_hospital_discharge = Poisson(10),
@@ -36,8 +36,8 @@ dp = Hospitalized(
 ```
 """
 @with_kw mutable struct Hospitalized <: ProgressionCategory
-    exposure_to_infectiousness::Union{Distribution, Real}
-    infectiousness_to_symptom_onset::Union{Distribution, Real}
+    exposure_to_infectiousness_onset::Union{Distribution, Real}
+    infectiousness_onset_to_symptom_onset::Union{Distribution, Real}
     symptom_onset_to_severeness_onset::Union{Distribution, Real}
     severeness_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
@@ -46,10 +46,10 @@ end
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Hospitalized)
     # Calculate the time to infectiousness
-    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness)
+    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset)
 
     # Calculate the time to symptom onset
-    symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_to_symptom_onset)
+    symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset)
 
     # Calculate the time to severeness onset
     severeness_onset = symptom_onset + rand_val(dp.symptom_onset_to_severeness_onset)

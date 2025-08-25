@@ -14,31 +14,31 @@ Providing, for example a Poisson(2) distribution would result in an average of 3
 `exposure` -> `infectiousness_onset` -> `recovery`.
 
 # Parameters
-- `exposure_to_infectiousness::Union{Distribution, Real}`: Time from exposure to becoming infectious.
-- `infectiousness_to_recovery::Union{Distribution, Real}`: Time from becoming infectious to recovery.
+- `exposure_to_infectiousness_onset::Union{Distribution, Real}`: Time from exposure to becoming infectious.
+- `infectiousness_onset_to_recovery::Union{Distribution, Real}`: Time from becoming infectious to recovery.
 
 # Example
 The code below instantiates an `Asymptomatic` progression category with specific distributions for the time intervals.
 
 ```julia
 dp = Asymptomatic(
-    exposure_to_infectiousness = Poisson(3),
-    infectiousness_to_recovery = Poisson(7)
+    exposure_to_infectiousness_onset = Poisson(3),
+    infectiousness_onset_to_recovery = Poisson(7)
 )
 ```
 """
 @with_kw mutable struct Asymptomatic <: ProgressionCategory
-    exposure_to_infectiousness::Union{Distribution, Real}
-    infectiousness_to_recovery::Union{Distribution, Real}
+    exposure_to_infectiousness_onset::Union{Distribution, Real}
+    infectiousness_onset_to_recovery::Union{Distribution, Real}
 end
 
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Asymptomatic)
     # Calculate the time to infectiousness
-    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness)
+    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset)
 
     # Calculate the time to recovery
-    recovery = infectiousness_onset + rand_val(dp.infectiousness_to_recovery)
+    recovery = infectiousness_onset + rand_val(dp.infectiousness_onset_to_recovery)
 
     return DiseaseProgression(
         exposure = tick,
