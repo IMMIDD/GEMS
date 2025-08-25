@@ -9,28 +9,6 @@ export DiseaseProgressionStrat
 ###
 abstract type AgeStratification end
 
-###
-### DISEASE STATES
-###
-
-"An abstract type for all DiseaseStates"
-abstract type SymptomCategory end
-"A type representing the symptom category 'Asymptomatic' in the disease progression"
-struct Asymptomatic <: SymptomCategory end
-"A type representing the symptom category 'Mild' in the disease progression"
-struct Mild <: SymptomCategory end
-"A type representing the symptom category 'Severe' in the disease progression"
-struct Severe <: SymptomCategory end
-"A type representing the symptom category 'Critical' in the disease progression"
-struct Critical <: SymptomCategory end
-
-# Terminal State Lookup Dict
-const SYMPTOM_CATEGORY_DICT = Dict(
-    SYMPTOM_CATEGORY_ASYMPTOMATIC => Asymptomatic,
-    SYMPTOM_CATEGORY_MILD => Mild,
-    SYMPTOM_CATEGORY_SEVERE => Severe,
-    SYMPTOM_CATEGORY_CRITICAL => Critical
-)
 
 ###
 ### DISEASE PROGRESSION STRATIFICATION
