@@ -28,8 +28,12 @@ A `StopCriterion` that specifies a time limit.
 - `limit::Int16`: A time limit. When reached, the simulation should be terminated.
 """
 struct TimesUp <: StopCriterion
-    # TODO throw exception when intialized with negative values
     limit::Int16
+
+    function TimesUp(;limit::Int = 365) 
+        limit <= 0 && throw(ArgumentError("TimesUp must be 1 or larger!"))
+        new(Int16(limit))
+    end
 end
 
 """

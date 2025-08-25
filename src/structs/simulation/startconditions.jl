@@ -14,22 +14,29 @@ A `StartCondition` that specifies a fraction of infected individuals (drawn at r
 - `pathogen::Pathogen`: The pathogen with which the fraction has to be infected
 """
 struct InfectedFraction <: StartCondition
-    # TODO throw exception when initialized with values not between 0 and 1
     fraction::Float64
-    pathogen::Pathogen
+    pathogen::String # if empty, will be applied to all pathogens
+
+    function InfectedFraction(;fraction::Float64 = 0.1, pathogen::String = "")
+        fraction < 0.0 && throw(ArgumentError("Fraction must be greater than or equal to 0!"))
+        fraction > 1.0 && throw(ArgumentError("Fraction must be less than or equal to 1!"))
+        return new(fraction, pathogen)
+    end
 end
 
-Base.show(io::IO, cnd::StartCondition) = write(io, "InfectedFraction(Random $(100*cnd.fraction)% $(cnd.pathogen.name))")
+Base.show(io::IO, cnd::InfectedFraction) = write(io, "InfectedFraction(Random $(100*cnd.fraction)% $(cnd.pathogen))")
 
 
 #TODO docs
 struct PatientZero <: StartCondition
-    pathogen::Pathogen
+    pathogen::String
+
+    PatientZero(;pathogen::String = "") = new(pathogen)
 end
 
 
 struct PatientZeros <: StartCondition
-    pathogen::Pathogen
+    pathogen::String
     ags::Vector{Int64}
 end
 
@@ -38,7 +45,7 @@ end
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
-function pathogen(patientzero::PatientZero)::Pathogen
+function pathogen(patientzero::PatientZero)
     return patientzero.pathogen
 end
 
@@ -55,7 +62,7 @@ end
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
-function pathogen(patientzeros::PatientZeros)::Pathogen
+function pathogen(patientzeros::PatientZeros)
     return patientzeros.pathogen
 end
 """
@@ -71,7 +78,7 @@ end
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
-function pathogen(infectedFraction::InfectedFraction)::Pathogen
+function pathogen(infectedFraction::InfectedFraction)
     return infectedFraction.pathogen
 end
 
@@ -82,17 +89,17 @@ end
 Initializes the simulation model with a fraction of infected individuals, provided by the start condition.
 """
 function initialize!(simulation::Simulation, condition::InfectedFraction)
+    # TODO handle case where pathogen is not specified
+    # TODO handle multiple pathogens
+    
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
     to_infect = sample(ind, to_sample, replace=false)
 
-    # overwrite pathogen in simulation struct
-    pathogen!(simulation, pathogen(condition))
-
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), sim = simulation)
+        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
