@@ -12,7 +12,7 @@ export region_info
 export pathogen, pathogen!
 export configfile, populationfile
 export evaluate
-export initialize!
+export initialize!, reinitialize!
 export increment!, reset!
 export tickunit
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
@@ -48,6 +48,7 @@ A struct for the management of a single run, holding all necessary informations.
     - `enddate::Date`: End date of the simulation
     - `start_condition::StartCondition`: Starting condition that sets the initial situation
     - `stop_criterion::StopCriterion`: Criterion that terminates a simulation run
+    - `seed::Union{Int64, Nothing}`:` Random seed for reproducibility
     - `label::String`: Label for plot visualizations
 - Model
     - `population::Population`: Container to hold all present individuals
@@ -84,6 +85,7 @@ mutable struct Simulation
     enddate::Date
     start_condition::StartCondition
     stop_criterion::StopCriterion
+    seed::Union{Int64, Nothing} # Random seed for reproducibility
     label::String
 
     # model
@@ -134,6 +136,7 @@ mutable struct Simulation
          Date(2025), # enddate::Date
          start_condition, # start_condition::StartCondition
          stop_criterion, # stop_criterion::StopCriterion
+         nothing, # seed::Union{Int64, Nothing}
          label, # label::String
          population, # population::Population
          settings, # settings::SettingsContainer
@@ -584,7 +587,6 @@ mutable struct Simulation
         
         if "seed" in keys(properties["Simulation"])
             seed = properties["Simulation"]["seed"]
-            # println(seed)
             initialize_seed(seed)
         end
     
@@ -649,11 +651,14 @@ mutable struct Simulation
     
 
         # Append the StepMod! Function
-
         sim.stepmod = stepmod
 
+        # Set seed if provided
+        if "seed" in keys(properties["Simulation"])
+            seed = properties["Simulation"]["seed"]
+            sim.seed = seed
+        end
         initialize!(sim)
-
         return sim
     end
 
@@ -1261,6 +1266,14 @@ function stop_criterion(simulation::Simulation)
     return simulation.stop_criterion
 end
 
+"""
+    seed(simulation)
+
+Returns the random seed used for the simulation, or `nothing` if not set.
+"""
+function seed(simulation::Simulation)
+    return simulation.seed
+end
 
 """
     population(simulation)
@@ -1550,6 +1563,34 @@ Initializes the simulation model with a provided start condition.
 """
 function initialize!(simulation::Simulation)
     initialize!(simulation, start_condition(simulation))
+end
+
+"""
+    reinitialize!(simulation::Simulation)
+
+Reinitializes the simulation model according to its start condition.
+This resets the simulation tick and re-applies the start condition.
+"""
+function reinitialize!(simulation::Simulation)
+    # reset individual to initial state
+    reset!.(individuals(simulation))
+    reset!(simulation)
+    simulation.infectionlogger = InfectionLogger()
+    simulation.deathlogger = DeathLogger()
+    simulation.testlogger = TestLogger()
+    simulation.pooltestlogger = PoolTestLogger()
+    simulation.quarantinelogger = QuarantineLogger()
+    simulation.customlogger = CustomLogger()
+    simulation.symptom_triggers = []
+    simulation.tick_triggers = []
+    simulation.hospitalization_triggers = []
+    simulation.event_queue = EventQueue()
+    simulation.strategies = []
+    simulation.testtypes = []
+    if ~isnothing(simulation.seed)
+        initialize_seed(simulation.seed)
+    end
+    initialize!(simulation)
 end
 
 ###
