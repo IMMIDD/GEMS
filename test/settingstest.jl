@@ -1,5 +1,6 @@
 @testset "Settings" begin
     rs = RandomSampling()
+    test_rng = Xoshiro()
 
     @testset "GlobalSetting" begin
 
@@ -175,12 +176,12 @@
         end
 
         @testset "Settings from Population" begin
-            Random.seed!(42)
+            Random.seed!(test_rng, 42)
 
             num_agents = 15
             size_household = 3
             size_office = 5
-            indivs = [Individual(id=i, sex=rand([1, 2]), age=42) for i in range(1, num_agents)]
+            indivs = [Individual(id=i, sex=rand(test_rng, [1, 2]), age=42) for i in range(1, num_agents)]
 
             #=  
                 Distribute everyone to an household
@@ -216,7 +217,7 @@
             hh_partitions = [collect(part) for part in hh_partitions]
             wp_partitions = [collect(part) for part in wp_partitions]
 
-            shuffle!(indivs)
+            shuffle!(test_rng, indivs)
 
             pop = Population(indivs)
             stngs, rnm = settings_from_population(pop)

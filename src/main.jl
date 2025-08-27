@@ -84,9 +84,9 @@ function main(configfile::String, populationfile::String, outputdir::String;
     end
 
     # Set simulation seed this will be overwritten if the config file includes a seed
-    if !ismissing(seed)
-        Random.seed!(seed)
-    end
+    #if !ismissing(seed)
+    #    Random.seed!(seed)
+    #end
 
     # initialize simulation
     printinfo("Initializing simulation")

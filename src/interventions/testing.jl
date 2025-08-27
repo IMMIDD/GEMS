@@ -220,8 +220,8 @@ undetected individual.
 function apply_test(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
 
     # apply test
-    test_pos = infected(ind) && rand() <= testtype |> sensitivity ||
-               !infected(ind) && rand() > testtype |> specificity
+    test_pos = infected(ind) && rand(rng(sim)) <= testtype |> sensitivity ||
+        !infected(ind) && rand(rng(sim)) > testtype |> specificity
 
     # add test information in agent
     last_test!(ind, sim |> tick)
@@ -279,8 +279,8 @@ function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; 
     no_of_inf = subset === nothing ? setting |> individuals |> num_of_infected : subset |> num_of_infected
 
     # apply test
-    test_pos = no_of_inf > 0 && rand() <= testtype |> sensitivity ||
-               no_of_inf == 0 && rand() > testtype |> specificity
+    test_pos = no_of_inf > 0 && rand(rng(sim)) <= testtype |> sensitivity ||
+        no_of_inf == 0 && rand(rng(sim)) > testtype |> specificity
 
     # log pool test in sim object
     log!(
