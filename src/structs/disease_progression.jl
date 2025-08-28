@@ -56,10 +56,11 @@ A struct to represent the disease progression of an infectious disease.
 - `severeness_onset` is optional, but if set, requires `symptom_onset` and cannot be prior to `symptom_onset`.
 - `hospital_admission` is optional, but if set, requires `severeness_onset`, cannot be prior to `severeness_onset`, and requires `hospital_discharge`.
 - `icu_admission` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and requires `ICU_discharge`.
-- `icu_discharge` is optional, but if set, requires `ICU_admission`, must be at least one tick after `ICU_admission`.
+- `icu_discharge` is optional, but if set, requires `ICU_admission`, and cannot be prior to `ICU_admission`.
 - `ventilation_admission` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and requires `ventilation_discharge`.
-- `ventilation_discharge` is optional, but if set, requires `ventilation_admission`, must be at least one tick after `ventilation_admission`.
-- `hospital_discharge` is optional, but if set, requires `hospital_admission`, must be at least one tick after `hospital_admission`, and cannot be prior to `ICU_discharge` if set.
+- `ventilation_discharge` is optional, but if set, requires `ventilation_admission`, and cannot be prior to `ventilation_admission`.
+- `hospital_discharge` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and cannot be prior to `ICU_discharge` if set.
+- `severeness_offset` is optional, but if set, requires `severeness_onset`, cannot be prior to `severeness_onset`, and cannot be prior to `hospital_discharge` if set.
 - `recovery` and `death` are mutually exclusive; at least one must be set.
 - `recovery` must be at least one tick after `exposure`, `symptom_onset` if set, `severeness_onset` if set, and cannot be prior to `hospital_discharge`.
 - `death` requires `symptom_onset` and cannot precede any other disease progression events.
