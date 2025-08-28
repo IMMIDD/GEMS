@@ -11,7 +11,7 @@ The provided distributions should account for this offset to ensure realistic ti
 Providing, for example a Poisson(2) distribution would result in an average of 3 ticks from exposure to infectiousness onset (Poisson(2) + 1).
 
 # Disease events
-`exposure` -> `infectiousness_onset` -> `symptom_onset` -> `severeness_onset` -> `hospital_admission` -> `hospital_discharge` -> `recovery`.
+`exposure` -> `infectiousness_onset` -> `symptom_onset` -> `severeness_onset` -> `hospital_admission` -> `hospital_discharge` -> `severeness_offset` -> `recovery`.
 
 # Parameters
 - `exposure_to_infectiousness_onset::Union{Distribution, Real}`: Time from exposure to becoming infectious.
@@ -19,7 +19,8 @@ Providing, for example a Poisson(2) distribution would result in an average of 3
 - `symptom_onset_to_severeness_onset::Union{Distribution, Real}`: Time from symptom onset to severeness onset.
 - `severeness_onset_to_hospital_admission::Union{Distribution, Real}`: Time from severeness onset to hospital admission.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Time from hospital admission to hospital discharge.
-- `hospital_discharge_to_recovery::Union{Distribution, Real}`: Time from hospital discharge to recovery.
+- `hospital_discharge_to_severeness_offset::Union{Distribution, Real}`: Time from hospital discharge to severeness offset.
+- `severeness_offset_to_recovery::Union{Distribution, Real}`: Time from severeness offset to recovery.
 
 # Example
 The code below instantiates a `Hospitalized` progression category with specific distributions for the time intervals.
@@ -31,7 +32,8 @@ dp = Hospitalized(
     symptom_onset_to_severeness_onset = Poisson(2),
     severeness_onset_to_hospital_admission = Poisson(1),
     hospital_admission_to_hospital_discharge = Poisson(10),
-    hospital_discharge_to_recovery = Poisson(5)
+    hospital_discharge_to_severeness_offset = Poisson(2),
+    severeness_offset_to_recovery = Poisson(1)
 )
 ```
 """
@@ -41,7 +43,8 @@ dp = Hospitalized(
     symptom_onset_to_severeness_onset::Union{Distribution, Real}
     severeness_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
-    hospital_discharge_to_recovery::Union{Distribution, Real}
+    hospital_discharge_to_severeness_offset::Union{Distribution, Real}
+    severeness_offset_to_recovery::Union{Distribution, Real}
 end
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Hospitalized)
@@ -60,8 +63,11 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Hospital
     # Calculate the time to hospital discharge
     hospital_discharge = hospital_admission + rand_val(dp.hospital_admission_to_hospital_discharge)
 
+    # Calculate the time to severeness offset
+    severeness_offset = hospital_discharge + rand_val(dp.hospital_discharge_to_severeness_offset)
+
     # Calculate the time to recovery
-    recovery = hospital_discharge + rand_val(dp.hospital_discharge_to_recovery)
+    recovery = severeness_offset + rand_val(dp.severeness_offset_to_recovery)
 
     return DiseaseProgression(
         exposure = tick,
@@ -70,6 +76,7 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Hospital
         severeness_onset = severeness_onset,
         hospital_admission = hospital_admission,
         hospital_discharge = hospital_discharge,
+        severeness_offset = severeness_offset,
         recovery = recovery
     )
 end

@@ -82,10 +82,12 @@
                     distribution = "Poisson"
                     parameters = [7]
                 # time to recovery (after hospital discharge)
-                [Pathogens.Covid19.progressions.Hospitalized.hospital_discharge_to_recovery]
+                [Pathogens.Covid19.progressions.Hospitalized.hospital_discharge_to_severeness_offset]
                     distribution = "Poisson"
-                    parameters = [7]
-                
+                    parameters = [3]
+                [Pathogens.Covid19.progressions.Hospitalized.severeness_offset_to_recovery]
+                    distribution = "Poisson"
+                    parameters = [4]
 
             # CRITICAL PROGRESSION [TOTAL DURATION ~ 30 DAYS]
             [Pathogens.Covid19.progressions.Critical]
@@ -123,9 +125,13 @@
                     distribution = "Poisson"
                     parameters = [7]
                 # time to recovery (after hospital discharge)
-                [Pathogens.Covid19.progressions.Critical.hospital_discharge_to_recovery]
+                [Pathogens.Covid19.progressions.Critical.hospital_discharge_to_severeness_offset]
                     distribution = "Poisson"
-                    parameters = [7]
+                    parameters = [3]
+                [Pathogens.Covid19.progressions.Critical.severeness_offset_to_recovery]
+                    distribution = "Poisson"
+                    parameters = [4]
+
                 # DEATH PATHWAY
                 # time to death (after ICU admission)
                 [Pathogens.Covid19.progressions.Critical.icu_admission_to_death]

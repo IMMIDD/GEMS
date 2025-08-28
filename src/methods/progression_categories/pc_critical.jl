@@ -11,7 +11,7 @@ The provided distributions should account for this offset to ensure realistic ti
 Providing, for example a Poisson(2) distribution would result in an average of 3 ticks from exposure to infectiousness onset (Poisson(2) + 1).
 
 # Disease events
-`exposure` -> `infectiousness_onset` -> `symptom_onset` -> `severeness_onset` -> `hospital_admission` -> `icu_admission` -> (`icu_discharge` -> `hospital_discharge` -> `recovery`) OR (`death`).
+`exposure` -> `infectiousness_onset` -> `symptom_onset` -> `severeness_onset` -> `hospital_admission` -> `icu_admission` -> (`icu_discharge` -> `hospital_discharge` -> `severeness_offset` -> `recovery`) OR (`death`).
 
 # Parameters
 - `exposure_to_infectiousness_onset::Union{Distribution, Real}`: Time from exposure to becoming infectious.
@@ -22,7 +22,8 @@ Providing, for example a Poisson(2) distribution would result in an average of 3
 - `death_probability::Real`: Probability of death for individuals in this progression category. Must be between 0 and 1.
 - `icu_admission_to_icu_discharge::Union{Distribution, Real}`: Time from ICU admission to ICU discharge (if recovering).
 - `icu_discharge_to_hospital_discharge::Union{Distribution, Real}`: Time from ICU discharge to hospital discharge (if recovering).
-- `hospital_discharge_to_recovery::Union{Distribution, Real}`: Time from hospital discharge to recovery (if recovering).
+- `hospital_discharge_to_severeness_offset::Union{Distribution, Real}`: Time from hospital discharge to severeness offset (if recovering).
+- `severeness_offset_to_recovery::Union{Distribution, Real}`: Time from severeness offset to recovery (if recovering).
 - `icu_admission_to_death::Union{Distribution, Real}`: Time from ICU admission to death (if dying).
 
 # Example
@@ -57,7 +58,8 @@ mutable struct Critical <: ProgressionCategory
     # if recovering
     icu_admission_to_icu_discharge::Union{Distribution, Real}
     icu_discharge_to_hospital_discharge::Union{Distribution, Real}
-    hospital_discharge_to_recovery::Union{Distribution, Real}
+    hospital_discharge_to_severeness_offset::Union{Distribution, Real}
+    severeness_offset_to_recovery::Union{Distribution, Real}
 
     # if dying
     icu_admission_to_death::Union{Distribution, Real}
@@ -70,7 +72,8 @@ mutable struct Critical <: ProgressionCategory
         hospital_admission_to_icu_admission,
         icu_admission_to_icu_discharge,
         icu_discharge_to_hospital_discharge,
-        hospital_discharge_to_recovery,
+        hospital_discharge_to_severeness_offset,
+        severeness_offset_to_recovery,
         icu_admission_to_death)
 
         0.0 <= death_probability <= 1.0 || throw(ArgumentError("death_probability must be between 0 and 1."))
@@ -83,7 +86,8 @@ mutable struct Critical <: ProgressionCategory
             death_probability,
             icu_admission_to_icu_discharge,
             icu_discharge_to_hospital_discharge,
-            hospital_discharge_to_recovery,
+            hospital_discharge_to_severeness_offset,
+            severeness_offset_to_recovery,
             icu_admission_to_death)
     end
 
@@ -122,6 +126,7 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
             # set icu and hospital discharge to death time
             icu_discharge = death,
             hospital_discharge = death,
+            severeness_offset = death,
             death = death
         )
     end
@@ -133,8 +138,11 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
     # Calculate the time to hospital discharge
     hospital_discharge = hospital_admission + rand_val(dp.hospital_admission_to_hospital_discharge)
 
+    # Calculate the time to severeness offset
+    severeness_offset = hospital_discharge + rand_val(dp.hospital_discharge_to_severeness_offset)
+
     # Calculate the time to recovery
-    recovery = hospital_discharge + rand_val(dp.hospital_discharge_to_recovery)
+    recovery = severeness_offset + rand_val(dp.severeness_offset_to_recovery)
 
     return DiseaseProgression(
         exposure = tick,
@@ -145,6 +153,7 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
         icu_admission = icu_admission,
         icu_discharge = icu_discharge,
         hospital_discharge = hospital_discharge,
+        severeness_offset = severeness_offset,
         recovery = recovery
     )
 end
