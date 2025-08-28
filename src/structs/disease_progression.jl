@@ -138,7 +138,7 @@ struct DiseaseProgression
         icu_admission >= 0 && icu_discharge < 0 && throw(ArgumentError("ICU admission cannot be set if ICU discharge is unset (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
         # ICU discharge
         icu_discharge >= 0 && icu_admission < 0 && throw(ArgumentError("ICU admission must be given if ICU discharge is set (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
-        icu_discharge >= 0 && icu_discharge <= icu_admission && throw(ArgumentError("ICU discharge must be at least one tick after ICU admission (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
+        icu_discharge >= 0 && icu_discharge < icu_admission && throw(ArgumentError("ICU discharge cannot happen before ICU admission (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
         # ventilation admission
         ventilation_admission >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if ventilation admission is set (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))
         ventilation_admission >= 0 && ventilation_admission < hospital_admission && throw(ArgumentError("Ventilation admission cannot happen before hospital admission (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))

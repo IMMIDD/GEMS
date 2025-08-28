@@ -136,7 +136,7 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
     icu_discharge = icu_admission + rand_val(dp.icu_admission_to_icu_discharge)
 
     # Calculate the time to hospital discharge
-    hospital_discharge = hospital_admission + rand_val(dp.hospital_admission_to_hospital_discharge)
+    hospital_discharge = icu_discharge + rand_val(dp.icu_discharge_to_hospital_discharge)
 
     # Calculate the time to severeness offset
     severeness_offset = hospital_discharge + rand_val(dp.hospital_discharge_to_severeness_offset)

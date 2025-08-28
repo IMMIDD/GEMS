@@ -556,6 +556,7 @@ end
 function create_progression_assignment(params::Dict)
     pa_type = GEMS.get_subtype(params["type"], ProgressionAssignmentFunction)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+
     return try
         pa_type(;kw_args...)
     catch e

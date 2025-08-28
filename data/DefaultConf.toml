@@ -140,12 +140,13 @@
 
         # progression assignment method
         [Pathogens.Covid19.progression_assignment]
-            type = "AgeBasedProgressionAssignment"
+            type = "RandomProgressionAssignment"
             [Pathogens.Covid19.progression_assignment.parameters]
-                # Matrix with Disease Progression
-                age_groups = ["0+"]
                 progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Critical"]
-                stratification_matrix = [[0.4, 0.45, 0.1, 0.05]]
+                # # Matrix with Disease Progression
+                # age_groups = ["0+"]
+                # progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Critical"]
+                # stratification_matrix = [[0.4, 0.45, 0.1, 0.05]]
 
 [Settings]
 
