@@ -120,7 +120,7 @@ function get_subtype(type::String, parent::Type)
     i = findfirst(x -> x == structname(type), structname.(stypes))
 
     # if type is not subtype of parent, throw exception
-    isnothing(i) ? throw("$(structname(type)) is not a known subtype of $(structname(parent)); try any of these: $(join(structname.(stypes), ", "))") : nothing
+    isnothing(i) ? throw("'$(structname(type))' is not a known subtype of $(structname(parent)); try any of these: $(join(structname.(stypes), ", "))") : nothing
 
     # return index
     return stypes[i]

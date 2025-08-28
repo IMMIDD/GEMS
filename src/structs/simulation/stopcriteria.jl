@@ -30,7 +30,7 @@ A `StopCriterion` that specifies a time limit.
 struct TimesUp <: StopCriterion
     limit::Int16
 
-    function TimesUp(;limit::Int = 365) 
+    function TimesUp(;limit::Int) 
         limit <= 0 && throw(ArgumentError("TimesUp must be 1 or larger!"))
         new(Int16(limit))
     end

@@ -210,6 +210,7 @@ mutable struct Simulation
         # GLOBAL SETTING FLAG
         gs = determine_global_setting(config, global_setting)
 
+
         # START DATE
         sd = determine_start_date(config, start_date)
 
@@ -298,7 +299,11 @@ function determine_start_date(configfile_params::Dict, start_date)
     end
 
     sd = configfile_params["Simulation"]["startdate"]
-    return Date(sd)
+    return try
+        Date(sd)
+    catch e
+        throw(ConfigfileError("'[Simulation] => startdate' could not be read from config file.", e))
+    end
 end
 
 function determine_end_date(configfile_params::Dict, end_date)
@@ -315,7 +320,11 @@ function determine_end_date(configfile_params::Dict, end_date)
     end
 
     ed = configfile_params["Simulation"]["enddate"]
-    return Date(ed)
+    return try
+        Date(ed)
+    catch e
+        throw(ConfigfileError("'[Simulation] => enddate' could not be read from config file.", e))
+    end
 end
 
 function determine_tick_unit(configfile_params::Dict, tickunit)
@@ -332,8 +341,12 @@ function determine_tick_unit(configfile_params::Dict, tickunit)
     end
 
     tu = configfile_params["Simulation"]["tickunit"]
-    !isa(only(tu), Char) && throw(ArgumentError("Tick unit must be a single character!"))
-    return only(tu)
+    !isa(only(tu), Char) && throw(ConfigfileError("'[Simulation] => tickunit' must be a single character!"))
+    return try
+        only(tu)
+    catch e
+        throw(ConfigfileError("'[Simulation] => tickunit' could not be read from config file.", e))
+    end
 end
 
 
@@ -349,8 +362,12 @@ If neither is provided, it will return the default start condition from the conf
 function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
     # return configfile start condition if nothing else provided
     if isnothing(start_condition) && isnothing(infected_fraction)
-        !haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ArgumentError("No start condition found in config file!"))
-        return create_start_condition(configfile_params["Simulation"]["StartCondition"])
+        !haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' section must be specified in the config file."))
+        return try 
+            create_start_condition(configfile_params["Simulation"]["StartCondition"])
+        catch e
+            throw(ConfigfileError("'[Simulation.StartCondition]' could not be read from config file.", e))
+        end
     end
 
     # if start_condition is provided, use it
@@ -378,8 +395,13 @@ Otherwise, it will return the default stop criterion from the config file.
 function determine_stop_criterion(configfile_params::Dict, stop_criterion)
     # return configfile stop criterion if nothing else provided
     if isnothing(stop_criterion)
-        !haspath(configfile_params, ["Simulation", "StopCriterion"]) && throw(ArgumentError("No stop criterion found in config file!"))
-        return create_stop_criterion(configfile_params["Simulation"]["StopCriterion"])
+        !haspath(configfile_params, ["Simulation", "StopCriterion"]) && throw(ConfigfileError("No stop criterion found in config file! Without a provided 'stop_criterion' argument, a '[Simulation.StopCriterion]' section must be specified in the config file."))
+
+        return try
+            create_stop_criterion(configfile_params["Simulation"]["StopCriterion"])
+        catch e
+            throw(ConfigfileError("'[Simulation.StopCriterion]' could not be created from config file.", e))
+        end
     end
 
     # if stop_criterion is provided, use it
@@ -398,7 +420,7 @@ function determine_pathogen(configfile_params::Dict, pathogen, transmission_func
     end
 
     # if no pathogen is provided, create one from config file parameters
-    !haspath(configfile_params, ["Pathogens"]) && throw(ArgumentError("No pathogens found in config file!"))
+    !haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogen found in config file! Without a provided 'pathogen' argument, a '[Pathogens]' section must be specified in the config file."))
     pg = create_pathogens(configfile_params["Pathogens"])[1]# TODO: allow multiple pathogens
     
     if !isnothing(transmission_function)
@@ -524,31 +546,54 @@ function create_progression(params::Dict, category::String)
     # convert parameters to keyword arguments
     kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
     # create the progression category using the keyword arguments
-    return GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
+    return try
+        GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
+    catch e
+        throw("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))")
+    end
 end
 
 function create_progression_assignment(params::Dict)
     pa_type = GEMS.get_subtype(params["type"], ProgressionAssignmentFunction)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
-    return pa_type(;kw_args...)
+    return try
+        pa_type(;kw_args...)
+    catch e
+        throw("ProgressionAssignmentFunction of type '$pa_type' could not be created. $(sprint(showerror, e))")
+    end
 end
 
 function create_transmission_function(params::Dict)
     tf_type = GEMS.get_subtype(params["type"], TransmissionFunction)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
-    return tf_type(;kw_args...)
+    return try
+        tf_type(;kw_args...)
+    catch e
+        throw("TransmissionFunction of type '$tf_type' could not be created. $(sprint(showerror, e))")
+    end
 end
 
 function create_pathogen(params::Dict, name, id)
 
     # create progressions
-    progressions = [create_progression(pars, category) for (category, pars) in params["progressions"]]
-
+    progressions = try
+       [create_progression(pars, category) for (category, pars) in params["progressions"]] 
+    catch e
+        throw(ConfigfileError("progressions for pathogen '$name' could not be created from config file.", e))
+    end
     # create progression assignment
-    pa = create_progression_assignment(params["progression_assignment"])
+    pa = try
+        create_progression_assignment(params["progression_assignment"])
+    catch e
+        throw(ConfigfileError("progression assignment for pathogen '$name' could not be created from config file.", e))
+    end
 
     # create transmission function
-    tf = create_transmission_function(params["transmission_function"])
+    tf = try 
+        create_transmission_function(params["transmission_function"])
+    catch e
+        throw(ConfigfileError("transmission function for pathogen '$name' could not be created from config file.", e))
+    end
 
     return Pathogen(
         id = id,
@@ -568,7 +613,7 @@ function create_pathogens(params::Dict)
     end
 
     # check if at least one pathogen was created
-    length(pathogens) == 0 && throw(ArgumentError("No pathogens were found in the config file!"))
+    length(pathogens) == 0 && throw(ConfigfileError("No pathogens were found in the config file! At least one pathogen must be specified in the '[Pathogens]' section. E.g., '[Pathogens.Covid19]'."))
     return pathogens
 end
 
@@ -576,13 +621,21 @@ end
 function create_start_condition(params::Dict)
     sc_type = get_subtype(params["type"], StartCondition)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
-    return sc_type(;kw_args...)
+    return try
+        sc_type(;kw_args...)
+    catch e
+        throw("StartCondition of type '$sc_type' could not be created. $(sprint(showerror, e))")
+    end
 end
 
 function create_stop_criterion(params::Dict)
     sc_type = get_subtype(params["type"], StopCriterion)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
-    return sc_type(;kw_args...)
+    return try
+        sc_type(;kw_args...)
+    catch e
+        throw("StopCriterion of type '$sc_type' could not be created. $(sprint(showerror, e))")
+    end
 end
 
 ### FILE LOADERS
@@ -604,8 +657,8 @@ function load_configfile(path::String)
         default_configfile_path = joinpath(basefolder, default_configfile)
         return TOML.parsefile(default_configfile_path)
     else
-        !isfile(path) && throw(ArgumentError("Provided config file path does not point to a valid file: $path"))
-        !is_toml_file(path) && throw(ArgumentError("Provided config file path does not point to a valid .toml file: $path"))    
+        !isfile(path) && throw(ConfigfileError("Provided config file path does not point to a valid file: '$path'"))
+        !is_toml_file(path) && throw(ConfigfileError("Provided config file path does not point to a valid .toml file: '$path'"))    
         return TOML.parsefile(path)
     end
 

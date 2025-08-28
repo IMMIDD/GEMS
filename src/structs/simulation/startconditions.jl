@@ -17,7 +17,7 @@ struct InfectedFraction <: StartCondition
     fraction::Float64
     pathogen::String # if empty, will be applied to all pathogens
 
-    function InfectedFraction(;fraction::Float64 = 0.1, pathogen::String = "")
+    function InfectedFraction(;fraction::Float64, pathogen::String = "")
         fraction < 0.0 && throw(ArgumentError("Fraction must be greater than or equal to 0!"))
         fraction > 1.0 && throw(ArgumentError("Fraction must be less than or equal to 1!"))
         
