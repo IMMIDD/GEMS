@@ -42,6 +42,7 @@ entries of the field-vectors at a given index.
 - `icu_discharge::Vector{Int16}`: Tick at which infectee is discharged from the icu (-1 if not at all)
 - `ventilation_admission::Vector{Int16}`: Tick at which infectee is admitted to ventilation (-1 if not at all)
 - `ventilation_discharge::Vector{Int16}`: Tick at which infectee is discharged from ventilation (-1 if not at all)
+- `severeness_offset::Vector{Int16}`: Tick at which infectee is no longer severe (-1 if not at all)
 - `recovery::Vector{Int16}`: Tick at which infectee recovers (-1 if not at all)
 - `death::Vector{Int16}`: Tick at which infectee dies (-1 if not at all)
 - `tick::Vector{Int16}`: Ticks of infections
@@ -76,6 +77,7 @@ entries of the field-vectors at a given index.
     icu_discharge::Vector{Int16} = Vector{Int16}(undef, 0)
     ventilation_admission::Vector{Int16} = Vector{Int16}(undef, 0)
     ventilation_discharge::Vector{Int16} = Vector{Int16}(undef, 0)
+    severeness_offset::Vector{Int16} = Vector{Int16}(undef, 0)
     recovery::Vector{Int16} = Vector{Int16}(undef, 0)
     death::Vector{Int16} = Vector{Int16}(undef, 0)
     
@@ -107,6 +109,7 @@ end
         icu_discharge::Int16,
         ventilation_admission::Int16,
         ventilation_discharge::Int16,
+        severeness_offset::Int16,
         recovery::Int16,
         death::Int16,
         setting_id::Int32,
@@ -136,6 +139,7 @@ Returns a new infection_id for the newly added infection.
 - `icu_discharge::Int16`: Tick of individual being discharged from ICU
 - `ventilation_admission::Int16`: Tick of individual being admitted to ventilation
 - `ventilation_discharge::Int16`: Tick of individual being discharged from ventilation
+- `severeness_offset::Int16`: Tick of individual no longer being severe
 - `recovery::Int16`: Tick of individual recovering
 - `death::Int16`: Tick of individual death (if died)
 - `symptom_category::Int8`: Symptom category
@@ -164,6 +168,7 @@ function log!(;
         icu_discharge::Int16,
         ventilation_admission::Int16,
         ventilation_discharge::Int16,
+        severeness_offset::Int16,
         recovery::Int16,
         death::Int16,
         setting_id::Int32,
@@ -194,6 +199,7 @@ function log!(;
         push!(logger.icu_discharge, icu_discharge)
         push!(logger.ventilation_admission, ventilation_admission)
         push!(logger.ventilation_discharge, ventilation_discharge)
+        push!(logger.severeness_offset, severeness_offset)
         push!(logger.recovery, recovery)
         push!(logger.death, death)
         push!(logger.setting_id, setting_id)
@@ -285,6 +291,7 @@ Return a DataFrame holding the informations of the logger.
 | `icu_discharge`         | `Int16` | Tick at which infectee is discharged from the icu (-1 if not at all)      |
 | `ventilation_admission` | `Int16` | Tick at which infectee is admitted to ventilation (-1 if not at all)      |
 | `ventilation_discharge` | `Int16` | Tick at which infectee is discharged from ventilation (-1 if not at all)  |
+| `severeness_offset`     | `Int16` | Tick at which infectee is no longer severe (-1 if not at all)             |
 | `recovery`              | `Int16` | Tick at which infectee recovers (-1 if not at all)                        |
 | `death`                 | `Int16` | Tick at which infectee dies (-1 if not at all)                            |
 | `setting_id`            | `Int32` | Id of setting in which infection happens                                  |
@@ -307,6 +314,7 @@ function dataframe(logger::InfectionLogger)
         icu_discharge = logger.icu_discharge,
         ventilation_admission = logger.ventilation_admission,
         ventilation_discharge = logger.ventilation_discharge,
+        severeness_offset = logger.severeness_offset,
         recovery = logger.recovery,
         death = logger.death,
         setting_id = logger.setting_id,
@@ -338,6 +346,7 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["icu_discharge"] = logger.icu_discharge
         file["ventilation_admission"] = logger.ventilation_admission
         file["ventilation_discharge"] = logger.ventilation_discharge
+        file["severeness_offset"] = logger.severeness_offset
         file["recovery"] = logger.recovery
         file["death"] = logger.death
         file["setting_id"] = logger.setting_id

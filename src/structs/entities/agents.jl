@@ -32,6 +32,7 @@ export exposure, exposure!
 export infectiousness_onset, infectiousness_onset!
 export symptom_onset, symptom_onset!
 export severeness_onset, severeness_onset!
+export severeness_offset, severeness_offset!
 export hospital_admission, hospital_admission!
 export icu_admission, icu_admission!
 export icu_discharge, icu_discharge!
@@ -184,6 +185,7 @@ A type to represent individuals, that act as agents inside the simulation.
     ventilation_admission::Int16 = DEFAULT_TICK # 2 bytes when the individual should be admitted to ventilation
     ventilation_discharge::Int16 = DEFAULT_TICK # 2 bytes when the individual is discharged from ventilation
     hospital_discharge::Int16 = DEFAULT_TICK # 2 bytes when the individual is discharged from hospital
+    severeness_offset::Int16 = DEFAULT_TICK # 2 bytes when the individual is no longer severe
     recovery::Int16 = DEFAULT_TICK # 2 bytes when the individual is recovered
     death::Int16 = DEFAULT_TICK # 2 bytes when the individual dies
     
@@ -650,6 +652,21 @@ Sets an individual's severeness onset tick.
 severeness_onset!(individual::Individual, tick::Int16) = (individual.severeness_onset = tick)
 
 """
+    severeness_offset(individual::Individual)
+
+Returns an individual's last severeness offset tick.
+Return -1 if never severe.
+"""
+severeness_offset(individual::Individual) = individual.severeness_offset
+
+"""
+    severeness_offset!(individual::Individual, tick::Int16)
+
+Sets an individual's severeness offset tick.
+"""
+severeness_offset!(individual::Individual, tick::Int16) = (individual.severeness_offset = tick)
+
+"""
     hospital_admission(individual::Individual)
 
 Returns an individual's last hospital admission tick.
@@ -838,7 +855,7 @@ asymptomatic(individual::Individual, t::Int16) = is_asymptomatic(individual, t)
 
 Returns `true` if the individual is in a severe state at tick `t`.
 """
-is_severe(individual::Individual, t::Int16) = is_infected(individual, t) && 0 <= severeness_onset(individual) <= t < max(recovery(individual), death(individual))
+is_severe(individual::Individual, t::Int16) = is_infected(individual, t) && 0 <= severeness_onset(individual) <= t < severeness_offset(individual)
 issevere(individual::Individual, t::Int16) = is_severe(individual, t)
 severe(individual::Individual, t::Int16) = is_severe(individual, t)
 

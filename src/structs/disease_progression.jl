@@ -97,6 +97,7 @@ struct DiseaseProgression
     ventilation_admission::Int16
     ventilation_discharge::Int16
     hospital_discharge::Int16
+    severeness_offset::Int16
     recovery::Int16
     death::Int16
 
@@ -111,6 +112,7 @@ struct DiseaseProgression
         ventilation_admission = -1,
         ventilation_discharge = -1,
         hospital_discharge = -1,
+        severeness_offset = -1,
         recovery = -1,
         death = -1)
 
@@ -124,6 +126,7 @@ struct DiseaseProgression
         # severeness onset
         severeness_onset >= 0 && symptom_onset < 0 && throw(ArgumentError("Symptom onset must be given if severeness onset is set (symptom_onset: $symptom_onset, severeness_onset: $severeness_onset)."))
         severeness_onset >= 0 && severeness_onset < symptom_onset && throw(ArgumentError("Severeness onset cannot happen before symptom onset (symptom_onset: $symptom_onset, severeness_onset: $severeness_onset)."))
+        severeness_onset >= 0 && severeness_offset < 0 && throw(ArgumentError("Severeness onset cannot be set if severeness offset is unset (severeness_onset: $severeness_onset, severeness_offset: $severeness_offset)."))
         # hospital admission
         hospital_admission >= 0 && severeness_onset < 0 && throw(ArgumentError("Severeness onset must be given if hospital admission is set (severeness_onset: $severeness_onset, hospital_admission: $hospital_admission)."))
         hospital_admission >= 0 && hospital_admission < severeness_onset && throw(ArgumentError("Hospital admission cannot happen before severeness onset (severeness_onset: $severeness_onset, hospital_admission: $hospital_admission)."))
@@ -146,11 +149,16 @@ struct DiseaseProgression
         hospital_discharge >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if hospital discharge is set (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
         hospital_discharge >= 0 && hospital_discharge < hospital_admission && throw(ArgumentError("Hospital discharge cannot happen before hospital admission (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
         hospital_discharge >= 0 && icu_discharge >= 0 && hospital_discharge < icu_discharge && throw(ArgumentError("Hospital discharge requires ICU discharge (ICU_discharge: $icu_discharge, hospital_discharge: $hospital_discharge)."))
+        # severeness offset
+        severeness_offset >= 0 && severeness_onset < 0 && throw(ArgumentError("Severeness onset must be given if severeness offset is set (severeness_onset: $severeness_onset, severeness_offset: $severeness_offset)."))
+        severeness_offset >= 0 && severeness_offset < severeness_onset && throw(ArgumentError("Severeness offset cannot happen before severeness onset (severeness_onset: $severeness_onset, severeness_offset: $severeness_offset)."))
+        severeness_offset >= 0 && hospital_discharge >= 0 && severeness_offset < hospital_discharge && throw(ArgumentError("Severeness offset cannot happen before hospital discharge (hospital_discharge: $hospital_discharge, severeness_offset: $severeness_offset)."))
         # recovery and death (mutually exclusive)
         recovery >= 0 && death >= 0 && throw(ArgumentError("Recovery and death cannot both happen (recovery: $recovery, death: $death)."))
         recovery < 0 && death < 0 && throw(ArgumentError("Individuals must either recover or die (recovery: $recovery, death: $death)."))
         # recovery
         recovery >= 0 && recovery < infectiousness_onset && throw(ArgumentError("Infectiousness cannot set on after recovery (infectiousness_onset: $infectiousness_onset, recovery: $recovery)."))
+        recovery >= 0 && severeness_offset >= 0 && recovery < severeness_offset && throw(ArgumentError("Recovery cannot happen before severeness offset (severeness_offset: $severeness_offset, recovery: $recovery)."))
         recovery >= 0 && hospital_discharge >= 0 && recovery < hospital_discharge && throw(ArgumentError("Recovery cannot happen before hospital discharge (hospital_discharge: $hospital_discharge, recovery: $recovery)."))
         recovery >= 0 && severeness_onset >= 0 && recovery < severeness_onset && throw(ArgumentError("Recovery cannot happen before severeness onset (severeness_onset: $severeness_onset, recovery: $recovery)."))
         recovery >= 0 && symptom_onset >= 0 && recovery < symptom_onset && throw(ArgumentError("Recovery cannot happen before symptom onset (symptom_onset: $symptom_onset, recovery: $recovery)."))
@@ -174,6 +182,7 @@ struct DiseaseProgression
             Int16(ventilation_admission),
             Int16(ventilation_discharge),
             Int16(hospital_discharge),
+            Int16(severeness_offset),
             Int16(recovery),
             Int16(death)
         )
@@ -199,6 +208,7 @@ function Base.show(io::IO, dp::DiseaseProgression)
     res *= dp.ventilation_admission >= 0 ? "  $(spcs(dp.ventilation_admission, max_width)) | ventilation_admission\n" : ""
     res *= dp.ventilation_discharge >= 0 ? "  $(spcs(dp.ventilation_discharge, max_width)) | ventilation_discharge\n" : ""
     res *= dp.hospital_discharge >= 0 ?   "  $(spcs(dp.hospital_discharge, max_width)) | hospital_discharge\n" : ""
+    res *= dp.severeness_offset >= 0 ?     "  $(spcs(dp.severeness_offset, max_width)) | severeness_offset\n" : ""
     res *= dp.recovery >= 0 ?             "  $(spcs(dp.recovery, max_width)) | recovery\n" : ""
     res *= dp.death >= 0 ?                "  $(spcs(dp.death, max_width)) | death\n" : ""
     res *= ")"
