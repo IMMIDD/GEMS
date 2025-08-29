@@ -63,14 +63,14 @@ mutable struct PostProcessor
         infections = infections |>
             # calculate generation time and serial interval (self join)
             x -> leftjoin(x, 
-                DataFrames.select(infections, [:infection_id, :tick, :symptoms_tick]),
+                DataFrames.select(infections, [:infection_id, :tick, :symptom_onset]),
                 on = [:source_infection_id => :infection_id],
                 renamecols = "" => "_source") |>
             x -> transform(x,
                 [:tick, :tick_source] => ByRow(-) => :generation_time,
-                [:symptoms_tick, :symptoms_tick_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval,
+                [:symptom_onset, :symptom_onset_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval,
                 copycols = false) |>
-            x -> DataFrames.select(x, Not([:tick_source, :symptoms_tick_source]))
+            x -> DataFrames.select(x, Not([:tick_source, :symptom_onset_source]))
 
         infections = infections |>
             # add tests
@@ -78,8 +78,7 @@ mutable struct PostProcessor
 
             # add poulation data
             x -> leftjoin(x, pop, on = [:id_a => :id], renamecols = "" => "_a") |>
-            x -> leftjoin(x, pop, on = [:id_b => :id], renamecols = "" => "_b")# |>
-            #x -> sort(x, :infection_id)
+            x -> leftjoin(x, pop, on = [:id_b => :id], renamecols = "" => "_b")
 
         # lookup home-AGS for each infected individual
         infections.household_ags_b = map(
