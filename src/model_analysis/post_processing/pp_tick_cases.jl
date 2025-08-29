@@ -35,20 +35,26 @@ function tick_cases(postProcessor::PostProcessor)::DataFrame
         x -> combine(x, nrow => :infectious_cnt) |>
         x -> DataFrames.select(x, :infectiousness_onset => :tick, :infectious_cnt)
 
-    removed = infectionsDF(postProcessor) |>
-        x -> transform(x, [:recovery, :death] => ((r, d) -> max.(r, d)) => :removed) |>
-        x -> groupby(x, :removed) |>
-        x -> combine(x, nrow => :removed_cnt) |>
-        x -> DataFrames.select(x, :removed => :tick, :removed_cnt)
+    recovered = infectionsDF(postProcessor) |>
+        x -> groupby(x, :recovery) |>
+        x -> combine(x, nrow => :recovered_cnt) |>
+        x -> DataFrames.select(x, :recovery => :tick, :recovered_cnt)
+
+    dead = infectionsDF(postProcessor) |>
+        x -> groupby(x, :death) |>
+        x -> combine(x, nrow => :dead_cnt) |>
+        x -> DataFrames.select(x, :death => :tick, :dead_cnt)
 
     res = DataFrame(tick = 0:tick(simulation(postProcessor))) |>
         x -> leftjoin(x, exposed, on = :tick) |>
         x -> leftjoin(x, infectious, on = :tick) |>
-        x -> leftjoin(x, removed, on = :tick) |>
+        x -> leftjoin(x, recovered, on = :tick) |>
+        x -> leftjoin(x, dead, on = :tick) |>
         x -> DataFrames.select(x, :tick,
             :exposed_cnt => ByRow(x -> coalesce(x, 0)) => :exposed_cnt,
             :infectious_cnt => ByRow(x -> coalesce(x, 0)) => :infectious_cnt,
-            :removed_cnt => ByRow(x -> coalesce(x, 0)) => :removed_cnt) |>
+            :recovered_cnt => ByRow(x -> coalesce(x, 0)) => :recovered_cnt,
+            :dead_cnt => ByRow(x -> coalesce(x, 0)) => :dead_cnt) |>
         x -> sort(x, :tick)
 
     # cache dataframe
