@@ -31,14 +31,15 @@ function tick_cases(postProcessor::PostProcessor)::DataFrame
         x -> DataFrames.select(x, :tick, :exposed_cnt)
     
     infectious = infectionsDF(postProcessor) |>
-        x -> groupby(x, :infectious_tick) |>
+        x -> groupby(x, :infectiousness_onset) |>
         x -> combine(x, nrow => :infectious_cnt) |>
-        x -> DataFrames.select(x, :infectious_tick => :tick, :infectious_cnt)
+        x -> DataFrames.select(x, :infectiousness_onset => :tick, :infectious_cnt)
 
     removed = infectionsDF(postProcessor) |>
-        x -> groupby(x, :removed_tick) |>
+        x -> transform(x, [:recovery, :death] => ((r, d) -> max.(r, d)) => :removed) |>
+        x -> groupby(x, :removed) |>
         x -> combine(x, nrow => :removed_cnt) |>
-        x -> DataFrames.select(x, :removed_tick => :tick, :removed_cnt)
+        x -> DataFrames.select(x, :removed => :tick, :removed_cnt)
 
     res = DataFrame(tick = 0:tick(simulation(postProcessor))) |>
         x -> leftjoin(x, exposed, on = :tick) |>
