@@ -7,7 +7,7 @@
 export Agent
 export Individual
 # basic attributes
-export age, id, education, occupation, sex
+export birthday, age, id, education, occupation, sex
 # behaviour
 export mandate_compliance, mandate_compliance!, social_factor, social_factor!
 # settings
@@ -63,7 +63,7 @@ A type to represent individuals, that act as agents inside the simulation.
 - General
     - `id::Int32`: Unique identifier of the individual
     - `sex::Int8`: Sex  (Female (1), Male(2), Diverse (3))
-    - `age::Int8`: Age
+    - `birthday::Date`: Birthday
     - `education::Int8`: Education class (i.e. highest degree)
     - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
 
@@ -128,7 +128,7 @@ A type to represent individuals, that act as agents inside the simulation.
     # GENERAL
     id::Int32  # 4 bytes
     sex::Int8  # 1 byte
-    age::Int8  # 1 byte
+    birthday::Date
     education::Int8 = DEFAULT_SETTING_ID # 1 byte
     occupation::Int16 = DEFAULT_SETTING_ID # 2 byte
 
@@ -244,10 +244,20 @@ end
 """
     age(individual::Individual)
 
-Return an individual's age.
+Return an individual's birthday.
 """
-function age(individual::Individual)::Int8
-    return individual.age
+function birthday(individual::Individual)::birthday
+    return individual.birthday
+end
+
+"""
+    age(individual::Individual, sim::Simulation)
+
+Calculates the age of an individual in days on the current simulation tick.
+"""
+function age(individual::Individual, sim::Simulation)::Int
+    current_date = sim.startdate + Day(tick(sim))
+    return (current_date - individual.birthday).value
 end
 
 """
@@ -1098,7 +1108,7 @@ function Base.show(io::IO, individual::Individual)
 
     attributes = [
         "ID" => individual.id,
-        "Age" => individual.age,
+        "Birthday" => individual.birthday,
         "Sex" => sex_str,
         "Education" => individual.education,
         "Occupation" => individual.occupation,
