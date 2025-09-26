@@ -268,14 +268,7 @@ function markdown(vaccine::Vaccine)
     return(
         "| Property | Value                            |\n" *
         "| -------- | -------------------------------- |\n" *
-        "| Name     | $(vaccine |> name)               |\n" *
-        "| Waning   | $(vaccine |> waning |> markdown) |\n"
-    )
-end
-
-function markdown(waning::DiscreteWaning)
-    return(
-        "$(waning |> time_to_effectiveness) ticks after vaccination, individuals will be fully immune for $(waning |> duration) ticks before they are fully susceptible again"
+        "| Name     | $(vaccine |> name)               |\n"
     )
 end
 
