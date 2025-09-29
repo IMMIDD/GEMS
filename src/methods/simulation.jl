@@ -29,33 +29,60 @@ function process_events!(simulation::Simulation)
 end
 
 """
-    log_quarantines(simulation::Simulation)
+    log_stepinfo(simulation::Simulation)
 
 Log all current quarantines stratified by occupation (workers, students, all)
 to the simulation's `QuarantineLogger`.
+
 """
-function log_quarantines(simulation::Simulation)
+function log_stepinfo(simulation::Simulation)
     
+    # quarantine data
     # set up one vector with one entry for each thread
     tot_cnt = zeros(Int, Threads.nthreads())
     st_cnt  = zeros(Int, Threads.nthreads())
     wo_cnt  = zeros(Int, Threads.nthreads())
 
+    # infection data
+    exp_cnt = zeros(Int, Threads.nthreads())
+    inf_cnt = zeros(Int, Threads.nthreads())
+    dead_cnt = zeros(Int, Threads.nthreads())
+    det_cnt = zeros(Int, Threads.nthreads())
+    
     Threads.@threads for i in simulation |> individuals
+        tid = Threads.threadid()
+        
+        # log quarantined individuals
         if isquarantined(i)
-            tid = Threads.threadid()
             tot_cnt[tid] += 1
             st_cnt[tid]  += is_student(i)
             wo_cnt[tid]  += is_working(i)
         end
+
+        # log infected individuals
+        exp_cnt[tid] += is_exposed(i)
+        inf_cnt[tid] += is_infectious(i)
+        dead_cnt[tid] += is_dead(i)
+        det_cnt[tid] += is_detected(i)
     end
 
+    # log quarantine data
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
         sum(tot_cnt),
         sum(st_cnt),
         sum(wo_cnt)
+    )
+
+    # log infection data
+    log!(
+        simulation |> statelogger,
+        simulation |> tick,
+        sum(exp_cnt),
+        sum(inf_cnt),
+        sum(dead_cnt),
+        sum(det_cnt)
     )
 end
 
@@ -159,7 +186,7 @@ function step!(simulation::Simulation)
     end
 
     process_events!(simulation)
-    log_quarantines(simulation)
+    log_stepinfo(simulation)
     
     # fire custom loggers
     fire_custom_loggers!(simulation)

@@ -16,6 +16,7 @@ export initialize!
 export increment!, reset!
 export tickunit
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export statelogger, statelogger!, states
 export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
@@ -98,6 +99,7 @@ mutable struct Simulation
     pooltestlogger::PoolTestLogger
     seroprevalencelogger::SeroprevalenceLogger
     quarantinelogger::QuarantineLogger
+    statelogger::StateLogger
     customlogger::CustomLogger
 
     # NPI trigger
@@ -147,6 +149,7 @@ mutable struct Simulation
             PoolTestLogger(),
             SeroprevalenceLogger(),
             QuarantineLogger(),
+            StateLogger(),
             CustomLogger(),
 
             # NPI trigger
@@ -1159,6 +1162,31 @@ end
 Calls the `dataframe()` function on the internal simulation's `QuarantineLogger`.
 """
 quarantines(simulation::Simulation) = simulation |> quarantinelogger |> dataframe
+
+"""
+    statelogger(simulation)
+
+Returns the `StateLogger` of the simulation.
+"""
+function statelogger(simulation::Simulation)
+    return simulation.statelogger
+end
+
+"""
+    statelogger!(simulation, statelogger)
+
+Sets the Simulation's `StateLogger`.
+"""
+function statelogger!(simulation::Simulation, statelogger::StateLogger)
+    simulation.statelogger = statelogger
+end
+
+"""
+    states(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `StateLogger`.
+"""
+states(simulation::Simulation) = simulation |> statelogger |> dataframe
 
 """
     customlogger!(simulation, customlogger)

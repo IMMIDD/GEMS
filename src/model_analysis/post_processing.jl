@@ -35,6 +35,7 @@ mutable struct PostProcessor
     pooltestsDF::DataFrame
     serotestsDF::DataFrame
     quarantinesDF::DataFrame
+    compartmentsDF::DataFrame
 
     # dataframe cache to speed up calculations
     cache::Dict{String, Any}
@@ -101,7 +102,14 @@ mutable struct PostProcessor
         quarantines = dataframe(quarantinelogger(simulation)) |>
             x -> transform(x, [:quarantined, :students, :workers] => ByRow((q, s, w) -> q - s -w) => :other)
 
-        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, Dict{String, Any}())
+        compartments = dataframe(statelogger(simulation)) |>
+            df -> rename!(df,
+                :exposed => :exposed_cnt,
+                :infectious => :infectious_cnt,
+                :detected => :detected_cnt,
+                :dead => :dead_cnt)
+
+        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, Dict{String, Any}())
     end
 
 
@@ -427,6 +435,24 @@ Returns a `DataFrame` containing cumulative information about days spent in isol
 """
 function cumulative_quarantines(postProcessor::PostProcessor)
     return(postProcessor.quarantinesDF)
+end
+
+
+"""
+    compartmentsDF(postProcessor::PostProcessor)
+
+Returns the internal flat compartments `DataFrame`.
+# Columns
+| Name               | Type    | Description                                         |
+| :----------------- | :------ | :-------------------------------------------------- |
+| `tick`             | `Int16` | Simulation tick (time)                              |
+| `exposed_cnt`      | `Int64` | Total number of individuals in the exposed state    |
+| `infectious_cnt`   | `Int64` | Total number of individuals in the infectious state |
+| `detected_cnt`     | `Int64` | Total number of detected infectious individuals     |
+| `deaths_cnt`       | `Int64` | Total number of individuals in the deceased state   |
+"""
+function compartmentsDF(postProcessor::PostProcessor)
+    return(postProcessor.compartmentsDF)
 end
 
 ### DATA ANALYSIS ###

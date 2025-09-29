@@ -1,6 +1,6 @@
 # DEFINE LOGGER STRUCTURE AND FUNCTIONALITY
 export Logger, TickLogger, EventLogger, InfectionLogger, VaccinationLogger, DeathLogger, TestLogger, PoolTestLogger, SeroprevalenceLogger
-export QuarantineLogger, CustomLogger
+export QuarantineLogger, StateLogger, CustomLogger
 export tick, log!, save, save_JLD2, dataframe
 export get_infections_between
 export duplicate
@@ -1072,6 +1072,105 @@ end
 Returns the number of entries in a `QuarantineLogger`.
 """
 Base.length(logger::QuarantineLogger) = length(logger.tick)
+
+
+###
+### StateLogger
+###
+
+"""
+    StateLogger <: TickLogger
+
+A logging structure to track the overall number of individuals in different epidemiological states.
+Exposed, infectious, dead, and detected (reported) cases are logged.
+
+# Fields
+- `tick::Vector{Int16}`: Simulation tick
+- `exposed::Vector{Int64}`: Number of exposed individuals at the given tick
+- `infectious::Vector{Int64}`: Number of infectious individuals at the given tick
+- `dead::Vector{Int64}`: Number of dead individuals at the given tick
+- `detected::Vector{Int64}`: Number of detected (reported) cases at the given tick
+- `lock::ReentrantLock`: A lock for parallelised code to use to guarantee data integrity
+    when working with this logger.
+"""
+@with_kw mutable struct StateLogger <: TickLogger
+
+    # Health state data
+    tick::Vector{Int16} = Vector{Int16}(undef, 0)
+    exposed::Vector{Int64} = Vector{Int64}(undef, 0)
+    infectious::Vector{Int64} = Vector{Int64}(undef, 0)
+    dead::Vector{Int64} = Vector{Int64}(undef, 0)
+    detected::Vector{Int64} = Vector{Int64}(undef, 0)
+
+    # Parallelization
+    lock::ReentrantLock = ReentrantLock()
+end
+
+"""
+    log!(statelogger::StateLogger, tick::Int16,
+        exposed::Int64, infectious::Int64, dead::Int64, detected::Int64)
+
+Logs the number of individuals in different epidemiological states in a `StateLogger`.
+
+# Parameters
+- `statelogger::StateLogger`: Logger instance
+- `tick::Int16`: Current tick
+- `exposed::Int64`: Number of exposed individuals
+- `infectious::Int64`: Number of infectious individuals
+- `dead::Int64`: Number of dead individuals
+- `detected::Int64`: Number of detected (reported) cases
+"""
+function log!(
+    statelogger::StateLogger,
+    tick::Int16,
+    exposed::Int64,
+    infectious::Int64,
+    dead::Int64,
+    detected::Int64
+)
+    lock(statelogger.lock) do
+        push!(statelogger.tick, tick)
+        push!(statelogger.exposed, exposed)
+        push!(statelogger.infectious, infectious)
+        push!(statelogger.dead, dead)
+        push!(statelogger.detected, detected)
+    end
+end
+
+"""
+    dataframe(statelogger::StateLogger)
+
+Return a DataFrame holding the informations of the logger.
+
+# Returns
+
+- `DataFrame` with the following columns:
+
+| Name        | Type     | Description                     |
+| :---------- | :------- | :------------------------------ |
+| `tick`      | `Int16`  | Simulation tick                 |
+| `exposed`   | `Int64`  | Number of exposed individuals   |
+| `infectious`| `Int64`  | Number of infectious individuals|
+| `dead`      | `Int64`  | Number of dead individuals      |
+| `detected`  | `Int64`  | Number of detected cases        |
+"""
+function dataframe(statelogger::StateLogger)::DataFrame
+    return DataFrame(
+        tick = statelogger.tick,
+        exposed = statelogger.exposed,
+        infectious = statelogger.infectious,
+        dead = statelogger.dead,
+        detected = statelogger.detected
+    )
+end
+
+"""
+    length(logger::StateLogger)
+
+Returns the number of entries in a `StateLogger`.
+"""
+Base.length(logger::StateLogger) = length(logger.tick)
+
 
 ###
 ### CUSTOM LOGGERS

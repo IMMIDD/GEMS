@@ -67,5 +67,6 @@ function progress_disease!(individual::Individual, tick::Int16)
     icu!(individual, is_icu(individual, tick))
     ventilated!(individual, is_ventilated(individual, tick))
     dead!(individual, is_dead(individual, tick))
+    detected!(individual, is_detected(individual, tick))
 
 end

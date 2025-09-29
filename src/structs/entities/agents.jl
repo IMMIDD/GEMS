@@ -17,6 +17,7 @@ export is_working, is_student, has_municipality
 export comorbidities
 export is_infected, isinfected, infected, infect!
 export is_infectious, isinfectious, infectious, infectious!
+export is_exposed, isexposed, exposed
 export is_presymptomatic, ispresymptomatic, presymptomatic
 export is_symptomatic, issymptomatic, symptomatic, symptomatic!
 export is_asymptomatic, isasymptomatic, asymptomatic
@@ -156,6 +157,7 @@ A type to represent individuals, that act as agents inside the simulation.
     icu::Bool = false # 1 byte
     ventilated::Bool = false # 1 byte
     dead:: Bool = false # 1 byte
+    detected::Bool = false # 1 byte
 
     # ASSIGNED SETTINGS
     household::Int32 = DEFAULT_SETTING_ID # 4 bytes
@@ -471,6 +473,18 @@ isinfectious(individual::Individual) = is_infectious(individual)
 infectious(individual::Individual) = is_infectious(individual)
 
 """
+    is_exposed(individual::Individual)
+    isexposed(individual::Individual)
+    exposed(individual::Individual)
+
+Returns `true` if the individual is exposed at the current tick.
+Exposed means infected but not yet infectious.
+"""
+is_exposed(individual::Individual) = is_infected(individual) && !is_infectious(individual)
+isexposed(individual::Individual) = is_exposed(individual)
+exposed(individual::Individual) = is_exposed(individual)
+
+"""
     infectious!(individual::Individual, infectious::Bool)
 
 Sets the `infectious` flag of the individual.
@@ -588,6 +602,23 @@ function dead!(individual::Individual, dead::Bool)
     individual.dead = dead
 end
 
+"""
+    is_detected(individual::Individual)
+
+Returns `true` if the individual is currently infected and has been detected (i.e. tested positive).
+"""
+is_detected(individual::Individual) = individual.detected
+isdetected(individual::Individual) = is_detected(individual)
+detected(individual::Individual) = is_detected(individual)
+
+"""
+    detected!(individual::Individual, detected::Bool)
+
+Sets the `detected` flag of the individual.
+"""
+function detected!(individual::Individual, detected::Bool)
+    individual.detected = detected
+end
 
 ### NATURAL DIESEASE HISTORY ###
 
@@ -814,6 +845,18 @@ isinfectious(individual::Individual, t::Int16) = is_infectious(individual, t)
 infectious(individual::Individual, t::Int16) = is_infectious(individual, t)
 
 """
+    is_exposed(individual::Individual, t::Int16)
+    isexposed(individual::Individual, t::Int16)
+    exposed(individual::Individual, t::Int16)
+
+Returns `true` if the individual is exposed at tick `t`.
+Exposed means infected but not yet infectious.
+"""
+is_exposed(individual::Individual, t::Int16) = is_infected(individual, t) && exposure(individual) <= t < infectiousness_onset(individual)
+isexposed(individual::Individual, t::Int16) = is_exposed(individual, t)
+exposed(individual::Individual, t::Int16) = is_exposed(individual, t)
+
+"""
     is_presymptomatic(individual::Individual, t::Int16)
     ispresymptomatic(individual::Individual, t::Int16)
     presymptomatic(individual::Individual, t::Int16)
@@ -925,6 +968,15 @@ Returns `true` if the individual is dead at tick `t`.
 is_dead(individual::Individual, t::Int16) = 0 <= death(individual) <= t
 isdead(individual::Individual, t::Int16) = is_dead(individual, t)
 dead(individual::Individual, t::Int16) = is_dead(individual, t)
+
+"""
+    is_detected(individual::Individual, t::Int16)
+
+Returns `true` if the individual is currently infected and has been detected (i.e. tested positive) prior to or at tick `t`.
+"""
+is_detected(individual::Individual, t::Int16) = is_infected(individual, t) && exposure(individual) <= last_reported_at(individual)
+isdetected(individual::Individual, t::Int16) = is_detected(individual, t)
+detected(individual::Individual, t::Int16) = is_detected(individual, t)
 
 """
     pathogen_id(individual::Individual)
@@ -1158,14 +1210,7 @@ function last_reported_at!(individual::Individual, report_tick::Int16)
     individual.last_reported_at = report_tick
 end
 
-"""
-    isdetected(individual::Individual)
 
-Returns true if an individual was currently infected and already reported.
-"""
-function isdetected(individual::Individual)
-    return infected(individual) && exposed_tick(individual) <= last_reported_at(individual) <= removed_tick(individual)
-end
 
 ### VACCINATION STATUS ###
 
