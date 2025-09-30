@@ -1,5 +1,15 @@
 export compartment_periods, aggregated_compartment_periods
 
+# HELPER FUNCTIONS TO CALCULATE PERIODS
+
+# calculate removed time (max of recovery and death)
+calc_rem(infs) = max.(infs.recovery, infs.death)
+# calculate asymptomatic, symptomatic and pre-symptomatic periods
+calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : 0).(infs.tick, infs.symptom_onset, rem)
+calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - so : 0).(infs.symptom_onset, rem)
+calc_pre_symp(infs) = ((so, t) -> so >= 0 ? so - t : 0).(infs.symptom_onset, infs.tick)
+
+
 """ 
     compartment_periods(postProcessor::PostProcessor)
 
@@ -16,56 +26,53 @@ returns a `DataFrame` containing all additional infectee-related information.
 | `total`           | `Int16` | Total duration of infection in ticks            |
 | `exposed`         | `Int16` | Duration of the exposed period in ticks         |
 | `infectious`      | `Int16` | Duration of the infectious period in ticks      |
-| `pre_symptomatic` | `Int16` | Duration of the pre-symptomatic period in ticks |
 | `asymptomatic`    | `Int16` | Duration of the asymptomatic period in ticks    |
+| `pre_symptomatic` | `Int16` | Duration of the pre-symptomatic period in ticks |
 | `symptomatic`     | `Int16` | Duration of the symptomatic period in ticks     |
-
+| `severe`          | `Int16` | Duration of the severe period in ticks          |
+| `hospitalized`    | `Int16` | Duration of the hospitalized period in ticks    |
+| `icu`             | `Int16` | Duration of the ICU period in ticks             |
+| `ventilated`      | `Int16` | Duration of the ventilated period in ticks      |
 """
 function compartment_periods(postProcessor::PostProcessor)
-
-    # return infectionsDF(postProcessor) |>
-    #     x -> transform(x,
-    #         # calculate duration of exposed period
-    #         [:infectious_tick, :tick] => ByRow(-) => :exposed,
-    #         # calculate total duration of infectiousness
-    #         [:removed_tick, :infectious_tick] => ByRow(-) => :infectious,
-    #         # calculate duration of preinfectious period (if individual develops symptoms)
-    #         AsTable([:symptoms_tick, :infectious_tick]) => ByRow(x -> maximum([0, x.symptoms_tick - x.infectious_tick])) => :pre_symptomatic,
-    #         # calculate duration of asymptomatic period
-    #         AsTable([:symptoms_tick, :removed_tick, :symptom_category]) => ByRow(x -> x.symptom_category == GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC ? x.removed_tick - x.symptoms_tick : 0) => :asymptomatic,
-    #         # calculate duration of symptomatic period
-    #         AsTable([:symptoms_tick, :removed_tick, :symptom_category]) => ByRow(x -> x.symptom_category != GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC ? x.removed_tick - x.symptoms_tick : 0) => :symptomatic,
-    #         copycols = false) |>
-    #     x -> DataFrames.select(x,
-    #         :id_b => :id,
-    #         :age_b => :age,
-    #         :sex_b => :sex,
-    #         :setting_id,
-    #         :setting_type,
-    #         :exposed,
-    #         :infectious,
-    #         :pre_symptomatic,
-    #         :asymptomatic,
-    #         :symptomatic)
 
     # load cached DF if available
     if in_cache(postProcessor, "compartment_periods")
         return(load_cache(postProcessor, "compartment_periods"))
     end
 
-    #according to @btime, this is 10x faster than the above code
-    infs = infectionsDF(postProcessor) 
-    res = DataFrame(
-        infection_id = infs.infection_id,
-        total = infs.removed_tick .- infs.tick,
-        exposed = infs.infectious_tick .- infs.tick,
-        infectious = infs.removed_tick .- infs.infectious_tick,
-        pre_symptomatic = (x -> max(0, x)).(infs.symptoms_tick .- infs.infectious_tick),
-        asymptomatic = infs.removed_tick .- infs.tick |> # if an individual is asymptomatic, we consider the whole progression the asymptomatic period
-            x -> ifelse.(infs.symptom_category .== GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC, x, Int16(0)),
-        symptomatic = infs.removed_tick .- infs.symptoms_tick |>
-            x -> ifelse.(infs.symptom_category .== GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC, Int16(0), x)
-    )
+    res = infectionsDF(postProcessor) |>
+        # calculate max of recovery and death time (as removed (rem))
+        infs -> (infs, calc_rem(infs)) |>
+        splat((infs, rem) -> DataFrame(
+            infection_id = infs.infection_id,
+            total = rem .- infs.tick,
+            exposed = infs.infectiousness_onset .- infs.tick,
+            infectious = rem .- infs.infectiousness_onset,
+            asymptomatic = calc_asymp(infs, rem),
+            pre_symptomatic = calc_pre_symp(infs),
+            symptomatic = calc_symp(infs, rem),
+            severe = infs.severeness_offset .- infs.severeness_onset,
+            hospitalized = infs.hospital_discharge .- infs.hospital_admission,
+            icu = infs.icu_discharge .- infs.icu_admission,
+            ventilated = infs.ventilation_discharge .- infs.ventilation_admission
+        ))
+
+    # res = infectionsDF(postProcessor) |>
+    #     # calculate max of recovery and death time (as removed (rem))
+    #     infs -> DataFrame(
+    #         infection_id = infs.infection_id,
+    #         total = calc_rem(infs) .- infs.tick,
+    #         exposed = infs.infectiousness_onset .- infs.tick,
+    #         infectious = calc_rem(infs) .- infs.infectiousness_onset,
+    #         asymptomatic = calc_asymp(infs, calc_rem(infs)),
+    #         pre_symptomatic = calc_pre_symp(infs),
+    #         symptomatic = calc_symp(infs, calc_rem(infs)),
+    #         severe = infs.severeness_offset .- infs.severeness_onset,
+    #         hospitalized = infs.hospital_discharge .- infs.hospital_admission,
+    #         icu = infs.icu_discharge .- infs.icu_admission,
+    #         ventilated = infs.ventilation_discharge .- infs.ventilation_admission
+    #     )
 
     # cache dataframe
     store_cache(postProcessor, "compartment_periods", res)
