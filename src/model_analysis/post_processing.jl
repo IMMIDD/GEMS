@@ -4,7 +4,8 @@ These functions handle the aggregation of interesting data from a simulation run
 and combine them into specific output variables
 =#
 export PostProcessor
-export simulation, infectionsDF, sim_infectionsDF, populationDF, deathsDF, testsDF, pooltestsDF, serotestsDF
+export simulation, infectionsDF, sim_infectionsDF, populationDF
+export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
 
 """
     PostProcessor
