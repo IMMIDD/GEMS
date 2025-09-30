@@ -4,7 +4,7 @@ export tick_cases
     tick_cases(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing the count of individuals currently entering in the
-respective disease states exposed, infectious, and removed.
+respective disease states exposed, infectious, recovered, and deceased.
 
 # Returns
 
@@ -15,8 +15,8 @@ respective disease states exposed, infectious, and removed.
 | `tick`           | `Int16` | Simulation tick (time)                              |
 | `exposed_cnt`    | `Int64` | Number of individuals entering the exposed state    |
 | `infectious_cnt` | `Int64` | Number of individuals entering the infectious state |
-| `removed_cnt`    | `Int64` | Number of individuals entering the removed state    |
-
+| `recovered_cnt`  | `Int64` | Number of individuals recovering                    |
+| `dead_cnt`       | `Int64` | Number of individuals dying                         |
 """
 function tick_cases(postProcessor::PostProcessor)::DataFrame
 
