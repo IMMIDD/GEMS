@@ -1072,6 +1072,7 @@ function set_progression!(individual::Individual, dp::DiseaseProgression)
     ventilation_admission!(individual, ventilation_admission(dp))
     ventilation_discharge!(individual, ventilation_discharge(dp))
     hospital_discharge!(individual, hospital_discharge(dp))
+    severeness_offset!(individual, severeness_offset(dp))
     recovery!(individual, recovery(dp))
     death!(individual, death(dp))
 end

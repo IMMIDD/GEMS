@@ -14,6 +14,7 @@ export icu_discharge
 export ventilation_admission
 export ventilation_discharge
 export hospital_discharge
+export severeness_offset
 
 export is_infected, isinfected, infected
 export is_presymptomatic, ispresymptomatic, presymptomatic
@@ -297,6 +298,14 @@ Returns the tick when the individual with disease progression `dp` is discharged
 If the individual is never admitted to hospital, this will return `-1`.
 """
 hospital_discharge(dp::DiseaseProgression) = dp.hospital_discharge
+
+"""
+    severeness_offset(dp::DiseaseProgression)
+
+Returns the tick when the individual with disease progression `dp`'s severeness is reduced (i.e., moves from severe to mild symptoms).
+If the individual never has severe symptoms, this will return `-1`.
+"""
+severeness_offset(dp::DiseaseProgression) = dp.severeness_offset
 
 """
     recovery(dp::DiseaseProgression)
