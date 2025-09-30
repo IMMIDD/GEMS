@@ -472,7 +472,7 @@ function sim_infectionsDF(postProcessor::PostProcessor)
 
     # return only values that have an infecter-id (i.e. runtime-infections)
     sim_infs = infectionsDF(postProcessor) |>
-        x -> filter(y -> y[:id_a] > 0, x)
+        df -> df[df.id_a .> 0, :]
     
     # store in internal cache
     store_cache(postProcessor, "sim_infectionsDF", sim_infs)
