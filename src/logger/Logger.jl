@@ -68,6 +68,7 @@ entries of the field-vectors at a given index.
 
     # Infected data
     id_b::Vector{Int32} = Vector{Int32}(undef, 0)
+    progression_category::Vector{Symbol} = Vector{Symbol}(undef, 0)
     infectiousness_onset::Vector{Int16} = Vector{Int16}(undef, 0)
     symptom_onset::Vector{Int16} = Vector{Int16}(undef, 0)
     severeness_onset::Vector{Int16} = Vector{Int16}(undef, 0)
@@ -99,6 +100,7 @@ end
         logger::InfectionLogger,
         a::Int32,
         b::Int32,
+        progression_category::Symbol,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -129,6 +131,7 @@ Returns a new infection_id for the newly added infection.
 - `logger::InfectionLogger`: Logger instance
 - `a::Int32`: ID of infecting individual
 - `b::Int32`: ID of infected individual
+- `progression_category::Symbol`: Disease progression category of the infected individual
 - `tick::Int16`: Current simultion tick
 - `infectiousness_onset::Int16`: Tick of individual becoming infectious
 - `symptom_onset::Int16`: Tick of individual becoming symptomatic
@@ -158,6 +161,7 @@ function log!(;
         logger::InfectionLogger,
         a::Int32,
         b::Int32,
+        progression_category::Symbol,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -189,6 +193,7 @@ function log!(;
         push!(logger.infection_id, new_infection_id)
         push!(logger.id_a, a)
         push!(logger.id_b, b)
+        push!(logger.progression_category, progression_category)
         push!(logger.tick, tick)
         push!(logger.infectiousness_onset, infectiousness_onset)
         push!(logger.symptom_onset, symptom_onset)
@@ -282,6 +287,7 @@ Return a DataFrame holding the informations of the logger.
 | `tick`                  | `Int16` | Tick of the infection event                                               |
 | `id_a`                  | `Int32` | Infecter id                                                               |
 | `id_b`                  | `Int32` | Infectee id                                                               |
+| `progression_category`  | `Symbol`| Disease progression category of the infected individual                   |
 | `infectiousness_onset`  | `Int16` | Tick at which infectee becomes infectious                                 |
 | `symptom_onset`         | `Int16` | Tick at which infectee develops symptoms (-1 if not at all)               |
 | `severeness_onset`      | `Int16` | Tick at which infectee develops severe symptoms (-1 if not at all)        |
@@ -305,6 +311,7 @@ function dataframe(logger::InfectionLogger)
         tick = logger.tick,
         id_a = logger.id_a,
         id_b = logger.id_b,
+        progression_category = logger.progression_category,
         infectiousness_onset = logger.infectiousness_onset,
         symptom_onset = logger.symptom_onset,
         severeness_onset = logger.severeness_onset,
@@ -337,6 +344,7 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["tick"] = logger.tick
         file["id_a"] = logger.id_a
         file["id_b"] = logger.id_b
+        file["progression_category"] = logger.progression_category
         file["infectiousness_onset"] = logger.infectiousness_onset
         file["symptom_onset"] = logger.symptom_onset
         file["severeness_onset"] = logger.severeness_onset

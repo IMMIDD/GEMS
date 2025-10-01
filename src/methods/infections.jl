@@ -89,13 +89,15 @@ function infect!(infectee::Individual,
 
 
     # calculate disease progression
-    pathogen |>
+    # get progression category
+    pc = pathogen |>
         # get progression assignment function
         p -> progression_assignment(p) |>
         # get progression category
-        paf -> assign(infectee, sim, paf) |>
-        # calculate the actual disease progression
-        pc -> calculate_progression(infectee, tick, progressions(p)[pc]) |>
+        paf -> assign(infectee, sim, paf)
+    
+    # calculate the actual disease progression
+    calculate_progression(infectee, tick, progressions(pathogen)[pc]) |>
         # set the progression for the individual
         dp -> set_progression!(infectee, dp)
 
@@ -117,6 +119,7 @@ function infect!(infectee::Individual,
         logger = infectionlogger(sim),
         a = infecter_id,
         b = id(infectee),
+        progression_category = Symbol(pc),
         tick = tick,
         infectiousness_onset = infectee.infectiousness_onset,
         symptom_onset = infectee.symptom_onset,
