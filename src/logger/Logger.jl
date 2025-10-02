@@ -1246,7 +1246,7 @@ end
     
 Returns true if the logger was intialized with at least one custom function.
 """
-hasfuncs(cl::CustomLogger) = !(length(cl.funcs) == 1 && first(cl.funcs) == :tick)
+hasfuncs(cl::CustomLogger) = !(length(cl.funcs) == 1 && first(values(cl.funcs)) == tick)
 
 
 """
