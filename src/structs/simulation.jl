@@ -566,16 +566,31 @@ mutable struct Simulation
             printinfo("\u2514 Loading provided population object")
             population = population
         elseif isa(population, String)
+            sim_start_date = Date(get(properties["Simulation"], "startdate", "2024.1.1"), dateformat"y.m.d")
+            birth_data_path = joinpath(dirname(dirname(pathof(GEMS))), "data/birthmonths.csv")
+            bday_generator = BirthdayGenerator(birth_data_path)
             if is_pop_file(population)
                 #printinfo("\u2514 Loading population from $(basename(population))")
-                population = Population(population)
+                df = endswith(population, ".csv") ? CSV.read(population, DataFrame) : load(population, "data")
+                df.birthday = [
+                    generate_birthday(bday_generator, row.age, row.sex, sim_start_date)
+                    for row in eachrow(df)
+                ]
+                select!(df, Not(:age))
+                population = Population(df)
             else 
                 #printinfo("\u2514 Downloading popfile and settings with remote identifier $(population)")
                 if settingsfile != ""
                     throw("The remote download attempted to overwrite the settingsfile you provided. You need to define the populationfile you want to use locally.")
                 end
                 (populationfile, settingsfile) = obtain_remote_files(population)
-                population = Population(populationfile)
+                df = load(populationfile, "data")
+                df.birthday = [
+                    generate_birthday(bday_generator, row.age, row.sex, sim_start_date)
+                    for row in eachrow(df)
+                ]
+                select!(df, Not(:age))
+                population = Population(df)
             end
         end
 

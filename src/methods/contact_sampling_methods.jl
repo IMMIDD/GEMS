@@ -6,7 +6,7 @@ export create_contact_sampling_method
 
 Abstract function as Fallback if no specific method is available.
 """
-function sample_contacts(contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::ErrorException
+function sample_contacts(contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, sim::Simulation)::ErrorException
     error("Currently, no specific implementation of this function is known. Please provide a method for type: $(typeof(contact_sampling_method))")
 end
 
@@ -15,7 +15,7 @@ end
 
 Sample exactly 1 random contact from the individuals in `setting`.
 """
-function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16)::Vector{Individual}
+function sample_contacts(random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, sim::Simulation)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -32,7 +32,7 @@ end
 
 Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`. The `replace` parameter determines whether contacts are sampled with replacement (`true`) or without replacement (`false`).
 """
-function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, sim::Simulation; replace::Bool = true)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -87,7 +87,7 @@ Firstly, we sample uniformly with probability pi = e * wi * qi * m_max / N
 m_max - maximal mixing factor between age groups
 Secondly, we sample with adapted probability mi = mi / m_max
 """
-function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, sim::Simulation; replace::Bool = true)::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -106,14 +106,14 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
     end
     interval = contactparameter_sampling.contact_matrix.interval_steps
     max_age = contactparameter_sampling.contact_matrix.aggregation_bound
-    orig_bin = (individual.age ÷ interval) + 1
+    orig_bin = (age(individual, sim) ÷ interval) + 1
     contact_matrix::Matrix{Float64} = contactparameter_sampling.contact_matrix.data
     age_pyramid = contactparameter_sampling.age_pyramid
     # if age_pyramid is not ready compute it
     if size(age_pyramid)[1] == 0
         age_pyramid = zeros(size(contact_matrix)[1])
         for ind in present_inds
-            interval_id = ind.age ÷ interval + 1
+            interval_id = age(ind, sim) ÷ interval + 1
             age_pyramid[interval_id] += 1
         end
         age_pyramid = age_pyramid ./ sum(age_pyramid)
@@ -155,7 +155,7 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
     # Second order sampling (i.e. structural one)
     out = Individual[]
     for i = 1:number_of_contacts
-        dest_bin = (res[i].age ÷ interval) + 1
+        dest_bin = (age(res[i], sim) ÷ interval) + 1
         m = contact_matrix[orig_bin, dest_bin]
         if m > 0.0
             m = m / m_max # since we multiplied by m_max in line no. 113

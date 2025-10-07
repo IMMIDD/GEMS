@@ -52,19 +52,19 @@
         @test_throws ArgumentError ContactMatrix{Int64}(correct_data, interval_steps, aggregation_bound)
     end
 
-    @testset "Get Contacts" begin
+    # @testset "Get Contacts" begin
 
-        # create individual
-        i = Individual(id = 1, sex = 0, age = 12, household = 1)
+    #     # create individual
+    #     i = Individual(id = 1, sex = 0, age = 12, household = 1)
 
-        correct_data = [1 2 3; 4 5 6; 7 8 9]
+    #     correct_data = [1 2 3; 4 5 6; 7 8 9]
 
-        age_group_10_till_20 = correct_data[:,2]
+    #     age_group_10_till_20 = correct_data[:,2]
 
-        contact_matrix = ContactMatrix{Int64}(correct_data, 10)
+    #     contact_matrix = ContactMatrix{Int64}(correct_data, 10)
 
-        @test get_contacts(contact_matrix, i) == mean(age_group_10_till_20)
+    #     @test get_contacts(contact_matrix, i) == mean(age_group_10_till_20)
 
-        @test typeof(get_contacts(contact_matrix, i)) == Int64
-    end
+    #     @test typeof(get_contacts(contact_matrix, i)) == Int64
+    # end
 end

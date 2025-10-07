@@ -93,7 +93,7 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
         ind = present_inds[ind_index]
 
         # sample contacts for an individual based on the individuals present in the setting at the current tick
-        contacts = sample_contacts(s.contact_sampling_method, s, ind_index, present_inds, tick(simulation))
+        contacts = sample_contacts(s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), simulation)
 
         if length(contacts) > 0
             for contact in contacts

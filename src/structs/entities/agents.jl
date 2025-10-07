@@ -1161,19 +1161,19 @@ function Base.show(io::IO, ::MIME"text/plain", individuals::Vector{Individual})
     if n <= 50
         for individual in individuals
             sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
-            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.birthday)y]")
         end
     else
         for individual in individuals[1:20]
             sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
-            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.birthday)y]")
         end
         
         println(io, "  ⋮")
         
         for individual in individuals[end-19:end]
             sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
-            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.age)y]")
+            println(io, "  Individual[ID: $(individual.id), $sex_str, $(individual.birthday)y]")
         end
     end
 end

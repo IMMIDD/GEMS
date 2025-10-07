@@ -161,8 +161,8 @@ end
 
 Estimates the final status an individual reaches during the progression of a disease.
 """
-function estimate_disease_progression(dpr::DiseaseProgressionStrat, indiv::Individual)::DataType
-    ag = agegroup(dpr.age_groups, indiv)
+function estimate_disease_progression(dpr::DiseaseProgressionStrat, indiv::Individual, sim::Simulation)::DataType
+    ag = agegroup(dpr.age_groups, indiv, sim)
     probabilities = dpr.stratification_matrix[ag]
     ranges = cumsum(probabilities)
 
@@ -187,19 +187,19 @@ such as `["10-20", "21-30"]`, this function will evaluate in which group the
 age of the provided individual (`indiv`) belongs and returns the index of the respective
 agrgroup in the argument vector.
 """
-function agegroup(agegroups::Vector{String}, indiv::Individual)
+function agegroup(agegroups::Vector{String}, indiv::Individual, sim::Simulation)
     # function to evaluate the index of the individual in the agegroup vector
     for (i, elem) in enumerate(agegroups)
         if occursin("-", elem)
             # case of keys like "10-20"
             a, b = split(elem, "-")
-            if parse(Int, a) <= indiv.age < parse(Int, b)
+            if parse(Int, a) <= age(indiv, sim) < parse(Int, b)
                 return i
             end
         elseif occursin("+", elem)
             # case of keys like "80+"
             a, b = split(elem, "+")
-            if parse(Int, a)<= indiv.age
+            if parse(Int, a)<= age(indiv, sim)
                 return i
             end
         end
@@ -215,11 +215,12 @@ end
 Assigns a disease progression to the `infectee` by assigning event ticks based on the 
 `exposedtick`.
 """
-function disease_progression!(infectee::Individual, pathogen::Pathogen, exposedtick::Int16)
+function disease_progression!(infectee::Individual, pathogen::Pathogen, exposedtick::Int16, sim::Simulation)
     estimated_symptom_category = 
         estimate_disease_progression(
             disease_progression_strat(pathogen), 
-            infectee
+            infectee,
+            sim
         )
     # dispatch on the type of symptom category to the correct function
     disease_progression!(infectee, pathogen, exposedtick, estimated_symptom_category)
