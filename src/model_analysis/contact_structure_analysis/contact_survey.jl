@@ -101,10 +101,10 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
                 if cnt <= CONTACT_SAMPLES
                     df[cnt, :] = [
                         id(ind),
-                        age(ind),
+                        age(ind, simulation),
                         sex(ind),
                         id(contact),
-                        age(contact),
+                        age(contact, simulation),
                         sex(contact),
                         settingtype
                     ]

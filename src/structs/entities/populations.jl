@@ -32,7 +32,7 @@ mutable struct Population
     function Population(individuals::Vector{Individual})
         # Create the Population object
         pop = new(individuals, Dict("populationfile" => "Not available."), -1)
-        maxage(pop)
+        #maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
         return pop
     end
@@ -301,21 +301,21 @@ end
 
 Returns the maximum age of any individual in the population
 """
-function maxage(population::Population)
-    if population.maxage >= 0
-        return(population.maxage)
-    end
+# function maxage(population::Population)
+#     if population.maxage >= 0
+#         return(population.maxage)
+#     end
 
-    mx = Int8(-1)
-    for i in population |> individuals
-        if age(i) > mx
-            mx = age(i)
-        end
-    end
+#     mx = Int8(-1)
+#     for i in population |> individuals
+#         if age(i) > mx
+#             mx = age(i)
+#         end
+#     end
 
-    population.maxage = mx
-    return(mx)
-end
+#     population.maxage = mx
+#     return(mx)
+# end
 
 
 """

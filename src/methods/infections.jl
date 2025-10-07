@@ -94,7 +94,7 @@ function infect!(infectee::Individual,
     infectee.exposed_tick = tick
 
     # calculate disease progression
-    disease_progression!(infectee, pathogen, tick)
+    disease_progression!(infectee, pathogen, tick, sim)
 
     if isnothing(sim)
         return -1

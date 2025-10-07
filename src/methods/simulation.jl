@@ -138,7 +138,8 @@ Increments the simulation status by one tick and executes all events that shall 
 """
 function step!(simulation::Simulation)
     # create newborns
-    # process_births!(simulation, ..)
+    process_births!(simulation)
+
     # update individuals
     Threads.@threads :static for i in simulation |> population |> individuals
         update_individual!(i, tick(simulation), simulation)
@@ -205,4 +206,37 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
     end
 
     return(simulation)
+end
+
+
+"""
+    process_births!(sim::Simulation)
+
+Adds new individuals (births) to the population based on a BirthModel.
+"""
+function process_births!(sim::Simulation)
+    num_births = get_births_for_tick(sim.birth_model, sim.tick)
+
+    if num_births == 0 return end
+
+    pop = population(sim)
+    
+    # get the highest existing individual ID to ensure new IDs are unique
+    max_id = maximum(i -> id(i), individuals(pop))
+
+    for i in 1:num_births
+        # create a new individual
+        new_id = max_id + i
+        newborn = Individual(
+            id = new_id,
+            age = 0,
+            sex = rand(1:2)
+        )
+
+        # assign the newborn to a random household
+        target_household = rand(households(sim))
+        setting_id!(newborn, Household, id(target_household))
+        add!(pop, newborn)
+        add!(target_household, newborn)
+    end
 end

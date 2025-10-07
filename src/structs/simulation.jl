@@ -90,6 +90,7 @@ mutable struct Simulation
     population::Population
     settings::SettingsContainer
     pathogen::Pathogen
+    birth_model::BirthModel
 
     # logger
     infectionlogger::InfectionLogger
@@ -621,6 +622,8 @@ mutable struct Simulation
             printinfo("\u2514 Creating settings from $settingsfile")
             settings_from_jld2!(settingsfile, settings, renaming)
         end
+
+        birth_model = BirthModel("data/birthmonths.csv")
     
         # create simulation
         printinfo("\u2514 Creating simulation object")

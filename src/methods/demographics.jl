@@ -11,6 +11,15 @@ struct BirthdayGenerator
 end
 
 """
+Holds birth data for direct lookup and tracks the latest available year for fallback.
+"""
+struct BirthModel
+    lookup_data::Dict{Tuple{Int, Int}, Float64} # Stores (Year, Month) -> Daily Births
+    latest_available_year::Int
+end
+
+
+"""
     BirthdayGenerator(data_path::String)
 
 Constructor for the BirthdayGenerator. Reads birth data from a CSV and
@@ -35,6 +44,29 @@ function BirthdayGenerator(data_path::String)
     end
     
     return BirthdayGenerator(cum_probs_dict)
+end
+
+"""
+    BirthModel(data_path::String)
+
+Loads birth data, prepares it for direct lookup, and finds the latest year
+in the dataset to use as a fallback.
+"""
+function BirthModel(data_path::String)
+    df = CSV.read(data_path, DataFrame)
+    sort!(df, [:year, :month])
+
+    lookup = Dict{Tuple{Int, Int}, Float64}()
+    for row in eachrow(df)
+        year, month = row.year, row.month
+        days_in_month = daysinmonth(Date(year, month))
+        daily_births = (row.total_male + row.total_female) / days_in_month
+        lookup[(year, month)] = daily_births
+    end
+
+    latest_year = maximum(filter(row -> row.month == 12, df).year)
+
+    return BirthModel(lookup, latest_year)
 end
 
 
@@ -77,35 +109,32 @@ end
 
 
 
-
 """
-    process_births!(sim::Simulation, daily_birth_rate::Float64)
+    get_births_for_tick(model::BirthModel, current_date::Date)
 
-Adds new individuals (births) to the population based on a daily birth rate.
+Returns the number of births for a given day.
+It first tries a direct lookup. If no data exists, it uses the data
+from the latest available year as a fallback.
 """
-function process_births!(sim::Simulation, daily_birth_rate::Float64)
-    pop = population(sim)
-    num_births = rand(Poisson(daily_birth_rate * size(pop)))
+function get_births_for_tick(model::BirthModel, tick::Int16)
+    current_date = sim.startdate + Day(tick)
+    year_key, month_key = year(current_date), month(current_date)
 
-    if num_births == 0 return end
+    primary_key = (year_key, month_key)
 
-    
-    # get the highest existing individual ID to ensure new IDs are unique
-    max_id = maximum(i -> id(i), individuals(pop))
+    avg_daily_births = 0.0
 
-    for i in 1:num_births
-        # create a new individual
-        new_id = max_id + i
-        newborn = Individual(
-            id = new_id,
-            age = 0,
-            sex = rand(1:2)
-        )
+    # try to find the data for the current year and month
+    if haskey(model.lookup_data, primary_key)
+        avg_daily_births = model.lookup_data[primary_key]
+    else
+        # if not found, fall back to the latest available year
+        @warn "No birth data for $(monthname(current_date)) $year_key. Using data from $(model.latest_available_year)." maxlog=1
 
-        # assign the newborn to a random household
-        target_household = rand(households(sim))
-        setting_id!(newborn, Household, id(target_household))
-        add!(pop, newborn)
-        add!(target_household, newborn)
+        fallback_key = (model.latest_available_year, month_key)
+        avg_daily_births = model.lookup_data[fallback_key]
     end
+
+    # Return a random number of births for the day based on that rate
+    return rand(Poisson(avg_daily_births))
 end
