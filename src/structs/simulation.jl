@@ -671,6 +671,9 @@ mutable struct Simulation
 
         sim.stepmod = stepmod
 
+
+        sim.birth_model = birth_model
+
         initialize!(sim)
 
         return sim

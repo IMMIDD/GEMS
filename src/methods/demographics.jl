@@ -49,8 +49,8 @@ Returns the number of births for a given day.
 It first tries a direct lookup. If no data exists, it uses the data
 from the latest available year as a fallback.
 """
-function get_births_for_tick(model::BirthModel, tick::Int16)
-    current_date = sim.startdate + Day(tick)
+function get_births_for_tick(model::BirthModel, sim::Simulation)
+    current_date = sim.startdate + Day(sim.tick)
     year_key, month_key = year(current_date), month(current_date)
 
     primary_key = (year_key, month_key)

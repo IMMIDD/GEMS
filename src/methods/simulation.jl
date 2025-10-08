@@ -215,7 +215,7 @@ end
 Adds new individuals (births) to the population based on a BirthModel.
 """
 function process_births!(sim::Simulation)
-    num_births = get_births_for_tick(sim.birth_model, sim.tick)
+    num_births = get_births_for_tick(sim.birth_model, sim)
 
     if num_births == 0 return end
 
@@ -229,8 +229,8 @@ function process_births!(sim::Simulation)
         new_id = max_id + i
         newborn = Individual(
             id = new_id,
-            age = 0,
-            sex = rand(1:2)
+            sex = rand(1:2),
+            birthday = sim.startdate + Day(tick(sim))
         )
 
         # assign the newborn to a random household
