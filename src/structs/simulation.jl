@@ -139,6 +139,7 @@ mutable struct Simulation
          population, # population::Population
          settings, # settings::SettingsContainer
          Pathogen(id = 0, name = "TEST DEFAULT"), # pathogen::Pathogen
+         BirthModel(Dict{Tuple{Int, Int}, Float64}(), 0),
          InfectionLogger(), # infectionlogger::InfectionLogger
          DeathLogger(), # deathlogger::DeathLogger
          TestLogger(), # testlogger::TestLogger

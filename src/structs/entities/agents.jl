@@ -7,7 +7,7 @@
 export Agent
 export Individual
 # basic attributes
-export birthday, age, id, education, occupation, sex
+export birthday, id, education, occupation, sex
 # behaviour
 export mandate_compliance, mandate_compliance!, social_factor, social_factor!
 # settings
@@ -250,15 +250,6 @@ function birthday(individual::Individual)::birthday
     return individual.birthday
 end
 
-"""
-    age(individual::Individual, sim::Simulation)
-
-Calculates the age of an individual in days on the current simulation tick.
-"""
-function age(individual::Individual, sim::Simulation)::Int
-    current_date = sim.startdate + Day(tick(sim))
-    return (current_date - individual.birthday).value
-end
 
 """
     education(individual::Individual)
