@@ -14,7 +14,7 @@ function generate_birthday(generator::BirthdayGenerator, age::Int8, sex::Int8, s
     key = (birth_year, sex_str)
     if !haskey(generator.cum_probs_dict, key)
         # Fallback for years not in the data 
-        @warn "No birth data for year $birth_year. Using closest available year."
+        #@warn "No birth data for year $birth_year. Using closest available year."
 
         _, index = findmin(abs.(generator.available_years .- birth_year))
         birth_year = generator.available_years[index]
@@ -62,7 +62,7 @@ function get_births_for_tick(model::BirthModel, sim::Simulation)
         avg_daily_births = model.lookup_data[primary_key]
     else
         # if not found, fall back to the latest available year
-        @warn "No birth data for $(monthname(current_date)) $year_key. Using data from $(model.latest_available_year)." maxlog=1
+        #@warn "No birth data for $(monthname(current_date)) $year_key. Using data from $(model.latest_available_year)." maxlog=1
 
         fallback_key = (model.latest_available_year, month_key)
         avg_daily_births = model.lookup_data[fallback_key]

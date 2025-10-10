@@ -11,12 +11,12 @@ Returns an age X age matrix containing sampled contacts for a provided `settingt
 
 """
 function setting_age_contacts(postProcessor::PostProcessor, settingtype::DataType)
-
+    sim = postProcessor |> simulation
     # sample contacts for analysis
-    df = contact_samples(postProcessor |> simulation, settingtype, include_non_contacts = false)
+    df = contact_samples(sim, settingtype, include_non_contacts = false)
 
     # build age x age contact matrix
-    mx = maximum([postProcessor |> simulation |> population |> maxage, 0])
+    mx = maximum([maxage(sim |> population, sim.startdate + Day(tick(sim))), 0])
     co_age = zeros(Int32, mx+1, mx+1)
 
     for x in 1:nrow(df)

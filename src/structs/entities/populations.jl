@@ -301,21 +301,21 @@ end
 
 Returns the maximum age of any individual in the population
 """
-# function maxage(population::Population)
-#     if population.maxage >= 0
-#         return(population.maxage)
-#     end
+function maxage(population::Population, date::Date)
+    if population.maxage >= 0
+        return(population.maxage)
+    end
 
-#     mx = Int8(-1)
-#     for i in population |> individuals
-#         if age(i) > mx
-#             mx = age(i)
-#         end
-#     end
+    mx = Int8(-1)
+    for i in population |> individuals
+        if age(i, date) > mx
+            mx = age(i, date)
+        end
+    end
 
-#     population.maxage = mx
-#     return(mx)
-# end
+    population.maxage = mx
+    return(mx)
+end
 
 
 """
@@ -401,13 +401,14 @@ Returns a DataFrame representing the given population.
 | `office`     | `Int32` | Individual associated office      |
 | `school`     | `Int32` | Individual associated school      |
 """
-function dataframe(population::Population)
+function dataframe(population::Population, date::Date)
 
     return(
         DataFrame(
             id = map(id, population |> individuals),
             sex = map(sex, population |> individuals),
-            age = map(age, population |> individuals),
+            birthday = map(birthday, population |> individuals),
+            age = map(ind -> age(ind, date), population |> individuals),
             number_of_vaccinations = map(number_of_vaccinations, population |> individuals),
             vaccination_tick = map(vaccination_tick, population |> individuals),
             education = map(education, population |> individuals),

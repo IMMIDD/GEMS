@@ -49,7 +49,7 @@ mutable struct PostProcessor
     function PostProcessor(simulation::Simulation)
        
         # convert population model to dataframe
-        pop = dataframe(population(simulation))
+        pop = dataframe(population(simulation), simulation.startdate + Day(tick(simulation)))
         
         # import tests
         tests = dataframe(testlogger(simulation))

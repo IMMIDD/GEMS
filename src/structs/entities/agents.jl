@@ -246,7 +246,7 @@ end
 
 Return an individual's birthday.
 """
-function birthday(individual::Individual)::birthday
+function birthday(individual::Individual)::Date
     return individual.birthday
 end
 

@@ -91,6 +91,7 @@ mutable struct Simulation
     settings::SettingsContainer
     pathogen::Pathogen
     birth_model::BirthModel
+    ags_to_municipality_id::Dict{AGS, Int32}
 
     # logger
     infectionlogger::InfectionLogger
@@ -140,6 +141,7 @@ mutable struct Simulation
          settings, # settings::SettingsContainer
          Pathogen(id = 0, name = "TEST DEFAULT"), # pathogen::Pathogen
          BirthModel(Dict{Tuple{Int, Int}, Float64}(), 0),
+         Dict{AGS, Int32}(),
          InfectionLogger(), # infectionlogger::InfectionLogger
          DeathLogger(), # deathlogger::DeathLogger
          TestLogger(), # testlogger::TestLogger
@@ -625,6 +627,13 @@ mutable struct Simulation
         end
 
         birth_model = BirthModel("data/birthmonths.csv")
+
+        ags_to_municipality_id = Dict{AGS, Int32}()
+        if !isnothing(settings.settings[Municipality])
+            for mun in settings.settings[Municipality]
+                ags_to_municipality_id[ags(mun)] = id(mun)
+            end
+        end
     
         # create simulation
         printinfo("\u2514 Creating simulation object")
@@ -673,6 +682,7 @@ mutable struct Simulation
 
 
         sim.birth_model = birth_model
+        sim.ags_to_municipality_id = ags_to_municipality_id
 
         initialize!(sim)
 

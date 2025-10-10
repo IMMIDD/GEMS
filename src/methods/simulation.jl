@@ -233,10 +233,15 @@ function process_births!(sim::Simulation)
             birthday = sim.startdate + Day(tick(sim))
         )
 
-        # assign the newborn to a random household
+        # assign the newborn to a random household and corresponding municipality
         target_household = rand(households(sim))
+        target_municipality = municipalities(sim)[sim.ags_to_municipality_id[ags(target_household)]]
+
         setting_id!(newborn, Household, id(target_household))
+        setting_id!(newborn, Municipality, id(target_municipality))
+
         add!(pop, newborn)
         add!(target_household, newborn)
+        add!(target_municipality, newborn)
     end
 end
