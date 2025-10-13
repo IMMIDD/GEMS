@@ -199,14 +199,17 @@ mutable struct Population
         n_offices = ceil(n_workers / avg_office_size)
 
         # assign other settings
-        Threads.@threads for i in 1:nrow(df)
-            isstudent(df.age[i]) ? df.schoolclass[i] = Int32(rand(rng, 1:n_schools)) : nothing
-            isworker(df.age[i]) ? df.office[i] = Int32(rand(rng, 1:n_offices)) : nothing
+        # create set of thread-safe RNGs, seeded from the main RNG
+        thread_rngs = [Xoshiro(rand(rng, UInt64)) for _ in 1:Threads.nthreads()]
+        Threads.@threads :static for i in 1:nrow(df)
+            local_rng = thread_rngs[Threads.threadid()]
+            isstudent(df.age[i]) ? df.schoolclass[i] = Int32(rand(local_rng, 1:n_schools)) : nothing
+            isworker(df.age[i]) ? df.office[i] = Int32(rand(local_rng, 1:n_offices)) : nothing
         end
 
         # make sure all IDs start at 1 and are consecutive
-        unique_off_ids = unique(df.office) |> x -> x[x .> 0]
-        unique_sch_ids = unique(df.schoolclass) |> x -> x[x .> 0]
+        unique_off_ids = unique(df.office) |> x -> x[x .> 0] |> sort
+        unique_sch_ids = unique(df.schoolclass) |> x -> x[x .> 0] |> sort
 
         off_join = DataFrame(
             office = unique_off_ids,

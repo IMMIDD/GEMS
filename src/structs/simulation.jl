@@ -556,16 +556,25 @@ mutable struct Simulation
 
         validate_pathogens(properties, 1) # TODO adapt if more than one pathogen is possible, replace 1 by number of pathogens automatically
 
+        # create and seed the main RNG upfront if a seed is provided
+        local main_rng
+        if haskey(properties["Simulation"], "seed")
+            seed = properties["Simulation"]["seed"]
+            main_rng = Xoshiro(seed)
+        else
+            main_rng = Xoshiro()
+        end
+
         # 6 Create the population
 
         if isnothing(population)
             printinfo("\u2514 Creating population")
             if haskey(properties, "Population")
                 symbolic_parameters = Dict(Symbol.(k) => v for (k, v) in properties["Population"])
-                population = Population(;symbolic_parameters...)
+                population = Population(;rng = main_rng, symbolic_parameters...)
             else
                 @warn "There is no Population section in your config file. Please add this and ensure it is complete. Please refer to the documentation on config files"
-                population = Population()
+                population = Population(rng = main_rng)
             end
         elseif isa(population, Population)
             printinfo("\u2514 Loading provided population object")
@@ -610,12 +619,9 @@ mutable struct Simulation
         
         sim = Simulation(configfile, start_condition, stop_criterion, population, settings, label)
 
-        if haskey(properties["Simulation"], "seed") 
-            seed = properties["Simulation"]["seed"]
-            Random.seed!(sim.main_rng, seed)
-            for i in 1:Threads.nthreads()
-                Random.seed!(sim.thread_rngs[i], rand(sim.main_rng, Int64))
-            end
+        sim.main_rng = main_rng
+        for i in 1:Threads.nthreads()
+            Random.seed!(sim.thread_rngs[i], rand(sim.main_rng, Int64))
         end
 
         # Remove empty containersettings
