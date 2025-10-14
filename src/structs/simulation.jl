@@ -249,16 +249,6 @@ function _BUILD_Simulation(;
         # GLOBAL SETTING FLAG
         gs = determine_global_setting(config, global_setting)
 
-
-        # START DATE
-        sd = determine_start_date(config, start_date)
-
-        # END DATE
-        ed = determine_end_date(config, end_date)
-
-        # TICK UNIT
-        tu = determine_tick_unit(config, tickunit)
-
         # POPULATION
         pop, settings = determine_population_and_settings(
             config,
@@ -270,6 +260,18 @@ function _BUILD_Simulation(;
             avg_school_size,
             settingsfile
         )
+
+        # everything after this is just generating, not loading from disk
+        printinfo("\u2514 Creating simulation object")
+
+        # START DATE
+        sd = determine_start_date(config, start_date)
+
+        # END DATE
+        ed = determine_end_date(config, end_date)
+
+        # TICK UNIT
+        tu = determine_tick_unit(config, tickunit)
 
         # SETTINGS & CONTACTS
         determine_setting_config!(settings, config,
@@ -329,6 +331,14 @@ function _BUILD_Simulation(;
 
 ### DETERMINATION FUNCTIONS
 
+"""
+    determine_start_date(configfile_params::Dict, start_date)
+
+Determines the start date for the simulation based on the provided parameters.
+If a `start_date` is provided, it will be used.
+If not, it will look for a `startdate` in the config file.
+If neither is found, it will default to today.
+"""
 function determine_start_date(configfile_params::Dict, start_date)
     # if start_date is provided, use it
     if !isnothing(start_date)
@@ -350,6 +360,14 @@ function determine_start_date(configfile_params::Dict, start_date)
     end
 end
 
+"""
+    determine_end_date(configfile_params::Dict, end_date)
+
+Determines the end date for the simulation based on the provided parameters.
+If a `end_date` is provided, it will be used.
+If not, it will look for an `enddate` in the config file.
+If neither is found, it will default to today + 1 year.
+"""
 function determine_end_date(configfile_params::Dict, end_date)
     # if end_date is provided, use it
     if !isnothing(end_date)
@@ -371,7 +389,14 @@ function determine_end_date(configfile_params::Dict, end_date)
     end
 end
 
+"""
+    determine_tick_unit(configfile_params::Dict, tickunit)
 
+Determines the tick unit for the simulation based on the provided parameters.
+If a `tickunit` is provided, it will be used.
+If not, it will look for a `tickunit` in the config file.
+If neither is found, it will default to 'd' (days).
+"""
 function determine_tick_unit(configfile_params::Dict, tickunit)
     # if tickunit is provided, use it
     if !isnothing(tickunit)
@@ -460,6 +485,16 @@ function determine_stop_criterion(configfile_params::Dict, stop_criterion)
     return stop_criterion
 end
 
+"""
+    determine_pathogen(configfile_params::Dict, pathogen, transmission_function, transmission_rate)
+
+Determines the pathogen for the simulation based on the provided parameters.
+If a `pathogen` is provided, it will be used.
+If not, it will look for a `Pathogens` section in the config file to create a pathogen.
+If a `transmission_function` is provided, it will be set for the pathogen.
+If a `transmission_rate` is provided, it will be set as a `ConstantTransmissionRate` for the pathogen.
+The `transmission_rate` will be ignored if a `transmission_function` is provided.
+"""
 function determine_pathogen(configfile_params::Dict, pathogen, transmission_function, transmission_rate)
     if !isnothing(pathogen)
         !isa(pathogen, Pathogen) && throw(ArgumentError("Provided pathogen must be an object of type Pathogen!"))
@@ -489,7 +524,14 @@ function determine_pathogen(configfile_params::Dict, pathogen, transmission_func
     return pg
 end
 
+"""
+    determine_global_setting(configfile_params::Dict, global_setting)
 
+Determines the global setting flag for the simulation based on the provided parameters.
+If a `global_setting` is provided, it will be used.
+If not, it will look for a `GlobalSetting` in the config file.
+If neither is found, it will default to false.
+"""
 function determine_global_setting(configfile_params::Dict, global_setting)
     # if global_setting is provided, use it
     if !isnothing(global_setting)
@@ -508,7 +550,14 @@ function determine_global_setting(configfile_params::Dict, global_setting)
     return gs
 end
 
+"""
+    determine_population(population::String, settingsfile, global_setting)
 
+Determines the population and settings for the simulation based on the provided parameters.
+If a `population` string is provided, it will be used to load the population from a file or obtain remote files.
+If a `settingsfile` is provided, it will be used to load the settings from a file.
+If neither is provided, an error will be thrown.
+"""
 function determine_population(population::String, settingsfile, global_setting)
     # if a path was provided, load the population from the file, otherwise assume it's a population identifier
     (pop_path, settings_path) = try
@@ -523,13 +572,20 @@ function determine_population(population::String, settingsfile, global_setting)
     # if settingsfile is provided, load the settings from the file
     if !isnothing(settings_path)
         !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
+        printinfo("\u2514 Loading settings from $(basename(settings_path))")
         settings_from_jld2!(settings_path, settings, renaming)
     end
 
     return pop, settings
 end
 
+"""
+    determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile)
 
+Determines the population and settings for the simulation based on the provided parameters.
+If a `population` is provided, it will be used to load the population from a file or obtain remote files.
+If not, it will create a new population based on the provided parameters or config file parameters.
+"""
 function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile)
     # if population is provided, use it    
     if !isnothing(population)
@@ -551,6 +607,8 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     end
 
     # if no population is provided, use the provided parameters
+    printinfo("\u2514 Creating population")
+
     # baseline is configfile parameters
     params = haskey(configfile_params, "Population") ? Dict{Symbol, Any}(prepare_kw_args(configfile_params["Population"])) : Dict{Symbol, Any}()
     # update kw args
@@ -701,6 +759,13 @@ end
 
 ### CREATOR FUNCTIONS
 
+"""
+    create_distribution(params::Dict)
+
+Creates a distribution based on the provided parameters.
+The `params` dictionary must contain a `distribution` key with the name of the distribution type
+and a `parameters` key with a list of parameters for the distribution constructor.
+"""
 function create_distribution(params::Dict)
     # find the distribution type in the parameters
     dist_type = GEMS.get_subtype(params["distribution"], Distribution)
