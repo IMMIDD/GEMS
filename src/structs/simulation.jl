@@ -169,9 +169,32 @@ mutable struct Simulation
         return sim
     end
 
-    
 
-    function Simulation(;
+    function Simulation(; params...)
+        # check if all parameters are known to _BUILD_Simulation
+        validkeys = methods(GEMS._BUILD_Simulation) |> first |> Base.kwarg_decl
+        errs = setdiff(keys(params), validkeys)
+        length(errs) > 0 && throw(ArgumentError("Unknown keyword arguments provided to Simulation: $(join(errs, ", ")). Valid arguments are: $(join(validkeys, ", "))"))
+
+        # determine config file
+        params = (; params..., configfile = haskey(params, :configfile) ? params[:configfile] : "")
+
+        # determine other parameters
+        passed_params = setdiff(keys(params), [:configfile])
+
+        cnfg = isempty(params[:configfile]) ? "with default configuration" : "from $(params[:configfile])"
+        prms = length(passed_params) > 0 ? " and additional parameter(s): $(join(passed_params, ", "))" : ""
+
+        printinfo("Initializing Simulation $cnfg$prms")
+        return _BUILD_Simulation(; params...)
+    end
+
+    Simulation(params::Dict) = Simulation(params...)
+
+        
+end
+
+function _BUILD_Simulation(;
         configfile::String = "",
 
         # common parameters
@@ -281,11 +304,6 @@ mutable struct Simulation
     end
 
 
-    Simulation(params::Dict) = Simulation(params...)
-        
-end
-
-
 ### DETERMINATION FUNCTIONS
 
 function determine_start_date(configfile_params::Dict, start_date)
@@ -330,10 +348,17 @@ function determine_end_date(configfile_params::Dict, end_date)
     end
 end
 
+
 function determine_tick_unit(configfile_params::Dict, tickunit)
     # if tickunit is provided, use it
     if !isnothing(tickunit)
-        !isa(only(tickunit), Char) && throw(ArgumentError("Provided tickunit must be a single character!"))
+        tu = try
+            only(tickunit)
+        catch
+            throw(ArgumentError("Provided tickunit must be a single character!"))
+        end
+        !(tu in ['h', 'd', 'w']) && throw(ArgumentError("Provided tickunit must be one of: 'h', 'd', 'w'"))
+        #!isa(only(tickunit), Char) && throw(ArgumentError("Provided tickunit must be a single character!"))
         return only(tickunit)
     end
 
