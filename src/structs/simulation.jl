@@ -174,7 +174,7 @@ mutable struct Simulation
         # check if all parameters are known to _BUILD_Simulation
         validkeys = methods(GEMS._BUILD_Simulation) |> first |> Base.kwarg_decl
         errs = setdiff(keys(params), validkeys)
-        length(errs) > 0 && throw(ArgumentError("Unknown keyword arguments provided to Simulation: $(join(errs, ", ")). Valid arguments are: $(join(validkeys, ", "))"))
+        length(errs) > 0 && throw(ArgumentError("Unknown keyword arguments provided to Simulation: $(join(errs, ", ")).\n\nValid arguments are: $(join(validkeys, ", "))"))
 
         # determine config file
         params = (; params..., configfile = haskey(params, :configfile) ? params[:configfile] : "")
@@ -214,6 +214,19 @@ function _BUILD_Simulation(;
         global_setting = nothing,
         settingsfile = nothing,
 
+        # contacts
+        household_contacts = nothing,
+        office_contacts = nothing,
+        department_contacts = nothing,
+        workplace_contacts = nothing,
+        workplace_site_contacts = nothing,
+        school_class_contacts = nothing,
+        school_year_contacts = nothing,
+        school_contacts = nothing,
+        school_complex_contacts = nothing,
+        global_setting_contacts = nothing,
+
+        
         # start condition
         start_condition = nothing,
         infected_fraction = nothing,
@@ -258,8 +271,18 @@ function _BUILD_Simulation(;
             settingsfile
         )
 
-        # SETTINGS
-        determine_setting_config!(settings, config)
+        # SETTINGS & CONTACTS
+        determine_setting_config!(settings, config,
+            household_contacts = household_contacts,
+            office_contacts = office_contacts,
+            department_contacts = department_contacts,
+            workplace_contacts = workplace_contacts,
+            workplace_site_contacts = workplace_site_contacts,
+            school_class_contacts = school_class_contacts,
+            school_year_contacts = school_year_contacts,
+            school_contacts = school_contacts,
+            school_complex_contacts = school_complex_contacts,
+            global_setting_contacts = global_setting_contacts)
 
         # START CONDITION
         start_condition = determine_start_condition(
@@ -542,15 +565,136 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     return pop, settings
 end
 
+"""
+    determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
 
-function determine_setting_config!(stngs::SettingsContainer, configfile_params::Dict)
-    # if no settings are provided, look them up in config file
-    if !haspath(configfile_params, ["Settings"])
-        @warn "No setting parameters found in config file; using default global setting only. This might cause 0 contacts and no infections."
-        return
+Determines the settings of a specific type for the simulation based on the provided parameters.
+If a `custom_par` is provided, it will be used to set the settings of the specified type.
+If not, it will look for the settings in the config file.
+Requires to be called with a type that is actually present in the settings container.
+
+# Example
+
+```julia
+determine_setting_type_config!(settings_container, Household, configfile_params; custom_par = 3.5)
+```
+
+This will set the number of contacts for all `Household` settings to `3.5`.
+"""
+function determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
+
+    # if custom parameter is provided, use it
+    if !isnothing(custom_par)
+        # if a ContactSamplingMethod is provided, use it
+        if isa(custom_par, ContactSamplingMethod)
+            for s in settings(stngs, type)
+                s.contact_sampling_method = custom_par
+            end
+            return stngs
+        # if a number is provided set it as number of contacts
+        elseif isa(custom_par, Real)
+            for s in settings(stngs, type)
+                s.contact_sampling_method = ContactparameterSampling(contactparameter = custom_par)
+            end
+            return stngs
+        else
+            throw(ArgumentError("Provided parameter for `$(structname(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
+        end
     end
 
-    load_setting_attributes!(stngs, configfile_params["Settings"])
+    # if no custom parameters are provided, check if config file has section for the setting type
+    if !haspath(configfile_params, ["Settings", structname(type)])
+        @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+        return settings
+    end
+
+    # check if the setting type has a config part for contact sampling method
+    if !haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
+        @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+        return settings
+    end
+
+    # build contact sampling method
+    csm_params = configfile_params["Settings"][structname(type)]["contact_sampling_method"]
+    sampling_method = create_contact_sampling_method(csm_params)
+    for s in settings(stngs, type)
+        s.contact_sampling_method = sampling_method
+    end    
+end
+
+"""
+    determine_setting_config!(stngs::SettingsContainer, configfile_params::Dict; household_contacts = nothing,
+        office_contacts = nothing,
+        department_contacts = nothing,
+        workplace_contacts = nothing,
+        workplace_site_contacts = nothing,
+        school_class_contacts = nothing,
+        school_year_contacts = nothing,
+        school_contacts = nothing,
+        school_complex_contacts = nothing,
+        global_setting_contacts = nothing
+    )
+
+Determines the settings for all setting types present in the simulation based on the provided parameters.
+If a custom parameter for a specific setting type is provided, it will be used to set the settings of that type.
+If not, it will look for the settings in the config file.
+Requires to be called with setting types that are actually present in the settings container.
+"""
+function determine_setting_config!(stngs::SettingsContainer, configfile_params::Dict;
+        household_contacts = nothing,
+        office_contacts = nothing,
+        department_contacts = nothing,
+        workplace_contacts = nothing,
+        workplace_site_contacts = nothing,
+        school_class_contacts = nothing,
+        school_year_contacts = nothing,
+        school_contacts = nothing,
+        school_complex_contacts = nothing,
+        global_setting_contacts = nothing
+    )
+
+    # check if a contact parameter was passed without that setting type being present
+    !isnothing(household_contacts) && !haskey(stngs.settings, Household) && throw(ArgumentError("Provided household_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(office_contacts) && !haskey(stngs.settings, Office) && throw(ArgumentError("Provided office_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(department_contacts) && !haskey(stngs.settings, Department) && throw(ArgumentError("Provided department_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(workplace_contacts) && !haskey(stngs.settings, Workplace) && throw(ArgumentError("Provided workplace_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(workplace_site_contacts) && !haskey(stngs.settings, WorkplaceSite) && throw(ArgumentError("Provided workplace_site_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_class_contacts) && !haskey(stngs.settings, SchoolClass) && throw(ArgumentError("Provided school_class_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_year_contacts) && !haskey(stngs.settings, SchoolYear) && throw(ArgumentError("Provided school_year_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_contacts) && !haskey(stngs.settings, School) && throw(ArgumentError("Provided school_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_complex_contacts) && !haskey(stngs.settings, SchoolComplex) && throw(ArgumentError("Provided school_complex_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(global_setting_contacts) && !haskey(stngs.settings, GlobalSetting) && throw(ArgumentError("Provided global_setting_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+
+
+    # apply configuration
+    for (type, settings_list) in settings(stngs)
+        if type == Household
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = household_contacts)
+        elseif type == Office
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = office_contacts)
+        elseif type == Department
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = department_contacts)
+        elseif type == Workplace
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = workplace_contacts)
+        elseif type == WorkplaceSite
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = workplace_site_contacts)
+        elseif type == SchoolClass
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_class_contacts)
+        elseif type == SchoolYear
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_year_contacts)
+        elseif type == School
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_contacts)
+        elseif type == SchoolComplex
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_complex_contacts)
+        elseif type == GlobalSetting
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = global_setting_contacts)
+        # for all other setting types, just look for config file parameters
+        else
+            determine_setting_type_config!(stngs, type, configfile_params)
+        end
+    end
+
+    return stngs
 end
 
 
@@ -733,46 +877,6 @@ function validate_file_paths(population_path::String, settings_path::String)
     end
 end
 
-
-"""
-    load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
-
-Loads the `Settings` from the `Simulation` config parameters.
-"""
-function load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
-
-    for (type, setting_list) in settings(stngs)
-        # for every setting type we assign the given attributes
-        if structname(type) in keys(attributes)
-            setting_attributes = attributes[structname(type)] # structnames() handles types like "GEMS.Houshold" that occur, if GEMS is loaded within another scope/package
-            # for every provided key, we set the corresponding field
-            for (key, value) in setting_attributes
-                if Symbol(key) in fieldnames(type)
-                    
-                    # NOTE: This must be checked before "value" is converted, as in this case "value" equals to a Dict and can't be directly converted to a "ContactSamplingMethod"
-                    # handle "ContactSamplingMethod"s in an extra step
-                    # strings in the configfile must be matched exactly
-                    if (key == "contact_sampling_method")
-                        # create specific instance of "ContactSamplingMethod" from Dict
-                        sampling_method = create_contact_sampling_method(value)
-                        for s in setting_list
-                            # set fitting value and convert it to the correct type
-                            setfield!(s, Symbol(key), sampling_method)
-                        end
-                    else
-                        value = convert(fieldtype(type, Symbol(key)), value)
-                        for s in setting_list
-                            # set fitting value and convert it to the correct type
-                            setfield!(s, Symbol(key), value)
-                        end
-                    end
-                else
-                    @warn "Provided key not compatible with type" key type
-                end
-            end
-        end
-    end
-end
 
 
 """
