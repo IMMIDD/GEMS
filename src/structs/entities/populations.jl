@@ -119,13 +119,13 @@ mutable struct Population
         end
 
         # exception handling
-        n <= 0 ? throw("The number of individuals must be a positive integer") : nothing
-        avg_household_size <= 0 ? throw("The average household size must be a positive integer") : nothing
-        avg_household_size > n ? throw("The average household size cannot be larger than the population (n)") : nothing
-        avg_office_size <= 0 ? throw("The average office size must be a positive integer") : nothing
-        avg_office_size > n ? throw("The average office size cannot be larger than the population (n)") : nothing
-        avg_school_size <= 0 ? throw("The average school size must be a positive integer") : nothing
-        avg_school_size > n ? throw("The average school size cannot be larger than the population (n)") : nothing
+        n <= 0 ? throw(ArgumentError("The number of individuals must be a positive integer")) : nothing
+        avg_household_size <= 0 ? throw(ArgumentError("The average household size must be a positive integer")) : nothing
+        avg_household_size > n ? throw(ArgumentError("The average household size cannot be larger than the population (n)")) : nothing
+        avg_office_size <= 0 ? throw(ArgumentError("The average office size must be a positive integer")) : nothing
+        avg_office_size > n ? throw(ArgumentError("The average office size cannot be larger than the population (n)")) : nothing
+        avg_school_size <= 0 ? throw(ArgumentError("The average school size must be a positive integer")) : nothing
+        avg_school_size > n ? throw(ArgumentError("The average school size cannot be larger than the population (n)")) : nothing
 
         # helper functions
         group_to_age(g) = 5 * (g-1) + rand(0:4)
