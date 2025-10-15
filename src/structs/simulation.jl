@@ -73,6 +73,7 @@ Here's a list of all available parameters:
 | `school_year_contacts`    | `ContactSamplingMethod` or `Float` | Method for sampling school year contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                  |
 | `school_contacts`         | `ContactSamplingMethod` or `Float` | Method for sampling school contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
 | `school_complex_contacts` | `ContactSamplingMethod` or `Float` | Method for sampling school complex contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
+| `municipality_contacts`   | `ContactSamplingMethod` or `Float` | Method for sampling municipality contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
 | `global_setting_contacts` | `ContactSamplingMethod` or `Float` | Method for sampling global setting contacts or a fixed value that will be regarded as the expected value of a Poisson distribution. Requires `global_setting` to be true.         |
 | `start_condition`         | `StartCondition`                   | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
 | `infected_fraction`       | `Float`                            | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
@@ -307,6 +308,7 @@ function _BUILD_Simulation(;
         school_year_contacts = nothing,
         school_contacts = nothing,
         school_complex_contacts = nothing,
+        municipality_contacts = nothing,
         global_setting_contacts = nothing,
 
         
@@ -367,6 +369,7 @@ function _BUILD_Simulation(;
             school_year_contacts = school_year_contacts,
             school_contacts = school_contacts,
             school_complex_contacts = school_complex_contacts,
+            municipality_contacts = municipality_contacts,
             global_setting_contacts = global_setting_contacts)
 
         # START CONDITION
@@ -791,6 +794,7 @@ function determine_setting_config!(stngs::SettingsContainer, configfile_params::
         school_year_contacts = nothing,
         school_contacts = nothing,
         school_complex_contacts = nothing,
+        municipality_contacts = nothing,
         global_setting_contacts = nothing
     )
 
@@ -804,6 +808,7 @@ function determine_setting_config!(stngs::SettingsContainer, configfile_params::
     !isnothing(school_year_contacts) && !haskey(stngs.settings, SchoolYear) && throw(ArgumentError("Provided school_year_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
     !isnothing(school_contacts) && !haskey(stngs.settings, School) && throw(ArgumentError("Provided school_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
     !isnothing(school_complex_contacts) && !haskey(stngs.settings, SchoolComplex) && throw(ArgumentError("Provided school_complex_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(municipality_contacts) && !haskey(stngs.settings, Municipality) && throw(ArgumentError("Provided municipality_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
     !isnothing(global_setting_contacts) && !haskey(stngs.settings, GlobalSetting) && throw(ArgumentError("Provided global_setting_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
 
 
@@ -827,6 +832,8 @@ function determine_setting_config!(stngs::SettingsContainer, configfile_params::
             determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_contacts)
         elseif type == SchoolComplex
             determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_complex_contacts)
+        elseif type == Municipality
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = municipality_contacts)
         elseif type == GlobalSetting
             determine_setting_type_config!(stngs, type, configfile_params; custom_par = global_setting_contacts)
         # for all other setting types, just look for config file parameters
