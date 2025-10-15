@@ -355,6 +355,8 @@ function _BUILD_Simulation(;
         # END DATE
         ed = determine_end_date(config, end_date)
 
+        ed < sd && throw(ArgumentError("End date must be after start date."))
+
         # TICK UNIT
         tu = determine_tick_unit(config, tickunit)
 
