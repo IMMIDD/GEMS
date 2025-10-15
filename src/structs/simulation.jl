@@ -425,8 +425,8 @@ If neither is found, it will default to today.
 function determine_start_date(configfile_params::Dict, start_date)
     # if start_date is provided, use it
     if !isnothing(start_date)
-        !isa(start_date, Date) && throw(ArgumentError("Provided start_date must be an object of type Date!"))
-        return start_date
+        !isa(start_date, Date) && !isa(start_date, String) && throw(ArgumentError("Provided start_date must be an object of type Date!"))
+        return Date(start_date)
     end
 
     # if no start date is provided, look it up in config file
@@ -454,8 +454,8 @@ If neither is found, it will default to today + 1 year.
 function determine_end_date(configfile_params::Dict, end_date)
     # if end_date is provided, use it
     if !isnothing(end_date)
-        !isa(end_date, Date) && throw(ArgumentError("Provided end_date must be an object of type Date!"))
-        return end_date
+        !isa(end_date, Date) && !isa(end_date, String) && throw(ArgumentError("Provided end_date must be an object of type Date!"))
+        return Date(end_date)
     end
 
     # if no end date is provided, look it up in config file
