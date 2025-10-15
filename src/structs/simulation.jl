@@ -39,7 +39,88 @@ abstract type StopCriterion end
 
 A struct for the management of a single run, holding all necessary informations.
 
-# Fields
+# Initialization
+
+    Simulation(; kwargs...)
+    Simulation(params::Dict)
+
+You can initialize a simulation without any parameters, which will then use the default configuration file.
+Providing any additional keyword arguments will override the respective configuration file parameter.
+If you provide a custom config file, the parameters in the config file will be used as defaults and only the provided keyword arguments will override them.
+
+Here's a list of all available parameters:
+
+| Parameter                 | Type                               | Description                                                                                                                                                                       |
+| :------------------------ | :--------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configfile`              | `String`                           | Path to the configuration file. If not provided, the default configuration will be used.                                                                                          |
+| `tickunit`                | `Char`                             | Time unit of one simulation step (tick). Must be one of 'h' (hours), 'd' (days), or 'w' (weeks).                                                                                  |
+| `start_date`              | `Date`                             | Start date of the simulation.                                                                                                                                                     |
+| `end_date`                | `Date`                             | End date of the simulation.                                                                                                                                                       |
+| `label`                   | `String`                           | Label used for plot visualizations and aggregating simulations into batches.                                                                                                      |
+| `population`              | `String` or `Population`           | Path to a population file, a population identifier (e.g., 'DE'), or a `Population` object.                                                                                        |
+| `pop_size`                | `Int`                              | Size of the population to be created. Will be ignored if a `population` is provided.                                                                                              |
+| `avg_household_size`      | `Float`                            | Average household size for the population to be created. Will be ignored if a `population` is provided.                                                                           |
+| `avg_office_size`         | `Float`                            | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
+| `avg_school_size`         | `Float`                            | Average school size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
+| `global_setting`          | `Bool`                             | Flag indicating whether to use the global setting.                                                                                                                                |
+| `settingsfile`            | `String`                           | Path to a settings file.                                                                                                                                                          |
+| `household_contacts`      | `ContactSamplingMethod` or `Float` | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
+| `office_contacts`         | `ContactSamplingMethod` or `Float` | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
+| `department_contacts`     | `ContactSamplingMethod` or `Float` | Method for sampling department contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                   |
+| `workplace_contacts`      | `ContactSamplingMethod` or `Float` | Method for sampling workplace contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
+| `workplace_site_contacts` | `ContactSamplingMethod` or `Float` | Method for sampling workplace site contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
+| `school_class_contacts`   | `ContactSamplingMethod` or `Float` | Method for sampling school class contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
+| `school_year_contacts`    | `ContactSamplingMethod` or `Float` | Method for sampling school year contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                  |
+| `school_contacts`         | `ContactSamplingMethod` or `Float` | Method for sampling school contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
+| `school_complex_contacts` | `ContactSamplingMethod` or `Float` | Method for sampling school complex contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
+| `global_setting_contacts` | `ContactSamplingMethod` or `Float` | Method for sampling global setting contacts or a fixed value that will be regarded as the expected value of a Poisson distribution. Requires `global_setting` to be true.         |
+| `start_condition`         | `StartCondition`                   | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
+| `infected_fraction`       | `Float`                            | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
+| `stop_criterion`          | `StopCriterion`                    | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
+| `pathogen`                | `Pathogen`                         | A `Pathogen` object defining the pathogen to be simulated.                                                                                                                        |
+| `transmission_function`   | `TransmissionFunction`             | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
+| `transmission_rate`       | `Float`                            | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
+| `stepmod`                 | `Function`                         | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |
+
+# Examples
+
+```julia
+# Initialize a simulation with default configuration
+sim = Simulation()
+
+# Initialize a simulation with a custom configuration file
+sim = Simulation(configfile="path/to/configfile.toml")
+
+# Initialize a simulation with custom parameters
+sim = Simulation(
+    tickunit='d',
+    label="My Simulation",
+    avg_household_size=5,
+)
+
+# Initialize a simulation with a predefined population model
+sim = Simulation(population="SH") # Schleswig-Holstein, Germany
+
+# Initialize a simulation with a custom population file
+sim = Simulation(population="path/to/populationfile.csv")
+
+# Initialize a simulation with a custom start condition
+sim = Simulation(start_condition=PatientZero()) # starts with a single infected individual
+
+# Initialize a simulation with a custom transmission rate
+sim = Simulation(transmission_rate=0.1) # sets a constant per-contact transmission rate (chance) of 0.1
+
+# Initialize a simulation with a parameter dictionary
+params = Dict(
+    :tickunit => 'd',
+    :label => "My Simulation",
+    :avg_household_size => 5,
+)
+sim = Simulation(params)
+```
+
+# Internal Simulation Struct Fields
+
 - Data Sources
     - `configfile::String`: Path to config file
 - General
@@ -169,7 +250,8 @@ mutable struct Simulation
         return sim
     end
 
-
+    # outer constructor with keyword arguments
+    # wrapper to _BUILD_Simulation
     function Simulation(; params...)
         # check if all parameters are known to _BUILD_Simulation
         validkeys = methods(GEMS._BUILD_Simulation) |> first |> Base.kwarg_decl
@@ -189,7 +271,8 @@ mutable struct Simulation
         return _BUILD_Simulation(; params...)
     end
 
-    Simulation(params::Dict) = Simulation(params...)
+    # constructor from dictionary
+    Simulation(params::Dict) = Simulation(;params...)
 
         
 end
