@@ -403,7 +403,7 @@ function _BUILD_Simulation(;
         )
 
         # update label
-        sim.label = isnothing(label) ? sim.label : string(label)
+        sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
         # initialize simulation
         initialize!(sim)
