@@ -78,7 +78,7 @@ julia> DiseaseProgression(exposure = 23, infectiousness_onset = 25, symptom_onse
 Output:
 
 ```julia
-Disease Progression(
+DiseaseProgression(
   tick | event
     23 | exposure
     25 | infectiousness_onset
