@@ -773,12 +773,26 @@ function create_distribution(params::Dict)
 
 end
 
+"""
+    create_progression_parameter(params::Union{Dict, Real})
+
+Creates a progression parameter based on the provided parameters.
+If `params` is a dictionary, it will be used to create a distribution.
+If `params` is a real number, it will be used as a single value.
+"""
 function create_progression_parameter(params::Union{Dict, Real})
     # If parameter is a dictionary, we assume it describes a distribution
     # Otherwise, we assume it is a single value
     return isa(params, Dict) ? create_distribution(params) : params
 end
 
+"""
+    create_progression(params::Dict, category::String)
+
+Creates a progression of the specified category based on the provided parameters.
+The `params` dictionary must contain the parameters for the progression constructor.
+The `category` string must be the name of a subtype of `ProgressionCategory`.
+"""
 function create_progression(params::Dict, category::String)
     # convert parameters to keyword arguments
     kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
@@ -790,6 +804,13 @@ function create_progression(params::Dict, category::String)
     end
 end
 
+"""
+    create_progression_assignment(params::Dict)
+
+Creates a progression assignment function based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the progression assignment type
+and a `parameters` key with a list of parameters for the progression assignment constructor.
+"""
 function create_progression_assignment(params::Dict)
     pa_type = GEMS.get_subtype(params["type"], ProgressionAssignmentFunction)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
@@ -801,6 +822,13 @@ function create_progression_assignment(params::Dict)
     end
 end
 
+"""
+    create_transmission_function(params::Dict)
+
+Creates a transmission function based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the transmission function
+and a `parameters` key with a list of parameters for the transmission function constructor.
+"""
 function create_transmission_function(params::Dict)
     tf_type = GEMS.get_subtype(params["type"], TransmissionFunction)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
@@ -811,6 +839,14 @@ function create_transmission_function(params::Dict)
     end
 end
 
+"""
+    create_pathogen(params::Dict, name, id)
+
+Creates a pathogen based on the provided parameters.
+The `params` dictionary must contain the parameters for the pathogen constructor.
+The `name` string is the name of the pathogen.
+The `id` integer is the unique identifier for the pathogen.
+"""
 function create_pathogen(params::Dict, name, id)
 
     # create progressions
@@ -842,6 +878,12 @@ function create_pathogen(params::Dict, name, id)
     )
 end
 
+"""
+    create_pathogens(params::Dict)
+
+Creates a list of pathogens based on the provided parameters.
+The `params` dictionary must contain the parameters for each pathogen constructor.
+"""
 function create_pathogens(params::Dict)
     pathogens = []
     for (pathogen_name, pathogen_params) in params
@@ -855,7 +897,13 @@ function create_pathogens(params::Dict)
     return pathogens
 end
 
+"""
+    create_start_condition(params::Dict)
 
+Creates a start condition based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the start condition type
+and a `parameters` key with a list of parameters for the start condition constructor.
+"""
 function create_start_condition(params::Dict)
     sc_type = get_subtype(params["type"], StartCondition)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
@@ -866,6 +914,13 @@ function create_start_condition(params::Dict)
     end
 end
 
+"""
+    create_stop_criterion(params::Dict)
+
+Creates a stop criterion based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the stop criterion type
+and a `parameters` key with a list of parameters for the stop criterion constructor.
+"""
 function create_stop_criterion(params::Dict)
     sc_type = get_subtype(params["type"], StopCriterion)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
