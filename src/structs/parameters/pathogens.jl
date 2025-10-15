@@ -80,11 +80,11 @@ mutable struct Pathogen <: Parameter
         length(unique(typeof.(progressions))) > length(progressions) && throw(ArgumentError("Pathogen must not have multiple progressions of the same type!"))
 
         if isempty(progressions)
-            @warn "Pathogen $name ($id) has no progressions defined. Setting to default Symptomatic progression."
+            @warn "Pathogen $name ($id) has no progressions defined. Defining a default Symptomatic progression."
             progressions = [Symptomatic(
-                exposure_to_infectiousness = 2,
-                infectiousness_to_symptom_onset = 1,
-                symptom_onset_to_recovery = 7
+                exposure_to_infectiousness_onset = Poisson(2),
+                infectiousness_onset_to_symptom_onset = Poisson(1),
+                symptom_onset_to_recovery = Poisson(7)
             )]
         end
 
