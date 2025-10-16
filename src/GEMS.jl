@@ -18,6 +18,8 @@ using InteractiveUtils
 using JLD2
 using JSON
 using LoggingExtras
+using Optimization
+using OptimizationCMAEvolutionStrategy
 using PkgVersion
 using Parameters
 using Plots
