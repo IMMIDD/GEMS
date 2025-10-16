@@ -68,10 +68,10 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, infec
     
     for (i,ageGroup) in enumerate(transFunc.ageGroups)
         if ageGroup[1] <= infected.age <= ageGroup[2]
-            return rand(rng, transFunc.ageTransmissions[i])
+            return gems_rand(rng, transFunc.ageTransmissions[i])
         end
     end
-    return rand(rng, transFunc.transmission_rate)
+    return gems_rand(rng, transFunc.transmission_rate)
 end
 
 """

@@ -129,7 +129,7 @@ mutable struct Population
         avg_school_size > n ? throw("The average school size cannot be larger than the population (n)") : nothing
 
         # helper functions
-        group_to_age(g) = 5 * (g-1) + rand(rng, 0:4)
+        group_to_age(g) = 5 * (g-1) + gems_rand(rng, 0:4)
         age_to_group(a) = min(17, (a ÷ 5) + 1)
 
         # GENERATE ONE INDEX INDIVIDUAL FOR EACH HOUSEHOLD BASED ON DEMOGRAPHIC DATA
@@ -153,8 +153,8 @@ mutable struct Population
         # build the initial dataframe
         df = DataFrame(
             id = Int32.(collect(1:n)),
-            age = Int8.([rand(rng, Categorical(weights), n_households); fill(-1, n - n_households)]),
-            sex = Int8.(rand(rng, 1:2, n)),
+            age = Int8.([gems_rand(rng, Categorical(weights), n_households); fill(-1, n - n_households)]),
+            sex = Int8.(gems_rand(rng, 1:2, n)),
             household = Int32.([collect(1:n_households); fill(-1, n - n_households)]),
             schoolclass = Int32.(fill(-1, n)),
             office = Int32.(fill(-1, n))
@@ -177,7 +177,7 @@ mutable struct Population
 
         for i in (n_households+1):nrow(df)
             # sample household to place individual into
-            hh_id = rand(rng, 1:n_households)
+            hh_id = gems_rand(rng, 1:n_households)
 
             # store household
             df.household[i] = hh_id
@@ -185,7 +185,7 @@ mutable struct Population
             # sample age for new individual based on index individual age
             df.age[i] = df.age[hh_id] |> age_to_group |>
                 x -> contacts[:,x] |>
-                x -> rand(rng, Categorical(x)) |> group_to_age
+                x -> gems_rand(rng, Categorical(x)) |> group_to_age
         end
 
         # number of people
@@ -200,11 +200,11 @@ mutable struct Population
 
         # assign other settings
         # create set of thread-safe RNGs, seeded from the main RNG
-        thread_rngs = [Xoshiro(rand(rng, UInt64)) for _ in 1:Threads.nthreads()]
+        thread_rngs = [Xoshiro(gems_rand(rng, UInt64)) for _ in 1:Threads.nthreads()]
         Threads.@threads :static for i in 1:nrow(df)
             local_rng = thread_rngs[Threads.threadid()]
-            isstudent(df.age[i]) ? df.schoolclass[i] = Int32(rand(local_rng, 1:n_schools)) : nothing
-            isworker(df.age[i]) ? df.office[i] = Int32(rand(local_rng, 1:n_offices)) : nothing
+            isstudent(df.age[i]) ? df.schoolclass[i] = Int32(gems_rand(local_rng, 1:n_schools)) : nothing
+            isworker(df.age[i]) ? df.office[i] = Int32(gems_rand(local_rng, 1:n_offices)) : nothing
         end
 
         # make sure all IDs start at 1 and are consecutive

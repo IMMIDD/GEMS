@@ -21,7 +21,7 @@ function sample_contacts(random_sampling_method::RandomSampling, setting::Settin
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
-    offset = rand(rng, 1:length(present_inds)-1)
+    offset = gems_rand(rng, 1:length(present_inds)-1)
     contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
     return [present_inds[contact_index]]
 end
@@ -43,7 +43,7 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
     end
 
     # get number of contacts
-    number_of_contacts = rand(rng, Poisson(contactparameter_sampling.contactparameter))
+    number_of_contacts = gems_rand(rng, Poisson(contactparameter_sampling.contactparameter))
     # number_of_contacts = Int64(contactparameter_sampling.contactparameter)
 
 
@@ -52,7 +52,7 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
         
         # sample contacts 
         for i in 1:number_of_contacts
-            offset = rand(rng, 1:length(present_inds)-1)
+            offset = gems_rand(rng, 1:length(present_inds)-1)
             contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
             res[i] = present_inds[contact_index]
         end
@@ -60,7 +60,7 @@ function sample_contacts(contactparameter_sampling::ContactparameterSampling, se
         number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
         res = Vector{Individual}(undef, number_of_contacts)
 
-        sample!(rng, present_inds[1:end-1], res; replace=false)
+        gems_sample!(rng, present_inds[1:end-1], res; replace=false)
         for i = 1:length(res)
             if res[i] === present_inds[individual_index]
                 res[i] = present_inds[end]
@@ -87,7 +87,7 @@ Firstly, we sample uniformly with probability pi = e * wi * qi * m_max / N
 m_max - maximal mixing factor between age groups
 Secondly, we sample with adapted probability mi = mi / m_max
 """
-function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true)::Vector{Individual}
+function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16; replace::Bool = true, rng::AbstractRNG = Random.default_rng())::Vector{Individual}
 
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
@@ -125,7 +125,7 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
     w = 1 / w
     m_max = maximum(contact_matrix[orig_bin, :])
     # first order sampling (i.e. uniform), qi is missing since we sample from population according to age distribution
-    number_of_contacts = rand(Poisson(expected_number_of_contacts * w * m_max))
+    number_of_contacts = gems_rand(rng, Poisson(expected_number_of_contacts * w * m_max))
     if number_of_contacts < 1
         return Individual[]
     end
@@ -135,7 +135,7 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
         
         # sample contacts 
         for i in 1:number_of_contacts
-            offset = rand(1:length(present_inds)-1)
+            offset = gems_rand(rng, 1:length(present_inds)-1)
             contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
             res[i] = present_inds[contact_index]
         end
@@ -143,7 +143,7 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
         number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
         res = Vector{Individual}(undef, number_of_contacts)
 
-        sample!(present_inds[1:end-1], res; replace=false)
+        gems_sample!(present_inds[1:end-1], res; replace=false)
         for i = 1:length(res)
             if res[i] === present_inds[individual_index]
                 res[i] = present_inds[end]
@@ -159,7 +159,7 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
         m = contact_matrix[orig_bin, dest_bin]
         if m > 0.0
             m = m / m_max # since we multiplied by m_max in line no. 113
-            r = rand()
+            r = gems_rand(rng)
             if r < m
                 push!(out, res[i])
             end

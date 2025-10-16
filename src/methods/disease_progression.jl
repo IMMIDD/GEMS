@@ -24,7 +24,7 @@ Returns a randomly drawn value from the death rate distribution for cases
 with mild symptoms.
 """
 function sample_mild_death_rate(pathogen::Pathogen, indiv::Individual; rng::AbstractRNG = Random.default_rng())::Float32
-    return rand(rng, pathogen.mild_death_rate)
+    return gems_rand(rng, pathogen.mild_death_rate)
 end
 
 """
@@ -34,7 +34,7 @@ Returns a randomly drawn value from the death rate distribution for severe
 disease progressions.
 """
 function sample_severe_death_rate(pathogen::Pathogen, indiv::Individual; rng::AbstractRNG = Random.default_rng())::Float32
-    return rand(rng, pathogen.severe_death_rate)
+    return gems_rand(rng, pathogen.severe_death_rate)
 end
 
 """
@@ -44,7 +44,7 @@ Returns a randomly drawn value from the death rate distribution for critical
 disease progressions.
 """
 function sample_critical_death_rate(pathogen::Pathogen, indiv::Individual; rng::AbstractRNG = Random.default_rng())::Float32
-    return rand(rng, pathogen.critical_death_rate)
+    return gems_rand(rng, pathogen.critical_death_rate)
 end
 
 """
@@ -53,7 +53,7 @@ end
 Returns a randomly drawn value from the hospitalization rate distribution.
 """
 function sample_hospitalization_rate(pathogen::Pathogen, indiv::Individual; rng::AbstractRNG = Random.default_rng())::Float32
-    return rand(rng, pathogen.hospitalization_rate)
+    return gems_rand(rng, pathogen.hospitalization_rate)
 end
 
 """
@@ -62,7 +62,7 @@ end
 Returns a randomly drawn value from the Ventilation rate distribution.
 """
 function sample_ventilation_rate(pathogen::Pathogen, indiv::Individual; rng::AbstractRNG = Random.default_rng())::Float32
-    return rand(rng, pathogen.ventilation_rate)
+    return gems_rand(rng, pathogen.ventilation_rate)
 end
 
 """
@@ -71,7 +71,7 @@ end
 Returns a randomly drawn value from the ICU rate distribution.
 """
 function sample_icu_rate(pathogen::Pathogen, indiv::Individual; rng::AbstractRNG = Random.default_rng())::Float32
-    return rand(rng, pathogen.icu_rate)
+    return gems_rand(rng, pathogen.icu_rate)
 end
 
 """
@@ -80,7 +80,7 @@ end
 Returns a randomly drawn value from the ICU rate distribution.
 """
 function sample_self_quarantine_rate(pathogen::Pathogen, indiv::Individual; rng::AbstractRNG = Random.default_rng())::Float32
-    return rand(rng, pathogen.self_quarantine_rate)
+    return gems_rand(rng, pathogen.self_quarantine_rate)
 end
 
 ###
@@ -92,7 +92,7 @@ end
 Returns a randomly drawn (rounded) value from the `time_to_recovery` distribution.
 """
 function sample_time_to_recovery(pathogen::Pathogen,  indiv::Individual; rng::AbstractRNG = Random.default_rng())::Int16
-    return round(rand(rng, pathogen.time_to_recovery))
+    return round(gems_rand(rng, pathogen.time_to_recovery))
 end
 
 """
@@ -101,7 +101,7 @@ end
 Returns a randomly drawn (rounded) value from the `onset_of_symptoms` distribution.
 """
 function sample_onset_of_symptoms(pathogen::Pathogen,  indiv::Individual; rng::AbstractRNG = Random.default_rng())::Int16
-    return round(rand(rng, pathogen.onset_of_symptoms))
+    return round(gems_rand(rng, pathogen.onset_of_symptoms))
 end
 
 """
@@ -110,7 +110,7 @@ end
 Returns a randomly drawn (rounded) value from the infectious offset distribution.
 """
 function sample_infectious_offset(pathogen::Pathogen,  indiv::Individual; rng::AbstractRNG = Random.default_rng())::Int16
-    return round(rand(rng, pathogen.infectious_offset))
+    return round(gems_rand(rng, pathogen.infectious_offset))
 end
 
 """
@@ -119,7 +119,7 @@ end
 Returns a randomly drawn (rounded) value from the `onset_of_symptoms` distribution.
 """
 function sample_onset_of_severeness(pathogen::Pathogen,  indiv::Individual; rng::AbstractRNG = Random.default_rng())::Int16
-    return round(rand(rng, pathogen.onset_of_severeness))
+    return round(gems_rand(rng, pathogen.onset_of_severeness))
 end
 
 """
@@ -129,7 +129,7 @@ Returns a randomly drawn (rounded) value from the `time_to_hospitalization` dist
 for cases with severe disease progression.
 """
 function sample_time_to_hospitalization(pathogen::Pathogen,  indiv::Individual; rng::AbstractRNG = Random.default_rng())::Int16
-    return round(rand(rng, pathogen.time_to_hospitalization))
+    return round(gems_rand(rng, pathogen.time_to_hospitalization))
 end
 
 """
@@ -139,7 +139,7 @@ Returns a randomly drawn (rounded) value from the `time_to_hopsitalization` dist
 for cases with severe disease progression.
 """
 function sample_length_of_stay(pathogen::Pathogen,  indiv::Individual; rng::AbstractRNG = Random.default_rng())::Int16
-    return round(rand(rng, pathogen.length_of_stay))
+    return round(gems_rand(rng, pathogen.length_of_stay))
 end
 
 """
@@ -149,7 +149,7 @@ Returns a randomly drawn (rounded) value from the `time_to_icu` distribution for
 with critical disease progression.
 """
 function sample_time_to_icu(pathogen::Pathogen,  indiv::Individual; rng::AbstractRNG = Random.default_rng())::Int16
-    return round(rand(rng, pathogen.time_to_icu))
+    return round(gems_rand(rng, pathogen.time_to_icu))
 end
 
 ###
@@ -166,7 +166,7 @@ function estimate_disease_progression(dpr::DiseaseProgressionStrat, indiv::Indiv
     probabilities = dpr.stratification_matrix[ag]
     ranges = cumsum(probabilities)
 
-    r = rand(rng)
+    r = gems_rand(rng)
 
     current = 1
     for (i, value) in enumerate(ranges)
@@ -290,13 +290,13 @@ function disease_progression!(
     death_probability = sample_mild_death_rate(pathogen, infectee, rng=rng)
 
     # calculate mild death or recovery rate. Sample length of symptoms for this.
-    if rand(rng) < death_probability
+    if gems_rand(rng) < death_probability
         death_tick!(infectee, removed_tick(infectee))
     end
 
     #=
     # estimate self quarantine probability
-    if rand(rng) < sample_self_quarantine_rate(pathogen, infectee)
+    if gems_rand(rng) < sample_self_quarantine_rate(pathogen, infectee)
         quarantine_tick!(infectee, onset_of_symptoms(infectee))
         quarantine_release_tick!(infectee, removed_tick(infectee))
     end
@@ -340,9 +340,9 @@ function disease_progression!(
     death_probability = sample_severe_death_rate(pathogen, infectee, rng=rng)
 
     # estimate death probability
-    willdie = rand(rng) < death_probability
+    willdie = gems_rand(rng) < death_probability
 
-    if rand(rng) < hospitalization_probability
+    if gems_rand(rng) < hospitalization_probability
 
         hospitalized_tick!(
             infectee,
@@ -380,7 +380,7 @@ function disease_progression!(
 
         #=
         # estimate self quarantine probability
-        if rand(rng) < sample_self_quarantine_rate(pathogen, infectee)
+        if gems_rand(rng) < sample_self_quarantine_rate(pathogen, infectee)
             quarantine_tick!(infectee, onset_of_symptoms(infectee))
             quarantine_release_tick!(infectee, removed_tick(infectee))
         end
@@ -443,7 +443,7 @@ function disease_progression!(
 
     # random value to determine icu admission. If yes, sample offset from hospitalization
     icu_probability = sample_icu_rate(pathogen, infectee, rng=rng)
-    if rand(rng) < icu_probability
+    if gems_rand(rng) < icu_probability
         icu_tick!(
             infectee,
             hospitalized_tick(infectee) + sample_time_to_icu(pathogen, infectee, rng=rng)
@@ -451,7 +451,7 @@ function disease_progression!(
 
         # Ventilation only if in ICU. If yes, directly ventilate when admitted to ICU.
         ventilation_probability = sample_ventilation_rate(pathogen, infectee, rng=rng)
-        if rand(rng) < ventilation_probability
+        if gems_rand(rng) < ventilation_probability
             ventilation_tick!(infectee, icu_tick(infectee))
         end
     end
@@ -467,7 +467,7 @@ function disease_progression!(
     death_probability = sample_critical_death_rate(pathogen, infectee, rng=rng)
 
     # calculate mild death or recovery rate. Sample length of symptoms for this.
-    if rand(rng) < death_probability
+    if gems_rand(rng) < death_probability
         death_tick!(infectee, removed_tick(infectee))
     end
 

@@ -240,7 +240,7 @@ function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Abst
     if n >= length(individuals)
         return individuals
     else
-        return sample(rng, individuals, n, replace = false)
+        return gems_sample(rng, individuals, n, replace = false)
     end
 end
 

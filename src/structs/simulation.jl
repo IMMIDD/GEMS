@@ -621,7 +621,7 @@ mutable struct Simulation
 
         sim.main_rng = main_rng
         for i in 1:Threads.nthreads()
-            Random.seed!(sim.thread_rngs[i], rand(sim.main_rng, Int64))
+            Random.seed!(sim.thread_rngs[i], gems_rand(sim.main_rng, Int64))
         end
 
         # Remove empty containersettings

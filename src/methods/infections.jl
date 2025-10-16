@@ -164,7 +164,7 @@ function try_to_infect!(infctr::Individual,
     if !infected(infctd) && !dead(infctd)
         infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, rng=rng(sim))
 
-        if rand(rng(sim)) < infection_probability
+        if gems_rand(rng(sim)) < infection_probability
             infect!(infctd, tick(sim), pathogen,
                 sim = sim,
                 rng = rng(sim),
