@@ -1,5 +1,16 @@
 export RandomProgressionAssignment
 
+
+"""
+    RandomProgressionAssignment <: ProgressionAssignmentFunction
+
+A progression assignment function that randomly assigns a disease progression category
+from a provided list of categories.
+At least one category must be provided.
+
+# Fields
+- `progression_categories::Vector{DataType}`: A vector of progression category types.
+"""
 mutable struct RandomProgressionAssignment <: ProgressionAssignmentFunction
     # Matrix with Disease Progression
     progression_categories::Vector{DataType}
@@ -13,7 +24,11 @@ mutable struct RandomProgressionAssignment <: ProgressionAssignmentFunction
         RandomProgressionAssignment(get_subtype.(progression_categories, ProgressionCategory))
 end
 
+"""
+    assign(individual::Individual, sim::Simulation, random_assignment::RandomProgressionAssignment)
 
+Assigns a disease progression category to an individual randomly from the provided list of categories in RandomProgressionAssignment.
+"""
 function assign(individual::Individual, sim::Simulation, random_assignment::RandomProgressionAssignment)
     return rand(random_assignment.progression_categories)
 end
