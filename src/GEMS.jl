@@ -42,13 +42,14 @@ using ZipFile
 ### INCLUDES
 include("constants.jl")
 include("globals.jl")
-include("utils.jl")
 include("logger/Logger.jl")
 include("interventions/abstract_structs.jl")
 include("interventions/event_queue.jl")
 
 include("structs.jl") # CORE SIMULATION
 include("methods.jl") # CORE SIMULATION
+
+include("utils.jl")
 
 include("interventions/interventions.jl")
 include("model_analysis/post_processing.jl")

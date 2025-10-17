@@ -35,7 +35,8 @@ using StatsBase
         "utilstest.jl",
         "contactsamplingtest.jl",
         "contactmatrixtest.jl",
-        "interventionstest.jl"
+        "interventionstest.jl",
+        "codevalidationtest.jl"
     ]
 
     println("Begin to run test cases.")
