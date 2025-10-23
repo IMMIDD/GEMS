@@ -6,7 +6,7 @@ export generate_birthday, get_births_for_tick
 
 Generates a plausible birthday using the pre-computed data in the generator.
 """
-function generate_birthday(generator::BirthdayGenerator, age::Int8, sex::Int8, sim_start_date::Date)
+function generate_birthday(generator::BirthdayGenerator, age::Integer, sex::Integer, sim_start_date::Date)
     birth_year = year(sim_start_date) - age
     
     sex_str = (sex == 1) ? "female" : "male" 
