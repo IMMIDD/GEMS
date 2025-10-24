@@ -160,7 +160,7 @@ function try_to_infect!(infctr::Individual,
 
     # Basic infection function. No vaccination or stratification
     if !infected(infctd) && !dead(infctd)
-        infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, sim)
+        infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, sim.startdate)
 
         if rand() < infection_probability
             infect!(infctd, tick(sim), pathogen,
