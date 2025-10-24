@@ -16,6 +16,8 @@ function group_by_age(df::DataFrame)::DataFrame
         throw(ArgumentError("$(df) has to contain a column 'age'!"))
     end
 
+    df = transform(df, :age => ByRow(x -> div(x, 365)) => :age)
+
     max_age_in_df = maximum(df[:, :age])
 
     # Set up dataframe with one column: Age = [0,maxage]

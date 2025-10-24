@@ -39,7 +39,7 @@ The structure assumes no individuals exceeding the age of 100.
 function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::Int64)
     
     sim = simulation(postProcessor)
-    betweenage(a, x, y) = length(a[x .<= a .<= y])
+    betweenage(a, x, y) = length(a[x÷365 .<= a .<= y÷365])
     popfactor = length(individuals(population(sim))) / basesize
 
     incidence = sim_infectionsDF(postProcessor) |>
