@@ -7,7 +7,7 @@ export create_transmission_function
 General function for TransmissionFunction struct. Should be overwritten for newly created structs, as it only serves
 to catch undefined `transmission_probability` functions.
 """
-function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, start_date::Date)::Float64
     @error "The transmission_probability function is not defined for the provided TransmissionFunction struct!"
 end
 
@@ -31,7 +31,7 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 
 """
-function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, start_date::Date)::Float64
     if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
@@ -59,13 +59,13 @@ If the individual has already recovered, the function returns `0.0`, assuming fu
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
-function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, start_date::Date)::Float64
     if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
     for (i,ageGroup) in enumerate(transFunc.ageGroups)
-        if ageGroup[1] <= age(infected, sim) <= ageGroup[2]
+        if ageGroup[1] <= age(infected, start_date + Day(tick)) <= ageGroup[2]
             return rand(transFunc.ageTransmissions[i])
         end
     end
