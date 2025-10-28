@@ -963,7 +963,7 @@ function create_pathogens(pathogens_dict::Dict)::Vector{Pathogen}
                 elseif key == "transmission_function"
                     setfield!(p, Symbol(key), create_transmission_function(attr))
                 else
-                    distribution = create_distribution(attr["parameters"], attr["distribution"])
+                    distribution = create_distribution(Float64.(attr["parameters"]), attr["distribution"])
                     setfield!(p, Symbol(key), distribution)
                 end
             end

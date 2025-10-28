@@ -95,7 +95,8 @@ mutable struct DiseaseProgressionStrat <: AgeStratification
             end
         end
         disease_compartments = [find_subtype(name, SymptomCategory) for name in dict["disease_compartments"]]
-        return new(dict["age_groups"], disease_compartments, dict["stratification_matrix"])
+        strat_matrix = [Float64.(row) for row in dict["stratification_matrix"]]
+        return new(dict["age_groups"], disease_compartments, strat_matrix)
     end
 end
 
