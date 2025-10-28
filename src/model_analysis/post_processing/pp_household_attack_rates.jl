@@ -33,7 +33,7 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
 
     # randomly sample the required number of households from the infections dataframe
     hh_selection = (postProcessor |> infectionsDF).household_b |> unique |>
-        x -> sample(x, min(hh_samples, length(x)), replace = false) |>
+        x -> gems_sample(rng(postProcessor |> simulation), x, min(hh_samples, length(x)), replace = false) |>
         x -> DataFrame(household_b = x, select = fill(true, length(x)))
 
     # make a copy of the infections dataframe to

@@ -1,5 +1,6 @@
 @testset "Infections" begin
-    
+    test_rng = Xoshiro()
+
     @testset "Agent-Level" begin
 
         @testset "Basic Infection" begin
@@ -68,17 +69,17 @@
             )
             
             # infect with this seed
-            Random.seed!(42)
+            Random.seed!(sim.thread_rngs[1], 42)
             @test false == try_to_infect!(infctr, infctd, sim, pathogen(sim), h)
             
             # This seed works
-            Random.seed!(1)
+            Random.seed!(sim.thread_rngs[1], 1)
             @test true == try_to_infect!(infctr, infctd, sim, pathogen(sim), h)
 
             # unable to infect, when already infected
-            Random.seed!(1)
+            Random.seed!(sim.main_rng, 1)
             i = Individual(id = 1, sex = 0, age = 31, household = 1)
-            infect!(i, Int16(0), p)
+            infect!(i, Int16(0), p, rng=sim.main_rng)
             @test false == try_to_infect!(infctr, infctd, sim, pathogen(sim), h)
 
             # unable to infect, when already dead
@@ -159,9 +160,9 @@
         # dummy simulation for infections
         sim = Simulation(tick = time_tick, start_condition = InfectedFraction(0,p), stop_criterion = TimesUp(420), population = Population(individuals = indis), settings = stngs)
 
-        Random.seed!(42)
+        Random.seed!(sim.main_rng, 42)
         # infect one and set setting as active
-        infect!(i, tick(sim), pathogen(sim))
+        infect!(i, tick(sim), pathogen(sim), rng=sim.main_rng)
         activate!(h)
         @test isactive(h)
 
@@ -171,7 +172,7 @@
         rec_tick = removed_tick(i)
 
         # first test before the infectious tick
-        Random.seed!(42)     
+        Random.seed!(sim.main_rng, 42)     
         sim.tick = safe_tick
         p_logger = logger(pathogen(sim))
         @test length(p_logger.tick) == 1 # only the initial infection is registered
@@ -187,7 +188,7 @@
         @test isactive(h) # Setting should still be active although noone is infectious
 
         # now test on the infectious tick and the update
-        Random.seed!(42)
+        Random.seed!(sim.main_rng, 42)
         sim.tick = inf_tick
         # update all agents before spreading the infection
         for indiv in individuals(population(sim))    
@@ -218,7 +219,7 @@
 
         h.individuals = indis
 
-        Random.seed!(42)
+        Random.seed!(sim.main_rng, 42)
         sim.tick = rec_tick
 
         l = length(p_logger.tick) # number of logs before spread_infection
@@ -252,11 +253,11 @@
         exposedtick = Int16(0)
         p = Pathogen(id = 1, name = "COVID")
 
-        Random.seed!(123)
+        Random.seed!(test_rng, 123)
         ind1.exposed_tick = exposedtick
         infectiousness!(ind1, 127)
         presymptomatic!(ind1)
-        disease_progression!(ind1, p, exposedtick, GEMS.Mild)
+        disease_progression!(ind1, p, exposedtick, GEMS.Mild, rng=test_rng)
 
         progress_disease!(ind1, quarantine_tick(ind1))
         @test isquarantined(ind1)
@@ -282,7 +283,7 @@
         reset!(ind1)
         reset!(ind2)
         # infect ind1 w/o quarantine
-        Random.seed!(123)
+        Random.seed!(test_rng, 123)
         ind1.exposed_tick = exposedtick
         infectiousness!(ind1, 127)
         presymptomatic!(ind1)

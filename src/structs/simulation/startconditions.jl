@@ -77,22 +77,27 @@ end
 
 ### NECESSARY INTERFACE
 """
-    initialize!(simulation, infectedFraction)
+    initialize!(simulation, infectedFraction; seed_sample)
 
-Initializes the simulation model with a fraction of infected individuals, provided by the start condition.
+Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
+For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
+the seed is drawn from `rng(simulation)`. Otherwise, the provided `seed_sample` is used.
 """
-function initialize!(simulation::Simulation, condition::InfectedFraction)
+function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(gems_rand(rng(simulation), Int64)) : Xoshiro(seed_sample)
+
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
-    to_infect = sample(ind, to_sample, replace=false)
+    to_infect = gems_sample(rng_sample, ind, to_sample, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), sim = simulation)
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -104,17 +109,20 @@ end
 
 
 #TODO docs
-function initialize!(simulation::Simulation, condition::PatientZero)
+function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(gems_rand(rng(simulation), Int64)) : Xoshiro(seed_sample)
+
     # number of individuals to infect
     ind = individuals(population(simulation))
-    to_infect = sample(ind, 1, replace=false)
+    to_infect = gems_sample(rng_sample, ind, 1, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -122,7 +130,10 @@ function initialize!(simulation::Simulation, condition::PatientZero)
     end
 end
 
-function initialize!(simulation::Simulation, condition::PatientZeros)
+function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(gems_rand(rng(simulation), Int64)) : Xoshiro(seed_sample)
+
     # number of individuals to infect
     to_infect = []
     for a in ags(condition)
@@ -137,7 +148,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
             error("No individuals found in the given ags")
         end
         # Sample one individual from the list of individuals
-        to_infect = push!( to_infect, sample(inds, 1, replace=false) |> Base.first)
+        to_infect = push!(to_infect, gems_sample(rng_sample, inds, 1, replace=false) |> Base.first)
     end
     
     # overwrite pathogen in simulation struct
@@ -145,7 +156,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
         end

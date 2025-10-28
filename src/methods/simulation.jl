@@ -37,9 +37,9 @@ to the simulation's `QuarantineLogger`.
 function log_quarantines(simulation::Simulation)
     
     # set up one vector with one entry for each thread
-    tot_cnt = zeros(Int, Threads.nthreads())
-    st_cnt  = zeros(Int, Threads.nthreads())
-    wo_cnt  = zeros(Int, Threads.nthreads())
+    tot_cnt = zeros(Int, Threads.maxthreadid())
+    st_cnt  = zeros(Int, Threads.maxthreadid())
+    wo_cnt  = zeros(Int, Threads.maxthreadid())
 
     Threads.@threads for i in simulation |> individuals
         if isquarantined(i)
