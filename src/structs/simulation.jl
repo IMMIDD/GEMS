@@ -156,7 +156,7 @@ mutable struct Simulation
          [], # testtypes::Vector{AbstractTestType}
          x -> x, # stepmod::Function
          Xoshiro(0), # rng::AbstractRNG
-         [Xoshiro(0) for _ in 1:Threads.nthreads()] # thread_rngs::Vector{AbstractRNG}
+         [Xoshiro(0) for _ in 1:Threads.maxthreadid()] # thread_rngs::Vector{AbstractRNG}
          ) 
     end
 
@@ -620,7 +620,7 @@ mutable struct Simulation
         sim = Simulation(configfile, start_condition, stop_criterion, population, settings, label)
 
         sim.main_rng = main_rng
-        for i in 1:Threads.nthreads()
+        for i in 1:Threads.maxthreadid()
             Random.seed!(sim.thread_rngs[i], gems_rand(sim.main_rng, Int64))
         end
 

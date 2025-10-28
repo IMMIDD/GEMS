@@ -200,7 +200,7 @@ mutable struct Population
 
         # assign other settings
         # create set of thread-safe RNGs, seeded from the main RNG
-        thread_rngs = [Xoshiro(gems_rand(rng, UInt64)) for _ in 1:Threads.nthreads()]
+        thread_rngs = [Xoshiro(gems_rand(rng, UInt64)) for _ in 1:Threads.maxthreadid()]
         Threads.@threads :static for i in 1:nrow(df)
             local_rng = thread_rngs[Threads.threadid()]
             isstudent(df.age[i]) ? df.schoolclass[i] = Int32(gems_rand(local_rng, 1:n_schools)) : nothing
