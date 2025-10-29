@@ -246,7 +246,7 @@
             PopulationPyramid()
             #SettingAgeContacts(Household)
             SettingSizeDistribution()
-            SymptomCategories()
+            ProgressionCategories()
             TestPositiveRate()
             TickCases()
             TickCasesBySetting()

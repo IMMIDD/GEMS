@@ -75,7 +75,7 @@ export DefaultSimulationReport
                     title = "Disease Progression",
                     subsections = [
                         PlotSection(:CumulativeDiseaseProgressions),
-                        PlotSection(:SymptomCategories),
+                        PlotSection(:ProgressionCategories),
                         PlotSection(:GenerationTime),
                         PlotSection(:LatencyHistogram),
                         PlotSection(:InfectionDuration),

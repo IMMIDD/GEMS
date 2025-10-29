@@ -47,8 +47,6 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 function generate(plt::TickCases, rd::ResultData; plotargs...)
 
     cases = rd |> tick_cases
-    deaths = rd |> tick_deaths
-    vaccinations = rd |> tick_vaccinations
 
     uticks = rd |> tick_unit
     upper_ticks = uticks |> uppercasefirst
@@ -65,9 +63,9 @@ function generate(plt::TickCases, rd::ResultData; plotargs...)
 
     plot_ticks = plot(xlabel=upper_ticks, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
     plot!(plot_ticks, cases[!,"exposed_cnt"], label="Exposed")
-    plot!(plot_ticks, cases[!,"infectious_cnt"], label="Infectious")
-    plot!(plot_ticks, cases[!,"removed_cnt"], label="Removed")
-    plot!(plot_ticks, deaths[!, "death_cnt"], label="Deaths", c=:black)
+    plot!(plot_ticks, cases[!,"infectious_cnt"], label="Became Infectious")
+    plot!(plot_ticks, cases[!,"recovered_cnt"], label="Recovered")
+    plot!(plot_ticks, cases[!, "dead_cnt"], label="Died", c=:black)
 
     # add custom arguments that were passed
     plot!(plot_ticks; plotargs...)

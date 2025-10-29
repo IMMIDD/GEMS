@@ -146,7 +146,7 @@ PARALLEL_POST_PROCESSING = false
 # calls to speed up subsequent steps. However, be aware for large models, these
 # intermediate dataframes can be excessive and a severe strain on system memory.
 # Please only set this "true" if you are sure to have enough memory available.
-POST_PROCESSOR_CACHING = true
+POST_PROCESSOR_CACHING = false
 
 # if "true", report sections will be generated in parallel. While this speeds up
 # the generation process significantly, it requires more system memory which might

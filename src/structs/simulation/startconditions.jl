@@ -14,23 +14,62 @@ A `StartCondition` that specifies a fraction of infected individuals (drawn at r
 - `pathogen::Pathogen`: The pathogen with which the fraction has to be infected
 """
 struct InfectedFraction <: StartCondition
-    # TODO throw exception when initialized with values not between 0 and 1
     fraction::Float64
-    pathogen::Pathogen
+    pathogen::String # if empty, will be applied to all pathogens
+
+    function InfectedFraction(;fraction::Float64, pathogen::String = "")
+        fraction < 0.0 && throw(ArgumentError("Fraction must be greater than or equal to 0!"))
+        fraction > 1.0 && throw(ArgumentError("Fraction must be less than or equal to 1!"))
+        
+        # TODO remove this warning when multi-pathogen simulations are supported
+        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in InfectedFraction will have no effect."
+        return new(fraction, pathogen)
+    end
 end
 
-Base.show(io::IO, cnd::StartCondition) = write(io, "InfectedFraction(Random $(100*cnd.fraction)% $(cnd.pathogen.name))")
+Base.show(io::IO, cnd::InfectedFraction) = write(io, "InfectedFraction(Random $(100*cnd.fraction)% $(cnd.pathogen))")
 
 
-#TODO docs
+"""
+    PatientZero <: StartCondition
+
+A `StartCondition` that infects a single individual at random at the beginning of the simulation.
+
+# Fields
+- `pathogen::String`: The pathogen with which the individual has to be infected
+
+"""
 struct PatientZero <: StartCondition
-    pathogen::Pathogen
+    pathogen::String
+
+    function PatientZero(;pathogen::String = "") 
+        
+        # TODO remove this warning when multi-pathogen simulations are supported
+        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in PatientZero will have no effect."
+        return new(pathogen)
+    end
 end
 
+"""
+    PatientZeros <: StartCondition
 
+A `StartCondition` that infects a single individual in each of the given AGS (community identification numbers) at the beginning of the simulation.
+
+# Fields
+- `pathogen::String`: The pathogen with which the individual has to be infected
+- `ags::Vector{Int64}`: A vector of AGS (community identification number) where the initial seeds should be planted
+
+
+"""
 struct PatientZeros <: StartCondition
-    pathogen::Pathogen
+    pathogen::String
     ags::Vector{Int64}
+
+    function PatientZeros(;pathogen::String = "", ags::Vector{Int64} = Int64[])
+        isempty(ags) && throw(ArgumentError("At least one ags must be provided!"))
+        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in PatientZeros will have no effect."
+        return new(pathogen, ags)
+    end
 end
 
 """
@@ -38,7 +77,7 @@ end
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
-function pathogen(patientzero::PatientZero)::Pathogen
+function pathogen(patientzero::PatientZero)
     return patientzero.pathogen
 end
 
@@ -55,7 +94,7 @@ end
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
-function pathogen(patientzeros::PatientZeros)::Pathogen
+function pathogen(patientzeros::PatientZeros)
     return patientzeros.pathogen
 end
 """
@@ -71,7 +110,7 @@ end
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
-function pathogen(infectedFraction::InfectedFraction)::Pathogen
+function pathogen(infectedFraction::InfectedFraction)
     return infectedFraction.pathogen
 end
 
@@ -82,17 +121,17 @@ end
 Initializes the simulation model with a fraction of infected individuals, provided by the start condition.
 """
 function initialize!(simulation::Simulation, condition::InfectedFraction)
+    # TODO handle pathogen selection
+    # TODO handle multiple pathogens
+    
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
     to_infect = sample(ind, to_sample, replace=false)
 
-    # overwrite pathogen in simulation struct
-    pathogen!(simulation, pathogen(condition))
-
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), sim = simulation)
+        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -105,16 +144,16 @@ end
 
 #TODO docs
 function initialize!(simulation::Simulation, condition::PatientZero)
+    # TODO handle pathogen selection
+    # TODO handle multiple pathogens
+    
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_infect = sample(ind, 1, replace=false)
 
-    # overwrite pathogen in simulation struct
-    pathogen!(simulation, pathogen(condition))
-
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -123,6 +162,9 @@ function initialize!(simulation::Simulation, condition::PatientZero)
 end
 
 function initialize!(simulation::Simulation, condition::PatientZeros)
+    # TODO handle pathogen selection
+    # TODO handle multiple pathogens
+
     # number of individuals to infect
     to_infect = []
     for a in ags(condition)
@@ -139,13 +181,10 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
         # Sample one individual from the list of individuals
         to_infect = push!( to_infect, sample(inds, 1, replace=false) |> Base.first)
     end
-    
-    # overwrite pathogen in simulation struct
-    pathogen!(simulation, pathogen(condition))
-
+   
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
         end

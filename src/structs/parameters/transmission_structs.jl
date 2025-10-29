@@ -21,7 +21,12 @@ A `TransmissionFunction` type that uses a constant transmission rate.
 mutable struct ConstantTransmissionRate <: TransmissionFunction
     transmission_rate::Float64
 
-    ConstantTransmissionRate(;transmission_rate::Float64 = .5) = new(transmission_rate)
+    function ConstantTransmissionRate(;transmission_rate::Float64 = .5)
+        transmission_rate < 0 && throw(ArgumentError("Transmission rate must be non-negative."))
+        transmission_rate > 1 && throw(ArgumentError("Transmission rate must be at most 1."))
+       
+        return new(transmission_rate)
+    end
 end
 
 Base.show(io::IO, ctr::ConstantTransmissionRate) = write(io, "ConstantTranmissionRate(β=$(ctr.transmission_rate))")

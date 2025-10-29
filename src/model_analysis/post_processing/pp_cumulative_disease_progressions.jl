@@ -1,12 +1,40 @@
 export cumulative_disease_progressions
 
+"""
+    calc_cum_dis_values(df)
+
+Helper function that calculates the cumulative number of individuals in a certain disease
+state (latent, presymptomatic, symptomatic and asymptomatic) after the 
+individual has been infected. Rows indicate the number of elapsed ticks since infections.
+"""
+function calc_cum_dis_values(df)
+    return [[
+        # duration
+        t,
+        # latent
+        (t .< df.infectiousness_onset) |> sum,
+        # pre symptomatic
+        (df.infectiousness_onset .<= t .< df.symptom_onset) |> sum,
+        # symptomatic
+        (0 .<= df.symptom_onset .<= t .< df.removed) |> sum,
+        # asymptomatic
+        ((df.infectiousness_onset .<= t .< df.removed) .& (df.symptom_onset .< 0)) |> sum
+    ] for t in 0:maximum(df.removed)] |>
+    # convert array of arrays to a DataFrame
+    mat -> DataFrame(mapreduce(permutedims, vcat, mat), [:tick, :latent,:pre_symptomatic,:symptomatic,:asymptomatic])
+
+end
+
 """ 
     cumulative_disease_progressions(postProcessor::PostProcessor)
 
 Calculates the accumulated number of individuals in a certain disease
 state (latent, presymptomatic, symptomatic and asymptomatic) after the 
 individual has been infected. Rows indicate the number of elapsed
-ticks since infections.
+ticks since infections. Latent means infected but not yet infectious.
+Presymptomatic means infectious but not yet symptomatic. Symptomatic
+means infectious and symptomatic. Asymptomatic means infectious but
+not symptomatic and will never develop symptoms.
 
 Example: Row 8 showing [20, 47, 290, 50] would mean that eight ticks
 after exposure, 20 individuals were latent, 47 were presymptomatic 
@@ -31,35 +59,11 @@ function cumulative_disease_progressions(postProcessor::PostProcessor)
         return DataFrame(tick=Int[], latent=Int[], pre_symptomatic=Int[], symptomatic=Int[], asymptomatic=Int[])
     end
 
-    # calculating the time points (ticks) where an individual switches to the next disease state
-    inf = postProcessor |> infectionsDF |>
-        x -> transform(x,
-            # onset of infectiousness
-            [:infectious_tick, :tick] => ByRow(-) => :infectiousness_onset,
-            # onset of symptoms
-            [:symptoms_tick, :tick] => ByRow(-) => :symptoms_onset,
-            # recovery
-            [:removed_tick, :tick] => ByRow(-) => :removed,
-            copycols = true) |>
-        x -> DataFrames.select(x,
-            :infectiousness_onset,
-            :symptoms_onset,
-            :removed);
-
-    # adding up the number of individuals in a certain
-    # state after infection        
-    res = [[
-        # latent
-        (t .< inf.infectiousness_onset) |> sum,
-        # pre symptomatic
-        (inf.infectiousness_onset .<= t .< inf.symptoms_onset) |> sum,
-        # symptomatic
-        (0 .<= inf.symptoms_onset .<= t .< inf.removed) |> sum,
-        # asymptomatic
-        ((inf.infectiousness_onset .<= t .< inf.removed) .& (inf.symptoms_onset .< 0)) |> sum    
-    ] for t in 0:maximum(inf.removed)]
-    res = DataFrame(mapreduce(permutedims, vcat, res), [:latent,:pre_symptomatic,:symptomatic,:asymptomatic])
-    insertcols!(res,  1, :tick =>  1:(nrow(res)))
-    # return converted DataFrame
-    return(res)
+    return infectionsDF(postProcessor) |>
+        infs -> DataFrame(
+            symptom_onset = infs.symptom_onset .- infs.tick,
+            infectiousness_onset = infs.infectiousness_onset .- infs.tick,
+            removed = max.(infs.recovery, infs.death) .- infs.tick
+        ) |>
+        df -> calc_cum_dis_values(df)
 end

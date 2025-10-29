@@ -1,5 +1,4 @@
 export transmission_probability
-export create_transmission_function
 
 """
     transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)
@@ -32,7 +31,7 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 
 """
 function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
-    if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
+    if  -1 < recovery(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
@@ -60,7 +59,7 @@ If the individual has already recovered, the function returns `0.0`, assuming fu
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
 function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
-    if  -1 < removed_tick(infected) <= tick # if the agent has already recovered (natural immunity)
+    if  -1 < recovery(infected) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
@@ -70,30 +69,4 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, infec
         end
     end
     return rand(transFunc.transmission_rate)
-end
-
-"""
-    create_transmission_function(config::Dict)
-
-Creates a transmission function struct using the details specified in the provided dictionary. 
-The dictionary must contain the keys type and parameters where type corresponds to the 
-name of the `TransmissionFunction` struct to be used and parameters holds the keyword
-arguments for the constructer of this `TransmissionFunction`. If the provided type does not 
-correspond to the name of a `TransmissionFunction` an error is thrown.
-
-# Returns
-
-- `<:TransmissionFunction`: New instance of a `TransmissionFunction` struct.
-"""
-function create_transmission_function(config::Dict)
-
-    # Parse the type provided as a string
-    type_string = get(config, "type", "")
-    # get subtype so it can be instantiated
-    type = get_subtype(type_string, TransmissionFunction)
-
-    # Convert the parameter keys to symbols for the use as keyword arguments
-    parameters = Dict(Symbol(k) => v for (k, v) in get(config, "parameters", Dict()))
-
-    return type(;parameters...)
 end

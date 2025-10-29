@@ -43,6 +43,7 @@ using ZipFile
 include("constants.jl")
 include("globals.jl")
 include("utils.jl")
+include("exceptions.jl")
 include("logger/Logger.jl")
 include("interventions/abstract_structs.jl")
 include("interventions/event_queue.jl")

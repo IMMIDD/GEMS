@@ -4,7 +4,7 @@ export tick_cases
     tick_cases(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing the count of individuals currently entering in the
-respective disease states exposed, infectious, and removed.
+respective disease states exposed, infectious, recovered, and deceased.
 
 # Returns
 
@@ -15,8 +15,8 @@ respective disease states exposed, infectious, and removed.
 | `tick`           | `Int16` | Simulation tick (time)                              |
 | `exposed_cnt`    | `Int64` | Number of individuals entering the exposed state    |
 | `infectious_cnt` | `Int64` | Number of individuals entering the infectious state |
-| `removed_cnt`    | `Int64` | Number of individuals entering the removed state    |
-
+| `recovered_cnt`  | `Int64` | Number of individuals recovering                    |
+| `dead_cnt`       | `Int64` | Number of individuals dying                         |
 """
 function tick_cases(postProcessor::PostProcessor)::DataFrame
 
@@ -31,23 +31,30 @@ function tick_cases(postProcessor::PostProcessor)::DataFrame
         x -> DataFrames.select(x, :tick, :exposed_cnt)
     
     infectious = infectionsDF(postProcessor) |>
-        x -> groupby(x, :infectious_tick) |>
+        x -> groupby(x, :infectiousness_onset) |>
         x -> combine(x, nrow => :infectious_cnt) |>
-        x -> DataFrames.select(x, :infectious_tick => :tick, :infectious_cnt)
+        x -> DataFrames.select(x, :infectiousness_onset => :tick, :infectious_cnt)
 
-    removed = infectionsDF(postProcessor) |>
-        x -> groupby(x, :removed_tick) |>
-        x -> combine(x, nrow => :removed_cnt) |>
-        x -> DataFrames.select(x, :removed_tick => :tick, :removed_cnt)
+    recovered = infectionsDF(postProcessor) |>
+        x -> groupby(x, :recovery) |>
+        x -> combine(x, nrow => :recovered_cnt) |>
+        x -> DataFrames.select(x, :recovery => :tick, :recovered_cnt)
+
+    dead = infectionsDF(postProcessor) |>
+        x -> groupby(x, :death) |>
+        x -> combine(x, nrow => :dead_cnt) |>
+        x -> DataFrames.select(x, :death => :tick, :dead_cnt)
 
     res = DataFrame(tick = 0:tick(simulation(postProcessor))) |>
         x -> leftjoin(x, exposed, on = :tick) |>
         x -> leftjoin(x, infectious, on = :tick) |>
-        x -> leftjoin(x, removed, on = :tick) |>
+        x -> leftjoin(x, recovered, on = :tick) |>
+        x -> leftjoin(x, dead, on = :tick) |>
         x -> DataFrames.select(x, :tick,
             :exposed_cnt => ByRow(x -> coalesce(x, 0)) => :exposed_cnt,
             :infectious_cnt => ByRow(x -> coalesce(x, 0)) => :infectious_cnt,
-            :removed_cnt => ByRow(x -> coalesce(x, 0)) => :removed_cnt) |>
+            :recovered_cnt => ByRow(x -> coalesce(x, 0)) => :recovered_cnt,
+            :dead_cnt => ByRow(x -> coalesce(x, 0)) => :dead_cnt) |>
         x -> sort(x, :tick)
 
     # cache dataframe
