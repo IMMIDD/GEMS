@@ -2,6 +2,7 @@ name: CompatHelper (test on feature branch)
 
 # Only manual runs to avoid accidental scheduled runs while testing.
 on:
+  push:
   workflow_dispatch:
 
 permissions:
