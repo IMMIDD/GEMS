@@ -77,7 +77,7 @@ mutable struct Pathogen <: Parameter
 
         # exception handling
         length(name) <= 0 && throw(ArgumentError("Pathogen name must not be empty!"))
-        length(unique(typeof.(progressions))) > length(progressions) && throw(ArgumentError("Pathogen must not have multiple progressions of the same type!"))
+        length(unique(typeof.(progressions))) < length(progressions) && throw(ArgumentError("Pathogen must not have multiple progressions of the same type!"))
 
         if isempty(progressions)
             @warn "Pathogen $name ($id) has no progressions defined. Defining a default Symptomatic progression."

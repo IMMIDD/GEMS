@@ -25,6 +25,7 @@ export is_severe, issevere, severe
 export is_mild, ismild, mild
 export is_hospitalized, ishospitalized, hospitalized
 export is_icu, isicu, icu
+export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
 export is_dead, isdead, dead
 
@@ -370,7 +371,7 @@ presymptomatic(dp::DiseaseProgression, t::Int16) = is_presymptomatic(dp, t)
 
 Returns `true` if the individual with disease progression `dp` is symptomatic at tick `t`, otherwise `false`.
 """
-is_symptomatic(dp::DiseaseProgression, t::Int16) = dp.symptom_onset <= t < max(dp.recovery, dp.death)
+is_symptomatic(dp::DiseaseProgression, t::Int16) = 0 <= dp.symptom_onset <= t < max(dp.recovery, dp.death)
 issymptomatic(dp::DiseaseProgression, t::Int16) = is_symptomatic(dp, t)
 symptomatic(dp::DiseaseProgression, t::Int16) = is_symptomatic(dp, t)
 
@@ -382,7 +383,7 @@ symptomatic(dp::DiseaseProgression, t::Int16) = is_symptomatic(dp, t)
 Returns `true` if the individual with disease progression `dp` is asymptomatic at tick `t`, otherwise `false`.
 Asymptomatic means the individual is infected, does currently not have symptoms and will not develop symptoms in the future.
 """
-is_asymptomatic(dp::DiseaseProgression, t::Int16) = is_infected(dp, t) && !is_symptomatic(dp, t) && dp.symptom_onset >= 0
+is_asymptomatic(dp::DiseaseProgression, t::Int16) = is_infected(dp, t) && !is_symptomatic(dp, t) && dp.symptom_onset <= 0
 isasymptomatic(dp::DiseaseProgression, t::Int16) = is_asymptomatic(dp, t)
 asymptomatic(dp::DiseaseProgression, t::Int16) = is_asymptomatic(dp, t)
 
@@ -393,7 +394,7 @@ asymptomatic(dp::DiseaseProgression, t::Int16) = is_asymptomatic(dp, t)
 
 Returns `true` if the individual with disease progression `dp` has severe symptoms at tick `t`, otherwise `false`.
 """
-is_severe(dp::DiseaseProgression, t::Int16) = dp.severeness_onset <= t < max(dp.recovery, dp.death)
+is_severe(dp::DiseaseProgression, t::Int16) = 0 <= dp.severeness_onset <= t < dp.severeness_offset
 issevere(dp::DiseaseProgression, t::Int16) = is_severe(dp, t)
 severe(dp::DiseaseProgression, t::Int16) = is_severe(dp, t)
 
@@ -416,7 +417,7 @@ mild(dp::DiseaseProgression, t::Int16) = is_mild(dp, t)
 
 Returns `true` if the individual with disease progression `dp` is in hospital at tick `t`, otherwise `false`.
 """
-is_hospitalized(dp::DiseaseProgression, t::Int16) = dp.hospital_admission <= t < dp.hospital_discharge
+is_hospitalized(dp::DiseaseProgression, t::Int16) = 0 <= dp.hospital_admission <= t < dp.hospital_discharge
 ishospitalized(dp::DiseaseProgression, t::Int16) = is_hospitalized(dp, t)
 hospitalized(dp::DiseaseProgression, t::Int16) = is_hospitalized(dp, t)
 
@@ -427,9 +428,20 @@ hospitalized(dp::DiseaseProgression, t::Int16) = is_hospitalized(dp, t)
 
 Returns `true` if the individual with disease progression `dp` is in the ICU at tick `t`, otherwise `false`.
 """
-is_icu(dp::DiseaseProgression, t::Int16) = dp.icu_admission <= t < dp.icu_discharge
+is_icu(dp::DiseaseProgression, t::Int16) = 0 <= dp.icu_admission <= t < dp.icu_discharge
 isicu(dp::DiseaseProgression, t::Int16) = is_icu(dp, t)
 icu(dp::DiseaseProgression, t::Int16) = is_icu(dp, t)
+
+"""
+    is_ventilated(dp::DiseaseProgression, t::Int16)
+    isventilated(dp::DiseaseProgression, t::Int16)
+    ventilated(dp::DiseaseProgression, t::Int16)
+
+Returns `true` if the individual with disease progression `dp` is on a ventilator at tick `t`, otherwise `false`.
+"""
+is_ventilated(dp::DiseaseProgression, t::Int16) = 0 <= dp.ventilation_admission <= t < dp.ventilation_discharge
+isventilated(dp::DiseaseProgression, t::Int16) = is_ventilated(dp, t)
+ventilated(dp::DiseaseProgression, t::Int16) = is_ventilated(dp, t)
 
 """
     is_recovered(dp::DiseaseProgression, t::Int16)
