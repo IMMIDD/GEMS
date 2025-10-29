@@ -1,0 +1,37 @@
+name: CompatHelper (test on feature branch)
+
+# Only manual runs to avoid accidental scheduled runs while testing.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  compat-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (feature branch)
+        uses: actions/checkout@v4
+        with:
+          # keep the checked out branch; when you run the workflow choose the feature branch in the UI
+          fetch-depth: 0
+
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+
+      - name: Run CompatHelper targeting feature branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          julia -e '
+            import Pkg;
+            Pkg.instantiate();
+            Pkg.add("CompatHelper");
+            using CompatHelper;
+            # Adjust repo and branch name if your feature branch is different
+            CompatHelper.run(repo="IMMIDD/GEMS", branch="compat-helper-test", target="Project.toml")
+          '
