@@ -28,5 +28,6 @@ localtests.jl
 /localdata/
 
 # Exclude folder for temporary data
+Manifest.toml
 /temp/
 gmt.history
