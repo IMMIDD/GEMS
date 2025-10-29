@@ -34,5 +34,5 @@ jobs:
             Pkg.add("CompatHelper");
             using CompatHelper;
             # Adjust repo and branch name if your feature branch is different
-            CompatHelper.run(repo="IMMIDD/GEMS", branch="compat-helper-tests", target="Project.toml")
+            CompatHelper.main(; master_branch="compat-helper-tests")
           '
