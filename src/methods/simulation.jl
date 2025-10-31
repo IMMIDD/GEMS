@@ -44,9 +44,10 @@ function log_quarantines(simulation::Simulation)
         Threads.threadid # Julia 1.11 and earlier
 
     # function to get the thread pool size
-    tpool_size_func = isdefined(Threads, :threadpoolsize) ?
-        Threads.threadpoolsize : # Julia 1.12
-        Threads.nthreads # Julia 1.11 and earlier
+    tpool_size_func() = (isdefined(Threads, :nthreads) &&  
+                    hasmethod(Threads.nthreads, Tuple{Symbol})) ?
+                    Threads.nthreads(:default) : # Julia 1.12 has this method
+                    Threads.nthreads()   # Julia 1.11 and earlier
 
     # set up one vector with one entry for each thread
     tot_cnt = zeros(Int, tpool_size_func())
