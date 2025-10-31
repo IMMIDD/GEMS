@@ -116,18 +116,21 @@
     end
 
     @testset "Progression Assignment" begin
-        p = Pathogen(name = "TestPathogen",
-            progressions = [pr_asymp, pr_sympt, pr_hosp, pr_crit],
-        )
+        # random progression
+        pgrs = [Asymptomatic, Symptomatic, Hospitalized, Critical]
+        rpa = RandomProgressionAssignment(pgrs) 
+        i = individuals(sim)[1]
 
+        res = GEMS.assign(i, sim, rpa)
+        @test res in pgrs
 
-        
+        # age-based progression
+
         
     end
 
     @testset "Transmission Function" begin
-        
-        
+
     end
 
     @testset "Disease Progression" begin
