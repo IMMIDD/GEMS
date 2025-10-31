@@ -36,14 +36,26 @@ to the simulation's `QuarantineLogger`.
 """
 function log_quarantines(simulation::Simulation)
     
+    # Julia 1.12 changed the threading API, so we need to check which version is used
+    
+    # function to get the current thread id
+    thread_id_func = isdefined(Threads, :threadid_in_pool) ?
+        Threads.threadid_in_pool : # Julia 1.12
+        Threads.threadid # Julia 1.11 and earlier
+
+    # function to get the thread pool size
+    tpool_size_func = isdefined(Threads, :threadpoolsize) ?
+        Threads.threadpoolsize : # Julia 1.12
+        Threads.nthreads # Julia 1.11 and earlier
+
     # set up one vector with one entry for each thread
-    tot_cnt = zeros(Int, Threads.nthreads())
-    st_cnt  = zeros(Int, Threads.nthreads())
-    wo_cnt  = zeros(Int, Threads.nthreads())
+    tot_cnt = zeros(Int, tpool_size_func())
+    st_cnt  = zeros(Int, tpool_size_func())
+    wo_cnt  = zeros(Int, tpool_size_func())
 
     Threads.@threads for i in simulation |> individuals
         if isquarantined(i)
-            tid = Threads.threadid()
+            tid = thread_id_func()
             tot_cnt[tid] += 1
             st_cnt[tid]  += is_student(i)
             wo_cnt[tid]  += is_working(i)
