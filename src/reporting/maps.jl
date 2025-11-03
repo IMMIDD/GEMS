@@ -338,18 +338,19 @@ plot(
 
 # Map Types
 
-| Type                   | Input Object | Description                                                | Plot-Specific Parameters                                                                                         |
-| :--------------------- | :----------- | :--------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
-| `:AgeMap`              | `Simulation` | Average age per region.                                    | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
-| `:AttackRate`          | `ResultData` | Fraction of people who got infected per region.            |                                                                                                                  |
-| `:CaseFatalityMap`     | `ResultData` | Fraction of infections that led to death per region.       |                                                                                                                  |
-| `:ElderlyMap`          | `Simulation` | Fraction of elderly people (65+) per region.               | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
-| `:HouseholdSizeMap`    | `Simulation` | Average household size per region.                         | `max_size = 10`: Maximum size of households (default = 10) considered for this graph (to exclude large outliers), `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum household size values. |
-| `:KidsMap`             | `Simulation` | Fraction of kids (0-14) per region.                        | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
-| `:PopDensityMap`       | `Simulation` | Population density per region.                             |                                                                                                                  |
-| `R0Map`                | `ResultData` | Initial reproduction number (R0) per region.               |                                                                                                                  |
-| `:SinglesMap`          | `Simulation` | Fraction of single-person households per region.           | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
-| `:WeeklyIncidenceMap`  | `ResultData` | 7-Day incidence per 100,000 per county.                    | `week = 0`: Specify which week you would like to see.                                                            |
+| Type                    | Input Object | Description                                                                 | Plot-Specific Parameters                                                                                         |
+| :---------------------- | :----------- | :-------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
+| `:AgeMap`               | `Simulation` | Average age per region.                                                     | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
+| `:AttackRate`           | `ResultData` | Fraction of people who got infected per region.                             |                                                                                                                  |
+| `:CaseFatalityMap`      | `ResultData` | Fraction of infections that led to death per region.                        |                                                                                                                  |
+| `:ElderlyMap`           | `Simulation` | Fraction of elderly people (65+) per region.                                | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
+| `:HouseholdSizeMap`     | `Simulation` | Average household size per region.                                          | `max_size = 10`: Maximum size of households (default = 10) considered for this graph (to exclude large outliers), `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum household size values. |
+| `:KidsMap`              | `Simulation` | Fraction of kids (0-14) per region.                                         | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
+| `:MultiGenHouseholdMap` | `Simulation` | Fraction of multi-generational households (50+ age difference) per region.  | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
+| `:PopDensityMap`        | `Simulation` | Population density per region.                                              |                                                                                                                  |
+| `:R0Map`                | `ResultData` | Initial reproduction number (R0) per region.                                |                                                                                                                  |
+| `:SinglesMap`           | `Simulation` | Fraction of single-person households per region.                            | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
+| `:WeeklyIncidenceMap`   | `ResultData` | 7-Day incidence per 100,000 per county.                                     | `week = 0`: Specify which week you would like to see.                                                            |
 
 **Note:** Maps that use infection data (e.g., the `AttackRate`) use the individuals'
 household location to map the data, not the loction of infection.
