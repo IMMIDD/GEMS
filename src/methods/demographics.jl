@@ -7,36 +7,63 @@ export generate_birthday, get_births_for_tick
 Generates a plausible birthday using the pre-computed data in the generator.
 """
 function generate_birthday(generator::BirthdayGenerator, age::Integer, sex::Integer, sim_start_date::Date)
-    birth_year = year(sim_start_date) - age
+    # birthday range
+    latest_bday = sim_start_date - Year(age)
+    earliest_bday = sim_start_date - Year(age + 1) + Day(1)
     
+    year_end = year(latest_bday)   
+    year_start = year(earliest_bday) #
+
+    # 2ind the closest available year in the data for probability lookup
+    lookup_year = year_end
     sex_str = (sex == 1) ? "female" : "male" 
+    key = (lookup_year, sex_str)
 
-    key = (birth_year, sex_str)
     if !haskey(generator.cum_probs_dict, key)
-        # Fallback for years not in the data 
-        #@warn "No birth data for year $birth_year. Using closest available year."
+        # Fallback for years not in the data
+        # @warn "No birth data for year $lookup_year. Using closest available year."
 
-        _, index = findmin(abs.(generator.available_years .- birth_year))
-        birth_year = generator.available_years[index]
-
-        key = (birth_year, sex_str) 
+        _, index = findmin(abs.(generator.available_years .- lookup_year))
+        lookup_year = generator.available_years[index]
+        key = (lookup_year, sex_str) 
     end
 
     cum_probs = generator.cum_probs_dict[key]
-    
-    # Sample month and day
+
+    # sample month and day based on the lookup_year's probabilities
     r = rand()
     month_idx = searchsortedfirst(cum_probs, r)
     
     # Interpolation to find the day within the month
     lower_bound = (month_idx == 1) ? 0.0 : cum_probs[month_idx - 1]
     upper_bound = cum_probs[month_idx]
-    fraction_in_month = (r - lower_bound) / (upper_bound - lower_bound)
     
-    days = daysinmonth(Date(birth_year, month_idx))
-    day = clamp(round(Int, fraction_in_month * days), 1, days)
+    # Handle potential division by zero if upper and lower bounds are the same 
+    fraction_in_month = 0.0
+    if (upper_bound - lower_bound) > 0.0
+        fraction_in_month = (r - lower_bound) / (upper_bound - lower_bound)
+    end
     
-    return Date(birth_year, month_idx, day)
+    days_in_lookup_month = daysinmonth(Date(lookup_year, month_idx))
+    day_sampled = clamp(round(Int, fraction_in_month * days_in_lookup_month), 1, days_in_lookup_month)
+
+    # construct the final date, handling leap years and the two-year window
+    
+    days_in_end_year_month = daysinmonth(Date(year_end, month_idx))
+    final_day = min(day_sampled, days_in_end_year_month)
+    
+    bday_candidate = Date(year_end, month_idx, final_day)
+    
+    # Check if this date is valid.
+    # If the sampled date is after the latest possible birthday, the person must have been born in the earlier year.
+    if bday_candidate > latest_bday
+        days_in_start_year_month = daysinmonth(Date(year_start, month_idx))
+        final_day = min(day_sampled, days_in_start_year_month)
+        
+        return Date(year_start, month_idx, final_day)
+    else
+        return bday_candidate
+    end
 end
 
 
@@ -58,7 +85,7 @@ function get_births_for_tick(model::BirthModel, sim::Simulation)
     per_capita_rate = 0.0
 
     # try to find the data for the current year and month
-    if haskey(model.lookup_data, primary_key)
+    if haskey(model.lookup_per_capita_rate, primary_key)
         per_capita_rate = model.lookup_per_capita_rate[primary_key]
     else
         # if not found, fall back to the latest available year
@@ -124,7 +151,7 @@ age distribution. Handles maternal cache updates.
 function select_random_mother(sim::Simulation)
     # check if the cache needs updating 
     CACHE_INVALIDATION_DAYS = 30
-    if tick(sim) - sim.last_maternal_cache_update > CACHE_INVALIDATION_DAYS
+    if sim.last_maternal_cache_update == -1 || tick(sim) - sim.last_maternal_cache_update > CACHE_INVALIDATION_DAYS
         update_maternal_cache!(sim)
     end
 
@@ -135,19 +162,19 @@ function select_random_mother(sim::Simulation)
 
     # get all non empty groups
     all_groups = [cache.under_18, cache.between_18_and_40, cache.between_40_and_49]
-    available_groups = []
-    available_weights = []
+    available_groups = Vector{Vector{Individual}}()
+    available_weights = Float64[]
     if !isempty(all_groups[1])
         push!(available_groups, all_groups[1])
-        push!(available_weights, base_weights[1])
+        push!(available_weights, weights[1])
     end
     if !isempty(all_groups[2])
         push!(available_groups, all_groups[2])
-        push!(available_weights, base_weights[2])
+        push!(available_weights, weights[2])
     end
     if !isempty(all_groups[3])
         push!(available_groups, all_groups[3])
-        push!(available_weights, base_weights[3])
+        push!(available_weights, weights[3])
     end
 
     # random non-empty group

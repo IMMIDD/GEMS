@@ -144,6 +144,8 @@ mutable struct Simulation
          Pathogen(id = 0, name = "TEST DEFAULT"), # pathogen::Pathogen
          BirthModel(Dict{Tuple{Int, Int}, Float64}(), 0),
          Dict{AGS, Int32}(),
+         GEMS.MaternalAgeCache(Individual[], Individual[], Individual[]),
+         -1,
          InfectionLogger(), # infectionlogger::InfectionLogger
          DeathLogger(), # deathlogger::DeathLogger
          TestLogger(), # testlogger::TestLogger
