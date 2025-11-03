@@ -444,29 +444,29 @@
 
     @testset "Maps Tests" begin
         @testset "region_range Tests" begin
-            # Test mit normalen Koordinaten
+            # Test with normal coordinates
             df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
             bounds = region_range(df)
             expected_bounds = [7.9, 10.1, 49.9, 52.1]
             @test bounds ≈ expected_bounds
 
-            # Test mit nur einem Punkt
+            # Test with a single point
             df = DataFrame(lat=[50], lon=[8])
             bounds = region_range(df)
             @test bounds ≈ [8, 8, 50, 50]
 
-            # Test mit gleichen Koordinaten
+            # Test with same coordinates
             df = DataFrame(lat=[50, 50, 50], lon=[8, 8, 8])
             bounds = region_range(df)
             @test bounds ≈ [8, 8, 50, 50]
 
-            # Test mit Extremwerten (Nähe Pole und 180° Meridian)
+            # Test with extreme values
             df = DataFrame(lat=[-89, 89], lon=[-179, 179])
             bounds = region_range(df)
             expected_bounds = [-180, 180, -90, 90]
             @test bounds == expected_bounds
 
-            # Test mit negativen und positiven Werten
+            # Test with positive and negative values
             df = DataFrame(lat=[-10, 10], lon=[-20, 20])
             bounds = region_range(df)
             expected_bounds = [-22.0, 22.0, -11.0, 11.0]
@@ -476,103 +476,103 @@
         #= @testset "generate_map tests" begin
               dest = basefolder * "/test_map.png"
 
-              # Test: Normale Nutzung mit gültigen Koordinaten
+              # Test with normal coordinates
               df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
               result = generate_map(df, dest)
               @test result isa GMTWrapper
-              @test isfile(dest)  # Datei sollte erstellt worden sein
+              @test isfile(dest)  # file should be generated
 
-              # Test: Leeres DataFrame ohne plotempty -> Sollte Fehler werfen
+              # Test: empty DataFrame -> should throw an error
               df_empty = DataFrame(lat=[], lon=[])
               @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
 
-              # Test: plotempty=True aber ohne region -> Sollte Fehler werfen
+              # Test: plotempty =True without region -> should throw an error
               @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
 
-              # Test: plotempty=True mit definierter region -> Sollte eine leere Karte erzeugen
-              region = [7, 11, 49, 53]  # Bounding Box um die Test-Koordinaten
+              # Test: plotempty=True with a defined region -> should generate an empty map
+              region = [7, 11, 49, 53]  # Bounding Box for the Test-coordinates
               result = generate_map(df_empty, dest; region=region, plotempty=true)
               @test result isa GMTWrapper
               @test isfile(dest)
 
-              # Test: Nutzung eines spezifischen Regionsbereichs
+              # Test with a specific region
               custom_region = [7, 11, 49, 53]
               result = generate_map(df, dest; region=custom_region)
               @test result isa GMTWrapper
               @test isfile(dest)
 
-              # Cleanup nach den Tests
+              # Cleanup after Tests
               rm(dest; force=true)
           end =#
 
         @testset "agsmap tests" begin
-            # Beispiel AGS-Werte mit exakt 8 Ziffern
-            ags_states = [AGS("01000000"), AGS("02000000"), AGS("03000000")]  # Bundesländer (Level 1)
-            ags_counties = [AGS("01001000"), AGS("02002000"), AGS("03003000")]  # Landkreise (Level 2)
-            ags_municipalities = [AGS("01001001"), AGS("02002002"), AGS("03003003")]  # Gemeinden (Level 3)
+            # Example AGS-Values with exact 8 Numbers
+            ags_states = [AGS("01000000"), AGS("02000000"), AGS("03000000")]  # States (Level 1)
+            ags_counties = [AGS("01001000"), AGS("02002000"), AGS("03003000")]  # counties (Level 2)
+            ags_municipalities = [AGS("01001001"), AGS("02002002"), AGS("03003003")]  # municipalities (Level 3)
 
-            # Test: Normale Nutzung für Bundesländer (Level 1)
+            # Test: normal usage for states (Level 1)
             df = DataFrame(ags=ags_states, values=[10, 20, 30])
             result = agsmap(df, 1)
             @test result isa Plots.Plot
 
-            # Test: Normale Nutzung für Landkreise (Level 2)
+             # Test: normal usage for counties (Level 2)
             df = DataFrame(ags=ags_counties, values=[15, 25, 35])
             result = agsmap(df, 2)
             @test result isa Plots.Plot
 
-            # Test: Normale Nutzung für Gemeinden (Level 3)
+             # Test: normal usage for municipalities (Level 3)
             df = DataFrame(ags=ags_municipalities, values=[5, 15, 25])
             result = agsmap(df, 3)
             @test result isa Plots.Plot
 
-            # Test: Falsche Spaltennamen im DataFrame → Sollte Fehler werfen
+            # Test: wrong columns in the DataFrame → Should throw an error
             df_wrong = DataFrame(id=ags_states, values=[10, 20, 30])
             @test_throws "The first column of the input dataframe must be named 'ags'." agsmap(df_wrong, 1)
 
-            # Test: Erste Spalte ist nicht AGS → Sollte Fehler werfen
+            # Test: First column is not AGS → Should throw an error
             df_wrong_type = DataFrame(ags=["01000000", "02000000", "03000000"], values=[10, 20, 30])
             @test_throws "The first column of the input dataframe must contain a Vector of AGS structs" agsmap(df_wrong_type, 1)
 
-            # Test: Zweite Spalte enthält keine numerischen Werte → Sollte Fehler werfen
+            # Test: Second column does not contain numeric values → Should throw an error
             df_wrong_values = DataFrame(ags=ags_states, values=["low", "medium", "high"])
             @test_throws "The second column of the input dataframe must contain a Vector of numeric values" agsmap(df_wrong_values, 1)
 
-            # Test: AGS-Level passt nicht zum Level-Parameter → Sollte Fehler werfen
+            # Test: AGS-Level is not according to the Level-Parameter → Should throw an error
             @test_throws "The AGSs provided in the input dataframes are not all refering to states (level 1)" agsmap(DataFrame(ags=ags_counties, values=[10, 20, 30]), 1)
             @test_throws "The AGSs provided in the input dataframes are not all refering to counties (level 2)" agsmap(DataFrame(ags=ags_municipalities, values=[10, 20, 30]), 2)
             @test_throws "The AGSs provided in the input dataframes are not all refering to municipalities (level 3)" agsmap(DataFrame(ags=ags_states, values=[10, 20, 30]), 3)
 
-            # Test: Doppelte AGS-Einträge → Sollte Fehler werfen
+            # Test: double AGS-values → Should throw an error
             df_duplicate = DataFrame(ags=[AGS("01000000"), AGS("01000000"), AGS("02000000")], values=[10, 20, 30])
             @test_throws "All AGS values need to be unique!" agsmap(df_duplicate, 1)
 
-            # Test: Ungültiges Level → Sollte Fehler werfen
+            # Test: wrong Level → Should throw an error
             @test_throws "The level must be either 1 (States), 2 (Counties), or 3 (Municipalities)" agsmap(df, 0)
             @test_throws "The level must be either 1 (States), 2 (Counties), or 3 (Municipalities)" agsmap(df, 4)
         end
         @testset "agsmap wrapper tests" begin
-            # Beispiel AGS-Werte mit genau 8 Ziffern
-            ags_states = [AGS("01000000"), AGS("02000000"), AGS("03000000")]  # Bundesländer (Level 1)
-            ags_counties = [AGS("01001000"), AGS("02002000"), AGS("03003000")]  # Landkreise (Level 2)
-            ags_municipalities = [AGS("01001001"), AGS("02002002"), AGS("03003003")]  # Gemeinden (Level 3)
+            # Example AGS-values with exact 8 Numbers
+            ags_states = [AGS("01000000"), AGS("02000000"), AGS("03000000")]  # states (Level 1)
+            ags_counties = [AGS("01001000"), AGS("02002000"), AGS("03003000")]  # counties (Level 2)
+            ags_municipalities = [AGS("01001001"), AGS("02002002"), AGS("03003003")]  # municipalities (Level 3)
 
-            # Test: Automatische Erkennung für Bundesländer
+            # Test: Automatic detection of states
             df_states = DataFrame(ags=ags_states, values=[10, 20, 30])
             result = agsmap(df_states)
             @test result isa Plots.Plot
 
-            # Test: Automatische Erkennung für Landkreise
+            # Test: Automatic detection of counties
             df_counties = DataFrame(ags=ags_counties, values=[15, 25, 35])
             result = agsmap(df_counties)
             @test result isa Plots.Plot
 
-            # Test: Automatische Erkennung für Gemeinden
+            # Test: Automatic detection of municipalities
             df_municipalities = DataFrame(ags=ags_municipalities, values=[5, 15, 25])
             result = agsmap(df_municipalities)
             @test result isa Plots.Plot
 
-            # Test: Manuelle Angabe von `level`
+            # Test: Manual specification of level
             df_mixed = DataFrame(ags=[AGS("01000000"), AGS("02000000")], values=[10, 20])
             result = agsmap(df_mixed, level=1)
             @test result isa Plots.Plot
@@ -591,7 +591,7 @@
             @test_throws "The AGSs provided in the input dataframes are not all refering to states (level 1)" agsmap(df_mixed, level=1)
             @test_throws "The AGSs provided in the input dataframes are not all refering to counties (level 2)" agsmap(df_mixed, level=2)
 
-            # Test: Spezifische Wrapper-Funktionen
+            # Test: specific Wrapper-Functions
             result = statemap(df_states)
             @test result isa Plots.Plot
 
@@ -601,7 +601,7 @@
             result = municipalitymap(df_municipalities)
             @test result isa Plots.Plot
 
-            # Test: Wrapper mit zusätzlichen Plot-Argumenten
+            # Test: Wrapper with additional Plot-arguments
             result = agsmap(df_states, title="State Map", fillcolor=:blue)
             @test result isa Plots.Plot
 
@@ -612,48 +612,48 @@
             @test result isa Plots.Plot
         end
         @testset "prepare_map_df! tests" begin
-            # Beispiel AGS-Werte mit genau 8 Ziffern
-            ags_states = [AGS("01000000"), AGS("02000000"), AGS("03000000")]  # Bundesländer (Level 1)
-            ags_counties = [AGS("01001000"), AGS("02002000"), AGS("03003000")]  # Landkreise (Level 2)
-            ags_municipalities = [AGS("01001001"), AGS("02002002"), AGS("03003003")]  # Gemeinden (Level 3)
+            # Example AGS-values with exact 8 Numbers
+            ags_states = [AGS("01000000"), AGS("02000000"), AGS("03000000")]  # States (Level 1)
+            ags_counties = [AGS("01001000"), AGS("02002000"), AGS("03003000")]  # counties (Level 2)
+            ags_municipalities = [AGS("01001001"), AGS("02002002"), AGS("03003003")]  # municipalities (Level 3)
 
-            # Test: Umwandlung zu Bundesländer-Level
+            # Test: Change to State-Level
             df_states = DataFrame(ags=ags_municipalities, values=[10, 20, 30])
             prepare_map_df!(df_states, level=1)
             @test all(is_state.(df_states.ags))
             @test length(unique(df_states.ags)) == 3
 
-            # Test: Umwandlung zu Landkreise-Level
+            # Test: Change to counties-Level
             df_counties = DataFrame(ags=ags_municipalities, values=[10, 20, 30])
             prepare_map_df!(df_counties, level=2)
             @test all(is_county.(df_counties.ags))
             @test length(df_counties.ags) == 3
 
-            # Test: Umwandlung zu Gemeinde-Level
+            # Test: Change to municipalities-Level
             df_municipalities = DataFrame(ags=ags_municipalities, values=[10, 20, 30])
             prepare_map_df!(df_municipalities, level=3)
             @test !(any(is_state.(df_municipalities.ags)))
             @test length(df_municipalities.ags) == 3
 
-            # Test: Fehlermeldung bei falschem Spaltennamen
+            # Test: error for wrong column name
             df_wrong = DataFrame(id=ags_municipalities, values=[10, 20, 30])
             @test_throws "The first column of the input dataframe must be named 'ags'." prepare_map_df!(df_wrong, level=1)
 
-            # Test: Fehlermeldung bei falschem Datentyp
+            # Test: error for wrong datatype
             df_wrong_type = DataFrame(ags=["01000000", "02000000", "03000000"], values=[10, 20, 30])
             @test_throws "The first column of the input dataframe must contain a Vector of AGS structs" prepare_map_df!(df_wrong_type, level=1)
         end
         @testset "MapPlot Abstract Type Tests" begin
-            # Test, ob MapPlot ein Subtyp von ReportPlot ist
+            # Test, if MapPlot ein Subtype of ReportPlot
             @test MapPlot <: ReportPlot
 
-            # Test, ob eine konkrete Implementierung von MapPlot erforderlich ist
-            struct DummyMapPlot <: MapPlot end  # Ein Dummy-Subtyp
+            # Test, if an implementation of MapPlot is necessary
+            struct DummyMapPlot <: MapPlot end  # Dummy-Subtype
 
             dummy_plot = DummyMapPlot()
             data = Dict("example" => 42)
 
-            @test_throws ErrorException generate(dummy_plot, data)  # Sollte einen Fehler werfen
+            @test_throws ErrorException generate(dummy_plot, data)  # → Should throw an error
         end
 
         @testset "maptypes() Function Test" begin
@@ -662,32 +662,32 @@
 
             result = maptypes()
 
-            @test result isa Vector{Symbol}  # Prüft, ob das Ergebnis ein Vektor von Symbolen ist
-            @test length(result) == 7  # Prüft, ob genau 7 Elemente enthalten sind
-            @test Set(result) == Set(expected_maps)  # Prüft, ob die Elemente übereinstimmen (unabhängig von der Reihenfolge)
+            @test result isa Vector{Symbol}
+            @test length(result) == 7
+            @test Set(result) == Set(expected_maps)
         end
 
         @testset "gemsmap() Function Tests" begin
-            # Simulations- und Ergebnisobjekte erstellen
+            # Simulations- and ResultData- Objects
             sim = Simulation()
             rd = sim |> PostProcessor |> ResultData
 
-            # Erwartete Kartentypen
+            # expected maptypes
             map_types = [:AgeMap, :AttackRateMap, :CaseFatalityMap,
                 :HouseholdSizeMap, :PopDensityMap, :SinglesMap]
 
-            # Test: Funktioniert gemsmap für alle bekannten Kartentypen?
+            # Test: gemsmap for all known maptypes
             for map_type in map_types
-                if map_type in [:AttackRateMap, :CaseFatalityMap]  # Diese Typen benötigen ResultData
+                if map_type in [:AttackRateMap, :CaseFatalityMap]
                     result = gemsmap(rd, type=map_type)
-                else  # Die restlichen benötigen ein Simulation-Objekt
+                else
                     result = gemsmap(sim, type=map_type)
                 end
 
-                @test result isa Plots.Plot  # Prüfen, ob das Ergebnis ein Plots.Plot ist
+                @test result isa Plots.Plot  # check if result is a Plots.Plot
             end
 
-            # Test: Funktioniert die Level-Änderung korrekt?
+            # Test: change of level correct?
             result = gemsmap(sim, type=:AgeMap, level=1)
             @test result isa Plots.Plot
 
@@ -697,10 +697,10 @@
             result = gemsmap(sim, type=:AgeMap, level=3)
             @test result isa Plots.Plot
 
-            # Test: Unbekannter Kartentyp löst Fehler aus
+            # Test: unknown plot types throws an error
             @test_throws "There's no plot type that matches :UnknownMap" gemsmap(sim, type=:UnknownMap)
 
-            # Test: Plot mit zusätzlichen Argumenten
+            # Test: Plot with additional arguments
             result = gemsmap(sim, type=:AgeMap, title="Test Map", clims=(0, 100))
             @test result isa Plots.Plot
         end
@@ -749,7 +749,7 @@
     @testset "Plots Test" begin
 
         @testset "GMTWrapper Tests" begin
-            # Test: GMTWrapper speichert den korrekten Pfad
+            # Test: GMTWrapper saves the correct path
             wrapper = GMTWrapper("/tmp/test_map.png")
             @test wrapper isa GMTWrapper
             @test wrapper.path_to_map == "/tmp/test_map.png"
@@ -768,7 +768,7 @@
         end
 
         @testset "Plot Formatting Functions" begin
-            # Test: fontfamily! für Plots.jl
+            # Test: fontfamily! for Plots.jl
             p = plot(rand(10))
             fontfamily!(p, "Arial")
             @test p.attr[:fontfamily] == "Arial"
@@ -776,11 +776,11 @@
             fontfamily!(p, "Times New Roman")
             @test p.attr[:fontfamily] == "Times Roman"
 
-            # Test: dpi! für Plots.jl
+            # Test: dpi! for Plots.jl
             dpi!(p, 300)
             @test p.attr[:dpi] == 300
 
-            # TODO: Test: title! für Plots.jl
+            # TODO: Test: title! for Plots.jl
             GEMS.title!(p, "Test Title")
             GEMS.titlefontsize!(p, 18)
         end
@@ -810,7 +810,6 @@ end
             @test isfile(path)
             @test result isa GMTWrapper
 
-            # Optional: Lade das Bild und prüfe Größe
             img = load(path)
             @test size(img)[1] > 0
             @test size(img)[2] > 0

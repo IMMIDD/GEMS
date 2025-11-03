@@ -84,12 +84,8 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
     # setting type
     st = measure |> settingtype
 
-    # setting id
-    sid = setting_id(ind, st)
-
     # setting object
-    s = sim |> settingscontainer |>
-        x -> setting(x, st, sid)
+    s = getsetting(ind, sim, st)
 
         @debug "Individual $(ind |> id) identifying $(string(st))[$sid] at tick $(sim |> tick)"
 
