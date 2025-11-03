@@ -58,8 +58,8 @@ new sampling method specified in the `ChangeContactMethod` measure.
 """
 function process_measure(sim::Simulation, s::Setting, measure::ChangeContactMethod)
 
-    @debug "Update contact sampling method of $(s |> typeof) $(s |> id) from $(s |> contact_sampling_method) to $(measure |> contact_sampling_method) at tick $(sim |> tick)"
+    @debug "Update contact sampling method of $(s |> typeof) $(s |> id) from $(s |> contact_sampling_method) to $(measure |> sampling_method) at tick $(sim |> tick)"
 
     # update contact method
-    contact_sampling_method!(s, measure |> new_measure)
+    contact_sampling_method!(s, measure |> sampling_method)
 end
