@@ -35,40 +35,26 @@ Log all current quarantines stratified by occupation (workers, students, all)
 to the simulation's `QuarantineLogger`.
 """
 function log_quarantines(simulation::Simulation)
-    
-    # Julia 1.12 changed the threading API, so we need to check which version is used
-    
-    # function to get the current thread id
-    thread_id_func = isdefined(Threads, :threadid_in_pool) ?
-        Threads.threadid_in_pool : # Julia 1.12
-        Threads.threadid # Julia 1.11 and earlier
 
-    # function to get the thread pool size
-    tpool_size_func() = (isdefined(Threads, :nthreads) &&  
-                    hasmethod(Threads.nthreads, Tuple{Symbol})) ?
-                    Threads.nthreads(:default) : # Julia 1.12 has this method
-                    Threads.nthreads()   # Julia 1.11 and earlier
-
-    # set up one vector with one entry for each thread
-    tot_cnt = zeros(Int, tpool_size_func())
-    st_cnt  = zeros(Int, tpool_size_func())
-    wo_cnt  = zeros(Int, tpool_size_func())
+    # Julia 1.12-safe threaded counting with atomic integers
+    tot = Threads.Atomic{Int}(0)
+    st  = Threads.Atomic{Int}(0)
+    wo  = Threads.Atomic{Int}(0)
 
     Threads.@threads for i in simulation |> individuals
         if isquarantined(i)
-            tid = thread_id_func()
-            tot_cnt[tid] += 1
-            st_cnt[tid]  += is_student(i)
-            wo_cnt[tid]  += is_working(i)
+            Threads.atomic_add!(tot, 1)
+            Threads.atomic_add!(st,  is_student(i))
+            Threads.atomic_add!(wo,  is_working(i))
         end
     end
+
+    println("changes work")
 
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-        sum(tot_cnt),
-        sum(st_cnt),
-        sum(wo_cnt)
+        tot[], st[], wo[]
     )
 end
 
