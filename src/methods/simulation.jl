@@ -49,8 +49,6 @@ function log_quarantines(simulation::Simulation)
         end
     end
 
-    println("changes work")
-
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
