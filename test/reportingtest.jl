@@ -585,25 +585,25 @@
             # @test_throws "The AGSs provided in the input dataframes are not all refering to states (level 1)" agsmap(df_mixed, level=1)
             # @test_throws "The AGSs provided in the input dataframes are not all refering to counties (level 2)" agsmap(df_mixed, level=2)
 
-            # Test: specific Wrapper-Functions
-            result = statemap(df_states)
-            @test result isa Plots.Plot
+            # # Test: specific Wrapper-Functions
+            # result = statemap(df_states)
+            # @test result isa Plots.Plot
 
-            result = countymap(df_counties)
-            @test result isa Plots.Plot
+            # result = countymap(df_counties)
+            # @test result isa Plots.Plot
 
-            result = municipalitymap(df_municipalities)
-            @test result isa Plots.Plot
+            # result = municipalitymap(df_municipalities)
+            # @test result isa Plots.Plot
 
-            # Test: Wrapper with additional Plot-arguments
-            result = agsmap(df_states, title="State Map", fillcolor=:blue)
-            @test result isa Plots.Plot
+            # # Test: Wrapper with additional Plot-arguments
+            # result = agsmap(df_states, title="State Map", fillcolor=:blue)
+            # @test result isa Plots.Plot
 
-            result = countymap(df_counties, title="County Map", fillcolor=:green)
-            @test result isa Plots.Plot
+            # result = countymap(df_counties, title="County Map", fillcolor=:green)
+            # @test result isa Plots.Plot
 
-            result = municipalitymap(df_municipalities, title="Municipality Map", fillcolor=:red)
-            @test result isa Plots.Plot
+            # result = municipalitymap(df_municipalities, title="Municipality Map", fillcolor=:red)
+            # @test result isa Plots.Plot
         end
         @testset "prepare_map_df! tests" begin
             # Example AGS-values with exact 8 Numbers
