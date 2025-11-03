@@ -78,6 +78,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `tick_generation_times::DataFrame`: Aggregated data on generation timess per tick        
         - `tick_tests::DataFrame`: Number of tests performed per tick
         - `tick_pooltests::DataFrame`: Number of (pooled) tests per tick
+        - `tick_serotests::DataFrame`: Number of seroprevalence-tests performed per tick
         - `tick_cases_per_setting::DataFrame`: Tick cases aggregated by settingtype,
         - `detected_tick_cases::DataFrame`: Number of detected infections per tick
         - `compartment_fill::DataFrame`: Number of individuals currently in any of the disease compartments
@@ -185,6 +186,7 @@ mutable struct LightRD <: ResultDataStyle
                     "cumulative_quarantines" => () -> pP |> cumulative_quarantines,
                     "tick_tests" => () -> pP |> tick_tests,
                     "tick_pooltests" => () -> pP |> tick_pooltests,
+                    "tick_serotests" => () -> pP |> tick_serotests,
                     "detected_tick_cases" => () -> pP |> detected_tick_cases,
                     "rolling_observed_SI" => () -> pP |> rolling_observed_SI,
                     "observed_R" => () -> pP |> observed_R,

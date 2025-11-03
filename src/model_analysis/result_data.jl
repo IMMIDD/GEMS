@@ -912,6 +912,17 @@ function tick_pooltests(rd::ResultData)
 end
 
 """
+    tick_serotests(rd::ResultData) 
+
+Returns the seroprevalence-tests per tick DataFrame.
+Look up the `PostProcessor` docs to find the column definitions.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function tick_serotests(rd::ResultData)
+    return(get(rd |> dataframes, "tick_serotests", Dict()))
+end
+
+"""
     detected_tick_cases(rd::ResultData)
 
 Returns the detected cases per tick DataFrame.

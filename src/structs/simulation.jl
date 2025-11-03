@@ -15,8 +15,8 @@ export evaluate
 export initialize!
 export increment!, reset!
 export tickunit
-export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, customlogger, customlogger!
-export infections, tests, deaths, quarantines, pooltests, customlogs, populationDF
+export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
@@ -58,6 +58,7 @@ A struct for the management of a single run, holding all necessary informations.
     - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
     - `testlogger::TestLogger`: A logger tracking all individual tests
     - `pooltestlogger::PoolTestLogger`: A logger tracking all pool tests
+    - `seroprevalencelogger::SeroprevalenceLogger`: A logger tracking all seroprevalence tests
     - `quarantinelogger::QuarantineLogger`: A tracking cumulative quarantines per tick
     - `customlogger::CustomLogger`: A logger running custom methods on the `Simulation` object in each tick
 - Interventions
@@ -95,6 +96,7 @@ mutable struct Simulation
     deathlogger::DeathLogger
     testlogger::TestLogger
     pooltestlogger::PoolTestLogger
+    seroprevalencelogger::SeroprevalenceLogger
     quarantinelogger::QuarantineLogger
     customlogger::CustomLogger
 
@@ -140,6 +142,7 @@ mutable struct Simulation
          DeathLogger(), # deathlogger::DeathLogger
          TestLogger(), # testlogger::TestLogger
          PoolTestLogger(), # pooltestlogger::PoolTestLogger
+         SeroprevalenceLogger(), # seroprevalencelogger::SeroprevalenceLogger
          QuarantineLogger(), # quarantinelogger::QuarantineLogger
          CustomLogger(), # customlogger::CustomLogger
          [], # symptom_triggers::Vector{ITrigger}
@@ -249,9 +252,9 @@ mutable struct Simulation
     | `global_contact_rate`           | `Float64`              | Average number of contacts in the global per timestep (Poisson-distributed)                                                           |
     | **Population Parameters**       |                        |                                                                                                                                       |
     | `pop_size`                      | `Int64`                | Number of individuals in the population                                                                                               |
-    | `avg_household_size`            | `Int64`                | Average size of households                                                                                                            |
-    | `avg_office_size`               | `Int64`                | Average size of offices                                                                                                               |
-    | `avg_school_size`               | `Int64`                | Average size of schools                                                                                                               |
+    | `avg_household_size`            | `Real`                 | Average size of households                                                                                                            |
+    | `avg_office_size`               | `Real`                 | Average size of offices                                                                                                               |
+    | `avg_school_size`               | `Real`                 | Average size of schools                                                                                                               |
 
     """
     function Simulation(;
@@ -292,9 +295,9 @@ mutable struct Simulation
         municipality_contact_rate::Union{Real, Nothing} = nothing,
         global_contact_rate::Union{Real, Nothing} = nothing,
         pop_size::Union{Int64, Nothing} = nothing,
-        avg_household_size::Union{Int64, Nothing} = nothing,
-        avg_office_size::Union{Int64, Nothing} = nothing,
-        avg_school_size::Union{Int64, Nothing} = nothing,
+        avg_household_size::Union{Real, Nothing} = nothing,
+        avg_office_size::Union{Real, Nothing} = nothing,
+        avg_school_size::Union{Real, Nothing} = nothing,
         simargs...)
         
 
@@ -928,7 +931,7 @@ function create_pathogens(pathogens_dict::Dict)::Vector{Pathogen}
                 elseif key == "transmission_function"
                     setfield!(p, Symbol(key), create_transmission_function(attr))
                 else
-                    distribution = create_distribution(attr["parameters"], attr["distribution"])
+                    distribution = create_distribution(Float64.(attr["parameters"]), attr["distribution"])
                     setfield!(p, Symbol(key), distribution)
                 end
             end
@@ -1074,10 +1077,11 @@ end
 Loads the `Settings` from the `Simulation` config parameters.
 """
 function load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
+
     for (type, setting_list) in settings(stngs)
         # for every setting type we assign the given attributes
-        if string(type) in keys(attributes)
-            setting_attributes = attributes[string(type)]
+        if structname(type) in keys(attributes)
+            setting_attributes = attributes[structname(type)] # structnames() handles types like "GEMS.Houshold" that occur, if GEMS is loaded within another scope/package
             # for every provided key, we set the corresponding field
             for (key, value) in setting_attributes
                 if Symbol(key) in fieldnames(type)
@@ -1490,6 +1494,22 @@ Calls the `dataframe()` function on the internal simulation's `PoolTestLogger`.
 pooltests(simulation::Simulation) = simulation |> pooltestlogger |> dataframe
 
 """
+    seroprevalencelogger(simulation)
+
+Returns the `SeroprevalenceLogger` of the simulation.
+"""
+function seroprevalencelogger(simulation::Simulation)::SeroprevalenceLogger
+    return simulation.seroprevalencelogger
+end
+
+"""
+    seroprevalencetests(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `SeroprevalenceLogger`.
+"""
+seroprevalencetests(simulation::Simulation) = simulation |> seroprevalencelogger |> dataframe
+
+"""
     quarantinelogger(simulation)
 
 Returns the `QuarantineLogger` of the simulation.
@@ -1751,6 +1771,7 @@ function info(sim::Simulation)
     res *= "  \u2514 Deaths: $(sim |> deathlogger |> length)\n"
     res *= "  \u2514 Tests: $(sim |> testlogger |> length)\n"
     res *= "  \u2514 Pooltests: $(sim |> pooltestlogger |> length)\n"
+    res *= "  \u2514 Seroprevalencetests: $(sim |> seroprevalencelogger |> length)\n"
 
     println(res)
 end

@@ -40,6 +40,14 @@
             @test key_rd |> model_size == "Not available!"
             @test key_rd.data["infections"] != Dict()
             @test GEMS.get_style("") == DefaultResultData
+
+            key_rd = ResultData(pp, style="EssentialResultData")
+            @test key_rd |> dataframes != Dict()
+            @test key_rd |> infections != Dict()
+            @test key_rd |> deaths != Dict()
+            @test key_rd |> final_tick != Dict()
+            @test key_rd |> config_file != Dict()
+            @test key_rd |> population_file != Dict()
         end
 
     end
@@ -202,28 +210,212 @@
         @test population_params(rd)["populationfile"] == rd.data["meta_data"]["population_file"]
     end
 
-    @testset "more Tests" begin
+    @testset "tick_serial_intervals and tick_hosptitalizations" begin
         sim = Simulation(label="test")
-        pp = sim |> PostProcessor
-        rd = ResultData(pp)
+        rd = sim |> PostProcessor |> ResultData
         @test label(rd) == "test"
 
-        @test region_info(rd) isa DataFrame && size(region_info(rd)) == (0, 3)
+        df = tick_serial_intervals(rd)
+        @test df isa DataFrame
 
-        sim = Simulation(pop_size=100)
-        pp = sim |> PostProcessor
-        rd = ResultData(pp)
-        #@test population_size(rd) == 100 not available TODO ?
+        # Test tick_serial_intervals
+        expected_cols = ["max_SI", "tick", "upper_95_SI", "lower_95_SI", "std_SI", "min_SI", "mean_SI"]
+
+        # Test all expected columns are in the DataFrame
+        @test all(col -> col in names(df), expected_cols)
+
+        # Test first row has tick == 0
+        @test df[1, :tick] == 0
+
+        # Test tick_hosptitalizations
+        df = tick_hosptitalizations(rd)
+        @test df isa DataFrame
+
+        expected_cols = [
+            "tick", "hospital_cnt", "hospital_releases",
+            "icu_cnt", "icu_releases", "ventilation_cnt", "ventilation_releases",
+            "current_hospitalized", "current_icu", "current_ventilation"
+        ]
+
+        @test all(col -> col in names(df), expected_cols)
+        @test df[1, :tick] == 0
+
+    end
+
+    @testset "Custom Logger" begin
+        sim = Simulation()
+
+        function logging_func(sim)
+            cnt = 0 # counting variable
+            inds = individuals(sim)
+            for i in inds
+                h = household(i, sim)
+                if infected(i) && size(h) >= 3
+                    cnt += 1
+                end
+            end
+            return cnt
+        end
+
+        cl = CustomLogger(infected_in_large_households=logging_func)
+        customlogger!(sim, cl)
+
+        run!(sim)
+        rd = ResultData(sim)
+
+        df = customlogger(rd)
+
+        # Basic checks
+        @test isa(df, DataFrame)
+        @test all(col -> col in names(df), ["infected_in_large_households", "tick"])
+        @test nrow(df) > 0
+
+        # The count column should be integers ≥ 0
+        @test all(x -> isa(x, Integer) && x ≥ 0, df.infected_in_large_households)
+
+        # The tick column should be non-negative and sorted ascending
+        @test all(x -> isa(x, Integer) && x ≥ 0, df.tick)
+        @test issorted(df.tick)
+
+    end
+
+    @testset "region_info" begin
+        sim = Simulation(population="HB")
+        run!(sim)
+        rd = sim |> PostProcessor |> ResultData
+
+        #test region_info
+        df = region_info(rd)
+
+        @test df[1, :ags] == AGS("04011000")
+        @test df[1, :pop_size] == 563150
+        @test isapprox(df[1, :area], 318.2; atol=1e-2)
+
+        @test df[2, :ags] == AGS("04012000")
+        @test df[2, :pop_size] == 113105
+        @test isapprox(df[2, :area], 101.41; atol=1e-2)
+
+    end
+
+    @testset "tests(rd) and time_to_detection" begin
+        sim = Simulation()
+        test = TestType("Test", pathogen(sim), sim)
+        add_testtype!(sim, test)
+        i_strategy = IStrategy("i_strategy", sim)
+        test_measure = GEMS.Test("test", test)
+        add_measure!(i_strategy, test_measure)
+        i_tick_trigger = ITickTrigger(i_strategy, switch_tick=Int16(1))
+        add_tick_trigger!(sim, i_tick_trigger)
+
+        run!(sim)
+        rd = sim |> PostProcessor |> ResultData
+        df = tests(rd)
+        @test all(row -> row.test_tick == 1, eachrow(df))
+
+        @test isa(df, DataFrame)
+        @test nrow(df) > 0
+
+        expected_cols = [
+            "test_id", "test_tick", "id", "test_result", "infected", "infection_id",
+            "test_type", "reportable", "sex", "age", "number_of_vaccinations",
+            "vaccination_tick", "education", "occupation", "household", "office", "schoolclass"
+        ]
+        @test all(col -> col in names(df), expected_cols)
+
+        @test Set(names(df)) == Set(expected_cols)
+
+        @test all(row -> row.test_result in (true, false), eachrow(df))
+        @test all(row -> row.infected in (true, false), eachrow(df))
+        @test all(row -> row.infected == false ? row.infection_id == -1 : true, eachrow(df))
+
+        #test time_to_detection
+        df = time_to_detection(rd)
+
+        # Basic checks
+        @test isa(df, DataFrame)
+        @test nrow(df) > 0
+
+        expected_cols = [
+            "std_time_to_detection", "tick", "upper_95_time_to_detection",
+            "lower_95_time_to_detection", "min_time_to_detection",
+            "mean_time_to_detection", "max_time_to_detection"
+        ]
+        @test all(col -> col in names(df), expected_cols)
+
+        # Check tick column is sorted and starts at 1
+        @test issorted(df.tick)
+        @test df.tick[1] == 1
+
+        # Focus on first tick row only (assuming it's always row 1)
+        first_row = df[1, :]
+
+        # Check no missing values in first row columns of interest
+        for col in expected_cols
+            @test !ismissing(first_row[col])
+        end
+
+        # Logical consistency on first row
+        @test first_row.min_time_to_detection <= first_row.mean_time_to_detection <= first_row.max_time_to_detection
+        @test first_row.lower_95_time_to_detection <= first_row.mean_time_to_detection <= first_row.upper_95_time_to_detection
+
+        #TODO
         @test vaccinations(rd) == Dict()
-        @test tick_pooltests(rd) == Dict()
-        @test time_to_detection(rd) isa DataFrame && size(time_to_detection(rd)) == (0, 0)
-        @test tick_serial_intervals(rd) isa DataFrame && size(tick_serial_intervals(rd)) == (0, 0)
-        @test tick_hosptitalizations(rd) isa DataFrame
-        @test tests(rd) isa DataFrame && size(tests(rd)) == (0, 17)
-        @test customlogger(rd) isa DataFrame && size(customlogger(rd)) == (0, 1)
+
+    end
+
+    @testset "tick_pooltests" begin
+        sim = Simulation()
+        test = TestType("Test", pathogen(sim), sim)
+        s_strategy = SStrategy("s_strategy", sim)
+        pool_test = PoolTest("Pool Test", test)
+        add_measure!(s_strategy, pool_test)
+        s_tick_trigger = STickTrigger(Household, s_strategy, switch_tick=Int16(1))
+        add_tick_trigger!(sim, s_tick_trigger)
+        run!(sim)
+        rd = sim |> PostProcessor |> ResultData
+        pt = tick_pooltests(rd)
+        df = pt["Test"]
+        tick1 = filter(row -> row.tick == 1, df)
+        pos = tick1[1, :positive_tests]
+        neg = tick1[1, :negative_tests]
+        tot = tick1[1, :total_tests]
+
+        @test tot == pos + neg
+        @test tot > 0
+        @test 0 ≤ pos ≤ tot
+        @test 0 ≤ neg ≤ tot
+    end
+
+    @testset "tick_serotests" begin
+        # Scenario Setup
+        seroprevalence_testing = Simulation()
+        seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+        testing = IStrategy("Testing", seroprevalence_testing)
+        add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
+        trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(1))
+        add_tick_trigger!(seroprevalence_testing, trigger)
+        run!(seroprevalence_testing)
+        rd = ResultData(seroprevalence_testing)
+        st = tick_serotests(rd)
+        # Tests
+        @test isa(st, Dict)
+        @test haskey(st, "Seroprevalence Test")
+
+        df = st["Seroprevalence Test"]
+        @test isa(df, DataFrame)
+        expected_cols = ["tick", "true_positives", "false_positives", "true_negatives",
+            "false_negatives", "positive_tests", "negative_tests", "total_tests"]
+        @test all(col -> col in names(df), expected_cols)
+        @test nrow(df) == 365
+        @test all(df.total_tests .== df.positive_tests .+ df.negative_tests)
+        @test all(df.false_positives .== 0)
+        @test all(df.false_negatives .== 0)
+    end
+
+    @testset "Hashes" begin
+        @test infections_hash(rd) isa Base.SHA1
+        #@test data_hash(rd) isa Base.SHA1 # this somehow fails. Bug in ContentHashes?
         @test hashes(rd) == Dict()
-        #infections_hash(rd) TODO?
-        #data_hash(rd) TODO?
     end
 
     @testset "Testing allempty and someempty with ResultData" begin
