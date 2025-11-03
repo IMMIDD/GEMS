@@ -347,6 +347,7 @@ plot(
 | `:HouseholdSizeMap`    | `Simulation` | Average household size per region.                         | `max_size = 10`: Maximum size of households (default = 10) considered for this graph (to exclude large outliers), `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum household size values. |
 | `:KidsMap`             | `Simulation` | Fraction of kids (0-14) per region.                        | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
 | `:PopDensityMap`       | `Simulation` | Population density per region.                             |                                                                                                                  |
+| `R0Map`                | `ResultData` | Initial reproduction number (R0) per region.               |                                                                                                                  |
 | `:SinglesMap`          | `Simulation` | Fraction of single-person households per region.           | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
 | `:WeeklyIncidenceMap`  | `ResultData` | 7-Day incidence per 100,000 per county.                    | `week = 0`: Specify which week you would like to see.                                                            |
 
