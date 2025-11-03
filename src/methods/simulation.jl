@@ -44,8 +44,8 @@ function log_quarantines(simulation::Simulation)
     Threads.@threads for i in simulation |> individuals
         if isquarantined(i)
             Threads.atomic_add!(tot, 1)
-            Threads.atomic_add!(st,  is_student(i))
-            Threads.atomic_add!(wo,  is_working(i))
+            Threads.atomic_add!(st,  is_student(i) ? 1 : 0)
+            Threads.atomic_add!(wo,  is_working(i) ? 1 : 0)
         end
     end
 
