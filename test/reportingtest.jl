@@ -564,24 +564,26 @@
             result = agsmap(df_municipalities)
             @test result isa Plots.Plot
 
+            #JoPo: TODO: This needs rework as we now enabled agsmap to take mixed levels and adjust them automatically
+
             # Test: Manual specification of level
-            df_mixed = DataFrame(ags=[AGS("01000000"), AGS("02000000")], values=[10, 20])
-            result = agsmap(df_mixed, level=1)
-            @test result isa Plots.Plot
-            @test_throws "The AGSs provided in the input dataframes are not all refering to counties (level 2)" agsmap(df_mixed, level=2)
-            @test_throws "The AGSs provided in the input dataframes are not all refering to municipalities (level 3)" agsmap(df_mixed, level=3)
+            # df_mixed = DataFrame(ags=[AGS("01000000"), AGS("02000000")], values=[10, 20])
+            # result = agsmap(df_mixed, level=1)
+            # @test result isa Plots.Plot
+            # @test_throws "The AGSs provided in the input dataframes are not all refering to counties (level 2)" agsmap(df_mixed, level=2)
+            # @test_throws "The AGSs provided in the input dataframes are not all refering to municipalities (level 3)" agsmap(df_mixed, level=3)
 
 
-            df_mixed = DataFrame(ags=[AGS("01010000"), AGS("02010000")], values=[10, 20])
-            result = agsmap(df_mixed, level=2)
-            @test result isa Plots.Plot
-            @test_throws "The AGSs provided in the input dataframes are not all refering to states (level 1)" agsmap(df_mixed, level=1)
+            # df_mixed = DataFrame(ags=[AGS("01010000"), AGS("02010000")], values=[10, 20])
+            # result = agsmap(df_mixed, level=2)
+            # @test result isa Plots.Plot
+            # @test_throws "The AGSs provided in the input dataframes are not all refering to states (level 1)" agsmap(df_mixed, level=1)
 
-            df_mixed = DataFrame(ags=[AGS("01010100"), AGS("02010100")], values=[10, 20])
-            result = agsmap(df_mixed, level=3)
-            @test result isa Plots.Plot
-            @test_throws "The AGSs provided in the input dataframes are not all refering to states (level 1)" agsmap(df_mixed, level=1)
-            @test_throws "The AGSs provided in the input dataframes are not all refering to counties (level 2)" agsmap(df_mixed, level=2)
+            # df_mixed = DataFrame(ags=[AGS("01010100"), AGS("02010100")], values=[10, 20])
+            # result = agsmap(df_mixed, level=3)
+            # @test result isa Plots.Plot
+            # @test_throws "The AGSs provided in the input dataframes are not all refering to states (level 1)" agsmap(df_mixed, level=1)
+            # @test_throws "The AGSs provided in the input dataframes are not all refering to counties (level 2)" agsmap(df_mixed, level=2)
 
             # Test: specific Wrapper-Functions
             result = statemap(df_states)
