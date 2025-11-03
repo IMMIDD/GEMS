@@ -92,6 +92,8 @@ mutable struct Simulation
     pathogen::Pathogen
     birth_model::BirthModel
     ags_to_municipality_id::Dict{AGS, Int32}
+    maternal_cache::MaternalAgeCache
+    last_maternal_cache_update::Int16
 
     # logger
     infectionlogger::InfectionLogger
@@ -626,7 +628,7 @@ mutable struct Simulation
             settings_from_jld2!(settingsfile, settings, renaming)
         end
 
-        birth_model = BirthModel("data/birthmonths.csv")
+        birth_model = BirthModel("data/birthmonths.csv", "data/historical_population_germany.csv")
 
         ags_to_municipality_id = Dict{AGS, Int32}()
         if !isnothing(settings.settings[Municipality])
@@ -683,6 +685,8 @@ mutable struct Simulation
 
         sim.birth_model = birth_model
         sim.ags_to_municipality_id = ags_to_municipality_id
+        sim.maternal_cache = MaternalAgeCache(Individual[], Individual[], Individual[])
+        sim.last_maternal_cache_update = -1
 
         initialize!(sim)
 

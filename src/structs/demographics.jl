@@ -12,8 +12,18 @@ end
 Holds birth data for direct lookup and tracks the latest available year for fallback.
 """
 struct BirthModel
-    lookup_data::Dict{Tuple{Int, Int}, Float64} # Stores (Year, Month) -> Daily Births
-    latest_available_year::Int
+    lookup_per_capita_rate::Dict{Tuple{Int, Int}, Float64}
+    latest_complete_year::Int
+end
+
+
+"""
+Holds cached vectors of eligible mothers, sorted by age group.
+"""
+struct MaternalAgeCache
+    under_18::Vector{Individual}
+    between_18_and_40::Vector{Individual}
+    between_40_and_49::Vector{Individual}
 end
 
 
@@ -50,16 +60,21 @@ end
 Loads birth data, prepares it for direct lookup, and finds the latest year
 in the dataset to use as a fallback.
 """
-function BirthModel(data_path::String)
-    df = CSV.read(data_path, DataFrame)
+function BirthModel(birth_data_path::String, pop_data_path::String)
+    birth_df = CSV.read(birth_data_path, DataFrame)
+    pop_df = CSV.read(pop_data_path, DataFrame)
+    df = innerjoin(birth_df, pop_df, on = :year)
+
     sort!(df, [:year, :month])
 
     lookup = Dict{Tuple{Int, Int}, Float64}()
     for row in eachrow(df)
         year, month = row.year, row.month
         days_in_month = daysinmonth(Date(year, month))
-        daily_births = (row.total_male + row.total_female) / days_in_month
-        lookup[(year, month)] = daily_births
+        total_births = row.total_male + row.total_female
+        total_population = row.population
+        daily_rate_per_capita = (total_births / total_population) / days_in_month
+        lookup[(year, month)] = daily_rate_per_capita
     end
 
     latest_year = maximum(filter(row -> row.month == 12, df).year)

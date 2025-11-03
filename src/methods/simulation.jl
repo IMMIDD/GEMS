@@ -225,17 +225,19 @@ function process_births!(sim::Simulation)
     max_id = maximum(i -> id(i), individuals(pop))
 
     for i in 1:num_births
-        # create a new individual
+        # select mother
+        mother = select_random_mother(sim)
+
+        target_household = households(sim)[household_id(mother)]
+        target_municipality = municipalities(sim)[municipality_id(mother)]
+
+        # create newborn
         new_id = max_id + i
         newborn = Individual(
             id = new_id,
             sex = rand(1:2),
             birthday = sim.startdate + Day(tick(sim))
         )
-
-        # assign the newborn to a random household and corresponding municipality
-        target_household = rand(households(sim))
-        target_municipality = municipalities(sim)[sim.ags_to_municipality_id[ags(target_household)]]
 
         setting_id!(newborn, Household, id(target_household))
         setting_id!(newborn, Municipality, id(target_municipality))
