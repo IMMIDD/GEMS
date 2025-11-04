@@ -182,3 +182,65 @@ function select_random_mother(sim::Simulation)
     # random mother within that group
     return rand(chosen_group)
 end
+
+
+
+
+"""
+    initialize_maternal_links!(sim::Simulation)
+
+Iterates through the initial population and infers a mother for any
+individual under 18. This "best-guess" uses a weighted probability
+distribution if multiple potential mothers are found in a household.
+"""
+function initialize_maternal_links!(sim::Simulation)
+    current_date = sim.startdate + Day(tick(sim)) 
+
+    # Define age brackets in days
+    age_15 = 15 * 365
+    age_18 = 18 * 365
+    age_40 = 40 * 365
+    age_49 = 49 * 365
+
+    for ind in individuals(population(sim))
+        if age_in_years(ind, current_date) < 18 && ind.mother_id == -1
+            
+            hh = households(sim)[household_id(ind)]
+            potential_mothers = Individual[]
+            
+            for member in individuals(hh)
+                if sex(member) == FEMALE
+                    age_days = age(member, current_date)
+                    # Check if they are in the childbearing age range
+                    if age_days >= age_15 && age_days <= age_49
+                        push!(potential_mothers, member)
+                    end
+                end
+            end
+
+            # make "best guess"
+            if isempty(potential_mothers)
+                continue
+            elseif length(potential_mothers) == 1
+                ind.mother_id = id(first(potential_mothers))
+            else
+                # based on probability distribution
+                weights = Float64[]
+                for mother in potential_mothers
+                    age_days = age(mother, current_date)
+                    if age_days < age_18
+                        push!(weights, 0.0026) 
+                    elseif age_days < age_40
+                        push!(weights, 0.932)  
+                    else 
+                        push!(weights, 0.065)  
+                    end
+                end
+                
+                # Sample one mother based on those weights
+                chosen_mother = sample(potential_mothers, Weights(weights))
+                ind.mother_id = id(chosen_mother)
+            end
+        end
+    end
+end

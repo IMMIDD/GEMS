@@ -633,7 +633,7 @@ mutable struct Simulation
         birth_model = BirthModel("data/birthmonths.csv", "data/historical_population_germany.csv")
 
         ags_to_municipality_id = Dict{AGS, Int32}()
-        if !isnothing(settings.settings[Municipality])
+        if haskey(settings.settings, Municipality) && !isnothing(settings.settings[Municipality])
             for mun in settings.settings[Municipality]
                 ags_to_municipality_id[ags(mun)] = id(mun)
             end
@@ -689,6 +689,7 @@ mutable struct Simulation
         sim.ags_to_municipality_id = ags_to_municipality_id
         sim.maternal_cache = MaternalAgeCache(Individual[], Individual[], Individual[])
         sim.last_maternal_cache_update = -1
+        initialize_maternal_links!(sim)
 
         initialize!(sim)
 

@@ -46,6 +46,17 @@ mutable struct Population
     `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
     """
     function Population(df::DataFrame)
+        # Check if the DataFrame has an 'age' column (in years) and needs conversion
+        if "age" in names(df) && !("birthday" in names(df))        
+            ref_date = Date(2024, 12, 31)
+
+            # convert age to birthday with helper function
+            get_bday(age_val) = age_val >= 0 ? Date(year(ref_date) - age_val, 1, 1) : Date(1, 1, 1)     
+            df.birthday = get_bday.(df.age)
+
+            # Remove 'age' column
+            select!(df, Not(:age))
+        end
     
         # filter for columns available in DF and Individual struct
         df_content = df |>

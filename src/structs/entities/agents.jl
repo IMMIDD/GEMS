@@ -129,6 +129,7 @@ A type to represent individuals, that act as agents inside the simulation.
     id::Int32  # 4 bytes
     sex::Int8  # 1 byte
     birthday::Date
+    mother_id::Int32 = -1
     education::Int8 = DEFAULT_SETTING_ID # 1 byte
     occupation::Int16 = DEFAULT_SETTING_ID # 2 byte
 
