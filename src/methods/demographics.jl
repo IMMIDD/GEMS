@@ -120,6 +120,7 @@ function update_maternal_cache!(sim::Simulation)
 
     # get age and define buckets
     current_date = sim.startdate + Day(tick(sim))
+    age_15 = 15 * 365
     age_18 = 18 * 365
     age_40 = 40 * 365
     age_49 = 49 * 365
@@ -129,12 +130,14 @@ function update_maternal_cache!(sim::Simulation)
             age_days = age(ind, current_date)
 
             # sort them into the correct bucket
-            if age_days < age_18
-                push!(cache.under_18, ind)
-            elseif age_days < age_40
-                push!(cache.between_18_and_40, ind)
-            elseif age_days <= age_49
-                push!(cache.between_40_and_49, ind)
+            if age_days >= age_15 && age_days <= age_49
+                if age_days < age_18
+                    push!(cache.under_18, ind)
+                elseif age_days < age_40
+                    push!(cache.between_18_and_40, ind)
+                else
+                    push!(cache.between_40_and_49, ind)
+                end
             end
         end
     end
