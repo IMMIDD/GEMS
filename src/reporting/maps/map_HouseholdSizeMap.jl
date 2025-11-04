@@ -38,13 +38,15 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `plt::AgeMap`: `MapPlot` struct with meta data (i.e. title, description, and filename)
 - `sim::Simulation`: Input data used to generate plot
+- `max_size::Int64 = 10` *(optional)*: Maximum size of households considered for this graph (to exclude large outliers)
+- `fit_lims::Bool = false` *(optional)*: If `true`, the color limits of the plot will be set to the minimum and maximum household size values.
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
 
 - `Plots.Plot`: Average household size map
 """
-function generate(plt::HouseholdSizeMap, sim::Simulation; level::Int = 3, plotargs...)
+function generate(plt::HouseholdSizeMap, sim::Simulation; level::Int = 3, max_size::Int64 = 10, fit_lims::Bool = false, plotargs...)
     
     return ags.(sim |> households) |>
         # check if all of the AGS structs are unset/empty
@@ -55,13 +57,13 @@ function generate(plt::HouseholdSizeMap, sim::Simulation; level::Int = 3, plotar
             
             # build map otherwise
             DataFrame(ags = a, size = size.(sim |> households)) |>
+                x -> x[x.size .<= max_size, :] |>
                 x -> prepare_map_df!(x, level = level) |>
                 x -> groupby(x, :ags) |>
                 x -> combine(x, :size => mean => :size) |>
                 x -> agsmap(x,
-                    level = level,
                     fontfamily = "Times Roman",
-                    clims = (0, 5);
+                    clims = fit_lims ? (minimum(x.size), maximum(x.size)) : (0, 5); # if fit_lims is true, set clims to min and max of size
                     plotargs...)
         )
 end

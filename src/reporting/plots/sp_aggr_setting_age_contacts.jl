@@ -121,8 +121,10 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
 
         # create plot object
         p = heatmap(
-            age_group_labels, 
-            age_group_labels, 
+            xticks=(1:length(age_group_labels), age_group_labels), 
+            yticks=(1:length(age_group_labels), age_group_labels), 
+            #age_group_labels, 
+            #age_group_labels, 
             contact_matrix_data, 
             color =:viridis, 
             xlabel = length(stypes) == 1 ? "Ego Age Group\n$st" : "", 

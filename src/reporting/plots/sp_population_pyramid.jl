@@ -67,8 +67,8 @@ function generate(plt::PopulationPyramid, rd::ResultData; plotargs...)
         fontfamily="Times Roman")
 
     # Plot male and female data
-    bar!(male_data[!, :age], male_data[!, :sum], label="Male", orientation=:h, color=palette(:auto,2)[1], linecolor = :match, bar_width=0.5)
-    bar!(female_data[!, :age], female_data[!, :sum], label="Female", orientation=:h, color=palette(:auto,2)[2], linecolor = :match, bar_width=0.5)
+    bar!(male_data[!, :age], male_data[!, :sum], label="Male", orientation=:h, color=gemscolors(2)[1], linecolor = :match, bar_width=0.5)
+    bar!(female_data[!, :age], female_data[!, :sum], label="Female", orientation=:h, color=gemscolors(2)[2], linecolor = :match, bar_width=0.5)
 
     # Get the automatic tick positions
     x_ticks, _ = xticks(p)[1]

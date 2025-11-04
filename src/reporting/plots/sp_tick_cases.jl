@@ -38,13 +38,23 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `plt::TickCases`: `SimulationPlot` struct with meta data (i.e. title, description, and filename)
 - `rd::ResultData`: Input data used to generate plot
+- `series::Union{Symbol, Vector{Symbol}} = [:exposed, :infectious, :removed, :deaths]` *(optional)*: Select one or multiple series (exposed, infectious, removed, deaths) to plot.
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
 
 - `Plots.Plot`: Tick Cases plot
 """
-function generate(plt::TickCases, rd::ResultData; plotargs...)
+function generate(plt::TickCases, rd::ResultData; series::Union{Symbol, Vector{Symbol}} =  [:exposed, :infectious, :removed, :deaths],
+    linewidth = 1, plotargs...)
+
+    # transform everything to a vector of symbols
+    sers = typeof(series) == Symbol ? [series] : unique(copy(series))
+
+    # throw error if empty array is passed
+    if isempty(sers)
+        throw("Provide at least one series (:exposed, :infectious, :removed, :deaths) to plot.")
+    end
 
     cases = rd |> tick_cases
     deaths = rd |> tick_deaths
@@ -62,12 +72,31 @@ function generate(plt::TickCases, rd::ResultData; plotargs...)
     
     # update filename
     filename!(plt, "cases_per_$uticks.png")
+   
 
     plot_ticks = plot(xlabel=upper_ticks, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
-    plot!(plot_ticks, cases[!,"exposed_cnt"], label="Exposed")
-    plot!(plot_ticks, cases[!,"infectious_cnt"], label="Infectious")
-    plot!(plot_ticks, cases[!,"removed_cnt"], label="Removed")
-    plot!(plot_ticks, deaths[!, "death_cnt"], label="Deaths", c=:black)
+    
+    # plot series one by one
+    if :exposed in sers
+        plot!(plot_ticks, cases[!,"exposed_cnt"], label="Exposed", c=:blue, linewidth = linewidth)
+        filter!(x -> x != :exposed, sers)
+    end
+    if :infectious in sers
+        plot!(plot_ticks, cases[!,"infectious_cnt"], label="Infectious", linewidth = linewidth)
+        filter!(x -> x != :infectious, sers)
+    end
+    if :removed in sers
+        plot!(plot_ticks, cases[!,"removed_cnt"], label="Removed", linewidth = linewidth)
+        filter!(x -> x != :removed, sers)
+    end
+    if :deaths in sers
+        plot!(plot_ticks, deaths[!, "death_cnt"], label="Deaths", c=:black, linewidth = linewidth)
+        filter!(x -> x != :deaths, sers)
+    end
+
+    if length(sers) > 0
+         @warn "Series $(sers) cannot be plotted."
+    end
 
     # add custom arguments that were passed
     plot!(plot_ticks; plotargs...)

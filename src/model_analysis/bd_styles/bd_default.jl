@@ -31,6 +31,7 @@ individual runs.
         - `number_of_runs::Int64`: Number of simulation runs
         - `total_infections::Dict{String, Real}`: Summary statistics on total infections across simulation runs
         - `attack_rate::Dict{String, Real}`: Summary statistics on attack rates across simulation runs
+        - `r0::Dict{String, Real}`: Summary statistics on the basic reproduction number (R0)
         - `total_quarantines::Dict{String, Real}`: Summary statistics on total quarantines across simulation runs
         - `total_tests::Dict{String, Real}`: Summary statistics on total tests across simulation runs
         
@@ -77,6 +78,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "number_of_runs" => () -> bP |> rundata |> length,
                     "total_infections" => () -> bP |> total_infections |> aggregate_values,
                     "attack_rate" => () -> bP |> attack_rate |> aggregate_values,
+                    "r0" => () -> bP |> r0 |> aggregate_values,
                     "total_quarantines" => () -> bP |> total_quarantines |> aggregate_values,
                     "total_tests" => () -> bP |> total_tests |> aggregate_dicts,
                 ),

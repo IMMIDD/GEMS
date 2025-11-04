@@ -998,6 +998,20 @@ function load_start_condition(start_condition_dict::Dict, pathogens::Vector{Path
             error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
         end
         return InfectedFraction(start_condition_dict["fraction"], pathogen)
+
+    elseif start_condition_dict["type"] == "InfectedIndividuals"
+        # find pathogen under assumption, that the name is UNIQUE
+        pathogen = nothing
+        for p in pathogens
+            if name(p) == start_condition_dict["pathogen"]
+                pathogen = p
+            end
+        end
+        if isnothing(pathogen)
+            error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
+        end
+        return InfectedIndividuals(start_condition_dict["seeds"], pathogen)
+
     elseif start_condition_dict["type"] == "PatientZero"
         # find pathogen under assumption, that the name is UNIQUE
         pathogen = nothing
@@ -1010,6 +1024,7 @@ function load_start_condition(start_condition_dict::Dict, pathogens::Vector{Path
             error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
         end
         return PatientZero(pathogen)
+
     elseif start_condition_dict["type"] == "PatientZeros"
         # find pathogen under assumption, that the name is UNIQUE
         pathogen = nothing
@@ -1022,6 +1037,20 @@ function load_start_condition(start_condition_dict::Dict, pathogens::Vector{Path
             error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
         end
         return PatientZeros(pathogen, start_condition_dict["ags"])
+
+    elseif start_condition_dict["type"] == "RegionalSeeds"
+        # find pathogen under assumption, that the name is UNIQUE
+        pathogen = nothing
+        for p in pathogens
+            if name(p) == start_condition_dict["pathogen"]
+                pathogen = p
+            end
+        end
+        if isnothing(pathogen)
+            error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
+        end
+        return RegionalSeeds(pathogen, start_condition_dict["ags"])
+        
     else
         error("StartCondition "*start_condition_dict["type"]*" is not implemented!")
     end

@@ -39,13 +39,14 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `plt::SinglesMap`: `MapPlot` struct with meta data (i.e. title, description, and filename)
 - `sim::Simulation`: Input data used to generate plot
+- `fit_lims::Bool = false` *(optional)*: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
 
 - `Plots.Plot`: Fraction of single-person households map plot
 """
-function generate(plt::SinglesMap, sim::Simulation; level::Int = 3, plotargs...)
+function generate(plt::SinglesMap, sim::Simulation; level::Int = 3, fit_lims::Bool = false, plotargs...)
     
     return ags.(sim |> households) |>
         # check if all of the AGS structs are unset/empty
@@ -58,11 +59,11 @@ function generate(plt::SinglesMap, sim::Simulation; level::Int = 3, plotargs...)
             DataFrame(ags = a, size = size.(sim |> households)) |>
                 x -> prepare_map_df!(x, level = level) |>
                 x -> groupby(x, :ags) |>
-                x -> combine(x, :size => (x -> count(y -> y == 1, x) / length(x)) => :singles) |>
+                x -> combine(x, :size => (x -> 100 * count(y -> y == 1, x) / length(x)) => :singles) |>
                 x -> agsmap(x,
-                    level = level,
                     fontfamily = "Times Roman",
-                    clims = (0, 1);
+                    # if fit_lims is true, set clims to min and max of values
+                    clims = fit_lims ? (minimum(x.singles), maximum(x.singles)) : (0, 1); 
                     plotargs...)
         )
 end
