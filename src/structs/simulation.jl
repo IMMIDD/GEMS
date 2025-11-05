@@ -111,6 +111,9 @@ mutable struct Simulation
     # StepMod
     stepmod::Function
 
+    # RNG
+    main_rng::AbstractRNG
+    thread_rngs::Vector{AbstractRNG}
     
     ### INNER CONSTRUCTOR
 
@@ -151,7 +154,9 @@ mutable struct Simulation
          EventQueue(), # event_queue::EventQueue
          [], # strategies::Vector{Strategy}
          [], # testtypes::Vector{AbstractTestType}
-         x -> x # stepmod::Function
+         x -> x, # stepmod::Function
+         Xoshiro(0), # rng::AbstractRNG
+         [Xoshiro(0) for _ in 1:Threads.maxthreadid()] # thread_rngs::Vector{AbstractRNG}
          ) 
     end
 
@@ -220,7 +225,7 @@ mutable struct Simulation
     | `label`                         | `String`               | Label used to name simulation runs during analysis                                                                                    |
     | `stepmod`                       | `Function`             | One-agument function which will be executed each simulation step, called on the `Simulation` object                                   |
     | `seed`                          | `Int64`                | Random seed                                                                                                                           |
-    | `global_setting`                 | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
+    | `global_setting`                | `Bool`                 | Enable or disable a global setting that contains every individual                                                                     |
     | `startdate`                     | `Date`, `String`       | Simulation start date (format: `YYYY.MM.DD`)                                                                                          |
     | `enddate`                       | `Date`, `String`       | Simulation end date (format: `YYYY.MM.DD`)                                                                                            |
     | `infected_fraction`             | `Float64`              | Fraction of the initially infected agents for the `InfectedFraction` start condition                                                  |
@@ -551,16 +556,25 @@ mutable struct Simulation
 
         validate_pathogens(properties, 1) # TODO adapt if more than one pathogen is possible, replace 1 by number of pathogens automatically
 
+        # create and seed the main RNG upfront if a seed is provided
+        local main_rng
+        if haskey(properties["Simulation"], "seed")
+            seed = properties["Simulation"]["seed"]
+            main_rng = Xoshiro(seed)
+        else
+            main_rng = Xoshiro()
+        end
+
         # 6 Create the population
 
         if isnothing(population)
             printinfo("\u2514 Creating population")
             if haskey(properties, "Population")
                 symbolic_parameters = Dict(Symbol.(k) => v for (k, v) in properties["Population"])
-                population = Population(;symbolic_parameters...)
+                population = Population(;rng = main_rng, symbolic_parameters...)
             else
                 @warn "There is no Population section in your config file. Please add this and ensure it is complete. Please refer to the documentation on config files"
-                population = Population()
+                population = Population(rng = main_rng)
             end
         elseif isa(population, Population)
             printinfo("\u2514 Loading provided population object")
@@ -580,13 +594,6 @@ mutable struct Simulation
         end
 
         # 7 We create the sim object with the parameters
-
-        
-        if "seed" in keys(properties["Simulation"])
-            seed = properties["Simulation"]["seed"]
-            # println(seed)
-            initialize_seed(seed)
-        end
     
         # 8 create all necessary pathogens
         pathogens = create_pathogens(properties["Pathogens"])
@@ -611,6 +618,11 @@ mutable struct Simulation
         printinfo("\u2514 Creating simulation object")
         
         sim = Simulation(configfile, start_condition, stop_criterion, population, settings, label)
+
+        sim.main_rng = main_rng
+        for i in 1:Threads.maxthreadid()
+            Random.seed!(sim.thread_rngs[i], gems_rand(sim.main_rng, Int64))
+        end
 
         # Remove empty containersettings
         if settingsfile != ""
@@ -1113,15 +1125,6 @@ end
 
 
 """
-    initialize_seed(x::Int64)
-
-Creates a random value based on the seed provided
-"""
-function initialize_seed(x::Int64)
-    return Random.seed!(x)
-end
-
-"""
     obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
 Interface to remotely access a setting and population file
@@ -1271,6 +1274,17 @@ function tickunit(simulation::Simulation)::String
         return "tick"
     end
 end
+
+
+"""
+    rng(simulation::Simulation)
+
+Returns simulation RNG of the current thread.
+"""
+function rng(simulation::Simulation)
+    return simulation.thread_rngs[Threads.threadid()]
+end
+
 
 """
     start_condition(simulation)

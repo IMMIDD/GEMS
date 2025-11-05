@@ -57,39 +57,29 @@ function pathogen(infectedFraction::InfectedFraction)::Pathogen
     return infectedFraction.pathogen
 end
 
-
+### NECESSARY INTERFACE
 """
-    parameters(inffrac::InfectedFraction)
+    initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
 
-Returns a dictionary containing the parameters of the `InfectedFraction`
-start condition.
+Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
+For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
+the seed is drawn from `rng(simulation)`. Otherwise, the provided `seed_sample` is used.
 """
-function parameters(inffrac::InfectedFraction)
-    return Dict(
-        "pathogen" => inffrac |> pathogen |> name,
-        "pathogen_id" => inffrac |> pathogen |> id,
-        "fraction" => inffrac |> fraction
-        )
-end
+function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? Xoshiro(gems_rand(rng(simulation), Int64)) : Xoshiro(seed_sample)
 
-
-"""
-    initialize!(simulation::Simulation, condition::InfectedFraction)
-
-Initializes the simulation model with a fraction of infected individuals, provided by the start condition.
-"""
-function initialize!(simulation::Simulation, condition::InfectedFraction)
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
-    to_infect = sample(ind, to_sample, replace=false)
+    to_infect = gems_sample(rng_sample, ind, to_sample, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition), sim = simulation)
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -160,15 +150,19 @@ end
 
 
 """
-    initialize!(simulation::Simulation, condition::InfectedIndividuals)
+    initialize!(simulation::Simulation, condition::InfectedIndividuals; seed_sample::Union{Int64,Nothing}=nothing)
 
 Initializes the simulation model with a number of infected individuals, provided by the start condition.
 """
-function initialize!(simulation::Simulation, condition::InfectedIndividuals)
+function initialize!(simulation::Simulation, condition::InfectedIndividuals; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
+
+
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = seeds(condition)
-    to_infect = sample(ind, to_sample, replace=false)
+    to_infect = gems_sample(rng_sample, ind, to_sample, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
@@ -214,17 +208,20 @@ end
 
 Initializes the simulation model with one infected individual drawn at random.
 """
-function initialize!(simulation::Simulation, condition::PatientZero)
+function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
+
     # number of individuals to infect
     ind = individuals(population(simulation))
-    to_infect = sample(ind, 1, replace=false)
+    to_infect = gems_sample(rng_sample, ind, 1, replace=false)
 
     # overwrite pathogen in simulation struct
     pathogen!(simulation, pathogen(condition))
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
@@ -303,13 +300,16 @@ end
 
 
 """
-    initialize!(simulation::Simulation, condition::PatientZeros)
+    initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{Int64,Nothing}=nothing)
 
 Initializes the simulation model with one infected individual drawn at random for
 each of the regions provided via their community identifaction number (AGS) in the
 `PatientZeros` start condition.
 """
-function initialize!(simulation::Simulation, condition::PatientZeros)
+function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
+
     # number of individuals to infect
     to_infect = []
     for a in ags(condition)
@@ -324,7 +324,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
             error("No individuals found in the given ags")
         end
         # Sample one individual from the list of individuals
-        to_infect = push!( to_infect, sample(inds, 1, replace=false) |> Base.first)
+        to_infect = push!(to_infect, gems_sample(rng_sample, inds, 1, replace=false) |> Base.first)
     end
     
     # overwrite pathogen in simulation struct
@@ -332,7 +332,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros)
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(condition))
+        infect!(i, tick(simulation), pathogen(condition), sim = simulation, rng=rng(simulation))
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])
         end
@@ -407,7 +407,7 @@ function parameters(rs::RegionalSeeds)
 end
 
 """
-    initialize!(simulation::Simulation, condition::RegionalSeeds)
+    initialize!(simulation::Simulation, condition::RegionalSeeds; seed_sample::Union{Int64,Nothing}=nothing)
 
 Initializes the simulation model, infecting the number of individuals
 in the regions, both provided by the `RegionalSeeds` start condition.
@@ -417,7 +417,9 @@ It would also be possible to provide, e.g., a municiaplity AND its
 surrounding county. In that case, an individual could be sampled twice.
 This function will not prevent that but throw a warning.
 """
-function initialize!(simulation::Simulation, condition::RegionalSeeds)
+function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
 
     # takes an input vector of AGS and a reference AGS
     # returns a bitvector indicating whether the respective
@@ -449,7 +451,7 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds)
                 # (whether its a state, county, or municipality)
                 in_ags -> ind_ags.individual[filter_by_ags(ind_ags.ags, in_ags)] |>
                 # sample required number of individuals
-                inds -> sample(inds, cnt, replace=false) |>
+                inds -> gems_sample(rng_sample, inds, cnt, replace=false) |>
                 inds -> append!(to_infect, inds)
         catch
             throw("Getting the seeding infections crashed. You might have provided a region in the configs that is not available in the population model or asked to infect a number of people that exceeds the population size of the region.")

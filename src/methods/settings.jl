@@ -331,25 +331,25 @@ end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64)
+    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64)
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
     if n >= length(individuals)
         return individuals
     else
-        return sample(individuals, n, replace = false)
+        return gems_sample(rng, individuals, n, replace = false)
     end
 end
 
 
 """
-    sample_individuals(setting::IndividualSetting, n::Int64)
+    sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng())
 
 Returns a subsample of the setting's `Individuals` of sample size `n`.
 """
-sample_individuals(setting::IndividualSetting, n::Int64) = sample_individuals(setting |> individuals, n)
+sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
 
 
 """

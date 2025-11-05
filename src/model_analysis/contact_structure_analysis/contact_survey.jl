@@ -83,17 +83,17 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
                 )
         end
         
-        s = stngs[rand(1:length(stngs))]
+        s = stngs[gems_rand(rng(simulation), 1:length(stngs))]
         present_inds = present_individuals(s, simulation)
 
         # jump to next iteration if there are not individuals present
         if isempty(present_inds) continue end
 
-        ind_index = rand(1:length(present_inds))
+        ind_index = gems_rand(rng(simulation), 1:length(present_inds))
         ind = present_inds[ind_index]
 
         # sample contacts for an individual based on the individuals present in the setting at the current tick
-        contacts = sample_contacts(s.contact_sampling_method, s, ind_index, present_inds, tick(simulation))
+        contacts = sample_contacts(s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), rng=rng(simulation))
 
         if length(contacts) > 0
             for contact in contacts
