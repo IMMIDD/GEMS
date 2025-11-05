@@ -38,7 +38,34 @@ run!(b)
 rd = ResultData(b)
 gemsplot(rd, legend = :topright)</code></pre><p><strong>Plot</strong></p><p align="center">
     <img src="../assets/tutorials/tut_batches_parameter-spaces.png" width="80%"/>
-</p><h2 id="Running-Scenarios"><a class="docs-heading-anchor" href="#Running-Scenarios">Running Scenarios</a><a id="Running-Scenarios-1"></a><a class="docs-heading-anchor-permalink" href="#Running-Scenarios" title="Permalink"></a></h2><p>GEMS&#39; batch functionalities offer easy options to compare different scenarios and run multiple simulations for each of them. The example below compares a baseline scenario with a scenario with a lower <code>transmission_rate</code> and we assume that this is due to mask-wearing mandates. It spawns five simulations for each of the scenarios and puts them into the same batch, runs it, and visualizes the processed results:</p><pre><code class="language-julia hljs">using GEMS
+</p><p>You can also vary multiple parameters at once and show the results in a heatmap. This example runs simulations varying the <code>transmission_rate</code> and <code>time_to_recovery</code>, and plots the calculated <code>r0</code> value of all combinations in a heatmap:</p><pre><code class="language-julia hljs">using GEMS
+
+xvals = []
+yvals = []
+outvals = []
+
+# vary transmission rate
+for tr in 0.1:0.01:0.2
+    # vary time to recovery
+    for rec in 2:10
+        sim = Simulation(transmission_rate = tr, time_to_recovery = rec)
+        run!(sim)
+        rd = ResultData(sim, style = &quot;LightRD&quot;)
+
+        # extract data for heatmap
+        push!(xvals, tr)
+        push!(yvals, rec)
+        push!(outvals, r0(rd))
+    end
+end
+
+gemsheatmap(xvals, yvals, outvals,
+    xlabel = &quot;Transmission Rate&quot;,
+    ylabel = &quot;Time to Recovery (Days)&quot;,
+    colorbar_title = &quot;Basic Reproduction Number&quot;,
+    color = :r0) </code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_sweep_heatmap.png" width="80%"/>
+</p><div class="admonition is-info" id="How-can-I-run-more-than-one-repetition-per-combination?-6d4a35deb504ea82"><header class="admonition-header">How can I run more than one repetition per combination?<a class="admonition-anchor" href="#How-can-I-run-more-than-one-repetition-per-combination?-6d4a35deb504ea82" title="Permalink"></a></header><div class="admonition-body"><p>You can enclose the experiment in another loop, running each combination as many times as you want. The <code>gemsheatmap()</code> function can take multiple entries of the same (<code>xvals</code>, <code>yvals</code>) combinations. It automatically generates the mean value across observations. You can also change the aggregation function. Please lookup the <code>gemsheatmap()</code> documentation.</p></div></div><h2 id="Running-Scenarios"><a class="docs-heading-anchor" href="#Running-Scenarios">Running Scenarios</a><a id="Running-Scenarios-1"></a><a class="docs-heading-anchor-permalink" href="#Running-Scenarios" title="Permalink"></a></h2><p>GEMS&#39; batch functionalities offer easy options to compare different scenarios and run multiple simulations for each of them. The example below compares a baseline scenario with a scenario with a lower <code>transmission_rate</code> and we assume that this is due to mask-wearing mandates. It spawns five simulations for each of the scenarios and puts them into the same batch, runs it, and visualizes the processed results:</p><pre><code class="language-julia hljs">using GEMS
 
 sims = Simulation[]
 for i in 1:5
@@ -76,7 +103,7 @@ run!(combined_batch)
 rd = ResultData(combined_batch)
 gemsplot(rd, type = :TickCases)</code></pre><p><strong>Plot</strong></p><p align="center">
     <img src="../assets/tutorials/tut_batches_2.png" width="60%"/>
-</p><h2 id="*BatchData*-Objects"><a class="docs-heading-anchor" href="#*BatchData*-Objects"><em>BatchData</em> Objects</a><a id="*BatchData*-Objects-1"></a><a class="docs-heading-anchor-permalink" href="#*BatchData*-Objects" title="Permalink"></a></h2><p>While <code>ResultData</code> objects are the processed output of single simulation runs, <code>BatchData</code> objects are processed output of Batches. They contain aggregated data on the simulations, e.g., the average number of total infections including standard devation, confidence intervals and ranges. While you do not necessarily need a <code>BatchData</code> object to plot batches, they do contain a lot of helpful data. Here&#39;s an example:</p><pre><code class="language-julia hljs">using GEMS
+</p><h2 id="*BatchData*-Objects"><a class="docs-heading-anchor" href="#*BatchData*-Objects"><em>BatchData</em> Objects</a><a id="*BatchData*-Objects-1"></a><a class="docs-heading-anchor-permalink" href="#*BatchData*-Objects" title="Permalink"></a></h2><p>While <code>ResultData</code> objects are the processed output of single simulation runs, <code>BatchData</code> objects are processed output of Batches. They contain aggregated data on the simulations, e.g., the average number of total infections including standard deviation, confidence intervals and ranges. While you do not necessarily need a <code>BatchData</code> object to plot batches, they do contain a lot of helpful data. Here&#39;s an example:</p><pre><code class="language-julia hljs">using GEMS
 
 sims = Simulation[]
 for i in 1:5
@@ -153,4 +180,4 @@ infections(rns[1])</code></pre><p><strong>Output</strong></p><pre><code class="n
     ⋮  |      ⋮          ⋮      ⋮      ⋮            ⋮              ⋮            ⋮     
  75362 │        36576     56  22625   99999               56
  75363 │         7133     34  92825  100000               36                ⋯
-38 columns and 75359 rows omitted</code></pre><h2 id="Custom-*BatchDataStyles*"><a class="docs-heading-anchor" href="#Custom-*BatchDataStyles*">Custom <em>BatchDataStyles</em></a><a id="Custom-*BatchDataStyles*-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-*BatchDataStyles*" title="Permalink"></a></h2><p>t.b.d.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_plotting/">« 3 - Plotting</a><a class="docs-footer-nextpage" href="../tut_pops/">5 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Friday 17 October 2025 10:15">Friday 17 October 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+38 columns and 75359 rows omitted</code></pre><h2 id="Custom-*BatchDataStyles*"><a class="docs-heading-anchor" href="#Custom-*BatchDataStyles*">Custom <em>BatchDataStyles</em></a><a id="Custom-*BatchDataStyles*-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-*BatchDataStyles*" title="Permalink"></a></h2><p>t.b.d.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_plotting/">« 3 - Plotting</a><a class="docs-footer-nextpage" href="../tut_pops/">5 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Wednesday 5 November 2025 12:57">Wednesday 5 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
