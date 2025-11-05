@@ -49,7 +49,7 @@ We discuss these ideas in:
 ## [Hierarchical Setting Structure](@id setting-hierarchy)
 
 Many places, such as schools or workplaces, can be very large.
-However, daily contacts often just occur between class mates or office colleauges.
+However, daily contacts often just occur between class mates or office colleagues.
 GEMS arranges settings hierarchically to represent these nested structures.
 
 ```@raw html
@@ -84,7 +84,7 @@ You can pass arguments `pop_size` (called `n` in the explanation below), `avg_ho
 
 The population generator will first set up an empty dataframe with one row per individual (Step 1) and add the required number of households with one index individual per household (Step 2).
 Their ages will be randomly sampled from the German age distribution.
-We then iteratevly create the remainig individuals.
+We then iteratively create the remaining individuals.
 To get a somewhat realistic household age-coupling of individuals, we first select on of the index individuals and sample the age for a new household member based on household contact data from the [COVIMOD study](https://bmcmedicine.biomedcentral.com/articles/10.1186/s12916-021-02139-6) (Step 3).
 In the last step, we sample a school ID for every agent between the ages of 6 and 18, and an office for all agents between the ages of 18 and 65.
 While the example refers to "schools", they are internally handled as `SchoolClass`es.
@@ -112,5 +112,5 @@ plot(
 </p>
 ```
 
-!!! warning "This does only apply to the on-the-fly genrated populations!"
+!!! warning "This does only apply to the on-the-fly generated populations!"
     If you are using any of the pre-built population models, e.g., via `Simulation(population = "NRW")`, you will get a model that is based on the [Gesyland Project](https://gesyland.eu/)

@@ -3,7 +3,7 @@ export region_range
 export generate_map
 
 # shapefile maps
-export agsmap, statemap, countymap, municipalitymap, prepare_map_df!
+export agsmap, prepare_map_df!, prepare_map_df
 
 # gemsmap
 export gemsmap
@@ -115,17 +115,13 @@ Returns a `Plot.js` plot with shapes of German states, counties, or municipaliti
 The input dataframe `df` requires two columns. The first column needs to be named `ags`
 and has to be a vector of `AGS` structs (Amtlicher Gemeindeschlüssel). The second
 column needs to be a vector of numerical values which are used to color-code the map.
-The `level` argument defines wether the map plots states (`level = 1`),
-counties (`level = 2`) or municipalities (`level = 3`). Note that the `AGS` in the
-dataframe must thus also be of the same geographic resolution. The optional
-`plotargs...` are passed to the plot object. Please lookup the `Plots.jl`
-package for more information about what arguments can be used to customize a plot.
+The function will look for shapefiles on the highest community level first (i.e. states).
+If no `AGS` matches, counties and municipalities will be evaluated next.
 
 # Parameters
 
 - `df::DataFrame`: DataFrame with `ags`-named column that contains `AGS` structs and
     a second column with numerical values.
-- `level::Int64`: Map resolution. states (`level = 1`), counties (`level = 2`) or municipalities (`level = 3`)
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
@@ -133,30 +129,39 @@ package for more information about what arguments can be used to customize a plo
 - `Plots.Plot`: Plot using the `Plots.jl` package's struct.
 
 """
-function agsmap(df::DataFrame, level::Int64; plotargs...)
+function agsmap(df::DataFrame; plotargs...)
     # check if the dataframe has the right columns
     names(df)[1] != "ags" ? throw("The first column of the input dataframe must be named 'ags'.") : nothing
     typeof(df[:,1]) != Vector{AGS} ? throw("The first column of the input dataframe must contain a Vector of AGS structs") : nothing
-    !(eltype(df[:,2]) <: Real) ? throw("The second column of the input dataframe must contain a Vector of numeric values") : nothing
-
-    # check if all AGS are of the right level (state, county, municipality)
-    level == 1 && sum(is_state.(df.ags)) != nrow(df) ? throw("The AGSs provided in the input dataframes are not all refering to states (level 1)") : nothing
-    level == 2 && sum(is_county.(df.ags)) != nrow(df) ? throw("The AGSs provided in the input dataframes are not all refering to counties (level 2)") : nothing
-    level == 3 && sum(is_district.(df.ags)) + sum(is_state.(df.ags)) > 0 ? throw("The AGSs provided in the input dataframes are not all refering to municipalities (level 3)") : nothing
+    !(all(x -> isa(x, Number), df[:,2]) ) ? throw("The second column of the input dataframe must contain a Vector of numeric values") : nothing
 
     # check if all ags values are unique
     length(df.ags) != length(unique(df.ags)) ? throw("All AGS values need to be unique! There are duplicates in the input dataframe") : nothing
 
-    # check if level is between 1 and 3
-    !(1 <= level <= 3) ? throw("The level must be either 1 (States), 2 (Counties), or 3 (Municipalities)") : nothing
-
-    # load shapefile for Germany
-    shptable = germanshapes(level)
+    # load shapefiles for Germany
+    stateshapes = germanshapes(1) |> 
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN, geometry = shps.geometry)
+    countyshapes = germanshapes(2) |> 
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN, geometry = shps.geometry)
+    municipalityshapes = germanshapes(3) |> 
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN, geometry = shps.geometry)
 
     # match input data with shapefile (based on AGS)
-    shpdata = DataFrame(ags = AGS.(shptable.AGS_0), gen = shptable.GEN, geometry = shptable.geometry) |>
-        x -> leftjoin(x, df, on = :ags) |>
-        x -> filter(row -> !ismissing(row[4]), x)
+    shpdata = df |>
+        regions -> vcat(
+            leftjoin(regions[is_state.(regions.ags), :], stateshapes, on = :ags),
+            leftjoin(regions[is_county.(regions.ags), :], countyshapes, on = :ags),
+            leftjoin(regions[.!is_state.(regions.ags) .&& .!is_county.(regions.ags), :], municipalityshapes, on = :ags)
+        )
+
+    # check if input dataframe has AGS that we don't have shapes for
+    mssng = shpdata.ags[ismissing.(shpdata.geometry)]
+    if length(mssng) > 0
+        @warn "There are Regions in the input dataframe that we do not have a polygon for: $mssng"
+    end
+
+    # filter mssing data out for plotting
+    shpdata = shpdata[.!ismissing.(shpdata.geometry), :]
 
     # build the plot
     p = plot(fillcolor=:reds, size = (1000,800), aspect_ratio = :equal, axis = false, grid = false) # default parameters
@@ -164,44 +169,27 @@ function agsmap(df::DataFrame, level::Int64; plotargs...)
 
     argdict = Dict(plotargs)
     for row in eachrow(shpdata)
+
         # there seems to be a fillcolor bug in Plots.js where the color is
         # not transferred to the shapes if it's not explicitly stated each
         # time a new shape is drawn. Thus, when fillcolor is provided, it's
-        # forwarded to the individual shape calls here.
-        haskey(argdict, :fillcolor) ? plot!(p, row.geometry, fill_z = row[4], fillcolor = argdict[:fillcolor]) : plot!(p, row.geometry, fill_z = row[4])
+        # forwarded to the individual shape calls here. The same applies 
+        # to the linecolor
+
+        # prepare keyword arguments for the plot! function
+        kwargs = Dict{Symbol, Any}(:fill_z => row[2])
+        if haskey(argdict, :fillcolor)
+            kwargs[:fillcolor] = argdict[:fillcolor]
+        end
+        if haskey(argdict, :linecolor)
+            kwargs[:linecolor] = argdict[:linecolor]
+
+        end
+        plot!(p, row.geometry; kwargs...)
     end
 
     return(p)
 end
-
-
-"""
-    agsmap(df::DataFrame; plotargs...)
-
-Wrapper for the agsmap function that infers the correct geographical
-resolution (`level`) from the input dataframe. Please lookup the
-`agsmap(df, level; plotargs...)` function's docstring for more information.
-"""
-function agsmap(df::DataFrame; plotargs...)
-    # if level kw is passed, dispatch level-function and pass other arguments without level
-    if haskey(plotargs, :level)
-        agsmap(df, plotargs[:level]; remove_kw(:level, plotargs)...)
-    end
-
-    # if all states, call level 1 plot function
-    if sum(is_state.(df.ags)) == nrow(df) return agsmap(df, 1; plotargs...) end
-
-    # if all states, call level 2 plot function
-    if sum(is_county.(df.ags)) == nrow(df) return agsmap(df, 2; plotargs...) end
-
-    # else
-    return agsmap(df, 3; plotargs...)
-end
-
-
-statemap(df::DataFrame; plotargs...) = agsmap(df, 1; plotargs...)
-countymap(df::DataFrame; plotargs...) = agsmap(df, 2; plotargs...)
-municipalitymap(df::DataFrame; plotargs...) = agsmap(df, 3; plotargs...)
 
 
 """
@@ -229,12 +217,36 @@ function prepare_map_df!(df::DataFrame; level::Int = 3)
     # handle counties
     if level == 2
         df.ags = county.(df.ags)
-        df = df[is_county.(df.ags),:]
     end
 
-    # handle municipalities
-    if level == 3
-        df = df[.!is_state.(df.ags),:]
+    return df
+end
+
+"""
+    prepare_map_df(df::DataFrame; level::Int = 3)
+
+Input `df` requires the format that can go into the `agsmap()` function. This means, at least
+two columns, the first one being an `AGS` column called `ags` and a second column
+with numerical values. The `level` argument converts the `AGS`s to the
+desired geographical resolution: states (`level = 1`),
+counties (`level = 2`) or municipalities (`level = 3`)
+
+# Returns
+
+- `DataFrame`: Dataframe with desired `AGS` resolution in first column.
+"""
+function prepare_map_df(df::DataFrame; level::Int = 3)
+    names(df)[1] != "ags" ? throw("The first column of the input dataframe must be named 'ags'.") : nothing
+    typeof(df[:,1]) != Vector{AGS} ? throw("The first column of the input dataframe must contain a Vector of AGS structs") : nothing
+
+    # handle states
+    if level == 1
+        return transform(df, :ags => (a -> state.(a)) => :ags)
+    end
+
+    # handle counties
+    if level == 2
+        return transform(df, :ags => (a -> county.(a)) => :ags)
     end
 
     return df
@@ -326,14 +338,19 @@ plot(
 
 # Map Types
 
-| Type                   | Input Object | Description                                                           | Plot-Specific Parameters          |
-| :--------------------- | :----------- | :-------------------------------------------------------------------- | :-------------------------------- |
-| `:AgeMap`              | `Simulation` | Average age per region.                                               |                                   |
-| `:AttackRate`          | `ResultData` | Fraction of people who got infected per region.                       |                                   |
-| `:CaseFatalityMap`     | `ResultData` | Fraction of infections that led to death per region.                  |                                   |
-| `:HouseholdSizeMap`    | `Simulation` | Average household size per region.                                    |                                   |
-| `:PopDensityMap`       | `Simulation` | Population density per region.                                        |                                   |
-| `:SinglesMap`          | `Simulation` | Fraction of single-person households per region.                      |                                   |
+| Type                    | Input Object | Description                                                                 | Plot-Specific Parameters                                                                                         |
+| :---------------------- | :----------- | :-------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
+| `:AgeMap`               | `Simulation` | Average age per region.                                                     | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
+| `:AttackRate`           | `ResultData` | Fraction of people who got infected per region.                             |                                                                                                                  |
+| `:CaseFatalityMap`      | `ResultData` | Fraction of infections that led to death per region.                        |                                                                                                                  |
+| `:ElderlyMap`           | `Simulation` | Fraction of elderly people (65+) per region.                                | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
+| `:HouseholdSizeMap`     | `Simulation` | Average household size per region.                                          | `max_size = 10`: Maximum size of households (default = 10) considered for this graph (to exclude large outliers), `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum household size values. |
+| `:KidsMap`              | `Simulation` | Fraction of kids (0-14) per region.                                         | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
+| `:MultiGenHouseholdMap` | `Simulation` | Fraction of multi-generational households (50+ age difference) per region.  | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.     |
+| `:PopDensityMap`        | `Simulation` | Population density per region.                                              |                                                                                                                  |
+| `:R0Map`                | `ResultData` | Initial reproduction number (R0) per region.                                |                                                                                                                  |
+| `:SinglesMap`           | `Simulation` | Fraction of single-person households per region.                            | `fit_lims = false`: If `true`, the color limits of the plot will be set to the minimum and maximum age.          |
+| `:WeeklyIncidenceMap`   | `ResultData` | 7-Day incidence per 100,000 per county.                                     | `week = 0`: Specify which week you would like to see.                                                            |
 
 **Note:** Maps that use infection data (e.g., the `AttackRate`) use the individuals'
 household location to map the data, not the loction of infection.
@@ -348,6 +365,8 @@ also pass to the `gemsmap()` function and might find helpful:
 - `size = (300, 400)`: Resizing the map plot
 - `title = "My Subtitle"`: Adding a subtitle
 - `plot_title = "My New Title"`: Changing the map title
+- `fillcolor = :blues`: Changing color scheme
+- `linecolor = nothing`: Removing the outline of the map shapes
 
 *Please consult the `Plots.jl` package documentation for a comprehensive list*
 

@@ -35,27 +35,24 @@ Log all current quarantines stratified by occupation (workers, students, all)
 to the simulation's `QuarantineLogger`.
 """
 function log_quarantines(simulation::Simulation)
-    
-    # set up one vector with one entry for each thread
-    tot_cnt = zeros(Int, Threads.maxthreadid())
-    st_cnt  = zeros(Int, Threads.maxthreadid())
-    wo_cnt  = zeros(Int, Threads.maxthreadid())
+
+    # Julia 1.12-safe threaded counting with atomic integers
+    tot = Threads.Atomic{Int}(0)
+    st  = Threads.Atomic{Int}(0)
+    wo  = Threads.Atomic{Int}(0)
 
     Threads.@threads for i in simulation |> individuals
         if isquarantined(i)
-            tid = Threads.threadid()
-            tot_cnt[tid] += 1
-            st_cnt[tid]  += is_student(i)
-            wo_cnt[tid]  += is_working(i)
+            Threads.atomic_add!(tot, 1)
+            Threads.atomic_add!(st,  is_student(i) ? 1 : 0)
+            Threads.atomic_add!(wo,  is_working(i) ? 1 : 0)
         end
     end
 
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-        sum(tot_cnt),
-        sum(st_cnt),
-        sum(wo_cnt)
+        tot[], st[], wo[]
     )
 end
 

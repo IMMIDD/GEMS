@@ -52,6 +52,10 @@ const R_CALCULATION_THRESHOLD = 10
 # (limit for performance reasons)
 const HOUSEHOLD_ATTACK_RATE_SAMPLES = 15_000
 
+# fraction of infections that is used to calculate the R0 value
+# has to be between 0 and 1. A value of 0.05 means that the first
+# 5% of infections are used to calculate the R0 value.
+const R0_CALCULATION_SAMPLE_FRACTION = 0.05
 
 #################
 # LOOKUP VALUES #

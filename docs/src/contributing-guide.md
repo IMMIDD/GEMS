@@ -1,7 +1,7 @@
 # Contributing to GEMS
 
 In case you want to contribute to the GEMS package, please consider that we follow a workflow for the development for which you will find a brief guideline here.
-We are excited to see your contibutions to this project!
+We are excited to see your contributions to this project!
 
 Contributions to GEMS are [released](https://help.github.com/articles/github-terms-of-service/#6-contributions-under-repository-license) to the public under the [project’s open source license](https://github.com/IMMIDD/GEMS/blob/f711885e4497a6162a4aeec6459d77835f25a212/LICENSE).
 

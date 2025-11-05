@@ -81,11 +81,11 @@ mutable struct PostProcessor
             x -> leftjoin(x, pop, on = [:id_b => :id], renamecols = "" => "_b")# |>
             #x -> sort(x, :infection_id)
 
-        # lookup home-AGS for each infected individual
-        infections.household_ags_b = map(
-                h_id -> simulation |> settings |>
-                setting_type -> setting_type[Household][h_id] |> ags |> id
-            ,infections.household_b)
+        # lookup home-AGS for each individual
+        infections.household_ags_a =
+            (h_id -> ismissing(h_id) ? missing : ags(households(simulation)[h_id])).(infections.household_a)
+        infections.household_ags_b =
+            (h_id -> ismissing(h_id) ? missing : ags(households(simulation)[h_id])).(infections.household_b)
 
         # join deaths with additional info from population DF
         deaths = dataframe(deathlogger(simulation)) |>

@@ -22,6 +22,7 @@ and computationally intensive (memory & runtime) option.
         - `label::String`: Label of this simulation run (needed for plotting)
         - `final_tick::Int16`: Tick counter at the end of the simulation run
         - `number_of_individuals::Int64`: Total number of individuals in the population model
+        - `r0::Float64`: Basic reproduction number (does not consider immunity)
         - `initial_infections::Int64`: Number of initial infected individuals
         - `total_infections::Int64`: Row count of the PostProcessor's `infections` DataFrame
         - `attack_rate::Float64`: Fraction of overall infected individuals
@@ -103,6 +104,8 @@ and computationally intensive (memory & runtime) option.
         - `time_to_detection::DataFrame`: Statistics on the time between exposure and first detection of an infection through a test
         - `household_attack_rates::DataFrame`: Statistics on the seconary infections in households
         - `customlogger::DataFrame`: Dataframe obtained from any custom logger that might have been set
+        - `weekly_county_incidence::DataFrame`: DataFrame with 7-day incidence per 100,000 per county and week (only for georeferential population models)
+        - `r0_per_county::DataFrame`: DataFrame with basic reproduction number per county
 """
 mutable struct DefaultResultData <: ResultDataStyle
     data::Dict{String, Any}
@@ -123,6 +126,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "label" => () -> pP |> simulation |> label,
                     "final_tick" => () -> pP |> simulation |> tick,
                     "number_of_individuals" => () -> pP |> simulation |> population |> individuals |> length,
+                    "r0" => () -> pP |> r0,
                     "initial_infections" => () -> (pP |> infectionsDF |> nrow) - (pP |> sim_infectionsDF |> nrow),
                     "total_infections" => () -> pP |> infectionsDF |> nrow,
                     "attack_rate" => () -> pP |> attack_rate,
@@ -210,7 +214,9 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
-                    "tick_hosptitalizations" => () -> pP |> hospital_df
+                    "tick_hosptitalizations" => () -> pP |> hospital_df,
+                    "weekly_county_incidence" => () -> pP |> weekly_county_incidence,
+                    "r0_per_county" => () -> pP |> r0_per_county
                 )      
         )
 

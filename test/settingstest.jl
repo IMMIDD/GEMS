@@ -351,16 +351,16 @@
         h = Household(id=1, contact_sampling_method=rs)
         gs = GlobalSetting(contact_sampling_method=rs)
         wp = Office(id=1, contact_sampling_method=rs)
-        m = Municipality(id = 1)
-        s = School(id = 1)
-        w = Workplace(id = 1)
-        sc = SchoolComplex(id = 1)
-        sy = SchoolYear(id = 1)
-        d = Department(id = 1)
-        ws = WorkplaceSite(id = 1)
+        m = Municipality(id=1)
+        s = School(id=1)
+        w = Workplace(id=1)
+        sc = SchoolComplex(id=1)
+        sy = SchoolYear(id=1)
+        d = Department(id=1)
+        ws = WorkplaceSite(id=1)
 
         struct newSetting <: Setting end
-        ns = newSetting()        
+        ns = newSetting()
 
         @test '?' == settingchar(ns)
         @test 'h' == settingchar(h)
@@ -389,12 +389,12 @@
 
         @test contact_sampling_method(h) === rs
         rs2 = RandomSampling()
-        contact_sampling_method!(h, rs2) 
+        contact_sampling_method!(h, rs2)
         @test contact_sampling_method(h) === rs2
-        
+
         @test contained(w) == -1
         @test contained_type(w) == WorkplaceSite
- 
+
     end
 
 
@@ -462,14 +462,14 @@
 
     @testset "Office, Schoolclass and Municipality" begin
         my_pop = DataFrame(
-            id = [1,2,3],
-            sex = [1,2,1],
-            age = [10, 34, 25],
-            household = [1,1,2],
-            office = [2,2,1],
-            municipality = [1,1,1])
-        
-        sim = Simulation(population = Population(my_pop))
+            id=[1, 2, 3],
+            sex=[1, 2, 1],
+            age=[10, 34, 25],
+            household=[1, 1, 2],
+            office=[2, 2, 1],
+            municipality=[1, 1, 1])
+
+        sim = Simulation(population=Population(my_pop))
         inds = individuals(sim)
         @test GEMS.office(inds[1], sim) === offices(sim)[2]
         @test GEMS.office(inds[2], sim) === offices(sim)[2]
@@ -477,14 +477,14 @@
         @test_throws "Individual $(id(inds[1])) is not assigned to a School Class" GEMS.schoolclass(inds[1], sim)
 
         my_pop = DataFrame(
-            id = [1,2,3],
-            sex = [1,2,1],
-            age = [10, 34, 25],
-            household = [1,1,2],
-            schoolclass = [2,2,1],
-            municipality = [1,1,1])
-        
-        sim = Simulation(population = Population(my_pop))
+            id=[1, 2, 3],
+            sex=[1, 2, 1],
+            age=[10, 34, 25],
+            household=[1, 1, 2],
+            schoolclass=[2, 2, 1],
+            municipality=[1, 1, 1])
+
+        sim = Simulation(population=Population(my_pop))
         inds = individuals(sim)
         @test GEMS.schoolclass(inds[1], sim) === schoolclasses(sim)[2]
         @test GEMS.schoolclass(inds[2], sim) === schoolclasses(sim)[2]
@@ -492,7 +492,7 @@
         @test_throws "Individual $(id(inds[1])) is not assigned to an Office" GEMS.office(inds[1], sim)
 
         for ind in inds
-           @test GEMS.municipality(ind, sim) === municipalities(sim)[1]
+            @test GEMS.municipality(ind, sim) === municipalities(sim)[1]
         end
     end
 
@@ -524,11 +524,11 @@
         ags_muenster = AGS("05515000")
         municipality1.ags = ags_muenster
         @test ags(municipality1, sim) === ags_muenster
-        @test ags(workplace1,sim) == AGS()
+        @test ags(workplace1, sim) == AGS()
 
-        sim = Simulation(pop_size = 100)
+        sim = Simulation(pop_size=100)
         inds = individuals(workplace1, sim)
-        @test sample_individuals(inds, 200)==inds
+        @test sample_individuals(inds, 200) == inds
 
         @test avg_individuals(Setting[], sim) === nothing
 
@@ -542,35 +542,95 @@
 
         index = 1
         for i in 1:5
-            add!(sc, Office(id=i, individuals=inds[index:(index + i - 1)]))
-            index += i  
+            add!(sc, Office(id=i, individuals=inds[index:(index+i-1)]))
+            index += i
         end
 
-        department = Department(id = 1, contains = 1:5)
+        department = Department(id=1, contains=1:5)
         add!(sc, department)
-        
+
         sim = Simulation()
         sim.settings = sc
-        
+
         department = settings(sc, Department)[1]
         @test size(department, sim) == 15
     end
 
     @testset "Geolocated tests" begin
-        o1 = Office(id = 1, lat = 40.5f0, lon = -74.0f0)
+        o1 = Office(id=1, lat=40.5f0, lon=-74.0f0)
         @test lat(o1) == 40.5f0
         @test lon(o1) == -74.0f0
 
-        o2 = Office(id = 2)
+        o2 = Office(id=2)
         @test all(isnan, geolocation(o2))
         sim = Simulation()
         @test all(isnan, geolocation(o2, sim))
-        
-        d1 = Department(id = 1, contains = [1])
-     
+
+        d1 = Department(id=1, contains=[1])
+
         #TODO test function geolocation(stng::ContainerSetting, sim::Simulation)
         #a (small) settingsfile is needed, where you have geolocated settings, e.g. offices
-        
+
     end
+
+    @testset "getsetting" begin
+        rs = RandomSampling()
+
+        inds = [Individual(id=i, sex=1, age=10, schoolclass=i, office=i) for i in 1:4]
+        pop = Population(inds)
+
+        # Create school hierarchy
+        scs = [SchoolClass(id=i, individuals=[inds[i]], contained=div(i - 1, 2) + 1, contact_sampling_method=rs) for i in 1:4]
+        sys = [
+            SchoolYear(id=1, contains=[1, 2], contained=1, contact_sampling_method=rs),
+            SchoolYear(id=2, contains=[3, 4], contained=1, contact_sampling_method=rs)
+        ]
+        s = School(id=1, contains=[1, 2], contained=1, contact_sampling_method=rs)
+        scx = SchoolComplex(id=1, contains=[1], contact_sampling_method=rs)
+
+        # Create workplace hierarchy
+        ofs = [Office(id=i, individuals=[inds[i]], contained=div(i - 1, 2) + 1, contact_sampling_method=rs) for i in 1:4]
+        deps = [
+            Department(id=1, contains=[1, 2], contained=1, contact_sampling_method=rs),
+            Department(id=2, contains=[3, 4], contained=1, contact_sampling_method=rs)
+        ]
+        wp = Workplace(id=1, contains=[1, 2], contained=1, contact_sampling_method=rs)
+        wps = WorkplaceSite(id=1, contains=[1], contact_sampling_method=rs)
+
+        # Set up simulation
+        sc = SettingsContainer()
+        add_types!(sc, [SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite])
+        foreach(x -> add!(sc, x), scs)
+        foreach(x -> add!(sc, x), sys)
+        add!(sc, s)
+        add!(sc, scx)
+        foreach(x -> add!(sc, x), ofs)
+        foreach(x -> add!(sc, x), deps)
+        add!(sc, wp)
+        add!(sc, wps)
+
+        sim = Simulation()
+        sim.population = pop
+        sim.settings = sc
+
+        # Check school hierarchy
+        for i in 1:4
+            ind = inds[i]
+            @test getsetting(ind, sim, SchoolClass) == schoolclass(ind, sim)
+            @test getsetting(ind, sim, SchoolYear) == sys[div(i - 1, 2)+1]
+            @test getsetting(ind, sim, School) == s
+            @test getsetting(ind, sim, SchoolComplex) == scx
+        end
+
+        # Check workplace hierarchy
+        for i in 1:4
+            ind = inds[i]
+            @test getsetting(ind, sim, Office) == office(ind, sim)
+            @test getsetting(ind, sim, Department) == deps[div(i - 1, 2)+1]
+            @test getsetting(ind, sim, Workplace) == wp
+            @test getsetting(ind, sim, WorkplaceSite) == wps
+        end
+    end
+
 
 end

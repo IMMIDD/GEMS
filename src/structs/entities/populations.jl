@@ -94,23 +94,23 @@ mutable struct Population
     end
 
     @doc """
-        Population(; n::Int64 = 100_000, avg_household_size::Int64 = 3, avg_office_size::Int64 = 5, avg_school_size::Int64 = 100)
+        Population(; n::Int64 = 100_000, avg_household_size::Real = 3.0, avg_office_size::Real = 5.0, avg_school_size::Real = 100.0)
 
     Creates a `Population` object without an explicit data source and randomly generates the individuals.
     
     # Parameters
 
     - `n::Int64 = 100_000` *(optional)*: Number of individuals in the population (default = `100_000`)
-    - `avg_household_size::Int64 = 3` *(optional)*: Average size of households (default = `3`)
-    - `avg_office_size::Int64 = 5` *(optional)*: Average size of offices (default = `5`)
-    - `avg_school_size::Int64 = 100` *(optional)*: Average size of schools (default = `100`)
+    - `avg_household_size::Real = 3.0` *(optional)*: Average size of households (default = `3`)
+    - `avg_office_size::Real = 5.0` *(optional)*: Average size of offices (default = `5`)
+    - `avg_school_size::Real = 100.0` *(optional)*: Average size of schools (default = `100`)
     - `empty::Bool = false` *(optional)*: If true, overrides all other arguments and returns a completely empty population object
     """
     function Population(;
         n::Int64 = 100_000,
-        avg_household_size::Int64 = 3,
-        avg_office_size::Int64 = 5,
-        avg_school_size::Int64 = 100,
+        avg_household_size::Real = 3.0,
+        avg_office_size::Real = 5.0,
+        avg_school_size::Real = 100.0,
         rng::AbstractRNG = Random.default_rng(),
         empty::Bool = false)
 
@@ -121,11 +121,11 @@ mutable struct Population
 
         # exception handling
         n <= 0 ? throw("The number of individuals must be a positive integer") : nothing
-        avg_household_size <= 0 ? throw("The average household size must be a positive integer") : nothing
+        avg_household_size <= 0 ? throw("The average household size must be a positive number") : nothing
         avg_household_size > n ? throw("The average household size cannot be larger than the population (n)") : nothing
-        avg_office_size <= 0 ? throw("The average office size must be a positive integer") : nothing
+        avg_office_size <= 0 ? throw("The average office size must be a positive number") : nothing
         avg_office_size > n ? throw("The average office size cannot be larger than the population (n)") : nothing
-        avg_school_size <= 0 ? throw("The average school size must be a positive integer") : nothing
+        avg_school_size <= 0 ? throw("The average school size must be a positive number") : nothing
         avg_school_size > n ? throw("The average school size cannot be larger than the population (n)") : nothing
 
         # helper functions
@@ -195,8 +195,8 @@ mutable struct Population
         n_workers = count(isworker, df.age)
 
         # number of other settings
-        n_schools = ceil(n_students / avg_school_size)
-        n_offices = ceil(n_workers / avg_office_size)
+        n_schools = Int64(ceil(n_students / avg_school_size))
+        n_offices = Int64(ceil(n_workers / avg_office_size))
 
         # assign other settings
         # create set of thread-safe RNGs, seeded from the main RNG

@@ -257,9 +257,9 @@ mutable struct Simulation
     | `global_contact_rate`           | `Float64`              | Average number of contacts in the global per timestep (Poisson-distributed)                                                           |
     | **Population Parameters**       |                        |                                                                                                                                       |
     | `pop_size`                      | `Int64`                | Number of individuals in the population                                                                                               |
-    | `avg_household_size`            | `Int64`                | Average size of households                                                                                                            |
-    | `avg_office_size`               | `Int64`                | Average size of offices                                                                                                               |
-    | `avg_school_size`               | `Int64`                | Average size of schools                                                                                                               |
+    | `avg_household_size`            | `Real`                 | Average size of households                                                                                                            |
+    | `avg_office_size`               | `Real`                 | Average size of offices                                                                                                               |
+    | `avg_school_size`               | `Real`                 | Average size of schools                                                                                                               |
 
     """
     function Simulation(;
@@ -300,9 +300,9 @@ mutable struct Simulation
         municipality_contact_rate::Union{Real, Nothing} = nothing,
         global_contact_rate::Union{Real, Nothing} = nothing,
         pop_size::Union{Int64, Nothing} = nothing,
-        avg_household_size::Union{Int64, Nothing} = nothing,
-        avg_office_size::Union{Int64, Nothing} = nothing,
-        avg_school_size::Union{Int64, Nothing} = nothing,
+        avg_household_size::Union{Real, Nothing} = nothing,
+        avg_office_size::Union{Real, Nothing} = nothing,
+        avg_school_size::Union{Real, Nothing} = nothing,
         simargs...)
         
 
@@ -943,7 +943,7 @@ function create_pathogens(pathogens_dict::Dict)::Vector{Pathogen}
                 elseif key == "transmission_function"
                     setfield!(p, Symbol(key), create_transmission_function(attr))
                 else
-                    distribution = create_distribution(attr["parameters"], attr["distribution"])
+                    distribution = create_distribution(Float64.(attr["parameters"]), attr["distribution"])
                     setfield!(p, Symbol(key), distribution)
                 end
             end
@@ -1010,6 +1010,20 @@ function load_start_condition(start_condition_dict::Dict, pathogens::Vector{Path
             error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
         end
         return InfectedFraction(start_condition_dict["fraction"], pathogen)
+
+    elseif start_condition_dict["type"] == "InfectedIndividuals"
+        # find pathogen under assumption, that the name is UNIQUE
+        pathogen = nothing
+        for p in pathogens
+            if name(p) == start_condition_dict["pathogen"]
+                pathogen = p
+            end
+        end
+        if isnothing(pathogen)
+            error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
+        end
+        return InfectedIndividuals(start_condition_dict["seeds"], pathogen)
+
     elseif start_condition_dict["type"] == "PatientZero"
         # find pathogen under assumption, that the name is UNIQUE
         pathogen = nothing
@@ -1022,6 +1036,7 @@ function load_start_condition(start_condition_dict::Dict, pathogens::Vector{Path
             error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
         end
         return PatientZero(pathogen)
+
     elseif start_condition_dict["type"] == "PatientZeros"
         # find pathogen under assumption, that the name is UNIQUE
         pathogen = nothing
@@ -1034,6 +1049,20 @@ function load_start_condition(start_condition_dict::Dict, pathogens::Vector{Path
             error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
         end
         return PatientZeros(pathogen, start_condition_dict["ags"])
+
+    elseif start_condition_dict["type"] == "RegionalSeeds"
+        # find pathogen under assumption, that the name is UNIQUE
+        pathogen = nothing
+        for p in pathogens
+            if name(p) == start_condition_dict["pathogen"]
+                pathogen = p
+            end
+        end
+        if isnothing(pathogen)
+            error("The Pathogen of name "*start_condition_dict["pathogen"]*" could not be found for the starting condition")
+        end
+        return RegionalSeeds(pathogen, start_condition_dict["ags"])
+        
     else
         error("StartCondition "*start_condition_dict["type"]*" is not implemented!")
     end
@@ -1060,10 +1089,11 @@ end
 Loads the `Settings` from the `Simulation` config parameters.
 """
 function load_setting_attributes!(stngs::SettingsContainer, attributes::Dict)
+
     for (type, setting_list) in settings(stngs)
         # for every setting type we assign the given attributes
-        if string(type) in keys(attributes)
-            setting_attributes = attributes[string(type)]
+        if structname(type) in keys(attributes)
+            setting_attributes = attributes[structname(type)] # structnames() handles types like "GEMS.Houshold" that occur, if GEMS is loaded within another scope/package
             # for every provided key, we set the corresponding field
             for (key, value) in setting_attributes
                 if Symbol(key) in fieldnames(type)
