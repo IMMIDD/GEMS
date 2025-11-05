@@ -270,7 +270,7 @@ Checks source files for direct calls to RNG functions
 excluding specified files. Returns `offending_lines::Vector`.
 """
 function check_naked_rng_calls(;
-    src_path::String = joinpath(dirname(dirname(pathof(GEMS))), "src"), 
+    src_path=joinpath(pkgdir(@__MODULE__), "src"), 
     files_to_ignore::Set{String} = Set(["utils.jl"])
 )
     forbidden_pattern = Regex("\\b($(join(["rand", "randn", "shuffle", "shuffle!", "sample", "sample!"], "|")))\\(")
