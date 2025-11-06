@@ -52,8 +52,6 @@ function log_stepinfo(simulation::Simulation)
     det_cnt = Threads.Atomic{Int}(0)
 
     Threads.@threads for i in simulation |> individuals
-        tid = Threads.threadid()
-        
         # log quarantined individuals
         if isquarantined(i)
             Threads.atomic_add!(tot_cnt, 1)
@@ -72,19 +70,19 @@ function log_stepinfo(simulation::Simulation)
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-        sum(tot_cnt),
-        sum(st_cnt),
-        sum(wo_cnt)
+        tot_cnt[],
+        st_cnt[],
+        wo_cnt[]
     )
 
     # log infection data
     log!(
         simulation |> statelogger,
         simulation |> tick,
-        sum(exp_cnt),
-        sum(inf_cnt),
-        sum(dead_cnt),
-        sum(det_cnt)
+        exp_cnt[],
+        inf_cnt[],
+        dead_cnt[],
+        det_cnt[]
     )
 end
 
