@@ -91,14 +91,14 @@ end
 """
     get(container::SettingsContainer, type::DataType)
 
-Returns all settings of the specified type and `nothing` if The
+Returns all settings of the specified type and `[]` if The
 setting container does not contain the type. Extends `Base.get`.
 """
 function Base.get(container::SettingsContainer, type::DataType)::Any
     if haskey(container.settings, type)
         return container.settings[type]
     else
-        return nothing
+        return []
     end
 end
 

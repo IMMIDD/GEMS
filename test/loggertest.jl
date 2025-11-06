@@ -1,4 +1,5 @@
 @testset "Logger" begin
+    test_rng = Xoshiro()
 
     @testset "InfectionLogger" begin
 
@@ -179,8 +180,8 @@
             indiv.number_of_infections += 1
             indiv.pathogen_id = id(p)
 
-            Random.seed!(1234)
-            disease_progression!(indiv, p, exposedtick, GEMS.Mild)
+            Random.seed!(test_rng, 1234)
+            disease_progression!(indiv, p, exposedtick, GEMS.Mild, rng=test_rng)
 
             # doesn't matter if indiv would have survived, we will kill it nonetheless
             indiv.death_tick = 1

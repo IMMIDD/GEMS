@@ -1,4 +1,4 @@
-export household, office, schoolclass, municipality
+export household, office, schoolclass, municipality, getsetting
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
 export geolocation, lat, lon, remove_empty_settings!, present_individuals, present_individuals!, is_open, get_open_contained!, open!, close!
 export sample_individuals
@@ -17,6 +17,16 @@ function household(i::Individual, sim::Simulation)::Household
 end
 
 """
+    getsetting(i::Individual, sim::Simulation, ::Type{Household})::Household
+
+Return the `Household` setting to which the individual `i` belongs, based on
+their `household` ID.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{Household})
+    return household(i, sim)
+end
+
+"""
     office(i::Individual, sim::Simulation)::Office
 
 Returns the `Office` instance referenced in an individual. 
@@ -29,6 +39,51 @@ function office(i::Individual, sim::Simulation)::Office
         x -> x[office_id(i)]
 end
 
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{Office})::Office
+
+Return the `Office` setting to which the individual `i` belongs, based on
+their `office` ID.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{Office})
+    return office(i, sim)
+end
+
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{Department})::Department
+
+Return the `Department` that contains the individual's `Office`.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{Department})
+    return getsetting(i, sim, Office).contained |>
+        id -> settings(sim, Department)[id]
+end
+
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{Workplace})::Workplace
+
+Return the `Workplace` that contains the individual's `Department`.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{Workplace})
+    return getsetting(i, sim, Department).contained |>
+        id -> settings(sim, Workplace)[id]
+end
+
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{WorkplaceSite})::WorkplaceSite
+
+Return the `WorkplaceSite` that contains the individual's `Workplace`.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{WorkplaceSite})
+    return getsetting(i, sim, Workplace).contained |>
+        id -> settings(sim, WorkplaceSite)[id]
+end
+
+
 """
     schoolclass(i::Individual, sim::Simulation)::SchoolClass
 
@@ -40,6 +95,50 @@ function schoolclass(i::Individual, sim::Simulation)::SchoolClass
     return sim |> settings |>
         x -> x[SchoolClass] |>
         x -> x[class_id(i)]
+end
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{SchoolClass})::SchoolClass
+
+Return the `SchoolClass` setting to which the individual `i` belongs, based on
+their `schoolclass` ID.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{SchoolClass})
+    return schoolclass(i, sim)
+end
+
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{SchoolYear})::SchoolYear
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{SchoolYear})
+    class = getsetting(i, sim, SchoolClass)
+    year_id = class.contained
+    return settings(sim, SchoolYear)[year_id]
+end
+
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{School})::School
+
+Return the `School` setting containing the individual's `SchoolYear`.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{School})
+    year = getsetting(i, sim, SchoolYear)
+    school_id = year.contained
+    return settings(sim, School)[school_id]
+end
+
+
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{SchoolComplex})::SchoolComplex
+
+Return the `SchoolComplex` setting containing the individual's `School`.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{SchoolComplex})
+    school = getsetting(i, sim, School)
+    complex_id = school.contained
+    return settings(sim, SchoolComplex)[complex_id]
 end
 
 """
@@ -232,25 +331,25 @@ end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64)
+    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64)
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
     if n >= length(individuals)
         return individuals
     else
-        return sample(individuals, n, replace = false)
+        return gems_sample(rng, individuals, n, replace = false)
     end
 end
 
 
 """
-    sample_individuals(setting::IndividualSetting, n::Int64)
+    sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng())
 
 Returns a subsample of the setting's `Individuals` of sample size `n`.
 """
-sample_individuals(setting::IndividualSetting, n::Int64) = sample_individuals(setting |> individuals, n)
+sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
 
 
 """

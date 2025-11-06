@@ -266,7 +266,7 @@ Some of the plots have keyword arguments that are only applicable to that very p
 | `:EffectiveReproduction`         | Effective reproduction number (R_eff) over time.                                      | Yes        |                                                                                                                                                |
 | `:GenerationTime`                | Mean generation time over time.                                                       | Yes        |                                                                                                                                                |
 | `:HospitalOccupancy`             | Number of hospitalized, ventilated, and ICU-admitted indivudual over time.            | No         |                                                                                                                                                |
-| `:HouseholdAttackRate`           | In-Household attack rate per household size.                                          | Yes        |                                                                                                                                                |
+| `:HouseholdAttackRate`           | In-Household attack rate per household size.                                          | Yes        | `ar_only::Bool: If `true`, only the attack rate plot will be returned.                                                                         |
 | `:Incidence`                     | Indicende over time by 10-year age group (stacked chart).                             | No         |                                                                                                                                                |
 | `:IncubationHistogram`           | Histogram of incubation period duratons.                                              | No         |                                                                                                                                                |
 | `:InfectionDuration`             | Histogram of total infection durations.                                               | Yes        |                                                                                                                                                |
@@ -278,7 +278,7 @@ Some of the plots have keyword arguments that are only applicable to that very p
 | `:SettingSizeDistribution`       | Histograms of setting sizes for all setting types (e.g., `Household`s)                | No         |                                                                                                                                                |
 | `:ProgressionCategories`         | Heatmap of the fraction of progression categories (asymptomatic, mild, ...) by age.   | No         |                                                                                                                                                |
 | `:TestPositiveRate`              | Fraction of all performed tests that were positive per test type (e.g., `PCR`).       | No         |                                                                                                                                                |
-| `:TickCases`                     | New cases per time step. For single sim. also with new infectious, removed, dead.     | Yes        |                                                                                                                                                |
+| `:TickCases`                     | New cases per time step. For single sim. also with new infectious, removed, dead.     | Yes        | `series::Union{Symbol, Vector{Symbol}}`: Select one or multiple series (exposed, infectious, removed, deaths) to plot (not for mulitplots).    |
 | `:TickCasesBySetting`            | New cases stratified by setting type (e.g., `Household` or `Office`)                  | No         |                                                                                                                                                |
 | `:TickSeroTests`                 | Number of seroprevalence tests and their results per tick.                            | No         | `detailed::Bool = false`: Whether to show detailed breakdown (TP, FP, TN, FN).                                                                 |
 | `:TickTests`                     | Performed tests per time step, including positive and total tests and reported cases. | No         |                                                                                                                                                |
@@ -426,7 +426,7 @@ simulation runs each, this function will generate two plots with
 function splitlabel(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
 
     labels = map(label, rds) |> unique
-    colors = Dict(zip(labels, palette(:auto, length(labels))))
+    colors = Dict(zip(labels, gemscolors(length(labels))))
     data = Dict(zip(labels, [Vector{ResultData}() for _ in 1:length(labels)]))
 
     # sort data by label
@@ -478,7 +478,7 @@ function plotseries!(p::Plots.Plot, extract_function::Function, rds::Vector{Resu
     # prepare colors & data per label
     # read labels from result data vector
     labels = map(label, rds) |> unique
-    colors = Dict(zip(labels, palette(:auto, length(labels))))
+    colors = Dict(zip(labels, gemscolors(length(labels))))
     data = Dict(zip(labels, [[] for _ in 1:length(labels)]))
 
     # sort data by label

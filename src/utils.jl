@@ -12,7 +12,10 @@ export parameters
 export lognow, printinfo, subinfo
 export _int
 export remove_kw, prepare_kw_args
-export germanshapes
+export germanshapes, state_data, county_data, municipality_data
+export gemscolors
+export set_global_seed
+export gems_rand, gems_sample, gems_sample!, gems_shuffle, gems_shuffle!
 export haspath
 export rand_val
 
@@ -1039,6 +1042,7 @@ The path is a vector of keys that should be present in the dictionary.
 julia> d = Dict(:a => Dict(:b => Dict(:c => 1)))
 julia> haspath(d, [:a, :b, :c])
 true
+```
 """
 function haspath(dict::Dict, path::Vector{<:Any})
     d = dict
@@ -1062,3 +1066,223 @@ If the input is a distribution, a random value is drawn from it.
 """
 rand_val(val::Real) = val
 rand_val(dist::Distribution) = rand(dist)
+
+"""
+    haspath(dict::Dict, path::Vector{<:Any})
+
+Checks if a dictionary has a path of keys.
+The path is a vector of keys that should be present in the dictionary.
+
+# Example
+
+```julia
+julia> d = Dict(:a => Dict(:b => Dict(:c => 1)))
+julia> haspath(d, [:a, :b, :c])
+true
+```
+"""
+function haspath(dict::Dict, path::Vector{<:Any})
+    d = dict
+    for p in path
+        if haskey(d, p)
+            d = d[p]
+        else
+            return false
+        end
+    end
+    return true
+end
+
+
+"""
+    rand_val(val::Real)
+    rand_val(dist::Distribution)
+
+If the input is a real number, it is returned as is.
+If the input is a distribution, a random value is drawn from it.
+"""
+rand_val(val::Real) = val
+rand_val(dist::Distribution) = rand(dist)
+
+"""
+    state_data()
+
+Returns a dataframe with AGS and string-names of German states.
+"""
+function state_data()
+    return germanshapes(1) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+
+"""
+    county_data()
+
+Returns a dataframe with AGS and string-names of German counties.
+"""
+function county_data()
+    return germanshapes(2) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+
+"""
+    municipality_data()
+
+Returns a dataframe with AGS and string-names of German municipalities.
+"""
+function municipality_data()
+    return germanshapes(3) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+"""
+    gemscolors(l::Int64)
+
+Returns the GEMS ColorScheme for plots.
+The `l` parameter defines the number of colors you would like to get in your scheme.
+"""
+function gemscolors(l::Int64)
+    if l <= 0
+        return []
+    end
+
+    if l <= 2
+        return palette(:auto, l)
+    end
+
+    if l <= 9
+        tab10 = [palette(:tab10)...]
+        return [gemscolors(2)..., tab10[4:(1+l)]...]
+    end
+
+    return [gemscolors(9)..., palette(:darktest, l-9)...]
+end
+
+"""
+    set_global_seed(seed::Int64)
+    
+Wrapper to set seed of global RNG
+"""
+function set_global_seed(seed::Int64)
+    Random.seed!(seed)
+end
+
+"""
+    gems_rand(rng::AbstractRNG, args...)
+
+Reproducibility-safe version of `Random.rand`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+"""
+function gems_rand(rng::AbstractRNG, args...)
+    return Random.rand(rng, args...)
+end
+
+function gems_rand(sim::Simulation, args...)
+    return Random.rand(rng(sim), args...)
+end
+
+function gems_rand(args...)
+    @warn "Calling `gems_rand` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
+    return Random.rand(args...)
+end
+
+
+"""
+    gems_sample(rng::AbstractRNG, args...; kwargs...)
+
+Reproducibility-safe version of `StatsBase.sample`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+"""
+function gems_sample(rng::AbstractRNG, args...; kwargs...)
+    return StatsBase.sample(rng, args...; kwargs...)
+end
+
+function gems_sample(sim::Simulation, args...; kwargs...)
+    return StatsBase.sample(rng(sim), args...; kwargs...)
+end
+
+function gems_sample(args...; kwargs...)
+    @warn "Calling `gems_sample` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
+    return StatsBase.sample(args...; kwargs...)
+end
+
+
+"""
+    gems_sample!(rng::AbstractRNG, args...; kwargs...)
+
+Reproducibility-safe version of `StatsBase.sample!`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+"""
+function gems_sample!(rng::AbstractRNG, args...; kwargs...)
+    return StatsBase.sample!(rng, args...; kwargs...)
+end
+
+function gems_sample!(sim::Simulation, args...; kwargs...)
+    return StatsBase.sample!(rng(sim), args...; kwargs...)
+end
+
+function gems_sample!(args...; kwargs...)
+    @warn "Calling `gems_sample!` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
+    return StatsBase.sample!(args...; kwargs...)
+end
+
+
+"""
+    gems_shuffle!(rng::AbstractRNG, args...)
+
+Reproducibility-safe version of `Random.shuffle!`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+"""
+function gems_shuffle!(rng::AbstractRNG, args...)
+    return Random.shuffle!(rng, args...)
+end
+
+function gems_shuffle!(sim::Simulation, args...)
+    return Random.shuffle!(rng(sim), args...)
+end
+
+function gems_shuffle!(args...)
+    @warn "Calling `gems_shuffle!` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
+    return Random.shuffle!(args...)
+end
+
+
+"""
+    gems_shuffle(rng::AbstractRNG, args...)
+
+Reproducibility-safe version of `Random.shuffle`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+"""
+function gems_shuffle(rng::AbstractRNG, args...)
+    return Random.shuffle(rng, args...)
+end
+
+function gems_shuffle(sim::Simulation, args...)
+    return Random.shuffle(rng(sim), args...)
+end
+
+function gems_shuffle(args...)
+    @warn "Calling `gems_shuffle` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
+    return Random.shuffle(args...)
+end
+
+
+"""
+    gems_randn(rng::AbstractRNG, args...)
+
+Reproducibility-safe version of `Random.randn`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+"""
+function gems_randn(rng::AbstractRNG, args...)
+    return Random.randn(rng, args...)
+end
+
+function gems_randn(sim::Simulation, args...)
+    return Random.randn(rng(sim), args...)
+end
+
+function gems_randn(args...)
+    @warn "Calling `gems_randn` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
+    return Random.randn(args...)
+end

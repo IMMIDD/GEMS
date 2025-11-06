@@ -950,10 +950,10 @@
     #     exposedtick = Int16(0)
     #     p = Pathogen(id = 1, name = "COVID", self_quarantine_rate=Uniform(0.99,0.999))
 
-    #     Random.seed!(123)
+    #     Random.seed!(test_rng, 123)
     #     ind.exposed_tick = exposedtick
     #     presymptomatic!(ind)
-    #     disease_progression!(ind, p, exposedtick, GEMS.Mild)
+    #     disease_progression!(ind, p, exposedtick, GEMS.Mild, rng=test_rng)
     #     @test quarantine_tick(ind) == onset_of_symptoms(ind) != GEMS.DEFAULT_TICK
     #     @test quarantine_release_tick(ind) == removed_tick(ind) != GEMS.DEFAULT_TICK
     #     @test quarantine_status(ind) == GEMS.QUARANTINE_STATE_NO_QUARANTINE

@@ -1026,6 +1026,9 @@ end
 ### FILE LOADERS
 
 
+### FILE LOADERS
+
+
 """
     load_configfile(path::String)
 
@@ -1250,6 +1253,17 @@ function tickunit(simulation::Simulation)::String
         return "tick"
     end
 end
+
+
+"""
+    rng(simulation::Simulation)
+
+Returns simulation RNG of the current thread.
+"""
+function rng(simulation::Simulation)
+    return simulation.thread_rngs[Threads.threadid()]
+end
+
 
 """
     start_condition(simulation)

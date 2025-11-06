@@ -24,7 +24,7 @@ You can generate a custom population from a dataframe.
 This dataframe needs to have one row per individual and the columns must be named identical to the fields of the `Individual` struct.
 Every individual needs at least an `id`, an `age` and a `sex`.
 Therefore, these are the minimal requirements for column in your dataframe.
-The example below generates a synthetic population of `100,000` individuals with random ages from `1 to 100` and two indiviuals per household.
+The example below generates a synthetic population of `100,000` individuals with random ages from `1 to 100` and two individuals per household.
 This is achieved via the `household` column as two individuals with the same value will be placed in the same households.
 The example assigns each value from `1 to 50_000` to two of the individuals.
 
@@ -103,7 +103,7 @@ This way, you can load populations that originate from other projects or tools (
 
 CSV-files must adhere to the same data structure as in the "Using Dataframes" section.
 They are basically just an export of the generated dataframe.
-Here's an exmaple file:
+Here's an example file:
 
 ```csv
 id,age,sex,household
