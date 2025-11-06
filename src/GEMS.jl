@@ -62,6 +62,7 @@ module GEMS
     include("reporting/reports.jl")
     include("movie/movie_renderer.jl")
 
+    include("init.jl")
     include("main.jl")
 
     include("devTools.jl")

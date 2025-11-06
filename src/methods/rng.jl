@@ -6,7 +6,6 @@ export gems_shuffle
 export gems_shuffle!
 export gems_randn
 
-
 ### RANDOM NUMBER GENERATORS
 # Reproducibility-safe random number generation methods for GEMS simulations
 
