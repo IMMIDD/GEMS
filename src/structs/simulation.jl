@@ -212,7 +212,7 @@ mutable struct Simulation
         pathogen::Pathogen,
         stepmod::Function,
         main_rng::AbstractRNG,
-        thread_rngs::Vector{AbstractRNG}
+        thread_rngs::Vector{<:AbstractRNG}
     )
         sim = new(
             # config
