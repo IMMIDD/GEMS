@@ -37,33 +37,35 @@ to the simulation's `QuarantineLogger`.
 """
 function log_stepinfo(simulation::Simulation)
     
+    # Julia 1.12-safe threaded counting with atomic integers
+    
     # quarantine data
     # set up one vector with one entry for each thread
-    tot_cnt = zeros(Int, Threads.nthreads())
-    st_cnt  = zeros(Int, Threads.nthreads())
-    wo_cnt  = zeros(Int, Threads.nthreads())
+    tot_cnt = Threads.Atomic{Int}(0)
+    st_cnt  = Threads.Atomic{Int}(0)
+    wo_cnt  = Threads.Atomic{Int}(0)
 
     # infection data
-    exp_cnt = zeros(Int, Threads.nthreads())
-    inf_cnt = zeros(Int, Threads.nthreads())
-    dead_cnt = zeros(Int, Threads.nthreads())
-    det_cnt = zeros(Int, Threads.nthreads())
-    
+    exp_cnt = Threads.Atomic{Int}(0)
+    inf_cnt = Threads.Atomic{Int}(0)
+    dead_cnt = Threads.Atomic{Int}(0)
+    det_cnt = Threads.Atomic{Int}(0)
+
     Threads.@threads for i in simulation |> individuals
         tid = Threads.threadid()
         
         # log quarantined individuals
         if isquarantined(i)
-            tot_cnt[tid] += 1
-            st_cnt[tid]  += is_student(i)
-            wo_cnt[tid]  += is_working(i)
+            Threads.atomic_add!(tot_cnt, 1)
+            Threads.atomic_add!(st_cnt, is_student(i) ? 1 : 0)
+            Threads.atomic_add!(wo_cnt, is_working(i) ? 1 : 0)
         end
 
         # log infected individuals
-        exp_cnt[tid] += is_exposed(i)
-        inf_cnt[tid] += is_infectious(i)
-        dead_cnt[tid] += is_dead(i)
-        det_cnt[tid] += is_detected(i)
+        Threads.atomic_add!(exp_cnt, is_exposed(i) ? 1 : 0)
+        Threads.atomic_add!(inf_cnt, is_infectious(i) ? 1 : 0)
+        Threads.atomic_add!(dead_cnt, is_dead(i) ? 1 : 0)
+        Threads.atomic_add!(det_cnt, is_detected(i) ? 1 : 0)
     end
 
     # log quarantine data

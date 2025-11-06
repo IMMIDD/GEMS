@@ -45,6 +45,39 @@ end
 
 Base.show(io::IO, cnd::InfectedFraction) = write(io, "InfectedFraction(Random $(100*cnd.fraction)% $(cnd.pathogen))")
 
+"""
+    initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
+
+Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
+For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
+the seed is drawn from `rng(simulation)`. Otherwise, the provided `seed_sample` is used.
+"""
+function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
+
+    # TODO handle pathogen selection
+    # TODO handle multiple pathogens
+    
+    # number of individuals to infect
+    ind = individuals(population(simulation))
+    to_sample = Int64(round(fraction(condition) * length(ind)))
+    to_infect = gems_sample(rng_sample, ind, to_sample, replace=false)
+
+    # infect individuals
+    for i in to_infect
+        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
+
+        for (type, id) in settings(i, simulation)
+            activate!(settings(simulation, type)[id])
+        end
+    end
+
+end
+
+
+
+##### PATIENT ZERO
 
 """
     PatientZero <: StartCondition
@@ -53,7 +86,6 @@ A `StartCondition` that infects a single individual at random at the beginning o
 
 # Fields
 - `pathogen::String`: The pathogen with which the individual has to be infected
-
 """
 struct PatientZero <: StartCondition
     pathogen::String
@@ -67,6 +99,35 @@ struct PatientZero <: StartCondition
 end
 
 """
+    initialize!(simulation::Simulation, condition::PatientZero)
+
+Initialize the simulation model by infecting a single individual at random at the beginning of the simulation.
+"""
+function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
+    # TODO handle pathogen selection
+    # TODO handle multiple pathogens
+    
+    # number of individuals to infect
+    ind = individuals(population(simulation))
+    to_infect = gems_sample(rng_sample, ind, 1, replace=false)
+
+    # infect individuals
+    for i in to_infect
+        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
+
+        for (type, id) in settings(i, simulation)
+            activate!(settings(simulation, type)[id])
+        end
+    end
+end
+
+
+
+##### PATIENT ZEROS IN REGIONS
+
+"""
     PatientZeros <: StartCondition
 
 A `StartCondition` that infects a single individual in each of the given AGS (community identification numbers) at the beginning of the simulation.
@@ -74,8 +135,6 @@ A `StartCondition` that infects a single individual in each of the given AGS (co
 # Fields
 - `pathogen::String`: The pathogen with which the individual has to be infected
 - `ags::Vector{Int64}`: A vector of AGS (community identification number) where the initial seeds should be planted
-
-
 """
 struct PatientZeros <: StartCondition
     pathogen::String
@@ -89,7 +148,7 @@ struct PatientZeros <: StartCondition
 end
 
 """
-    pathogen(patientZero)
+    pathogen(patientzero::PatientZero)
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
@@ -98,7 +157,7 @@ function pathogen(patientzero::PatientZero)
 end
 
 """
-    fraction(infectedFraction)
+    fraction(infectedFraction::InfectedFraction)
 
 Returns fraction of individuals that shall be infected at the beginning using the `InfectedFraction` start condition.
 """
@@ -108,7 +167,7 @@ end
 
 
 """
-    pathogen(patientZeros)
+    pathogen(patientzeros::PatientZeros)
 
 Returns pathogen used to infect individuals at the beginning in this start condition.
 """
@@ -116,7 +175,7 @@ function pathogen(patientzeros::PatientZeros)
     return patientzeros.pathogen
 end
 """
-    ags(patientZeros)
+    ags(patientzeros::PatientZeros)::Vector{Int64}
 
 Returns the vector of ags where intial seeds should be planted.
 """
@@ -124,7 +183,7 @@ function ags(patientzeros::PatientZeros)::Vector{Int64}
     return patientzeros.ags
 end
 """
-    pathogen(infectedFraction)
+    pathogen(infectedFraction::InfectedFraction)
 
 Returns pathogen used to infect individuals at the beginning using the `InfectedFraction` start condition.
 """
@@ -132,56 +191,14 @@ function pathogen(infectedFraction::InfectedFraction)
     return infectedFraction.pathogen
 end
 
-### NECESSARY INTERFACE
 """
-    initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
+    initialize!(simulation::Simulation, condition::PatientZeros)
 
-Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
-For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
-the seed is drawn from `rng(simulation)`. Otherwise, the provided `seed_sample` is used.
+Initializes the simulation model, infecting a single individual in each of the regions provided by their AGS (community identification number).
 """
-function initialize!(simulation::Simulation, condition::InfectedFraction)
-    # TODO handle pathogen selection
-    # TODO handle multiple pathogens
-    
-    # number of individuals to infect
-    ind = individuals(population(simulation))
-    to_sample = Int64(round(fraction(condition) * length(ind)))
-    to_infect = sample(ind, to_sample, replace=false)
-
-    # infect individuals
-    for i in to_infect
-        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
-
-        for (type, id) in settings(i, simulation)
-            activate!(settings(simulation, type)[id])
-        end
-    end
-
-end
-
-
-
-#TODO docs
-function initialize!(simulation::Simulation, condition::PatientZero)
-    # TODO handle pathogen selection
-    # TODO handle multiple pathogens
-    
-    # number of individuals to infect
-    ind = individuals(population(simulation))
-    to_infect = sample(ind, 1, replace=false)
-
-    # infect individuals
-    for i in to_infect
-        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
-
-        for (type, id) in settings(i, simulation)
-            activate!(settings(simulation, type)[id])
-        end
-    end
-end
-
-function initialize!(simulation::Simulation, condition::PatientZeros)
+function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{Int64,Nothing}=nothing)
+    # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
+    rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
     # TODO handle pathogen selection
     # TODO handle multiple pathogens
 
@@ -261,21 +278,6 @@ using the `RegionalSeeds` start condition.
 """
 function seeds(regionalseeds::RegionalSeeds)
     return regionalseeds.seeds
-end
-
-
-"""
-    parameters(rs::RegionalSeeds)
-
-Returns a dictionary containing the parameters of the `RegionalSeeds` 
-start condition.
-"""
-function parameters(rs::RegionalSeeds)
-    return Dict(
-        "pathogen" => rs |> pathogen |> name,
-        "pathogen_id" => rs |> pathogen |> id,
-        "seeds" => rs |> seeds
-        )
 end
 
 """

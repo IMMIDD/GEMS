@@ -195,6 +195,10 @@ mutable struct Simulation
     # StepMod
     stepmod::Function
 
+    # RNG
+    main_rng::AbstractRNG
+    thread_rngs::Vector{AbstractRNG}
+
     # inner default constructor
     function Simulation(
         configfile::String,
@@ -206,7 +210,9 @@ mutable struct Simulation
         population::Population,
         settings::SettingsContainer,
         pathogen::Pathogen,
-        stepmod::Function
+        stepmod::Function,
+        main_rng::AbstractRNG,
+        thread_rngs::Vector{AbstractRNG}
     )
         sim = new(
             # config
@@ -243,7 +249,11 @@ mutable struct Simulation
             [],
 
             # StepMod
-            stepmod
+            stepmod,
+
+            # RNG
+            main_rng,
+            thread_rngs
         )
 
         # increase simulation counter
@@ -404,7 +414,9 @@ function _BUILD_Simulation(;
             pop,
             settings,
             pathogen,
-            stepmod
+            stepmod,
+            Xoshiro(),
+            [Xoshiro() for _ in 1:Threads.maxthreadid()]
         )
 
         # update label
