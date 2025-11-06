@@ -248,6 +248,21 @@ function attack_rate(batchProcessor::BatchProcessor)
 end
 
 """
+    r0(batchProcessor::BatchProcessor)
+
+Returns a vector of the basic reproduction number `r0` accross the simulation runs in this batch.
+"""
+function r0(batchProcessor::BatchProcessor)
+    rates = map(
+        x -> r0(x),
+        batchProcessor |> rundata
+    )
+
+    return(rates)
+end
+
+
+"""
     
     settingdata(batchProcessor::BatchProcessor)
 

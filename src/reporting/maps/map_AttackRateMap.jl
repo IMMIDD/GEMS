@@ -75,13 +75,11 @@ function generate(plt::AttackRateMap, rd::ResultData; level::Int = 3, plotargs..
         x -> unique(x, [:id_b, :ags]) |>
         x -> groupby(x, :ags) |>
         x -> combine(x, nrow => :reg_infs) |>
-        x -> transform(x, :ags => ByRow(AGS) => :ags) |>
         x -> leftjoin(region_info(rd), x, on = :ags) |>
         x -> transform(x, :reg_infs => ByRow(x -> coalesce(x, 0)) => :reg_infs) |>
         x -> transform(x, [:reg_infs, :pop_size] => ByRow((i, n) -> i/n) => :attack_rate) |>
         x -> DataFrames.select(x, :ags, :attack_rate) |>
         x -> agsmap(x,
-            level = 3,
             fontfamily = "Times Roman",
             clims = (0, 1);
             plotargs...)

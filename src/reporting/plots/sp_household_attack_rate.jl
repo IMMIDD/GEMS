@@ -41,13 +41,15 @@ subplots individually.
 
 - `plt::HouseholdAttackRate`: `SimulationPlot` struct with meta data (i.e. title, description, and filename)
 - `rd::ResultData`: Input data used to generate plot
+- `ar_only::Bool = false` *(optional)*: If `true`, only the attack rate plot will be returned, otherwise a multi-plot with attack rate and household size over time.
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
 
 - `Plots.Plot`: Household Attack Rate plot
 """
-function generate(plt::HouseholdAttackRate, rd::ResultData; plotargs...)
+function generate(plt::HouseholdAttackRate, rd::ResultData; ar_only::Bool = false,
+    markersize = 5, plotargs...)
 
     # group attack rate data by household size, time of first introduction,
     # and look at change in attack rates and change in mean houeshold sizes
@@ -81,9 +83,12 @@ function generate(plt::HouseholdAttackRate, rd::ResultData; plotargs...)
         xlims = (0, 15),
         ylims = (0, 1),
         xticks = (1:1:15),
+        markersize = markersize,
+        markerstrokewidth=0,
         label = "Attack rate and household sizes",
         xlabel = "Household Size",
-        ylabel = "Mean Attack Rate")
+        ylabel = "Mean Attack Rate",
+        fontfamily = "Times Roman")
 
     time_ar = plot(
         mean_hh_AR_over_time.first_introduction,
@@ -102,6 +107,12 @@ function generate(plt::HouseholdAttackRate, rd::ResultData; plotargs...)
         xlabel = upper_ticks * "s",
         ylabel = "Mean Household Size")
 
+    # if attack-rate only flag is set, return only the attack rate plot
+    if ar_only
+        return plot!(hhs_ar; plotargs...)
+    end
+
+    # return the multi-plot with the attack rate and household size over time
     l = @layout [a ; b c]
     ar_plot = plot(hhs_ar, time_ar, timem_hhs,
         layout = l,
@@ -141,7 +152,7 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; plotargs...
     # prepare colors & data per label
     # read labels from result data vector
     labels = map(label, rds) |> unique
-    colors = Dict(zip(labels, palette(:auto, length(labels))))
+    colors = Dict(zip(labels, gemscolors(length(labels))))
     data = []
 
     # process data and sort by label

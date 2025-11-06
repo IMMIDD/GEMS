@@ -15,6 +15,7 @@ Order   = [:function]
 ## Plotting
 ```@docs
 gemsplot
+gemsheatmap
 emptyplot(::String)
 plotseries!
 saveplot
