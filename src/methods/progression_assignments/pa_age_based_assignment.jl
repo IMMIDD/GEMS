@@ -151,7 +151,11 @@ mutable struct AgeBasedProgressionAssignment <: ProgressionAssignmentFunction
     function AgeBasedProgressionAssignment(;
         age_groups::Vector{String},
         progression_categories::Vector{String},
-        stratification_matrix::Vector{Vector{T}} where T <: Real)
+        stratification_matrix::Vector{Any})
+
+        # check that the stratification matrix is a vector of vectors
+        all(x -> isa(x, AbstractVector{<:Real}), stratification_matrix) ||
+            throw(ArgumentError("Stratification matrix must be a vector of vectors of real numbers."))
 
         # exception handling
         isempty(age_groups) && throw(ArgumentError("At least one age group must be provided for AgeBasedProgressionAssignment!"))
