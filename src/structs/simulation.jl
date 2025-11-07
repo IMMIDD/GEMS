@@ -196,6 +196,7 @@ mutable struct Simulation
     stepmod::Function
 
     # RNG
+    seed::Int64
     main_rng::AbstractRNG
     thread_rngs::Vector{AbstractRNG}
 
@@ -211,6 +212,7 @@ mutable struct Simulation
         settings::SettingsContainer,
         pathogen::Pathogen,
         stepmod::Function,
+        seed::Int64,
         main_rng::AbstractRNG,
         thread_rngs::Vector{<:AbstractRNG}
     )
@@ -252,6 +254,7 @@ mutable struct Simulation
             stepmod,
 
             # RNG
+            seed,
             main_rng,
             thread_rngs
         )
@@ -335,11 +338,19 @@ function _BUILD_Simulation(;
         transmission_rate = nothing,
 
         # stepmod
-        stepmod::Function = x -> x
+        stepmod::Function = x -> x,
+
+        # seed
+        seed = nothing
     )
 
         # parse the config file (or default to default.toml)
         config = load_configfile(configfile)
+
+        # SEED
+        rng_seed = determine_seed(config, seed)
+        main_rng = Xoshiro(rng_seed)
+        thrd_rngs = [Xoshiro(gems_rand(main_rng, UInt)) for _ in 1:Threads.nthreads()]
 
         # GLOBAL SETTING FLAG
         gs = determine_global_setting(config, global_setting)
@@ -403,6 +414,8 @@ function _BUILD_Simulation(;
             transmission_rate
         )
 
+
+
         # CREATES SIMULATION OBJECT
         sim = Simulation(
             configfile,
@@ -415,8 +428,9 @@ function _BUILD_Simulation(;
             settings,
             pathogen,
             stepmod,
-            Xoshiro(),
-            [Xoshiro() for _ in 1:Threads.maxthreadid()]
+            rng_seed,
+            main_rng,
+            thrd_rngs
         )
 
         # update label
@@ -860,6 +874,39 @@ function determine_setting_config!(stngs::SettingsContainer, configfile_params::
 end
 
 
+"""
+    determine_seed(configfile_params::Dict, seed)
+
+Determines the seed for the simulation based on the provided parameters.
+If a `seed` is provided, it will be used.
+If not, it will look for a `seed` in the config file.
+If neither is found, it will generate a random seed.
+"""
+function determine_seed(configfile_params::Dict, seed)
+    # if seed is provided, use it
+    if !isnothing(seed)
+        !isa(seed, Integer) && throw(ArgumentError("Provided seed must be an integer value!"))
+        printinfo("\u2514 Initializing RNG with seed $seed")
+        return seed
+    end
+
+    # if no seed is provided, look it up in config file
+    if !haspath(configfile_params, ["Simulation", "seed"])
+        #@warn "Seed not found in config file and not provided as argument; defualting to random seed."
+        return gems_rand(Xoshiro(), UInt) # generate seed randomly if none is provided
+    end
+
+    sd = configfile_params["Simulation"]["seed"]
+    !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value!"))
+    printinfo("\u2514 Initializing RNG with seed $sd")
+    return try
+        sd
+    catch e
+        throw(ConfigfileError("'[Simulation] => seed' could not be read from config file.", e))
+    end
+end
+
+
 
 ### CREATOR FUNCTIONS
 
@@ -1177,18 +1224,18 @@ end
 
 # TODO REMOVE
 """
-    initialize!(simulation, condition)
+    initialize!(simulation::Simulation, condition::StartCondition; kwargs...)
 
 Initializes the simulation model according to a provided start condition.
     This is an 'abstract' function that must be implemented for concrete start condition types.
 """
-function initialize!(simulation::Simulation, condition::StartCondition)
+function initialize!(simulation::Simulation, condition::StartCondition; kwargs...)
     error("`initialize!` not implemented for start condition "
         *string(typeof(condition)))
 end
 
 """
-    evaluate(simulation, criterion)
+    evaluate(simulation::Simulation, criterion::StopCriterion)
 
 Evaluates whether the specified stop criterion is met for the simulation model. 
     Return `True` if criterion was met.
