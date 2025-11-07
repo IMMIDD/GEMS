@@ -6,7 +6,7 @@ excluding specified files. Returns `offending_lines::Vector`.
 """
 function check_naked_rng_calls(;
     src_path = @__DIR__, # this only works because the devToolss.jl is actually in the src folder. If this file is moved, the src_path needs to be adjusted accordingly.
-    files_to_ignore::Set{String} = Set(["rng.jl"])
+    files_to_ignore::Set{String} = Set(["GEMS.jl", "rng.jl"])
 )
     forbidden_pattern = Regex("\\b($(join(["rand", "randn", "shuffle", "shuffle!", "sample", "sample!"], "|")))\\(")
     offending_lines = []

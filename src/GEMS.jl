@@ -74,13 +74,13 @@ module GEMS
 
         if !isempty(offending_lines)
             warning_message = """
-            The code contains calls to RNG functions (e.g., rand(), randn(), sample()) that are not using
+            The code might contain calls to RNG functions (e.g., rand(), randn(), sample()) that are not using
             the simulation's RNG instance. This can lead to non-reproducible results.
             GEMS offers utility functions that accept an RNG instance as an argument such 
             as gems_rand(rng, ...), gems_sample(rng, ...), etc.
             The simulation's RNG instance can be accessed via `rng(sim)`.
-            Please modify the following lines to use the provided RNG instance:
 
+            Please modify the following lines to use the provided RNG instance:
             """
             for (filepath, line_num, content) in offending_lines
                 warning_message *= "- $filepath:$line_num`: `$content`\n"
