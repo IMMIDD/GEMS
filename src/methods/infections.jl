@@ -99,7 +99,7 @@ function infect!(infectee::Individual,
         paf -> assign(infectee, sim, paf)
     
     # calculate the actual disease progression
-    calculate_progression(infectee, tick, progressions(pathogen)[pc]) |>
+    calculate_progression(infectee, tick, progressions(pathogen)[pc]; rng = rng) |>
         # set the progression for the individual
         dp -> set_progression!(infectee, dp)
 
