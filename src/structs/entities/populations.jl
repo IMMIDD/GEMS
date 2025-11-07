@@ -317,7 +317,7 @@ function maxage(population::Population, date::Date)
         return(population.maxage)
     end
 
-    mx = Int8(-1)
+    mx = Int32(-1)
     for i in population |> individuals
         if age(i, date) > mx
             mx = age(i, date)

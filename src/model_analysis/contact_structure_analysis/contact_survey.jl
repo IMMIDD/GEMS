@@ -37,10 +37,10 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
     # set up contact dataframe with empty columns. Each row will be added at runtime.
     df = DataFrame(
         a_id = Vector{Int32}(undef, CONTACT_SAMPLES),
-        a_age = Vector{Int8}(undef, CONTACT_SAMPLES),
+        a_age = Vector{Int32}(undef, CONTACT_SAMPLES),
         a_sex = Vector{Int8}(undef, CONTACT_SAMPLES),
         b_id = Vector{Int32}(undef, CONTACT_SAMPLES),
-        b_age = Vector{Int8}(undef, CONTACT_SAMPLES),
+        b_age = Vector{Int32}(undef, CONTACT_SAMPLES),
         b_sex = Vector{Int8}(undef, CONTACT_SAMPLES),
         settingtype = Vector{DataType}(undef, CONTACT_SAMPLES)
     )
@@ -49,10 +49,10 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
     if isnothing(stngs) || isempty(stngs)
         return DataFrame(
                         a_id = Int32[], 
-                        a_age = Int8[], 
+                        a_age = Int32[], 
                         a_sex = Int8[],
                         b_id = Int32[],  
-                        b_age = Int8[], 
+                        b_age = Int32[], 
                         b_sex = Int8[],
                         settingtype = DataType[]
         )
@@ -74,10 +74,10 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
             # return empty df, if there are no contacts until now
                 return DataFrame(
                     a_id = Int32[], 
-                    a_age = Int8[], 
+                    a_age = Int32[], 
                     a_sex = Int8[],
                     b_id = Int32[],  
-                    b_age = Int8[], 
+                    b_age = Int32[], 
                     b_sex = Int8[],
                     settingtype = DataType[]
                 )
