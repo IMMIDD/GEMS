@@ -70,5 +70,5 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, infec
             return gems_rand(rng, transFunc.ageTransmissions[i])
         end
     end
-    return rand(transFunc.transmission_rate)
+    return gems_rand(rng, transFunc.transmission_rate)
 end

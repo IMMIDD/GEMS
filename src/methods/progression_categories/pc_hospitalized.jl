@@ -47,27 +47,29 @@ dp = Hospitalized(
     severeness_offset_to_recovery::Union{Distribution, Real}
 end
 
-function calculate_progression(individual::Individual, tick::Int16, dp::Hospitalized)
+function calculate_progression(individual::Individual, tick::Int16, dp::Hospitalized; 
+        rng::AbstractRNG = Random.default_rng())
+        
     # Calculate the time to infectiousness
-    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset)
+    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
 
     # Calculate the time to symptom onset
-    symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset)
+    symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset, rng)
 
     # Calculate the time to severeness onset
-    severeness_onset = symptom_onset + rand_val(dp.symptom_onset_to_severeness_onset)
+    severeness_onset = symptom_onset + rand_val(dp.symptom_onset_to_severeness_onset, rng)
 
     # Calculate the time to hospital admission
-    hospital_admission = severeness_onset + rand_val(dp.severeness_onset_to_hospital_admission)
+    hospital_admission = severeness_onset + rand_val(dp.severeness_onset_to_hospital_admission, rng)
 
     # Calculate the time to hospital discharge
-    hospital_discharge = hospital_admission + rand_val(dp.hospital_admission_to_hospital_discharge)
+    hospital_discharge = hospital_admission + rand_val(dp.hospital_admission_to_hospital_discharge, rng)
 
     # Calculate the time to severeness offset
-    severeness_offset = hospital_discharge + rand_val(dp.hospital_discharge_to_severeness_offset)
+    severeness_offset = hospital_discharge + rand_val(dp.hospital_discharge_to_severeness_offset, rng)
 
     # Calculate the time to recovery
-    recovery = severeness_offset + rand_val(dp.severeness_offset_to_recovery)
+    recovery = severeness_offset + rand_val(dp.severeness_offset_to_recovery, rng)
 
     return DiseaseProgression(
         exposure = tick,
