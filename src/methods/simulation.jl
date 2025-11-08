@@ -234,7 +234,7 @@ function process_births!(sim::Simulation)
             id = new_id,
             sex = rand(1:2),
             birthday = sim.startdate + Day(tick(sim)),
-            mother_id = id(mother)
+            mother_id = mother
         )
 
         setting_id!(newborn, Household, id(target_household))

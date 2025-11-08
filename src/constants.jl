@@ -153,3 +153,8 @@ POST_PROCESSOR_CACHING = true
 # become a bottleneck. Please only set this "true" if you are sure to have enough
 # memory available.
 PARALLEL_REPORT_GENERATION = false
+
+
+
+
+MATERNAL_CACHE_INVALIDATION_DAYS = 30

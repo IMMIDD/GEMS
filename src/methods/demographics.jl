@@ -1,4 +1,4 @@
-export generate_birthday, get_births_for_tick
+export generate_birthday, get_births_for_tick, get_eligable_mothers
 
 
 """
@@ -153,8 +153,7 @@ age distribution. Handles maternal cache updates.
 """
 function select_random_mother(sim::Simulation)
     # check if the cache needs updating 
-    CACHE_INVALIDATION_DAYS = 30
-    if sim.last_maternal_cache_update == -1 || tick(sim) - sim.last_maternal_cache_update > CACHE_INVALIDATION_DAYS
+    if sim.last_maternal_cache_update == -1 || tick(sim) - sim.last_maternal_cache_update > MATERNAL_CACHE_INVALIDATION_DAYS
         update_maternal_cache!(sim)
     end
 
@@ -206,7 +205,7 @@ function initialize_maternal_links!(sim::Simulation)
     age_49 = 49 * 365
 
     for ind in individuals(population(sim))
-        if age_in_years(ind, current_date) < 18 && ind.mother_id == -1
+        if age_in_years(ind, current_date) < 18 && isnothing(ind.mother)
             
             hh = households(sim)[household_id(ind)]
             potential_mothers = Individual[]
@@ -225,7 +224,7 @@ function initialize_maternal_links!(sim::Simulation)
             if isempty(potential_mothers)
                 continue
             elseif length(potential_mothers) == 1
-                ind.mother_id = id(first(potential_mothers))
+                ind.mother = first(potential_mothers)
             else
                 # based on probability distribution
                 weights = Float64[]
@@ -242,8 +241,23 @@ function initialize_maternal_links!(sim::Simulation)
                 
                 # Sample one mother based on those weights
                 chosen_mother = sample(potential_mothers, Weights(weights))
-                ind.mother_id = id(chosen_mother)
+                ind.mother = chosen_mother
             end
         end
     end
+end
+
+
+
+"""
+Updates maternal cache and returns all eligible mothers.
+"""
+function get_eligable_mothers(sim::Simulation)
+    # check if the cache needs updating 
+    if sim.last_maternal_cache_update == -1 || tick(sim) - sim.last_maternal_cache_update > MATERNAL_CACHE_INVALIDATION_DAYS
+        update_maternal_cache!(sim)
+    end
+
+    cache = sim.maternal_cache
+    return [cache.under_18; cache.between_18_and_40; cache.between_40_and_49]
 end
