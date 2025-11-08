@@ -22,6 +22,7 @@ export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!,
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export stepmod
+export rng, seed
 
 export info
 
@@ -153,6 +154,10 @@ sim = Simulation(params)
     - `testtypes::Vector{AbstractTestType}`: List of all `TestTypes` (e.g. Antigen- or PCR-Test)
 - Runtime Modifiers
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
+- RNG
+    - `seed::Int64`: Seed used to initialize the main RNG
+    - `main_rng::AbstractRNG`: Main RNG instance for the simulation
+    - `thread_rngs::Vector{AbstractRNG}`: RNG instances for each thread
 
 """
 mutable struct Simulation 
@@ -885,7 +890,8 @@ If neither is found, it will generate a random seed.
 function determine_seed(configfile_params::Dict, seed)
     # if seed is provided, use it
     if !isnothing(seed)
-        !isa(seed, Integer) && throw(ArgumentError("Provided seed must be an integer value!"))
+        !isa(seed, Integer) && throw(ArgumentError("Provided seed must be an integer value."))
+        seed < 0 && throw(ArgumentError("Provided seed must be a non-negative integer value."))
         printinfo("\u2514 Initializing RNG with seed $seed")
         return seed
     end
@@ -893,11 +899,12 @@ function determine_seed(configfile_params::Dict, seed)
     # if no seed is provided, look it up in config file
     if !haspath(configfile_params, ["Simulation", "seed"])
         #@warn "Seed not found in config file and not provided as argument; defualting to random seed."
-        return gems_rand(Xoshiro(), UInt) # generate seed randomly if none is provided
+        return gems_rand(Xoshiro(), 0:typemax(Int)) # generate seed randomly if none is provided
     end
 
     sd = configfile_params["Simulation"]["seed"]
-    !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value!"))
+    !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
+    sd < 0 && throw(ArgumentError("Provided seed in config file must be a non-negative integer value."))
     printinfo("\u2514 Initializing RNG with seed $sd")
     return try
         sd
@@ -1154,15 +1161,6 @@ end
 
 
 """
-    initialize_seed(x::Int64)
-
-Creates a random value based on the seed provided
-"""
-function initialize_seed(x::Int64)
-    return Random.seed!(x)
-end
-
-"""
     obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
 Interface to remotely access a setting and population file
@@ -1321,6 +1319,15 @@ Returns simulation RNG of the current thread.
 """
 function rng(simulation::Simulation)
     return simulation.thread_rngs[Threads.threadid()]
+end
+
+"""
+    seed(simulation::Simulation)
+
+Returns seed associated with the simulation run.
+"""
+function seed(simulation::Simulation)
+    return simulation.seed
 end
 
 
