@@ -55,6 +55,18 @@
         end
 
         @testset "General Parameters" begin
+            # SEED
+            # passing
+            sim = Simulation(pop_size = 1_000, seed = 1234)
+            @test sim.seed == 1234
+            sim1 = Simulation(pop_size = 1_000)
+            sim2 = Simulation(pop_size = 1_000)
+            @test sim1.seed != sim2.seed # different seeds when none is provided
+            
+            # failing
+            @test_throws ArgumentError Simulation(pop_size = 1_000, seed = "1234")
+            @test_throws ArgumentError Simulation(pop_size = 1_000, seed = -1234)
+            
             # TICKUNIT
             # passing
             sim = Simulation(pop_size = 1_000, tickunit = 'h')
