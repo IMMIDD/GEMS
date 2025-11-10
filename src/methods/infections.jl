@@ -184,7 +184,8 @@ function try_to_infect!(infctr::Individual,
     end
 
     # calculate infection probability
-    infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick)
+    infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick,
+        rng = rng(sim))
 
     # try to infect
     if gems_rand(sim) < infection_probability
@@ -196,7 +197,8 @@ function try_to_infect!(infctr::Individual,
             lon = geolocation(settings(sim, Household)[household_id(infctd)], sim)[1],
             setting_type = settingchar(setting),
             ags = ags(setting, sim) |> id,
-            source_infection_id = source_infection_id)
+            source_infection_id = source_infection_id,
+            rng  = rng(sim))
         return true
     end
 
@@ -282,7 +284,7 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
             # if infectious and setting is open try to infect others
             if infectious(ind) && open && (!isquarantined(ind) || ((quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household)))
                 # sample contacts based on setting specific "ContactSamplingMethod"
-                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), rng=rng(sim))
+                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), rng = rng(sim))
                 for c in contacts
                     # try to infect
                     if !isquarantined(c) || ((quarantine_status(c) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household))

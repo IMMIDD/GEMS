@@ -66,7 +66,7 @@ function initialize!(simulation::Simulation, condition::InfectedFraction; seed_s
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(simulation), sim = simulation)
+        infect!(i, tick(simulation), pathogen(simulation), sim = simulation, rng = rng_sample)
 
         for (type, id) in settings(i, simulation)
             activate!(settings(simulation, type)[id])

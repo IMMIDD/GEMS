@@ -22,7 +22,7 @@ export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!,
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export stepmod
-export rng, seed
+export rng, rngs, seed
 
 export info
 
@@ -156,8 +156,7 @@ sim = Simulation(params)
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
     - `seed::Int64`: Seed used to initialize the main RNG
-    - `main_rng::AbstractRNG`: Main RNG instance for the simulation
-    - `thread_rngs::Vector{AbstractRNG}`: RNG instances for each thread
+    - `rngs::Vector{AbstractRNG}`: RNG instances for each thread
 
 """
 mutable struct Simulation 
@@ -202,8 +201,7 @@ mutable struct Simulation
 
     # RNG
     seed::Int64
-    main_rng::AbstractRNG
-    thread_rngs::Vector{AbstractRNG}
+    rngs::Vector{AbstractRNG} # rng for each thread
 
     # inner default constructor
     function Simulation(
@@ -218,8 +216,7 @@ mutable struct Simulation
         pathogen::Pathogen,
         stepmod::Function,
         seed::Int64,
-        main_rng::AbstractRNG,
-        thread_rngs::Vector{<:AbstractRNG}
+        rngs::Vector{<:AbstractRNG}
     )
         sim = new(
             # config
@@ -260,8 +257,7 @@ mutable struct Simulation
 
             # RNG
             seed,
-            main_rng,
-            thread_rngs
+            rngs
         )
 
         # increase simulation counter
@@ -354,8 +350,7 @@ function _BUILD_Simulation(;
 
         # SEED
         rng_seed = determine_seed(config, seed)
-        main_rng = Xoshiro(rng_seed)
-        thrd_rngs = [Xoshiro(gems_rand(main_rng, UInt)) for _ in 1:Threads.nthreads()]
+        rngs = [Xoshiro(gems_rand(Xoshiro(rng_seed), UInt)) for _ in 1:Threads.maxthreadid()]
 
         # GLOBAL SETTING FLAG
         gs = determine_global_setting(config, global_setting)
@@ -369,7 +364,8 @@ function _BUILD_Simulation(;
             avg_household_size,
             avg_office_size,
             avg_school_size,
-            settingsfile
+            settingsfile,
+            rngs[1]
         )
 
         # everything after this is just generating, not loading from disk
@@ -434,8 +430,7 @@ function _BUILD_Simulation(;
             pathogen,
             stepmod,
             rng_seed,
-            main_rng,
-            thrd_rngs
+            rngs
         )
 
         # update label
@@ -705,7 +700,7 @@ Determines the population and settings for the simulation based on the provided 
 If a `population` is provided, it will be used to load the population from a file or obtain remote files.
 If not, it will create a new population based on the provided parameters or config file parameters.
 """
-function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile)
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng)
     # if population is provided, use it    
     if !isnothing(population)
         # if a Population object is provided, use it
@@ -737,7 +732,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     !isnothing(avg_school_size) && (params[:avg_school_size] = avg_school_size)
 
     # create population object
-    pop = Population(; params...)
+    pop = Population(; rng = rng, params...)
     settings, renaming = settings_from_population(pop, global_setting)
     return pop, settings
 end
@@ -1315,10 +1310,21 @@ end
 """
     rng(simulation::Simulation)
 
-Returns simulation RNG of the current thread.
+Returns the thread-local RNG associated with the simulation run.
+This way, `rng(simulation)` can be called inside multi-threaded code
+to get the correct RNG for the current thread.
 """
 function rng(simulation::Simulation)
-    return simulation.thread_rngs[Threads.threadid()]
+    return simulation.rngs[Threads.threadid()]
+end
+
+"""
+    rngs(simulation::Simulation)
+
+Returns the RNGs for all threads associated with the simulation run.
+"""
+function rngs(simulation::Simulation)
+    return simulation.rngs
 end
 
 """

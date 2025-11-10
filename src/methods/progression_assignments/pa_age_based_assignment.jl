@@ -207,6 +207,6 @@ function assign(individual::Individual, sim::Simulation, age_based_assignment::A
 
     # sample from the categorical distribution defined by the stratification matrix for the age group
     return Categorical(age_based_assignment.stratification_matrix[:, pos]) |>
-        rand |>
+        dist -> gems_rand(sim, dist) |>
         rval -> age_based_assignment.progression_categories[rval]
 end

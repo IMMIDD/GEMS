@@ -89,7 +89,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
     infectee_ids = get_infections_between(sim  |> infectionlogger, ind |> id, infectious_at, now)
 
     # filter by success_rate
-    infectee_ids = infectee_ids[gems_rand(rng(sim), infectee_ids |> length) .< sr]
+    infectee_ids = infectee_ids[gems_rand(sim, infectee_ids |> length) .< sr]
 
     @debug "Individual $(ind |> id) identiying $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
 

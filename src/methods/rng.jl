@@ -19,36 +19,40 @@ function set_global_seed(seed::Int64)
 end
 
 """
-    gems_rand(rng::AbstractRNG, args...)
+    gems_rand(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    gems_rand(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
 
 Reproducibility-safe version of `Random.rand`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+If `enforce_sim_rngs` is set to `true`, an error is thrown when the global RNG is used.
+Mainly used for debugging purposes.
 """
-function gems_rand(rng::AbstractRNG, args...)
+function gems_rand(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    # throw error if global RNG is used and enforcement is enabled
+    enforce_sim_rngs && rng == Random.default_rng() && throw(ArgumentError("Using the global RNG in `gems_rand`."))
     return Random.rand(rng, args...)
 end
+gems_rand(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_rand(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)
 
-function gems_rand(sim::Simulation, args...)
-    return Random.rand(rng(sim), args...)
-end
-
-function gems_rand(args...)
+function gems_rand(args...; kwargs...)
     @warn "Calling `gems_rand` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
     return Random.rand(args...)
 end
 
 
 """
-    gems_sample(rng::AbstractRNG, args...; kwargs...)
-
+    gems_sample(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
+    gems_sample(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
+    
 Reproducibility-safe version of `StatsBase.sample`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+If `enforce_sim_rngs` is set to `true`, an error is thrown when the global RNG is used.
+Mainly used for debugging purposes.
 """
-function gems_sample(rng::AbstractRNG, args...; kwargs...)
+function gems_sample(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
+    # throw error if global RNG is used and enforcement is enabled
+    enforce_sim_rngs && rng == Random.default_rng() && throw(ArgumentError("Using the global RNG in `gems_sample`."))
     return StatsBase.sample(rng, args...; kwargs...)
 end
-
-function gems_sample(sim::Simulation, args...; kwargs...)
-    return StatsBase.sample(rng(sim), args...; kwargs...)
-end
+gems_sample(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...) = gems_sample(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs, kwargs...)
 
 function gems_sample(args...; kwargs...)
     @warn "Calling `gems_sample` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
@@ -57,17 +61,19 @@ end
 
 
 """
-    gems_sample!(rng::AbstractRNG, args...; kwargs...)
+    gems_sample!(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
+    gems_sample!(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
 
 Reproducibility-safe version of `StatsBase.sample!`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+If `enforce_sim_rngs` is set to `true`, an error is thrown when the global RNG is used.
+Mainly used for debugging purposes.
 """
-function gems_sample!(rng::AbstractRNG, args...; kwargs...)
+function gems_sample!(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
+    # throw error if global RNG is used and enforcement is enabled
+    enforce_sim_rngs && rng == Random.default_rng() && throw(ArgumentError("Using the global RNG in `gems_sample!`."))
     return StatsBase.sample!(rng, args...; kwargs...)
 end
-
-function gems_sample!(sim::Simulation, args...; kwargs...)
-    return StatsBase.sample!(rng(sim), args...; kwargs...)
-end
+gems_sample!(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...) = gems_sample!(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs, kwargs...)
 
 function gems_sample!(args...; kwargs...)
     @warn "Calling `gems_sample!` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
@@ -76,17 +82,19 @@ end
 
 
 """
-    gems_shuffle!(rng::AbstractRNG, args...)
+    gems_shuffle!(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    gems_shuffle!(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
 
 Reproducibility-safe version of `Random.shuffle!`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+If `enforce_sim_rngs` is set to `true`, an error is thrown when the global RNG is used.
+Mainly used for debugging purposes.
 """
-function gems_shuffle!(rng::AbstractRNG, args...)
+function gems_shuffle!(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    # throw error if global RNG is used and enforcement is enabled
+    enforce_sim_rngs && rng == Random.default_rng() && throw(ArgumentError("Using the global RNG in `gems_shuffle!`."))
     return Random.shuffle!(rng, args...)
 end
-
-function gems_shuffle!(sim::Simulation, args...)
-    return Random.shuffle!(rng(sim), args...)
-end
+gems_shuffle!(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_shuffle!(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)
 
 function gems_shuffle!(args...)
     @warn "Calling `gems_shuffle!` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
@@ -95,17 +103,18 @@ end
 
 
 """
-    gems_shuffle(rng::AbstractRNG, args...)
+    gems_shuffle(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    gems_shuffle(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
 
 Reproducibility-safe version of `Random.shuffle`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+If `enforce_sim_rngs` is set to `true`, an error is thrown when the global RNG is used.
+Mainly used for debugging purposes.
 """
-function gems_shuffle(rng::AbstractRNG, args...)
+function gems_shuffle(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    enforce_sim_rngs && rng == Random.default_rng() && throw(ArgumentError("Using the global RNG in `gems_shuffle`."))
     return Random.shuffle(rng, args...)
 end
-
-function gems_shuffle(sim::Simulation, args...)
-    return Random.shuffle(rng(sim), args...)
-end
+gems_shuffle(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_shuffle(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)
 
 function gems_shuffle(args...)
     @warn "Calling `gems_shuffle` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
@@ -114,17 +123,19 @@ end
 
 
 """
-    gems_randn(rng::AbstractRNG, args...)
+    gems_randn(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    gems_randn(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
 
 Reproducibility-safe version of `Random.randn`. Always pass a seeded `AbstractRNG` from the simulation object to ensure deterministic results.
+If `enforce_sim_rngs` is set to `true`, an error is thrown when the global RNG is used.
+Mainly used for debugging purposes.
 """
-function gems_randn(rng::AbstractRNG, args...)
+function gems_randn(rng::AbstractRNG, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
+    # throw error if global RNG is used and enforcement is enabled
+    enforce_sim_rngs && rng == Random.default_rng() && throw(ArgumentError("Using the global RNG in `gems_randn`."))
     return Random.randn(rng, args...)
 end
-
-function gems_randn(sim::Simulation, args...)
-    return Random.randn(rng(sim), args...)
-end
+gems_randn(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_randn(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)
 
 function gems_randn(args...)
     @warn "Calling `gems_randn` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
