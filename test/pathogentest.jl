@@ -115,6 +115,69 @@
         @test pr_crit.death_probability == 0.3
     end
 
+    @testset "Custom Progression Category" begin
+        # define custom progression category
+        # similar to Symptomatic but with an extra custom parameter
+        mutable struct TestProgression <: GEMS.ProgressionCategory
+            exposure_to_infectiousness_onset::Distribution
+            infectiousness_onset_to_symptom_onset::Distribution
+            symptom_onset_to_recovery::Distribution
+            custom_parameter::Float64
+        end
+
+        # define calcuate progression function
+        function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression;
+                rng::AbstractRNG = Random.default_rng())
+            
+            # Calculate the time to infectiousness
+            infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
+
+            # Calculate the time to symptom onset
+            symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset, rng)
+
+            # Calculate the time to recovery
+            recovery = symptom_onset + rand_val(dp.symptom_onset_to_recovery, rng)
+
+            return DiseaseProgression(
+                exposure = tick,
+                infectiousness_onset = infectiousness_onset,
+                symptom_onset = symptom_onset,
+                recovery = recovery
+            )
+        end
+
+        # create instance
+        tp = TestProgression(
+            poi3,
+            poi2,
+            poi15,
+            0.75
+        )
+
+        # create pathogen with custom progression
+        # no progression assignment needed for this test
+        # as it will default to RandomProgressionAssignment with only one option
+        p_custom = Pathogen(
+            name = "CustomPathogen",
+            id = 10,
+            progressions = [tp],
+            transmission_function = ctf,
+        )
+
+        @test length(progressions(p_custom)) == 1
+        @test progressions(p_custom)[TestProgression] === tp
+        @test tp.custom_parameter == 0.75
+
+        sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
+        run!(sim)
+        infectionlogger(sim).progression_category
+
+        # check if all infections used the custom progression category in simulation
+        @test all(pc -> pc == :TestProgression, infectionlogger(sim).progression_category)
+        @test length(infectionlogger(sim).progression_category) > 0 # just to verify that there were infections
+
+    end
+
     @testset "Progression Assignment" begin
         # random progression
         pgrs = [Asymptomatic, Symptomatic, Hospitalized, Critical]
