@@ -178,6 +178,144 @@
 
     end
 
+    @testset "Progression Assignment" begin
+        ### RANDOM PROGRESSION ASSIGNMENT
+        # THINGS THAT SHOULD WORK
+        pgrs = [Asymptomatic, Symptomatic, Hospitalized, Critical]
+        rpa = RandomProgressionAssignment(pgrs) 
+        i = individuals(sim)[1]
+
+        res = GEMS.assign(i, sim, rpa)
+        @test res in pgrs
+
+        # THINGS THAT SHOULD NOT WORK
+        # empty progression categories
+        @test_throws ArgumentError RandomProgressionAssignment(DataType[])
+        # non-existing progression category
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Household])
+        # duplicate progression category
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Symptomatic])
+        
+        
+        ### AGE-BASED PROGRESSION ASSIGNMENT
+        # THINGS THAT SHOULD WORK
+        age_groups = ["0-19", "20-39", "40-59", "60-"]
+        progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Critical"]
+        stratification_matrix = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]
+        ]
+
+        abpa = AgeBasedProgressionAssignment(
+            age_groups = age_groups,
+            progression_categories = progression_categories,
+            stratification_matrix = stratification_matrix
+        )
+
+        res = (i -> GEMS.assign(i, sim, abpa)).(individuals(sim))
+        for (ind, pc) in zip(individuals(sim), res)
+            if age(ind) <= 19
+                @test pc == Asymptomatic
+            elseif age(ind) <= 39
+                @test pc == Symptomatic
+            elseif age(ind) <= 59
+                @test pc == Hospitalized
+            else
+                @test pc == Critical
+            end
+        end
+
+        # THINGS THAT SHOULD NOT WORK
+        # -> AGE GROUPS
+        # empty age groups
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = String[],
+            progression_categories = progression_categories,
+            stratification_matrix = stratification_matrix
+        )
+        # non-continuous age groups
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = ["0-19", "21-39", "40-59", "60-"],
+            progression_categories = progression_categories,
+            stratification_matrix = stratification_matrix
+        )
+        # not starting at 0
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = ["10-19", "20-39", "40-59", "60-"],
+            progression_categories = progression_categories,
+            stratification_matrix = stratification_matrix
+        )
+        # non-open ended age groups
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = ["0-19", "20-39", "40-59", "60-79"],
+            progression_categories = progression_categories,
+            stratification_matrix = stratification_matrix
+        )
+        # non-numeric age group
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = ["0-19", "20-39", "forty-59", "60-"],
+            progression_categories = progression_categories,
+            stratification_matrix = stratification_matrix
+        )
+
+        # -> PROGRESSION CATEGORIES
+        # empty progression categories
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = age_groups,
+            progression_categories = String[],
+            stratification_matrix = stratification_matrix
+        )
+        # non-existing progression category
+        @test_throws String AgeBasedProgressionAssignment(
+            age_groups = age_groups,
+            progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "NonExistingProgression"],
+            stratification_matrix = stratification_matrix
+        )
+        # duplicate progression category
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = age_groups,
+            progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Symptomatic"],
+            stratification_matrix = stratification_matrix
+        )
+
+        # -> STRATIFICATION MATRIX
+        # wrong size
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = age_groups,
+            progression_categories = progression_categories,
+            stratification_matrix = [
+                [0.5, 0.5, 0.0, 0.0],
+                [0.5, 0.5, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0]
+            ]
+        )
+        # rows not summing to 1.0
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = age_groups,
+            progression_categories = progression_categories,
+            stratification_matrix = [
+                [0.5, 0.5, 0.0, 0.0],
+                [0.3, 0.3, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0]
+            ]
+        )
+        # negative values
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
+            age_groups = age_groups,
+            progression_categories = progression_categories,
+            stratification_matrix = [
+                [0.5, 0.5, 0.0, 0.0],
+                [0.5, -0.2, 0.7, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0]
+            ]
+        )
+        
+    end
+
     @testset "Custom Progression Assignment" begin
         # define custom progression assignment function
         struct EvenOddProgressionAssignment <: GEMS.ProgressionAssignmentFunction
@@ -222,19 +360,7 @@
 
     end
 
-    @testset "Progression Assignment" begin
-        # random progression
-        pgrs = [Asymptomatic, Symptomatic, Hospitalized, Critical]
-        rpa = RandomProgressionAssignment(pgrs) 
-        i = individuals(sim)[1]
 
-        res = GEMS.assign(i, sim, rpa)
-        @test res in pgrs
-
-        # age-based progression
-
-        
-    end
 
     @testset "Transmission Function" begin
 

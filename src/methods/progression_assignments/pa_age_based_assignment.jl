@@ -151,7 +151,7 @@ mutable struct AgeBasedProgressionAssignment <: ProgressionAssignmentFunction
     function AgeBasedProgressionAssignment(;
         age_groups::Vector{String},
         progression_categories::Vector{String},
-        stratification_matrix::Vector{Any})
+        stratification_matrix::Vector{<:Any})
 
         # check that the stratification matrix is a vector of vectors
         all(x -> isa(x, AbstractVector{<:Real}), stratification_matrix) ||
@@ -159,8 +159,10 @@ mutable struct AgeBasedProgressionAssignment <: ProgressionAssignmentFunction
 
         # exception handling
         isempty(age_groups) && throw(ArgumentError("At least one age group must be provided for AgeBasedProgressionAssignment!"))
-        isempty(progression_categories) && throw(ArgumentError("At least one progression category must be provided for AgeBasedProgressionAssignment!"))
-        
+        isempty(progression_categories) && throw(ArgumentError("At least one progression category must be provided for AgeBasedProgressionAssignment."))
+        length(progression_categories) != length(unique(progression_categories)) &&
+            throw(ArgumentError("Progression categories cannot contain duplicates ($(join(progression_categories, ", ")))."))
+
         # convert age group strings to AgeGroup structs        
         gprs = AgeGroup.(age_groups)
         check_continuity(gprs, 0, 100) # throw error if not continuous

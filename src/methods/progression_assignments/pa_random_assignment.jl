@@ -16,6 +16,15 @@ mutable struct RandomProgressionAssignment <: ProgressionAssignmentFunction
 
     function RandomProgressionAssignment(progression_categories::Vector{DataType})
         isempty(progression_categories) && throw(ArgumentError("At least one progression category must be provided for RandomProgressionAssignment!"))
+        # check that all provided types are subtypes of ProgressionCategory
+        for pc in progression_categories
+            !(pc <: ProgressionCategory) &&
+                throw(ArgumentError("$pc is not a subtype of ProgressionCategory."))
+        end
+        # check for duplicate progression categories
+        length(progression_categories) != length(unique(progression_categories)) &&
+            throw(ArgumentError("Progression categories cannot contain duplicates ($(join(progression_categories, ", ")))."))
+
         return new(progression_categories)
     end
 
