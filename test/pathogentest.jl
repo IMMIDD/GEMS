@@ -178,6 +178,50 @@
 
     end
 
+    @testset "Custom Progression Assignment" begin
+        # define custom progression assignment function
+        struct EvenOddProgressionAssignment <: GEMS.ProgressionAssignmentFunction
+            even_progression::DataType
+            odd_progression::DataType
+        end
+
+        function GEMS.assign(individual::Individual, sim::Simulation, pa::EvenOddProgressionAssignment)
+            if iseven(individual.id)
+                return pa.even_progression
+            else
+                return pa.odd_progression
+            end
+        end
+
+        # create instance
+        eo_pa = EvenOddProgressionAssignment(Symptomatic, Asymptomatic)
+
+        # create pathogen with custom progression assignment
+        p_eo = Pathogen(
+            name = "EvenOddPathogen",
+            id = 20,
+            progressions = [pr_asymp, pr_sympt],
+            progression_assignment = eo_pa,
+            transmission_function = ctf,
+        )
+
+        sim = Simulation(pop_size = 1000, pathogen = p_eo, infected_fraction = 0.1)
+        run!(sim)
+        
+        # make sure that there were infections
+        @test length(infectionlogger(sim).progression_category) > 0 
+
+        # check if even IDs got Symptomatic and odd IDs got Asymptomatic
+        for (ind_id, pc) in zip(infectionlogger(sim).id_b, infectionlogger(sim).progression_category)
+            if iseven(ind_id)
+                @test pc == :Symptomatic
+            else
+                @test pc == :Asymptomatic
+            end
+        end
+
+    end
+
     @testset "Progression Assignment" begin
         # random progression
         pgrs = [Asymptomatic, Symptomatic, Hospitalized, Critical]
