@@ -103,29 +103,3 @@ end
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
     transmission_probability(transFunc, infecter, infected, setting, tick, Random.default_rng())
-
-"""
-    create_transmission_function(config::Dict)
-
-Creates a transmission function struct using the details specified in the provided dictionary. 
-The dictionary must contain the keys type and parameters where type corresponds to the 
-name of the `TransmissionFunction` struct to be used and parameters holds the keyword
-arguments for the constructer of this `TransmissionFunction`. If the provided type does not 
-correspond to the name of a `TransmissionFunction` an error is thrown.
-
-# Returns
-
-- `<:TransmissionFunction`: New instance of a `TransmissionFunction` struct.
-"""
-function create_transmission_function(config::Dict)
-
-    # Parse the type provided as a string
-    type_string = get(config, "type", "")
-    # get subtype so it can be instantiated
-    type = get_subtype(type_string, TransmissionFunction)
-
-    # Convert the parameter keys to symbols for the use as keyword arguments
-    parameters = Dict(Symbol(k) => v for (k, v) in get(config, "parameters", Dict()))
-
-    return type(;parameters...)
-end
