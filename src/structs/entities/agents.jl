@@ -58,6 +58,8 @@ export quarantine_release_tick, quarantine_release_tick!
 export quarantine_tick, quarantine_tick!
 export quarantine_status, home_quarantine!, end_quarantine!, isquarantined
 
+export progress_disease!
+
 
 ###
 ### ABSTRACT TYPES
@@ -1267,6 +1269,35 @@ Returns the number of vaccinations.
 function number_of_vaccinations(individual::Individual)::Int8
     return individual.number_of_vaccinations
 end
+
+
+### UPDATE DISEASE PROGRESSION IN AGENTS ###
+
+"""
+    progress_disease!(individual::Individual, tick::Int16)
+
+Updates the disease progression status flags of the individual at the given tick.
+"""
+function progress_disease!(individual::Individual, tick::Int16)
+
+    # do not update, if individual is dead
+    if is_dead(individual)
+        return
+    end
+
+    # update disease progression status flags in the individual
+    infected!(individual, is_infected(individual, tick))
+    infectious!(individual, is_infectious(individual, tick))
+    symptomatic!(individual, is_symptomatic(individual, tick))
+    severe!(individual, is_severe(individual, tick))
+    hospitalized!(individual, is_hospitalized(individual, tick))
+    icu!(individual, is_icu(individual, tick))
+    ventilated!(individual, is_ventilated(individual, tick))
+    dead!(individual, is_dead(individual, tick))
+    detected!(individual, is_detected(individual, tick))
+
+end
+
 
 ### RESET DISEASE PROGRESSION ###
 """
