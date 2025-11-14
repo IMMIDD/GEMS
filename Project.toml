@@ -1,6 +1,6 @@
 name = "GEMS"
 uuid = "be47d99e-7859-414d-a902-bf4cb6b83c8a"
-version = "0.6.0"
+version = "0.6.3"
 authors = ["Johannes Ponge", "Janik Suer", "Lukas Bayer", "Wolfgang Bock", "Julian Patzner"]
 
 [deps]
