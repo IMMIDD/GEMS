@@ -38,6 +38,11 @@ A `TransmissionFunction` type that allows to define transmission probabilities f
 
 """
 mutable struct AgeDependentTransmissionRate <: TransmissionFunction
+    # JP TODO: At some point this should be "harmonized"
+    # with the age-representation in the disease progression assignment
+    
+    # JP TODO: This should also allow for constant rates per age group
+
     transmission_rate::Distribution
     ageGroups::Vector{Vector{Int}}
     ageTransmissions::Vector{Distribution}

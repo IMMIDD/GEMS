@@ -21,18 +21,21 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 
 - `transFunc::ConstantTransmissionRate`: Transmission function struct
 - `infecter::Individual`: Infecting individual
-- `infected::Individual`: Individual to infect
+- `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
-- `rng::AbstractRNG`: RNG used for probability. Uses Random's default RNG as default.
+- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
 
 # Returns
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 
 """
-function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())::Float64
-    if  -1 < recovery(infected) <= tick # if the agent has already recovered (natural immunity)
+function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())::Float64
+    # error handling
+    !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
+    
+    if  -1 < recovery(infectee) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
@@ -51,22 +54,25 @@ If the individual has already recovered, the function returns `0.0`, assuming fu
 
 - `transFunc::AgeDependentTransmissionRate`: Transmission function struct
 - `infecter::Individual`: Infecting individual
-- `infected::Individual`: Individual to infect
+- `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
-- `rng::AbstractRNG`: RNG used for probability. Uses Random's default RNG as default.
+- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
 
 # Returns
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
-function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())::Float64
-    if  -1 < recovery(infected) <= tick # if the agent has already recovered (natural immunity)
+function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())::Float64
+    # error handling
+    !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
+    
+    if  -1 < recovery(infectee) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
     for (i,ageGroup) in enumerate(transFunc.ageGroups)
-        if ageGroup[1] <= infected.age <= ageGroup[2]
+        if ageGroup[1] <= infectee.age <= ageGroup[2]
             return gems_rand(rng, transFunc.ageTransmissions[i])
         end
     end
