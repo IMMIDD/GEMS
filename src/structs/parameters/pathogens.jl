@@ -7,6 +7,12 @@ export id, name
 export progressions, progression, progression_assignment, transmission_function
 export transmission_function!
 
+
+# Abstract types for disease progression categories and progression assignment functions
+abstract type ProgressionCategory end
+abstract type ProgressionAssignmentFunction end
+abstract type TransmissionFunction end
+
 """
     Pathogen <: Parameter
 

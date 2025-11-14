@@ -5,7 +5,6 @@ export Parameter
 abstract type Parameter end
 
 # CONCRETE SUBTYPES
-include("parameters/transmission_structs.jl")
 include("parameters/pathogens.jl")
 include("parameters/vaccines.jl")
 include("parameters/ags.jl")

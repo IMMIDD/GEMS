@@ -1,35 +1,4 @@
-export TransmissionFunction
-export ConstantTransmissionRate, AgeDependentTransmissionRate
-export parameters
-export transmission_functions
-
-
-"""
-    TransmissionFunction
-
-Abstract type for all transmission functions.
-    
-"""
-abstract type TransmissionFunction end
-
-"""
-    ConstantTransmissionRate <: TransmissionFunction
-
-A `TransmissionFunction` type that uses a constant transmission rate.
-
-"""
-mutable struct ConstantTransmissionRate <: TransmissionFunction
-    transmission_rate::Float64
-
-    function ConstantTransmissionRate(;transmission_rate::Float64 = .5)
-        transmission_rate < 0 && throw(ArgumentError("Transmission rate must be non-negative."))
-        transmission_rate > 1 && throw(ArgumentError("Transmission rate must be at most 1."))
-       
-        return new(transmission_rate)
-    end
-end
-
-Base.show(io::IO, ctr::ConstantTransmissionRate) = write(io, "ConstantTranmissionRate(β=$(ctr.transmission_rate))")
+export AgeDependentTransmissionRate
 
 """
     AgeDependentTransmissionRate <: TransmissionFunction
@@ -72,48 +41,44 @@ mutable struct AgeDependentTransmissionRate <: TransmissionFunction
     end
 end
 
-"""
-    parameters(transfunc::TransmissionFunction)
 
 
-Fallback function for transmission functions that returns the type of 
-the transmission function as an entry in a dictionary
 """
-function parameters(transfunc::TransmissionFunction)
-    return Dict("type" => string(transfunc))
+    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())
+
+Calculates the transmission probability for the `AgeDependentTransmissionRate`. Selects the correct distribution 
+dependent on the age of the potentially infected agent from the `AgeDependentTransmissionRate`, draws from it and
+returns the value. If no age group is found for the individual the transmission rate is drawn from the transmission_rate distribution.
+If the individual has already recovered, the function returns `0.0`, assuming full indefinite natural immunity.
+
+# Parameters
+
+- `transFunc::AgeDependentTransmissionRate`: Transmission function struct
+- `infecter::Individual`: Infecting individual
+- `infectee::Individual`: Individual to infect
+- `setting::Setting`: Setting in which the infection happens
+- `tick::Int16`: Current tick
+- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
+
+# Returns
+
+- `Float64`: Transmission probability p (`0 <= p <= 1`)
+"""
+function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::AbstractRNG)::Float64
+    # error handling
+    !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
+    
+    if  -1 < recovery(infectee) <= tick # if the agent has already recovered (natural immunity)
+        return 0.0
+    end
+    
+    for (i,ageGroup) in enumerate(transFunc.ageGroups)
+        if ageGroup[1] <= infectee.age <= ageGroup[2]
+            return gems_rand(rng, transFunc.ageTransmissions[i])
+        end
+    end
+    return gems_rand(rng, transFunc.transmission_rate)
 end
-
-"""
-    parameters(transfunc::AgeDependentTransmissionRate)
-
-Returns the parameters of the `AgeDependentTransmissionRate` as a dictionary.
-"""
-function parameters(transfunc::AgeDependentTransmissionRate)
-    return Dict("type" => string(transfunc),
-                "parameters" => Dict("transmission_rate" => params(transfunc.transmission_rate),
-                "age_groups" => transfunc.ageGroups,
-                "age_transmissions " => [parameters(aT) for aT in transfunc.ageTransmissions]))
-end
-
-"""
-    parameters(transfunc::ConstantTransmissionRate)
-
-Returns the parameters of the `ConstantTransmissionRate` as a dictionary.
-"""
-function parameters(transfunc::ConstantTransmissionRate)
-    return Dict("type" => string(transfunc),
-                "parameters" => Dict("transmission_rate" => transfunc.transmission_rate))
-end
-
-
-
-###
-### HELPER FUNCTIONS
-###
-
-"""
-    transmission_functions()
-
-Returns all known transmission functions (subtypes of `TransmissionFunction`).
-"""
-transmission_functions() = subtypes(TransmissionFunction)
+# if no RNG was passed, use default RNG
+transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
+    transmission_probability(transFunc, infecter, infected, setting, tick, Random.default_rng())
