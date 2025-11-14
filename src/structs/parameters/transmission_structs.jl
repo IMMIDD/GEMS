@@ -1,5 +1,5 @@
 export TransmissionFunction
-export ConstantTransmissionRate, AgeDependentTransmissionRate, SettingDependentTransmissionRate
+export ConstantTransmissionRate, AgeDependentTransmissionRate
 export parameters
 export transmission_functions
 
