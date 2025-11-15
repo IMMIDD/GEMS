@@ -58,8 +58,7 @@ function generate(plt::CompartmentFill, rd::ResultData; plotargs...)
     plot_cum = Plots.plot(xlabel=xlab, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
     plot!(plot_cum, comp_fill[!,"exposed_cnt"], label="Exposed")
     plot!(plot_cum, comp_fill[!, "infectious_cnt"], label="Infectious")
-    plot!(plot_cum, comp_fill[!,"recovered_cnt"], label="Recovered")
-    plot!(plot_cum, comp_fill[!, "deaths_cnt"], label="Deceased", c=:black)
+    plot!(plot_cum, comp_fill[!, "dead_cnt"], label="Deceased", c=:black)
 
     # add custom arguments that were passed
     plot!(plot_cum; plotargs...)

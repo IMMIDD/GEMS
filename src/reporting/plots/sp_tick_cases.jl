@@ -57,8 +57,6 @@ function generate(plt::TickCases, rd::ResultData; series::Union{Symbol, Vector{S
     end
 
     cases = rd |> tick_cases
-    deaths = rd |> tick_deaths
-    vaccinations = rd |> tick_vaccinations
 
     uticks = rd |> tick_unit
     upper_ticks = uticks |> uppercasefirst
@@ -82,15 +80,15 @@ function generate(plt::TickCases, rd::ResultData; series::Union{Symbol, Vector{S
         filter!(x -> x != :exposed, sers)
     end
     if :infectious in sers
-        plot!(plot_ticks, cases[!,"infectious_cnt"], label="Infectious", linewidth = linewidth)
+        plot!(plot_ticks, cases[!,"infectious_cnt"], label="Became Infectious", linewidth = linewidth)
         filter!(x -> x != :infectious, sers)
     end
     if :removed in sers
-        plot!(plot_ticks, cases[!,"removed_cnt"], label="Removed", linewidth = linewidth)
+        plot!(plot_ticks, cases[!,"recovered_cnt"], label="Recovered", linewidth = linewidth)
         filter!(x -> x != :removed, sers)
     end
     if :deaths in sers
-        plot!(plot_ticks, deaths[!, "death_cnt"], label="Deaths", c=:black, linewidth = linewidth)
+        plot!(plot_ticks, cases[!, "dead_cnt"], label="Died", c=:black, linewidth = linewidth)
         filter!(x -> x != :deaths, sers)
     end
 

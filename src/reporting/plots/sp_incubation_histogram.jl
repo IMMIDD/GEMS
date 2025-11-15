@@ -60,9 +60,9 @@ function generate(plt::IncubationHistogram, rd::ResultData; plotargs...)
     # calculating incubation time for symptomatic individuals
     # (this will be very slow for large simulations)
     incub = infs |>
-        df -> DataFrames.select(df, :tick, :symptoms_tick) |>
-        df -> df[df.symptoms_tick .!= -1, :] |>
-        df -> (df.symptoms_tick .- df.tick)
+        df -> DataFrames.select(df, :tick, :symptom_onset) |>
+        df -> df[df.symptom_onset .!= -1, :] |>
+        df -> (df.symptom_onset .- df.tick)
 
         
     if incub |> length < MIN_INFECTIONS_FOR_PLOTS
