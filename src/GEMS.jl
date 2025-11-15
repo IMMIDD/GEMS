@@ -52,7 +52,9 @@ module GEMS
     include("methods.jl") # CORE SIMULATION
 
     include("pathogen/pathogen_components.jl")
+    include("initialization/startconditions.jl")
     include("interventions/interventions.jl")
+    
     include("model_analysis/post_processing.jl")
     include("model_analysis/result_data.jl")
     include("model_analysis/batch_processing.jl")
