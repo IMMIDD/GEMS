@@ -36,53 +36,55 @@ to the simulation's `QuarantineLogger`.
 
 """
 function log_stepinfo(simulation::Simulation)
-    
-    # Julia 1.12-safe threaded counting with atomic integers
-    
+   
+    # Threads.maxthreadid() should work for Julia 1.11 and 1.12
+   
     # quarantine data
     # set up one vector with one entry for each thread
-    tot_cnt = Threads.Atomic{Int}(0)
-    st_cnt  = Threads.Atomic{Int}(0)
-    wo_cnt  = Threads.Atomic{Int}(0)
+    tot_cnt = zeros(Int, Threads.maxthreadid())
+    st_cnt  = zeros(Int, Threads.maxthreadid())
+    wo_cnt  = zeros(Int, Threads.maxthreadid())
 
     # infection data
-    exp_cnt = Threads.Atomic{Int}(0)
-    inf_cnt = Threads.Atomic{Int}(0)
-    dead_cnt = Threads.Atomic{Int}(0)
-    det_cnt = Threads.Atomic{Int}(0)
+    exp_cnt = zeros(Int, Threads.maxthreadid())
+    inf_cnt = zeros(Int, Threads.maxthreadid())
+    dead_cnt = zeros(Int, Threads.maxthreadid())
+    det_cnt = zeros(Int, Threads.maxthreadid())
 
     Threads.@threads for i in simulation |> individuals
+        tid = Threads.threadid()
+        
         # log quarantined individuals
         if isquarantined(i)
-            Threads.atomic_add!(tot_cnt, 1)
-            Threads.atomic_add!(st_cnt, is_student(i) ? 1 : 0)
-            Threads.atomic_add!(wo_cnt, is_working(i) ? 1 : 0)
+            tot_cnt[tid] += 1
+            st_cnt[tid] += is_student(i) ? 1 : 0
+            wo_cnt[tid] += is_working(i) ? 1 : 0
         end
 
         # log infected individuals
-        Threads.atomic_add!(exp_cnt, is_exposed(i) ? 1 : 0)
-        Threads.atomic_add!(inf_cnt, is_infectious(i) ? 1 : 0)
-        Threads.atomic_add!(dead_cnt, is_dead(i) ? 1 : 0)
-        Threads.atomic_add!(det_cnt, is_detected(i) ? 1 : 0)
+        exp_cnt[tid] += is_exposed(i) ? 1 : 0
+        inf_cnt[tid] += is_infectious(i) ? 1 : 0
+        dead_cnt[tid] += is_dead(i) ? 1 : 0
+        det_cnt[tid] += is_detected(i) ? 1 : 0
     end
 
     # log quarantine data
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-        tot_cnt[],
-        st_cnt[],
-        wo_cnt[]
+        sum(tot_cnt),
+        sum(st_cnt),
+        sum(wo_cnt)
     )
 
     # log infection data
     log!(
         simulation |> statelogger,
         simulation |> tick,
-        exp_cnt[],
-        inf_cnt[],
-        dead_cnt[],
-        det_cnt[]
+        sum(exp_cnt),
+        sum(inf_cnt),
+        sum(dead_cnt),
+        sum(det_cnt)
     )
 end
 
