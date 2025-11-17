@@ -387,9 +387,75 @@
         # call with uninfected infecter
         @test_throws ArgumentError transmission_probability(test_ctr, suscpt[1], suscpt[2], households(sim)[1], Int16(1))
 
+        # AGE BASED TRANSMISSION RATE
+        # THINGS THAT SHOULD WORK
+        age_groups = ["0-19", "20-39", "40-59", "60-"]
+        age_transmissions = [0.0, 0.0, 0.0, 0.4]
+        abtr = AgeDependentTransmissionRate(
+            age_groups = age_groups,
+            transmission_rates = age_transmissions
+        )
 
+        @test abtr.age_transmission_rates == age_transmissions
+        # infecter age 25 -> transmission rate 0.0
 
+        sim = Simulation(pop_size = 1000, transmission_function = abtr)
+        run!(sim)
+        rd = ResultData(sim)
+
+        # check if all infectees are older than 60
+        @test infections(rd) |>
+            df -> df[df.tick .>= 1 .&& df.age_b .< 60, :] |> nrow == 0
+
+        # THINGS THAT SHOULD NOT WORK
+        # empty age groups
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = String[],
+            transmission_rates = Real[]
+        )
+
+        # non-continuous age groups
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = ["0-19", "21-39", "40-59", "60-"],
+            transmission_rates = [0.1, 0.2, 0.3, 0.4]
+        )
+        # not starting at 0
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = ["10-19", "20-39", "40-59", "60-"],
+            transmission_rates = [0.1, 0.2, 0.3, 0.4]
+        )
+
+        # non-open ended age groups
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = ["0-19", "20-39", "40-59", "60-79"],
+            transmission_rates = [0.1, 0.2, 0.3, 0.4]
+        )
+
+        # non-numeric age group
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = ["0-19", "20-39", "forty-59", "60-"],
+            transmission_rates = [0.1, 0.2, 0.3, 0.4]
+        )
+
+        # mismatched lengths
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = ["0-19", "20-39", "40-59", "60-"],
+            transmission_rates = [0.1, 0.2, 0.3]
+        )
+
+        # transmission rates out of bounds
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = ["0-19", "20-39", "40-59", "60-"],
+            transmission_rates = [0.1, -0.2, 0.3, 0.4]
+        )
+
+        @test_throws ArgumentError AgeDependentTransmissionRate(
+            age_groups = ["0-19", "20-39", "40-59", "60-"],
+            transmission_rates = [0.1, 1.2, 0.3, 0.4]
+        )
     end
+
+    
 
     @testset "Disease Progression" begin
     
