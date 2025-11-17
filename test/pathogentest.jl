@@ -455,7 +455,40 @@
         )
     end
 
-    
+    @testset "Custom Transmission Function" begin
+
+        # define transmission function to only infect kids under 15 years old
+        struct KidsOnlyTransmission <: GEMS.TransmissionFunction
+            base_rate::Float64
+        end
+
+        function GEMS.transmission_probability(
+                transFunc::KidsOnlyTransmission,
+                infecter::Individual,
+                infectee::Individual,
+                setting::Setting,
+                tick::Int16
+            )::Float64
+            
+            if age(infecter) < 15 && age(infectee) < 15
+                return transFunc.base_rate
+            else
+                return 0.0
+            end
+        end
+
+        # create instance
+        kotf = KidsOnlyTransmission(0.5)
+        
+        sim = Simulation(pop_size = 10_000, transmission_function = kotf)
+        run!(sim)
+        rd = ResultData(sim)
+
+        # check if all infections are between kids under 15
+        @test infections(rd) |>
+            df -> df[df.tick .>= 1 .&& (df.age_a .>= 15 .|| df.age_b .>= 15), :] |> nrow == 0
+
+    end
 
     @testset "Disease Progression" begin
     
