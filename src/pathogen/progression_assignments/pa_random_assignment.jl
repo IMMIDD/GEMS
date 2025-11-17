@@ -37,8 +37,8 @@ end
 
 Assigns a disease progression category to an individual randomly from the provided list of categories in RandomProgressionAssignment.
 """
-function assign(individual::Individual, sim::Simulation, random_assignment::RandomProgressionAssignment)
-    return gems_rand(sim, random_assignment.progression_categories)
+function assign(individual::Individual, random_assignment::RandomProgressionAssignment, rng::AbstractRNG)
+    return gems_rand(rng, random_assignment.progression_categories)
 end
 
 function Base.show(io::IO, a::RandomProgressionAssignment)

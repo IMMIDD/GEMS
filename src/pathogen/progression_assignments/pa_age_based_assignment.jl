@@ -83,11 +83,11 @@ end
 ###
 
 """
-    assign(individual::Individual, sim::Simulation, age_based_assignment::AgeBasedProgressionAssignment)
+    assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::AbstractRNG)
 
 Assigns a disease progression category to an individual based on their age using the provided AgeBasedProgressionAssignment.
 """
-function assign(individual::Individual, sim::Simulation, age_based_assignment::AgeBasedProgressionAssignment)
+function assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::AbstractRNG)
     # get the index of the age group the individual belongs to
     pos = findfirst(g -> in_group(individual.age, g), age_based_assignment.age_groups)
 
@@ -95,6 +95,6 @@ function assign(individual::Individual, sim::Simulation, age_based_assignment::A
 
     # sample from the categorical distribution defined by the stratification matrix for the age group
     return Categorical(age_based_assignment.stratification_matrix[:, pos]) |>
-        dist -> gems_rand(sim, dist) |>
+        dist -> gems_rand(rng, dist) |>
         rval -> age_based_assignment.progression_categories[rval]
 end

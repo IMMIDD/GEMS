@@ -69,7 +69,16 @@ include.(
 
 ### ABSTRACT INTERFACE
 
-# fallback
+# fallback for assign functions
+function assign(individual::Individual, pa_func::ProgressionAssignmentFunction, rng::AbstractRNG)
+    @error "The assign function is not defined for the provided ProgressionAssignmentFunction struct $(typeof(pa_func))."
+end
+
+
+
+
+
+# fallback for tranmission functions
 function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
     @error "The transmission_probability function is not defined for the provided TransmissionFunction struct $(typeof(transFunc))."
 end
