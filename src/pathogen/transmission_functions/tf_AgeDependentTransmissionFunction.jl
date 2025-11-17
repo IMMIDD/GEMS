@@ -4,52 +4,58 @@ export AgeDependentTransmissionRate
     AgeDependentTransmissionRate <: TransmissionFunction
 
 A `TransmissionFunction` type that allows to define transmission probabilities for specific age groups.
+The age group corresponds to the infectee, i.e., the individual who may become infected, not the infecter.
 
+# Fields
+- `age_groups::Vector{AgeGroup}`: A vector of age groups.
+- `age_transmission_rates::Vector{Real}`: A vector of transmission rates corresponding to each age group.
+
+# Example
+The code below instantiates an `AgeDependentTransmissionRate` with specific age groups and transmission rates.
+```julia
+adtr = AgeDependentTransmissionRate(
+    age_groups = ["0-9", "10-19", "20-64", "65-"],
+    transmission_rates = [0.1, 0.2, 0.3, 0.4]
+)
+```
 """
 mutable struct AgeDependentTransmissionRate <: TransmissionFunction
-    # JP TODO: At some point this should be "harmonized"
-    # with the age-representation in the disease progression assignment
-    
-    # JP TODO: This should also allow for constant rates per age group
+    age_groups::Vector{AgeGroup}
+    age_transmission_rates::Vector{Real}
 
-    transmission_rate::Distribution
-    ageGroups::Vector{Vector{Int}}
-    ageTransmissions::Vector{Distribution}
+    function AgeDependentTransmissionRate(;age_groups::Vector{String}, transmission_rates::Vector{<:Real})
+        # both vectors must be of same length
+        length(age_groups) != length(transmission_rates) &&
+            throw(ArgumentError("Number of age groups and age transmission rates must be the same (input vector lengths: $(length(age_groups)) and $(length(transmission_rates)))."))
+        # check that all transmission rates are between 0 and 1
+        any(x -> x < 0.0 || x > 1.0, transmission_rates) &&
+            throw(ArgumentError("All transmission rates must be between 0 and 1."))
+        
+        # convert age group strings to AgeGroup structs
+        gprs = AgeGroup.(age_groups)
+        # check continuity of age groups
+        check_continuity(gprs, 0, 100) # throw error if not continuous
 
-    @doc """
-        AgeDependentTransmissionRate(;transmission_rate, ageGroups, ageTransmissions, distribution)
-
-    Constructor for the age-dependent transmission rate struct. The parameters for the constructor include:
-    
-    - `transmission_rate::Vector`: A vector containing the parameters from which the distribution of the `transmission_rate` is constructed.
-    - `ageGroups::Vector`: A vector containing the age groups. Should contain a vector for each age group consisting of two integers.
-    - `ageTransmissions::Vector`: A vector containing the parameters for the distributions of the transmission rates for the specific age groups.
-                                Should contain a vector for each age group consisting of as many real number as parameters required for the spec. distribution.
-    - `distribution::String`: A string that corresponds to a distribution of the distribution package. 
-    """
-    function AgeDependentTransmissionRate(;transmission_rate::Vector{Float64} = [0.5,0.1], ageGroups::Vector{Vector{Int}} = [[0,130]], ageTransmissions::Vector{Vector{Float64}} = [[0.8,0.02]], distribution::String = "Normal")
-        if length(ageTransmissions) != length(ageGroups) || any(length.(ageGroups) .!= 2)
-            error("Check the provided parameters! ageTransmissions and ageGroups must have the same length, and each ageGroup must have two values.")
-        elseif !(vcat(ageGroups...) |> x -> issorted(x) && all(diff(x) .> 0))
-            error("Age groups should be provided in ascending order without overlaps!")
-        end
-        ageTransmissionDistributions = [eval(Meta.parse(distribution))(aT...) for aT in ageTransmissions] 
-        baselTransmissionDistribution = eval(Meta.parse(distribution))(transmission_rate...)
-        return new(baselTransmissionDistribution,
-                    ageGroups,
-                    ageTransmissionDistributions)
+        return new(
+            gprs,
+            transmission_rates
+        )
     end
+end
+Base.show(io::IO, transFunc::AgeDependentTransmissionRate) = begin
+    items = []
+    for (i, ag) in enumerate(transFunc.age_groups)
+        push!(items, "$(ag): $(100 * transFunc.age_transmission_rates[i])%")
+    end
+    print(io, "AgeDependentTransmissionRate(", join(items, ", "), ")")
 end
 
 
-
 """
-    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())
+    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::AbstractRNG)::Float64
 
-Calculates the transmission probability for the `AgeDependentTransmissionRate`. Selects the correct distribution 
-dependent on the age of the potentially infected agent from the `AgeDependentTransmissionRate`, draws from it and
-returns the value. If no age group is found for the individual the transmission rate is drawn from the transmission_rate distribution.
-If the individual has already recovered, the function returns `0.0`, assuming full indefinite natural immunity.
+Calculates the transmission probability based on the age of the infectee using age-dependent transmission rates.
+
 
 # Parameters
 
@@ -72,13 +78,15 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, infec
         return 0.0
     end
     
-    for (i,ageGroup) in enumerate(transFunc.ageGroups)
-        if ageGroup[1] <= infectee.age <= ageGroup[2]
-            return gems_rand(rng, transFunc.ageTransmissions[i])
+    for (i, ag) in enumerate(transFunc.age_groups)
+        if in_group(infectee.age, ag)
+            return gems_rand(rng, transFunc.age_transmission_rates[i])
         end
     end
-    return gems_rand(rng, transFunc.transmission_rate)
+
+    throw(ArgumentError("Infectee's age $(infectee.age) does not fall into any defined age group."))
 end
+
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
     transmission_probability(transFunc, infecter, infected, setting, tick, Random.default_rng())
