@@ -178,8 +178,18 @@ function try_to_infect!(infctr::Individual,
         setting::Setting;
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)::Bool
 
-    # only try to infect if infctd is not already infected and not dead
-    if infected(infctd) || dead(infctd)
+    # if one of both is dead
+    if dead(infctr) || dead(infctd)
+        return false
+    end
+
+    # if one of both is hospitalized
+    if hospitalized(infctr) || hospitalized(infctd)
+        return false
+    end
+    
+    # if infectee is already infected
+    if infected(infctd)
         return false
     end
 
