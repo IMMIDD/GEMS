@@ -889,7 +889,7 @@ symptomatic(individual::Individual, t::Int16) = is_symptomatic(individual, t)
 Returns `true` if the individual is asymptomatic at tick `t`.
 Asymptomatic means infected and will not develop symptoms.
 """
-is_asymptomatic(individual::Individual, t::Int16) = is_infected(individual, t) && !is_symptomatic(individual, t) && symptom_onset(individual) >= 0
+is_asymptomatic(individual::Individual, t::Int16) = is_infected(individual, t) && !is_symptomatic(individual, t) && symptom_onset(individual) < exposure(individual)
 isasymptomatic(individual::Individual, t::Int16) = is_asymptomatic(individual, t)
 asymptomatic(individual::Individual, t::Int16) = is_asymptomatic(individual, t)
 
