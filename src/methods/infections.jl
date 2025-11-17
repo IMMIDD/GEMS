@@ -253,6 +253,81 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     end
 end
 
+"""
+    can_infect(ind::Individual, setting::Setting)::Bool
+
+Determines whether the individual can infect others in the given setting.
+Checks for infectiousness, setting openness, and quarantine status.
+
+# Parameters
+- `ind::Individual`: Individual to check
+- `setting::Setting`: Setting to check
+
+# Returns
+- `Bool`: True if the individual can infect others in the setting, false otherwise
+"""
+function can_infect(ind::Individual, setting::Setting)::Bool
+    # if individual is not infectious
+    if !infectious(ind)
+        return false
+    end
+
+    # if individual is hospitalized
+    if is_hospitalized(ind)
+        return false
+    end
+
+    # if setting is closed
+    if !is_open(setting)
+        return false
+    end
+
+    # if individual is quarantined
+    if isquarantined(ind)
+        # if individual is in household quarantine and setting is not Household
+        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
+            return false
+        end
+    end
+
+    return true
+end
+
+"""
+    can_be_contacted(ind::Individual, setting::Setting)::Bool
+
+Determines whether the individual can be contacted (and thus infected) in the given setting.
+Checks for death and quarantine status.
+
+# Parameters
+- `ind::Individual`: Individual to check
+- `setting::Setting`: Setting to check
+
+# Returns
+- `Bool`: True if the individual can be contacted in the setting, false otherwise
+"""
+function can_be_contacted(ind::Individual, setting::Setting)::Bool
+    # if individual is dead
+    if dead(ind)
+        return false
+    end
+
+    # if individual is hospitalized
+    if is_hospitalized(ind)
+        return false
+    end
+
+    # if individual is quarantined
+    if isquarantined(ind)
+        # if individual is in household quarantine and setting is not Household
+        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
+            return false
+        end
+    end
+
+    return true
+end
+
 
 """
     spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen)
@@ -274,21 +349,21 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
     # Obtain individuals present in the current setting
     present_inds = present_individuals(setting, sim)
 
-    # Check if the setting is open
-    open = is_open(setting)
+
     for ind_index in 1:length(present_inds)
         ind = present_inds[ind_index]
         if infected(ind)
             num_infected+=1
-            # if infectious and setting is open try to infect others
-            if infectious(ind) && open && (!isquarantined(ind) || ((quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household)))
+            # if individual can infect in this setting
+            if can_infect(ind, setting)
                 # sample contacts based on setting specific "ContactSamplingMethod"
                 contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), rng = rng(sim))
                 for c in contacts
-                    # try to infect
-                    if !isquarantined(c) || ((quarantine_status(c) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household))
+                    # check if individual can be contacted
+                    if can_be_contacted(c, setting)
+                        # try to infect
                         if try_to_infect!(ind, c, sim, pathogen, setting, source_infection_id = infection_id(ind))
-                            # activate all settings the individual is part of
+                            # activate all settings the individual is part of if infection was successful
                             for (type, id) in settings(c, sim)
                                 activate!(settings(sim, type)[id])
                             end
