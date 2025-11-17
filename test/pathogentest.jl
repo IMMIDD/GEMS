@@ -489,9 +489,4 @@
             df -> df[df.tick .>= 1 .&& (df.age_a .>= 15 .|| df.age_b .>= 15), :] |> nrow == 0
 
     end
-
-    @testset "Disease Progression" begin
-    
-    
-    end
 end
