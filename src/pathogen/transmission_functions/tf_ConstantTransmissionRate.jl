@@ -1,4 +1,4 @@
-export TransmissionFunction
+export ConstantTransmissionRate
 
 """
     ConstantTransmissionRate <: TransmissionFunction
