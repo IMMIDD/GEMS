@@ -372,20 +372,20 @@
 
         # infected individuals
         infctd = individuals(sim) |>
-            i -> i(infected.(i))
+            i -> i[infected.(i)]
 
         # susceptible individuals
         suscpt = individuals(sim) |>
-            i -> i(.!infected.(i))
+            i -> i[.!infected.(i)]
 
-        @test transmission_probability(test_ctr, infctd[1], suscpt[1], household_setting(sim), 1) == 0.3
+        @test transmission_probability(test_ctr, infctd[1], suscpt[1], households(sim)[1], Int16(1)) == 0.3
 
         # THINGS THAT SHOULD NOT WORK
         @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = -0.1)
         @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = 1.5)
 
         # call with uninfected infecter
-        @test_throws ArgumentError transmission_probability(test_ctr, suscpt[1], suscpt[2], household_setting(sim), 1)
+        @test_throws ArgumentError transmission_probability(test_ctr, suscpt[1], suscpt[2], households(sim)[1], Int16(1))
 
 
 
