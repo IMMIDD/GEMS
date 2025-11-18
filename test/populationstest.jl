@@ -59,18 +59,16 @@
     end
 
     @testset "Number of Infected" begin
-        i1 = Individual(age=42, id=1, sex=0)
-        i2 = Individual(age=21, id=2, sex=1)
-        i3 = Individual(age=1, id=3, sex=1)
-        pop = Population([i1, i2, i3])
-        p = Pathogen(id = 1, name = "COVID")
+        sim = Simulation(pop_size = 1000, infected_fraction = 0.0)
+        pop = population(sim)
 
-        infect!(i1, Int16(0), p)
+        @test 0 == num_of_infected(pop)
+        infect!(individuals(sim)[1], tick(sim), pathogen(sim), sim = sim, rng = rng(sim))
         @test 1 == num_of_infected(pop)
-        infect!(i3, Int16(0), p)
-        @test 2 == num_of_infected(pop)
-        recover!(i1)
-        @test 1 == num_of_infected(pop)
+
+        run!(sim)
+        # in the end, the agent should have recovered
+        @test 0 == num_of_infected(pop)
     end
     
 
