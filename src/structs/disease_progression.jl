@@ -163,7 +163,7 @@ struct DiseaseProgression
         recovery >= 0 && symptom_onset >= 0 && recovery < symptom_onset && throw(ArgumentError("Recovery cannot happen before symptom onset (symptom_onset: $symptom_onset, recovery: $recovery)."))
         recovery >= 0 && recovery < exposure && throw(ArgumentError("Recovery cannot happen before exposure (exposure: $exposure, recovery: $recovery)."))
         # death
-        death >= 0 && infectiousness_onset >= death && throw(ArgumentError("Infectiousness cannot set on at or after death (infectiousness_onset: $infectiousness_onset, death: $death)."))
+        death >= 0 && infectiousness_onset > death && throw(ArgumentError("Infectiousness cannot set on after death (infectiousness_onset: $infectiousness_onset, death: $death)."))
         death >= 0 && symptom_onset < 0 && throw(ArgumentError("Asymptomatic individuals cannot die; symptom onset must be set (symptom_onset: $symptom_onset, death: $death)."))
         death >= 0 && symptom_onset >= 0 && death < symptom_onset && throw(ArgumentError("Death cannot happen before symptom onset (symptom_onset: $symptom_onset, death: $death)."))
         death >= 0 && severeness_onset > death && throw(ArgumentError("Individuals cannot develop severe symptoms after they died (severeness_onset: $severeness_onset, death: $death)."))
