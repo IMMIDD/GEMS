@@ -185,7 +185,7 @@
         rpa = RandomProgressionAssignment(pgrs) 
         i = individuals(sim)[1]
 
-        res = GEMS.assign(i, sim, rpa)
+        res = GEMS.assign(i, rpa, rng(sim))
         @test res in pgrs
 
         # THINGS THAT SHOULD NOT WORK
@@ -214,7 +214,7 @@
             stratification_matrix = stratification_matrix
         )
 
-        res = (i -> GEMS.assign(i, sim, abpa)).(individuals(sim))
+        res = (i -> GEMS.assign(i, abpa, rng(sim))).(individuals(sim))
         for (ind, pc) in zip(individuals(sim), res)
             if age(ind) <= 19
                 @test pc == Asymptomatic
@@ -323,7 +323,7 @@
             odd_progression::DataType
         end
 
-        function GEMS.assign(individual::Individual, sim::Simulation, pa::EvenOddProgressionAssignment)
+        function GEMS.assign(individual::Individual, pa::EvenOddProgressionAssignment, rng::AbstractRNG)
             if iseven(individual.id)
                 return pa.even_progression
             else
