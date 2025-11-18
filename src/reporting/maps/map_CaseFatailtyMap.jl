@@ -70,10 +70,10 @@ function generate(plt::CaseFatalityMap, rd::ResultData; level::Int = 3, plotargs
 
     # build map (level 3)
     return rd |> infections |>
-        x -> DataFrames.select(x, :household_ags_b => :ags, :death_tick) |>
+        x -> DataFrames.select(x, :household_ags_b => :ags, :death) |>
         x -> prepare_map_df(x, level = level) |>
         x -> groupby(x, :ags) |>
-        x -> combine(x, nrow => :reg_infs, :death_tick => (d -> length(d[d .>= 0])) => :reg_deaths) |>
+        x -> combine(x, nrow => :reg_infs, :death => (d -> length(d[d .>= 0])) => :reg_deaths) |>
         #x -> transform(x, :ags => ByRow(AGS) => :ags) |>
         x -> transform(x, [:reg_deaths, :reg_infs] => ByRow((d, i) -> 100 * d/i) => :case_fatality_rate) |>
         x -> DataFrames.select(x, :ags, :case_fatality_rate) |>
