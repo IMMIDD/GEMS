@@ -346,7 +346,8 @@ function _BUILD_Simulation(;
     )
 
         # parse the config file (or default to default.toml)
-        config = load_configfile(configfile)
+        configpath = configfile_path(configfile)
+        config = load_configfile(configpath)
 
         # SEED
         rng_seed = determine_seed(config, seed)
@@ -419,7 +420,7 @@ function _BUILD_Simulation(;
 
         # CREATES SIMULATION OBJECT
         sim = Simulation(
-            configfile,
+            configpath,
             tu,
             sd,
             ed,
@@ -1089,28 +1090,35 @@ end
 
 ### FILE LOADERS
 
-
 """
-    load_configfile(path::String)
+    configfile_path(path::String)
 
-Loads a config file from the specified path.
-If no path is provided, it defaults to the `GEMS.DEFAULT_CONFIGFILE`.
+Returns the path to the config file.
+If no path is provided, it defaults to the default config file.
 """
-function load_configfile(path::String)
-    
+function configfile_path(path::String)
     # if no file path is provided, use the default config file
     if isempty(path)
         basefolder = dirname(dirname(pathof(GEMS)))
         #default_configfile = GEMS.DEFAULT_CONFIGFILE # "data/DefaultConf.toml"
         default_configfile = "data/DefaultConf.toml"
         default_configfile_path = joinpath(basefolder, default_configfile)
-        return TOML.parsefile(default_configfile_path)
-    else
-        !isfile(path) && throw(ConfigfileError("Provided config file path does not point to a valid file: '$path'"))
-        !is_toml_file(path) && throw(ConfigfileError("Provided config file path does not point to a valid .toml file: '$path'"))    
-        return TOML.parsefile(path)
+        return default_configfile_path
     end
 
+    return path
+end
+
+
+"""
+    load_configfile(path::String)
+
+Loads a config file from the specified path.
+"""
+function load_configfile(path::String)
+    !isfile(path) && throw(ConfigfileError("Provided config file path does not point to a valid file: '$path'"))
+    !is_toml_file(path) && throw(ConfigfileError("Provided config file path does not point to a valid .toml file: '$path'"))    
+    return TOML.parsefile(path)
 end
 
 ### Helper Methods to set up parts of the simulation:
