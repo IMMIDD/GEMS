@@ -147,6 +147,14 @@ function infect!(infectee::Individual,
     infection_id!(infectee, new_infection_id)
     return new_infection_id
 end
+"""
+    infect!(infectee::Individual, sim::Simulation)
+
+Infect `infectee` with the pathogen of the simulation at the current tick of the simulation.
+Mainly a convenience wrapper around `infect!` with less parameters.
+Used for example in test cases.
+"""
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), pathogen(sim); sim = sim, rng = rng(sim))
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting;

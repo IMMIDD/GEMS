@@ -63,7 +63,7 @@
         pop = population(sim)
 
         @test 0 == num_of_infected(pop)
-        infect!(individuals(sim)[1], tick(sim), pathogen(sim), sim = sim, rng = rng(sim))
+        infect!(individuals(sim)[1], sim)
         @test 1 == num_of_infected(pop)
 
         run!(sim)
