@@ -7,7 +7,7 @@
     confile = "test/testdata/TestConf.toml"
     configpath = joinpath(basef, confile)
 
-    sim = Simulation(configpath, populationpath)
+    sim = Simulation(configfile = configpath, population = populationpath)
     run!(sim)
     pp = PostProcessor(sim)
 
