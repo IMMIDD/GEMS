@@ -81,9 +81,8 @@ Returns a markdown string with all parameters (mainly for documentation purposes
 """
 function markdown(infFrac::InfectedFraction)
     percent = fraction(infFrac)*100
-    pathogenName = name(pathogen(infFrac))
 
-    res = "$percent % of the population randomly drawn and infected with $pathogenName"
+    res = "$percent % of the population randomly drawn and infected."
     return(res)
 end
 
@@ -141,32 +140,34 @@ function markdown(arr::Vector{Pathogen})
     # read name
     nm = arr[1] |> name
 
-    res =  "
+#     res =  "
 
-| Pathogen Property                     | Value                                            |
-| :------------------------------------ | :----------------------------------------------- |
-| Name                                  | $nm                                              |
-| Infection Rate                        | $(map(infection_rate, arr) |> markdown)          |
-| Death Rate (Mild Cases)               | $(map(mild_death_rate, arr) |> markdown)         |
-| Death Rate (Severe Cases)             | $(map(severe_death_rate, arr) |> markdown)       |
-| Death Rate (Critical Cases)           | $(map(critical_death_rate, arr) |> markdown)     |
-| Hospitalization Rate (Severe Cases)   | $(map(hospitalization_rate, arr) |> markdown)    |
-| Ventilation Rate (Critical Cases)     | $(map(ventilation_rate, arr) |> markdown)        |
-| ICU Rate (Critical Cases)             | $(map(icu_rate, arr) |> markdown)                |
-| Onset of symptoms[^time]              | $(map(onset_of_symptoms, arr) |> markdown)       |
-| Infectious Offset[^offset]            | $(map(infectious_offset, arr) |> markdown)       |
-| Time to Recovery[^increment1]         | $(map(time_to_recovery, arr) |> markdown)        |
-| Onset of severe symptoms[^increment1] | $(map(onset_of_severeness, arr) |> markdown)     |
-| Time to hospitalization[^increment1]  | $(map(time_to_hospitalization, arr) |> markdown) |
-| Time to ICU[^increment2]              | $(map(time_to_icu, arr) |> markdown)             |
-| Length of stay[^increment2]           | $(map(length_of_stay, arr) |> markdown)          |
-Table: Pathogen **$nm** Configuration
+# | Pathogen Property                     | Value                                            |
+# | :------------------------------------ | :----------------------------------------------- |
+# | Name                                  | $nm                                              |
+# | Infection Rate                        | $(map(infection_rate, arr) |> markdown)          |
+# | Death Rate (Mild Cases)               | $(map(mild_death_rate, arr) |> markdown)         |
+# | Death Rate (Severe Cases)             | $(map(severe_death_rate, arr) |> markdown)       |
+# | Death Rate (Critical Cases)           | $(map(critical_death_rate, arr) |> markdown)     |
+# | Hospitalization Rate (Severe Cases)   | $(map(hospitalization_rate, arr) |> markdown)    |
+# | Ventilation Rate (Critical Cases)     | $(map(ventilation_rate, arr) |> markdown)        |
+# | ICU Rate (Critical Cases)             | $(map(icu_rate, arr) |> markdown)                |
+# | Onset of symptoms[^time]              | $(map(onset_of_symptoms, arr) |> markdown)       |
+# | Infectious Offset[^offset]            | $(map(infectious_offset, arr) |> markdown)       |
+# | Time to Recovery[^increment1]         | $(map(time_to_recovery, arr) |> markdown)        |
+# | Onset of severe symptoms[^increment1] | $(map(onset_of_severeness, arr) |> markdown)     |
+# | Time to hospitalization[^increment1]  | $(map(time_to_hospitalization, arr) |> markdown) |
+# | Time to ICU[^increment2]              | $(map(time_to_icu, arr) |> markdown)             |
+# | Length of stay[^increment2]           | $(map(length_of_stay, arr) |> markdown)          |
+# Table: Pathogen **$nm** Configuration
 
-[^time]: The unit of all time-related parameters are _ticks_.
-[^offset]: The infectious offset describes how many ticks an individual is infectious before having symptoms.
-[^increment1]: This is defined as an increment to the onset of symptoms.
-[^increment2]: This is defined as an increment to the time of hospitalization.
-"
+# [^time]: The unit of all time-related parameters are _ticks_.
+# [^offset]: The infectious offset describes how many ticks an individual is infectious before having symptoms.
+# [^increment1]: This is defined as an increment to the onset of symptoms.
+# [^increment2]: This is defined as an increment to the time of hospitalization.
+# "
+
+    res = "Pathogen $nm, printing of parameters needs to be implemented."
 
     return(res)
 end
