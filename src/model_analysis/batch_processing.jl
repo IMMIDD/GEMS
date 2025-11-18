@@ -150,7 +150,7 @@ Returns a vector of `start_conditions` that were used in the associated simulati
 Values are unique and can originate from multiple simulation runs.
 """
 function start_conditions(batchProcessor::BatchProcessor)
-    return(extract_unique(batchProcessor, x -> x |> start_condition |> parameters))
+    return(extract_unique(batchProcessor, start_condition))
 end
 
 """
@@ -177,32 +177,14 @@ end
     pathogens(batchProcessor::BatchProcessor)
 
 Returns a vector of `pathogens` that were used in the associated simulations.
-Values are unique and can originate from multiple simulation runs.
+Values may not be unique as multiple simulation runs can use the same pathogen configuration.
+The pathogens are not subjected to a deep sameness check.
 """
 function pathogens(batchProcessor::BatchProcessor)
-    return(vcat(extract_unique(batchProcessor, x -> x |> pathogens |> x -> parameters.(x))...))
+    return(vcat(extract_unique(batchProcessor, pathogens)...))
 end
 
-"""
-    pathogens_by_name(batchProcessor::BatchProcessor)
 
-Returns a {name, pathogen[]} dictionary of `pathogens` that were used in the associated simulations.
-This is done to keep multiple pathogen configurations of the same name with varying parameters.
-Names are unique and can originate from multiple simulation runs.
-"""
-function pathogens_by_name(batchProcessor::BatchProcessor)
-    res = Dict{String, Vector{Dict}}()
-
-    for p in batchProcessor |> pathogens
-        if haskey(res, p["name"])
-            push!(res[p["name"]], p)
-        else
-            res[p["name"]] = [p]
-        end
-    end
-
-    return(res)
-end
 
 """
     total_infections(batchProcessor::BatchProcessor)
