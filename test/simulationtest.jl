@@ -107,7 +107,7 @@
         @testset "Population & Settings" begin
             # POPULATION
             # passing
-            sim = Simulation(population = Population(n = 500))
+            sim = Simulation(population = Population(n = 500, rng = Xoshiro()))
             @test population(sim) |> size == 500
             # other population initializations are testesd in "From Disk" above
 
