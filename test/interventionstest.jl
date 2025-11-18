@@ -102,7 +102,7 @@
         @test find_setting_members2.nonself == true
 
         #setup to test process measure
-        pop = Population(n=5, avg_household_size=5, avg_school_size=1)
+        pop = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
         sim2 = Simulation(population=pop)
         i_strategy2 = IStrategy("i_strategy2", sim2)
         find_setting_members3 = FindSettingMembers(Household, i_strategy2)
@@ -169,7 +169,7 @@
 
         @test follow_up_strategy === i_strategy
 
-        infect!(i, Int16(0), pathogen(sim))
+        infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
         result2 = process_measure(sim, i, test_measure2)
         follow_up_strategy2 = result2.follow_up
 
@@ -223,7 +223,7 @@
         end
 
         #test processing measure
-        infect!(i, Int16(0), pathogen(sim))
+        infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
         result = process_measure(sim, i, s_test_measure2)
         follow_up_strategy = result.follow_up
 
@@ -250,11 +250,11 @@
             @test e == "success_rate parameter must be between 0 and 1"
         end
 
-        pop = Population(n=2, avg_household_size=2, avg_school_size=2, avg_office_size=2)
-        sim3 = Simulation(population=pop, transmission_rate=1.0, household_contact_rate=1.0)
+        pop = Population(n=2, avg_household_size=2, avg_school_size=2, avg_office_size=2, rng = Xoshiro())
+        sim3 = Simulation(population=pop, transmission_rate=1.0, household_contacts=1.0)
         i_strategy3 = IStrategy("i_strategy3", sim3)
         trace_infectious2 = TraceInfectiousContacts(i_strategy3, success_rate=1.0)
-        infect!(first(individuals(sim3)), Int16(0), pathogen(sim3))
+        infect!(first(individuals(sim3)), Int16(0), pathogen(sim3), rng = Xoshiro())
         #step!(sim3)
         contacts = process_measure(sim3, first(individuals(sim3)), trace_infectious2)
         #println(contacts) #contacts always nothing TODO
@@ -467,7 +467,7 @@
         @test follow_up_strategy === s_strategy
 
         for ind in indis
-            infect!(ind, Int16(0), pathogen(sim))
+            infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
         end
         result2 = process_measure(sim, gs, pool_test2)
         follow_up_strategy2 = result2.follow_up
@@ -514,7 +514,7 @@
         @test follow_up_strategy === s_strategy
 
         for ind in indis2
-            infect!(ind, Int16(0), pathogen(sim))
+            infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
         end
         result2 = process_measure(sim, gs2, test_all2)
         follow_up_strategy2 = result2.follow_up
