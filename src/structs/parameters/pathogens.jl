@@ -2,6 +2,9 @@
 ### PATHOGENS (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export Pathogen
+export ProgressionCategory
+export ProgressionAssignmentFunction
+export TransmissionFunction
 
 export id, name
 export progressions, progression, progression_assignment, transmission_function

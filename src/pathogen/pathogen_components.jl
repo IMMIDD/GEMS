@@ -1,4 +1,5 @@
 export transmission_probability
+export transmission_functions
 
 # the main defintion of pathogens is in src/structs/parameters/pathogens.jl
 
