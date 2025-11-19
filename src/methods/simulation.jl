@@ -41,9 +41,15 @@ function log_stepinfo(simulation::Simulation)
    
     # quarantine data
     # set up one vector with one entry for each thread
-    tot_cnt = zeros(Int, Threads.maxthreadid())
-    st_cnt  = zeros(Int, Threads.maxthreadid())
-    wo_cnt  = zeros(Int, Threads.maxthreadid())
+    tot_quar_cnt = zeros(Int, Threads.maxthreadid()) # total quarantined count (infected and susceptible)
+
+    st_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined students count (infected and susceptible)
+    st_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated students count (infected only)
+    st_unab_cnt  = zeros(Int, Threads.maxthreadid()) # students unable to attend school (for various reasons)
+
+    wo_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined workers count (infected and susceptible)
+    wo_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated workers count (infected only)
+    wo_unab_cnt  = zeros(Int, Threads.maxthreadid()) # workers unable to attend work (for various reasons)
 
     # infection data
     exp_cnt = zeros(Int, Threads.maxthreadid())
@@ -51,14 +57,33 @@ function log_stepinfo(simulation::Simulation)
     dead_cnt = zeros(Int, Threads.maxthreadid())
     det_cnt = zeros(Int, Threads.maxthreadid())
 
+    # iterate over agents
     Threads.@threads for i in simulation |> individuals
         tid = Threads.threadid()
         
         # log quarantined individuals
         if isquarantined(i)
-            tot_cnt[tid] += 1
-            st_cnt[tid] += is_student(i) ? 1 : 0
-            wo_cnt[tid] += is_working(i) ? 1 : 0
+            tot_quar_cnt[tid] += 1
+
+            if is_student(i)
+                # student quarantine
+                st_quar_cnt[tid] += 1
+
+                # student isolations
+                if is_infected(i)
+                    st_isol_cnt[tid] += 1
+                end
+            end
+
+            if is_working(i)
+                # worker quarantine
+                wo_quar_cnt[tid] += 1
+
+                # worker isolations
+                if is_infected(i)
+                    wo_isol_cnt[tid] += 1
+                end
+            end
         end
 
         # log infected individuals
@@ -68,23 +93,65 @@ function log_stepinfo(simulation::Simulation)
         det_cnt[tid] += is_detected(i) ? 1 : 0
     end
 
+    # iterate over school classes for unable to attend count
+    Threads.@threads for s in schoolclasses(simulation)
+        tid = Threads.threadid()
+
+        # if class is closed, add all students to unable to attend count
+        if !is_open(s)
+            st_unab_cnt[tid] += size(s)
+        else
+
+            # else, iterate over individuals and count those unable to attend
+            for i in individuals(s)
+                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    st_unab_cnt[tid] += 1
+                end
+            end
+        end
+    end
+
+    # iterate over offices for unable to attend count
+    Threads.@threads for o in offices(simulation)
+        tid = Threads.threadid()
+
+        # if class is closed, add all students to unable to attend count
+        if !is_open(o)
+            wo_unab_cnt[tid] += size(o)
+        else
+
+            # else, iterate over individuals and count those unable to attend
+            for i in individuals(o)
+                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    wo_unab_cnt[tid] += 1
+                end
+            end
+        end
+    end
+
     # log quarantine data
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-        sum(tot_cnt),
-        sum(st_cnt),
-        sum(wo_cnt)
+        sum(tot_quar_cnt),
+        sum(st_quar_cnt),
+        sum(wo_quar_cnt)
     )
 
     # log infection data
-    log!(
-        simulation |> statelogger,
-        simulation |> tick,
-        sum(exp_cnt),
-        sum(inf_cnt),
-        sum(dead_cnt),
-        sum(det_cnt)
+    log!(simulation |> statelogger;
+        tick = simulation |> tick,
+        exposed = sum(exp_cnt),
+        infectious = sum(inf_cnt),
+        dead = sum(dead_cnt),
+        detected = sum(det_cnt),
+        quarantined = sum(tot_quar_cnt),
+        quarantined_students = sum(st_quar_cnt),
+        isolated_students = sum(st_isol_cnt),
+        unable_to_attend_students = sum(st_unab_cnt),
+        quarantined_workers = sum(wo_quar_cnt),
+        isolated_workers = sum(wo_isol_cnt),
+        unable_to_attend_workers = sum(wo_unab_cnt)
     )
 end
 

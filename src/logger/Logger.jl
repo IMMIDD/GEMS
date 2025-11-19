@@ -1091,6 +1091,8 @@ Base.length(logger::QuarantineLogger) = length(logger.tick)
 
 A logging structure to track the overall number of individuals in different epidemiological states.
 Exposed, infectious, dead, and detected (reported) cases are logged.
+Also tracks the number of quarantined, isolated, and unable to attend school/work individuals,
+stratified by students and workers.
 
 # Fields
 - `tick::Vector{Int16}`: Simulation tick
@@ -1098,6 +1100,13 @@ Exposed, infectious, dead, and detected (reported) cases are logged.
 - `infectious::Vector{Int64}`: Number of infectious individuals at the given tick
 - `dead::Vector{Int64}`: Number of dead individuals at the given tick
 - `detected::Vector{Int64}`: Number of detected (reported) cases at the given tick
+- `quarantined::Vector{Int64}`: Number of quarantined individuals at the given tick (includes susceptible and infected)
+- `quarantined_students::Vector{Int64}`: Number of quarantined students at the given tick (includes susceptible and infected)
+- `isolated_students::Vector{Int64}`: Number of isolated students at the given tick (infected only)
+- `unable_to_attend_students::Vector{Int64}`: Number of students unable to attend school at the given tick for any reason (quarantined, severe symptoms, hospitalized, school closed)
+- `quarantined_workers::Vector{Int64}`: Number of quarantined workers at the given tick (includes susceptible and infected)
+- `isolated_workers::Vector{Int64}`: Number of isolated workers at the given tick (infected only)
+- `unable_to_attend_workers::Vector{Int64}`: Number of workers unable to attend work at the given tick for any reason (quarantined, severe symptoms, hospitalized, workplace closed)
 - `lock::ReentrantLock`: A lock for parallelised code to use to guarantee data integrity
     when working with this logger.
 """
@@ -1109,6 +1118,15 @@ Exposed, infectious, dead, and detected (reported) cases are logged.
     infectious::Vector{Int64} = Vector{Int64}(undef, 0)
     dead::Vector{Int64} = Vector{Int64}(undef, 0)
     detected::Vector{Int64} = Vector{Int64}(undef, 0)
+
+    quarantined::Vector{Int64} = Vector{Int64}(undef, 0)
+    quarantined_students::Vector{Int64} = Vector{Int64}(undef, 0)
+    isolated_students::Vector{Int64} = Vector{Int64}(undef, 0)
+    unable_to_attend_students::Vector{Int64} = Vector{Int64}(undef, 0)
+
+    quarantined_workers::Vector{Int64} = Vector{Int64}(undef, 0)
+    isolated_workers::Vector{Int64} = Vector{Int64}(undef, 0)
+    unable_to_attend_workers::Vector{Int64} = Vector{Int64}(undef, 0)
 
     # Parallelization
     lock::ReentrantLock = ReentrantLock()
@@ -1129,12 +1147,19 @@ Logs the number of individuals in different epidemiological states in a `StateLo
 - `detected::Int64`: Number of detected (reported) cases
 """
 function log!(
-    statelogger::StateLogger,
+    statelogger::StateLogger;
     tick::Int16,
     exposed::Int64,
     infectious::Int64,
     dead::Int64,
-    detected::Int64
+    detected::Int64,
+    quarantined::Int64,
+    quarantined_students::Int64,
+    isolated_students::Int64,
+    unable_to_attend_students::Int64,
+    quarantined_workers::Int64,
+    isolated_workers::Int64,
+    unable_to_attend_workers::Int64
 )
     lock(statelogger.lock) do
         push!(statelogger.tick, tick)
@@ -1142,6 +1167,13 @@ function log!(
         push!(statelogger.infectious, infectious)
         push!(statelogger.dead, dead)
         push!(statelogger.detected, detected)
+        push!(statelogger.quarantined, quarantined)
+        push!(statelogger.quarantined_students, quarantined_students)
+        push!(statelogger.isolated_students, isolated_students)
+        push!(statelogger.unable_to_attend_students, unable_to_attend_students)
+        push!(statelogger.quarantined_workers, quarantined_workers)
+        push!(statelogger.isolated_workers, isolated_workers)
+        push!(statelogger.unable_to_attend_workers, unable_to_attend_workers)
     end
 end
 
@@ -1154,13 +1186,21 @@ Return a DataFrame holding the informations of the logger.
 
 - `DataFrame` with the following columns:
 
-| Name        | Type     | Description                     |
-| :---------- | :------- | :------------------------------ |
-| `tick`      | `Int16`  | Simulation tick                 |
-| `exposed`   | `Int64`  | Number of exposed individuals   |
-| `infectious`| `Int64`  | Number of infectious individuals|
-| `dead`      | `Int64`  | Number of dead individuals      |
-| `detected`  | `Int64`  | Number of detected cases        |
+| Name                         | Type    | Description                                               |
+| :--------------------------- | :------ | :-------------------------------------------------------- |
+| `tick`                       | `Int16` | Simulation tick                                           |
+| `exposed`                    | `Int64` | Number of exposed individuals                             |
+| `infectious`                 | `Int64` | Number of infectious individuals                          |
+| `dead`                       | `Int64` | Number of dead individuals                                |
+| `detected`                   | `Int64` | Number of detected cases                                  |
+| `quarantined`                | `Int64` | Number of quarantined individuals                         |
+| `quarantined_students`       | `Int64` | Number of quarantined students (susceptible and infected) |
+| `isolated_students`          | `Int64` | Number of isolated students (infected only)               |
+| `unable_to_attend_students`  | `Int64` | Number of students unable to attend school                |
+| `quarantined_workers`        | `Int64` | Number of quarantined workers (susceptible and infected)  |
+| `isolated_workers`           | `Int64` | Number of isolated workers (infected only)                |
+| `unable_to_attend_workers`   | `Int64` | Number of workers unable to attend work                   |
+
 """
 function dataframe(statelogger::StateLogger)::DataFrame
     return DataFrame(
@@ -1168,7 +1208,14 @@ function dataframe(statelogger::StateLogger)::DataFrame
         exposed = statelogger.exposed,
         infectious = statelogger.infectious,
         dead = statelogger.dead,
-        detected = statelogger.detected
+        detected = statelogger.detected,
+        quarantined = statelogger.quarantined,
+        quarantined_students = statelogger.quarantined_students,
+        isolated_students = statelogger.isolated_students,
+        unable_to_attend_students = statelogger.unable_to_attend_students,
+        quarantined_workers = statelogger.quarantined_workers,
+        isolated_workers = statelogger.isolated_workers,
+        unable_to_attend_workers = statelogger.unable_to_attend_workers
     )
 end
 
