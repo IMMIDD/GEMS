@@ -390,6 +390,34 @@
             @test infections(rd) |>
                 df -> df[df.setting_type .!= 'h' .&& df.tick .> 0, :] |> nrow == 0
         end
+
+        @test "No Severe Out-Household Infections" begin
+            sim = Simulation(pop_size = 10_000)
+            run!(sim)
+            rd = ResultData(sim)
+
+            # no severe infections should have occurred in non-household settings
+
+            # get all infections that became severe at some point
+            sev_ifns = infections(rd) |>
+                df -> df[df.severeness_onset .>= 0, :]
+
+            # get all infections that occurred outside the household
+            out_hh_infs = infections(rd) |>
+                df -> df[df.setting_type .!= 'h', :]
+
+            # get infections that were caused by a person who had severe symptoms at some point in time
+            @test innerjoin(
+                select(sev_ifns, :infection_id, :severeness_onset, :severeness_offset),
+                select(out_hh_infs, :source_infection_id, :tick),
+                on = (:infection_id => :source_infection_id)
+            ) |>
+            # filter for infections that occured while the source infection was severe (should be none)
+            df -> df[df.severeness_onset .<= df.tick .< df.severeness_offset, :] |>
+            nrow == 0
+
+        
+        end
         @testset "No Hospital Infections" begin
             # all infections should immediately lead to hospitalization
             # no infections should occur in the population, as all infected are hospitalized

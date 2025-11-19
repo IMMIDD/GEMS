@@ -300,6 +300,11 @@ function can_infect(ind::Individual, setting::Setting)::Bool
         return false
     end
 
+    # severe symptoms prevent infecting others outside the household
+    if is_severe(ind) && (typeof(setting) != Household)
+        return false
+    end
+
     # if individual is quarantined
     if isquarantined(ind)
         # if individual is in household quarantine and setting is not Household
