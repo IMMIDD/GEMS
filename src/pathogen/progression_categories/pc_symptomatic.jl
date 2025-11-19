@@ -3,7 +3,8 @@ export Symptomatic
 """
     Symptomatic <: ProgressionCategory
 
-A disease progression category for individuals who develop symptoms but do not require hospitalization.
+A disease progression category for individuals who develop (mild) symptoms.
+They do not require hospitalization and continue their daily activities but are aware of their illness.
 
 **IMPORTANT**: The infectiousness onset must be at least 1 tick after exposure to avoid issues with immediate transmission.
 Therefore, the calculation for infectiousness_onset includes a +1 offset.

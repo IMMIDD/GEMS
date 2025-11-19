@@ -26,6 +26,14 @@
         symptom_onset_to_recovery = poi7
     )
 
+    pr_sev = Severe(
+        exposure_to_infectiousness_onset = poi2,
+        infectiousness_onset_to_symptom_onset = poi1,
+        symptom_onset_to_severeness_onset = poi2,
+        severeness_onset_to_severeness_offset = poi3,
+        severeness_offset_to_recovery = poi4
+    )
+
     pr_hosp = Hospitalized(
         exposure_to_infectiousness_onset = poi1,
         infectiousness_onset_to_symptom_onset = poi1,
@@ -51,7 +59,7 @@
     )
 
     # progression assignment
-    paf = RandomProgressionAssignment([Asymptomatic, Symptomatic, Hospitalized, Critical])
+    paf = RandomProgressionAssignment([Asymptomatic, Symptomatic, Severe, Hospitalized, Critical])
 
     # transmission function
     ctf = ConstantTransmissionRate(transmission_rate = 0.25)
@@ -61,15 +69,16 @@
         p = Pathogen(
             name = "TestPathogen",
             id = 5,
-            progressions = [pr_asymp, pr_sympt, pr_hosp, pr_crit],
+            progressions = [pr_asymp, pr_sympt, pr_sev, pr_hosp, pr_crit],
             progression_assignment = paf,
             transmission_function = ctf,
         )
         @test name(p) == "TestPathogen"
         @test id(p) == 5
-        @test length(progressions(p)) == 4
+        @test length(progressions(p)) == 5
         @test progressions(p)[Asymptomatic] === pr_asymp
         @test progressions(p)[Symptomatic] === pr_sympt
+        @test progressions(p)[Severe] === pr_sev
         @test progressions(p)[Hospitalized] === pr_hosp
         @test progressions(p)[Critical] === pr_crit
         @test progression_assignment(p) === paf
@@ -91,6 +100,13 @@
         @test pr_sympt.exposure_to_infectiousness_onset === poi2
         @test pr_sympt.infectiousness_onset_to_symptom_onset === poi1
         @test pr_sympt.symptom_onset_to_recovery === poi7
+
+        # severe
+        @test pr_sev.exposure_to_infectiousness_onset === poi2
+        @test pr_sev.infectiousness_onset_to_symptom_onset === poi1
+        @test pr_sev.symptom_onset_to_severeness_onset === poi2
+        @test pr_sev.severeness_onset_to_severeness_offset === poi3
+        @test pr_sev.severeness_offset_to_recovery === poi4
 
         # hospitalized
         @test pr_hosp.exposure_to_infectiousness_onset === poi1
@@ -181,7 +197,7 @@
     @testset "Progression Assignment" begin
         ### RANDOM PROGRESSION ASSIGNMENT
         # THINGS THAT SHOULD WORK
-        pgrs = [Asymptomatic, Symptomatic, Hospitalized, Critical]
+        pgrs = [Asymptomatic, Symptomatic, Severe, Hospitalized, Critical]
         rpa = RandomProgressionAssignment(pgrs) 
         i = individuals(sim)[1]
 
