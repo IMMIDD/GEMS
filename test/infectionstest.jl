@@ -391,7 +391,7 @@
                 df -> df[df.setting_type .!= 'h' .&& df.tick .> 0, :] |> nrow == 0
         end
 
-        @test "No Severe Out-Household Infections" begin
+        @testset "No Severe Out-Household Infections" begin
             sim = Simulation(pop_size = 10_000)
             run!(sim)
             rd = ResultData(sim)
