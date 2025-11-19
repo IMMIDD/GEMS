@@ -374,4 +374,13 @@
         end
     end
 
+    @testset "Helper Functions" begin
+        sim = Simulation(pop_size = 1_000)
+        
+        output = @capture_out info(sim)
+
+        # test if someting is written to the console
+        @test !isempty(output)
+    end
+
 end

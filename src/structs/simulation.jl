@@ -1823,32 +1823,15 @@ function info(sim::Simulation)
     res *= "\u2514 Start Condition: $(sim |> start_condition)\n"
     res *= "\u2514 Stop Criterion: $(sim |> stop_criterion |> typeof)\n"
     
-    # pathogen
-    res *= "\u2514 Pathogen: $(sim |> pathogen |> name)\n"
-    res *= "  \u2514 Transmission Function: $(sim |> pathogen |> transmission_function)\n"
-    res *= "  \u2514 Onset of Symptoms: $(sim |> pathogen |> onset_of_symptoms)\n"
-    res *= "  \u2514 Infectiousness Offset: $(sim |> pathogen |> infectious_offset)\n"
-    res *= "  \u2514 Time to Recovery: $(sim |> pathogen |> time_to_recovery)\n"
+    # pathogen (use the pathogen's show method for detailed info)
+    buf = IOBuffer()
+    show(buf, pathogen(sim))       # writes into the buffer
+    s = String(take!(buf))    # convert buffer → String
 
-    res *= "  \u2514 Onset of Severeness: $(sim |> pathogen |> onset_of_severeness)\n"
-
-    res *= "  \u2514 Hospitalization Rate: $(sim |> pathogen |> hospitalization_rate)\n"
-    res *= "  \u2514 Time to Hospitalization: $(sim |> pathogen |> time_to_hospitalization)\n"
-    res *= "  \u2514 Length of Stay: $(sim |> pathogen |> length_of_stay)\n"
-
-    res *= "  \u2514 ICU rate: $(sim |> pathogen |> icu_rate)\n"
-    res *= "  \u2514 Time to ICU: $(sim |> pathogen |> time_to_icu)\n"
-    res *= "  \u2514 Ventilation Rate: $(sim |> pathogen |> ventilation_rate)\n"
-
-    res *= "  \u2514 Mild Death Rate: $(sim |> pathogen |> mild_death_rate)\n"
-    res *= "  \u2514 Severe Death Rate: $(sim |> pathogen |> severe_death_rate)\n"
-    res *= "  \u2514 Critical Death Rate: $(sim |> pathogen |> critical_death_rate)\n"
-
-    res *= "  \u2514 Disease Progression Stratification...\n"
-
-
+    lines = split(s, "\n", keepempty = true)
+    res *= join(["\u2514 $(lines[1])"; " " .* lines[2:end]], "\n")
     
-
+    # intervention strategies
     if sim |> strategies |> length > 0
         res *= "\u2514 Intervention Strategies: \n"
         for st in sim |> strategies
