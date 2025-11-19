@@ -26,9 +26,7 @@ TimesUp
 
 ## Constructors
 ```@docs
-Simulation(; simargs...)
-Simulation(::Dict{Symbol, <:Any})
-Simulation(::String; simargs...)
+Simulation
 ```
 
 ## Functions

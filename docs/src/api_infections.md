@@ -21,14 +21,12 @@ TransmissionFunction
 
 ## Constructors
 ```@docs
-AgeDependentTransmissionRate(;transmission_rate, ageGroups, ageTransmissions, distribution)
+AgeDependentTransmissionRate
 ```
 
 
 ## Functions
 ```@docs
-disease_progression!(::Individual, ::Pathogen, ::Int16)
-estimate_disease_progression(::DiseaseProgressionStrat, ::Individual)
 infect!
 spread_infection!(::Setting, ::Simulation, ::Pathogen)
 transmission_probability
