@@ -43,11 +43,17 @@ end
 
 
 """
-    infect!(infectee::Individual, tick::Int16, pathogen::Pathogen;
+    infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen;
         sim::Union{Simulation, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
-        infecter_id::Int32 = Int32(-1), setting_id::Int32 = Int32(-1), lon::Float32 = NaN32,
-        lat::Float32 = NaN32, setting_type::Char = '?', ags::Int32 = Int32(-1),
+        infecter_id::Int32 = Int32(-1),
+        setting_id::Int32 = Int32(-1),
+        lon::Float32 = NaN32,
+        lat::Float32 = NaN32,
+        setting_type::Char = '?',
+        ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)
 
 Infect `infectee` with the specified `pathogen` and calculate time to infectiousness
@@ -60,8 +66,8 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 - `infectee::Individual`: Individual to infect
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
-- `sim::Simulation`: Simulation object (used to get logger and current tick)
 - `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
+- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG to use for stochastic parts
 - `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
 - `setting_id::Int32 = Int32(-1)` *(optional)*: ID of setting this infection happens in
 - `lon::Float32 = NaN32` *(optional)*: Longitude of the infection infection location (setting) 

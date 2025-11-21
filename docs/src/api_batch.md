@@ -16,11 +16,7 @@ Order   = [:function]
 ### Constructors
 
 ```@docs
-Batch(;::Integer::Bool, simargs...)
-Batch(::Simulation...)
-Batch(::Vector{Simulation})
-Batch(::Batch...)
-Batch(::Vector{Batch})
+Batch
 ```
 
 ### Functions
@@ -38,11 +34,10 @@ simulations(::Batch)
 
 ## BatchProcessor
 
-### SConstructors
+### Constructors
 
 ```@docs
-BatchProcessor(::Vector{ResultData})
-BatchProcessor(::Batch; ::Bool)
+BatchProcessor
 ```
 
 ### Functions
@@ -54,6 +49,8 @@ config_files(::BatchProcessor)
 cumulative_disease_progressions(::BatchProcessor)
 cumulative_quarantines(::BatchProcessor)
 effectiveR(::BatchProcessor)
+extract
+extract_unique
 number_of_individuals(::BatchProcessor)
 pathogens(::BatchProcessor)
 population_files(::BatchProcessor)
@@ -81,11 +78,7 @@ total_tests(::BatchProcessor)
 ### Constructors
 
 ```@docs
-BatchData(::BatchProcessor; ::String)
-BatchData(::Batch; ::String, ::String)
-BatchData(::Vector{ResultData}; ::String)
-BatchData(::BatchData...; ::String)
-BatchData(::Vector{BatchData}; ::String)
+BatchData
 ```
 
 ### Functions

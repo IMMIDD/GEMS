@@ -18,6 +18,7 @@ gemsplot
 gemsheatmap
 emptyplot(::String)
 plotseries!
+plottypes
 saveplot
 splitlabel
 splitplot

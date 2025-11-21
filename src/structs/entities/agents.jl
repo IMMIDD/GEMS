@@ -15,7 +15,7 @@ export setting_id, setting_id!, household_id, class_id, office_id, municipality_
 export is_working, is_student, has_municipality
 # health status
 export comorbidities
-export is_infected, isinfected, infected, infect!
+export is_infected, isinfected, infected, infected!
 export is_infectious, isinfectious, infectious, infectious!
 export is_exposed, isexposed, exposed
 export is_presymptomatic, ispresymptomatic, presymptomatic
@@ -28,6 +28,7 @@ export is_icu, isicu, icu, icu!
 export is_ventilated, isventilated, ventilated, ventilated!
 export is_recovered, isrecovered, recovered
 export is_dead, isdead, dead, dead!
+export is_detected, isdetected, detected, detected!
 # disease progression
 export exposure, exposure!
 export infectiousness_onset, infectiousness_onset!
@@ -457,7 +458,7 @@ isinfected(individual::Individual) = is_infected(individual)
 infected(individual::Individual) = is_infected(individual)
 
 """
-    infect!(individual::Individual, infected::Bool)
+    infected!(individual::Individual, infected::Bool)
 
 Sets the `infected` flag of the individual.
 """
