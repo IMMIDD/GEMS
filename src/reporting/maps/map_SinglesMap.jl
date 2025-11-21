@@ -63,7 +63,7 @@ function generate(plt::SinglesMap, sim::Simulation; level::Int = 3, fit_lims::Bo
                 x -> agsmap(x,
                     fontfamily = "Times Roman",
                     # if fit_lims is true, set clims to min and max of values
-                    clims = fit_lims ? (minimum(x.singles), maximum(x.singles)) : (0, 1); 
+                    clims = fit_lims ? (minimum(x.singles), maximum(x.singles)) : (0, 100); 
                     plotargs...)
         )
 end
