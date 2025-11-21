@@ -102,9 +102,9 @@ yvals = []
 outvals = []
 
 # vary transmission rate
-for tr in 0.01:0.01:0.10
+for tr in 0.05:0.01:0.15
     # vary household contacts
-    for con in 1:10
+    for con in 0:0.5:5
         sim = Simulation(transmission_rate = tr, household_contacts = con)
         run!(sim)
         rd = ResultData(sim, style = "LightRD")
