@@ -7,7 +7,7 @@
     #     configfile = joinpath(basefolder, "test/testdata/TestConf.toml"),
     #     population = joinpath(basefolder, "test/testdata/TestPop.csv")
     # )
-    sim = Simulation(pop_size = 1000)
+    sim = Simulation(pop_size = 1000, infected_fraction = 0.1)
     run!(sim)
     rd = sim |> PostProcessor |> ResultData
 
