@@ -369,6 +369,7 @@
 
         @testset "Household Only Infections" begin
             sim_base = Simulation(pop_size = 1000,
+                infected_fraction = 0.1,
                 seed = 1234)
 
             run!(sim_base)
@@ -380,6 +381,7 @@
             
             sim = Simulation(pop_size = 1000,
                 seed = 1234,
+                infected_fraction = 0.1,
                 household_contacts = 3.0,
                 office_contacts = 0.0,
                 school_class_contacts = 0.0)
