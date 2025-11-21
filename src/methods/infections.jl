@@ -255,13 +255,6 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         end
     end
 
-    # handle quarantining
-    if isquarantined(indiv)
-        if quarantine_release_tick(indiv) <= tick
-            end_quarantine!(indiv)
-        end
-    end
-
     # if onset of symptoms is this tick, trigger all symptom triggers
     if symptom_onset(indiv) == tick
         for st in sim |> symptom_triggers

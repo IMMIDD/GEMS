@@ -783,4 +783,34 @@
         @test isempty(eq) === true
     end
 
+    @testset "Scenarios" begin
+        @testset "Self-Isolation" begin
+            # everyone is symptomatic and should therefore self-isolate
+            # for 14 days. With 10 initial infections and no transmission,
+            # 10*14 total quarantine days should be recorded
+            p = Pathogen(
+                name = "COVID19",
+                progressions = [Symptomatic(
+                    exposure_to_infectiousness_onset = 1,
+                    infectiousness_onset_to_symptom_onset = 0,
+                    symptom_onset_to_recovery = 7
+                )],
+                transmission_function = ConstantTransmissionRate(transmission_rate = 0.0) # no transmission
+            )
+            sim = Simulation(
+                pop_size = 1000,
+                pathogen = p,
+                infected_fraction = 0.01) # 10 people infected at start
+            
+            # self-isolation strategy
+            i_strategy = IStrategy("Self-Isolation Strategy", sim)
+            add_measure!(i_strategy,  SelfIsolation(14))
+            symptom_trigger = SymptomTrigger(i_strategy)
+            add_symptom_trigger!(sim, symptom_trigger)
+            
+            run!(sim)
+            rd = ResultData(sim)
+            @test total_quarantines(rd) == 10*14
+        end
+    end
 end

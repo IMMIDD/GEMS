@@ -57,7 +57,8 @@ export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 #quarantine
 export quarantine_release_tick, quarantine_release_tick!
 export quarantine_tick, quarantine_tick!
-export quarantine_status, home_quarantine!, end_quarantine!, isquarantined
+export quarantine_status, home_quarantine!, end_quarantine!
+export is_quarantined, isquarantined, quarantined, quarantined!
 
 export progress_disease!
 
@@ -1129,12 +1130,35 @@ function quarantine_release_tick!(individual::Individual, tick::Int16)
 end
 
 """
+    is_quarantined(individual::Individual)
     isquarantined(individual::Individual)
+    quarantined(individual::Individual)
 
 Returns wether the individual is in quarantine or not.
 """
-function isquarantined(individual::Individual)::Bool
-    return individual.quarantine_status != QUARANTINE_STATE_NO_QUARANTINE
+is_quarantined(individual::Individual) = individual.quarantine_status != QUARANTINE_STATE_NO_QUARANTINE
+isquarantined(individual::Individual) = is_quarantined(individual)
+quarantined(individual::Individual) = is_quarantined(individual)
+
+"""
+    is_quarantined(individual::Individual, tick::Int16)
+    isquarantined(individual::Individual, tick::Int16)
+    quarantined(individual::Individual, tick::Int16)
+
+Returns wether the individual is in quarantine at tick `tick`.
+"""
+is_quarantined(individual::Individual, tick::Int16) = quarantine_tick(individual) <= tick < quarantine_release_tick(individual)
+isquarantined(individual::Individual, tick::Int16) = is_quarantined(individual, tick)
+quarantined(individual::Individual, tick::Int16) = is_quarantined(individual, tick)
+
+
+"""
+    quarantined!(individual::Individual, quarantined::Bool)
+
+Sets an individual's quarantine status to either home quarantine or no quarantine.
+"""
+function quarantined!(individual::Individual, quarantined::Bool)
+    individual.quarantine_status = quarantined ? QUARANTINE_STATE_HOUSEHOLD_QUARANTINE : QUARANTINE_STATE_NO_QUARANTINE
 end
 
 """
@@ -1296,7 +1320,6 @@ function progress_disease!(individual::Individual, tick::Int16)
     ventilated!(individual, is_ventilated(individual, tick))
     dead!(individual, is_dead(individual, tick))
     detected!(individual, is_detected(individual, tick))
-
 end
 
 

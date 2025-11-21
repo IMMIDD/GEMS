@@ -233,7 +233,7 @@ end
 Increments the simulation status by one tick and executes all events that shall be handled during this tick.
 """
 function step!(simulation::Simulation)
-    # update individuals
+    # update disease state
     Threads.@threads :static for i in simulation |> population |> individuals
         update_individual!(i, tick(simulation), simulation)
     end
@@ -255,6 +255,11 @@ function step!(simulation::Simulation)
     end
 
     process_events!(simulation)
+
+    # update quarantine state
+    individuals(simulation) |>
+        inds -> quarantined!.(inds, is_quarantined.(inds, tick(simulation)))
+
     log_stepinfo(simulation)
     
     # fire custom loggers
