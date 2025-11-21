@@ -62,6 +62,7 @@ function generate(plt::SinglesMap, sim::Simulation; level::Int = 3, fit_lims::Bo
                 x -> combine(x, :size => (x -> 100 * count(y -> y == 1, x) / length(x)) => :singles) |>
                 x -> agsmap(x,
                     fontfamily = "Times Roman",
+                    colorbar_title = "Percentage (%)",
                     # if fit_lims is true, set clims to min and max of values
                     clims = fit_lims ? (minimum(x.singles), maximum(x.singles)) : (0, 100); 
                     plotargs...)
