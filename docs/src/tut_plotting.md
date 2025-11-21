@@ -91,7 +91,7 @@ If you try to plot any `gemsmap` for the first time, it will trigger the downloa
 ```julia
 using GEMS
 sim = Simulation(population = "MV")
-gemsmap(sim, type = :PopDensityMap, clims = (0, 100))
+gemsmap(sim, type = :PopDensityMap)
 ```
 
 **Plot**
@@ -198,7 +198,7 @@ rd = ResultData(sim)
 # pass as many plots to the "plot" functions as you want
 plot(
     histogram(ages, xlabel = "Age", ylabel = "Number of Individuals", label = "Individuals per Age"),
-    gemsmap(sim, type = :PopDensityMap, clims = (0, 100)),
+    gemsmap(sim, type = :PopDensityMap),
     gemsplot(rd, type = :CumulativeCases, xlims = (0, 100)),
     layout = (3, 1),
     size = (400, 1000)
