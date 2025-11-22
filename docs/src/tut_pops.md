@@ -79,7 +79,7 @@ Loading a new population model for the first time will spark a download of the f
 The inbuilt models are geo-referencal, therefore they can be visualized using the `gemsmap()` function (e.g., to take a look at the population density):
 
 ```julia
-gemsmap(sim, type = :PopDensityMap, clims = (0, 100))
+gemsmap(sim, type = :PopDensityMap)
 ```
 
 
@@ -165,7 +165,10 @@ inds = individuals(pop)
 df = DataFrame(age = age.(inds), vaccinations = number_of_vaccinations.(inds))
 df_grouped = groupby(df, :age)
 df_combined = combine(df_grouped, :vaccinations => (v -> sum(v) / length(v)) => :vacc_fraction)
-plot(df_combined.age, df_combined.vacc_fraction)
+plot(df_combined.age, df_combined.vacc_fraction,
+    xlabel = "Age",
+    ylabel = "Vaccination Coverage",
+    legend = false)
 ```
 
 **Plot**
