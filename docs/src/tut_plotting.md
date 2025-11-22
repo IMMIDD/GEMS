@@ -92,6 +92,7 @@ If you try to plot any `gemsmap` for the first time, it will trigger the downloa
 using GEMS
 sim = Simulation(population = "MV")
 gemsmap(sim, type = :PopDensityMap)
+gemsmap(sim, type = :PopDensityMap)
 ```
 
 **Plot**
@@ -198,10 +199,10 @@ rd = ResultData(sim)
 # pass as many plots to the "plot" functions as you want
 plot(
     histogram(ages, xlabel = "Age", ylabel = "Number of Individuals", label = "Individuals per Age"),
-    gemsmap(sim, type = :PopDensityMap),
+    gemsmap(sim, type = :PopDensityMap, top_margin = -8Plots.mm, bottom_margin = -8Plots.mm),
     gemsplot(rd, type = :CumulativeCases, xlims = (0, 100)),
     layout = (3, 1),
-    size = (400, 1000)
+    size = (600, 1000)
 )
 ```
 
@@ -212,6 +213,9 @@ plot(
     <img src="../assets/tutorials/tut_plotting_combined.png" width="60%"/>
 </p>
 ``` 
+
+The `top_margin` and `bottom_margin` keywords in the example are used to arrange subplots.
+Please look up the `Plots.jl` package's documentation to learn more.
 
 
 ## Saving Plots
