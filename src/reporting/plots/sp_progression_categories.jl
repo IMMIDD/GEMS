@@ -76,7 +76,7 @@ function generate(plt::ProgressionCategories, rd::ResultData; plotargs...)
         df -> unstack(df, :progression_category, :bin, :count, fill=0.0) |>
         df -> Matrix(df[:, Not(:progression_category)]) |>
         mat -> heatmap(
-            mat;
+            reverse(mat, dims = 2);
             color = :viridis,
             xlabel = "Age Group",
             xticks = 1:(length(names(df))-1),
