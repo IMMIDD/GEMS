@@ -152,6 +152,15 @@ function municipality(i::Individual, sim::Simulation)::Municipality
         x -> x[municipality_id(i)]
 end
 
+"""
+    getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
+
+Return the global setting.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
+    return settings(sim)[GlobalSetting][1]
+end
+
 ### Setting access functions
 
 """

@@ -448,6 +448,7 @@
             
             sim = Simulation(
                 pop_size = 10_000,
+                infected_fraction = 0.01,
                 transmission_rate = 1.0)
 
             # put all infected in quarantine
