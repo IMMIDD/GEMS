@@ -214,6 +214,6 @@ gemsplot(rd, type = (:TickCases, :InfectionDuration, :ProgressionCategories))
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_diseases_age_complete.png" width="60%"/>
+    <img src="../assets/tutorials/tut_diseases_complete.png" width="60%"/>
 </p>
 ```
