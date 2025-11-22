@@ -223,7 +223,7 @@ function GEMS.transmission_probability(transFunc::FixedWaning,
     end
 
     # calculate until when individual is immune if he was previously infected
-    immune_until = removed_tick(infected) + transFunc.waning_time
+    immune_until = recovery(infected) + transFunc.waning_time
     
     # if waning date is in the future, return 0 as transmission probability,
     # else, return provided rate
@@ -231,8 +231,28 @@ function GEMS.transmission_probability(transFunc::FixedWaning,
 end
 ```
 
-We also need a custom config file to incorporate the new rules in our simulation.
-In your custom config file, specify the use of the `FixedWaning` method and provide the parameters as you defined them.
+Now, run a simulation as such and inspect the results:
+
+```julia
+tf = FixedWaning(rate = 0.2, waning_time = 50)
+sim = Simulation(transmission_function = tf)
+run!(sim)
+rd = ResultData(sim)
+gemsplot(rd)
+```
+
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_advanced_fixed-waning.png" width="80%"/>
+</p>
+```
+
+The plots show oscillating behavior of the daily infections and the effective reproduction number as individuals are becoming susceptible again a few weeks after their initial infection.
+
+If you want to use a config file, specify the use of the `FixedWaning` method and provide the parameters as you defined them.
 The example below shows the parameterization in a custom config file.
 If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
 
@@ -250,27 +270,6 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 
 !!! info "Example"
     The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/fixed-waning) with a working config file for the code snippet above.
-
-Run a simulation as such and inspect the results:
-
-```julia
-sim = Simulation("fixed-waning.toml")
-run!(sim)
-rd = ResultData(sim)
-gemsplot(rd)
-```
-
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_advanced_fixed-waning.png" width="80%"/>
-</p>
-```
-
-The plots show oscillating behavior of the daily infections and the effective reproduction number as individuals are becoming susceptible again a few weeks after their initial infection.
-
 
 ## Custom Start Conditions
 
