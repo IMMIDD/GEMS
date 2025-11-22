@@ -1,4 +1,4 @@
-# [6 - Advanced Parameterization](@id advanced)
+# [7 - Advanced Parameterization](@id advanced)
 
 The `Simulation()` function provides a large variety of optional arguments to parameterize models.
 However, in some cases, you might want to change how disease progressions are calculated, how contacts are sampled, or how infections happen.
@@ -270,6 +270,14 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 
 !!! info "Example"
     The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/fixed-waning) with a working config file for the code snippet above.
+
+## Custom Disease Progression
+
+coming soon ...
+
+## Custom Progression Assignment
+
+coming soon ...
 
 ## Custom Start Conditions
 

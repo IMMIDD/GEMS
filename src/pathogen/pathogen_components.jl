@@ -1,5 +1,7 @@
 export transmission_probability
 export transmission_functions
+export progression_categories
+export progression_assignments
 
 # the main defintion of pathogens is in src/structs/parameters/pathogens.jl
 
@@ -97,6 +99,22 @@ function transmission_probability(transFunc::TransmissionFunction, infecter::Ind
     # TF-function (above) will trigger an error
     return transmission_probability(transFunc, infecter, infected, setting, tick)
 end
+
+
+"""
+    progressions()
+
+Returns all known progression categories (subtypes of `ProgressionCategory`).
+"""
+progression_categories() = subtypes(ProgressionCategory)
+
+
+"""
+    progression_assignments()
+
+Returns all known progression assignment functions (subtypes of `ProgressionAssignmentFunction`).
+"""
+progression_assignments() = subtypes(ProgressionAssignmentFunction)
 
 """
     transmission_functions()

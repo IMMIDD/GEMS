@@ -1,4 +1,4 @@
-# 7 - Logging & Post-Processing
+# 8 - Logging & Post-Processing
 
 GEMS offers a variety of options to collect data during simulation runs and process them to obtain aggregated statistics.
 This tutorial teaches you how to access the data and customize how data is being collected and processed.
