@@ -270,7 +270,7 @@ gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeIsolations))
 </p>
 ``` 
 
-The numbers suggest, that isolating the entire household prevents more cases, compared to isolating only the symptomatic individual, but also causes more isolations.
+The numbers suggest, that isolating the entire household ends the epidemic within a weeks with only very few cases, compared to isolating only the symptomatic individual, and even with fewer overall isolations.
 Using `gemsplot`, you can compare both scenarios and the baseline.
 The following code combines the previous two examples:
 
@@ -480,11 +480,12 @@ Once an individual experiences symptoms, all members of their household (includi
   - If multiple people in the household are infected, each individual will get tested multiple times
   - Test results are available immediately
   - With a positive test result, the individual will go into self-isolation for 14 days
+  - Make this disease in this scenario slightly more infectious (.25 transmission rate) to get an epidemic curve.
 
 ```julia
 using GEMS, Plots
 
-scenario = Simulation(label = "Household Testing")
+scenario = Simulation(label = "Household Testing", transmission_rate = .25)
 
 # isolation strategy (14 days)
 self_isolation = IStrategy("Self Isolation", scenario)
@@ -521,7 +522,7 @@ run!(scenario)
 rd = ResultData(scenario)
 plot(
     gemsplot(rd, type = :DetectedCases),
-    gemsplot(rd, type = :CustomLoggerPlot, ylims = (0, 1500)),
+    gemsplot(rd, type = :CustomLoggerPlot, ylims = (0, 2000)),
     layout = (2, 1),
     size = (800, 800))
 ```
@@ -1232,7 +1233,7 @@ The results show fewer cases overall, but especially fewer infections in schoolc
 
 ## Custom Measures
 
-In this scenario, we explore how*risk perception and behavioral change can be modeled dynamically using a custom measure. At the start of the simulation, no one is willing to follow isolation mandates—every individual has a `mandate_compliance` of 0, meaning they will never voluntarily isolate, even if symptomatic.
+In this scenario, we explore how risk perception and behavioral change can be modeled dynamically using a custom measure. At the start of the simulation, no one is willing to follow isolation mandates—every individual has a `mandate_compliance` of 0, meaning they will never voluntarily isolate, even if symptomatic.
 However, people begin to adjust their behavior when someone they know is hospitalized. 
 Specifically, if a person shares a setting (household, office, or schoolclass) with someone who is hospitalized, they become more cautious and begin to comply fully with isolation instructions (i.e., their `mandate_compliance` is set to 1.0). From that point on, if they develop symptoms, they will isolate for 14 days.
 We also made some modifications to the simulation parameters:
@@ -1258,14 +1259,12 @@ We compare the scenario with a simulation without any interventions but the same
 ```julia
 using GEMS
 
-baseline = Simulation(label = "Baseline", progression_categories = [0.4, 0.4, 0.1, 0.1],
- infected_fraction = 0.0001)
+baseline = Simulation(label = "Baseline", infected_fraction = 0.0001)
 
 # Set mandate compliance to 0 for all individuals
 mandate_compliance!.(individuals(baseline), 0.0f0)
 
-scenario = Simulation(label = "Change Mandate Compliance", 
- progression_categories = [0.4, 0.4, 0.1, 0.1], infected_fraction = 0.0001)
+scenario = Simulation(label = "Change Mandate Compliance", infected_fraction = 0.0001)
 
 mandate_compliance!.(individuals(scenario), 0.0f0)
 
@@ -1345,37 +1344,40 @@ To evaluate the impact of this decay, we introduce a 14-day self-isolation measu
 ```julia
 using GEMS
 
+# define a function that adds the isolation strategy to a simulation
+# so we can re-use it for both scenarios
+function initialize_experiment!(sim::Simulation)
+    # make every individual 100% compliant in the beginning
+    mandate_compliance!.(individuals(sim), 1.0)
+    # add isolation scenario
+    self_isolation_scenario = IStrategy("Self Isolation", sim)
+    add_measure!(self_isolation_scenario, SelfIsolation(14), 
+    condition = i -> rand() < mandate_compliance(i))
+    trigger = SymptomTrigger(self_isolation_scenario)
+    add_symptom_trigger!(sim, trigger)
+
+end
+
 # define a function that reduces the mandate_compliance of every individual
 function decaying_mandate_compliance!(sim::Simulation)
     for ind in individuals(sim)
         current  = mandate_compliance(ind)
-        updated  = current - 0.02 * (1 + current)
+        updated  = 0.98 * current
         mandate_compliance!(ind, updated)
     end
 end
 
 baseline = Simulation(label = "Self Isolation")
 scenario = Simulation(label = "Decaying Mandate Adherence",
- stepmod = decaying_mandate_compliance!)
+    stepmod = decaying_mandate_compliance!)
 
-# setup the baseline simulation with a self isolation strategy
-self_isolation = IStrategy("Self Isolation", baseline)
-add_measure!(self_isolation, SelfIsolation(14))
-trigger = SymptomTrigger(self_isolation)
-add_symptom_trigger!(baseline, trigger)
-
-# same scenario but with decaying compliance every day
-self_isolation_scenario = IStrategy("Self Isolation with Decaying Compliance",
- scenario)
-add_measure!(self_isolation_scenario, SelfIsolation(14), 
- condition = i -> rand() < mandate_compliance(i))
-trigger = SymptomTrigger(self_isolation_scenario)
-add_symptom_trigger!(scenario, trigger)
+initialize_experiment!(baseline)
+initialize_experiment!(scenario)
 
 # custom logger
 function avg_compliance(sim)
     inds = individuals(sim)
-    return sum(mandate_compliance.(inds)) / length(inds)
+    return 100 * sum(mandate_compliance.(inds)) / length(inds)
 end
 
 cl = CustomLogger(avg_mandate_compliance = avg_compliance)
@@ -1391,7 +1393,6 @@ rd_s = ResultData(scenario)
 
 gemsplot([rd_b, rd_s], type = (:TickCases, :CumulativeIsolations, :CustomLoggerPlot), 
  legend = :topright)
-
 ```
 
 **Plot**

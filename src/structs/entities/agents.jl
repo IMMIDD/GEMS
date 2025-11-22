@@ -14,24 +14,39 @@ export mandate_compliance, mandate_compliance!, social_factor, social_factor!
 export setting_id, setting_id!, household_id, class_id, office_id, municipality_id
 export is_working, is_student, has_municipality
 # health status
-export comorbidities, dead, kill!, hospital_status
-export hospitalized, hospitalize!, ventilated, ventilate!, icu, icu!
+export comorbidities
+export is_infected, isinfected, infected, infected!
+export is_infectious, isinfectious, infectious, infectious!
+export is_exposed, isexposed, exposed
+export is_presymptomatic, ispresymptomatic, presymptomatic
+export is_symptomatic, issymptomatic, symptomatic, symptomatic!
+export is_asymptomatic, isasymptomatic, asymptomatic
+export is_severe, issevere, severe, severe!
+export is_mild, ismild, mild
+export is_hospitalized, ishospitalized, hospitalized, hospitalized!
+export is_icu, isicu, icu, icu!
+export is_ventilated, isventilated, ventilated, ventilated!
+export is_recovered, isrecovered, recovered
+export is_dead, isdead, dead, dead!
+export is_detected, isdetected, detected, detected!
 # disease progression
-export pathogen_id, infection_id, disease_state, infectiousness, number_of_infections
-export infected, exposed, infectious
-export presymptomatic, presymptomatic!
-export symptomatic, symptomatic!
-export severe, severe!
-export critical, critical!
-export exposed_tick, infectious_tick, removed_tick, death_tick
-export exposed_tick!, infectious_tick!, removed_tick!, death_tick!
-export onset_of_symptoms, onset_of_severeness
-export onset_of_symptoms!, onset_of_severeness!
-export hospitalized_tick, ventilation_tick, icu_tick
-export hospitalized_tick!, ventilation_tick!, icu_tick!
-export infectiousness!, recover!
-export symptom_category, symptom_category!
-export progress_disease!
+export exposure, exposure!
+export infectiousness_onset, infectiousness_onset!
+export symptom_onset, symptom_onset!
+export severeness_onset, severeness_onset!
+export severeness_offset, severeness_offset!
+export hospital_admission, hospital_admission!
+export icu_admission, icu_admission!
+export icu_discharge, icu_discharge!
+export ventilation_admission, ventilation_admission!
+export ventilation_discharge, ventilation_discharge!
+export hospital_discharge, hospital_discharge!
+export recovery, recovery!
+export death, death!
+export pathogen_id, pathogen_id!, infection_id, infection_id!
+export infectiousness, infectiousness!
+export number_of_infections
+export inc_number_of_infections!
 # testing
 export last_test, last_test!
 export last_test_result, last_test_result!
@@ -42,7 +57,10 @@ export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 #quarantine
 export quarantine_release_tick, quarantine_release_tick!
 export quarantine_tick, quarantine_tick!
-export quarantine_status, home_quarantine!, end_quarantine!, isquarantined
+export quarantine_status, home_quarantine!, end_quarantine!
+export is_quarantined, isquarantined, quarantined, quarantined!
+
+export progress_disease!
 
 
 ###
@@ -77,8 +95,7 @@ A type to represent individuals, that act as agents inside the simulation.
     - `comorbidities::Vector{Bool}`: Indicating prevalence of certain health conditions. True,
         if the individual is preconditioned with the comorbidity associated to the array index.
     - `dead::Bool`: Flag indicating individual's decease
-    - `hospital_status::Int8`: State in the hopsital
-        (0 = not hospitalized, 1 = hospitalized, 2 = ventilation, 3 = ICU)
+    - `infected::Bool`: Flag indicating individual's infection status
 
 - Associated Settings
     - `household::Int32`: Reference to household id
@@ -89,24 +106,22 @@ A type to represent individuals, that act as agents inside the simulation.
 - Pathogen
     - `pathogen_id::Int8`: pathogen identifier
     - `infection_id::Int32`: Current infection id
-    - `disease_state::Int8`: Current State in natural disease history 
-        (0 = not infected, 1 = Presymptomatic, 2 = Symptomatic, 3 = Severe, 4 = Critical)
-    - `symptom_category::Int8`: Endstate in current disease progression. The numbers should align 
-        with `disease_state`, but can be interpreted as the symptom category of this case
-        (0 = None, 1 = Asymptomatic, 2 = Mild, 3 = Severe, 4 = Critical)
     - `infectiousness::Int8`: an individuals infectiousness (1-127), i.e. for superspreaders
     - `number_of_infections::Int8`: infection count
 
 - Natural Disease History
-    - `exposed_tick::Int16`: Tick of most recent infection
-    - `infectious_tick::Int16`: Tick of most recent change into "infectious" state (considered asymptomatic)
-    - `onset_of_symptoms::Int16`: Tick of the onset of symptoms
-    - `onset_of_severeness::Int16`: Tick of onset of severe symptoms
-    - `hospitalized_tick::Int16`: Tick of hospitalization
-    - `ventilation_tick::Int16`: Tick of ventilation
-    - `icu_tick::Int16`: Tick of ICU (Intensive Care Unit)
-    - `death_tick::Int16`: Tick of Death
-    - `removed_tick::Int16`: Tick of most recent removal event
+    - `exposure::Int16`: Tick of most recent exposure
+    - `infectiousness_onset::Int16`: Tick of most recent change into "infectious" state
+    - `symptom_onset::Int16`: Tick of the onset of symptoms
+    - `severeness_onset::Int16`: Tick of onset of severe symptoms
+    - `hospital_admission::Int16`: Tick of hospitalization
+    - `icu_admission::Int16`: Tick of ICU (Intensive Care Unit) admission
+    - `icu_discharge::Int16`: Tick of ICU (Intensive Care Unit) discharge
+    - `ventilation_admission::Int16`: Tick of ventilation admission
+    - `ventilation_discharge::Int16`: Tick of ventilation discharge
+    - `hospital_discharge::Int16`: Tick of hospital discharge
+    - `recovery::Int16`: Tick of most recent recovery
+    - `death::Int16`: Tick of Death
 
 - Testing
     - `last_test::Int16`: Tick of last test for pathogen
@@ -138,8 +153,15 @@ A type to represent individuals, that act as agents inside the simulation.
 
     # HEALTH STATUS
     comorbidities::Vector{Bool} = Vector{Bool}() # 40 + n bytes
+    infected::Bool = false # 1 byte
+    infectious::Bool = false # 1 byte
+    symptomatic::Bool = false # 1 byte
+    severe::Bool = false # 1 byte
+    hospitalized::Bool = false # 1 byte
+    icu::Bool = false # 1 byte
+    ventilated::Bool = false # 1 byte
     dead:: Bool = false # 1 byte
-    hospital_status::Int8 = HOSPITAL_STATUS_NO_HOSPITAL # 0 = not hopsitalized, 1 = hospitalized, 2 = ventilation, 3 = ICU
+    detected::Bool = false # 1 byte
 
     # ASSIGNED SETTINGS
     household::Int32 = DEFAULT_SETTING_ID # 4 bytes
@@ -155,22 +177,24 @@ A type to represent individuals, that act as agents inside the simulation.
     attribute and not per individual)=#
     pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # 1 byte
     infection_id::Int32 = DEFAULT_INFECTION_ID # 4 bytes identifier of current infection in logger
-    disease_state::Int8 = DISEASE_STATE_NOT_INFECTED # 1 byte current status of the disease
-    symptom_category::Int8 = SYMPTOM_CATEGORY_NOT_INFECTED # 1 byte symptom category when infected
     infectiousness::Int8 = 0 # 1 byte
     number_of_infections::Int8 = 0 # 1 byte
 
     # NATURAL DISEASE HISTORY
-    exposed_tick::Int16 = DEFAULT_TICK # 2 bytes
-    infectious_tick::Int16 = DEFAULT_TICK # 2 bytes
-    onset_of_symptoms::Int16 = DEFAULT_TICK # 2 bytes when symptoms start (might be unset in asymptomatic cases)
-    onset_of_severeness::Int16 = DEFAULT_TICK # 2 bytes when severe symptoms start (might be unset)
-    hospitalized_tick::Int16 = DEFAULT_TICK # 2 bytes when the individual should become hospitalized
-    ventilation_tick::Int16 = DEFAULT_TICK # 2 bytes when the individual needs ventilation
-    icu_tick::Int16 = DEFAULT_TICK # 2 bytes when the individual goes into ICU
-    death_tick::Int16 = DEFAULT_TICK # 2 bytes when the individual dies
-    removed_tick::Int16 = DEFAULT_TICK # 2 bytes when the individual is recovered
-
+    exposure::Int16 = DEFAULT_TICK # 2 bytes
+    infectiousness_onset::Int16 = DEFAULT_TICK # 2 bytes
+    symptom_onset::Int16 = DEFAULT_TICK # 2 bytes when symptoms start (might be unset in asymptomatic cases)
+    severeness_onset::Int16 = DEFAULT_TICK # 2 bytes when severe symptoms start (might be unset)
+    hospital_admission::Int16 = DEFAULT_TICK # 2 bytes when the individual should become hospitalized
+    icu_admission::Int16 = DEFAULT_TICK # 2 bytes when the individual should be admitted to ICU
+    icu_discharge::Int16 = DEFAULT_TICK # 2 bytes when the individual is discharged from ICU
+    ventilation_admission::Int16 = DEFAULT_TICK # 2 bytes when the individual should be admitted to ventilation
+    ventilation_discharge::Int16 = DEFAULT_TICK # 2 bytes when the individual is discharged from ventilation
+    hospital_discharge::Int16 = DEFAULT_TICK # 2 bytes when the individual is discharged from hospital
+    severeness_offset::Int16 = DEFAULT_TICK # 2 bytes when the individual is no longer severe
+    recovery::Int16 = DEFAULT_TICK # 2 bytes when the individual is recovered
+    death::Int16 = DEFAULT_TICK # 2 bytes when the individual dies
+    
     # TESTING
     last_test::Int16 = DEFAULT_TICK # 2 bytes
     last_test_result::Bool = false # 1 byte
@@ -424,88 +448,539 @@ function comorbidities(individual::Individual)::Array{Bool}
 end
 
 """
-    dead(individual::Individual)
+    is_infected(individual::Individual)
+    isinfected(individual::Individual)
+    infected(individual::Individual)
 
-Returns an individual's death flag.
+Returns the `infected` flag of the individual.
 """
-function dead(individual::Individual)::Bool
-    return individual.dead
-end
-
-"""
-    kill!(individual::Individual)
-
-Kills the individual.
-"""
-function kill!(individual::Individual)
-    individual.dead = true
-end
+is_infected(individual::Individual) = individual.infected
+isinfected(individual::Individual) = is_infected(individual)
+infected(individual::Individual) = is_infected(individual)
 
 """
-    hospital_status(individual::Individual)
+    infected!(individual::Individual, infected::Bool)
 
-Returns the hospital_status of the individual.
+Sets the `infected` flag of the individual.
 """
-function hospital_status(individual::Individual)::Int8
-    return individual.hospital_status
-end
+infected!(individual::Individual, infected::Bool) = (individual.infected = infected)
 
 """
+    is_infectious(individual::Individual)
+    isinfectious(individual::Individual)
+    infectious(individual::Individual)
+
+Returns the `infectious` flag of the individual.
+"""
+is_infectious(individual::Individual) = individual.infectious
+isinfectious(individual::Individual) = is_infectious(individual)
+infectious(individual::Individual) = is_infectious(individual)
+
+"""
+    is_exposed(individual::Individual)
+    isexposed(individual::Individual)
+    exposed(individual::Individual)
+
+Returns `true` if the individual is exposed at the current tick.
+Exposed means infected but not yet infectious.
+"""
+is_exposed(individual::Individual) = is_infected(individual) && !is_infectious(individual)
+isexposed(individual::Individual) = is_exposed(individual)
+exposed(individual::Individual) = is_exposed(individual)
+
+"""
+    infectious!(individual::Individual, infectious::Bool)
+
+Sets the `infectious` flag of the individual.
+"""
+infectious!(individual::Individual, infectious::Bool) = (individual.infectious = infectious)
+
+
+"""
+    is_symptomatic(individual::Individual)
+    issymptomatic(individual::Individual)
+    symptomatic(individual::Individual)
+
+Returns the `symptomatic` flag of the individual.
+"""
+is_symptomatic(individual::Individual) = individual.symptomatic
+issymptomatic(individual::Individual) = is_symptomatic(individual)
+symptomatic(individual::Individual) = is_symptomatic(individual)
+
+"""
+    symptomatic!(individual::Individual, symptomatic::Bool)
+
+Sets the `symptomatic` flag of the individual.
+"""
+symptomatic!(individual::Individual, symptomatic::Bool) = (individual.symptomatic = symptomatic)
+
+"""
+    is_severe(individual::Individual)
+    issevere(individual::Individual)
+    severe(individual::Individual)
+
+Returns the `severe` flag of the individual.
+"""
+is_severe(individual::Individual) = individual.severe
+issevere(individual::Individual) = is_severe(individual)
+severe(individual::Individual) = is_severe(individual)
+
+"""
+    severe!(individual::Individual, severe::Bool)
+
+Sets the `severe` flag of the individual.
+"""
+severe!(individual::Individual, severe::Bool) = (individual.severe = severe)
+
+"""
+    is_hospitalized(individual::Individual)
+    ishospitalized(individual::Individual)
     hospitalized(individual::Individual)
 
-Returns wether the individual is hospitalized.
+Returns the `hospitalized` flag of the individual.
 """
-function hospitalized(individual::Individual)::Bool
-    return individual.hospital_status != HOSPITAL_STATUS_NO_HOSPITAL
-end
+is_hospitalized(individual::Individual) = individual.hospitalized
+ishospitalized(individual::Individual) = is_hospitalized(individual)
+hospitalized(individual::Individual) = is_hospitalized(individual)
 
 """
-    hospitalize!(individual::Individual)
+    hospitalized!(individual::Individual, hospitalized::Bool)
 
-Hospitalizes the individual.
+Sets the `hospitalized` flag of the individual.
 """
-function hospitalize!(individual::Individual)
-    individual.quarantine_status = QUARANTINE_STATE_HOSPITAL
-    individual.hospital_status = HOSPITAL_STATUS_HOSPITALIZED
-end
+hospitalized!(individual::Individual, hospitalized::Bool) = (individual.hospitalized = hospitalized)
 
 """
+    is_icu(individual::Individual)
+    isicu(individual::Individual)
+    isicu(individual::Individual)
+
+Returns the `icu` flag of the individual.
+"""
+is_icu(individual::Individual) = individual.icu
+isicu(individual::Individual) = is_icu(individual)
+icu(individual::Individual) = is_icu(individual)
+
+"""
+    icu!(individual::Individual, isicu::Bool)
+
+Sets the `icu` flag of the individual.
+"""
+icu!(individual::Individual, icu::Bool) = (individual.icu = icu)
+
+"""
+    is_ventilated(individual::Individual)
+    isventilated(individual::Individual)
     ventilated(individual::Individual)
 
-Returns wether the individual needs ventilation.
+Returns the `ventilated` flag of the individual.
 """
-function ventilated(individual::Individual)::Bool
-    return individual.hospital_status == HOSPITAL_STATUS_VENTILATION
+is_ventilated(individual::Individual) = individual.ventilated
+isventilated(individual::Individual) = is_ventilated(individual)
+ventilated(individual::Individual) = is_ventilated(individual)
+
+"""
+    ventilated!(individual::Individual, ventilated::Bool)
+
+Sets the `ventilated` flag of the individual.
+"""
+ventilated!(individual::Individual, ventilated::Bool) = (individual.ventilated = ventilated)
+
+"""
+    is_dead(individual::Individual)
+    isdead(individual::Individual)
+    dead(individual::Individual)
+
+Returns `true` if the individual is dead.
+"""
+is_dead(individual::Individual) = individual.dead
+isdead(individual::Individual) = is_dead(individual)
+dead(individual::Individual) = is_dead(individual)
+
+"""
+    dead!(individual::Individual, dead::Bool)
+
+Set the `dead` flag of the individual.
+"""
+function dead!(individual::Individual, dead::Bool)
+    individual.dead = dead
 end
 
 """
-    ventilate!(individual::Individual)
+    is_detected(individual::Individual)
 
-Sets the individual to require ventilation.
+Returns `true` if the individual is currently infected and has been detected (i.e. tested positive).
 """
-function ventilate!(individual::Individual)
-    individual.hospital_status = HOSPITAL_STATUS_VENTILATION
+is_detected(individual::Individual) = individual.detected
+isdetected(individual::Individual) = is_detected(individual)
+detected(individual::Individual) = is_detected(individual)
+
+"""
+    detected!(individual::Individual, detected::Bool)
+
+Sets the `detected` flag of the individual.
+"""
+function detected!(individual::Individual, detected::Bool)
+    individual.detected = detected
 end
 
-"""
-    icu(individual::Individual)
-
-Returns wether the individual is in ICU.
-"""
-function icu(individual::Individual)::Bool
-    return individual.hospital_status == HOSPITAL_STATUS_ICU
-end
+### NATURAL DIESEASE HISTORY ###
 
 """
-    icu!(individual::Individual)
+    exposure(individual::Individual)
 
-Sets the individual to be in ICU.
+Returns an individual's last exposure tick.
+Returun -1 if never exposed.
 """
-function icu!(individual::Individual)
-    individual.hospital_status = HOSPITAL_STATUS_ICU
-end
+exposure(individual::Individual) = individual.exposure
+
+"""
+    exposure!(individual::Individual, tick::Int16)
+
+Sets an individual's exposure tick.
+"""
+exposure!(individual::Individual, tick::Int16) = (individual.exposure = tick)
+
+"""
+    infectiousness_onset(individual::Individual)
+
+Returns an individual's last infectiousness onset tick.
+Return -1 if never infectious.
+"""
+infectiousness_onset(individual::Individual) = individual.infectiousness_onset
+
+"""
+    infectiousness_onset!(individual::Individual, tick::Int16)
+
+Sets an individual's infectiousness onset tick.
+"""
+infectiousness_onset!(individual::Individual, tick::Int16) = (individual.infectiousness_onset = tick)
+
+"""
+    symptom_onset(individual::Individual)
+
+Returns an individual's last symptom onset tick.
+Return -1 if never symptomatic.
+"""
+symptom_onset(individual::Individual) = individual.symptom_onset
+
+"""
+    symptom_onset!(individual::Individual, tick::Int16)
+
+Sets an individual's symptom onset tick.
+"""
+symptom_onset!(individual::Individual, tick::Int16) = (individual.symptom_onset = tick)
+
+"""
+    severeness_onset(individual::Individual)
+
+Returns an individual's last severeness onset tick.
+Return -1 if never severe.
+"""
+severeness_onset(individual::Individual) = individual.severeness_onset
+
+"""
+    severeness_onset!(individual::Individual, tick::Int16)
+
+Sets an individual's severeness onset tick.
+"""
+severeness_onset!(individual::Individual, tick::Int16) = (individual.severeness_onset = tick)
+
+"""
+    severeness_offset(individual::Individual)
+
+Returns an individual's last severeness offset tick.
+Return -1 if never severe.
+"""
+severeness_offset(individual::Individual) = individual.severeness_offset
+
+"""
+    severeness_offset!(individual::Individual, tick::Int16)
+
+Sets an individual's severeness offset tick.
+"""
+severeness_offset!(individual::Individual, tick::Int16) = (individual.severeness_offset = tick)
+
+"""
+    hospital_admission(individual::Individual)
+
+Returns an individual's last hospital admission tick.
+Return -1 if never hospitalized.
+"""
+hospital_admission(individual::Individual) = individual.hospital_admission
+
+"""
+    hospital_admission!(individual::Individual, tick::Int16)
+
+Sets an individual's hospital admission tick.
+"""
+hospital_admission!(individual::Individual, tick::Int16) = (individual.hospital_admission = tick)
+
+"""
+    icu_admission(individual::Individual)
+
+Returns an individual's last icu admission tick.
+Return -1 if never admitted to icu.
+"""
+icu_admission(individual::Individual) = individual.icu_admission
+
+"""
+    icu_admission!(individual::Individual, tick::Int16)
+
+Sets an individual's icu admission tick.
+"""
+icu_admission!(individual::Individual, tick::Int16) = (individual.icu_admission = tick)
+
+"""
+    icu_discharge(individual::Individual)
+
+Returns an individual's last icu discharge tick.
+Return -1 if never discharged from icu.
+"""
+icu_discharge(individual::Individual) = individual.icu_discharge
+
+"""
+    icu_discharge!(individual::Individual, tick::Int16)
+
+Sets an individual's icu discharge tick.
+"""
+icu_discharge!(individual::Individual, tick::Int16) = (individual.icu_discharge = tick)
+
+"""
+    ventilation_admission(individual::Individual)
+
+Returns an individual's last ventilation admission tick.
+Return -1 if never admitted to ventilation.
+"""
+ventilation_admission(individual::Individual) = individual.ventilation_admission
+
+"""
+    ventilation_admission!(individual::Individual, tick::Int16)
+
+Sets an individual's ventilation admission tick.
+"""
+ventilation_admission!(individual::Individual, tick::Int16) = (individual.ventilation_admission = tick)
+
+"""
+    ventilation_discharge(individual::Individual)
+
+Returns an individual's last ventilation discharge tick.
+Return -1 if never discharged from ventilation.
+"""
+ventilation_discharge(individual::Individual) = individual.ventilation_discharge
+
+"""
+    ventilation_discharge!(individual::Individual, tick::Int16)
+
+Sets an individual's ventilation discharge tick.
+"""
+ventilation_discharge!(individual::Individual, tick::Int16) = (individual.ventilation_discharge = tick)
+
+"""
+    hospital_discharge(individual::Individual)
+
+Returns an individual's last hospital discharge tick.
+Return -1 if never discharged from hospital.
+"""
+hospital_discharge(individual::Individual) = individual.hospital_discharge
+
+"""
+    hospital_discharge!(individual::Individual, tick::Int16)
+
+Sets an individual's hospital discharge tick.
+"""
+hospital_discharge!(individual::Individual, tick::Int16) = (individual.hospital_discharge = tick)
+
+"""
+    recovery(individual::Individual)
+
+Returns an individual's last recovery tick.
+Return -1 if never recovered.
+"""
+recovery(individual::Individual) = individual.recovery
+
+"""
+    recovery!(individual::Individual, tick::Int16)
+
+Sets an individual's recovery tick.
+"""
+recovery!(individual::Individual, tick::Int16) = (individual.recovery = tick)
+
+"""
+    death(individual::Individual)
+
+Returns an individual's last death tick.
+Return -1 if never died.
+"""
+death(individual::Individual) = individual.death
+
+"""
+    death!(individual::Individual, tick::Int16)
+
+Sets an individual's death tick.
+"""
+death!(individual::Individual, tick::Int16) = (individual.death = tick)
+
 
 ### DISEASE STATUS ###
+
+
+"""
+    is_infected(individual::Individual, t::Int16)
+    isinfected(individual::Individual, t::Int16)
+    infected(individual::Individual, t::Int16)
+
+Returns `true` if the individual is infected at tick `t`.
+"""
+is_infected(individual::Individual, t::Int16) = exposure(individual) >= 0 && exposure(individual) <= t < max(recovery(individual), death(individual))
+isinfected(individual::Individual, t::Int16) = is_infected(individual, t)
+infected(individual::Individual, t::Int16) = is_infected(individual, t)
+
+
+"""
+    is_infectious(individual::Individual, t::Int16)
+    isinfectious(individual::Individual, t::Int16)
+    infectious(individual::Individual, t::Int16)
+
+Returns `true` if the individual is infectious at tick `t`.
+"""
+is_infectious(individual::Individual, t::Int16) = is_infected(individual, t) && infectiousness_onset(individual) <= t < max(recovery(individual), death(individual))
+isinfectious(individual::Individual, t::Int16) = is_infectious(individual, t)
+infectious(individual::Individual, t::Int16) = is_infectious(individual, t)
+
+"""
+    is_exposed(individual::Individual, t::Int16)
+    isexposed(individual::Individual, t::Int16)
+    exposed(individual::Individual, t::Int16)
+
+Returns `true` if the individual is exposed at tick `t`.
+Exposed means infected but not yet infectious.
+"""
+is_exposed(individual::Individual, t::Int16) = is_infected(individual, t) && exposure(individual) <= t < infectiousness_onset(individual)
+isexposed(individual::Individual, t::Int16) = is_exposed(individual, t)
+exposed(individual::Individual, t::Int16) = is_exposed(individual, t)
+
+"""
+    is_presymptomatic(individual::Individual, t::Int16)
+    ispresymptomatic(individual::Individual, t::Int16)
+    presymptomatic(individual::Individual, t::Int16)
+
+Returns `true` if the individual is presymptomatic at tick `t`.
+Presymptomatic means infected, will develop symptoms, but is not yet symptomatic.
+"""
+is_presymptomatic(individual::Individual, t::Int16) = is_infected(individual, t) && t < symptom_onset(individual)
+ispresymptomatic(individual::Individual, t::Int16) = is_presymptomatic(individual, t)
+presymptomatic(individual::Individual, t::Int16) = is_presymptomatic(individual, t)
+
+"""
+    is_symptomatic(individual::Individual, t::Int16)
+    issymptomatic(individual::Individual, t::Int16)
+    symptomatic(individual::Individual, t::Int16)
+
+Returns `true` if the individual is symptomatic at tick `t`.
+"""
+is_symptomatic(individual::Individual, t::Int16) = is_infected(individual, t) && 0 <= symptom_onset(individual) <= t < max(recovery(individual), death(individual))
+issymptomatic(individual::Individual, t::Int16) = is_symptomatic(individual, t)
+symptomatic(individual::Individual, t::Int16) = is_symptomatic(individual, t)
+
+"""
+    is_asymptomatic(individual::Individual, t::Int16)
+    isasymptomatic(individual::Individual, t::Int16)
+    asymptomatic(individual::Individual, t::Int16)
+
+Returns `true` if the individual is asymptomatic at tick `t`.
+Asymptomatic means infected and will not develop symptoms.
+"""
+is_asymptomatic(individual::Individual, t::Int16) = is_infected(individual, t) && !is_symptomatic(individual, t) && symptom_onset(individual) < exposure(individual)
+isasymptomatic(individual::Individual, t::Int16) = is_asymptomatic(individual, t)
+asymptomatic(individual::Individual, t::Int16) = is_asymptomatic(individual, t)
+
+"""
+    is_severe(individual::Individual, t::Int16)
+    issevere(individual::Individual, t::Int16)
+    severe(individual::Individual, t::Int16)
+
+Returns `true` if the individual is in a severe state at tick `t`.
+"""
+is_severe(individual::Individual, t::Int16) = is_infected(individual, t) && 0 <= severeness_onset(individual) <= t < severeness_offset(individual)
+issevere(individual::Individual, t::Int16) = is_severe(individual, t)
+severe(individual::Individual, t::Int16) = is_severe(individual, t)
+
+"""
+    is_mild(individual::Individual, t::Int16)
+    ismild(individual::Individual, t::Int16)
+    mild(individual::Individual, t::Int16)
+
+Returns `true` if the individual is in a mild state at tick `t`.
+Mild means symptomatic but not severe.
+"""
+is_mild(individual::Individual, t::Int16) = is_symptomatic(individual, t) && !is_severe(individual, t)
+ismild(individual::Individual, t::Int16) = is_mild(individual, t)
+mild(individual::Individual, t::Int16) = is_mild(individual, t)
+
+"""
+    is_hospitalized(individual::Individual, t::Int16)    
+    ishospitalized(individual::Individual, t::Int16)
+    hospitalized(individual::Individual, t::Int16)
+
+Returns `true` if the individual is hospitalized at tick `t`.
+"""
+is_hospitalized(individual::Individual, t::Int16) = is_infected(individual, t) && 0 <= hospital_admission(individual) <= t < hospital_discharge(individual)
+ishospitalized(individual::Individual, t::Int16) = is_hospitalized(individual, t)
+hospitalized(individual::Individual, t::Int16) = is_hospitalized(individual, t)
+
+"""
+    is_icu(individual::Individual, t::Int16)
+    isicu(individual::Individual, t::Int16)
+    icu(individual::Individual, t::Int16)
+
+Returns `true` if the individual is in ICU at tick `t`.
+"""
+is_icu(individual::Individual, t::Int16) = is_hospitalized(individual, t) && 0 <= icu_admission(individual) <= t < icu_discharge(individual)
+isicu(individual::Individual, t::Int16) = is_icu(individual, t)
+icu(individual::Individual, t::Int16) = is_icu(individual, t)
+
+"""
+    is_ventilated(individual::Individual, t::Int16)
+    isventilated(individual::Individual, t::Int16)
+    ventilated(individual::Individual, t::Int16)
+
+Returns `true` if the individual is ventilated at tick `t`.
+"""
+is_ventilated(individual::Individual, t::Int16) = is_hospitalized(individual, t) && 0 <= ventilation_admission(individual) <= t < ventilation_discharge(individual)
+isventilated(individual::Individual, t::Int16) = is_ventilated(individual, t)
+ventilated(individual::Individual, t::Int16) = is_ventilated(individual, t)
+
+"""
+    is_recovered(individual::Individual, t::Int16)
+    isrecovered(individual::Individual, t::Int16)
+    recovered(individual::Individual, t::Int16)
+
+Returns `true` if the individual is recovered at tick `t`.
+"""
+is_recovered(individual::Individual, t::Int16) = 0 <= recovery(individual) <= t
+isrecovered(individual::Individual, t::Int16) = is_recovered(individual, t)
+recovered(individual::Individual, t::Int16) = is_recovered(individual, t)
+
+"""
+    is_dead(individual::Individual, t::Int16)
+    isdead(individual::Individual, t::Int16)
+    dead(individual::Individual, t::Int16)
+
+Returns `true` if the individual is dead at tick `t`.
+"""
+is_dead(individual::Individual, t::Int16) = 0 <= death(individual) <= t
+isdead(individual::Individual, t::Int16) = is_dead(individual, t)
+dead(individual::Individual, t::Int16) = is_dead(individual, t)
+
+"""
+    is_detected(individual::Individual, t::Int16)
+
+Returns `true` if the individual is currently infected and has been detected (i.e. tested positive) prior to or at tick `t`.
+"""
+is_detected(individual::Individual, t::Int16) = is_infected(individual, t) && exposure(individual) <= last_reported_at(individual)
+isdetected(individual::Individual, t::Int16) = is_detected(individual, t)
+detected(individual::Individual, t::Int16) = is_detected(individual, t)
 
 """
     pathogen_id(individual::Individual)
@@ -514,6 +989,15 @@ Returns an individual's pathogen (currently infected).
 """
 function pathogen_id(individual::Individual)::Int8
     return individual.pathogen_id
+end
+
+"""
+    pathogen_id!(individual::Individual, pathogen_id::Int8)
+
+Sets an individual's pathogen (currently infected).
+"""
+function pathogen_id!(individual::Individual, pathogen_id::Int8)
+    individual.pathogen_id = pathogen_id
 end
 
 
@@ -527,30 +1011,12 @@ function infection_id(individual::Individual)::Int32
 end
 
 """
-    disease_state(individual::Individual)
+    infection_id!(individual::Individual, infection_id::Int32)
 
-Returns an individual's disease status (currently infected).
+Sets an individual's infection_id (currently infected).
 """
-function disease_state(individual::Individual)::Int8
-    return individual.disease_state
-end
-
-"""
-    symptom_category(individual::Individual)
-
-Returns an infected individual's symptom category.
-"""
-function symptom_category(individual::Individual)::Int8
-    return individual.symptom_category
-end
-
-"""
-    symptom_category!(individual::Individual, category::Int8)
-
-Sets an infected individuals symptom_category.
-"""
-function symptom_category!(individual::Individual, category::Int8)
-    individual.symptom_category = category
+function infection_id!(individual::Individual, infection_id::Int32)
+    individual.infection_id = infection_id
 end
 
 """
@@ -581,167 +1047,42 @@ function number_of_infections(individual::Individual)::Int8
 end
 
 """
-    exposed_tick(individual::Individual)
+    inc_number_of_infections!(individual::Individual)
 
-Returns an individual's exposed tick (currently infected).
+Increments an individual's number of infections by one.
 """
-function exposed_tick(individual::Individual)::Int16
-    return individual.exposed_tick
+function inc_number_of_infections!(individual::Individual)
+    individual.number_of_infections += 1
 end
 
 """
-    exposed_tick!(individual::Individual, tick::Int16)
+    set_progression!(individual::Individual, dp::DiseaseProgression)
 
-Sets an individual's exposed tick.
+Sets an individual's disease progression according to the provided `DiseaseProgression` object.
+Note: it only sets the fields but does not change the health status flags (e.g. infected, symptomatic, etc...).
 """
-function exposed_tick!(individual::Individual, tick::Int16)::Int16
-    individual.exposed_tick = tick
+function set_progression!(individual::Individual, dp::DiseaseProgression)
+    # throw exception if agent is already dead
+    is_dead(individual) && throw(ArgumentError("Cannot set disease progression of a dead individual (id=$(id(individual)))"))
+
+    # set all fields of the disease progression
+    exposure!(individual, exposure(dp))
+    infectiousness_onset!(individual, infectiousness_onset(dp))
+    symptom_onset!(individual, symptom_onset(dp))
+    severeness_onset!(individual, severeness_onset(dp))
+    hospital_admission!(individual, hospital_admission(dp))
+    icu_admission!(individual, icu_admission(dp))
+    icu_discharge!(individual, icu_discharge(dp))
+    ventilation_admission!(individual, ventilation_admission(dp))
+    ventilation_discharge!(individual, ventilation_discharge(dp))
+    hospital_discharge!(individual, hospital_discharge(dp))
+    severeness_offset!(individual, severeness_offset(dp))
+    recovery!(individual, recovery(dp))
+    death!(individual, death(dp))
 end
 
-"""
-    infectious_tick(individual::Individual)
+### QUARANTINE STATUS ###
 
-Returns an individual's infectious tick (currently infected).
-"""
-function infectious_tick(individual::Individual)::Int16
-    return individual.infectious_tick
-end
-
-"""
-    infectious_tick!(individual::Individual, tick::Int16)
-
-Sets an individual's infectious tick.
-"""
-function infectious_tick!(individual::Individual, tick::Int16)
-    individual.infectious_tick = tick
-end
-
-"""
-    onset_of_symptoms(individual::Individual)
-
-Returns an individual's tick for the onset of symptoms, if symptomatic.
-"""
-function onset_of_symptoms(individual::Individual)::Int16
-    return individual.onset_of_symptoms
-end
-
-"""
-    onset_of_symptoms!(individual::Individual, tick::Int16)
-
-Sets an individual's tick for the onset of symptoms, if symptomatic.
-"""
-function onset_of_symptoms!(individual::Individual, tick::Int16)
-    individual.onset_of_symptoms = tick
-end
-
-"""
-    onset_of_severeness(individual::Individual)
-
-Returns an individual's tick for the onset of severe symptoms, if it's a severe case.
-"""
-function onset_of_severeness(individual::Individual)::Int16
-    return individual.onset_of_severeness
-end
-
-"""
-    onset_of_severeness!(individual::Individual, tick::Int16)
-
-Sets an individual's tick for the onset of severe symptoms, if it's a severe case.
-"""
-function onset_of_severeness!(individual::Individual, tick::Int16)
-    individual.onset_of_severeness = tick
-end
-
-"""
-    hospitalized_tick(individual::Individual)
-
-Returns an individual's tick for when it gets hospitalized.
-"""
-function hospitalized_tick(individual::Individual)::Int16
-    return individual.hospitalized_tick
-end
-
-"""
-    hospitalized_tick!(individual::Individual, tick::Int16)
-
-Sets an individual's tick for when it gets hospitalized.
-"""
-function hospitalized_tick!(individual::Individual, tick::Int16)
-    individual.hospitalized_tick = tick
-end
-
-"""
-    ventilation_tick(individual::Individual)
-
-Returns an individual's tick when it gets ventilated.
-"""
-function ventilation_tick(individual::Individual)::Int16
-    return individual.ventilation_tick
-end
-
-"""
-    ventilation_tick!(individual::Individual, tick::Int16)
-
-Sets an individual's tick for when it gets ventilated.
-"""
-function ventilation_tick!(individual::Individual, tick::Int16)
-    individual.ventilation_tick = tick
-end
-
-
-"""
-    icu_tick(individual::Individual)
-
-Returns an individual's tick when it will be delivered into icu.
-"""
-function icu_tick(individual::Individual)::Int16
-    return individual.icu_tick
-end
-
-"""
-    icu_tick!(individual::Individual, tick::Int16)
-
-Sets an individual's tick for when it will be delivered into icu.
-"""
-function icu_tick!(individual::Individual, tick::Int16)
-    individual.icu_tick = tick
-end
-
-"""
-    death_tick(individual::Individual)
-
-Returns an individual's death tick.
-"""
-function death_tick(individual::Individual)::Int16
-    return individual.death_tick
-end
-
-"""
-    death_tick!(individual::Individual, tick::Int16)
-
-Sets an individual's death tick.
-"""
-function death_tick!(individual::Individual, tick::Int16)
-    individual.death_tick = tick
-end
-
-"""
-    removed_tick(individual::Individual)
-
-Returns an individual's removed tick (currently infected).
-"""
-function removed_tick(individual::Individual)::Int16
-    return individual.removed_tick
-end
-
-"""
-    removed_tick!(individual::Individual, tick::Int16)
-
-Sets an individual's removed tick (currently infected).
-"""
-function removed_tick!(individual::Individual, tick::Int16)
-    individual.removed_tick = tick
-end
 
 """
     quarantine_status(individual::Individual)
@@ -789,12 +1130,35 @@ function quarantine_release_tick!(individual::Individual, tick::Int16)
 end
 
 """
+    is_quarantined(individual::Individual)
     isquarantined(individual::Individual)
+    quarantined(individual::Individual)
 
 Returns wether the individual is in quarantine or not.
 """
-function isquarantined(individual::Individual)::Bool
-    return individual.quarantine_status != QUARANTINE_STATE_NO_QUARANTINE
+is_quarantined(individual::Individual) = individual.quarantine_status != QUARANTINE_STATE_NO_QUARANTINE
+isquarantined(individual::Individual) = is_quarantined(individual)
+quarantined(individual::Individual) = is_quarantined(individual)
+
+"""
+    is_quarantined(individual::Individual, tick::Int16)
+    isquarantined(individual::Individual, tick::Int16)
+    quarantined(individual::Individual, tick::Int16)
+
+Returns wether the individual is in quarantine at tick `tick`.
+"""
+is_quarantined(individual::Individual, tick::Int16) = quarantine_tick(individual) <= tick < quarantine_release_tick(individual)
+isquarantined(individual::Individual, tick::Int16) = is_quarantined(individual, tick)
+quarantined(individual::Individual, tick::Int16) = is_quarantined(individual, tick)
+
+
+"""
+    quarantined!(individual::Individual, quarantined::Bool)
+
+Sets an individual's quarantine status to either home quarantine or no quarantine.
+"""
+function quarantined!(individual::Individual, quarantined::Bool)
+    individual.quarantine_status = quarantined ? QUARANTINE_STATE_HOUSEHOLD_QUARANTINE : QUARANTINE_STATE_NO_QUARANTINE
 end
 
 """
@@ -814,116 +1178,6 @@ Ends an individuals quarantine.
 function end_quarantine!(individual::Individual)
     @debug "Individual $(id(individual)) ending quarantine"
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
-end
-
-"""
-    recover!(individual::Individual)
-
-Recovers the individual from its infection.
-"""
-function recover!(individual::Individual)
-    individual.hospital_status = HOSPITAL_STATUS_NO_HOSPITAL
-    individual.disease_state = DISEASE_STATE_NOT_INFECTED
-    individual.infectiousness = 0
-end
-
-"""
-    infected(individual::Individual)
-
-Returns whether an individual is currently infected.
-"""
-function infected(individual::Individual)::Bool
-    return disease_state(individual) > DISEASE_STATE_NOT_INFECTED
-end
-
-"""
-    infectious(individual::Individual)
-
-Returns whether an individual is currently infectious.
-"""
-function infectious(individual::Individual)::Bool
-    return infectiousness(individual) > 0
-end
-
-"""
-    exposed(individual::Individual)
-
-Returns wether the individual is exposed (infected, but not yet infectious).
-"""
-function exposed(individual::Individual)::Bool
-    return infected(individual) & !infectious(individual)
-end
-
-"""
-    presymptomatic(individual::Individual)
-
-Returns if individual is asymptomatic.
-"""
-function presymptomatic(individual::Individual)::Bool
-    return individual.disease_state == DISEASE_STATE_PRESYMPTOMATIC
-end
-
-"""
-    presymptomatic!(individual::Individual)
-
-Marks the individual as asymptomatic, but infectious.
-"""
-function presymptomatic!(individual::Individual)
-    individual.disease_state = DISEASE_STATE_PRESYMPTOMATIC
-end
-
-"""
-    symptomatic(individual::Individual)
-
-Returns wether the individual is symptomatic.
-"""
-function symptomatic(individual::Individual)::Bool
-    return individual.disease_state == DISEASE_STATE_SYMPTOMATIC
-end
-
-"""
-    symptomatic!(individual::Individual)
-
-Marks the individual as symptomatic.
-"""
-function symptomatic!(individual::Individual)
-    individual.disease_state = DISEASE_STATE_SYMPTOMATIC
-end
-
-"""
-    severe(individual::Individual)
-
-Returns wether the individual's disease is severe.
-"""
-function severe(individual::Individual)::Bool
-    return individual.disease_state == DISEASE_STATE_SEVERE
-end
-
-"""
-    severe!(individual::Individual)
-
-Marks the individual's disease to be severe.
-"""
-function severe!(individual::Individual)
-    individual.disease_state = DISEASE_STATE_SEVERE
-end
-
-"""
-    critical(individual::Individual)
-
-Returns wether the individual's condition is critical.
-"""
-function critical(individual::Individual)
-    return individual.disease_state == DISEASE_STATE_CRITICAL
-end
-
-"""
-    critical!(individual::Individual)
-
-Marks the individual's condition as critical.
-"""
-function critical!(individual::Individual)
-    individual.disease_state = DISEASE_STATE_CRITICAL
 end
 
 
@@ -984,14 +1238,7 @@ function last_reported_at!(individual::Individual, report_tick::Int16)
     individual.last_reported_at = report_tick
 end
 
-"""
-    isdetected(individual::Individual)
 
-Returns true if an individual was currently infected and already reported.
-"""
-function isdetected(individual::Individual)
-    return infected(individual) && exposed_tick(individual) <= last_reported_at(individual) <= removed_tick(individual)
-end
 
 ### VACCINATION STATUS ###
 
@@ -1048,6 +1295,34 @@ function number_of_vaccinations(individual::Individual)::Int8
     return individual.number_of_vaccinations
 end
 
+
+### UPDATE DISEASE PROGRESSION IN AGENTS ###
+
+"""
+    progress_disease!(individual::Individual, tick::Int16)
+
+Updates the disease progression status flags of the individual at the given tick.
+"""
+function progress_disease!(individual::Individual, tick::Int16)
+
+    # do not update, if individual is dead
+    if is_dead(individual)
+        return
+    end
+
+    # update disease progression status flags in the individual
+    infected!(individual, is_infected(individual, tick))
+    infectious!(individual, is_infectious(individual, tick))
+    symptomatic!(individual, is_symptomatic(individual, tick))
+    severe!(individual, is_severe(individual, tick))
+    hospitalized!(individual, is_hospitalized(individual, tick))
+    icu!(individual, is_icu(individual, tick))
+    ventilated!(individual, is_ventilated(individual, tick))
+    dead!(individual, is_dead(individual, tick))
+    detected!(individual, is_detected(individual, tick))
+end
+
+
 ### RESET DISEASE PROGRESSION ###
 """
     reset!(individual::Individual)
@@ -1057,23 +1332,32 @@ back into a state where it was never infected, vaccinated, tested, etc.
 """
 function reset!(individual::Individual)
     # health status
+    individual.infected = false
+    individual.infectious = false
+    individual.symptomatic = false
+    individual.severe = false
+    individual.hospitalized = false
+    individual.isicu = false
+    individual.ventilated = false
     individual.dead = false
-    individual.hospital_status = HOSPITAL_STATUS_NO_HOSPITAL
     # infections status
     individual.pathogen_id = DEFAULT_PATHOGEN_ID
     individual.disease_state = DISEASE_STATE_NOT_INFECTED
     individual.infectiousness = 0
     individual.number_of_infections = 0
     # reset disease progression
-    individual.exposed_tick = DEFAULT_TICK
-    individual.infectious_tick = DEFAULT_TICK
-    individual.onset_of_symptoms = DEFAULT_TICK
-    individual.onset_of_severeness = DEFAULT_TICK
-    individual.hospitalized_tick = DEFAULT_TICK
-    individual.ventilation_tick = DEFAULT_TICK
-    individual.icu_tick = DEFAULT_TICK
-    individual.death_tick = DEFAULT_TICK
-    individual.removed_tick = DEFAULT_TICK
+    individual.exposure = DEFAULT_TICK
+    individual.infectiousness_onset = DEFAULT_TICK
+    individual.symptom_onset = DEFAULT_TICK
+    individual.severeness_onset = DEFAULT_TICK
+    individual.hospital_admission = DEFAULT_TICK
+    individual.icu_admission = DEFAULT_TICK
+    individual.icu_discharge = DEFAULT_TICK
+    individual.ventilation_admission = DEFAULT_TICK
+    individual.ventilation_discharge = DEFAULT_TICK
+    individual.hospital_discharge = DEFAULT_TICK
+    individual.recovery = DEFAULT_TICK
+    individual.death = DEFAULT_TICK
     # TESTING
     individual.last_test = DEFAULT_TICK
     individual.last_test_result = false
@@ -1094,46 +1378,58 @@ end
 ### printing
 
 function Base.show(io::IO, individual::Individual)
-    sex_str = individual.sex == 1 ? "Female" : individual.sex == 2 ? "Male" : "Diverse"
+    sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
 
     attributes = [
         "ID" => individual.id,
         "Age" => individual.age,
         "Sex" => sex_str,
-        "Education" => individual.education,
-        "Occupation" => individual.occupation,
+        "Education" => individual.education != DEFAULT_SETTING_ID ? individual.education : "n/a",
+        "Occupation" => individual.occupation != DEFAULT_SETTING_ID ? individual.occupation : "n/a",
         "Social Factor" => individual.social_factor,
         "Mandate Compliance" => individual.mandate_compliance,
-        "Dead" => individual.dead,
-        "Hospital Status" => individual.hospital_status,
+        
+        "Is Infected" => individual.infected,
+        "Is Infectious" => individual.infectious,
+        "Is Symptomatic" => individual.symptomatic,
+        "Is Severe" => individual.severe,
+        "Is Hospitalized" => individual.hospitalized,
+        "Is ICU'd" => individual.icu,
+        "Is Ventilated" => individual.ventilated,
+        "Is Dead" => individual.dead,
+
         "Household ID" => individual.household,
-        "Office ID" => individual.office,
-        "School Class ID" => individual.schoolclass,
-        "Municipality ID" => individual.municipality,
-        "Pathogen ID" => individual.pathogen_id,
-        "Infection ID" => individual.infection_id,
-        "Disease State" => individual.disease_state,
-        "Symptom Category" => individual.symptom_category,
+        "Office ID" => individual.office != DEFAULT_SETTING_ID ? individual.office : "n/a",
+        "School Class ID" => individual.schoolclass != DEFAULT_SETTING_ID ? individual.schoolclass : "n/a",
+        "Municipality ID" => individual.municipality != DEFAULT_SETTING_ID ? individual.municipality : "n/a",
+
+        "Pathogen ID" => individual.pathogen_id != DEFAULT_PATHOGEN_ID ? individual.pathogen_id : "n/a",
+        "Infection ID" => individual.infection_id != DEFAULT_INFECTION_ID ? individual.infection_id : "n/a",
         "Infectiousness" => individual.infectiousness,
         "Number of Infections" => individual.number_of_infections,
-        "Exposed Tick" => individual.exposed_tick,
-        "Infectious Tick" => individual.infectious_tick,
-        "Onset of Symptoms" => individual.onset_of_symptoms,
-        "Onset of Severeness" => individual.onset_of_severeness,
-        "Hospitalized Tick" => individual.hospitalized_tick,
-        "Ventilation Tick" => individual.ventilation_tick,
-        "ICU Tick" => individual.icu_tick,
-        "Death Tick" => individual.death_tick,
-        "Removed Tick" => individual.removed_tick,
-        "Last Test" => individual.last_test,
-        "Last Test Result" => individual.last_test_result,
-        "Last Reported At" => individual.last_reported_at,
-        "Vaccine ID" => individual.vaccine_id,
+
+        "Exposure Tick" => individual.exposure != DEFAULT_TICK ? individual.exposure : "n/a",
+        "Infectiousness Onset Tick" => individual.infectiousness_onset != DEFAULT_TICK ? individual.infectiousness_onset : "n/a",
+        "Symptom Onset Tick" => individual.symptom_onset != DEFAULT_TICK ? individual.symptom_onset : "n/a",
+        "Severeness Onset Tick" => individual.severeness_onset != DEFAULT_TICK ? individual.severeness_onset : "n/a",
+        "Hospital Admission Tick" => individual.hospital_admission != DEFAULT_TICK ? individual.hospital_admission : "n/a",
+        "ICU Admission Tick" => individual.icu_admission != DEFAULT_TICK ? individual.icu_admission : "n/a",
+        "ICU Discharge Tick" => individual.icu_discharge != DEFAULT_TICK ? individual.icu_discharge : "n/a",
+        "Ventilation Admission Tick" => individual.ventilation_admission != DEFAULT_TICK ? individual.ventilation_admission : "n/a",
+        "Ventilation Discharge Tick" => individual.ventilation_discharge != DEFAULT_TICK ? individual.ventilation_discharge : "n/a",
+        "Hospital Discharge Tick" => individual.hospital_discharge != DEFAULT_TICK ? individual.hospital_discharge : "n/a",
+        "Death Tick" => individual.death != DEFAULT_TICK ? individual.death : "n/a",
+        "Recovery Tick" => individual.recovery != DEFAULT_TICK ? individual.recovery : "n/a",
+
+        "Last Test" => individual.last_test != DEFAULT_TICK ? individual.last_test : "n/a",
+        "Last Test Result" => individual.last_test != DEFAULT_TICK ? individual.last_test_result : "n/a",
+        "Last Reported At" => individual.last_reported_at != DEFAULT_TICK ? individual.last_reported_at : "n/a",
+        "Vaccine ID" => individual.vaccine_id != DEFAULT_VACCINE_ID ? individual.vaccine_id : "n/a",
         "Number of Vaccinations" => individual.number_of_vaccinations,
-        "Vaccination Tick" => individual.vaccination_tick,
+        "Vaccination Tick" => individual.vaccination_tick != DEFAULT_TICK ? individual.vaccination_tick : "n/a",
         "Quarantine Status" => individual.quarantine_status,
-        "Quarantine Tick" => individual.quarantine_tick,
-        "Quarantine Release Tick" => individual.quarantine_release_tick
+        "Quarantine Tick" => individual.quarantine_tick != DEFAULT_TICK ? individual.quarantine_tick : "n/a",
+        "Quarantine Release Tick" => individual.quarantine_release_tick != DEFAULT_TICK ? individual.quarantine_release_tick : "n/a"
     ]
 
     max_label_length = maximum(length ∘ first, attributes)
@@ -1144,7 +1440,7 @@ function Base.show(io::IO, individual::Individual)
     end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", individuals::Vector{Individual})
+function Base.show(io::IO, #=::MIME"text/plain",=# individuals::Vector{Individual})
     n = length(individuals)
     println(io, "$(n)-element Vector{Individual}:")
     

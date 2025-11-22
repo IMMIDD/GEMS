@@ -20,6 +20,8 @@ EventLogger
 InfectionLogger
 PoolTestLogger
 QuarantineLogger
+SeroprevalenceLogger
+StateLogger
 TestLogger
 TickLogger
 ```
@@ -31,11 +33,12 @@ dataframe(::DeathLogger)
 dataframe(::InfectionLogger)
 dataframe(::PoolTestLogger)
 dataframe(::QuarantineLogger)
+dataframe(::SeroprevalenceLogger)
+dataframe(::StateLogger)
 dataframe(::TestLogger)
 dataframe(::VaccinationLogger)
 duplicate(::CustomLogger)
 get_infections_between(::InfectionLogger, ::Int32, ::Int16, ::Int16)
-infectionlogger(::Simulation)
 length
 log!
 lognow

@@ -9,71 +9,77 @@ Creates a DataFrame that includes information about the current hospitalizations
 
 - `DataFrame` with the following columns:
 
-| Name                  | Type    | Description                                         |
-| :-------------------- | :------ | :-------------------------------------------------- |
-| `tick`                | `Int16` | Simulation tick (time)                              |
-| `hospital_cnt`        | `Int64` | New hospitalizations per tick                       |
-| `hospital_releases`   | `Int64` | Hospital releases per tick                          |
-| `icu_cnt`             | `Int64` | New ICU admissions per tick                         |
-| `icu_releases`        | `Int64` | ICU releases per tick                               |
-| `ventilation_cnt`     | `Int64` | New ventilations per tick                           |
-| `ventilation_releases`| `Int64` | Ventilation stops                                   |
-| `current_hospitalized`| `Int64` | Number of currently hospitalized agents             |
-| `current_icu`         | `Int64` | Number of agents currently in the ICU               |
-| `current_ventilation` | `Int64` | Number of currently ventilated agents               |
-
+| Name                     | Type    | Description                                               |
+| :----------------------- | :------ | :-------------------------------------------------------- |
+| `tick`                   | `Int16` | Simulation tick (time)                                    |
+| `hospital_admissions`    | `Int64` | Number of individuals admitted to hospital at tick        |
+| `hospital_discharges`    | `Int64` | Number of individuals discharged from hospital at tick    |
+| `icu_admissions`         | `Int64` | Number of individuals admitted to ICU at tick             |
+| `icu_discharges`         | `Int64` | Number of individuals discharged from ICU at tick         |
+| `ventilation_admissions` | `Int64` | Number of individuals admitted to ventilation at tick     |
+| `ventilation_discharges` | `Int64` | Number of individuals discharged from ventilation at tick |
+| `current_hospitalized`   | `Int64` | Current number of individuals in hospital at tick         |
+| `current_icu`            | `Int64` | Current number of individuals in ICU at tick              |
+| `current_ventilation`    | `Int64` | Current number of individuals on ventilation at tick      |
 """
 function hospital_df(postProcessor::PostProcessor)
 
-    hospital = infectionsDF(postProcessor) |>
-    x -> filter(row -> row.hospital_tick != -1, x) |> 
-    x -> groupby(x, :hospital_tick) |>
-    x -> combine(x, nrow => :hospital_cnt) |>
-    x -> DataFrames.select(x, :hospital_tick => :tick, :hospital_cnt)
-    
-    hospitalrel = infectionsDF(postProcessor) |>
-    x -> filter(row -> row.hospital_tick != -1, x) |> 
-    x -> groupby(x, :removed_tick) |>
-    x -> combine(x, nrow => :hospital_releases) |>
-    x -> DataFrames.select(x, :removed_tick => :tick, :hospital_releases)
+    hospital_admissions = infectionsDF(postProcessor) |>
+        df -> DataFrames.select(df, :tick, :hospital_admission) |>
+        df -> df[df.hospital_admission .>= 0, :] |>
+        df -> groupby(df, :hospital_admission) |>
+        df -> combine(df, nrow => :hospital_admissions) |>
+        df -> DataFrames.select(df, :hospital_admission => :tick, :hospital_admissions)
 
-    ventilation = infectionsDF(postProcessor) |>
-    x -> filter(row -> row.hospital_tick != -1, x) |> 
-    x -> groupby(x, :ventilation_tick) |>
-    x -> combine(x, nrow => :ventilation_cnt) |>
-    x -> DataFrames.select(x, :ventilation_tick => :tick, :ventilation_cnt)
-    
-    ventilationrel = infectionsDF(postProcessor) |>
-    x -> filter(row -> row.ventilation_tick != -1, x) |> 
-    x -> groupby(x, :removed_tick) |>
-    x -> combine(x, nrow => :ventilation_releases) |>
-    x -> DataFrames.select(x, :removed_tick => :tick, :ventilation_releases)
+    hospital_discharges = infectionsDF(postProcessor) |>
+        df -> DataFrames.select(df, :tick, :hospital_discharge) |>
+        df -> df[df.hospital_discharge .>= 0, :] |>
+        df -> groupby(df, :hospital_discharge) |>
+        df -> combine(df, nrow => :hospital_discharges) |>
+        df -> DataFrames.select(df, :hospital_discharge => :tick, :hospital_discharges)
 
-    icu = infectionsDF(postProcessor) |>
-    x -> filter(row -> row.hospital_tick != -1, x) |> 
-    x -> groupby(x, :icu_tick) |>
-    x -> combine(x, nrow => :icu_cnt) |>
-    x -> DataFrames.select(x, :icu_tick => :tick, :icu_cnt)
-    
-    icurel = infectionsDF(postProcessor) |>
-    x -> filter(row -> row.icu_tick != -1, x) |> 
-    x -> groupby(x, :removed_tick) |>
-    x -> combine(x, nrow => :icu_releases) |>
-    x -> DataFrames.select(x, :removed_tick => :tick, :icu_releases)
+    icu_admissions = infectionsDF(postProcessor) |>
+        df -> DataFrames.select(df, :tick, :icu_admission) |>
+        df -> df[df.icu_admission .>= 0, :] |>
+        df -> groupby(df, :icu_admission) |>
+        df -> combine(df, nrow => :icu_admissions) |>
+        df -> DataFrames.select(df, :icu_admission => :tick, :icu_admissions)
+
+    icu_discharges = infectionsDF(postProcessor) |>
+        df -> DataFrames.select(df, :tick, :icu_discharge) |>
+        df -> df[df.icu_discharge .>= 0, :] |>
+        df -> groupby(df, :icu_discharge) |>
+        df -> combine(df, nrow => :icu_discharges) |>
+        df -> DataFrames.select(df, :icu_discharge => :tick, :icu_discharges)
+
+    ventilation_admissions = infectionsDF(postProcessor) |>
+        df -> DataFrames.select(df, :tick, :ventilation_admission) |>
+        df -> df[df.ventilation_admission .>= 0, :] |>
+        df -> groupby(df, :ventilation_admission) |>
+        df -> combine(df, nrow => :ventilation_admissions) |>
+        df -> DataFrames.select(df, :ventilation_admission => :tick, :ventilation_admissions)
+
+    ventilation_discharges = infectionsDF(postProcessor) |>
+        df -> DataFrames.select(df, :tick, :ventilation_discharge) |>
+        df -> df[df.ventilation_discharge .>= 0, :] |>
+        df -> groupby(df, :ventilation_discharge) |>
+        df -> combine(df, nrow => :ventilation_discharges) |>
+        df -> DataFrames.select(df, :ventilation_discharge => :tick, :ventilation_discharges)
+
     
     hospital_df = DataFrame(tick = 0:tick(simulation(postProcessor))) |>
-    x -> leftjoin(x, hospital, on = :tick) |>
-    x -> leftjoin(x, hospitalrel, on = :tick) |>
-    x -> leftjoin(x, icu, on = :tick) |>
-    x -> leftjoin(x, icurel, on = :tick) |>
-    x -> leftjoin(x, ventilation, on = :tick) |>
-    x -> leftjoin(x, ventilationrel, on = :tick) |>
-    x -> sort(x, :tick) |>
-    x -> mapcols(col -> replace(col, missing => 0), x)
-    
-    hospital_df.current_hospitalized = cumsum(hospital_df.hospital_cnt) .- cumsum(hospital_df.hospital_releases)
-    hospital_df.current_icu = cumsum(hospital_df.icu_cnt) .- cumsum(hospital_df.icu_releases)
-    hospital_df.current_ventilation = cumsum(hospital_df.ventilation_cnt) .- cumsum(hospital_df.ventilation_releases)
+        df -> leftjoin(df, hospital_admissions, on = :tick) |>
+        df -> leftjoin(df, hospital_discharges, on = :tick) |>
+        df -> leftjoin(df, icu_admissions, on = :tick) |>
+        df -> leftjoin(df, icu_discharges, on = :tick) |>
+        df -> leftjoin(df, ventilation_admissions, on = :tick) |>
+        df -> leftjoin(df, ventilation_discharges, on = :tick) |>
+        df -> sort(df, :tick) |>
+        df -> mapcols(col -> replace(col, missing => 0), df)
+
+    hospital_df.current_hospitalized = cumsum(hospital_df.hospital_admissions) .- cumsum(hospital_df.hospital_discharges)
+    hospital_df.current_icu = cumsum(hospital_df.icu_admissions) .- cumsum(hospital_df.icu_discharges)
+    hospital_df.current_ventilation = cumsum(hospital_df.ventilation_admissions) .- cumsum(hospital_df.ventilation_discharges)
 
     return hospital_df
 end

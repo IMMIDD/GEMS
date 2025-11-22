@@ -92,6 +92,7 @@ If you try to plot any `gemsmap` for the first time, it will trigger the downloa
 using GEMS
 sim = Simulation(population = "MV")
 gemsmap(sim, type = :PopDensityMap)
+gemsmap(sim, type = :PopDensityMap)
 ```
 
 **Plot**

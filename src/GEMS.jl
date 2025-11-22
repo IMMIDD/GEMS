@@ -42,6 +42,8 @@ module GEMS
     ### INCLUDES
     include("constants.jl")
     include("globals.jl")
+    include("utils.jl")
+    include("exceptions.jl")
     include("logger/Logger.jl")
     include("interventions/abstract_structs.jl")
     include("interventions/event_queue.jl")
@@ -49,9 +51,11 @@ module GEMS
     include("structs.jl") # CORE SIMULATION
     include("methods.jl") # CORE SIMULATION
 
-    include("utils.jl")
-
+    include("pathogen/pathogen_components.jl")
+    include("initialization/startconditions.jl")
+     include("termination/stopcriteria.jl")
     include("interventions/interventions.jl")
+    
     include("model_analysis/post_processing.jl")
     include("model_analysis/result_data.jl")
     include("model_analysis/batch_processing.jl")
@@ -62,6 +66,7 @@ module GEMS
     include("reporting/reports.jl")
     include("movie/movie_renderer.jl")
 
+    include("init.jl")
     include("main.jl")
 
     include("devTools.jl")
@@ -73,14 +78,17 @@ module GEMS
 
         if !isempty(offending_lines)
             warning_message = """
-            Disallowed RNG calls detected on loading.
-            These calls bypass the simulation's reproducible RNG.
-            Please refactor to use the simulation's RNG object.
+            The code might contain calls to RNG functions (e.g., rand(), randn(), sample()) that are not using
+            the simulation's RNG instance. This can lead to non-reproducible results.
+            GEMS offers utility functions that accept an RNG instance or the simulation
+            object as an argument. You can simply replace calls like `rand(...)` with
+            `gems_rand(rng, ...)` or `gems_rand(sim, ...)` where `sim` is your simulation object.
+            The simulation's RNG instance itself can be accessed via `rng(sim)`.
 
-            Offending lines:
+            Please modify the following lines to use the provided RNG instance:
             """
             for (filepath, line_num, content) in offending_lines
-                warning_message *= "- `$filepath` line $line_num: `$content`\n"
+                warning_message *= "- $filepath:$line_num`: `$content`\n"
             end
             @warn warning_message
         end

@@ -1,4 +1,4 @@
-# [6 - Advanced Parameterization](@id advanced)
+# [7 - Advanced Parameterization](@id advanced)
 
 The `Simulation()` function provides a large variety of optional arguments to parameterize models.
 However, in some cases, you might want to change how disease progressions are calculated, how contacts are sampled, or how infections happen.
@@ -9,15 +9,15 @@ This tutorial shows you how what you can do with them.
 
 ## Using Config Files
 
-Config files use the **\*.TOML** notation. When working with the `Simulation()` function to create a simulation, you can **either** use keyword arguments **or** a config file.
-Therefore, when you use a config file, you need to make sure that all parameters you want to pass are contained in the file.
+Config files use the **\*.TOML** notation.
+Since v0.7.0 it is also possible to load a configfile and pass additional arguments to the `Simulation()` function that override the configfile values.
 Please look up the [config file](@ref config-files) documentation to learn how to construct config files.
 
 If you have a config file, here's how you load it in GEMS:
 
 ```julia
 using GEMS
-sim = Simulation("path/to/my/config-file.toml")
+sim = Simulation(configfile = "path/to/my/config-file.toml")
 ```
 
 
@@ -27,28 +27,10 @@ The default simulation samples contacts at random from a person's associated set
 For settings with a strong internal structure (e.g., `Household`s or `SchoolClass`es), this leads to a noticeable age-age coupling for within-setting contacts, as people who cohabit or attend the same school class tend to be of similar age.
 For less structured settings (e.g., `Municipality`s), GEMS offers the option to use contact matrices, i.e., from the [POLYMOD](https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.0050074) study.
 
-To use this feature, you need two things:
-- A `.txt` file with a space-separated `NxN` contact matrix (that sums up to 1.0)
-- A custom config file that specifies the usage of age-based contact sampling for certain settings and links the contact matrix file.
+To use this feature, you need a `.txt` file with a space-separated `NxN` contact matrix (that sums up to 1.0)
 
 !!! info "Example"
-    The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/age-based-contact-sampling) with a working config file and a contact matrix.
-
-In your custom config file, specify the use of the `AgeBasedContactSampling` method for your desired settings, and provide the average number of contacts (`contactparameter`), the age-group sizes in your contact data (`interval`), and the reference to the contact data file (`contact_matrix_file`).
-The example below shows how to do that for the `GlobalSetting`.
-If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
-
-```@TOML
-### Settings section of the config file ###
-
-[Settings.GlobalSetting]
-    [Settings.GlobalSetting.contact_sampling_method]
-            type = "AgeBasedContactSampling"
-            [Settings.GlobalSetting.contact_sampling_method.parameters]
-                contactparameter = 1.0
-                interval = 5
-                contact_matrix_file = "age_group_contact.txt"
-```
+    The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/age-based-contact-sampling) with a contact matrix file and a working config file if you prefer to not parameterize everything in the code.
 
 Here's an excerpt of a contact matrix:
 
@@ -58,9 +40,6 @@ Here's an excerpt of a contact matrix:
 ...
 ```
 
-!!! warning "Contact Matrix File Path"
-    If you specify a relative path to your (`contact_matrix_file`) in your config file, it must be relative to your current working directory; not relative to the config file. Copy both files from the example folder directly into your current project root folder and it should work.
-
 In the simulations below, we compare the default model (that samples random contacts in all settings) and the custom scenario where we apply age-based sampling in the `GlobalSetting`.
 This is the single setting that contains all individuals. 
 The `GlobalSetting` is switched off by default as it has a significant impact on performance and is usually only used for code-testing purposes.
@@ -69,7 +48,11 @@ But here it does a good job visualizing the differences in the sampling methods.
 ```julia
 using GEMS
 default = Simulation(label = "default", global_setting = true)
-custom = Simulation("age-based-sampling.toml", label = "custom global contacts")
+contsamp = AgeBasedContactSampling(
+        contactparameter = 1.0,
+        interval = 5,
+        contact_matrix_file = "examples/age-based-contact-sampling/age_group_contact.txt")
+custom = Simulation(label = "custom global contacts", global_setting = true, global_setting_contacts = contsamp)
 run!(default)
 run!(custom)
 rd_d = ResultData(default)
@@ -89,6 +72,27 @@ If you compare the simulated contacts in the `GlobalSetting`, you see the differ
 However it should be noted, that the input matrix that we provide in the example folder was computer-generated and not based on empirical data.
 We do not recommend to use this for any real-world application.
 
+If you want to use a config file, specify the use of the `AgeBasedContactSampling` method for your desired settings, and provide the average number of contacts (`contactparameter`), the age-group sizes in your contact data (`interval`), and the reference to the contact data file (`contact_matrix_file`).
+The example below shows how to do that for the `GlobalSetting`.
+If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
+
+```@TOML
+### Settings section of the config file ###
+
+[Settings.GlobalSetting]
+    [Settings.GlobalSetting.contact_sampling_method]
+            type = "AgeBasedContactSampling"
+            [Settings.GlobalSetting.contact_sampling_method.parameters]
+                contactparameter = 1.0
+                interval = 5
+                contact_matrix_file = "age_group_contact.txt"
+```
+
+!!! warning "Contact Matrix File Path"
+    If you specify a relative path to your (`contact_matrix_file`) in your config file, it must be relative to your current working directory; not relative to the config file. Copy both files from the example folder directly into your current project root folder and it should work.
+
+
+
 ## Age-Stratified Disease Progression
 
 coming soon ...
@@ -99,9 +103,7 @@ GEMS' default configuration assumes that each contact yields the same probabilit
 However, in reality, transmission patterns might be much more complex.
 Custom transmission functions can be used to integrate complex dynamics.
 
-To use this feature, you need two things:
-- A custom `TransmissionFunction` struct and its accopanying `transmission_probability()` function that provides the rules of how transmission chances are being calculated.
-- a custom config file that specifies the usage of your newly created `TransmissionFunction`
+To use this feature, you need a custom `TransmissionFunction` struct and its accopanying `transmission_probability()` function that provides the rules of how transmission chances are being calculated.
 
 Here's an example of a custom transmission struct and the required function.
 First, import the `GEMS.transmission_probability` function.
@@ -144,7 +146,29 @@ function GEMS.transmission_probability(transFunc::SettingRate,
 end
 ```
 
-In your custom config file, specify the use of the `SettingRate` method and provide the parameters as you defined them.
+Now, run a baseline simulation and one with your custom transmission function and plot the `:TickCasesBySetting`.
+We should see a significant difference between the number of infections that happen within and outside households.
+
+```julia
+default = Simulation(label = "default")
+tf = SettingRate(general_rate = 0.1, household_rate = 0.3)
+custom = Simulation(label = "custom transmission", transmission_function = tf)
+run!(default)
+run!(custom)
+rd_d = ResultData(default)
+rd_c = ResultData(custom)
+gemsplot([rd_d, rd_c], type = :TickCasesBySetting)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_advanced_custom-transmission.png" width="80%"/>
+</p>
+```
+
+If you want to use it in a config file, specify the use of the `SettingRate` method and provide the parameters as you defined them.
 The example below shows the parameterization in a custom config file.
 If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
 
@@ -162,28 +186,6 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 
 !!! info "Example"
     The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/custom-transmission-function) with a working config file for the code snippet above.
-
-Now, run a baseline simulation and one with your custom transmission function and plot the `:TickCasesBySetting`.
-We should see a significant difference between the number of infections that happen within and outside households.
-
-```julia
-default = Simulation(label = "default")
-custom = Simulation("setting-depdendent-tranmission.toml", label = "custom transmission")
-run!(default)
-run!(custom)
-rd_d = ResultData(default)
-rd_c = ResultData(custom)
-gemsplot([rd_d, rd_c], type = :TickCasesBySetting)
-```
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_advanced_custom-transmission.png" width="80%"/>
-</p>
-```
-
 
 ## Immunity & Waning
 
@@ -221,7 +223,7 @@ function GEMS.transmission_probability(transFunc::FixedWaning,
     end
 
     # calculate until when individual is immune if he was previously infected
-    immune_until = removed_tick(infected) + transFunc.waning_time
+    immune_until = recovery(infected) + transFunc.waning_time
     
     # if waning date is in the future, return 0 as transmission probability,
     # else, return provided rate
@@ -229,8 +231,28 @@ function GEMS.transmission_probability(transFunc::FixedWaning,
 end
 ```
 
-We also need a custom config file to incorporate the new rules in our simulation.
-In your custom config file, specify the use of the `FixedWaning` method and provide the parameters as you defined them.
+Now, run a simulation as such and inspect the results:
+
+```julia
+tf = FixedWaning(rate = 0.2, waning_time = 50)
+sim = Simulation(transmission_function = tf)
+run!(sim)
+rd = ResultData(sim)
+gemsplot(rd)
+```
+
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_advanced_fixed-waning.png" width="80%"/>
+</p>
+```
+
+The plots show oscillating behavior of the daily infections and the effective reproduction number as individuals are becoming susceptible again a few weeks after their initial infection.
+
+If you want to use a config file, specify the use of the `FixedWaning` method and provide the parameters as you defined them.
 The example below shows the parameterization in a custom config file.
 If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
 
@@ -249,26 +271,13 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 !!! info "Example"
     The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/fixed-waning) with a working config file for the code snippet above.
 
-Run a simulation as such and inspect the results:
+## Custom Disease Progression
 
-```julia
-sim = Simulation("fixed-waning.toml")
-run!(sim)
-rd = ResultData(sim)
-gemsplot(rd)
-```
+coming soon ...
 
+## Custom Progression Assignment
 
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_advanced_fixed-waning.png" width="80%"/>
-</p>
-```
-
-The plots show oscillating behavior of the daily infections and the effective reproduction number as individuals are becoming susceptible again a few weeks after their initial infection.
-
+coming soon ...
 
 ## Custom Start Conditions
 

@@ -17,9 +17,11 @@ AgeMap
 AttackRateMap
 CaseFatalityMap
 Geolocated
-InfectionMap
 HouseholdSizeMap
+InfectionMap
+KidsMap
 MapPlot
+MultiGenHouseholdMap
 PopDensityMap
 R0Map
 SinglesMap

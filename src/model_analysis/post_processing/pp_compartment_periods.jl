@@ -1,5 +1,15 @@
 export compartment_periods, aggregated_compartment_periods
 
+# HELPER FUNCTIONS TO CALCULATE PERIODS
+
+# calculate removed time (max of recovery and death)
+calc_rem(infs) = max.(infs.recovery, infs.death)
+# calculate asymptomatic, symptomatic and pre-symptomatic periods
+calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : 0).(infs.tick, infs.symptom_onset, rem)
+calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - so : 0).(infs.symptom_onset, rem)
+calc_pre_symp(infs) = ((so, t) -> so >= 0 ? so - t : 0).(infs.symptom_onset, infs.tick)
+
+
 """ 
     compartment_periods(postProcessor::PostProcessor)
 
@@ -16,56 +26,37 @@ returns a `DataFrame` containing all additional infectee-related information.
 | `total`           | `Int16` | Total duration of infection in ticks            |
 | `exposed`         | `Int16` | Duration of the exposed period in ticks         |
 | `infectious`      | `Int16` | Duration of the infectious period in ticks      |
-| `pre_symptomatic` | `Int16` | Duration of the pre-symptomatic period in ticks |
 | `asymptomatic`    | `Int16` | Duration of the asymptomatic period in ticks    |
+| `pre_symptomatic` | `Int16` | Duration of the pre-symptomatic period in ticks |
 | `symptomatic`     | `Int16` | Duration of the symptomatic period in ticks     |
-
+| `severe`          | `Int16` | Duration of the severe period in ticks          |
+| `hospitalized`    | `Int16` | Duration of the hospitalized period in ticks    |
+| `icu`             | `Int16` | Duration of the ICU period in ticks             |
+| `ventilated`      | `Int16` | Duration of the ventilated period in ticks      |
 """
 function compartment_periods(postProcessor::PostProcessor)
-
-    # return infectionsDF(postProcessor) |>
-    #     x -> transform(x,
-    #         # calculate duration of exposed period
-    #         [:infectious_tick, :tick] => ByRow(-) => :exposed,
-    #         # calculate total duration of infectiousness
-    #         [:removed_tick, :infectious_tick] => ByRow(-) => :infectious,
-    #         # calculate duration of preinfectious period (if individual develops symptoms)
-    #         AsTable([:symptoms_tick, :infectious_tick]) => ByRow(x -> maximum([0, x.symptoms_tick - x.infectious_tick])) => :pre_symptomatic,
-    #         # calculate duration of asymptomatic period
-    #         AsTable([:symptoms_tick, :removed_tick, :symptom_category]) => ByRow(x -> x.symptom_category == GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC ? x.removed_tick - x.symptoms_tick : 0) => :asymptomatic,
-    #         # calculate duration of symptomatic period
-    #         AsTable([:symptoms_tick, :removed_tick, :symptom_category]) => ByRow(x -> x.symptom_category != GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC ? x.removed_tick - x.symptoms_tick : 0) => :symptomatic,
-    #         copycols = false) |>
-    #     x -> DataFrames.select(x,
-    #         :id_b => :id,
-    #         :age_b => :age,
-    #         :sex_b => :sex,
-    #         :setting_id,
-    #         :setting_type,
-    #         :exposed,
-    #         :infectious,
-    #         :pre_symptomatic,
-    #         :asymptomatic,
-    #         :symptomatic)
 
     # load cached DF if available
     if in_cache(postProcessor, "compartment_periods")
         return(load_cache(postProcessor, "compartment_periods"))
     end
 
-    #according to @btime, this is 10x faster than the above code
-    infs = infectionsDF(postProcessor) 
-    res = DataFrame(
-        infection_id = infs.infection_id,
-        total = infs.removed_tick .- infs.tick,
-        exposed = infs.infectious_tick .- infs.tick,
-        infectious = infs.removed_tick .- infs.infectious_tick,
-        pre_symptomatic = (x -> max(0, x)).(infs.symptoms_tick .- infs.infectious_tick),
-        asymptomatic = infs.removed_tick .- infs.tick |> # if an individual is asymptomatic, we consider the whole progression the asymptomatic period
-            x -> ifelse.(infs.symptom_category .== GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC, x, Int16(0)),
-        symptomatic = infs.removed_tick .- infs.symptoms_tick |>
-            x -> ifelse.(infs.symptom_category .== GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC, Int16(0), x)
-    )
+    res = infectionsDF(postProcessor) |>
+        # calculate max of recovery and death time (as removed (rem))
+        infs -> (infs, calc_rem(infs)) |>
+        splat((infs, rem) -> DataFrame(
+            infection_id = infs.infection_id,
+            total = rem .- infs.tick,
+            exposed = infs.infectiousness_onset .- infs.tick,
+            infectious = rem .- infs.infectiousness_onset,
+            asymptomatic = calc_asymp(infs, rem),
+            pre_symptomatic = calc_pre_symp(infs),
+            symptomatic = calc_symp(infs, rem),
+            severe = infs.severeness_offset .- infs.severeness_onset,
+            hospitalized = infs.hospital_discharge .- infs.hospital_admission,
+            icu = infs.icu_discharge .- infs.icu_admission,
+            ventilated = infs.ventilation_discharge .- infs.ventilation_admission
+        ))
 
     # cache dataframe
     store_cache(postProcessor, "compartment_periods", res)
@@ -73,35 +64,50 @@ function compartment_periods(postProcessor::PostProcessor)
     return res
 end
 
+"""
+    aggregated_compartment_periods(postProcessor::PostProcessor)
+
+Calculates the aggregated durations of the disease compartments of all infections
+and returns a `DataFrame` containing the normalized counts of durations in each compartment.
+
+The values are normalized by the total number of infections to represent the fraction
+of individuals that spent a certain amount of time in the respective compartment and not
+just the individuals who were ever in that compartment.
+
+# Returns
+
+- `DataFrame` with the following columns:
+
+| Name              | Type      | Description                                                |
+| :---------------- | :-------- | :--------------------------------------------------------- |
+| `duration`        | `Int16`   | Duration in ticks                                          |
+| `total`           | `Float64` | Fraction of individuals with this total duration           |
+| `exposed`         | `Float64` | Fraction of individuals with this exposed duration         |
+| `infectious`      | `Float64` | Fraction of individuals with this infectious duration      |
+| `asymptomatic`    | `Float64` | Fraction of individuals with this asymptomatic duration    |
+| `pre_symptomatic` | `Float64` | Fraction of individuals with this pre-symptomatic duration |
+| `symptomatic`     | `Float64` | Fraction of individuals with this symptomatic duration     |
+| `severe`          | `Float64` | Fraction of individuals with this severe duration          |
+| `hospitalized`    | `Float64` | Fraction of individuals with this hospitalized duration    |
+| `icu`             | `Float64` | Fraction of individuals with this ICU duration             |
+| `ventilated`      | `Float64` | Fraction of individuals with this ventilated duration      |
+"""
 function aggregated_compartment_periods(postProcessor::PostProcessor)
     
     # group compartment periods by each compartment type and put result
     # dataframes into an array for easier joining later
     cps_vector = compartment_periods(postProcessor) |>
         cps -> [
-            groupby(cps, :total) |>
-                x -> combine(x, nrow => :total_cnt) |>
-                x -> rename(x, :total => :duration, :total_cnt => :total),
-
-            groupby(cps, :exposed) |>
-                x -> combine(x, nrow => :exposed_cnt) |>
-                x -> rename(x, :exposed => :duration, :exposed_cnt => :exposed),
-
-            groupby(cps, :infectious) |>
-                x -> combine(x, nrow => :infectious_cnt) |>
-                x -> rename(x, :infectious => :duration, :infectious_cnt => :infectious),
-
-            groupby(cps, :pre_symptomatic) |>
-                x -> combine(x, nrow => :pre_symptomatic_cnt) |>
-                x -> rename(x, :pre_symptomatic => :duration, :pre_symptomatic_cnt => :pre_symptomatic),
-
-            groupby(cps, :asymptomatic) |>
-                x -> combine(x, nrow => :asymptomatic_cnt) |>
-                x -> rename(x, :asymptomatic => :duration, :asymptomatic_cnt => :asymptomatic),
-
-            groupby(cps, :symptomatic) |>
-                x -> combine(x, nrow => :symptomatic_cnt) |>
-                x -> rename(x, :symptomatic => :duration, :symptomatic_cnt => :symptomatic)
+            countmap(cps.total) |> cm -> DataFrame(duration = collect(keys(cm)), total = collect(values(cm))),
+            countmap(cps.exposed) |> cm -> DataFrame(duration = collect(keys(cm)), exposed = collect(values(cm))),
+            countmap(cps.infectious) |> cm -> DataFrame(duration = collect(keys(cm)), infectious = collect(values(cm))),
+            countmap(cps.pre_symptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), pre_symptomatic = collect(values(cm))),
+            countmap(cps.asymptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), asymptomatic = collect(values(cm))),
+            countmap(cps.symptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), symptomatic = collect(values(cm))),
+            countmap(cps.severe) |> cm -> DataFrame(duration = collect(keys(cm)), severe = collect(values(cm))),
+            countmap(cps.hospitalized) |> cm -> DataFrame(duration = collect(keys(cm)), hospitalized = collect(values(cm))),
+            countmap(cps.icu) |> cm -> DataFrame(duration = collect(keys(cm)), icu = collect(values(cm))),
+            countmap(cps.ventilated) |> cm -> DataFrame(duration = collect(keys(cm)), ventilated = collect(values(cm)))
         ]
 
     # normalizing
@@ -112,6 +118,10 @@ function aggregated_compartment_periods(postProcessor::PostProcessor)
     cps_vector[4].pre_symptomatic = cps_vector[4].pre_symptomatic ./ all
     cps_vector[5].asymptomatic = cps_vector[5].asymptomatic ./ all
     cps_vector[6].symptomatic = cps_vector[6].symptomatic ./ all
+    cps_vector[7].severe = cps_vector[7].severe ./ all
+    cps_vector[8].hospitalized = cps_vector[8].hospitalized ./ all
+    cps_vector[9].icu = cps_vector[9].icu ./ all
+    cps_vector[10].ventilated = cps_vector[10].ventilated ./ all
 
     # empty dataframe with all possible "durations" (in ticks)
     res = DataFrame(

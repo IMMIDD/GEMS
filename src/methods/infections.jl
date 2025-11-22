@@ -43,11 +43,17 @@ end
 
 
 """
-    infect!(infectee::Individual, tick::Int16, pathogen::Pathogen;
+    infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen;
         sim::Union{Simulation, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
-        infecter_id::Int32 = Int32(-1), setting_id::Int32 = Int32(-1), lon::Float32 = NaN32,
-        lat::Float32 = NaN32, setting_type::Char = '?', ags::Int32 = Int32(-1),
+        infecter_id::Int32 = Int32(-1),
+        setting_id::Int32 = Int32(-1),
+        lon::Float32 = NaN32,
+        lat::Float32 = NaN32,
+        setting_type::Char = '?',
+        ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)
 
 Infect `infectee` with the specified `pathogen` and calculate time to infectiousness
@@ -60,8 +66,8 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 - `infectee::Individual`: Individual to infect
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
-- `sim::Simulation`: Simulation object (used to get logger and current tick)
 - `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
+- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG to use for stochastic parts
 - `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
 - `setting_id::Int32 = Int32(-1)` *(optional)*: ID of setting this infection happens in
 - `lon::Float32 = NaN32` *(optional)*: Longitude of the infection infection location (setting) 
@@ -89,14 +95,28 @@ function infect!(infectee::Individual,
         ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)
 
-    infectee.pathogen_id = id(pathogen)
-    presymptomatic!(infectee) # sets the individual to be presymptomatic
-    infectee.infectiousness = 0
-    infectee.number_of_infections += 1
-    infectee.exposed_tick = tick
 
     # calculate disease progression
-    disease_progression!(infectee, pathogen, tick, rng=rng)
+    # get progression category
+    pc = pathogen |>
+        # get progression assignment function
+        p -> progression_assignment(p) |>
+        # get progression category
+        paf -> assign(infectee, paf, rng)
+    
+    # calculate the actual disease progression
+    calculate_progression(infectee, tick, progressions(pathogen)[pc]; rng = rng) |>
+        # set the progression for the individual
+        dp -> set_progression!(infectee, dp)
+
+    # pathogen id
+    pathogen_id!(infectee, id(pathogen))
+
+    # increase number of infections
+    inc_number_of_infections!(infectee)
+
+    # update agent health status
+    progress_disease!(infectee, tick)
 
     if isnothing(sim)
         return -1
@@ -104,31 +124,43 @@ function infect!(infectee::Individual,
 
     # log infection
     new_infection_id = log!(
-        infectionlogger(sim),
-        infecter_id,
-        id(infectee),
-        tick,
-        infectee.infectious_tick,
-        infectee.onset_of_symptoms,
-        infectee.onset_of_severeness,
-        infectee.hospitalized_tick,
-        infectee.icu_tick,
-        infectee.ventilation_tick,
-        infectee.removed_tick,
-        infectee.death_tick,
-        infectee.symptom_category,
-        setting_id,
-        setting_type,
-        lat,
-        lon,
-        ags,
-        source_infection_id
+        logger = infectionlogger(sim),
+        a = infecter_id,
+        b = id(infectee),
+        progression_category = Symbol(pc),
+        tick = tick,
+        infectiousness_onset = infectee.infectiousness_onset,
+        symptom_onset = infectee.symptom_onset,
+        severeness_onset = infectee.severeness_onset,
+        hospital_admission = infectee.hospital_admission,
+        hospital_discharge = infectee.hospital_discharge,
+        icu_admission = infectee.icu_admission,
+        icu_discharge = infectee.icu_discharge,
+        ventilation_admission = infectee.ventilation_admission,
+        ventilation_discharge = infectee.ventilation_discharge,
+        severeness_offset = infectee.severeness_offset,
+        recovery = infectee.recovery,
+        death = infectee.death,
+        setting_id = setting_id,
+        setting_type = setting_type,
+        lat = lat,
+        lon = lon,
+        ags = ags,
+        source_infection_id = source_infection_id
     )
 
     # set the infectees current infection_id to the value that was returned by the logger
-    infectee.infection_id = new_infection_id
+    infection_id!(infectee, new_infection_id)
     return new_infection_id
 end
+"""
+    infect!(infectee::Individual, sim::Simulation)
+
+Infect `infectee` with the pathogen of the simulation at the current tick of the simulation.
+Mainly a convenience wrapper around `infect!` with less parameters.
+Used for example in test cases.
+"""
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), pathogen(sim); sim = sim, rng = rng(sim))
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting;
@@ -160,25 +192,41 @@ function try_to_infect!(infctr::Individual,
         setting::Setting;
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)::Bool
 
-    # Basic infection function. No vaccination or stratification
-    if !infected(infctd) && !dead(infctd)
-        infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, rng(sim))
-
-        if gems_rand(rng(sim)) < infection_probability
-            infect!(infctd, tick(sim), pathogen,
-                sim = sim,
-                rng = rng(sim),
-                infecter_id = id(infctr),
-                setting_id = id(setting),
-                lat = geolocation(settings(sim, Household)[household_id(infctd)], sim)[2],
-                lon = geolocation(settings(sim, Household)[household_id(infctd)], sim)[1],
-                setting_type = settingchar(setting),
-                ags = ags(setting, sim) |> id,
-                source_infection_id = source_infection_id)
-            return true
-        end
+    # if one of both is dead
+    if dead(infctr) || dead(infctd)
+        return false
     end
+
+    # if one of both is hospitalized
+    if hospitalized(infctr) || hospitalized(infctd)
+        return false
+    end
+    
+    # if infectee is already infected
+    if infected(infctd)
+        return false
+    end
+
+    # calculate infection probability
+    infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, rng(sim))
+
+    # try to infect
+    if gems_rand(sim) < infection_probability
+        infect!(infctd, tick(sim), pathogen,
+            sim = sim,
+            infecter_id = id(infctr),
+            setting_id = id(setting),
+            lat = geolocation(settings(sim, Household)[household_id(infctd)], sim)[2],
+            lon = geolocation(settings(sim, Household)[household_id(infctd)], sim)[1],
+            setting_type = settingchar(setting),
+            ags = ags(setting, sim) |> id,
+            source_infection_id = source_infection_id,
+            rng  = rng(sim))
+        return true
+    end
+
     return false
+
 end
 
 
@@ -196,39 +244,110 @@ If the individual is not infected, this function will just return.
 """
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
-    # if the agent should be removed
-    if infected(indiv) # make sure agents are really infected. If not, update the list
+    # progress disease if infected
+    if infected(indiv) 
 
         progress_disease!(indiv, tick)
 
-        # update from anywhere to death
-        if death_tick(indiv)!=-1 && death_tick(indiv) <= tick && !dead(indiv)
-            recover!(indiv)
-            kill!(indiv)
+        # if individual died in this tick, log it
+        if death(indiv) == tick
             log!(deathlogger(sim), id(indiv), tick)
         end
     end
 
-    # handle quarantining
-    if isquarantined(indiv)
-        if quarantine_release_tick(indiv) < tick
-            end_quarantine!(indiv)
-        end
-    end
-
-    # handle symptom triggers
-    if symptomatic(indiv) && onset_of_symptoms(indiv) == tick
+    # if onset of symptoms is this tick, trigger all symptom triggers
+    if symptom_onset(indiv) == tick
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim)
         end
     end
 
-    # handle hospitalization triggers
-    if hospitalized(indiv) && hospitalized_tick(indiv) == tick
+    # if hospital admission is this tick, trigger all hospitalization triggers
+    if hospital_admission(indiv) == tick
         for ht in sim |> hospitalization_triggers
             trigger(ht, indiv, sim)
         end
     end
+end
+
+"""
+    can_infect(ind::Individual, setting::Setting)::Bool
+
+Determines whether the individual can infect others in the given setting.
+Checks for infectiousness, setting openness, and quarantine status.
+
+# Parameters
+- `ind::Individual`: Individual to check
+- `setting::Setting`: Setting to check
+
+# Returns
+- `Bool`: True if the individual can infect others in the setting, false otherwise
+"""
+function can_infect(ind::Individual, setting::Setting)::Bool
+    # if individual is not infectious
+    if !infectious(ind)
+        return false
+    end
+
+    # if individual is hospitalized
+    if is_hospitalized(ind)
+        return false
+    end
+
+    # if setting is closed
+    if !is_open(setting)
+        return false
+    end
+
+    # severe symptoms prevent infecting others outside the household
+    if is_severe(ind) && (typeof(setting) != Household)
+        return false
+    end
+
+    # if individual is quarantined
+    if isquarantined(ind)
+        # if individual is in household quarantine and setting is not Household
+        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
+            return false
+        end
+    end
+
+    return true
+end
+
+"""
+    can_be_contacted(ind::Individual, setting::Setting)::Bool
+
+Determines whether the individual can be contacted (and thus infected) in the given setting.
+Checks for death and quarantine status.
+
+# Parameters
+- `ind::Individual`: Individual to check
+- `setting::Setting`: Setting to check
+
+# Returns
+- `Bool`: True if the individual can be contacted in the setting, false otherwise
+"""
+function can_be_contacted(ind::Individual, setting::Setting)::Bool
+    # if individual is dead
+    if dead(ind)
+        return false
+    end
+
+    # if individual is hospitalized
+    if is_hospitalized(ind)
+        return false
+    end
+
+    # if individual is quarantined
+    if isquarantined(ind)
+        # if individual is in household quarantine and setting is not Household
+        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
+            return false
+        end
+    end
+
+    return true
 end
 
 
@@ -251,21 +370,22 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
     num_infected = 0
     # Obtain individuals present in the current setting
     present_inds = present_individuals(setting, sim)
-    # Check if the setting is open
-    open = is_open(setting)
+
+
     for ind_index in 1:length(present_inds)
         ind = present_inds[ind_index]
         if infected(ind)
             num_infected+=1
-            # if infectious and setting is open try to infect others
-            if infectious(ind) && open && (!isquarantined(ind) || ((quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household)))
+            # if individual can infect in this setting
+            if can_infect(ind, setting)
                 # sample contacts based on setting specific "ContactSamplingMethod"
-                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), rng=rng(sim))
+                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), rng = rng(sim))
                 for c in contacts
-                    # try to infect
-                    if !isquarantined(c) || ((quarantine_status(c) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE) && (typeof(setting)==Household))
+                    # check if individual can be contacted
+                    if can_be_contacted(c, setting)
+                        # try to infect
                         if try_to_infect!(ind, c, sim, pathogen, setting, source_infection_id = infection_id(ind))
-                            # activate all settings the individual is part of
+                            # activate all settings the individual is part of if infection was successful
                             for (type, id) in settings(c, sim)
                                 activate!(settings(sim, type)[id])
                             end

@@ -82,14 +82,14 @@ The `follow_up` strategy of the `TraceInfectiousContacts` measure is handed over
 function process_measure(sim::Simulation, ind::Individual, measure::TraceInfectiousContacts)
 
     now = sim |> tick
-    infectious_at = ind |> infectious_tick
+    infectious_at = ind |> infectiousness_onset
     sr = measure |> success_rate
 
     # get infectee IDs from logger
     infectee_ids = get_infections_between(sim  |> infectionlogger, ind |> id, infectious_at, now)
 
     # filter by success_rate
-    infectee_ids = infectee_ids[gems_rand(rng(sim), infectee_ids |> length) .< sr]
+    infectee_ids = infectee_ids[gems_rand(sim, infectee_ids |> length) .< sr]
 
     @debug "Individual $(ind |> id) identiying $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
 
