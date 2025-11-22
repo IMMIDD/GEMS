@@ -103,9 +103,7 @@ GEMS' default configuration assumes that each contact yields the same probabilit
 However, in reality, transmission patterns might be much more complex.
 Custom transmission functions can be used to integrate complex dynamics.
 
-To use this feature, you need two things:
-- A custom `TransmissionFunction` struct and its accopanying `transmission_probability()` function that provides the rules of how transmission chances are being calculated.
-- a custom config file that specifies the usage of your newly created `TransmissionFunction`
+To use this feature, you need a custom `TransmissionFunction` struct and its accopanying `transmission_probability()` function that provides the rules of how transmission chances are being calculated.
 
 Here's an example of a custom transmission struct and the required function.
 First, import the `GEMS.transmission_probability` function.
@@ -148,7 +146,29 @@ function GEMS.transmission_probability(transFunc::SettingRate,
 end
 ```
 
-In your custom config file, specify the use of the `SettingRate` method and provide the parameters as you defined them.
+Now, run a baseline simulation and one with your custom transmission function and plot the `:TickCasesBySetting`.
+We should see a significant difference between the number of infections that happen within and outside households.
+
+```julia
+default = Simulation(label = "default")
+tf = SettingRate(general_rate = 0.1, household_rate = 0.3)
+custom = Simulation(label = "custom transmission", transmission_function = tf)
+run!(default)
+run!(custom)
+rd_d = ResultData(default)
+rd_c = ResultData(custom)
+gemsplot([rd_d, rd_c], type = :TickCasesBySetting)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_advanced_custom-transmission.png" width="80%"/>
+</p>
+```
+
+If you want to use it in a config file, specify the use of the `SettingRate` method and provide the parameters as you defined them.
 The example below shows the parameterization in a custom config file.
 If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
 
@@ -166,28 +186,6 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 
 !!! info "Example"
     The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/custom-transmission-function) with a working config file for the code snippet above.
-
-Now, run a baseline simulation and one with your custom transmission function and plot the `:TickCasesBySetting`.
-We should see a significant difference between the number of infections that happen within and outside households.
-
-```julia
-default = Simulation(label = "default")
-custom = Simulation("setting-depdendent-tranmission.toml", label = "custom transmission")
-run!(default)
-run!(custom)
-rd_d = ResultData(default)
-rd_c = ResultData(custom)
-gemsplot([rd_d, rd_c], type = :TickCasesBySetting)
-```
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_advanced_custom-transmission.png" width="80%"/>
-</p>
-```
-
 
 ## Immunity & Waning
 
