@@ -2,6 +2,9 @@
 
 This tutorial will teach you how to configure disease progressions and the assignment of progressions upon infection.
 
+!!! warning "Caution"
+    If you pass a `Pathogen` to the `Simulation` constructor, it will override the `transmission_function` or `transmission_rate` parameters. This means, that you need to manually pass you transmission parameters if you want to deviate from the default.
+
 ## Static Symptomatic Progression
 
 In this example, we want to configure a disease where all infections lead to a symptomatic progression.
@@ -174,9 +177,6 @@ gemsplot(rd, type = (:TickCases, :InfectionDuration, :ProgressionCategories))
 
 
 ## Complete Parameterization
-
-!!! warning "Caution"
-    If you pass a `Pathogen` to the `Simulation` constructor, it will override the `transmission_function` or `transmission_rate` parameters. This means, that you need to manually pass you transmission parameters if you want to deviate from the default.
 
 This example will show you how to parameterize disease progressions, assignments and the tranmission function inside a `Pathogen`.
 
