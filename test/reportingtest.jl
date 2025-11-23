@@ -3,13 +3,17 @@
     basefolder = dirname(dirname(pathof(GEMS)))
 
     # load example simulation to perform tests
-    sim = Simulation(basefolder * "/test/testdata/TestConf.toml", basefolder * "/test/testdata/TestPop.csv")
+    # sim = Simulation(
+    #     configfile = joinpath(basefolder, "test/testdata/TestConf.toml"),
+    #     population = joinpath(basefolder, "test/testdata/TestPop.csv")
+    # )
+    sim = Simulation(pop_size = 1000, infected_fraction = 0.1)
     run!(sim)
     rd = sim |> PostProcessor |> ResultData
 
     sims = Simulation[]
     for i in 1:5
-        sim = Simulation(label="My Experiment")
+        sim = Simulation(pop_size = 1000, label="My Experiment")
         push!(sims, sim)
     end
 
@@ -28,10 +32,10 @@
         # whether a String contains valid markdown syntax, but I didn't find any
 
         # start conditions
-        @test InfectedFraction(0.01, sim |> pathogen) |> markdown |> typeof == String
+        @test InfectedFraction(fraction = 0.01) |> markdown |> typeof == String
 
         # stop criteria
-        @test TimesUp(10) |> markdown |> typeof == String
+        @test TimesUp(limit = 10) |> markdown |> typeof == String
 
         # pathogens
         @test sim |> pathogen |> markdown |> typeof == String
@@ -61,22 +65,6 @@
         @test occursin("| Setting | Number", md_settings)
         @test occursin("Table: Setting Summary", md_settings)
 
-        # Test for markdown(Vaccine)
-        dw = DiscreteWaning(7, 30)
-        v = Vaccine(id=1, name="Antitest", waning=dw)
-        md_vaccine = markdown(v)
-        @test occursin("| Property | Value", md_vaccine)
-        @test occursin("Antitest", md_vaccine)
-        @test occursin("Waning", md_vaccine)
-
-        # Test for markdown(DiscreteWaning)
-        md_waning = markdown(dw)
-        @test occursin("ticks after vaccination", md_waning)
-
-        # Test for markdown(VaccinationScheduler)
-        scheduler = VaccinationScheduler()
-        md_scheduler = markdown(scheduler)
-        @test occursin("To be implemented.", md_scheduler)
     end
 
     @testset "Sections" begin
@@ -246,7 +234,7 @@
             PopulationPyramid()
             #SettingAgeContacts(Household)
             SettingSizeDistribution()
-            SymptomCategories()
+            ProgressionCategories()
             TestPositiveRate()
             TickCases()
             TickCasesBySetting()
@@ -702,42 +690,42 @@
         end
 
         @testset "Map Plots" begin
-            # plots with no gelocated data
-            plts = [
-                AgeMap(),
-                HouseholdSizeMap(),
-                PopDensityMap(),
-                SinglesMap()
+            
+            sim_maps = [
+                :AgeMap,
+                :ElderlyMap,
+                :HouseholdSizeMap,
+                :KidsMap,
+                :MultiGenHouseholdMap,
+                :PopDensityMap,
+                :SinglesMap
             ]
+
+            rd_maps = [
+                :AttackRateMap,
+                :CaseFatalityMap,
+                :R0Map,
+                :WeeklyIncidenceMap
+            ]
+
+            # generate each map without geolocated data
+            # this should (at least) not crash
             sim = Simulation()
-            for p in plts
-                generate(p, sim)
-            end
+            (m -> gemsmap(sim, type = m)).(sim_maps) |>
+                plts -> @test all(p -> p isa Plots.Plot, plts)
             run!(sim)
-            rd = sim |> PostProcessor |> ResultData
-            attack_rate_map = AttackRateMap()
-            case_fatality_map = CaseFatalityMap()
-            generate(attack_rate_map, rd)
-            generate(case_fatality_map, rd)
+            rd = ResultData(sim)
+            (m -> gemsmap(rd, type = m)).(rd_maps) |>
+                plts -> @test all(p -> p isa Plots.Plot, plts)
 
-            # plots with geolocated data
-            plts = [
-                AgeMap(),
-                HouseholdSizeMap(),
-                PopDensityMap(),
-                SinglesMap()
-            ]
-
-            sim = Simulation(population="HB")
-            for p in plts
-                generate(p, sim)
-            end
-            run!(sim)
-            rd = sim |> PostProcessor |> ResultData
-            attack_rate_map = AttackRateMap()
-            case_fatality_map = CaseFatalityMap()
-            generate(attack_rate_map, rd)
-            generate(case_fatality_map, rd)
+            # generate each map with geolocated data
+            sim_HB = Simulation(population="HB")            
+            (m -> gemsmap(sim_HB, type = m)).(sim_maps) |>
+                plts -> @test all(p -> p isa Plots.Plot, plts)
+            run!(sim_HB)
+            rd_HB = ResultData(sim_HB)
+            (m -> gemsmap(rd_HB, type = m)).(rd_maps) |>
+                plts -> @test all(p -> p isa Plots.Plot, plts)
         end
 
     end

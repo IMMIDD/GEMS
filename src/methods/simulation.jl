@@ -29,30 +29,129 @@ function process_events!(simulation::Simulation)
 end
 
 """
-    log_quarantines(simulation::Simulation)
+    log_stepinfo(simulation::Simulation)
 
 Log all current quarantines stratified by occupation (workers, students, all)
 to the simulation's `QuarantineLogger`.
+
 """
-function log_quarantines(simulation::Simulation)
+function log_stepinfo(simulation::Simulation)
+   
+    # Threads.maxthreadid() should work for Julia 1.11 and 1.12
+   
+    # quarantine data
+    # set up one vector with one entry for each thread
+    tot_quar_cnt = zeros(Int, Threads.maxthreadid()) # total quarantined count (infected and susceptible)
 
-    # Julia 1.12-safe threaded counting with atomic integers
-    tot = Threads.Atomic{Int}(0)
-    st  = Threads.Atomic{Int}(0)
-    wo  = Threads.Atomic{Int}(0)
+    st_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined students count (infected and susceptible)
+    st_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated students count (infected only)
+    st_unab_cnt  = zeros(Int, Threads.maxthreadid()) # students unable to attend school (for various reasons)
 
+    wo_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined workers count (infected and susceptible)
+    wo_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated workers count (infected only)
+    wo_unab_cnt  = zeros(Int, Threads.maxthreadid()) # workers unable to attend work (for various reasons)
+
+    # infection data
+    exp_cnt = zeros(Int, Threads.maxthreadid())
+    inf_cnt = zeros(Int, Threads.maxthreadid())
+    dead_cnt = zeros(Int, Threads.maxthreadid())
+    det_cnt = zeros(Int, Threads.maxthreadid())
+
+    # iterate over agents
     Threads.@threads for i in simulation |> individuals
+        tid = Threads.threadid()
+        
+        # log quarantined individuals
         if isquarantined(i)
-            Threads.atomic_add!(tot, 1)
-            Threads.atomic_add!(st,  is_student(i) ? 1 : 0)
-            Threads.atomic_add!(wo,  is_working(i) ? 1 : 0)
+            tot_quar_cnt[tid] += 1
+
+            if is_student(i)
+                # student quarantine
+                st_quar_cnt[tid] += 1
+
+                # student isolations
+                if is_infected(i)
+                    st_isol_cnt[tid] += 1
+                end
+            end
+
+            if is_working(i)
+                # worker quarantine
+                wo_quar_cnt[tid] += 1
+
+                # worker isolations
+                if is_infected(i)
+                    wo_isol_cnt[tid] += 1
+                end
+            end
+        end
+
+        # log infected individuals
+        exp_cnt[tid] += is_exposed(i) ? 1 : 0
+        inf_cnt[tid] += is_infectious(i) ? 1 : 0
+        dead_cnt[tid] += is_dead(i) ? 1 : 0
+        det_cnt[tid] += is_detected(i) ? 1 : 0
+    end
+
+    # iterate over school classes for unable to attend count
+    Threads.@threads for s in schoolclasses(simulation)
+        tid = Threads.threadid()
+
+        # if class is closed, add all students to unable to attend count
+        if !is_open(s)
+            st_unab_cnt[tid] += size(s)
+        else
+
+            # else, iterate over individuals and count those unable to attend
+            for i in individuals(s)
+                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    st_unab_cnt[tid] += 1
+                end
+            end
         end
     end
 
+    # iterate over offices for unable to attend count
+    Threads.@threads for o in offices(simulation)
+        tid = Threads.threadid()
+
+        # if class is closed, add all students to unable to attend count
+        if !is_open(o)
+            wo_unab_cnt[tid] += size(o)
+        else
+
+            # else, iterate over individuals and count those unable to attend
+            for i in individuals(o)
+                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    wo_unab_cnt[tid] += 1
+                end
+            end
+        end
+    end
+
+    # log quarantine data
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-        tot[], st[], wo[]
+        sum(tot_quar_cnt),
+        sum(st_quar_cnt),
+        sum(wo_quar_cnt)
+    )
+
+    # log infection data
+    log!(simulation |> statelogger;
+        tick = simulation |> tick,
+        exposed = sum(exp_cnt),
+        infectious = sum(inf_cnt),
+        dead = sum(dead_cnt),
+        detected = sum(det_cnt),
+        quarantined = sum(tot_quar_cnt),
+        quarantined_students = sum(st_quar_cnt),
+        isolated_students = sum(st_isol_cnt),
+        unable_to_attend_students = sum(st_unab_cnt),
+        quarantined_workers = sum(wo_quar_cnt),
+        isolated_workers = sum(wo_isol_cnt),
+        unable_to_attend_workers = sum(wo_unab_cnt)
     )
 end
 
@@ -134,7 +233,7 @@ end
 Increments the simulation status by one tick and executes all events that shall be handled during this tick.
 """
 function step!(simulation::Simulation)
-    # update individuals
+    # update disease state
     Threads.@threads :static for i in simulation |> population |> individuals
         update_individual!(i, tick(simulation), simulation)
     end
@@ -156,7 +255,12 @@ function step!(simulation::Simulation)
     end
 
     process_events!(simulation)
-    log_quarantines(simulation)
+
+    # update quarantine state
+    individuals(simulation) |>
+        inds -> quarantined!.(inds, is_quarantined.(inds, tick(simulation)))
+
+    log_stepinfo(simulation)
     
     # fire custom loggers
     fire_custom_loggers!(simulation)

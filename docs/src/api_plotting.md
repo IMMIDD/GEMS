@@ -18,6 +18,7 @@ gemsplot
 gemsheatmap
 emptyplot(::String)
 plotseries!
+plottypes
 saveplot
 splitlabel
 splitplot
@@ -72,8 +73,8 @@ SettingSizeDistribution
 generate(::SettingSizeDistribution, ::ResultData)
 SimulationPlot
 generate(::SimulationPlot, ::ResultData)
-SymptomCategories
-generate(::SymptomCategories, ::ResultData)
+ProgressionCategories
+generate(::ProgressionCategories, ::ResultData)
 TestPositiveRate
 generate(::TestPositiveRate, ::ResultData)
 TickCases

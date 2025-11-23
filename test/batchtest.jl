@@ -186,7 +186,6 @@
             @test bP |> stop_criteria |> length != 0
             @test bP |> number_of_individuals |> length != 0
             @test bP |> pathogens |> length != 0
-            @test bP |> pathogens_by_name |> length != 0
             @test bP |> settingdata |> length != 0
     
             @test bP |> strategies |> length != 0

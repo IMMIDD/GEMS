@@ -4,7 +4,8 @@ These functions handle the aggregation of interesting data from a simulation run
 and combine them into specific output variables
 =#
 export PostProcessor
-export simulation, infectionsDF, sim_infectionsDF, populationDF, deathsDF, testsDF, pooltestsDF, serotestsDF
+export simulation, infectionsDF, sim_infectionsDF, populationDF
+export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
 
 """
     PostProcessor
@@ -35,6 +36,7 @@ mutable struct PostProcessor
     pooltestsDF::DataFrame
     serotestsDF::DataFrame
     quarantinesDF::DataFrame
+    compartmentsDF::DataFrame
 
     # dataframe cache to speed up calculations
     cache::Dict{String, Any}
@@ -63,14 +65,14 @@ mutable struct PostProcessor
         infections = infections |>
             # calculate generation time and serial interval (self join)
             x -> leftjoin(x, 
-                DataFrames.select(infections, [:infection_id, :tick, :symptoms_tick]),
+                DataFrames.select(infections, [:infection_id, :tick, :symptom_onset]),
                 on = [:source_infection_id => :infection_id],
                 renamecols = "" => "_source") |>
             x -> transform(x,
                 [:tick, :tick_source] => ByRow(-) => :generation_time,
-                [:symptoms_tick, :symptoms_tick_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval,
+                [:symptom_onset, :symptom_onset_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval,
                 copycols = false) |>
-            x -> DataFrames.select(x, Not([:tick_source, :symptoms_tick_source]))
+            x -> DataFrames.select(x, Not([:tick_source, :symptom_onset_source]))
 
         infections = infections |>
             # add tests
@@ -78,8 +80,7 @@ mutable struct PostProcessor
 
             # add poulation data
             x -> leftjoin(x, pop, on = [:id_a => :id], renamecols = "" => "_a") |>
-            x -> leftjoin(x, pop, on = [:id_b => :id], renamecols = "" => "_b")# |>
-            #x -> sort(x, :infection_id)
+            x -> leftjoin(x, pop, on = [:id_b => :id], renamecols = "" => "_b")
 
         # lookup home-AGS for each individual
         infections.household_ags_a =
@@ -102,7 +103,14 @@ mutable struct PostProcessor
         quarantines = dataframe(quarantinelogger(simulation)) |>
             x -> transform(x, [:quarantined, :students, :workers] => ByRow((q, s, w) -> q - s -w) => :other)
 
-        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, Dict{String, Any}())
+        compartments = dataframe(statelogger(simulation)) |>
+            df -> rename!(df,
+                :exposed => :exposed_cnt,
+                :infectious => :infectious_cnt,
+                :detected => :detected_cnt,
+                :dead => :dead_cnt)
+
+        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, Dict{String, Any}())
     end
 
 
@@ -430,6 +438,24 @@ function cumulative_quarantines(postProcessor::PostProcessor)
     return(postProcessor.quarantinesDF)
 end
 
+
+"""
+    compartmentsDF(postProcessor::PostProcessor)
+
+Returns the internal flat compartments `DataFrame`.
+# Columns
+| Name               | Type    | Description                                         |
+| :----------------- | :------ | :-------------------------------------------------- |
+| `tick`             | `Int16` | Simulation tick (time)                              |
+| `exposed_cnt`      | `Int64` | Total number of individuals in the exposed state    |
+| `infectious_cnt`   | `Int64` | Total number of individuals in the infectious state |
+| `detected_cnt`     | `Int64` | Total number of detected infectious individuals     |
+| `deaths_cnt`       | `Int64` | Total number of individuals in the deceased state   |
+"""
+function compartmentsDF(postProcessor::PostProcessor)
+    return(postProcessor.compartmentsDF)
+end
+
 ### DATA ANALYSIS ###
 
 """
@@ -447,7 +473,7 @@ function sim_infectionsDF(postProcessor::PostProcessor)
 
     # return only values that have an infecter-id (i.e. runtime-infections)
     sim_infs = infectionsDF(postProcessor) |>
-        x -> filter(y -> y[:id_a] > 0, x)
+        df -> df[df.id_a .> 0, :]
     
     # store in internal cache
     store_cache(postProcessor, "sim_infectionsDF", sim_infs)

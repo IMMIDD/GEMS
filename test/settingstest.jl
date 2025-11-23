@@ -403,10 +403,6 @@
 
         # global parameters
         BASE_FOLDER = dirname(dirname(pathof(GEMS)))
-
-        # Infected Fraction
-        p = Pathogen(id=1, name="COVID")
-        inf = InfectedFraction(0.01, p)
         pop = Population(BASE_FOLDER * "/test/testdata/people_muenster.jld2")
         stngs, renaming = settings_from_population(pop)
         settings_from_jld2!(BASE_FOLDER * "/test/testdata/settings_muenster.jld2", stngs, renaming)

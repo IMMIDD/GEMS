@@ -8,4 +8,5 @@ Order   = [:function]
 ## Functions
 ```@docs
 generate_movie
+steps
 ```

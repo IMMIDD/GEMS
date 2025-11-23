@@ -90,6 +90,7 @@ name(::PoolTest)
 name(::TestAll)
 name(::TestType)
 name(::Test)
+name(::SeroprevalenceTestType)
 negative_followup
 nonself(::FindSettingMembers)
 positive_followup
@@ -124,4 +125,5 @@ SMeasureEvent
 ```@docs
 dequeue!(::EventQueue)
 enqueue!(::EventQueue, ::Event, ::Int16)
+focal_objects(::Handover)
 ```

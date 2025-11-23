@@ -40,13 +40,14 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `plt::AttackRateMap`: `MapPlot` struct with meta data (i.e. title, description, and filename)
 - `rd::ResultData`: Input data used to generate plot
+- `fit_lims::Bool = false` *(optional)*: If `true`, the color limits of the plot will be set to the minimum and maximum fraction.
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
 
 - `Plots.Plot`: Attack rate map plot
 """
-function generate(plt::AttackRateMap, rd::ResultData; level::Int = 3, plotargs...)
+function generate(plt::AttackRateMap, rd::ResultData; level::Int = 3, fit_lims::Bool = false, plotargs...)
 
     # if no raw infections data is in RD object
     if rd |> infections |> isempty
@@ -77,10 +78,11 @@ function generate(plt::AttackRateMap, rd::ResultData; level::Int = 3, plotargs..
         x -> combine(x, nrow => :reg_infs) |>
         x -> leftjoin(region_info(rd), x, on = :ags) |>
         x -> transform(x, :reg_infs => ByRow(x -> coalesce(x, 0)) => :reg_infs) |>
-        x -> transform(x, [:reg_infs, :pop_size] => ByRow((i, n) -> i/n) => :attack_rate) |>
+        x -> transform(x, [:reg_infs, :pop_size] => ByRow((i, n) -> 100 * i/n) => :attack_rate) |>
         x -> DataFrames.select(x, :ags, :attack_rate) |>
         x -> agsmap(x,
             fontfamily = "Times Roman",
-            clims = (0, 1);
+            colorbar_title = "Percentage (%)",
+            clims = fit_lims ? (minimum(x.attack_rate), maximum(x.attack_rate)) : (0, 100); 
             plotargs...)
 end

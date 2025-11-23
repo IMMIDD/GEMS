@@ -1,4 +1,4 @@
-# [5 - Creating Populations](@id tut_pops)
+# [6 - Creating Populations](@id tut_pops)
 
 If you spawn the default scenario like `sim = Simulation()`, GEMS will generate a non-representative population with `100,000` individuals households of average size `3`, schools/school classes of average size `100` and workplaces/offices of average size `5`.
 The age distribution and household compositions is similar to the German population (not accurate, not representative).
@@ -79,7 +79,7 @@ Loading a new population model for the first time will spark a download of the f
 The inbuilt models are geo-referencal, therefore they can be visualized using the `gemsmap()` function (e.g., to take a look at the population density):
 
 ```julia
-gemsmap(sim, type = :PopDensityMap, clims = (0, 100))
+gemsmap(sim, type = :PopDensityMap)
 ```
 
 
@@ -165,7 +165,10 @@ inds = individuals(pop)
 df = DataFrame(age = age.(inds), vaccinations = number_of_vaccinations.(inds))
 df_grouped = groupby(df, :age)
 df_combined = combine(df_grouped, :vaccinations => (v -> sum(v) / length(v)) => :vacc_fraction)
-plot(df_combined.age, df_combined.vacc_fraction)
+plot(df_combined.age, df_combined.vacc_fraction,
+    xlabel = "Age",
+    ylabel = "Vaccination Coverage",
+    legend = false)
 ```
 
 **Plot**

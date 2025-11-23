@@ -17,6 +17,7 @@ using TimerOutputs
 using TOML
 using Parameters
 using StatsBase
+using Suppressor
 
 @testset "GEMS" begin
     testfiles = [

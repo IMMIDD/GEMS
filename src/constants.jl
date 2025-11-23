@@ -135,6 +135,9 @@ const SHAPEFILE_FOLDER_PATH = joinpath(LOCALDATA_PATH, "shapefiles")
 const GERMAN_SHAPEFILE(identifier::String) = joinpath(SHAPEFILE_FOLDER_PATH, "vg250-ew_12-31.gk3.shape.ebenen", "vg250-ew_ebenen_1231", "VG250_$identifier.shp")
 const GERMAN_SHAPEFILE_URL = "https://daten.gdz.bkg.bund.de/produkte/vg/vg250-ew_ebenen_1231/aktuell/vg250-ew_12-31.gk3.shape.ebenen.zip"
 
+# throw error when global RNG is used in gems_rand/gems_sample functions
+const ENFORCE_SIM_RNGS = true
+
 ########################
 # PERFORMANCE SETTINGS #
 ########################
@@ -150,7 +153,7 @@ PARALLEL_POST_PROCESSING = false
 # calls to speed up subsequent steps. However, be aware for large models, these
 # intermediate dataframes can be excessive and a severe strain on system memory.
 # Please only set this "true" if you are sure to have enough memory available.
-POST_PROCESSOR_CACHING = true
+POST_PROCESSOR_CACHING = false
 
 # if "true", report sections will be generated in parallel. While this speeds up
 # the generation process significantly, it requires more system memory which might

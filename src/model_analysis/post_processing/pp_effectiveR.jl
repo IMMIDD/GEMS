@@ -19,23 +19,29 @@ If an individual was infected multiple times, secondary infections will inflate 
 
 - `Dataframe` with the following columns:
 
-| Name          | Type      | Description                                         |
-| :------------ | :-------- | :-------------------------------------------------- |
-| `tick`        | `Int16`   | Simulation tick (time)                              |
-| `effective_R` | `Float64` | Effective R-value                                   |
-| `rolling_R`   | `Float64` | Effective R rolling average of the 7 previous ticks |
+| Name                 | Type      | Description                                                                      |
+| :------------------- | :-------- | :------------------------------------------------------------------------------- |
+| `tick`               | `Int16`   | Simulation tick (time)                                                           |
+| `effective_R`        | `Float64` | Effective R-value                                                                |
+| `in_hh_effective_R`  | `Float64` | Effective R-value for household infections                                       |
+| `out_hh_effective_R` | `Float64` | Effective R-value for non-household infections                                   |
+| `rolling_R`          | `Float64` | Effective R rolling average of the 7 previous ticks                              |
+| `rolling_in_hh_R`    | `Float64` | Effective R rolling average for household infections of the 7 previous ticks     |
+| `rolling_out_hh_R`   | `Float64` | Effective R rolling average for non-household infections of the 7 previous ticks |
 """
 function effectiveR(postProcessor::PostProcessor)
     windowsize = 7 # for rolling R calculation
     sim = simulation(postProcessor)
     
+    sim_infs = sim_infectionsDF(postProcessor)
+
     # calculate effective R over time from post processor data
-    eff_r = sim_infectionsDF(postProcessor) |> 
+    eff_r = sim_infs |> 
     # take infectees to calculate R (to also cover individuals who don't infect anybody)
     x -> DataFrames.select(x, [:infection_id, :tick]) |>
     x -> leftjoin(x, 
         # join to find individuals who subsequently been infected by an infectee
-        sim_infectionsDF(postProcessor) |>
+        sim_infs |>
             x -> groupby(x, :source_infection_id) |>
             x -> combine(x,
                 nrow => :infections,
@@ -44,9 +50,9 @@ function effectiveR(postProcessor::PostProcessor)
     , on = [:infection_id => :source_infection_id]) |>
     # for individuals who didn't infect anybody, set "infections" to 0
     x -> DataFrames.select(x, :infection_id => :id, :tick,
-        :infections => ByRow(x -> coalesce(x, 0)) => :infections,
-        :in_hh_infections => ByRow(x -> coalesce(x, 0)) => :in_hh_infections,
-        :out_hh_infections => ByRow(x -> coalesce(x, 0)) => :out_hh_infections) |>
+        :infections => (x -> coalesce.(x, 0)) => :infections,
+        :in_hh_infections => (x -> coalesce.(x, 0)) => :in_hh_infections,
+        :out_hh_infections => (x -> coalesce.(x, 0)) => :out_hh_infections) |>
     # calulate total_infections / spreaders per tick (effective R)
     x -> groupby(x, :tick) |>
     x -> combine(x,
@@ -55,17 +61,17 @@ function effectiveR(postProcessor::PostProcessor)
         :out_hh_infections => sum => :tick_out_hh_infections,
         nrow => :spreaders) |>
     x -> transform(x, 
-        [:tick_infections, :spreaders] => ByRow(/) => :effective_R,
-        [:tick_in_hh_infections, :spreaders] => ByRow(/) => :in_hh_effective_R,
-        [:tick_out_hh_infections, :spreaders] => ByRow(/) => :out_hh_effective_R)  |>
+        [:tick_infections, :spreaders] => ((i, s) -> i ./ s) => :effective_R,
+        [:tick_in_hh_infections, :spreaders] => ((i, s) -> i ./ s) => :in_hh_effective_R,
+        [:tick_out_hh_infections, :spreaders] => ((i, s) -> i ./ s) => :out_hh_effective_R)  |>
     x -> DataFrames.select(x, [:tick, :effective_R, :in_hh_effective_R, :out_hh_effective_R]) |>
     # join with artificial DF of all ticks to also get ticks with 0 infections
     x -> rightjoin(x, DataFrame(tick = 1:tick(sim)), on = :tick) |>
     # remove missing Rs for ticks
     x -> DataFrames.select(x, :tick,
-        :effective_R => ByRow(x -> coalesce(x, 0.0)) => :effective_R,
-        :in_hh_effective_R => ByRow(x -> coalesce(x, 0.0)) => :in_hh_effective_R,
-        :out_hh_effective_R => ByRow(x -> coalesce(x, 0.0)) => :out_hh_effective_R)
+        :effective_R => (x -> coalesce.(x, 0.0)) => :effective_R,
+        :in_hh_effective_R => (x -> coalesce.(x, 0.0)) => :in_hh_effective_R,
+        :out_hh_effective_R => (x -> coalesce.(x, 0.0)) => :out_hh_effective_R)
 
 
         # calculating rolling R with windowsize

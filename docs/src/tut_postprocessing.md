@@ -1,4 +1,4 @@
-# 7 - Logging & Post-Processing
+# 8 - Logging & Post-Processing
 
 GEMS offers a variety of options to collect data during simulation runs and process them to obtain aggregated statistics.
 This tutorial teaches you how to access the data and customize how data is being collected and processed.
@@ -25,16 +25,16 @@ dataframe(inf_logger)
 [ Info: 23:40:28 | └ Creating simulation object
 [ Info: 23:40:29 | Running Simulation Simulation 79
 100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:29<00:00, 13 days/s]
-75908×19 DataFrame
-   Row │ infection_id  tick   id_a   id_b   infectious_tick  removed_tick  death_tick  ⋯
-       │ Int32         Int16  Int32  Int32  Int16            Int16         Int16       ⋯
-───────┼───────────────────────────────────────────────────────────────────────────────────
-     1 │            1      0     -1  74571                5            13          -1   ⋯         
-     2 │            2      0     -1  48307                1             7          -1   ⋯  
-   ⋮   │      ⋮          ⋮      ⋮      ⋮           ⋮              ⋮            ⋮             ⋮ 
- 75907 │        75907    177   4685  36171              177           183          -1   ⋯ 
- 75908 │        75908    181   4685  33557              185           191          -1   ⋯  
-                                                        10 columns and 75904 rows omitted
+74078×23 DataFrame
+   Row │ infection_id  tick   id_a   id_b   progression_category  infectiousness_onset ⋯
+       │ Int32         Int16  Int32  Int32  Symbol                Int16                ⋯
+───────┼────────────────────────────────────────────────────────────────────────────────
+     1 │            1      0     -1  81435  Critical                                 1 ⋯
+     2 │            2      0     -1  37134  Asymptomatic                             2  
+   ⋮   │      ⋮          ⋮      ⋮      ⋮             ⋮                     ⋮           ⋱
+ 74077 │        74077    183  20556  41661  Hospitalized                           184  
+ 74078 │        74078    190  81857  73144  Symptomatic                            191  
+                                                       17 columns and 74031 rows omitted                                                     
 ```
 
 !!! info "Where can I find out what these columns mean?"
@@ -65,15 +65,16 @@ infectionsDF(pp)
 [ Info: 23:41:40 | └ Creating simulation object
 [ Info: 23:41:41 | Running Simulation Simulation 80
 100.0%┣█████████████████████████████████████████┫ 365 days/365 days [00:57<00:00, 6 days/s]
-75798×47 DataFrame
-Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  ⋯
-    │ Int32         Int16  Int32  Int32   Int16            Int16         ⋯
-    ┼────────────────────────────────────────────────────────────────────────
-  1 │         7180     36  61265       1               38            44  ⋯    
-  2 │        71586     88  77749       2               91            98  ⋯
-⋮     │        ⋮          ⋮      ⋮      ⋮                 ⋮              ⋮      
-75798 │        42048     60  61117  100000             64            72  ⋯      
-38 columns and 75794 rows omitted
+74549×52 DataFrame
+   Row │ infection_id  tick   id_a   id_b    progression_category  infectiousness_onse ⋯
+       │ Int32         Int16  Int32  Int32   Symbol                Int16               ⋯
+───────┼────────────────────────────────────────────────────────────────────────────────
+     1 │        37305     55  99752       1  Symptomatic                             5 ⋯
+     2 │        68257     81  57862       2  Severe                                  8  
+   ⋮   │      ⋮          ⋮      ⋮      ⋮              ⋮                     ⋮          ⋱
+ 74548 │        20815     45  38327   99999  Symptomatic                             4  
+ 74549 │        74126    113  16508  100000  Hospitalized                           11  
+                                                       47 columns and 74502 rows omitted
 ```
 
 You might have noticed, that this dataframe contains characteristics about the infecting and infected individuals (e.g., `age` or `sex`) or whether they were detected.
