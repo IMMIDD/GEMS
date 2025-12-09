@@ -47,6 +47,7 @@ makedocs(
             "Cheat Sheet" =>"cheat-sheet.md"
         ],
         "Config Files" => "config-files.md",
+        "Modeling Case Study" => "modelling_case_study.md",
         # modules/API - docstrings and functions
         "API" => [
             "Overview" => "docstrings-overview.md",
