@@ -447,41 +447,46 @@ println(r0(rd_f))
 ```
 
 ### 3.3 Interventions
-In this section, we define a **reusable intervention strategy**: testing combined with isolation. This is the core “intervention” concept, and all later experiments build on it. 
+In this section, we define a **reusable intervention strategy**: testing combined with isolation. This is the core “intervention” concept, and all later experiments build on it.
 
-We encapsulate the testing and isolation strategy in a function `test_and_isolation(sim; ...)`:
+```@raw html
+<p align="center">
+    <img src="assets/case_study/trism_graphic.png" width="80%"/>
+</p>
+```
+
+We encapsulate the testing and isolation strategy in a function `tick_test_and_isolation(sim; ...)`:
 
 - Create a new **antigen test** with configurable sensitivity and specificity.  
-- Define a **self-isolation strategy** that is applied after a positive test.  
-- Combine the test and isolation into a **TriSM**, triggered by symptoms.  
+- Define a **self-isolation strategy** that is applied after a positive test.
+- Trigger the testing strategy by a certain **tick**
 - Apply optional **delays** and **conditions** to testing and isolation.
 
 
 ```julia
-function test_and_isolation!(sim::Simulation; 
+function tick_test_and_isolation!(sim::Simulation; 
     test_sensitivity::Float64 = 1.0, 
     test_specificity::Float64 = 1.0, 
     test_condition::Function = i -> true,                         
     isolation_condition::Function = i -> true,
     test_delay::Function = i -> 0,
-    isolation_delay::Function = i -> 0)
+    isolation_delay::Function = i -> 0,
+    trigger_interval::Int16 = Int16(1))
     
     antigen_test = TestType("Antigen Test", pathogen(sim), sim, 
     sensitivity=test_sensitivity, specificity=test_specificity)
-
     # define self isolation strategy
     self_isolation = IStrategy("Self Isolation", sim)
-    add_measure!(self_isolation, SelfIsolation(14), 
-    delay=isolation_delay, condition=isolation_condition)
-
+    add_measure!(self_isolation, SelfIsolation(14), delay=isolation_delay, 
+    condition=isolation_condition)
     # define testing strategy that triggers self isolation
     testing = IStrategy("Testing", sim)
-    add_measure!(testing, Test("Test", antigen_test, 
-    positive_followup=self_isolation), delay = test_delay, condition=test_condition)
+    add_measure!(testing, Test("Test", antigen_test, positive_followup=self_isolation), 
+    delay = test_delay, condition=test_condition)
 
-    # trigger testing on symptoms
-    trigger = SymptomTrigger(testing)
-    add_symptom_trigger!(sim, trigger)
+    trigger = ITickTrigger(testing, switch_tick = Int16(1), interval = trigger_interval)
+    add_tick_trigger!(sim, trigger)
+
 end
 ```
 By encapsulating the intervention in a function, we can easily reuse it for multiple parameter combinations.
@@ -492,7 +497,7 @@ We can now use the function to run the intervention scenario against the baselin
 baseline = Simulation(label="No Interventions", population="SL", configfile="r0_fitted.toml")
 scenario = Simulation(label="With Interventions", population="SL", configfile="r0_fitted.toml")
 
-test_and_isolation!(scenario)
+tick_test_and_isolation!(scenario)
 
 run!(baseline)
 run!(scenario)
@@ -502,12 +507,13 @@ rd_s = ResultData(scenario)
 
 gemsplot([rd_b, rd_s])
 ```
-
+**Plot**
 ```@raw html
 <p align="center">
-    <img src="assets/case_study/interventions.png" width="80%"/>
+    <img src="assets/case_study/interventions.png" width="60%"/>
 </p>
 ```
+The Plot shows how the interventions control the disease outbreak.
 
 ### 3.4 Batch Simulations
 We know that neither the test sensitivity nor the mandate adherence will be perfect. That is why we will investigate now which combinations are "good enough", in the sense that it will keep the R value under 1 and stop the epidemic. 
@@ -536,7 +542,7 @@ adherences = 0.2:0.1:1.0
 We loop over all combinations of test sensitivity and adherence:
 
 - Create a new `Simulation` object for each combination.  
-- Apply the `test_and_isolation` intervention with the current parameter values.  
+- Apply the test and isolation intervention with the current parameter values.  
 - Run the simulation and extract the outcome (R₀).  
 - Store the results in the vectors for plotting.
 
@@ -597,16 +603,148 @@ gemsheatmap(
 
 The heatmap shows which combinations of test sensitivity and adherence are sufficient to reduce R₀ below 1, helping to identify effective containment strategies.
 
+**Heatmap**
 ```@raw html
 <p align="center">
     <img src="assets/case_study/heatmap_r0.png" width="80%"/>
 </p>
 ```
 
+The batch setup above is intentionally generic and can be extended in many directions.  
+While we focused here on the interaction between test sensitivity and adherence, the same workflow can be used to explore a wide range of alternative scenarios, for example:
+
+- **Testing frequency:** compare daily testing, weekly testing, or testing every two weeks, and quantify how many tests are required to achieve R₀ < 1.
+- **Partial testing coverage:** test only a fraction of the population (e.g. 50% of agents) and compare the results to full testing with imperfect adherence.
+- **Test characteristics:** vary test specificity in addition to sensitivity to study the impact of false positives and unnecessary quarantines.
+- **Reporting delays:** introduce delays between testing and result availability and assess how this affects epidemic control.
+- **Alternative trade-offs:** analyze whether fewer tests with perfect isolation produce similar outcomes to more frequent testing with imperfect adherence.
+
+These explorations follow the same batch-simulation pattern and highlight how intervention design, testing logistics, and behavioral assumptions jointly shape epidemic dynamics. In the next section, we focus on how to systematically analyze and structure the resulting outputs.
+
 ### 3.5 Analyzing Outputs
 
-#### 3.5.1 Saving Results
-#### 3.5.2 Result Data Styles
+The heatmap in the previous section provides a first qualitative answer to our central question:  
+*Which combinations of test sensitivity and adherence are sufficient to control the epidemic (R₀ < 1)?*
+
+However, this visualization has clear limitations. It shows only a single outcome (R₀), provides relative patterns rather than numerical values, hides trade-offs between effectiveness and cost (e.g. testing effort or quarantine burden), and does not capture temporal dynamics such as how quickly cases decline.
+
+To move beyond visual inspection, we need structured access to the simulation outputs of each individual run. In GEMS, this is provided by **ResultData** objects.
+
+#### 3.5.1 Result Data Styles
+
+Each simulation run in GEMS produces a `ResultData` object containing the post-processed outputs of the model. The choice of *result data style* determines which quantities are computed and stored.
+
+The default result data style is comprehensive but unnecessarily heavy for a focused intervention study. For this case study, we therefore define a **custom result data style** that stores only the quantities needed to evaluate testing and isolation strategies. This keeps the analysis focused and reduces memory and post-processing overhead when running large batches of simulations.
+
+Our `CustomResultData` supports three complementary perspectives:
+
+- **Intervention effectiveness**, via aggregated outcomes such as R₀, attack rate, total infections, and detection rate.
+- **Intervention cost and burden**, quantified by the total number of tests and total quarantine days.
+- **Temporal dynamics**, captured through selected time series (e.g. cases per tick, detected cases, effective R, cumulative quarantines).
+
+```julia
+export CustomResultData
+
+mutable struct CustomResultData <: ResultDataStyle
+    data::Dict{String, Any}
+    function CustomResultData(pP::PostProcessor)
+        funcs = Dict(
+            "sim_data" =>
+                Dict(
+                    "number_of_individuals" => () -> pP |> simulation |> population |> individuals |> length,
+                    "r0" => () -> pP |> r0,
+                    "total_infections" => () -> pP |> infectionsDF |> nrow,
+                    "attack_rate" => () -> pP |> attack_rate,
+                    "strategies" => () -> pP |> simulation |> strategies,
+                    "tick_triggers" => () -> pP |> simulation |> tick_triggers,
+                    "testtypes" => () -> pP |> simulation |> testtypes,
+                    "total_quarantines" => () -> pP |> total_quarantines,
+                    "total_tests" => () -> pP |> total_tests,
+                    "detection_rate" => () -> pP |> detection_rate
+                ),
+            "dataframes" =>
+                Dict(
+                    "infections" => () -> pP |> infectionsDF,
+                    "tests" => () -> pP |> testsDF,
+                    "effectiveR" => () -> pP |> effectiveR,
+                    "tick_cases" => () -> pP |> tick_cases,
+                    "cumulative_cases" => () -> pP |> cumulative_cases,
+                    "cumulative_disease_progressions" => () -> pP |> cumulative_disease_progressions,
+                    "cumulative_quarantines" => () -> pP |> cumulative_quarantines,
+                    "tick_tests" => () -> pP |> tick_tests,
+                    "detected_tick_cases" => () -> pP |> detected_tick_cases,
+                    "rolling_observed_SI" => () -> pP |> rolling_observed_SI,
+                    "observed_R" => () -> pP |> observed_R,
+                    "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
+                    "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
+                )
+        )
+
+        # call all provided functions and replace
+        # the dicts with their return values
+        return(
+            new(process_funcs(funcs))
+        )
+    end
+end
+```
+The heatmap analysis identified regions of the parameter space where the epidemic can be controlled (R₀ < 1). However, several of these parameter combinations may be equally effective while differing  in their **resource requirements**. To distinguish between such scenarios, we now turn to a more quantitative analysis based on `ResultData`.
+
+As a concrete example, we focus on **testing efficiency**, defined as the number of tests required to prevent one infection. This metric cannot be inferred from visualizations alone, as it requires direct access to numerical outputs from each simulation run.
+
+Using the `CustomResultData`, we extract for every simulation:
+
+- the basic reproduction number (R₀),
+- the total number of infections,
+- the total number of tests performed.
+
+From these values, we compute a derived quantity:
+
+> **tests per infection** = total tests ÷ total infections
+
+This step is implemented by iterating over the stored `ResultData` objects and collecting the relevant fields.  
+
+```julia
+# access individual ResultData objects
+runs = bd.data["runs"]
+
+r0_vals = Float64[]
+tests_per_infection = Float64[]
+
+for rd in runs
+    r0 = rd.data["sim_data"]["r0"]
+    total_tests = sum(values(rd.data["sim_data"]["total_tests"]))
+    total_infections = rd.data["sim_data"]["total_infections"]
+
+    push!(r0_vals, r0)
+    push!(tests_per_infection, total_tests / total_infections)
+end
+```
+
+To analyze the resulting trade-offs, we visualize the relationship between **epidemic control** and **testing effort**. A scatter plot with R₀ on the x-axis and tests per infection on the y-axis reveals whether achieving lower R₀ values requires disproportionately higher testing intensity. 
+
+```julia
+using Plots
+
+scatter(
+    r0_vals,
+    tests_per_infection;
+    xlabel = "R₀",
+    ylabel = "Tests per Infection",
+    title = "Trade-off Between Epidemic Control and Testing Effort",
+    legend = false
+)
+```
+
+In addition to visual analysis, the numerical results can be inspected directly. Printing a compact summary for each simulation run allows us to identify parameter combinations that keep R₀ below 1 while minimizing testing effort.  
+
+**Plot**
+
+This analysis highlights that intervention strategies should not be evaluated solely based on whether they control the epidemic, but also on **how efficiently** they do so. By working directly with `ResultData`, we can quantify these trade-offs and identify scenarios that are both epidemiological effective and operationally feasible.
+
+The same approach can be extended to other questions, such as the impact of testing frequency, partial population coverage, reduced test specificity, or delayed test results.
+
+#### 3.5.2 Saving Results
 
 ## 4. Model Refinement and Iteration
 ### 4.1 Custom Transmission Functions
@@ -704,6 +842,8 @@ gemsplot(rds, type = (:CompartmentFill, :EffectiveReproduction, :TickCasesBySett
 #### 4.2.2 Contact Sampling
 ### 4.3 Recalibration
 ### 4.4 Extending Outcomes
+#### 4.4.1 Adjust Result Data Style
+#### 4.4.2 Batch Data Styles
 
 ## 5. Discussion & Evaluation
 
