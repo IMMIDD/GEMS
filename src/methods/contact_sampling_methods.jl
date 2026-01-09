@@ -105,15 +105,15 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
         return Individual[]
     end
     interval = contactparameter_sampling.contact_matrix.interval_steps
-    max_age = contactparameter_sampling.contact_matrix.aggregation_bound
-    orig_bin = (individual.age ÷ interval) + 1
+    max_age = contactparameter_sampling.contact_matrix.aggregation_bound - 1
+    orig_bin = (min(individual.age, max_age) ÷ interval) + 1
     contact_matrix::Matrix{Float64} = contactparameter_sampling.contact_matrix.data
     age_pyramid = contactparameter_sampling.age_pyramid
     # if age_pyramid is not ready compute it
     if size(age_pyramid)[1] == 0
         age_pyramid = zeros(size(contact_matrix)[1])
         for ind in present_inds
-            interval_id = ind.age ÷ interval + 1
+            interval_id = min(ind.age, max_age) ÷ interval + 1
             age_pyramid[interval_id] += 1
         end
         age_pyramid = age_pyramid ./ sum(age_pyramid)
@@ -155,7 +155,8 @@ function sample_contacts(contactparameter_sampling::AgeBasedContactSampling, set
     # Second order sampling (i.e. structural one)
     out = Individual[]
     for i = 1:number_of_contacts
-        dest_bin = (res[i].age ÷ interval) + 1
+        
+        dest_bin = (min(res[i].age, max_age) ÷ interval) + 1
         m = contact_matrix[orig_bin, dest_bin]
         if m > 0.0
             m = m / m_max # since we multiplied by m_max in line no. 113
