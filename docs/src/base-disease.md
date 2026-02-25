@@ -2,7 +2,7 @@
 
 ## Disease Progression 
 
-For a given pathogen we assume a disease progression following the following diagram.
+For a given pathogen we assume a disease progression that branches out depending on the severity of the infection.
 
 ```@raw html
 <p align="center">
@@ -11,75 +11,51 @@ For a given pathogen we assume a disease progression following the following dia
 ```
 
 An infected person will be considered exposed until they become infectious.
-After this they can stay without symptoms (resulting in asymptomatic cases) or progress
-through the pipeline above until leaving to the recovered or dead state.
+After this, they can stay without symptoms (resulting in asymptomatic cases) or progress through a disease pathway until leaving to the recovered or dead state.
 
-Throughout GEMS we use the term "removed" for the state of an individual leaving this
-disease progression by either recover from the disease or dying.
+Throughout GEMS we use the term "removed" for the state of an individual leaving this disease progression by either recovering from the disease or dying.
+GEMS categorizes disease states internally using symbols (e.g., `:Symptomatic`, `:Critical`). Depending on the terminal state an individual reaches before being removed, we can categorize the infected individuals into the following progression tracks:
 
-Depending on the terminal state an individual reaches before being removed,
-we can categorize the infected individuals like in the following table.
-
-| **Symptoms Category** | **Terminal State** |
+| **Symptoms Category** | **Terminal State** |
 | :-------------------- | :----------------- |
 | Asymptomatic          | Presymptomatic     |
-| Mild                  | Symptomatic        |
+| Symptomatic           | Symptomatic        |
 | Severe                | Severe             |
+| Hospitalized          | Hospitalized       |
 | Critical              | Critical           |
 
-GEMS assigns different categories numerical values to represent them internally. Those are
-defined as constants within the module.
-
-| **Constant**                         | **Value**  |
-| :----------------------------------- | ---------: |
-| `GEMS.SYMPTOM_CATEGORY_NOT_INFECTED` | 0          |
-| `GEMS.SYMPTOM_CATEGORY_ASYMPTOMATIC` | 1          |
-| `GEMS.SYMPTOM_CATEGORY_MILD`         | 2          |
-| `GEMS.SYMPTOM_CATEGORY_SEVERE`       | 3          |
-| `GEMS.SYMPTOM_CATEGORY_CRITICAL`     | 4          |
-
-
-As the symptom category and terminal state are closely related, the terms
-"exposed" and "asymptomatic" might be used synonymically as well as "mild" and
-"symptomatic".
-
-Furthermore the progression for some symptom categories includes the need of hospitalization.
-Severe cases will have a given probability to need hospitalization, while critical cases
-will always be hospitalized. Critical case furthermore have probability to need ICU (intensive care unit).
-Critical ICU cases also have a probability to need ventilation.
-
-While asymptotic cases can't die by means of the disease, all other symptom categories
-are assigned a certain death probability as seen in the graphic.
-
+As the symptom category and terminal state are closely related, the terms "exposed" and "asymptomatic" might be used synonymously, as well as "mild" and "symptomatic".
+Furthermore, the progression for some symptom categories includes the need for hospitalization. Severe cases do not require hospitalization in the default config, but `Hospitalized` cases do. `Critical` cases will additionally require ICU admission (intensive care unit).
+While asymptotic, symptomatic, severe, and hospitalized cases can't die by means of the disease in the default setup, critical cases are assigned a `30%` death probability.
 
 ## Infectiousness
 
-The infectiousness of an individual is tracked separately from the disease state. Generally
-an individual should become infectious some time after becoming exposed and before getting
-symptoms. In asymptomatic cases, the individual will become infectious between becoming
-exposed and recovering from a disease.
-
+The infectiousness of an individual is tracked separately from the disease state.
+Generally an individual should become infectious some time after becoming exposed and before getting symptoms.
+In asymptomatic cases, the individual will become infectious between becoming exposed and recovering from a disease.
 
 ## Age Stratification
 
-To estimate the disease progression, we make use of age-stratified stochastic matrices.
+To estimate the disease progression, we make use of age-stratified stochastic matrices passed to the `AgeBasedProgressionAssignment`.
+As an example, consider three distinct age groups (`-14`, `15-65`, `66-`) as well as the five symptom categories mentioned above.
+A possible age stratification matrix is given by the following $3 \times 5$ matrix:
 
-As an example consider the age groups 0-40, 40-80 and 80+ as well as the above mentioned
-four symptom categories of the disease progression. A possible age stratification matrix can
-be given by the following $3x4$ matrix.
 ```math
 \begin{bmatrix}
-    0.9 & 0.1 & 0.0 & 0.0\\ 
-    0.5 & 0..3 & 0.2 & 0.0\\
-    0.0 & 0.0 & 0.5 & 0.5
+    0.400 & 0.580 & 0.010 & 0.007 & 0.003 \\ 
+    0.250 & 0.600 & 0.110 & 0.030 & 0.010 \\
+    0.150 & 0.400 & 0.250 & 0.120 & 0.080
 \end{bmatrix}
 ```
-In this example the first row contains the probability of an individual between 0 and 40 years
-of age to end up in the symptom categories "Asymptomatic", "Mild", "Severe" or "Critical" in this
-order.
 
+In this example, the first row contains the probability of an individual up to 14 years of age ending up in the progression categories "Asymptomatic", "Symptomatic", "Severe", "Hospitalized", or "Critical" in this order.
 
 ## True- vs. Observed Cases
 
 We generally differentiate "true" cases and "observed" cases.
-While a true case is an actual infection.
+While a true case is an actual infection, an observed case is a recorded, thus "known" infection.
+Not every true infection will automatically result in an observed infection. 
+Depending on the specific pathogen, asymptomatic cases might be highly unlikely to get tested and thus will not be recorded.
+In general, one must keep in mind that the number of unrecorded cases can only be roughly estimated in reality and highly depends on the testing strategy in place.
+Depending on the kind of study you want to perform with GEMS, you will have to find a reasonable mechanism to map true to observed cases yourself.
+You can, for example, evaluate this using a testing strategy via interventions or model it in postprocessing logic.
