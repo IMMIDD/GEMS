@@ -6,7 +6,7 @@ For a given pathogen we assume a disease progression that branches out depending
 
 ```@raw html
 <p align="center">
-    <img src="../assets/disease_progression_diagram.png" width="40%"/>
+    <img src="../assets/disease_progression_diagram.png" width="90%"/>
 </p>
 ```
 

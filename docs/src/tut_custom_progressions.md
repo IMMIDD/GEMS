@@ -8,7 +8,7 @@ This tutorial teaches you how to implement a custom disease progression category
 
 ```@raw html
 <p align="center">
-    <img src="../assets/disease_progression_diagram.png" width="60%"/>
+    <img src="../assets/disease_progression_diagram.png" width="90%"/>
 </p>
 ``` 
 
