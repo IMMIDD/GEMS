@@ -125,22 +125,6 @@ You also need to update the `progression_assignment` matrix to include this new 
 !!! warning "Module Visibility"
     If you define custom structs like `SevereWithDeath` in an external script or module (like `GEMS_NPI_BH`), ensure that the struct and functions are properly loaded into your Julia environment *before* initializing the `Simulation("config.toml")`. The TOML parser requires the struct definition to exist in the global scope to build it successfully!
 
-## Running and Plotting
+## Running
 
-Once your struct is loaded and the TOML file is configured, you run the simulation identically to any default setup. You will now observe deaths originating from individuals who never entered the `Critical` or `Hospitalized` states.
-
-```julia
-sim = Simulation("path/to/custom_severe_death.toml")
-run!(sim)
-rd = ResultData(sim)
-
-gemsplot(rd, type = (:TickCases, :CumulativeDeaths))
-```
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_custom_progression_severe_death.png" width="80%"/>
-</p>
-```
+Once your struct is loaded and the TOML file is configured, you run the simulation identically to any default setup. You will now observe deaths originating from individuals who never entered the `Critical` state.
