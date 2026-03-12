@@ -17,7 +17,7 @@ Pages = [
     #"tut_behavior.md",
     #"tut_contacts.md",
     #"tut_infections.md",
-    "tut_custom_progressions.md",
+    #"tut_custom_progressions.md",
     "cheat-sheet.md"
     ]
 Depth = 2

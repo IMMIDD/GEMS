@@ -324,7 +324,55 @@ The `type` argument specifies the `TransmissionFunction` that conditions the dis
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `TransmissionFunction` struct upon initialization.
 
 #### `progressions`
-Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Symptomatic`, `Severe`, `Hospitalized`, and `Critical`. Each category specifies Poisson or Binomial distributions to compute state intervals (e.g. `exposure_to_infectiousness_onset`, `symptom_onset_to_recovery`).
+Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Symptomatic`, `Severe`, `Hospitalized`, and `Critical`. 
+
+Within each category, you must define the intervals between state transitions (e.g., `exposure_to_infectiousness_onset`, `symptom_onset_to_recovery`). Every interval requires two arguments to initialize the underlying random distribution:
+* **`distribution`**: A string representing the statistical distribution (e.g., `"Poisson"`, `"Binomial"`).
+* **`parameters`**: An array of numerical values required by the chosen distribution (e.g., `[7]` for a Poisson distribution with $\lambda = 7$).
+
+```toml
+[Pathogens.Covid19.progressions.Symptomatic]
+    [Pathogens.Covid19.progressions.Symptomatic.symptom_onset_to_recovery]
+        distribution = "Poisson"
+        parameters = [7]
+```
+*Note: For distributions representing days, GEMS internally adds +1 to early stages like exposure-to-infectiousness to prevent zero-day state transitions.*
 
 #### `progression_assignment`
-Determines how disease tracks are distributed among the infected population. By passing an `AgeBasedProgressionAssignment`, probabilities can be mapped explicitly via age stratifications.
+Determines how the distinct disease tracks defined above are distributed among the infected population. By passing an `AgeBasedProgressionAssignment`, probabilities can be mapped explicitly via age stratifications.
+
+```toml
+[Pathogens.Covid19.progression_assignment]
+    type = "AgeBasedProgressionAssignment"
+    [Pathogens.Covid19.progression_assignment.parameters]
+        age_groups = ["-14", "15-65", "66-"]
+        progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Hospitalized", "Critical"]
+        stratification_matrix = [[0.400, 0.580, 0.010, 0.007, 0.003],
+                                 [0.250, 0.600, 0.110, 0.030, 0.010],
+                                 [0.150, 0.400, 0.250, 0.120, 0.080]]
+```
+
+The nested `[.parameters]` block requires three lists:
+* **`age_groups`**: An array of strings defining age brackets. `"-14"` means 0-14, `"15-65"` means 15-65, and `"66-"` means 66+.
+* **`progression_categories`**: An array of strings defining the available progression structs. These must exactly match the names defined in your `[Pathogens.<Name>.progressions]` block.
+* **`stratification_matrix`**: A 2D array mapping the age groups (rows) to the progression categories (columns). The sum of probabilities in each row must equal `1.0`.
+
+### Settings
+
+The `[Settings]` section defines the interaction mechanics for the different setting types in the simulation.
+By default, simulations only include the `Household`, `SchoolClass`, and `Office` setting.
+If you want to configure mechanics for other setting types, you have to load a population model that includes those settings first.
+
+#### `contact_sampling_method`
+Defines the routine which is used to generate contacts between individuals in a setting.
+
+```toml
+[Settings]
+    [Settings.Household]
+        [Settings.Household.contact_sampling_method]
+                type = "ContactparameterSampling"
+                [Settings.Household.contact_sampling_method.parameters]
+                    contactparameter = 1.0
+```
+The `type` argument specifies the `ContactSamplingMethod` that conditions the dispatching to the respective `sample_contacts(...)` function when running GEMS.
+The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `ContactSamplingMethod` struct upon initialization.

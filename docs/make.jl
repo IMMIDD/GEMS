@@ -41,7 +41,7 @@ makedocs(
             "8 - Logging & Post-Processing" => "tut_postprocessing.md",
             #"8 - Reporting" => "tut_reporting.md",
             "9 - Modeling Interventions" =>"tut_npi.md",
-            "10 - Custom Disease Progressions" => "tut_custom_progressions.md",
+            #"10 - Custom Disease Progressions" => "tut_custom_progressions.md",
             #"10 - Modeling Behavior" =>"tut_behavior.md",
             #"11 - Contact Structures" =>"tut_contacts.md",
             #"12 - Infections & Immunity" =>"tut_infections.md",
