@@ -58,7 +58,6 @@ There should only be one `GlobalSetting` instance in any simulation.
 - `contact_sampling_method::ContactSamplingMethod`: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool`: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool`: Whether the setting is open for contacts.
-- `lock::ReentrantLock`: A lock to use in a parallelized setting to ensure data race free
     conditions
 """
 @with_kw mutable struct GlobalSetting <: IndividualSetting
@@ -68,13 +67,10 @@ There should only be one `GlobalSetting` instance in any simulation.
     ags::AGS= AGS() # 4 bytes
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -123,13 +119,10 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -165,13 +158,10 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -222,13 +212,10 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     lat::Float32 = NaN # 4 bytes
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -272,13 +259,10 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -320,13 +304,10 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -363,13 +344,10 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     type::Int32 = -1# 1 byte
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -411,13 +389,10 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 """
@@ -459,13 +434,10 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 """
@@ -510,13 +482,10 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     
     
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 
@@ -569,14 +538,10 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
-
 end
 ###
 ### SETTING UTILS
@@ -707,7 +672,7 @@ Returns whether the setting is considered active for simulation, e.g. an infecti
 spread in the setting.
 """
 function isactive(setting::Setting)::Bool
-    return setting.isactive
+    return setting.isactive[]
 end
 
 """
@@ -716,11 +681,9 @@ end
 Sets the setting active for simulation.
 """
 function activate!(setting::Setting)
-    if !setting.isactive
-        lock(setting.lock) do
-            if hasproperty(setting, :contains) || setting |> individuals |> length > 1
-                setting.isactive = true
-            end
+    if !isactive(setting)
+        if hasproperty(setting, :contains) || setting |> individuals |> length > 1
+            Threads.atomic_xchg!(setting.isactive, true)
         end
     end
 end
@@ -731,9 +694,7 @@ end
 Sets the setting as inactive for simulation.
 """
 function deactivate!(setting::Setting)
-    lock(setting.lock) do
-        setting.isactive = false
-    end
+    Threads.atomic_xchg!(setting.isactive, false)
 end
 
 """
