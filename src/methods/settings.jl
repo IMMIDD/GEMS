@@ -2,6 +2,7 @@ export household, office, schoolclass, municipality, getsetting
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
 export geolocation, lat, lon, remove_empty_settings!, present_individuals!, is_open, get_open_contained!, open!, close!
 export sample_individuals
+export activate_with_containers!
 
 
 ### setting extraction from individuals
@@ -698,3 +699,19 @@ function remove_empty_settings!(sim::Simulation)
     # Update all ids
     new_setting_ids!(settingscontainer(sim))
 end 
+
+
+"""
+    activate_with_containers!(setting::Setting, sim::Simulation)
+
+Activates setting and recursively activates the the containing setting.
+"""
+function activate_with_containers!(setting::Setting, sim::Simulation)
+    activate!(setting)
+    # Check if this setting is contained within a parent setting
+    if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
+        # Recursively activate the parent
+        parent_setting = settings(sim, setting.contained_type)[setting.contained]
+        activate_with_containers!(parent_setting, sim)
+    end
+end

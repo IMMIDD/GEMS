@@ -11,7 +11,7 @@ export age, id, education, occupation, sex
 # behaviour
 export mandate_compliance, mandate_compliance!, social_factor, social_factor!
 # settings
-export setting_id, setting_id!, household_id, class_id, office_id, municipality_id
+export setting_id, setting_id!, household_id, class_id, office_id, municipality_id, settings_tuple
 export is_working, is_student, has_municipality
 # health status
 export comorbidities
@@ -370,6 +370,20 @@ Returns an individual's associated municipalities ID.
 """
 function municipality_id(individual::Individual)::Int32
     return individual.municipality
+end
+
+"""
+    settings_tuple(individual::Individual)
+
+Returns all individual's associated setting IDs as a Tuple.
+"""
+function settings_tuple(individual::Individual)
+    return (
+        (Household, individual.household),
+        (Office, individual.office),
+        (SchoolClass, individual.schoolclass),
+        (Municipality, individual.municipality)
+    )
 end
 
 """

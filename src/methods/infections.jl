@@ -481,8 +481,11 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
                         # try to infect
                         if try_to_infect!(ind, c, sim, pathogen, setting, infection_id(ind))
                             # activate all settings the individual is part of if infection was successful
-                            for (type, id) in settings(c, sim)
-                                activate!(settings(sim, type)[id])
+                            for (type, id) in settings_tuple(c)
+                                if id != DEFAULT_SETTING_ID
+                                    current_setting = settings(sim, type)[id]
+                                    activate_with_containers!(current_setting, sim)
+                                end
                             end
                         end
                     end

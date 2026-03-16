@@ -94,11 +94,11 @@ end
 Returns all settings of the specified type and `[]` if The
 setting container does not contain the type. Extends `Base.get`.
 """
-function Base.get(container::SettingsContainer, type::DataType)::Any
+function Base.get(container::SettingsContainer, type::DataType)
     if haskey(container.settings, type)
         return container.settings[type]
     else
-        return []
+        return Setting[]
     end
 end
 
