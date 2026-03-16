@@ -716,9 +716,11 @@ end
 Sets the setting active for simulation.
 """
 function activate!(setting::Setting)
-    lock(setting.lock) do
-        if hasproperty(setting, :contains) || setting |> individuals |> length > 1
-            setting.isactive = true
+    if !setting.isactive
+        lock(setting.lock) do
+            if hasproperty(setting, :contains) || setting |> individuals |> length > 1
+                setting.isactive = true
+            end
         end
     end
 end

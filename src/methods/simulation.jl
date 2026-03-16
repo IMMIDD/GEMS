@@ -257,8 +257,9 @@ function step!(simulation::Simulation)
     process_events!(simulation)
 
     # update quarantine state
-    individuals(simulation) |>
-        inds -> quarantined!.(inds, is_quarantined.(inds, tick(simulation)))
+    Threads.@threads :static for i in simulation |> population |> individuals
+        quarantined!(i, is_quarantined(i, tick(simulation)))
+    end
 
     log_stepinfo(simulation)
     
