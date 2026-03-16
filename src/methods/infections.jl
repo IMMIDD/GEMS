@@ -45,16 +45,16 @@ end
 """
     infect!(infectee::Individual,
         tick::Int16,
-        pathogen::Pathogen;
-        sim::Union{Simulation, Nothing} = nothing,
-        rng::AbstractRNG = Random.default_rng(),
-        infecter_id::Int32 = Int32(-1),
-        setting_id::Int32 = Int32(-1),
-        lon::Float32 = NaN32,
-        lat::Float32 = NaN32,
-        setting_type::Char = '?',
-        ags::Int32 = Int32(-1),
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+        pathogen::Pathogen,
+        sim::Union{Simulation, Nothing},
+        rng::AbstractRNG,
+        infecter_id::Int32,
+        setting_id::Int32 ,
+        lon::Float32,
+        lat::Float32,
+        setting_type::Char,
+        ags::Int32,
+        source_infection_id::Int32)
 
 Infect `infectee` with the specified `pathogen` and calculate time to infectiousness
 and time to recovery. Optional arguments `infecter_id`. `setting_id`, and `setting_type`
@@ -66,15 +66,15 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 - `infectee::Individual`: Individual to infect
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
-- `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
-- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG to use for stochastic parts
-- `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
-- `setting_id::Int32 = Int32(-1)` *(optional)*: ID of setting this infection happens in
-- `lon::Float32 = NaN32` *(optional)*: Longitude of the infection infection location (setting) 
-- `lat::Float32 = NaN32` *(optional)*: Latitude of the infection infection location (setting)
-- `setting_type::Char = '?'` *(optional)*: Setting type as char (e.g. "h" for `Household`)
-- `ags::Int32 = Int32(-1)` *(optional)*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
-- `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
+- `sim::Union{Simulation, Nothing}` = Simulation object (used to get logger)
+- `rng::AbstractRNG`: RNG to use for stochastic parts
+- `infecter_id::Int32`: Infecting individual
+- `setting_id::Int32`: ID of setting this infection happens in
+- `lon::Float32`: Longitude of the infection infection location (setting) 
+- `lat::Float32`: Latitude of the infection infection location (setting)
+- `setting_type::Char`: Setting type as char (e.g. "h" for `Household`)
+- `ags::Int32`*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
+- `source_infection_id::Int32`: Current infection ID of the infecting individual
 
 # Returns
 
@@ -83,17 +83,16 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 """
 function infect!(infectee::Individual,
         tick::Int16,
-        pathogen::Pathogen;
-        # optional keyword arguments (mainly needed for logging)
-        sim::Union{Simulation, Nothing} = nothing,
-        rng::AbstractRNG = Random.default_rng(),
-        infecter_id::Int32 = Int32(-1),
-        setting_id::Int32 = Int32(-1),
-        lon::Float32 = NaN32,
-        lat::Float32 = NaN32,
-        setting_type::Char = '?',
-        ags::Int32 = Int32(-1),
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+        pathogen::Pathogen,
+        sim::Union{Simulation, Nothing},
+        rng::AbstractRNG,
+        infecter_id::Int32,
+        setting_id::Int32,
+        lon::Float32,
+        lat::Float32,
+        setting_type::Char,
+        ags::Int32 ,
+        source_infection_id::Int32)
 
 
     # calculate disease progression
@@ -153,6 +152,60 @@ function infect!(infectee::Individual,
     infection_id!(infectee, new_infection_id)
     return new_infection_id
 end
+
+"""
+    infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen;
+        sim::Union{Simulation, Nothing} = nothing,
+        rng::AbstractRNG = Random.default_rng(),
+        infecter_id::Int32 = Int32(-1),
+        setting_id::Int32 = Int32(-1),
+        lon::Float32 = NaN32,
+        lat::Float32 = NaN32,
+        setting_type::Char = '?',
+        ags::Int32 = Int32(-1),
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+
+Infect `infectee` with the pathogen of the simulation at the current tick of the simulation. Wrapper for optional keyword arguments
+
+# Parameters
+
+- `infectee::Individual`: Individual to infect
+- `tick::Int16`: Infection tick
+- `pathogen::Pathogen`: Pathogen to infect the individual with
+- `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
+- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG to use for stochastic parts
+- `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
+- `setting_id::Int32 = Int32(-1)` *(optional)*: ID of setting this infection happens in
+- `lon::Float32 = NaN32` *(optional)*: Longitude of the infection infection location (setting) 
+- `lat::Float32 = NaN32` *(optional)*: Latitude of the infection infection location (setting)
+- `setting_type::Char = '?'` *(optional)*: Setting type as char (e.g. "h" for `Household`)
+- `ags::Int32 = Int32(-1)` *(optional)*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
+- `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
+
+# Returns
+
+- `Int32`: New infection ID
+
+"""
+
+function infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen;
+        # optional keyword arguments (mainly needed for logging)
+        sim::Union{Simulation, Nothing} = nothing,
+        rng::AbstractRNG = Random.default_rng(),
+        infecter_id::Int32 = Int32(-1),
+        setting_id::Int32 = Int32(-1),
+        lon::Float32 = NaN32,
+        lat::Float32 = NaN32,
+        setting_type::Char = '?',
+        ags::Int32 = Int32(-1),
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+
+        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
+end
 """
     infect!(infectee::Individual, sim::Simulation)
 
@@ -163,8 +216,8 @@ Used for example in test cases.
 infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), pathogen(sim); sim = sim, rng = rng(sim))
 
 """
-    try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting;
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+    try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,
+        source_infection_id::Int32)
 
 Tries to infect the `infctd` with the given `pathogen` transmitted by `infctr `at time `tick(sim)` with `sim` 
 being the simulation. Success depends on whether the agent is alive, not already infected
@@ -178,7 +231,7 @@ Returns `true` if infection was successful.
 - `sim::Simulation`: Simulation object
 - `pathogen::Pathogen`: Pathogen to infect the individual with
 - `setting::Setting`: Setting this infection happens in
-- `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
+- `source_infection_id::Int32`: Current infection ID of the infecting individual
 
 # Returns
 
@@ -189,8 +242,8 @@ function try_to_infect!(infctr::Individual,
         infctd::Individual,
         sim::Simulation,
         pathogen::Pathogen,
-        setting::Setting;
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)::Bool
+        setting::Setting,
+        source_infection_id::Int32)::Bool
 
     # if one of both is dead
     if dead(infctr) || dead(infctd)
@@ -212,21 +265,57 @@ function try_to_infect!(infctr::Individual,
 
     # try to infect
     if gems_rand(sim) < infection_probability
-        infect!(infctd, tick(sim), pathogen,
-            sim = sim,
-            infecter_id = id(infctr),
-            setting_id = id(setting),
-            lat = geolocation(settings(sim, Household)[household_id(infctd)], sim)[2],
-            lon = geolocation(settings(sim, Household)[household_id(infctd)], sim)[1],
-            setting_type = settingchar(setting),
-            ags = ags(setting, sim) |> id,
-            source_infection_id = source_infection_id,
-            rng  = rng(sim))
+        infect!(infctd, 
+            tick(sim), 
+            pathogen,
+            sim,
+            rng(sim),
+            id(infctr),
+            id(setting),
+            geolocation(settings(sim, Household)[household_id(infctd)], sim)[2],
+            geolocation(settings(sim, Household)[household_id(infctd)], sim)[1],
+            settingchar(setting),
+            ags(setting, sim) |> id,
+            source_infection_id)
         return true
     end
 
     return false
 
+end
+
+"""
+    try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting;
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+
+Tries to infect the `infctd` with the given `pathogen` transmitted by `infctr `at time `tick(sim)` with `sim` 
+being the simulation. Success depends on whether the agent is alive, not already infected
+an whether an infection event was sampled using the provided distribution or probability.
+Returns `true` if infection was successful. Wrapper for optional keyword arguments.
+
+# Parameters
+
+- `infctr::Individual`: Infecting individual
+- `infctd::Individual`: Individual to infect
+- `sim::Simulation`: Simulation object
+- `pathogen::Pathogen`: Pathogen to infect the individual with
+- `setting::Setting`: Setting this infection happens in
+- `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
+
+# Returns
+
+- `Bool`: True if infection was successful, false otherwise
+
+"""
+
+function try_to_infect!(infctr::Individual,
+        infctd::Individual,
+        sim::Simulation,
+        pathogen::Pathogen,
+        setting::Setting;
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)::Bool
+
+        try_to_infect!(infctr, infctd, sim, pathogen, setting, source_infection_id)
 end
 
 
@@ -379,12 +468,12 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
             # if individual can infect in this setting
             if can_infect(ind, setting)
                 # sample contacts based on setting specific "ContactSamplingMethod"
-                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), rng = rng(sim))
+                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), true, rng(sim))
                 for c in contacts
                     # check if individual can be contacted
                     if can_be_contacted(c, setting)
                         # try to infect
-                        if try_to_infect!(ind, c, sim, pathogen, setting, source_infection_id = infection_id(ind))
+                        if try_to_infect!(ind, c, sim, pathogen, setting, infection_id(ind))
                             # activate all settings the individual is part of if infection was successful
                             for (type, id) in settings(c, sim)
                                 activate!(settings(sim, type)[id])
