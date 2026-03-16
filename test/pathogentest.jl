@@ -186,12 +186,14 @@
 
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
         run!(sim)
-        infectionlogger(sim).progression_category
+        
+        flattened_pc = vcat(infectionlogger(sim).progression_category...)
 
         # check if all infections used the custom progression category in simulation
-        @test all(pc -> pc == :TestProgression, infectionlogger(sim).progression_category)
-        @test length(infectionlogger(sim).progression_category) > 0 # just to verify that there were infections
-
+        @test all(pc -> pc == :TestProgression, flattened_pc)
+        
+        # Check if there were infections
+        @test length(infectionlogger(sim)) > 0
     end
 
     @testset "Progression Assignment" begin
