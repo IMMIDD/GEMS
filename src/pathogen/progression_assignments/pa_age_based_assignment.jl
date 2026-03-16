@@ -83,11 +83,11 @@ end
 ###
 
 """
-    assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::AbstractRNG)
+    assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::Xoshiro)
 
 Assigns a disease progression category to an individual based on their age using the provided AgeBasedProgressionAssignment.
 """
-function assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::AbstractRNG)
+function assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::Xoshiro)
     # get the index of the age group the individual belongs to
     pos = findfirst(g -> in_group(individual.age, g), age_based_assignment.age_groups)
 

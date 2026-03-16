@@ -37,7 +37,7 @@ end
 
 Assigns a disease progression category to an individual randomly from the provided list of categories in RandomProgressionAssignment.
 """
-function assign(individual::Individual, random_assignment::RandomProgressionAssignment, rng::AbstractRNG)
+function assign(individual::Individual, random_assignment::RandomProgressionAssignment, rng::Xoshiro)
     return gems_rand(rng, random_assignment.progression_categories)
 end
 

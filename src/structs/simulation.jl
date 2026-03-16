@@ -156,7 +156,7 @@ sim = Simulation(params)
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
     - `seed::Int64`: Seed used to initialize the main RNG
-    - `rngs::Vector{AbstractRNG}`: RNG instances for each thread
+    - `rngs::Vector{Xoshiro}`: RNG instances for each thread
 
 """
 mutable struct Simulation 
@@ -201,7 +201,7 @@ mutable struct Simulation
 
     # RNG
     seed::Int64
-    rngs::Vector{AbstractRNG} # rng for each thread
+    rngs::Vector{Xoshiro} # rng for each thread
 
     # inner default constructor
     function Simulation(
@@ -216,7 +216,7 @@ mutable struct Simulation
         pathogen::Pathogen,
         stepmod::Function,
         seed::Int64,
-        rngs::Vector{<:AbstractRNG}
+        rngs::Vector{<:Xoshiro}
     )
         sim = new(
             # config

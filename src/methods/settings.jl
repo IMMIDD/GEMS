@@ -340,11 +340,11 @@ end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
+    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Random.default_rng())
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Random.default_rng())
     if n >= length(individuals)
         return individuals
     else
@@ -354,11 +354,11 @@ end
 
 
 """
-    sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng())
+    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = Random.default_rng())
 
 Returns a subsample of the setting's `Individuals` of sample size `n`.
 """
-sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
+sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = Random.default_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
 
 
 """

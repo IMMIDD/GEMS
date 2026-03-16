@@ -143,7 +143,7 @@
 
         # define calcuate progression function
         function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression;
-                rng::AbstractRNG = Random.default_rng())
+                rng::Xoshiro = Random.default_rng())
             
             # Calculate the time to infectiousness
             infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
@@ -341,7 +341,7 @@
             odd_progression::DataType
         end
 
-        function GEMS.assign(individual::Individual, pa::EvenOddProgressionAssignment, rng::AbstractRNG)
+        function GEMS.assign(individual::Individual, pa::EvenOddProgressionAssignment, rng::Xoshiro)
             if iseven(individual.id)
                 return pa.even_progression
             else
