@@ -374,5 +374,5 @@ Defines the routine which is used to generate contacts between individuals in a 
                 [Settings.Household.contact_sampling_method.parameters]
                     contactparameter = 1.0
 ```
-The `type` argument specifies the `ContactSamplingMethod` that conditions the dispatching to the respective `sample_contacts(...)` function when running GEMS.
+The `type` argument specifies the `ContactSamplingMethod` that conditions the dispatching to the respective `sample_contacts!(...)` function when running GEMS.
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `ContactSamplingMethod` struct upon initialization.

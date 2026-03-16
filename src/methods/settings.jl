@@ -1,6 +1,6 @@
 export household, office, schoolclass, municipality, getsetting
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
-export geolocation, lat, lon, remove_empty_settings!, present_individuals, present_individuals!, is_open, get_open_contained!, open!, close!
+export geolocation, lat, lon, remove_empty_settings!, present_individuals!, is_open, get_open_contained!, open!, close!
 export sample_individuals
 
 
@@ -372,7 +372,7 @@ Pushes the individuals present in a given IndividualSetting, i.e., only those in
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
+function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     if is_open(setting)
         append!(indivs, setting |> individuals)
     end
@@ -389,39 +389,15 @@ Pushes the individuals present in a given ContainerSetting, i.e., only those in 
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     # Check that setting and all containers are open
     if setting |> is_open
         for s in setting |> contains
-            present_individuals!(settings(simulation, setting.contains_type)[s], indivs, simulation)
+            present_individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
         end
     end
 end
 
-"""
-    present_individuals(setting::IndividualSetting, simulation::Simulation)
-
-Returns the individuals present in a given IndividualSetting, i.e., only those in open settings. 
-"""
-function present_individuals(setting::IndividualSetting, simulation::Simulation)::Vector{Individual}
-    if is_open(setting)
-        return individuals(setting)
-    else
-        return Vector{Individual}()
-    end
-end
-
-"""
-    present_individuals(setting::ContainerSetting, simulation::Simulation)
-
-Returns the individuals present in a given ContainerSetting, i.e., only those in open contained settings. 
-"""
-function present_individuals(setting::ContainerSetting, simulation::Simulation)::Vector{Individual}
-    # Check that setting and all containers are open
-    indivs = Vector{Individual}()
-    present_individuals!(setting, indivs, simulation)
-    return indivs
-end
 
 """
     ags(stng::ContainerSetting, sim::Simulation)

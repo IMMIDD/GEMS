@@ -23,6 +23,7 @@ export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export stepmod
 export rng, rngs, seed
+export present_buffers, contact_buffers
 
 export info
 
@@ -203,6 +204,10 @@ mutable struct Simulation
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # THREAD-LOCAL BUFFERS
+    present_buffers::Vector{Vector{Individual}}
+    contact_buffers::Vector{Vector{Individual}}
+
     # inner default constructor
     function Simulation(
         configfile::String,
@@ -257,7 +262,11 @@ mutable struct Simulation
 
             # RNG
             seed,
-            rngs
+            rngs,
+            
+            # INITIALIZE BUFFERS
+            [Vector{Individual}() for _ in 1:Threads.maxthreadid()], # present_buffers
+            [Vector{Individual}() for _ in 1:Threads.maxthreadid()]  # contact_buffers
         )
 
         # increase simulation counter
@@ -288,9 +297,8 @@ mutable struct Simulation
 
     # constructor from dictionary
     Simulation(params::Dict) = Simulation(;params...)
-
-        
 end
+
 
 function _BUILD_Simulation(;
         configfile::String = "",
@@ -1342,6 +1350,24 @@ Returns seed associated with the simulation run.
 """
 function seed(simulation::Simulation)
     return simulation.seed
+end
+
+"""
+    present_buffers(simulation::Simulation)
+
+Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
+"""
+function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+    return simulation.present_buffers
+end
+
+"""
+    contact_buffers(simulation::Simulation)
+
+Returns the thread-local buffers for storing sampled contacts, used to eliminate array allocations.
+"""
+function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+    return simulation.contact_buffers
 end
 
 

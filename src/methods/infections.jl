@@ -457,19 +457,25 @@ infection is successful.
 """
 function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen)
     num_infected = 0
+
+    tid = Threads.threadid()
+    p_buffer = sim.present_buffers[tid]
+    c_buffer = sim.contact_buffers[tid]
+
     # Obtain individuals present in the current setting
-    present_inds = present_individuals(setting, sim)
+    empty!(p_buffer)
+    present_individuals!(p_buffer, setting, sim)
 
 
-    for ind_index in 1:length(present_inds)
-        ind = present_inds[ind_index]
+    for ind_index in 1:length(p_buffer)
+        ind = p_buffer[ind_index]
         if infected(ind)
             num_infected+=1
             # if individual can infect in this setting
             if can_infect(ind, setting)
                 # sample contacts based on setting specific "ContactSamplingMethod"
-                contacts = sample_contacts(setting.contact_sampling_method, setting, ind_index, present_inds, tick(sim), true, rng(sim))
-                for c in contacts
+                sample_contacts!(c_buffer, setting.contact_sampling_method, setting, ind_index, p_buffer, tick(sim), true, rng(sim))
+                for c in c_buffer
                     # check if individual can be contacted
                     if can_be_contacted(c, setting)
                         # try to infect
