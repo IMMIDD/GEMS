@@ -126,7 +126,7 @@ function infect!(infectee::Individual,
         logger = infectionlogger(sim),
         a = infecter_id,
         b = id(infectee),
-        progression_category = Symbol(pc),
+        progression_category = nameof(pc),
         tick = tick,
         infectiousness_onset = infectee.infectiousness_onset,
         symptom_onset = infectee.symptom_onset,
@@ -265,6 +265,7 @@ function try_to_infect!(infctr::Individual,
 
     # try to infect
     if gems_rand(sim) < infection_probability
+        hh = settings(sim, Household)[household_id(infctd)]
         infect!(infctd, 
             tick(sim), 
             pathogen,
@@ -272,8 +273,8 @@ function try_to_infect!(infctr::Individual,
             rng(sim),
             id(infctr),
             id(setting),
-            geolocation(settings(sim, Household)[household_id(infctd)], sim)[2],
-            geolocation(settings(sim, Household)[household_id(infctd)], sim)[1],
+            lon(hh), 
+            lat(hh),
             settingchar(setting),
             ags(setting, sim) |> id,
             source_infection_id)
