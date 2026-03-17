@@ -64,7 +64,7 @@ Calculates the transmission probability based on the age of the infectee using a
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
-- `rng::Xoshiro = Random.default_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
+- `rng::Xoshiro = DEFAULT_GEMS_RNG` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
 
 # Returns
 
@@ -89,4 +89,4 @@ end
 
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infected, setting, tick, Random.default_rng())
+    transmission_probability(transFunc, infecter, infected, setting, tick, DEFAULT_GEMS_RNG)

@@ -1,6 +1,6 @@
 export household, office, schoolclass, municipality, getsetting
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
-export geolocation, lat, lon, remove_empty_settings!, present_individuals!, is_open, get_open_contained!, open!, close!
+export geolocation, lat, lon, remove_empty_settings!, present_individuals!, present_individuals, is_open, get_open_contained!, open!, close!
 export sample_individuals
 export activate_with_containers!
 
@@ -341,11 +341,11 @@ end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Random.default_rng())
+    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG)
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Random.default_rng())
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG)
     if n >= length(individuals)
         return individuals
     else
@@ -355,11 +355,11 @@ end
 
 
 """
-    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = Random.default_rng())
+    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG)
 
 Returns a subsample of the setting's `Individuals` of sample size `n`.
 """
-sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = Random.default_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
+sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG) = sample_individuals(setting |> individuals, n, rng=rng)
 
 
 """
@@ -369,8 +369,8 @@ Pushes the individuals present in a given IndividualSetting, i.e., only those in
 
 # Parameters
 
-- `setting::IndividualSetting`: Setting to get the individuals from
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
+- `setting::IndividualSetting`: Setting to get the individuals from
 - `simulation::Simulation`: Simulation object
 """
 function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
@@ -386,8 +386,8 @@ Pushes the individuals present in a given ContainerSetting, i.e., only those in 
 
 # Parameters
 
-- `setting::ContainerSetting`: Setting to get the individuals from
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
+- `setting::ContainerSetting`: Setting to get the individuals from
 - `simulation::Simulation`: Simulation object
 """
 function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
@@ -397,6 +397,38 @@ function present_individuals!(indivs::Vector{Individual}, setting::ContainerSett
             present_individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
         end
     end
+end
+
+"""
+    present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
+
+Pushes the individuals present in a given IndividualSetting, i.e., only those in open settings to the provided `indivs` vector. 
+
+# Parameters
+
+- `setting::IndividualSetting`: Setting to get the individuals from
+- `simulation::Simulation`: Simulation object
+"""
+function present_individuals(setting::IndividualSetting, simulation::Simulation)
+    indivs = Vector{Individual}()
+    present_individuals!(indivs, setting, simulation)
+    return indivs
+end
+
+"""
+    present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+
+Pushes the individuals present in a given ContainerSetting, i.e., only those in open contained settings to the provided `indivs` vector.  
+
+# Parameters
+
+- `setting::ContainerSetting`: Setting to get the individuals from
+- `simulation::Simulation`: Simulation object
+"""
+function present_individuals(setting::ContainerSetting, simulation::Simulation)
+    indivs = Vector{Individual}()
+    present_individuals!(indivs, setting, simulation)
+    return indivs
 end
 
 

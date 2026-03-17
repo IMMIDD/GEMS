@@ -87,7 +87,7 @@ function transmission_probability(transFunc::TransmissionFunction, infecter::Ind
 end
 
 """
-    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = Random.default_rng())
+    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = DEFAULT_GEMS_RNG)
 
 General function for TransmissionFunction struct. Should be overwritten for newly created structs, as it only serves
 to catch undefined `transmission_probability` functions.

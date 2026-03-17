@@ -48,7 +48,7 @@ dp = Hospitalized(
 end
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Hospitalized; 
-        rng::Xoshiro = Random.default_rng())
+        rng::Xoshiro = DEFAULT_GEMS_RNG)
         
     # Calculate the time to infectiousness
     infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)

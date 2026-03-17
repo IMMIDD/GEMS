@@ -1,4 +1,4 @@
-export sample_contacts!
+export sample_contacts!, sample_contacts
 export create_contact_sampling_method
 
 """
@@ -209,7 +209,7 @@ end
         present_inds::Vector{Individual}, 
         tick::Int16; 
         replace::Bool = true, 
-        rng::Xoshiro = Random.default_rng()
+        rng::Xoshiro = DEFAULT_GEMS_RNG
     )
 
 Wrapper for optional keyword arguments.
@@ -222,7 +222,63 @@ function sample_contacts!(
     present_inds::Vector{Individual}, 
     tick::Int16; 
     replace::Bool = true, 
-    rng::Xoshiro = Random.default_rng()
+    rng::Xoshiro = DEFAULT_GEMS_RNG
 )
     return sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+end
+
+
+"""
+    sample_contacts(
+        csm::ContactSamplingMethod, 
+        setting::Setting, 
+        individual_index::Int, 
+        present_inds::Vector{Individual}, 
+        tick::Int16,
+        replace::Bool, 
+        rng::Xoshiro
+    )
+
+Wrapper without buffer
+"""
+function sample_contacts(
+    csm::ContactSamplingMethod, 
+    setting::Setting, 
+    individual_index::Int, 
+    present_inds::Vector{Individual}, 
+    tick::Int16,
+    replace::Bool, 
+    rng::Xoshiro
+)
+    indivs = Vector{Individual}()
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return indivs
+end
+
+
+"""
+    sample_contacts(
+        csm::ContactSamplingMethod, 
+        setting::Setting, 
+        individual_index::Int, 
+        present_inds::Vector{Individual}, 
+        tick::Int16; 
+        replace::Bool = true, 
+        rng::Xoshiro = DEFAULT_GEMS_RNG
+    )
+
+Wrapper without buffer and optional keyword arguments
+"""
+function sample_contacts(
+    csm::ContactSamplingMethod, 
+    setting::Setting, 
+    individual_index::Int, 
+    present_inds::Vector{Individual}, 
+    tick::Int16; 
+    replace::Bool = true, 
+    rng::Xoshiro = DEFAULT_GEMS_RNG
+)
+    indivs = Vector{Individual}()
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return indivs
 end

@@ -158,7 +158,7 @@ end
         tick::Int16,
         pathogen::Pathogen;
         sim::Union{Simulation, Nothing} = nothing,
-        rng::Xoshiro = Random.default_rng(),
+        rng::Xoshiro = DEFAULT_GEMS_RNG,
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
         lon::Float32 = NaN32,
@@ -175,7 +175,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
 - `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
-- `rng::Xoshiro = Random.default_rng()` *(optional)*: RNG to use for stochastic parts
+- `rng::Xoshiro = DEFAULT_GEMS_RNG` *(optional)*: RNG to use for stochastic parts
 - `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
 - `setting_id::Int32 = Int32(-1)` *(optional)*: ID of setting this infection happens in
 - `lon::Float32 = NaN32` *(optional)*: Longitude of the infection infection location (setting) 
@@ -195,7 +195,7 @@ function infect!(infectee::Individual,
         pathogen::Pathogen;
         # optional keyword arguments (mainly needed for logging)
         sim::Union{Simulation, Nothing} = nothing,
-        rng::Xoshiro = Random.default_rng(),
+        rng::Xoshiro = DEFAULT_GEMS_RNG,
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
         lon::Float32 = NaN32,
