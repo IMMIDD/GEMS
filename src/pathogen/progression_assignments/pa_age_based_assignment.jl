@@ -93,8 +93,17 @@ function assign(individual::Individual, age_based_assignment::AgeBasedProgressio
 
     isnothing(pos) && throw(ArgumentError("No age group found for individual with age $(individual.age)."))
 
-    # sample from the categorical distribution defined by the stratification matrix for the age group
-    return Categorical(age_based_assignment.stratification_matrix[:, pos]) |>
-        dist -> gems_rand(rng, dist) |>
-        rval -> age_based_assignment.progression_categories[rval]
+
+    # sample through manual cumulative sum
+    u = gems_rand(rng) 
+    matrix = age_based_assignment.stratification_matrix
+    cum_prob = 0.0
+    for i in 1:size(matrix, 1)
+        cum_prob += matrix[i, pos]  
+        if u <= cum_prob
+            return age_based_assignment.progression_categories[i]
+        end
+    end
+    # Fallback return in case floating-point math makes the sum slightly less than 1.0
+    return age_based_assignment.progression_categories[end]
 end
