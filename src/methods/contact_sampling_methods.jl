@@ -61,7 +61,7 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
         number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
         resize!(indivs, number_of_contacts)
 
-        gems_sample!(rng, present_inds[1:end-1], indivs; replace=false)
+        gems_sample!(rng, @view(present_inds[1:end-1]), indivs; replace=false)
         for i = 1:length(indivs)
             if indivs[i] === present_inds[individual_index]
                 indivs[i] = present_inds[end]
@@ -138,7 +138,7 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
         resize!(indivs, number_of_contacts)
 
         # Added rng to this call!
-        gems_sample!(rng, present_inds[1:end-1], indivs; replace=false)
+        gems_sample!(rng, @view(present_inds[1:end-1]), indivs; replace=false)
         for i = 1:length(indivs)
             if indivs[i] === present_inds[individual_index]
                 indivs[i] = present_inds[end]

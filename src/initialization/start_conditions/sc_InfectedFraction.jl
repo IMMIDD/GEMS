@@ -78,8 +78,8 @@ function initialize!(simulation::Simulation, condition::InfectedFraction; seed_s
 
         for (type, id) in settings_tuple(i)
             if id != DEFAULT_SETTING_ID
-                current_setting = settings(sim, type)[id]
-                activate_with_containers!(current_setting, sim)
+                current_setting = settings(simulation, type)[id]
+                activate_with_containers!(current_setting, simulation)
             end
         end
     end
