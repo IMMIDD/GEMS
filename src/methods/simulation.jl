@@ -301,7 +301,7 @@ function fast_forward!(simulation::Simulation)
     last_isol_wo = sum(sl.wo_isol_cnt_buf)
     last_unab_wo = sum(sl.wo_unab_cnt_buf)
     
-    @info "Steady state reached at tick $(tick(simulation)). Fast-forwarding remaining $remaining_ticks ticks..."
+    #@info "Steady state reached at tick $(tick(simulation)). Fast-forwarding remaining $remaining_ticks ticks..."
     
     for t in 1:remaining_ticks
         current_tick = tick(simulation)
@@ -331,15 +331,22 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
     # Use a progressbar for the most common stop criterion
     if with_progressbar && isa(stop_criterion(simulation), TimesUp)
 
+        fast_forwarded = false
+
         # Progressbar for the simulation if time limit is set
         for i in ProgressBar((simulation |> tick) : (simulation |> stop_criterion |> limit) - 1, unit= " $(simulation |> tickunit)s")
+
+            if fast_forwarded
+                continue
+            end
+
             step!(simulation)
             
             sl = statelogger(simulation)
             if sum(sl.exp_cnt_buf) == 0 && sum(sl.inf_cnt_buf) == 0 && sum(sl.tot_quar_cnt_buf) == 0
                 if !has_future_interventions(simulation)
                     fast_forward!(simulation)
-                    break
+                    fast_forwarded = true
                 end
             end
         end
