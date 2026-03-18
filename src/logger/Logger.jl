@@ -536,21 +536,32 @@ Base.length(logger::QuarantineLogger) = sum(length, logger.tick)
 ###
 ### StateLogger
 ###
-@with_kw mutable struct StateLogger <: TickLogger
+@with_kw mutable struct StateLogger <: TickLogger 
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     exposed::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     infectious::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     dead::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     detected::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-
     quarantined::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     quarantined_students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     isolated_students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     unable_to_attend_students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-
     quarantined_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     isolated_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     unable_to_attend_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
+
+    # pre-allocated buffers
+    tot_quar_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    st_quar_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    st_isol_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    st_unab_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    wo_quar_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    wo_isol_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    wo_unab_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    exp_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    inf_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    dead_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
+    det_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
 end
 
 function log!(
