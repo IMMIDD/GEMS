@@ -65,7 +65,7 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     source_infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
 end
 
-function log!(;
+function log!(
         logger::InfectionLogger,
         a::Int32,
         b::Int32,
@@ -122,6 +122,41 @@ function log!(;
     push!(logger.source_infection_id[tid], source_infection_id)
 
     return(new_infection_id)
+end
+
+function log!(;
+        logger::InfectionLogger,
+        a::Int32,
+        b::Int32,
+        progression_category::Symbol,
+        tick::Int16,
+        infectiousness_onset::Int16,
+        symptom_onset::Int16,
+        severeness_onset::Int16,
+        hospital_admission::Int16,
+        hospital_discharge::Int16,
+        icu_admission::Int16,
+        icu_discharge::Int16,
+        ventilation_admission::Int16,
+        ventilation_discharge::Int16,
+        severeness_offset::Int16,
+        recovery::Int16,
+        death::Int16,
+        setting_id::Int32,
+        setting_type::Char,
+        lat::Float32,
+        lon::Float32,
+        ags::Int32,
+        source_infection_id::Int32
+    )
+
+    return log!(
+        logger, a, b, progression_category, tick, 
+        infectiousness_onset, symptom_onset, severeness_onset, 
+        hospital_admission, hospital_discharge, icu_admission, icu_discharge, 
+        ventilation_admission, ventilation_discharge, severeness_offset, 
+        recovery, death, setting_id, setting_type, lat, lon, ags, source_infection_id
+    )    
 end
 
 """

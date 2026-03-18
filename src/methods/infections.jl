@@ -97,16 +97,15 @@ function infect!(infectee::Individual,
 
     # calculate disease progression
     # get progression category
-    pc = pathogen |>
-        # get progression assignment function
-        p -> progression_assignment(p) |>
-        # get progression category
-        paf -> assign(infectee, paf, rng)
+    paf = progression_assignment(pathogen)
+    pc = assign(infectee, paf, rng)
     
     # calculate the actual disease progression
-    calculate_progression(infectee, tick, progressions(pathogen)[pc]; rng = rng) |>
-        # set the progression for the individual
-        dp -> set_progression!(infectee, dp)
+    prog = progressions(pathogen)[pc]
+    dp = calculate_progression(infectee, tick, prog; rng = rng)
+
+    # set the progression for the individual
+    set_progression!(infectee, dp)
 
     # pathogen id
     pathogen_id!(infectee, id(pathogen))
@@ -123,29 +122,29 @@ function infect!(infectee::Individual,
 
     # log infection
     new_infection_id = log!(
-        logger = infectionlogger(sim),
-        a = infecter_id,
-        b = id(infectee),
-        progression_category = nameof(pc),
-        tick = tick,
-        infectiousness_onset = infectee.infectiousness_onset,
-        symptom_onset = infectee.symptom_onset,
-        severeness_onset = infectee.severeness_onset,
-        hospital_admission = infectee.hospital_admission,
-        hospital_discharge = infectee.hospital_discharge,
-        icu_admission = infectee.icu_admission,
-        icu_discharge = infectee.icu_discharge,
-        ventilation_admission = infectee.ventilation_admission,
-        ventilation_discharge = infectee.ventilation_discharge,
-        severeness_offset = infectee.severeness_offset,
-        recovery = infectee.recovery,
-        death = infectee.death,
-        setting_id = setting_id,
-        setting_type = setting_type,
-        lat = lat,
-        lon = lon,
-        ags = ags,
-        source_infection_id = source_infection_id
+        infectionlogger(sim),
+        infecter_id,
+        id(infectee),
+        nameof(pc),
+        tick,
+        infectee.infectiousness_onset,
+        infectee.symptom_onset,
+        infectee.severeness_onset,
+        infectee.hospital_admission,
+        infectee.hospital_discharge,
+        infectee.icu_admission,
+        infectee.icu_discharge,
+        infectee.ventilation_admission,
+        infectee.ventilation_discharge,
+        infectee.severeness_offset,
+        infectee.recovery,
+        infectee.death,
+        setting_id,
+        setting_type,
+        lat,
+        lon,
+        ags,
+        source_infection_id
     )
 
     # set the infectees current infection_id to the value that was returned by the logger
@@ -265,7 +264,7 @@ function try_to_infect!(infctr::Individual,
 
     # try to infect
     if gems_rand(sim) < infection_probability
-        hh = settings(sim, Household)[household_id(infctd)]
+        hh = settings(sim, Household)[household_id(infctd)]::Household
         infect!(infctd, 
             tick(sim), 
             pathogen,
@@ -276,7 +275,7 @@ function try_to_infect!(infctr::Individual,
             lon(hh), 
             lat(hh),
             settingchar(setting),
-            ags(setting, sim) |> id,
+            ags(setting) |> id,
             source_infection_id)
         return true
     end
@@ -457,31 +456,45 @@ infection is successful.
 
 """
 function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen)
-    num_infected = 0
-
     tid = Threads.threadid()
     p_buffer = sim.present_buffers[tid]
     c_buffer = sim.contact_buffers[tid]
 
-    # Obtain individuals present in the current setting
     empty!(p_buffer)
     present_individuals!(p_buffer, setting, sim)
 
+    csm = setting.contact_sampling_method
 
+    num_infected = process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
+
+    if num_infected == 0
+        for ind in individuals(setting, sim)
+            if infected(ind)
+                num_infected += 1
+            end
+        end
+        if num_infected == 0
+            deactivate!(setting)
+        end
+    end
+end
+
+
+function process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
+    num_infected = 0
+    current_tick = tick(sim)
+    current_rng = rng(sim)
+    
     for ind_index in 1:length(p_buffer)
         ind = p_buffer[ind_index]
         if infected(ind)
-            num_infected+=1
-            # if individual can infect in this setting
+            num_infected += 1
             if can_infect(ind, setting)
-                # sample contacts based on setting specific "ContactSamplingMethod"
-                sample_contacts!(c_buffer, setting.contact_sampling_method, setting, ind_index, p_buffer, tick(sim), true, rng(sim))
+                sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
+                
                 for c in c_buffer
-                    # check if individual can be contacted
                     if can_be_contacted(c, setting)
-                        # try to infect
                         if try_to_infect!(ind, c, sim, pathogen, setting, infection_id(ind))
-                            # activate all settings the individual is part of if infection was successful
                             for (type, id) in settings_tuple(c)
                                 if id != DEFAULT_SETTING_ID
                                     current_setting = settings(sim, type)[id]
@@ -494,15 +507,6 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
             end
         end
     end
-
-    if num_infected == 0
-        for ind in individuals(setting, sim)
-            if infected(ind)
-                num_infected+=1
-            end
-        end
-        if num_infected == 0
-            deactivate!(setting)
-        end
-    end
+    
+    return num_infected
 end

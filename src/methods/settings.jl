@@ -433,30 +433,39 @@ end
 
 
 """
-    ags(stng::ContainerSetting, sim::Simulation)
-
-Get the ags of a ContainerSetting.
+    ags(stng::Setting)
+Get the statically computed ags of any Setting.
 """
-function ags(stng::ContainerSetting, sim::Simulation)::AGS
-    return length(stng.contains) > 0 ? ags(settings(sim, stng.contains_type)[stng.contains |> Base.first], sim) : AGS()
-end
-
-"""
-    ags(stng::IndividualSetting)
-
-Get the ags of a IndividualSetting.
-"""
-function ags(stng::IndividualSetting)::AGS
+function ags(stng::Setting)::AGS
     return stng.ags
 end
 
 """
-    ags(stng::IndividualSetting, sim::Simulation)
-
-Get the ags of a IndividualSetting.
+    precompute_ags!(sim::Simulation)
+Precomputes and statically assigns the AGS field for all ContainerSettings
 """
-function ags(stng::IndividualSetting, simulation::Simulation)::AGS
-    return stng |> ags
+function precompute_ags!(sim::Simulation)
+    function _calc_ags(stng::Setting)::AGS
+        if stng isa IndividualSetting
+            return stng.ags
+        end
+        if length(stng.contains) > 0
+            child = settings(sim, stng.contains_type)[first(stng.contains)]
+            stng.ags = _calc_ags(child)
+            return stng.ags
+        else
+            stng.ags = AGS()
+            return stng.ags
+        end
+    end
+
+    for st in settingtypes(settingscontainer(sim))
+        if st <: ContainerSetting
+            for s in settings(sim, st)
+                _calc_ags(s)
+            end
+        end
+    end
 end
 
 

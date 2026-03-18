@@ -257,6 +257,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     contained_type::DataType = School
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
 
     # active settings approach
     isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
@@ -303,6 +304,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     contained_type::DataType = SchoolComplex
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
     # active settings approach
     isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
@@ -341,8 +343,10 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contains_type::DataType = School
+     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
-    type::Int32 = -1# 1 byte
+    ags::AGS = AGS()
+
     # active settings approach
     isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
@@ -387,6 +391,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
 
     # active settings approach
     isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
@@ -433,6 +438,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     type::Int32 = -1 # 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
     # active settings approach
     isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
@@ -478,6 +484,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
 
     
     

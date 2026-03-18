@@ -442,6 +442,8 @@ function _BUILD_Simulation(;
             rngs
         )
 
+        precompute_ags!(sim)
+        
         # update label
         sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 

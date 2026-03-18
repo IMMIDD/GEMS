@@ -633,7 +633,7 @@
         rs = RandomSampling()
         
         # Setup hierarchy: SchoolClass (1) -> SchoolYear (1) -> School (1)
-        sc1 = SchoolClass(id=1, contained=1, contact_sampling_method=rs)
+        sc1 = SchoolClass(id=1, contained=1, contact_sampling_method=rs, [Individual(id=i, sex=1, age=5) for i in 1:2])
         sy1 = SchoolYear(id=1, contains=[1], contained=1, contact_sampling_method=rs)
         s1 = School(id=1, contains=[1], contact_sampling_method=rs)
         
