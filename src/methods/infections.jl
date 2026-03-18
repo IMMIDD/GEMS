@@ -102,7 +102,7 @@ function infect!(infectee::Individual,
     
     # calculate the actual disease progression
     prog = progressions(pathogen)[pc]
-    dp = calculate_progression(infectee, tick, prog; rng = rng)
+    dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
 
     # set the progression for the individual
     set_progression!(infectee, dp)

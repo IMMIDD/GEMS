@@ -42,8 +42,7 @@ dp = Severe(
     severeness_offset_to_recovery::Union{Distribution, Real}
 end
 
-function calculate_progression(individual::Individual, tick::Int16, dp::Severe;
-        rng::Xoshiro = DEFAULT_GEMS_RNG)
+function calculate_progression(individual::Individual, tick::Int16, dp::Severe, rng::Xoshiro)
 
     # Calculate the time to infectiousness
     infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)

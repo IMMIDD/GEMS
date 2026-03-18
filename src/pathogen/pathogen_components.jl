@@ -124,4 +124,5 @@ Returns all known transmission functions (subtypes of `TransmissionFunction`).
 transmission_functions() = subtypes(TransmissionFunction)
 
 
+
 # JP TODO: Add abstract interface for progression assignments and progression categories
