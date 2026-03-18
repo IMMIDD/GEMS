@@ -84,4 +84,21 @@
             @test ishospitalized(i)
         end
     end
+    
+    @testset "Settings Tuple" begin
+    # Test individual with specific setting assignments
+    i = Individual(id=1, household=10, office=20, schoolclass=30, municipality=40)
+    res = settings_tuple(i)
+    
+    @test res isa Tuple
+    @test length(res) == 4
+    @test res[1] == (Household, Int32(10))
+    @test res[2] == (Office, Int32(20))
+    @test res[3] == (SchoolClass, Int32(30))
+    @test res[4] == (Municipality, Int32(40))
+
+    # Test default/undefined settings
+    i_default = Individual(id=2)
+    @test all(pair -> pair[2] == GEMS.DEFAULT_SETTING_ID, settings_tuple(i_default))
+end
 end

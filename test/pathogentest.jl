@@ -364,11 +364,14 @@
         sim = Simulation(pop_size = 1000, pathogen = p_eo, infected_fraction = 0.1)
         run!(sim)
         
+        flat_id_b = vcat(infectionlogger(sim).id_b...)
+        flat_pc = vcat(infectionlogger(sim).progression_category...)
+        
         # make sure that there were infections
-        @test length(infectionlogger(sim).progression_category) > 0 
+        @test length(flat_id_b) > 0 
 
         # check if even IDs got Symptomatic and odd IDs got Asymptomatic
-        for (ind_id, pc) in zip(infectionlogger(sim).id_b, infectionlogger(sim).progression_category)
+        for (ind_id, pc) in zip(flat_id_b, flat_pc)
             if iseven(ind_id)
                 @test pc == :Symptomatic
             else

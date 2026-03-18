@@ -628,5 +628,30 @@
         end
     end
 
+    @testset "Recursive Activation" begin
+        sim = Simulation()
+        rs = RandomSampling()
+        
+        # Setup hierarchy: SchoolClass (1) -> SchoolYear (1) -> School (1)
+        sc1 = SchoolClass(id=1, contained=1, contact_sampling_method=rs)
+        sy1 = SchoolYear(id=1, contains=[1], contained=1, contact_sampling_method=rs)
+        s1 = School(id=1, contains=[1], contact_sampling_method=rs)
+        
+        stngs = SettingsContainer()
+        add_types!(stngs, [SchoolClass, SchoolYear, School])
+        add!(stngs, sc1); add!(stngs, sy1); add!(stngs, s1)
+        sim.settings = stngs
+
+        # Deactivate all
+        deactivate!(sc1); deactivate!(sy1); deactivate!(s1)
+        @test !isactive(sc1) && !isactive(sy1) && !isactive(s1)
+
+        # Trigger recursive activation from the bottom
+        activate_with_containers!(sc1, sim)
+
+        @test isactive(sc1) == true
+        @test isactive(sy1) == true
+        @test isactive(s1) == true
+    end
 
 end
