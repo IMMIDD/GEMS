@@ -87,7 +87,7 @@
     
     @testset "Settings Tuple" begin
     # Test individual with specific setting assignments
-    i = Individual(id=1, household=10, office=20, schoolclass=30, municipality=40)
+    i = Individual(id = 1, sex = 0, age = 1, household=10, office=20, schoolclass=30, municipality=40)
     res = settings_tuple(i)
     
     @test res isa Tuple
@@ -98,7 +98,7 @@
     @test res[4] == (Municipality, Int32(40))
 
     # Test default/undefined settings
-    i_default = Individual(id=2)
+    i_default = Individual(id=2, sex = 0, age = 1)
     @test all(pair -> pair[2] == GEMS.DEFAULT_SETTING_ID, settings_tuple(i_default))
 end
 end

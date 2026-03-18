@@ -142,8 +142,7 @@
         end
 
         # define calcuate progression function
-        function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression;
-                rng::Xoshiro = DEFAULT_GEMS_RNG)
+        function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression, rng::Xoshiro )
             
             # Calculate the time to infectiousness
             infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
@@ -155,10 +154,10 @@
             recovery = symptom_onset + rand_val(dp.symptom_onset_to_recovery, rng)
 
             return DiseaseProgression(
-                exposure = tick,
-                infectiousness_onset = infectiousness_onset,
-                symptom_onset = symptom_onset,
-                recovery = recovery
+                exposure = Int16(tick),
+                infectiousness_onset = Int16(infectiousness_onset),
+                symptom_onset = Int16(symptom_onset),
+                recovery = Int16(recovery)
             )
         end
 

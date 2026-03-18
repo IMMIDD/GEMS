@@ -391,9 +391,10 @@
             @test GEMS.has_future_interventions(sim) == false
             
             # Case: Scheduled event in queue
-            push!(sim.event_queue, IMeasureEvent(Individual(id=1), GEMS.CancelSelfIsolation(), (_) -> true))
+            enqueue!(sim.event_queue, IMeasureEvent(Individual(id=1, age=1, sex=1), GEMS.CancelSelfIsolation(), (_) -> true), Int16(10))
             @test GEMS.has_future_interventions(sim) == true
-            empty!(sim.event_queue)
+            
+            sim = Simulation()
 
             # Case: Recurring tick trigger
             add_tick_trigger!(sim, ITickTrigger(IStrategy("test", sim), interval=Int16(7)))
