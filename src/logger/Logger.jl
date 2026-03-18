@@ -549,19 +549,6 @@ Base.length(logger::QuarantineLogger) = sum(length, logger.tick)
     quarantined_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     isolated_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     unable_to_attend_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-
-    # pre-allocated buffers
-    tot_quar_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    st_quar_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    st_isol_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    st_unab_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    wo_quar_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    wo_isol_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    wo_unab_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    exp_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    inf_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    dead_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
-    det_cnt_buf::Vector{Int} = zeros(Int, Threads.maxthreadid())
 end
 
 function log!(

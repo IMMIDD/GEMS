@@ -405,7 +405,11 @@
             sim = Simulation(stop_criterion = TimesUp(limit = 100))
             @test tick(sim) == 0
             
-            # Manually invoke fast-forward to reach the limit instantly
+            # Take one real step to populate the loggers with initial data
+            step!(sim)
+            @test tick(sim) == 1
+            
+            # Manually invoke fast-forward to instantly finish the remaining 99 ticks
             GEMS.fast_forward!(sim)
             
             @test tick(sim) == 100
@@ -413,7 +417,8 @@
             # Verify loggers were populated for the skipped ticks
             sl = statelogger(sim)
             df = dataframe(sl)
-            @test nrow(df) > 0
+            
+            @test nrow(df) == 100
             @test df.tick[end] == 99 # Ticks are 0-indexed in the logger
         end
     end

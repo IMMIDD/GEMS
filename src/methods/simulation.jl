@@ -33,105 +33,128 @@ end
 
 Log all current quarantines stratified by occupation (workers, students, all)
 to the simulation's `QuarantineLogger`.
+
 """
 function log_stepinfo(simulation::Simulation)
-    sl = statelogger(simulation)
-    
-    # Zero out buffers to prevent array allocation
-    fill!(sl.tot_quar_cnt_buf, 0)
-    fill!(sl.st_quar_cnt_buf, 0)
-    fill!(sl.st_isol_cnt_buf, 0)
-    fill!(sl.st_unab_cnt_buf, 0)
-    fill!(sl.wo_quar_cnt_buf, 0)
-    fill!(sl.wo_isol_cnt_buf, 0)
-    fill!(sl.wo_unab_cnt_buf, 0)
-    fill!(sl.exp_cnt_buf, 0)
-    fill!(sl.inf_cnt_buf, 0)
-    fill!(sl.dead_cnt_buf, 0)
-    fill!(sl.det_cnt_buf, 0)
-    
-    # Fast cache lookups for closed settings
-    closed_schools = Set{Int32}()
-    for s in schoolclasses(simulation)
-        if !is_open(s)
-            push!(closed_schools, id(s))
-        end
-    end
-    
-    closed_offices = Set{Int32}()
-    for o in offices(simulation)
-        if !is_open(o)
-            push!(closed_offices, id(o))
-        end
-    end
-    
-    
+      
+    # quarantine data
+    # set up one vector with one entry for each thread
+    tot_quar_cnt = zeros(Int, Threads.maxthreadid()) # total quarantined count (infected and susceptible)
+
+    st_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined students count (infected and susceptible)
+    st_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated students count (infected only)
+    st_unab_cnt  = zeros(Int, Threads.maxthreadid()) # students unable to attend school (for various reasons)
+
+    wo_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined workers count (infected and susceptible)
+    wo_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated workers count (infected only)
+    wo_unab_cnt  = zeros(Int, Threads.maxthreadid()) # workers unable to attend work (for various reasons)
+
+    # infection data
+    exp_cnt = zeros(Int, Threads.maxthreadid())
+    inf_cnt = zeros(Int, Threads.maxthreadid())
+    dead_cnt = zeros(Int, Threads.maxthreadid())
+    det_cnt = zeros(Int, Threads.maxthreadid())
+
+    # iterate over agents
     Threads.@threads for i in simulation |> individuals
         tid = Threads.threadid()
         
-        quar = isquarantined(i)
-        inf = is_infected(i)
-        
         # log quarantined individuals
-        if quar
-            sl.tot_quar_cnt_buf[tid] += 1
+        if isquarantined(i)
+            tot_quar_cnt[tid] += 1
+
             if is_student(i)
-                sl.st_quar_cnt_buf[tid] += 1
-                if inf
-                    sl.st_isol_cnt_buf[tid] += 1
+    
+                # student quarantine
+                st_quar_cnt[tid] += 1
+
+                # student isolations
+                if is_infected(i)
+                    st_isol_cnt[tid] += 1
+           
                 end
             end
+
             if is_working(i)
-                sl.wo_quar_cnt_buf[tid] += 1
-                if inf
-                    sl.wo_isol_cnt_buf[tid] += 1
+                # worker quarantine
+                wo_quar_cnt[tid] += 1
+
+                # worker isolations
+                
+                if is_infected(i)
+                    wo_isol_cnt[tid] += 1
                 end
             end
         end
-        
+
         # log infected individuals
-        sl.exp_cnt_buf[tid] += is_exposed(i) ? 1 : 0
-        sl.inf_cnt_buf[tid] += is_infectious(i) ? 1 : 0
-        sl.dead_cnt_buf[tid] += is_dead(i) ? 1 : 0
-        sl.det_cnt_buf[tid] += is_detected(i) ? 1 : 0
-        
-        # calculate unable to attend by checking closed sets & health state directly 
-        if is_student(i)
-            if class_id(i) in closed_schools || is_severe(i) || is_hospitalized(i) || quar
-                sl.st_unab_cnt_buf[tid] += 1
+        exp_cnt[tid] += is_exposed(i) ? 1 : 0
+        inf_cnt[tid] += is_infectious(i) ? 1 : 0
+        dead_cnt[tid] += is_dead(i) ? 1 : 0
+        det_cnt[tid] += is_detected(i) ? 1 : 0
+    end
+
+    # iterate over school classes for unable to attend count
+    Threads.@threads for s in schoolclasses(simulation)
+        tid = Threads.threadid()
+
+        # if class is closed, add all students to unable to attend count
+        if !is_open(s)
+            st_unab_cnt[tid] += size(s)
+        else
+
+            # else, iterate over individuals and count those unable to attend
+            for i in individuals(s)
+                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    st_unab_cnt[tid] += 1
+                end
             end
         end
-        
-        if is_working(i)
-            if office_id(i) in closed_offices || is_severe(i) || is_hospitalized(i) || quar
-                sl.wo_unab_cnt_buf[tid] += 1
+    end
+
+    # iterate over offices for unable to attend count
+    Threads.@threads for o in offices(simulation)
+        tid = Threads.threadid()
+
+        # if class is closed, add all students to unable to attend count
+        if !is_open(o)
+            wo_unab_cnt[tid] += size(o)
+        else
+
+            # else, iterate over individuals and count those unable to attend
+            for i in individuals(o)
+                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    wo_unab_cnt[tid] += 1
+                end
             end
         end
     end
 
     # log quarantine data
     log!(
-        simulation |> quarantinelogger, 
-        simulation |> tick, 
-        sum(sl.tot_quar_cnt_buf), 
-        sum(sl.st_quar_cnt_buf), 
-        sum(sl.wo_quar_cnt_buf)
+        simulation |> quarantinelogger,
+        simulation |> tick,
+    
+        sum(tot_quar_cnt),
+        sum(st_quar_cnt),
+        sum(wo_quar_cnt)
     )
 
     # log infection data
-    log!(sl;
+    log!(simulation |> statelogger;
         tick = simulation |> tick,
-        exposed = sum(sl.exp_cnt_buf),
-        infectious = sum(sl.inf_cnt_buf),
-        dead = sum(sl.dead_cnt_buf),
-        detected = sum(sl.det_cnt_buf),
-        quarantined = sum(sl.tot_quar_cnt_buf),
-        quarantined_students = sum(sl.st_quar_cnt_buf),
-        isolated_students = sum(sl.st_isol_cnt_buf),
-        unable_to_attend_students = sum(sl.st_unab_cnt_buf),
-        quarantined_workers = sum(sl.wo_quar_cnt_buf),
-        isolated_workers = sum(sl.wo_isol_cnt_buf),
-        unable_to_attend_workers = sum(sl.wo_unab_cnt_buf)
+        exposed = sum(exp_cnt),
+        infectious = sum(inf_cnt),
+        dead = sum(dead_cnt),
+        detected = sum(det_cnt),
+        quarantined = sum(tot_quar_cnt),
+ 
+        quarantined_students = sum(st_quar_cnt),
+        isolated_students = sum(st_isol_cnt),
+        unable_to_attend_students = sum(st_unab_cnt),
+        quarantined_workers = sum(wo_quar_cnt),
+        isolated_workers = sum(wo_isol_cnt),
+        unable_to_attend_workers = sum(wo_unab_cnt)
     )
 end
 
@@ -242,6 +265,7 @@ function step!(simulation::Simulation)
     end
 
     log_stepinfo(simulation)
+
     
     # fire custom loggers
     fire_custom_loggers!(simulation)
@@ -288,18 +312,20 @@ function fast_forward!(simulation::Simulation)
     
     sl = statelogger(simulation)
     ql = quarantinelogger(simulation)
+    tid = Threads.threadid()
     
-    last_exposed = sum(sl.exp_cnt_buf)
-    last_infectious = sum(sl.inf_cnt_buf)
-    last_dead = sum(sl.dead_cnt_buf)
-    last_detected = sum(sl.det_cnt_buf)
-    last_quar = sum(sl.tot_quar_cnt_buf)
-    last_quar_st = sum(sl.st_quar_cnt_buf)
-    last_isol_st = sum(sl.st_isol_cnt_buf)
-    last_unab_st = sum(sl.st_unab_cnt_buf)
-    last_quar_wo = sum(sl.wo_quar_cnt_buf)
-    last_isol_wo = sum(sl.wo_isol_cnt_buf)
-    last_unab_wo = sum(sl.wo_unab_cnt_buf)
+    # fetch the last logged values from the logger
+    last_exposed = isempty(sl.exposed[tid]) ? 0 : sl.exposed[tid][end]
+    last_infectious = isempty(sl.infectious[tid]) ? 0 : sl.infectious[tid][end]
+    last_dead = isempty(sl.dead[tid]) ? 0 : sl.dead[tid][end]
+    last_detected = isempty(sl.detected[tid]) ? 0 : sl.detected[tid][end]
+    last_quar = isempty(sl.quarantined[tid]) ? 0 : sl.quarantined[tid][end]
+    last_quar_st = isempty(sl.quarantined_students[tid]) ? 0 : sl.quarantined_students[tid][end]
+    last_isol_st = isempty(sl.isolated_students[tid]) ? 0 : sl.isolated_students[tid][end]
+    last_unab_st = isempty(sl.unable_to_attend_students[tid]) ? 0 : sl.unable_to_attend_students[tid][end]
+    last_quar_wo = isempty(sl.quarantined_workers[tid]) ? 0 : sl.quarantined_workers[tid][end]
+    last_isol_wo = isempty(sl.isolated_workers[tid]) ? 0 : sl.isolated_workers[tid][end]
+    last_unab_wo = isempty(sl.unable_to_attend_workers[tid]) ? 0 : sl.unable_to_attend_workers[tid][end]
     
     #@info "Steady state reached at tick $(tick(simulation)). Fast-forwarding remaining $remaining_ticks ticks..."
     
@@ -312,6 +338,32 @@ function fast_forward!(simulation::Simulation)
         fire_custom_loggers!(simulation)
         increment!(simulation)
     end
+end
+
+"""
+    check_and_fast_forward!(simulation::Simulation)
+
+Checks if the pandemic has reached a steady state (zero active cases and quarantines).
+If so, and there are no future interventions, it executes the fast-forward and returns `true`.
+Otherwise, it returns `false`.
+"""
+function check_and_fast_forward!(simulation::Simulation)
+    sl = statelogger(simulation)
+    tid = Threads.threadid()
+    
+    # Check the most recently pushed values
+    cur_exp = isempty(sl.exposed[tid]) ? 0 : sl.exposed[tid][end]
+    cur_inf = isempty(sl.infectious[tid]) ? 0 : sl.infectious[tid][end]
+    cur_quar = isempty(sl.quarantined[tid]) ? 0 : sl.quarantined[tid][end]
+    
+    if cur_exp == 0 && cur_inf == 0 && cur_quar == 0
+        if !has_future_interventions(simulation)
+            fast_forward!(simulation)
+            return true
+        end
+    end
+    
+    return false
 end
 
 # MAIN LOOP
@@ -342,13 +394,7 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
 
             step!(simulation)
             
-            sl = statelogger(simulation)
-            if sum(sl.exp_cnt_buf) == 0 && sum(sl.inf_cnt_buf) == 0 && sum(sl.tot_quar_cnt_buf) == 0
-                if !has_future_interventions(simulation)
-                    fast_forward!(simulation)
-                    fast_forwarded = true
-                end
-            end
+            fast_forwarded = check_and_fast_forward!(simulation)
         end
     else
         # while the simulation's stop criterion is not met, perform next step
@@ -359,13 +405,7 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
             step!(simulation)
             
             if isa(stop_criterion(simulation), TimesUp)
-                sl = statelogger(simulation)
-                if sum(sl.exp_cnt_buf) == 0 && sum(sl.inf_cnt_buf) == 0 && sum(sl.tot_quar_cnt_buf) == 0
-                    if !has_future_interventions(simulation)
-                        fast_forward!(simulation)
-                        break
-                    end
-                end
+                check_and_fast_forward!(simulation)
             end
         end
         println()
