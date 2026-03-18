@@ -102,7 +102,20 @@ function infect!(infectee::Individual,
     
     # calculate the actual disease progression
     prog = progressions(pathogen)[pc]
-    dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
+    dp = if prog isa Asymptomatic
+        calculate_progression(infectee, tick, prog::Asymptomatic, rng)
+    elseif prog isa Symptomatic
+        calculate_progression(infectee, tick, prog::Symptomatic, rng)
+    elseif prog isa Severe
+        calculate_progression(infectee, tick, prog::Severe, rng)
+    elseif prog isa Hospitalized
+        calculate_progression(infectee, tick, prog::Hospitalized, rng)
+    elseif prog isa Critical
+        calculate_progression(infectee, tick, prog::Critical, rng)
+    else
+        # Fallback for any dynamically added custom user-defined categories
+        calculate_progression(infectee, tick, prog, rng) 
+    end::DiseaseProgression
 
     # set the progression for the individual
     set_progression!(infectee, dp)
