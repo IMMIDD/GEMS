@@ -239,7 +239,7 @@ function step!(simulation::Simulation)
     end
 
     # infect individuals in settings
-    for type in settingtypes(settingscontainer(simulation))
+    for type in settingtypes_sorted(settingscontainer(simulation))
         Threads.@threads :static for stng in settings(simulation, type)
             if stng.isactive
                 spread_infection!(stng, simulation, pathogen(simulation))
