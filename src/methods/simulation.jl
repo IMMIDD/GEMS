@@ -36,111 +36,114 @@ to the simulation's `QuarantineLogger`.
 
 """
 function log_stepinfo(simulation::Simulation)
-      
-    # quarantine data
-    # set up one vector with one entry for each thread
-    tot_quar_cnt = zeros(Int, Threads.maxthreadid()) # total quarantined count (infected and susceptible)
-
-    st_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined students count (infected and susceptible)
-    st_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated students count (infected only)
-    st_unab_cnt  = zeros(Int, Threads.maxthreadid()) # students unable to attend school (for various reasons)
-
-    wo_quar_cnt  = zeros(Int, Threads.maxthreadid()) # quarantined workers count (infected and susceptible)
-    wo_isol_cnt  = zeros(Int, Threads.maxthreadid()) # isolated workers count (infected only)
-    wo_unab_cnt  = zeros(Int, Threads.maxthreadid()) # workers unable to attend work (for various reasons)
-
-    # infection data
+    tot_quar_cnt = zeros(Int, Threads.maxthreadid())
+    st_quar_cnt = zeros(Int, Threads.maxthreadid())
+    st_isol_cnt = zeros(Int, Threads.maxthreadid())
+    st_unab_cnt = zeros(Int, Threads.maxthreadid())
+    wo_quar_cnt = zeros(Int, Threads.maxthreadid())
+    wo_isol_cnt = zeros(Int, Threads.maxthreadid())
+    wo_unab_cnt = zeros(Int, Threads.maxthreadid())
     exp_cnt = zeros(Int, Threads.maxthreadid())
     inf_cnt = zeros(Int, Threads.maxthreadid())
     dead_cnt = zeros(Int, Threads.maxthreadid())
     det_cnt = zeros(Int, Threads.maxthreadid())
 
-    # iterate over agents
-    Threads.@threads for i in simulation |> individuals
+    inds = simulation |> individuals
+    chunk_size = max(1, length(inds) ÷ Threads.nthreads())
+    
+    Threads.@threads for chunk in collect(Iterators.partition(inds, chunk_size))
         tid = Threads.threadid()
         
-        # log quarantined individuals
-        if isquarantined(i)
-            tot_quar_cnt[tid] += 1
+        loc_tot_quar = 0; loc_st_quar = 0; loc_st_isol = 0; 
+        loc_wo_quar = 0; loc_wo_isol = 0; loc_exp = 0; 
+        loc_inf = 0; loc_dead = 0; loc_det = 0
 
-            if is_student(i)
+        for i in chunk
+            if isquarantined(i)
+                loc_tot_quar += 1
+                if is_student(i)
+                    loc_st_quar += 1
+                    if is_infected(i)
+                        loc_st_isol += 1
+                    end
+                end
+                if is_working(i)
+                    loc_wo_quar += 1
+                    if is_infected(i)
+                        loc_wo_isol += 1
+                    end
+                end
+            end
+
+            loc_exp += is_exposed(i) ? 1 : 0
+            loc_inf += is_infectious(i) ? 1 : 0
+            loc_dead += is_dead(i) ? 1 : 0
+            loc_det += is_detected(i) ? 1 : 0
+        end
+
+        @inbounds begin
+            tot_quar_cnt[tid] += loc_tot_quar
+            st_quar_cnt[tid] += loc_st_quar
+            st_isol_cnt[tid] += loc_st_isol
+            wo_quar_cnt[tid] += loc_wo_quar
+            wo_isol_cnt[tid] += loc_wo_isol
+            exp_cnt[tid] += loc_exp
+            inf_cnt[tid] += loc_inf
+            dead_cnt[tid] += loc_dead
+            det_cnt[tid] += loc_det
+        end
+    end
+
+    s_classes = schoolclasses(simulation)
+    chunk_size_sc = max(1, length(s_classes) ÷ Threads.nthreads())
     
-                # student quarantine
-                st_quar_cnt[tid] += 1
-
-                # student isolations
-                if is_infected(i)
-                    st_isol_cnt[tid] += 1
-           
-                end
-            end
-
-            if is_working(i)
-                # worker quarantine
-                wo_quar_cnt[tid] += 1
-
-                # worker isolations
-                
-                if is_infected(i)
-                    wo_isol_cnt[tid] += 1
-                end
-            end
-        end
-
-        # log infected individuals
-        exp_cnt[tid] += is_exposed(i) ? 1 : 0
-        inf_cnt[tid] += is_infectious(i) ? 1 : 0
-        dead_cnt[tid] += is_dead(i) ? 1 : 0
-        det_cnt[tid] += is_detected(i) ? 1 : 0
-    end
-
-    # iterate over school classes for unable to attend count
-    Threads.@threads for s in schoolclasses(simulation)
+    Threads.@threads for chunk in collect(Iterators.partition(s_classes, chunk_size_sc))
         tid = Threads.threadid()
-
-        # if class is closed, add all students to unable to attend count
-        if !is_open(s)
-            st_unab_cnt[tid] += size(s)
-        else
-
-            # else, iterate over individuals and count those unable to attend
-            for i in individuals(s)
-                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
-                    st_unab_cnt[tid] += 1
+        loc_st_unab = 0
+        
+        for s in chunk
+            if !is_open(s)
+                loc_st_unab += size(s)
+            else
+                for i in individuals(s)
+                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                        loc_st_unab += 1
+                    end
                 end
             end
         end
+        @inbounds st_unab_cnt[tid] += loc_st_unab
     end
 
-    # iterate over offices for unable to attend count
-    Threads.@threads for o in offices(simulation)
+    offs = offices(simulation)
+    chunk_size_off = max(1, length(offs) ÷ Threads.nthreads())
+    
+    Threads.@threads for chunk in collect(Iterators.partition(offs, chunk_size_off))
         tid = Threads.threadid()
-
-        # if class is closed, add all students to unable to attend count
-        if !is_open(o)
-            wo_unab_cnt[tid] += size(o)
-        else
-
-            # else, iterate over individuals and count those unable to attend
-            for i in individuals(o)
-                if is_severe(i) || is_hospitalized(i) || isquarantined(i)
-                    wo_unab_cnt[tid] += 1
+        loc_wo_unab = 0
+        
+        for o in chunk
+            if !is_open(o)
+                loc_wo_unab += size(o)
+            else
+                for i in individuals(o)
+                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                        loc_wo_unab += 1
+                    end
                 end
             end
         end
+        @inbounds wo_unab_cnt[tid] += loc_wo_unab
     end
 
-    # log quarantine data
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-    
         sum(tot_quar_cnt),
         sum(st_quar_cnt),
         sum(wo_quar_cnt)
     )
 
-    # log infection data
     log!(simulation |> statelogger;
         tick = simulation |> tick,
         exposed = sum(exp_cnt),
@@ -148,7 +151,6 @@ function log_stepinfo(simulation::Simulation)
         dead = sum(dead_cnt),
         detected = sum(det_cnt),
         quarantined = sum(tot_quar_cnt),
- 
         quarantined_students = sum(st_quar_cnt),
         isolated_students = sum(st_isol_cnt),
         unable_to_attend_students = sum(st_unab_cnt),
@@ -266,7 +268,7 @@ function step!(simulation::Simulation)
 
     log_stepinfo(simulation)
 
-    
+
     # fire custom loggers
     fire_custom_loggers!(simulation)
 
