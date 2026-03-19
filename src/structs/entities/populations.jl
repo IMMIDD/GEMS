@@ -84,7 +84,7 @@ mutable struct Population
         elseif file_ext == "jld2"
             printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
-            pop = DataFrame(load(path, "data")) |> Population
+            pop = load(path, "data") |> Population
 
         else
             error("File Extension .$file_ext is not supported")
