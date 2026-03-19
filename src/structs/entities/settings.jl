@@ -758,6 +758,45 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 
 
 ### CREATION OF SETTINGS
+
+"""
+    construct_and_add_settings!(container_vec::Vector{Setting}, pairs::Vector{Tuple{Int32, Individual}}, ::Type{T}, default_sampling) where {T}
+
+Helper function to construct settings from a sorted list of ID-Individual pairs without dynamic dispatch.
+"""
+function construct_and_add_settings!(
+    container_vec::Vector{Setting}, 
+    pairs::Vector{Tuple{Int32, Individual}}, 
+    ::Type{T}, 
+    default_sampling
+) where {T}
+    n = length(pairs)
+    i = 1
+    
+    # Iterate through the sorted pairs
+    while i <= n
+        current_id = pairs[i][1]
+        
+        # Find the block of individuals sharing this ID
+        j = i
+        while j <= n && pairs[j][1] == current_id
+            j += 1
+        end
+        
+        # Exact pre-allocation for the members array
+        count = j - i
+        members = Vector{Individual}(undef, count)
+        for k in 0:(count-1)
+            members[k+1] = pairs[i+k][2]
+        end
+        
+        setting = T(id=current_id, individuals=members, contact_sampling_method=default_sampling)
+        push!(container_vec, setting)
+        
+        i = j # Move to the next unique ID
+    end
+end
+
 """
     settings_from_population(population::Population, global_setting::Bool = false)
 
@@ -768,55 +807,64 @@ settings.
 function settings_from_population(population::Population, global_setting::Bool = false)::Tuple{SettingsContainer, Dict}
     # Set keys for every concrete type of Setting
     settings = SettingsContainer()
-
+    
     renaming = Dict()
-
+    
     # Default sampling method
     default_sampling = ContactparameterSampling(0)
 
     # Get all concrete subtypes of IndividualSetting as these may be contained in the population
     stngtypes = concrete_subtypes(IndividualSetting)
-
+    
     # remove GlobalSetting if not wanted
     if !global_setting
         stngtypes = filter(x -> x != GlobalSetting, stngtypes)
     end
 
+    inds = individuals(population)
+    max_inds = length(inds)
+
+    pairs_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+
     # Iterate over all settingtypes in parallel
     #=Threads.@threads=# for stngType in stngtypes
-
-        # Create a dictionary to store all individuals with the same setting id
-        ids = Dict{Int32, Vector{Individual}}()
-
-        # Iterate over all individuals and add them to the dictionary
-        for individual in individuals(population)
-
-            id = setting_id(individual, stngType)   
+        
+        resize!(pairs_buffer, max_inds)
+        
+        # Create a buffer to store all individuals with the same setting id
+        # Iterate over all individuals and add them to the buffer
+        valid_count = 0
+        for i in 1:max_inds
+            ind = inds[i]
+            id = setting_id(ind, stngType)
             if id != DEFAULT_SETTING_ID
-                if haskey(ids, id)
-                    push!(ids[id], individual) 
-                else
-                    ids[id] = Vector{Individual}([individual])
-                end
+                valid_count += 1
+                @inbounds pairs_buffer[valid_count] = (id, ind)
             end
         end
-        if length(ids) > 0
-            add_type!(settings, stngType)
-        else
+        
+        if valid_count == 0
             continue
         end
-        for (id, members) in ids
-            add!(settings, stngType(id=id, individuals=members, contact_sampling_method = default_sampling))
-        end
+
+        resize!(pairs_buffer, valid_count)
+        sort!(pairs_buffer, alg = Base.Sort.QuickSort, by = first)
+
+        add_type!(settings, stngType)
+        setting_vec = get(settings, stngType)
+        
+        construct_and_add_settings!(setting_vec, pairs_buffer, stngType, default_sampling)
 
         # Sort the vector of settings by ID and check if the ids are continuous and start from 1
         # Otherwise rename them and save the changes in a dictionary
-        sort!(get(settings, stngType), by = x -> x.id)
-        if length(get(settings, stngType)) != 0 && (get(settings, stngType) |> Base.first |> id != 1 || get(settings, stngType) |> Base.last |> id != length(get(settings, stngType)))
+        if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
             @warn "Setting ids of type $(stngType) are not continuous or do not start from 1. Ids will be reassigned, containers might not be correctly linked."
-            renaming[stngType] = Dict()
-            for (i, setting) in enumerate(get(settings, stngType))
-                renaming[stngType][setting.id] = i
+            
+            type_renaming = Dict{Int32, Int32}() 
+            renaming[stngType] = type_renaming
+            
+            for (i, setting) in enumerate(setting_vec)
+                type_renaming[setting.id] = i
                 setting.id = i
                 for individual in setting.individuals
                     setting_id!(individual, stngType, Int32(i))
