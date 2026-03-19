@@ -285,7 +285,8 @@ function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict
     if jld2file == "" 
         return
     elseif isfile(jld2file)
-        settings::Dict = load(jld2file, "data")
+        settings_nt = load(jld2file, "data")
+        settings::Dict{Symbol, DataFrame} = Dict(k => DataFrame(v) for (k, v) in pairs(settings_nt))
 
         # Default sampling method
         default_sampling = RandomSampling()

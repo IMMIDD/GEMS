@@ -46,21 +46,24 @@ mutable struct Population
     `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
     """
     function Population(df::DataFrame)
-    
         # filter for columns available in DF and Individual struct
         df_content = df |>
             x -> DataFrames.select(x, intersect(map(string, fieldnames(Individual)), names(x)))
 
-        # Pre-allocate an array for the population
+        # Convert the DataFrame to a NamedTuple of pure column vectors. 
+        col_table = Tables.columntable(df_content)
+
+        # pre-allocate an array for the population
         individuals = Vector{Individual}(undef, size(df_content, 1))
 
         # Create individuals in parallel
         Threads.@threads for i in eachindex(individuals)
-            @inbounds individuals[i] = Individual(df_content[i, :])
+            row_kwargs = map(col -> col[i], col_table)
+            @inbounds individuals[i] = Individual(; row_kwargs...)
         end
 
         pop = Population(individuals)
-        pop.params["populationfile"] = "Not available." # update input parameters
+        pop.params["populationfile"] = "Not available."
         return pop
     end
 
@@ -81,7 +84,7 @@ mutable struct Population
         elseif file_ext == "jld2"
             printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
-            pop = load(path, "data") |> Population
+            pop = DataFrame(load(path, "data")) |> Population
 
         else
             error("File Extension .$file_ext is not supported")
