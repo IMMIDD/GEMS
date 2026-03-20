@@ -819,16 +819,11 @@ settings.
 function settings_from_population(population::Population, global_setting::Bool = false)::Tuple{SettingsContainer, Dict}
     # Set keys for every concrete type of Setting
     settings = SettingsContainer()
-    
     renaming = Dict()
-    
-    # Default sampling method
     default_sampling = ContactparameterSampling(0)
 
-    # Get all concrete subtypes of IndividualSetting as these may be contained in the population
+    # Get all concrete subtypes of IndividualSetting
     stngtypes = concrete_subtypes(IndividualSetting)
-    
-    # remove GlobalSetting if not wanted
     if !global_setting
         stngtypes = filter(x -> x != GlobalSetting, stngtypes)
     end
@@ -837,20 +832,29 @@ function settings_from_population(population::Population, global_setting::Bool =
     max_inds = length(inds)
 
     pairs_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+    # Pre-allocate another buffer for Counting Sort
+    sorted_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
 
     # Iterate over all settingtypes in parallel
-    #=Threads.@threads=# for stngType in stngtypes
+    for stngType in stngtypes
         
         resize!(pairs_buffer, max_inds)
         
-        # Create a buffer to store all individuals with the same setting id
-        # Iterate over all individuals and add them to the buffer
         valid_count = 0
+        min_id = typemax(Int32)
+        max_id = typemin(Int32)
+        
+        # Iterate over all individuals and add them to the buffer
         for i in 1:max_inds
             ind = inds[i]
             id = setting_id(ind, stngType)
             if id != DEFAULT_SETTING_ID
                 valid_count += 1
+                
+                # Track ID bounds for Counting Sort
+                min_id = id < min_id ? id : min_id
+                max_id = id > max_id ? id : max_id
+                
                 @inbounds pairs_buffer[valid_count] = (id, ind)
             end
         end
@@ -860,7 +864,37 @@ function settings_from_population(population::Population, global_setting::Bool =
         end
 
         resize!(pairs_buffer, valid_count)
-        sort!(pairs_buffer, alg = Base.Sort.QuickSort, by = first)
+        
+        id_range = Int64(max_id) - Int64(min_id) + 1
+        
+        # Counting Sort
+        if id_range <= valid_count * 5 
+            counts = zeros(Int, id_range + 1)
+            
+            # Count occurrences
+            @inbounds for i in 1:valid_count
+                counts[pairs_buffer[i][1] - min_id + 2] += 1
+            end
+            
+            #Accumulate offsets
+            @inbounds for i in 2:length(counts)
+                counts[i] += counts[i-1]
+            end
+            
+            # Place elements directly into their sorted positions
+            resize!(sorted_buffer, valid_count)
+            @inbounds for i in 1:valid_count
+                val = pairs_buffer[i]
+                idx = val[1] - min_id + 1
+                sorted_buffer[counts[idx] + 1] = val
+                counts[idx] += 1
+            end
+            
+            # Transfer back to original buffer
+            copyto!(pairs_buffer, sorted_buffer)
+        else
+            sort!(pairs_buffer, by = first)
+        end
 
         add_type!(settings, stngType)
         setting_vec = get(settings, stngType)
@@ -868,7 +902,6 @@ function settings_from_population(population::Population, global_setting::Bool =
         construct_and_add_settings!(setting_vec, pairs_buffer, stngType, default_sampling)
 
         # Sort the vector of settings by ID and check if the ids are continuous and start from 1
-        # Otherwise rename them and save the changes in a dictionary
         if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
             @warn "Setting ids of type $(stngType) are not continuous or do not start from 1. Ids will be reassigned, containers might not be correctly linked."
             
