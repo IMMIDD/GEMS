@@ -230,47 +230,54 @@ end
 
 Sets all dangling IDs, i.e., IDs that do not point to any setting, to the default setting ID.
 """
-function delete_dangling_ids!(cntnr::SettingsContainer)
-    # Iterate through the settingsconteiner
-    for (type, setting_list) in settings(cntnr)
+# Helper function to process dangling IDs without dynamic dispatch
+function _delete_dangling_for_type!(
+    setting_list::Vector{Setting}, 
+    cntnr::SettingsContainer, 
+    ::Type{T}
+) where {T}
+    
+    has_contained = hasfield(T, :contained)
+    has_contains = hasfield(T, :contains)
 
-        # Iterate through the settings of the type
-        for setting in setting_list
+    # return if the type has neither field
+    if !has_contained && !has_contains
+        return
+    end
 
-            # Handle settings with a contained field
-            if hasproperty(setting, :contained)
-
-                # Check if the contained ID is out of bounds, i.e., larger than the length of the settings of the contained_type
-                if setting.contained != DEFAULT_SETTING_ID
-                    if length(settings(cntnr)[setting.contained_type]) < setting.contained
-
-                        # Log a warning message
-                        @warn "Setting of type $(setting.contained) with id $(setting.id) has a contained ID that is out of bounds"
-
-                        # Set the contained ID to the default setting ID
-                        setting.contained = DEFAULT_SETTING_ID
-                    end
-                end
-            end
-
-            # Handle settings with a contains field
-            if hasproperty(setting, :contains)
-
-                # Iterate through the contains IDs
-                for (i, s) in enumerate(setting.contains)
-
-                    # Check if the contains ID is out of bounds, i.e., larger than the length of the settings of the contains_type
-                    if length(settings(cntnr)[setting.contains_type]) < s
-
-                        # Log a warning message
-                        @warn "Setting of type $(setting.contains_type) with id $(setting.id) has a contains ID that is out of bounds"
-                        
-                        # Remove the out of bounds ID from the contains field
-                        deleteat!(setting.contains, i)
-                    end
+    for setting_abs in setting_list
+        setting = setting_abs::T 
+        
+        # Handle settings with a contained field
+        if has_contained
+            if setting.contained != DEFAULT_SETTING_ID
+                if length(settings(cntnr)[setting.contained_type]) < setting.contained
+                    @warn "Setting of type $(setting.contained_type) with id $(setting.id) has a contained ID that is out of bounds"
+                    setting.contained = DEFAULT_SETTING_ID
                 end
             end
         end
+
+        # Handle settings with a contains field
+        if has_contains
+            max_bounds = length(settings(cntnr)[setting.contains_type])
+            
+            # Iterate backwards
+            for i in length(setting.contains):-1:1
+                s = setting.contains[i]
+                if max_bounds < s
+                    @warn "Setting of type $(setting.contains_type) with id $(setting.id) has a contains ID that is out of bounds"
+                    deleteat!(setting.contains, i)
+                end
+            end
+        end
+    end
+end
+
+function delete_dangling_ids!(cntnr::SettingsContainer)
+    # Iterate through the settings container
+    for (type, setting_list) in settings(cntnr)
+        _delete_dangling_for_type!(setting_list, cntnr, type)
     end
 end
 

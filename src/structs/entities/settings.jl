@@ -803,7 +803,7 @@ function construct_and_add_settings!(
         end
         
         setting = T(id=current_id, individuals=members, contact_sampling_method=default_sampling)
-        push!(container_vec, setting) # No longer triggers reallocations!
+        push!(container_vec, setting)
         
         i = j # Move to the next unique ID
     end

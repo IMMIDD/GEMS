@@ -748,6 +748,14 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     return pop, settings
 end
 
+
+# Helper function to avoid dynamic dispatch when setting the contact sampling method
+function _set_contact_sampling_method!(setting_list::Vector{Setting}, method, ::Type{T}) where {T}
+    for s_abs in setting_list
+        s = s_abs::T
+        s.contact_sampling_method = method
+    end
+end
 """
     determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
 
@@ -765,20 +773,19 @@ determine_setting_type_config!(settings_container, Household, configfile_params;
 This will set the number of contacts for all `Household` settings to `3.5`.
 """
 function determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
+    # Fetch the list of settings
+    setting_list = settings(stngs, type)
 
     # if custom parameter is provided, use it
     if !isnothing(custom_par)
         # if a ContactSamplingMethod is provided, use it
         if isa(custom_par, ContactSamplingMethod)
-            for s in settings(stngs, type)
-                s.contact_sampling_method = custom_par
-            end
+            _set_contact_sampling_method!(setting_list, custom_par, type)
             return stngs
         # if a number is provided set it as number of contacts
         elseif isa(custom_par, Real)
-            for s in settings(stngs, type)
-                s.contact_sampling_method = ContactparameterSampling(contactparameter = custom_par)
-            end
+            method = ContactparameterSampling(contactparameter = custom_par)
+            _set_contact_sampling_method!(setting_list, method, type)
             return stngs
         else
             throw(ArgumentError("Provided parameter for `$(structname(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
@@ -788,21 +795,23 @@ function determine_setting_type_config!(stngs::SettingsContainer, type::DataType
     # if no custom parameters are provided, check if config file has section for the setting type
     if !haspath(configfile_params, ["Settings", structname(type)])
         @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
-        return settings
+        return stngs 
     end
 
     # check if the setting type has a config part for contact sampling method
     if !haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
         @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
-        return settings
+        return stngs 
     end
 
     # build contact sampling method
     csm_params = configfile_params["Settings"][structname(type)]["contact_sampling_method"]
     sampling_method = create_contact_sampling_method(csm_params)
-    for s in settings(stngs, type)
-        s.contact_sampling_method = sampling_method
-    end    
+    
+    # Apply the sampling method
+    _set_contact_sampling_method!(setting_list, sampling_method, type)
+    
+    return stngs
 end
 
 """
