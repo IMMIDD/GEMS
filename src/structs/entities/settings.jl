@@ -771,8 +771,20 @@ function construct_and_add_settings!(
     default_sampling
 ) where {T}
     n = length(pairs)
-    i = 1
     
+    # Pre-calculate the number of unique settings to avoid push! reallocations
+    if n > 0
+        num_unique = 1
+        for k in 2:n
+            if pairs[k][1] != pairs[k-1][1]
+                num_unique += 1
+            end
+        end
+        # Pre-allocate the memory needed
+        sizehint!(container_vec, length(container_vec) + num_unique)
+    end
+
+    i = 1
     # Iterate through the sorted pairs
     while i <= n
         current_id = pairs[i][1]
@@ -791,7 +803,7 @@ function construct_and_add_settings!(
         end
         
         setting = T(id=current_id, individuals=members, contact_sampling_method=default_sampling)
-        push!(container_vec, setting)
+        push!(container_vec, setting) # No longer triggers reallocations!
         
         i = j # Move to the next unique ID
     end

@@ -46,15 +46,16 @@ mutable struct Population
     `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
     """
     function Population(df::DataFrame)
-        # filter for columns available in DF and Individual struct
-        df_content = df |>
-            x -> DataFrames.select(x, intersect(map(string, fieldnames(Individual)), names(x)))
+        
+        # Intersect using Symbols  
+        valid_cols = intersect(fieldnames(Individual), propertynames(df))
+        valid_cols_tuple = Tuple(valid_cols)
+        
+        # Extract into a NamedTuple 
+        col_table = NamedTuple{valid_cols_tuple}(Tuple(df[!, c] for c in valid_cols_tuple))
 
-        # Convert the DataFrame to a NamedTuple of pure column vectors. 
-        col_table = Tables.columntable(df_content)
-
-        # pre-allocate an array for the population
-        individuals = Vector{Individual}(undef, size(df_content, 1))
+        # Pre-allocate array 
+        individuals = Vector{Individual}(undef, nrow(df))
 
         # Create individuals in parallel
         Threads.@threads for i in eachindex(individuals)
