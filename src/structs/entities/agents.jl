@@ -92,8 +92,8 @@ A type to represent individuals, that act as agents inside the simulation.
         to mandates. Can be anywhere between -1 and 1 with neutral state is 0.
 
 - Health Status
-    - `comorbidities::Vector{Bool}`: Indicating prevalence of certain health conditions. True,
-        if the individual is preconditioned with the comorbidity associated to the array index.
+    - `comorbidities::UInt16`: Indicating prevalence of certain health conditions. True,
+        if the individual is preconditioned with the comorbidity associated to the bit.
     - `dead::Bool`: Flag indicating individual's decease
     - `infected::Bool`: Flag indicating individual's infection status
 
@@ -152,7 +152,7 @@ A type to represent individuals, that act as agents inside the simulation.
     mandate_compliance::Float32 = 0 # 4 bytes
 
     # HEALTH STATUS
-    comorbidities::Vector{Bool} = Vector{Bool}() # 40 + n bytes
+    comorbidities::UInt16 = 0 # 2 bytes
     infected::Bool = false # 1 byte
     infectious::Bool = false # 1 byte
     symptomatic::Bool = false # 1 byte
@@ -457,7 +457,7 @@ has_municipality(individual::Individual) = municipality_id(individual) != DEFAUL
 
 Returns an individual's comorbidities.
 """
-function comorbidities(individual::Individual)::Array{Bool}
+function comorbidities(individual::Individual)::UInt16
     return individual.comorbidities
 end
 

@@ -13,7 +13,7 @@
             @test occupation(i) == -1
             @test social_factor(i) == 0
             @test mandate_compliance(i) == 0
-            @test comorbidities(i) == Bool[]
+            @test comorbidities(i) == 0
             @test household_id(i) == GEMS.DEFAULT_SETTING_ID
             @test office_id(i) == GEMS.DEFAULT_SETTING_ID
             @test class_id(i) == GEMS.DEFAULT_SETTING_ID
