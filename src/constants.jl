@@ -124,7 +124,7 @@ const LOCALDATA_PATH = BASE_FOLDER = joinpath(dirname(dirname(pathof(GEMS))), "l
 const DEFAULT_CONFIGFILE::String = "data/DefaultConf.toml"
 
 # remote location of population files (ZIP)
-const popurl(identifier::String) = "https://uni-muenster.sciebo.de/s/SoogCFyijz4ctBA/download?path=%2F&files=$identifier.zip"
+const popurl(identifier::String) = "https://github.com/IMMIDD/GEMS/releases/download/v0.7.1/$(identifier).zip"
 # local location of population and setting files (JLD2)
 const poplocal(identifier::String) = joinpath(LOCALDATA_PATH, identifier)
 const peoplelocal(identifier::String) = joinpath(poplocal(identifier), "people_$identifier.jld2")
