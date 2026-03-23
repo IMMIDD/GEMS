@@ -51,7 +51,7 @@ function log_stepinfo(simulation::Simulation)
     inds = simulation |> individuals
     chunk_size = max(1, length(inds) ÷ Threads.nthreads())
     
-    Threads.@threads for chunk in collect(Iterators.partition(inds, chunk_size))
+    Threads.@threads :static for chunk in collect(Iterators.partition(inds, chunk_size))
         tid = Threads.threadid()
         
         loc_tot_quar = 0; loc_st_quar = 0; loc_st_isol = 0; 
