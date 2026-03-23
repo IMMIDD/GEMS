@@ -56,7 +56,12 @@ function generate(plt::ProgressionCategories, rd::ResultData; plotargs...)
     
     description!(plt, desc)
 
-    # crete plot object
+    # sort categories
+    target_order = ["Asymptomatic", "Symptomatic", "Severe", "Hospitalized", "Critical"]
+    order_dict = Dict(val => i for (i, val) in enumerate(target_order))
+    sort_cats(cats) = sort(cats, by = x -> (get(order_dict, string(x), typemax(Int)), string(x)))
+
+    # create plot object
     bin_age(vec) = (vec .÷ 5) .* 5
 
     p = rd |> infections |>
@@ -68,7 +73,7 @@ function generate(plt::ProgressionCategories, rd::ResultData; plotargs...)
         # this will also sort the dataframe by progression_category and bin
         df -> rightjoin(df,
             DataFrame(
-                progression_category = repeat(unique(df.progression_category), inner = maximum(df.bin) ÷ 5 + 1),
+                progression_category = repeat(sort_cats(unique(df.progression_category)), inner = maximum(df.bin) ÷ 5 + 1),
                 bin = repeat(0:5:maximum(df.bin), outer = length(unique(df.progression_category)))
             ), on = [:progression_category, :bin]) |>
         # add missing values as 0 counts
@@ -86,7 +91,8 @@ function generate(plt::ProgressionCategories, rd::ResultData; plotargs...)
             ylabel = "Progression Category",
             colorbar_title = "Count",
             fontfamily="Times Roman",
-            dpi = 300
+            dpi = 300,
+            bottom_margin = 5Plots.mm
         )
 
     # add custom arguments that were passed

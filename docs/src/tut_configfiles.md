@@ -363,7 +363,80 @@ The lower (left) peak is caused by the dying individuals and the higher (right) 
 
 ## Custom Progression Assignment
 
-coming soon ...
+In GEMS, disease progressions are split into two concepts: the **Progression** (the timeline of the disease) and the **Progression Assignment** (the logic that decides which timeline an infected individual gets). 
+
+While the default model uses an `AgeBasedProgressionAssignment` to distribute cases based on age groups, you might want to assign disease tracks based on other individual attributes, such as their vaccination status.
+
+Here is how you can create a custom assignment method that protects vaccinated individuals from severe progressions.
+
+First, define a struct inheriting from `ProgressionAssignmentFunction`. We use the `@with_kw` macro so we can easily pass parameters from a TOML file later.
+
+```julia
+using GEMS
+using Parameters, Random
+
+@with_kw struct VaccBasedAssignment <: ProgressionAssignmentFunction
+    # Probability of an unvaccinated person getting a severe progression
+    prob_severe_unvaxxed::Float64 = 0.3 
+end
+```
+
+Next, extend the `GEMS.assign` function. This function takes the individual, your custom assignment struct, and a random number generator. It must return the `DataType` of the progression category the individual should be assigned to (e.g., returning the type `Symptomatic`, not an instance of it).
+
+```julia
+function GEMS.assign(individual::Individual, pa::VaccBasedAssignment, rng::AbstractRNG)
+    
+    # Check the custom attribute we might have assigned during population creation
+    if individual.number_of_vaccinations > 0
+        return Symptomatic # Vaccinated individuals always get a mild/symptomatic track
+    else
+        # Unvaccinated individuals have a risk of severe progression
+        if rand(rng) < pa.prob_severe_unvaxxed
+            return Severe
+        else
+            return Symptomatic
+        end
+    end
+end
+```
+
+Finally, to use this in a simulation, you simply define it in your custom config file under the pathogen's `progression_assignment` block. We can overwrite the default value of our parameter.
+
+```toml
+[Pathogens.Covid19.progression_assignment]
+    type = "VaccBasedAssignment"
+    [Pathogens.Covid19.progression_assignment.parameters]
+        prob_severe_unvaxxed = 0.5
+```
+
+When you load this config file using `sim = Simulation("path/to/config.toml")`, GEMS will automatically apply your custom vaccination-based logic to every newly infected individual using your `assign` function. We can easily verify that our custom assignment works by running two scenarios: one baseline where no individuals are vaccinated, and one where we manually vaccinate the entire population before running.
+
+```julia
+# Scenario 1: Baseline (0% Vaccinated)
+sim_baseline = Simulation("path/to/config.toml", label = "0% Vaccinated")
+
+# Scenario 2: 100% Vaccinated
+sim_vaxxed = Simulation("path/to/config.toml", label = "100% Vaccinated")
+foreach(i -> i.number_of_vaccinations = 1, individuals(sim_vaxxed))
+
+run!(sim_baseline)
+run!(sim_vaxxed)
+
+rd_baseline = ResultData(sim_baseline)
+rd_vaxxed = ResultData(sim_vaxxed)
+
+gemsplot([rd_baseline, rd_vaxxed], type = :ProgressionCategories, xticks = [1, 18], combined = :bylabel)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_custom_progression_assignment.png" width="80%"/>
+</p>
+``` 
+
+As expected, the right plot shows that the vaccinated population experiences entirely symptomatic tracks and is completely protected from the `Severe` progression category!
 
 ## Custom Start Conditions
 
