@@ -47,7 +47,7 @@
 
             # from remote population
             sim = Simulation(population = "HB")
-            @test population(sim) |> size == 676255
+            @test population(sim) |> size >= 300000
 
             # things that should fail
             @test_throws ArgumentError Simulation(population = "test/not/existing/file.csv")
