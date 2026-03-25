@@ -84,11 +84,10 @@ mutable struct PostProcessor
 
 
         sim_households = households(simulation)
-        hh_ags_lookup = map(ags, sim_households)
 
         transform!(infections, 
-            :household_a => ByRow(h -> ismissing(h) ? missing : hh_ags_lookup[h]) => :household_ags_a,
-            :household_b => ByRow(h -> ismissing(h) ? missing : hh_ags_lookup[h]) => :household_ags_b
+            :household_a => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_a,
+            :household_b => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_b
         )
         # join deaths with additional info from population DF
         deaths = dataframe(deathlogger(simulation)) |>
