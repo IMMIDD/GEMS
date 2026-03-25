@@ -32,7 +32,7 @@ function tick_tests(postProcessor::PostProcessor)::Dict
     windowsize = 7
   
     detected_cases = postProcessor |> infectionsDF |>
-        x -> filter(row -> !ismissing(row.first_detected_tick), x) |>
+        x -> dropmissing(x, :first_detected_tick) |>
         x -> groupby(x, [:test_type, :first_detected_tick]) |>
         x -> combine(x, nrow => :reported_cases)
 

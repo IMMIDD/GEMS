@@ -294,7 +294,7 @@ Appends the individuals associated with a given IndividualSetting to the provide
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
+function individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     append!(indivs, setting |> individuals)
 end
 
@@ -310,9 +310,9 @@ recursively calling the `individuals!` function.
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+function individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     for s in setting.contains
-        individuals!(settings(simulation, setting.contains_type)[s], indivs, simulation)
+        individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
     end
 end
 
@@ -334,7 +334,7 @@ all contained settings using the `individuals!` function.
 function individuals(setting::ContainerSetting, simulation::Simulation)::Vector{Individual}
     indivs = Vector{Individual}()
     for s in setting.contains
-        individuals!(settings(simulation, setting.contains_type)[s], indivs, simulation)
+        individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
     end
     return indivs
 end
@@ -615,43 +615,34 @@ Returns a three-way tuple with `(minimum, maximum, mean)` number of individuals 
 a setting in the provided `stngs` vector.
 """
 function min_max_avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
-
-    min = nothing
-    max = nothing
-
     scnt = length(stngs)
     
     if scnt <= 0
-        return(
-            (nothing, nothing, nothing)
-        )
+        return (nothing, nothing, nothing)
     end
 
+    indivs = simulation.present_buffers[Threads.threadid()]
+
+    min_val = typemax(Int)
+    max_val = -1
     total = 0
 
     for s in stngs
-        cnt = length(individuals(s, simulation))
+        empty!(indivs)
+        individuals!(indivs, s, simulation)
+        cnt = length(indivs)
+
         total += cnt
 
-        # update min
-        if isnothing(min)
-            min = cnt
-        elseif cnt < min
-            min = cnt 
+        if cnt < min_val
+            min_val = cnt 
         end
-
-        # update max
-        if isnothing(max)
-            max = cnt
-        elseif cnt > max
-            max = cnt 
+        if cnt > max_val
+            max_val = cnt 
         end
     end
 
-    return(
-        (min, max, total/scnt)
-    )
-
+    return (min_val, max_val, total / scnt)
 end
 
 ### Open and Closing Settings

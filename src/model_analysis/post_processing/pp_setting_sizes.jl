@@ -15,13 +15,23 @@ of the setting sizes.
 
 """
 function setting_sizes(postProcessor::PostProcessor)
-
     dic = Dict()
-    for (type, stngs) in postProcessor |> simulation |> settings
-        if length(stngs) != 0
-            dic[string(type)]= countmap([individuals(x, postProcessor |> simulation) |> length for x in stngs])
+    sim = simulation(postProcessor)
+    
+    indivs = sim.present_buffers[Threads.threadid()]
+
+    for (type, stngs) in settings(sim)
+        if !isempty(stngs)
+            dic[string(type)] = countmap(
+                begin
+                    empty!(indivs)
+                    individuals!(indivs, x, sim)
+                    length(indivs)
+                end
+                for x in stngs
+            )
         end
     end
 
-    return(dic)
+    return dic
 end

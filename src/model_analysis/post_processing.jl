@@ -82,12 +82,14 @@ mutable struct PostProcessor
             x -> leftjoin(x, pop, on = [:id_a => :id], renamecols = "" => "_a") |>
             x -> leftjoin(x, pop, on = [:id_b => :id], renamecols = "" => "_b")
 
-        # lookup home-AGS for each individual
-        infections.household_ags_a =
-            (h_id -> ismissing(h_id) ? missing : ags(households(simulation)[h_id])).(infections.household_a)
-        infections.household_ags_b =
-            (h_id -> ismissing(h_id) ? missing : ags(households(simulation)[h_id])).(infections.household_b)
 
+        sim_households = households(simulation)
+        hh_ags_lookup = map(ags, sim_households)
+
+        transform!(infections, 
+            :household_a => ByRow(h -> ismissing(h) ? missing : hh_ags_lookup[h]) => :household_ags_a,
+            :household_b => ByRow(h -> ismissing(h) ? missing : hh_ags_lookup[h]) => :household_ags_b
+        )
         # join deaths with additional info from population DF
         deaths = dataframe(deathlogger(simulation)) |>
             x -> leftjoin(x, pop, on = [:id => :id])

@@ -45,8 +45,8 @@ function effectiveR(postProcessor::PostProcessor)
             x -> groupby(x, :source_infection_id) |>
             x -> combine(x,
                 nrow => :infections,
-                :setting_type => (st -> length(st[st .== 'h'])) => :in_hh_infections,
-                :setting_type => (st -> length(st[st .!= 'h'])) => :out_hh_infections)
+                :setting_type => (st -> count(==('h'), st)) => :in_hh_infections,
+                :setting_type => (st -> count(!=('h'), st)) => :out_hh_infections)
     , on = [:infection_id => :source_infection_id]) |>
     # for individuals who didn't infect anybody, set "infections" to 0
     x -> DataFrames.select(x, :infection_id => :id, :tick,

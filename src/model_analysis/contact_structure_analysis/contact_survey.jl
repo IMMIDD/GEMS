@@ -101,30 +101,26 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
             for contact in contacts
                 # add a row with information about "ego" and "contact" to the df
                 if cnt <= CONTACT_SAMPLES
-                    df[cnt, :] = [
-                        id(ind),
-                        age(ind),
-                        sex(ind),
-                        id(contact),
-                        age(contact),
-                        sex(contact),
-                        settingtype
-                    ]
+                    df.a_id[cnt] = id(ind)
+                    df.a_age[cnt] = age(ind)
+                    df.a_sex[cnt] = sex(ind)
+                    df.b_id[cnt] = id(contact)
+                    df.b_age[cnt] = age(contact)
+                    df.b_sex[cnt] = sex(contact)
+                    df.settingtype[cnt] = settingtype
                     cnt += 1
                 end
             end
         end
 
         if include_non_contacts && (length(contacts) == 0) && (cnt <= CONTACT_SAMPLES)
-            df[cnt, :] = [
-                id(ind),
-                age(ind),
-                sex(ind),
-                Int32(-1),
-                Int8(-1),
-                Int8(-1),
-                settingtype
-            ]
+            df.a_id[cnt] = id(ind)
+            df.a_age[cnt] = age(ind)
+            df.a_sex[cnt] = sex(ind)
+            df.b_id[cnt] = id(contact)
+            df.b_age[cnt] = age(contact)
+            df.b_sex[cnt] = sex(contact)
+            df.settingtype[cnt] = settingtype
             cnt += 1
         end
         
