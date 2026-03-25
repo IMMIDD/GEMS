@@ -84,9 +84,9 @@ function contact_samples(simulation::Simulation, settingtype::DataType; include_
         end
         
         s = stngs[gems_rand(simulation, 1:length(stngs))]
-        p_buffer = simulation.present_buffers[Threads.threadid()]
-        empty!(p_buffer)
-        present_individuals!(p_buffer, s, simulation)
+        present_inds = simulation.present_buffers[Threads.threadid()]
+        empty!(present_inds)
+        present_individuals!(present_inds, s, simulation)
 
         # jump to next iteration if there are not individuals present
         if isempty(present_inds) continue end
