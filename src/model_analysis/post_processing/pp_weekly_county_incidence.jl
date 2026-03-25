@@ -17,7 +17,7 @@ function county_infections_between(postProcessor::PostProcessor, start_tick::Int
     # filter for infections in time frame
     return infectionsDF(postProcessor) |>
         df -> subset(df, :tick => ByRow(t -> start_tick <= t <= end_tick), view=true) |>   
-        df -> dropmissing(df, :household_ags_b) |>
+        df -> dropmissing(df, :household_ags_b, view=true) |>
         df -> groupby(df, :household_ags_b) |>
         df -> combine(df, nrow => :infections) |>
         df -> transform(df, :household_ags_b => ByRow(county) => :ags) |>

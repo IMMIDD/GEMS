@@ -206,9 +206,9 @@ reportable test.
 """
 function detection_ticks(testDF::DataFrame)
     return testDF |>
-        x -> x[x.test_result .& x.infected .& x.reportable, :] |> # filter reportable true positives
-        x -> rename!(x, :test_tick => :first_detected_tick) |>
-        x -> (isempty(x) ? x : groupby(x, :infection_id)) |> # is empty check prevents function from crashing if no infection was reported
+        x -> subset(x, :test_result => ByRow(identity), :infected => ByRow(identity), :reportable => ByRow(identity), view=true) |> 
+        x -> rename(x, :test_tick => :first_detected_tick) |>
+        x -> (isempty(x) ? x : groupby(x, :infection_id)) |> 
         x -> isempty(x) ? x : combine(x,
             [:first_detected_tick, :test_type] => ((tick, type) -> type[argmin(tick)]) => :test_type,    
             :first_detected_tick => minimum => :first_detected_tick)
@@ -474,7 +474,7 @@ function sim_infectionsDF(postProcessor::PostProcessor)
 
     # return only values that have an infecter-id (i.e. runtime-infections)
     sim_infs = infectionsDF(postProcessor) |>
-        df -> df[df.id_a .> 0, :]
+        df -> subset(df, :id_a => ByRow(>(0)), view=true)
     
     # store in internal cache
     store_cache(postProcessor, "sim_infectionsDF", sim_infs)
