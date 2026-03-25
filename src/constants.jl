@@ -147,7 +147,7 @@ const ENFORCE_SIM_RNGS = true
 # operations require substantial amounts of system memory and might overburden the system when done 
 # in parallel. If memory is a bottleneck, this will cause dramatic performance issues.
 # Please only set this "true" if you are sure to have enough memory available.
-PARALLEL_POST_PROCESSING = false
+PARALLEL_POST_PROCESSING = true
 
 # if "true" the post processor stores result dataframes from individual function
 # calls to speed up subsequent steps. However, be aware for large models, these
