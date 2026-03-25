@@ -2,7 +2,7 @@
 ### POPULATIONS (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export Population
-export popuationfile, params
+export populationfile, params
 export add!, remove!, individuals, maxage, num_of_infected, issubset
 export save, dataframe
 export size, count, each!, first
@@ -21,9 +21,26 @@ A Type for a simple population. Acts as a container for a collection of individu
 mutable struct Population
     individuals::Vector{Individual}
     params::Dict{String, Any}
-    maxage # maximum age of any individual. Is updated upon first call of maxage function (for caching)
-    minid # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
+    maxage::Int8 # maximum age of any individual. Is updated upon first call of maxage function (for caching)
+    minid::Int32 # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
+    id_map::Vector{Int32} # largest id of any individual. Needed when ids aren't in order, (e.g.; when usind subsets of the Gesyland population)
+    
 
+    @doc """
+        make_id_map(population::Population)
+
+    Creates an `id_map` for the given Population to avoid missmatches later.
+    """
+    function make_id_map(pop::Population)
+        map_size = isempty(pop.individuals) ? 0 : maximum(x -> x.id, pop.individuals) - pop.minid + 1
+        pop.id_map = zeros(Int32, map_size)
+
+        for (i, ind) in enumerate(pop.individuals)
+            pop.id_map[ind.id - pop.minid + 1] = i 
+        end
+        return pop
+    end
+    
     @doc """
         Population(individuals::Vector{Individual})
 
@@ -31,10 +48,10 @@ mutable struct Population
     """
     function Population(individuals::Vector{Individual})
         # Create the Population object
-        pop = new(individuals, Dict("populationfile" => "Not available."), -1)
+        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
-        return pop
+        return make_id_map(pop)
     end
 
     
@@ -90,7 +107,7 @@ mutable struct Population
         pop.params["populationfile"] = path
         pop.minid = isempty(individuals(pop)) ? -1 : minimum(x -> x.id, individuals(pop))
 
-        return pop
+        return make_id_map(pop)
     end
 
     @doc """
@@ -116,7 +133,7 @@ mutable struct Population
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
-            return new(Individual[], Dict("populationfile" => "Not available."), -1)
+            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, Int32[])
         end
 
         # exception handling
@@ -236,7 +253,7 @@ mutable struct Population
         pop.params["avg_office_size"] = avg_office_size
         pop.params["avg_school_size"] = avg_school_size
 
-        return pop
+        return make_id_map(pop)
     end
 end
 
@@ -305,7 +322,7 @@ end
 
 Returns the maximum age of any individual in the population
 """
-function maxage(population::Population)
+function maxage(population::Population)::Int8
     if population.maxage >= 0
         return(population.maxage)
     end
@@ -443,8 +460,11 @@ function get_individual_by_id(population::Population, ind::Int32)
     # compute index with offset
     idx = ind - population.minid + 1
     
-    if 1 <= idx <= length(population.individuals)
-        @inbounds return population.individuals[idx]
+    if 1 <= idx <= length(population.id_map)
+        arr_idx = population.id_map[idx]
+        if arr_idx > 0
+            @inbounds return population.individuals[arr_idx]
+        end
     end
     
     return nothing
