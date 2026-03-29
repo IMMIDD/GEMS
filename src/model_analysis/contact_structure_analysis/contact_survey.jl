@@ -57,6 +57,9 @@ function contact_samples(simulation::Simulation, ::Type{T}, include_non_contacts
     end
 
     cnt = 1
+    last_s = nothing
+    present_inds = simulation.present_buffers[Threads.threadid()]
+    contacts = simulation.contact_buffers[Threads.threadid()]
 
     # counter how many iterations of the loop where performed
     loop_cnt = 0
@@ -84,9 +87,11 @@ function contact_samples(simulation::Simulation, ::Type{T}, include_non_contacts
         raw_s = stngs[gems_rand(simulation, 1:length(stngs))]
         s = raw_s::T
 
-        present_inds = simulation.present_buffers[Threads.threadid()]
-        empty!(present_inds)
-        present_individuals!(present_inds, s, simulation)
+        if s !== last_s
+            empty!(present_inds)
+            present_individuals!(present_inds, s, simulation)
+            last_s = s
+        end
 
         # jump to next iteration if there are not individuals present
         if isempty(present_inds) continue end
@@ -95,7 +100,7 @@ function contact_samples(simulation::Simulation, ::Type{T}, include_non_contacts
         ind = present_inds[ind_index]
 
         # sample contacts for an individual based on the individuals present in the setting at the current tick
-        contacts = sample_contacts(s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, rng(simulation))
+        sample_contacts!(contacts, s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, rng(simulation))
 
         if length(contacts) > 0
             for contact in contacts
