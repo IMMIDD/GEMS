@@ -33,18 +33,32 @@ dp = Asymptomatic(
 end
 
 
-function calculate_progression(individual::Individual, tick::Int16, dp::Asymptomatic;
-        rng::AbstractRNG = Random.default_rng())
+function calculate_progression(individual::Individual, tick::Int16, dp::Asymptomatic, rng::Xoshiro)
         
     # Calculate the time to infectiousness
-    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
+    infectiousness_onset = Int16(tick + 1 + rand_val(dp.exposure_to_infectiousness_onset, rng))
 
     # Calculate the time to recovery
-    recovery = infectiousness_onset + rand_val(dp.infectiousness_onset_to_recovery, rng)
+    recovery = Int16(infectiousness_onset + rand_val(dp.infectiousness_onset_to_recovery, rng))
 
     return DiseaseProgression(
-        exposure = tick,
-        infectiousness_onset = infectiousness_onset,
-        recovery = recovery
+        tick,
+        infectiousness_onset,
+        Int16(-1),
+        Int16(-1),
+        Int16(-1),
+        Int16(-1),
+        Int16(-1),
+        Int16(-1),
+        Int16(-1),
+        Int16(-1),
+        Int16(-1),
+        recovery,
+        Int16(-1)
     )
+end
+
+#Keyword wrapper for calculate_progression
+function calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory; rng::Xoshiro = DEFAULT_GEMS_RNG)
+    return calculate_progression(individual, tick, dp, rng)
 end

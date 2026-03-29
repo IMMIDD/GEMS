@@ -15,6 +15,6 @@ function detected_infections(postProcessor::PostProcessor)
     return(
         postProcessor |> infectionsDF |>
             # remove undetected transmissions
-            x -> x[.!ismissing.(x.first_detected_tick), :]
+            x -> subset(x, :first_detected_tick => ByRow(!ismissing), view=true)
     )
 end

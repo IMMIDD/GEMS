@@ -13,7 +13,7 @@
             @test occupation(i) == -1
             @test social_factor(i) == 0
             @test mandate_compliance(i) == 0
-            @test comorbidities(i) == Bool[]
+            @test comorbidities(i) == 0
             @test household_id(i) == GEMS.DEFAULT_SETTING_ID
             @test office_id(i) == GEMS.DEFAULT_SETTING_ID
             @test class_id(i) == GEMS.DEFAULT_SETTING_ID
@@ -84,4 +84,21 @@
             @test ishospitalized(i)
         end
     end
+    
+    @testset "Settings Tuple" begin
+    # Test individual with specific setting assignments
+    i = Individual(id = 1, sex = 0, age = 1, household=10, office=20, schoolclass=30, municipality=40)
+    res = settings_tuple(i)
+    
+    @test res isa Tuple
+    @test length(res) == 4
+    @test res[1] == (Household, Int32(10))
+    @test res[2] == (Office, Int32(20))
+    @test res[3] == (SchoolClass, Int32(30))
+    @test res[4] == (Municipality, Int32(40))
+
+    # Test default/undefined settings
+    i_default = Individual(id=2, sex = 0, age = 1)
+    @test all(pair -> pair[2] == GEMS.DEFAULT_SETTING_ID, settings_tuple(i_default))
+end
 end

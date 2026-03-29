@@ -100,20 +100,21 @@ struct DiseaseProgression
     recovery::Int16
     death::Int16
 
-    function DiseaseProgression(;
-        exposure = -1,
-        infectiousness_onset = -1,
-        symptom_onset = -1,
-        severeness_onset = -1,
-        hospital_admission = -1,
-        icu_admission = -1,
-        icu_discharge = -1,
-        ventilation_admission = -1,
-        ventilation_discharge = -1,
-        hospital_discharge = -1,
-        severeness_offset = -1,
-        recovery = -1,
-        death = -1)
+    function DiseaseProgression(
+        exposure::Int16,
+        infectiousness_onset::Int16,
+        symptom_onset::Int16,
+        severeness_onset::Int16,
+        hospital_admission::Int16,
+        icu_admission::Int16,
+        icu_discharge::Int16,
+        ventilation_admission::Int16,
+        ventilation_discharge::Int16,
+        hospital_discharge::Int16,
+        severeness_offset::Int16,
+        recovery::Int16,
+        death::Int16
+    )
 
         # SANITY CHECKS
         # exposure
@@ -171,18 +172,51 @@ struct DiseaseProgression
 
 
         return new(
-            Int16(exposure),
-            Int16(infectiousness_onset),
-            Int16(symptom_onset),
-            Int16(severeness_onset),
-            Int16(hospital_admission),
-            Int16(icu_admission),
-            Int16(icu_discharge),
-            Int16(ventilation_admission),
-            Int16(ventilation_discharge),
-            Int16(hospital_discharge),
-            Int16(severeness_offset),
-            Int16(recovery),
+            exposure,
+            infectiousness_onset,
+            symptom_onset,
+            severeness_onset,
+            hospital_admission,
+            icu_admission,
+            icu_discharge,
+            ventilation_admission,
+            ventilation_discharge,
+            hospital_discharge,
+            severeness_offset,
+            recovery,
+            death
+        )
+    end
+
+    function DiseaseProgression(;
+        exposure::Integer = -1,
+        infectiousness_onset::Integer = -1,
+        symptom_onset::Integer = -1,
+        severeness_onset::Integer = -1,
+        hospital_admission::Integer = -1,
+        icu_admission::Integer = -1,
+        icu_discharge::Integer = -1,
+        ventilation_admission::Integer = -1,
+        ventilation_discharge::Integer = -1,
+        hospital_discharge::Integer = -1,
+        severeness_offset::Integer = -1,
+        recovery::Integer = -1,
+        death::Integer = -1
+    )
+        
+        return DiseaseProgression(
+            Int16(exposure), 
+            Int16(infectiousness_onset), 
+            Int16(symptom_onset), 
+            Int16(severeness_onset), 
+            Int16(hospital_admission), 
+            Int16(icu_admission), 
+            Int16(icu_discharge), 
+            Int16(ventilation_admission), 
+            Int16(ventilation_discharge), 
+            Int16(hospital_discharge), 
+            Int16(severeness_offset), 
+            Int16(recovery), 
             Int16(death)
         )
     end

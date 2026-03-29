@@ -26,42 +26,42 @@ function hospital_df(postProcessor::PostProcessor)
 
     hospital_admissions = infectionsDF(postProcessor) |>
         df -> DataFrames.select(df, :tick, :hospital_admission) |>
-        df -> df[df.hospital_admission .>= 0, :] |>
+        df -> subset(df, :hospital_admission => ByRow(>=(0)), view=true) |>
         df -> groupby(df, :hospital_admission) |>
         df -> combine(df, nrow => :hospital_admissions) |>
         df -> DataFrames.select(df, :hospital_admission => :tick, :hospital_admissions)
 
     hospital_discharges = infectionsDF(postProcessor) |>
         df -> DataFrames.select(df, :tick, :hospital_discharge) |>
-        df -> df[df.hospital_discharge .>= 0, :] |>
+        df -> subset(df, :hospital_discharge => ByRow(>=(0)), view=true) |>
         df -> groupby(df, :hospital_discharge) |>
         df -> combine(df, nrow => :hospital_discharges) |>
         df -> DataFrames.select(df, :hospital_discharge => :tick, :hospital_discharges)
 
     icu_admissions = infectionsDF(postProcessor) |>
         df -> DataFrames.select(df, :tick, :icu_admission) |>
-        df -> df[df.icu_admission .>= 0, :] |>
+        df -> subset(df, :icu_admission => ByRow(>=(0)), view=true) |>
         df -> groupby(df, :icu_admission) |>
         df -> combine(df, nrow => :icu_admissions) |>
         df -> DataFrames.select(df, :icu_admission => :tick, :icu_admissions)
 
     icu_discharges = infectionsDF(postProcessor) |>
         df -> DataFrames.select(df, :tick, :icu_discharge) |>
-        df -> df[df.icu_discharge .>= 0, :] |>
+        df -> subset(df, :icu_discharge => ByRow(>=(0)), view=true) |>
         df -> groupby(df, :icu_discharge) |>
         df -> combine(df, nrow => :icu_discharges) |>
         df -> DataFrames.select(df, :icu_discharge => :tick, :icu_discharges)
 
     ventilation_admissions = infectionsDF(postProcessor) |>
         df -> DataFrames.select(df, :tick, :ventilation_admission) |>
-        df -> df[df.ventilation_admission .>= 0, :] |>
+        df -> subset(df, :ventilation_admission => ByRow(>=(0)), view=true) |>
         df -> groupby(df, :ventilation_admission) |>
         df -> combine(df, nrow => :ventilation_admissions) |>
         df -> DataFrames.select(df, :ventilation_admission => :tick, :ventilation_admissions)
 
     ventilation_discharges = infectionsDF(postProcessor) |>
         df -> DataFrames.select(df, :tick, :ventilation_discharge) |>
-        df -> df[df.ventilation_discharge .>= 0, :] |>
+        df -> subset(df, :ventilation_discharge => ByRow(>=(0)), view=true) |>
         df -> groupby(df, :ventilation_discharge) |>
         df -> combine(df, nrow => :ventilation_discharges) |>
         df -> DataFrames.select(df, :ventilation_discharge => :tick, :ventilation_discharges)

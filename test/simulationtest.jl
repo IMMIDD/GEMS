@@ -383,4 +383,55 @@
         @test !isempty(output)
     end
 
+    @testset "Simulation Acceleration" begin
+        @testset "has_future_interventions" begin
+            sim = Simulation()
+            
+            # Initially false (default tick triggers have no interval/-1)
+            @test GEMS.has_future_interventions(sim) == false
+            
+            # Case: Scheduled event in queue
+            enqueue!(sim.event_queue, IMeasureEvent(Individual(id=1, age=1, sex=1), GEMS.CancelSelfIsolation(), (_) -> true), Int16(10))
+            @test GEMS.has_future_interventions(sim) == true
+            
+            sim = Simulation()
+
+            # Case: Recurring tick trigger
+            add_tick_trigger!(sim, ITickTrigger(IStrategy("test", sim), interval=Int16(7)))
+            @test GEMS.has_future_interventions(sim) == true
+        end
+
+        @testset "fast_forward!" begin
+            # Setup a sim with a short limit
+            sim = Simulation(stop_criterion = TimesUp(limit = 100))
+            @test tick(sim) == 0
+            
+            # Take one real step to populate the loggers with initial data
+            step!(sim)
+            @test tick(sim) == 1
+            
+            # Manually invoke fast-forward to instantly finish the remaining 99 ticks
+            GEMS.fast_forward!(sim)
+            
+            @test tick(sim) == 100
+            
+            # Verify loggers were populated for the skipped ticks
+            sl = statelogger(sim)
+            df = dataframe(sl)
+            
+            @test nrow(df) == 100
+            @test df.tick[end] == 99 # Ticks are 0-indexed in the logger
+        end
+    end
+
+    @testset "Simulation Buffers" begin
+        sim = Simulation()
+        num_threads = Threads.maxthreadid()
+        
+        @test length(present_buffers(sim)) == num_threads
+        @test length(contact_buffers(sim)) == num_threads
+        
+        # Verify they are actual individual vectors
+        @test present_buffers(sim)[1] isa Vector{Individual}
+    end
 end

@@ -94,11 +94,11 @@ end
 Returns all settings of the specified type and `[]` if The
 setting container does not contain the type. Extends `Base.get`.
 """
-function Base.get(container::SettingsContainer, type::DataType)::Any
+function Base.get(container::SettingsContainer, type::DataType)
     if haskey(container.settings, type)
         return container.settings[type]
     else
-        return []
+        return Setting[]
     end
 end
 
@@ -230,46 +230,89 @@ end
 
 Sets all dangling IDs, i.e., IDs that do not point to any setting, to the default setting ID.
 """
+# Helper function to process dangling IDs without dynamic dispatch
+function _delete_dangling_for_type!(
+    setting_list::Vector{Setting}, 
+    cntnr::SettingsContainer, 
+    ::Type{T}
+) where {T}
+    
+    has_contained = hasfield(T, :contained)
+    has_contains = hasfield(T, :contains)
+
+    # return if the type has neither field
+    if !has_contained && !has_contains
+        return
+    end
+
+    for setting_abs in setting_list
+        setting = setting_abs::T 
+        
+        # Handle settings with a contained field
+        if has_contained
+            if setting.contained != DEFAULT_SETTING_ID
+                if length(settings(cntnr)[setting.contained_type]) < setting.contained
+                    @warn "Setting of type $(setting.contained_type) with id $(setting.id) has a contained ID that is out of bounds"
+                    setting.contained = DEFAULT_SETTING_ID
+                end
+            end
+        end
+
+        # Handle settings with a contains field
+        if has_contains
+            max_bounds = length(settings(cntnr)[setting.contains_type])
+            
+            # Iterate backwards
+            for i in length(setting.contains):-1:1
+                s = setting.contains[i]
+                if max_bounds < s
+                    @warn "Setting of type $(setting.contains_type) with id $(setting.id) has a contains ID that is out of bounds"
+                    deleteat!(setting.contains, i)
+                end
+            end
+        end
+    end
+end
+
 function delete_dangling_ids!(cntnr::SettingsContainer)
-    # Iterate through the settingsconteiner
+    # Iterate through the settings container
     for (type, setting_list) in settings(cntnr)
+        _delete_dangling_for_type!(setting_list, cntnr, type)
+    end
+end
 
-        # Iterate through the settings of the type
-        for setting in setting_list
 
-            # Handle settings with a contained field
-            if hasproperty(setting, :contained)
-
-                # Check if the contained ID is out of bounds, i.e., larger than the length of the settings of the contained_type
-                if setting.contained != DEFAULT_SETTING_ID
-                    if length(settings(cntnr)[setting.contained_type]) < setting.contained
-
-                        # Log a warning message
-                        @warn "Setting of type $(setting.contained) with id $(setting.id) has a contained ID that is out of bounds"
-
-                        # Set the contained ID to the default setting ID
-                        setting.contained = DEFAULT_SETTING_ID
-                    end
+# Helper function to update setting columns without dynamic dispatch
+function update_setting_column!(
+    setting_vec::Vector{Setting}, 
+    col_data::AbstractVector, 
+    renaming_dict, 
+    id_data::AbstractVector, 
+    ::Type{T}, 
+    ::Val{F}
+) where {T, F}
+    has_renaming = renaming_dict !== nothing
+    
+    for i in 1:length(id_data)
+        row_id = id_data[i]
+        val = col_data[i]
+        
+        try
+            # Check if ids were reassigned and alter them accordingly
+            if has_renaming
+                # Check if the id is in the dictionary otherwise it might be missing
+                # in the population file and the row will be ignored
+                if haskey(renaming_dict, row_id)
+                    obj = setting_vec[renaming_dict[row_id]]::T 
+                    setfield!(obj, F, convert(fieldtype(T, F), val))
                 end
+            else
+                # Add the value to the setting if the id was not altered
+                obj = setting_vec[row_id]::T
+                setfield!(obj, F, convert(fieldtype(T, F), val))
             end
-
-            # Handle settings with a contains field
-            if hasproperty(setting, :contains)
-
-                # Iterate through the contains IDs
-                for (i, s) in enumerate(setting.contains)
-
-                    # Check if the contains ID is out of bounds, i.e., larger than the length of the settings of the contains_type
-                    if length(settings(cntnr)[setting.contains_type]) < s
-
-                        # Log a warning message
-                        @warn "Setting of type $(setting.contains_type) with id $(setting.id) has a contains ID that is out of bounds"
-                        
-                        # Remove the out of bounds ID from the contains field
-                        deleteat!(setting.contains, i)
-                    end
-                end
-            end
+        catch e
+            @warn("Could not set field $F in $T with id $row_id to value $val due to error $e")
         end
     end
 end
@@ -277,11 +320,12 @@ end
 """
     settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict= Dict())
 
-Loads the settings saved in `jld2file` and add them to the existing SettingsContainer. The renaming dictionary is used to
+Loads the settings saved in `jld2file` and add them to the existing SettingsContainer.
+The renaming dictionary is used to
 find the correct updated values of the ids of the IndividualSettings and change the values in the containers accordingly.
 If the jld2file does not correspond to "" (corresponding to no settingfile) and does not exist, an error message is printed.
 """
-function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict= Dict())
+function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict = Dict())
     if jld2file == "" 
         return
     elseif isfile(jld2file)
@@ -291,60 +335,54 @@ function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict
         default_sampling = RandomSampling()
 
         # Get all setting types from the settings dictionary
-        prov_settingtypes = settings |> keys |> collect |> x -> eval.(x)
+        prov_settingtypes = [eval(x) for x in keys(settings)]
 
         # Add all setting types to the container
-        add_types!(cntnr, [s for s in prov_settingtypes if s in concrete_subtypes(Setting)])
+        add_types!(cntnr, [s for s in prov_settingtypes if s <: Setting && isconcretetype(s)])
         
         # Iterate over all setting types in parallel and add the settings to the container
-        for settingtypesym::Symbol in settings |> keys |> collect
+        for (settingtypesym, df) in settings
             settingtype::DataType = eval(settingtypesym)
-            if "ags" in names(settings[settingtypesym])
-                transform!(settings[settingtypesym], :ags => ByRow(ags -> AGS(ags)) => :ags)
+            if "ags" in names(df)
+                transform!(df, :ags => ByRow(AGS) => :ags)
             end
 
             # Handle individualsettings and containersettings differently
             if :individuals in fieldnames(settingtype)
+                setting_vec = cntnr.settings[settingtype]
+                renaming_dict = haskey(d, settingtype) ? d[settingtype] : nothing
+                id_data = df[!, "id"]
 
                 # Add the correct additional values to the low level settings
-                for col in names(settings[settingtypesym])
-                    if Symbol(col) in fieldnames(settingtype) && col != "individuals" && col != "id"
-                        for row in eachrow(settings[settingtypesym])
-                            try
-
-                                # Check if ids were reassigned and alter them accordingly
-                                if haskey(d, settingtype)
-
-                                    # Check if the id is in the dictionary otherwise it might be missing
-                                    # in the population file and the row will be ignored
-                                    if haskey(d[settingtype], row.id)
-                                        setfield!(cntnr.settings[settingtype][d[settingtype][row.id]], Symbol(col), row[col])
-                                    end
-                                else
-                                    # Add the value to the setting if the id was not altered
-                                    setfield!(cntnr.settings[settingtype][row.id], Symbol(col), row[col])
-                                end
-                            catch e
-                                @warn("Could not set field $col in $settingtype of type $(Dict(zip(fieldnames(settingtype), fieldtypes(settingtype)))[Symbol(col)]) with id $(row.id) to value $(row[col]) of type $(typeof(row[col])) due to error $e")
-                            end
-                        end
+                valid_cols = Symbol[]
+                for col in names(df)
+                    symcol = Symbol(col)
+                    if symcol in fieldnames(settingtype) && symcol != :individuals && symcol != :id
+                        push!(valid_cols, symcol)
                     end
+                end
+
+                for col in valid_cols
+                    col_data = df[!, string(col)]
+                    update_setting_column!(setting_vec, col_data, renaming_dict, id_data, settingtype, Val(col))
                 end
 
             # Handle the container settings
             else
-
+                setting_vec = cntnr.settings[settingtype]
+                
                 # Add the container settings from the dataframe
-                for row in eachrow(settings[settingtypesym])
-                    push!(cntnr.settings[settingtype], settingtype(contact_sampling_method = default_sampling; row...))
+                for nt in Tables.namedtupleiterator(df)
+                    push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
                 end
+
                 # Sort the vector of settings by ID
-                sort!(cntnr.settings[settingtype], by = x -> x.id)
+                sort!(setting_vec, by = x -> x.id)
 
                 # Check if the ids are continuous and start from 1
-                if length(cntnr.settings[settingtype]) != 0 && (cntnr.settings[settingtype] |> Base.first |> id != 1 || cntnr.settings[settingtype] |> Base.last |> id != length(cntnr.settings[settingtype]))
+                if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
                     d[settingtype] = Dict()
-                    for (i, setting) in enumerate(cntnr.settings[settingtype])
+                    for (i, setting) in enumerate(setting_vec)
                         d[settingtype][setting.id] = i
                         setting.id = i
                     end

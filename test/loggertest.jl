@@ -32,9 +32,9 @@
         @testset "Creation and Basic Functionality" begin
             il = InfectionLogger()
 
-            # logger works with single row vectors, so they should all be empty
+            # logger works with Vector of Vectors now, check if total length is 0
             for attr in attributes
-                @test length(getproperty(il, Symbol(attr))) == 0
+                @test sum(length, getproperty(il, Symbol(attr))) == 0
             end
 
             log!(
@@ -63,9 +63,9 @@
                 source_infection_id = Int32(0)
             )
 
-            # check if logged correctly
+            # check if logged correctly across all threads
             for attr in attributes
-                @test length(getproperty(il, Symbol(attr))) == 1
+                @test sum(length, getproperty(il, Symbol(attr))) == 1
             end
 
             # conversion to dataframe
@@ -100,61 +100,64 @@
             # infect one agent
             infect!(infecter, t, pathogen(sim), sim = sim, rng = rng(sim))
             
-            @test il.tick[end] == t
-            @test il.id_a[end] == -1
-            @test il.id_b[end] == id(infecter)
-            @test il.progression_category[end] == Symbol(Asymptomatic)
-            @test il.infectiousness_onset[end] >= t+3
-            @test il.symptom_onset[end] == GEMS.DEFAULT_TICK
-            @test il.severeness_onset[end] == GEMS.DEFAULT_TICK
-            @test il.hospital_admission[end] == GEMS.DEFAULT_TICK
-            @test il.hospital_discharge[end] == GEMS.DEFAULT_TICK
-            @test il.icu_admission[end] == GEMS.DEFAULT_TICK
-            @test il.icu_discharge[end] == GEMS.DEFAULT_TICK
-            @test il.ventilation_admission[end] == GEMS.DEFAULT_TICK
-            @test il.ventilation_discharge[end] == GEMS.DEFAULT_TICK
-            @test il.severeness_offset[end] == GEMS.DEFAULT_TICK
-            @test il.recovery[end] >= t+10
-            @test il.death[end] == GEMS.DEFAULT_TICK
-            @test il.setting_id[end] == GEMS.DEFAULT_SETTING_ID
-            @test il.setting_type[end] == '?'
-            @test il.lat[end] === NaN32
-            @test il.lon[end] === NaN32
-            @test il.ags[end] == Int32(-1)
-            @test il.source_infection_id[end] == GEMS.DEFAULT_INFECTION_ID
+            # flatten logger internal arrays to a dataframe to check values
+            df1 = dataframe(il)
+            @test df1.tick[end] == t
+            @test df1.id_a[end] == -1
+            @test df1.id_b[end] == id(infecter)
+            @test df1.progression_category[end] == Symbol(Asymptomatic)
+            @test df1.infectiousness_onset[end] >= t+3
+            @test df1.symptom_onset[end] == GEMS.DEFAULT_TICK
+            @test df1.severeness_onset[end] == GEMS.DEFAULT_TICK
+            @test df1.hospital_admission[end] == GEMS.DEFAULT_TICK
+            @test df1.hospital_discharge[end] == GEMS.DEFAULT_TICK
+            @test df1.icu_admission[end] == GEMS.DEFAULT_TICK
+            @test df1.icu_discharge[end] == GEMS.DEFAULT_TICK
+            @test df1.ventilation_admission[end] == GEMS.DEFAULT_TICK
+            @test df1.ventilation_discharge[end] == GEMS.DEFAULT_TICK
+            @test df1.severeness_offset[end] == GEMS.DEFAULT_TICK
+            @test df1.recovery[end] >= t+10
+            @test df1.death[end] == GEMS.DEFAULT_TICK
+            @test df1.setting_id[end] == GEMS.DEFAULT_SETTING_ID
+            @test df1.setting_type[end] == '?'
+            @test df1.lat[end] === NaN32
+            @test df1.lon[end] === NaN32
+            @test df1.ags[end] == Int32(-1)
+            @test df1.source_infection_id[end] == GEMS.DEFAULT_INFECTION_ID
 
             # infect another agent in a household setting
-            t = il.infectiousness_onset[end]
+            t = df1.infectiousness_onset[end]
             infect!(infectee, t, pathogen(sim);
                 sim=sim,
                 rng=rng(sim),
                 infecter_id=id(infecter),
                 setting_id=id(h),
                 setting_type=settingchar(h),
-                source_infection_id = il.infection_id[end])
+                source_infection_id = df1.infection_id[end])
 
-            @test il.tick[end] == t
-            @test il.id_a[end] == id(infecter)
-            @test il.id_b[end] == id(infectee)
-            @test il.progression_category[end] == Symbol(Asymptomatic)
-            @test il.infectiousness_onset[end] >= t+3
-            @test il.symptom_onset[end] == GEMS.DEFAULT_TICK
-            @test il.severeness_onset[end] == GEMS.DEFAULT_TICK
-            @test il.hospital_admission[end] == GEMS.DEFAULT_TICK
-            @test il.hospital_discharge[end] == GEMS.DEFAULT_TICK
-            @test il.icu_admission[end] == GEMS.DEFAULT_TICK
-            @test il.icu_discharge[end] == GEMS.DEFAULT_TICK
-            @test il.ventilation_admission[end] == GEMS.DEFAULT_TICK
-            @test il.ventilation_discharge[end] == GEMS.DEFAULT_TICK
-            @test il.severeness_offset[end] == GEMS.DEFAULT_TICK
-            @test il.recovery[end] >= t+10
-            @test il.death[end] == GEMS.DEFAULT_TICK
-            @test il.setting_id[end] == id(h)
-            @test il.setting_type[end] == 'h'
-            @test il.lat[end] === NaN32
-            @test il.lon[end] === NaN32
-            @test il.ags[end] == Int32(-1)
-            @test il.source_infection_id[end] == il.infection_id[end-1]
+            df2 = dataframe(il)
+            @test df2.tick[end] == t
+            @test df2.id_a[end] == id(infecter)
+            @test df2.id_b[end] == id(infectee)
+            @test df2.progression_category[end] == Symbol(Asymptomatic)
+            @test df2.infectiousness_onset[end] >= t+3
+            @test df2.symptom_onset[end] == GEMS.DEFAULT_TICK
+            @test df2.severeness_onset[end] == GEMS.DEFAULT_TICK
+            @test df2.hospital_admission[end] == GEMS.DEFAULT_TICK
+            @test df2.hospital_discharge[end] == GEMS.DEFAULT_TICK
+            @test df2.icu_admission[end] == GEMS.DEFAULT_TICK
+            @test df2.icu_discharge[end] == GEMS.DEFAULT_TICK
+            @test df2.ventilation_admission[end] == GEMS.DEFAULT_TICK
+            @test df2.ventilation_discharge[end] == GEMS.DEFAULT_TICK
+            @test df2.severeness_offset[end] == GEMS.DEFAULT_TICK
+            @test df2.recovery[end] >= t+10
+            @test df2.death[end] == GEMS.DEFAULT_TICK
+            @test df2.setting_id[end] == id(h)
+            @test df2.setting_type[end] == 'h'
+            @test df2.lat[end] === NaN32
+            @test df2.lon[end] === NaN32
+            @test df2.ags[end] == Int32(-1)
+            @test df2.source_infection_id[end] == df1.infection_id[end]
 
         end
 
@@ -167,15 +170,17 @@
             vl = VaccinationLogger()
 
             for attr in attributes
-                @test length(getproperty(vl, Symbol(attr))) == 0
+                @test sum(length, getproperty(vl, Symbol(attr))) == 0
             end
 
             log!(vl, Int32(0), Int16(0))
-
+            
+            # Use dataframe to flatten arrays for tests
+            df_vl = dataframe(vl)
             for attr in attributes
-                @test length(getproperty(vl, Symbol(attr))) == 1
+                @test length(getproperty(df_vl, Symbol(attr))) == 1
                 # looks weird, but does the job
-                @test getproperty(vl, Symbol(attr))[1] == typeof(getproperty(vl, Symbol(attr))[1])(0)
+                @test getproperty(df_vl, Symbol(attr))[1] == typeof(getproperty(df_vl, Symbol(attr))[1])(0)
             end
 
             # conversion to dataframe
@@ -188,20 +193,6 @@
             end
         end
 
-        # @testset "Logging Vaccinations" begin
-        #     ind1 = Individual(id=1, age=18, sex=0)
-        #     ind2 = Individual(id=2, age=20, sex=1)
-        #     vacc = Vaccine(id=1, name="Test")
-        #     vl = logger(vacc)
-
-        #     vaccinate!(ind1, vacc, Int16(21))
-        #     vaccinate!(ind2, vacc, Int16(42))
-
-        #     @test vl.id[end-1] == Int32(1)
-        #     @test vl.id[end] == Int32(2)
-        #     @test vl.tick[end-1] == Int16(21)
-        #     @test vl.tick[end] == Int16(42) 
-        # end
     end
 
     @testset "DeathLogger" begin
@@ -211,15 +202,16 @@
             dl = DeathLogger()
 
             for attr in attributes
-                @test length(getproperty(dl, Symbol(attr))) == 0
+                @test sum(length, getproperty(dl, Symbol(attr))) == 0
             end
 
             log!(dl, Int32(0), Int16(0))
 
+            df_dl = dataframe(dl)
             for attr in attributes
-                @test length(getproperty(dl, Symbol(attr))) == 1
+                @test length(getproperty(df_dl, Symbol(attr))) == 1
                 # looks weird, but does the job
-                @test getproperty(dl, Symbol(attr))[1] == typeof(getproperty(dl, Symbol(attr))[1])(0)
+                @test getproperty(df_dl, Symbol(attr))[1] == typeof(getproperty(df_dl, Symbol(attr))[1])(0)
             end
 
             # conversion to dataframe
@@ -258,9 +250,9 @@
             n_inf = length(inds)
             @test n_inf == 100
 
-            # death logger should be empty
+            # death logger should be empty (use length() function)
             dl = deathlogger(sim)
-            @test length(dl.id) == 0
+            @test length(dl) == 0
 
             # run simulation
             run!(sim)
@@ -269,7 +261,7 @@
             @test sum(is_dead.(inds)) == n_inf 
 
             # all deaths should have been logged
-            @test length(dl.id) == n_inf
+            @test length(dl) == n_inf
         end
     end
 

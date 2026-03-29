@@ -69,7 +69,6 @@ min_individuals(::Vector{Setting}, ::Simulation)
 min_max_avg_individuals(::Vector{Setting}, ::Simulation)
 new_setting_ids!(::SettingsContainer, ::Dict)
 open!
-present_individuals
 present_individuals!
 schoolclass(::Individual, ::Simulation)
 sample_individuals

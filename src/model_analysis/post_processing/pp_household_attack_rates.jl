@@ -52,31 +52,50 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         return DataFrame(first_introduction = Int16[], hh_id = Int32[], hh_size = Int16[], chain_size = Int32[], hh_attack_rate = Float64[])
     end
 
+    # Extract columns to standard vectors for type-stable loop operations
+    source_id_col = infs.source_infection_id
+    inf_id_col = infs.infection_id
+    setting_col = infs.setting_type
+
     # size of infection chain this particular infection
     # started in a household
-    infs.home_chain = zeros(Int32, nrow(infs))
+    home_chain_col = zeros(Int32, nrow(infs))
+    
     # flag whether this individual is the first to introduce
     # an infection into its household
-    infs.started_chain = fill(true, nrow(infs))
-    # tempoary id
-    infs.temp_id = collect(1:nrow(infs))
+    started_chain_col = fill(true, nrow(infs))
     
+    
+    # Pre-calculate the parent->child relationships in a Dictionary
+    home_children = Dict{eltype(source_id_col), Vector{Int}}()
+    for j in 1:nrow(infs)
+        if setting_col[j] == 'h'
+            push!(get!(home_children, source_id_col[j], Int[]), j)
+        end
+    end
+
     # iterate through sorted infections dataframe backwards
     # and "semi-recursively" add up the infection chain
     # in their household starting from this individual
     # TODO: This loop can probably be parallelized
     for i in nrow(infs):-1:1
-        # (direct) infections were caused by this infection at home
-        secondary = infs[infs.source_infection_id .== infs.infection_id[i] .&& infs.setting_type .== 'h', :]
-
-        # iterate over secondary cases
-        for s in eachrow(secondary)
-            # tell secondary cases, they're not the first
-            infs.started_chain[s.temp_id] = false
-            # count infection chain length (in households)
-            infs.home_chain[i] += (1 + s.home_chain)
+        current_inf_id = inf_id_col[i]
+        
+        if haskey(home_children, current_inf_id)
+            # (direct) infections were caused by this infection at home
+            # iterate over secondary cases
+            for j in home_children[current_inf_id]
+                # tell secondary cases, they're not the first
+                started_chain_col[j] = false
+                # count infection chain length (in households)
+                home_chain_col[i] += (1 + home_chain_col[j])
+            end
         end
     end
+
+    # Apply the calculated columns back to the DataFrame
+    infs.home_chain = home_chain_col
+    infs.started_chain = started_chain_col
 
     # generate dataframe of households
     hh_sizes = DataFrame(

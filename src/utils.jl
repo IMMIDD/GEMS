@@ -1056,14 +1056,14 @@ end
 
 
 """
-    rand_val(val::Real, rng::AbstractRNG)
-    rand_val(dist::Distribution, rng::AbstractRNG)
+    rand_val(val::Real, rng::Xoshiro)
+    rand_val(dist::Distribution, rng::Xoshiro)
 
 If the input is a real number, it is returned as is.
 If the input is a distribution, a random value is drawn from it.
 """
-rand_val(val::Real, rng::AbstractRNG) = val
-rand_val(dist::Distribution, rng::AbstractRNG) = gems_rand(rng, dist)
+rand_val(val::Real, rng::Xoshiro) = val
+rand_val(dist::Distribution, rng::Xoshiro) = gems_rand(rng, dist)
 
 """
     state_data()

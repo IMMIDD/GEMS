@@ -6,11 +6,7 @@ export total_detected_cases, detection_rate
 Returns the total number of detected cases.
 """
 function total_detected_cases(postProcessor::PostProcessor)
-    return(
-        postProcessor |> infectionsDF |> 
-            x -> filter(row -> !ismissing(row.first_detected_tick), x) |>
-            nrow
-    )
+    return count(!ismissing, postProcessor.infectionsDF.first_detected_tick)
 end
 
 """

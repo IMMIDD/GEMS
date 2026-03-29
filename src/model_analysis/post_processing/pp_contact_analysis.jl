@@ -203,7 +203,7 @@ end
 
 
 """
-    mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::DataType, interval_steps::Int64)::ContactMatrix{Float64}
+    mean_contacts_per_age_group(post_processor::PostProcessor, ::Type{T}, interval_steps::Int64)::ContactMatrix{Float64}
 
 Calculates the mean number of contacts between two age groups. The age gropus are defined by the size of `interval_steps`.
 The population data is accessed via the postProcessor object to get the number of individuals per age group.
@@ -211,10 +211,10 @@ The population data is accessed via the postProcessor object to get the number o
 # Returns
 Returns a ContactMatrix object containing the calculated mean contacts per age group and the interval steps.
 """
-function mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::DataType, interval_steps::Int64)::ContactMatrix{Float64}
+function mean_contacts_per_age_group(post_processor::PostProcessor, ::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where T
     
     # contact matrix data calculated from the simulation at the last step
-    simulation_contact_matrix_data = setting_age_contacts(post_processor, settingtype)
+    simulation_contact_matrix_data = setting_age_contacts(post_processor, T)
 
     if size(simulation_contact_matrix_data) == (1,1)
         return contact_matrix
@@ -232,9 +232,9 @@ function mean_contacts_per_age_group(post_processor::PostProcessor, settingtype:
     for i in 1:length(aggregated_population)
         # if either the contact age group or the ego age group has no individuals, the mean number of contacts should be 0
         if (aggregated_population[i] != 0)
-            mean_contacts_per_age_group_data[i,:] = aggregated_simulation_contact_matrix_data[i,:] ./ aggregated_population[i]
+            @views mean_contacts_per_age_group_data[i,:] .= aggregated_simulation_contact_matrix_data[i,:] ./ aggregated_population[i]
         else
-            mean_contacts_per_age_group_data[i,:] .= 0
+            @views mean_contacts_per_age_group_data[i,:] .= 0.0
         end
 
         # mean_contacts_per_age_group_data[i,:] = (aggregated_population[i] != 0) ? aggregated_simulation_contact_matrix_data[i,:] ./ aggregated_population[i] : 0

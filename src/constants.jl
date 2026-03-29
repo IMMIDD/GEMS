@@ -160,3 +160,8 @@ POST_PROCESSOR_CACHING = false
 # become a bottleneck. Please only set this "true" if you are sure to have enough
 # memory available.
 PARALLEL_REPORT_GENERATION = false
+
+
+
+# A single, globally available Xoshiro RNG
+const DEFAULT_GEMS_RNG = Xoshiro()

@@ -142,8 +142,7 @@
         end
 
         # define calcuate progression function
-        function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression;
-                rng::AbstractRNG = Random.default_rng())
+        function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression, rng::Xoshiro )
             
             # Calculate the time to infectiousness
             infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
@@ -155,10 +154,10 @@
             recovery = symptom_onset + rand_val(dp.symptom_onset_to_recovery, rng)
 
             return DiseaseProgression(
-                exposure = tick,
-                infectiousness_onset = infectiousness_onset,
-                symptom_onset = symptom_onset,
-                recovery = recovery
+                exposure = Int16(tick),
+                infectiousness_onset = Int16(infectiousness_onset),
+                symptom_onset = Int16(symptom_onset),
+                recovery = Int16(recovery)
             )
         end
 
@@ -186,12 +185,14 @@
 
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
         run!(sim)
-        infectionlogger(sim).progression_category
+        
+        flattened_pc = vcat(infectionlogger(sim).progression_category...)
 
         # check if all infections used the custom progression category in simulation
-        @test all(pc -> pc == :TestProgression, infectionlogger(sim).progression_category)
-        @test length(infectionlogger(sim).progression_category) > 0 # just to verify that there were infections
-
+        @test all(pc -> pc == :TestProgression, flattened_pc)
+        
+        # Check if there were infections
+        @test length(infectionlogger(sim)) > 0
     end
 
     @testset "Progression Assignment" begin
@@ -339,7 +340,7 @@
             odd_progression::DataType
         end
 
-        function GEMS.assign(individual::Individual, pa::EvenOddProgressionAssignment, rng::AbstractRNG)
+        function GEMS.assign(individual::Individual, pa::EvenOddProgressionAssignment, rng::Xoshiro)
             if iseven(individual.id)
                 return pa.even_progression
             else
@@ -362,11 +363,14 @@
         sim = Simulation(pop_size = 1000, pathogen = p_eo, infected_fraction = 0.1)
         run!(sim)
         
+        flat_id_b = vcat(infectionlogger(sim).id_b...)
+        flat_pc = vcat(infectionlogger(sim).progression_category...)
+        
         # make sure that there were infections
-        @test length(infectionlogger(sim).progression_category) > 0 
+        @test length(flat_id_b) > 0 
 
         # check if even IDs got Symptomatic and odd IDs got Asymptomatic
-        for (ind_id, pc) in zip(infectionlogger(sim).id_b, infectionlogger(sim).progression_category)
+        for (ind_id, pc) in zip(flat_id_b, flat_pc)
             if iseven(ind_id)
                 @test pc == :Symptomatic
             else

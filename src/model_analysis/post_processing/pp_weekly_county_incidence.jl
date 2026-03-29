@@ -16,13 +16,13 @@ function county_infections_between(postProcessor::PostProcessor, start_tick::Int
 
     # filter for infections in time frame
     return infectionsDF(postProcessor) |>
-        df -> DataFrames.select(df, :tick, :household_ags_b) |>
-        df -> df[start_tick .<= df.tick .&& df.tick .<= end_tick, :] |>
-        # get county AGS of infected idividual
-        df -> transform(df, :household_ags_b => (a -> county.(a)) => :ags) |>
-        # sum up infection per county
+        df -> subset(df, :tick => ByRow(t -> start_tick <= t <= end_tick), view=true) |>   
+        df -> dropmissing(df, :household_ags_b, view=true) |>
+        df -> groupby(df, :household_ags_b) |>
+        df -> combine(df, nrow => :infections) |>
+        df -> transform(df, :household_ags_b => ByRow(county) => :ags) |>
         df -> groupby(df, :ags) |>
-        df -> combine(df, nrow => :infections)
+        df -> combine(df, :infections => sum => :infections)
 end
 
 
