@@ -24,7 +24,6 @@ This is done in order to reduce large stochastic fluctuations due to small sampl
 | `mean_SI`     | `Float64` | Mean for serial intervals that tick                          |
 """
 function rolling_observed_SI(postProcessor::PostProcessor)
-
     # detected cases and serial interval
     detections = postProcessor |> detected_infections |>
         # filter for data with known serial interval
@@ -34,72 +33,66 @@ function rolling_observed_SI(postProcessor::PostProcessor)
         x -> sort!(x, :tick)
 
     # parameters
-    casethreshold = SI_ESTIMATION_CASE_THRESHOLD # case threshold for SI estimation (loop up constants.jl)
-    windowsize = SI_ESTIMATION_TIME_WINDOW # time window (look up constants.jl)
+    casethreshold = SI_ESTIMATION_CASE_THRESHOLD # loop up constants.jl
+    windowsize = SI_ESTIMATION_TIME_WINDOW # loop up constants.jl
     final_tick = postProcessor |> simulation |> tick
 
-    res = [] 
+    # Pre-allocated output arrays 
+    min_SI = Vector{Union{Float64, Missing}}(missing, final_tick)
+    max_SI = Vector{Union{Float64, Missing}}(missing, final_tick)
+    lower_95_SI = Vector{Union{Float64, Missing}}(missing, final_tick)
+    upper_95_SI = Vector{Union{Float64, Missing}}(missing, final_tick)
+    std_SI = Vector{Union{Float64, Missing}}(missing, final_tick)
+    mean_SI = Vector{Union{Float64, Missing}}(missing, final_tick)
 
-    # iterate through each tick
-    for t in 1:final_tick
-        # build dicts to use aggregate_value function and flatten into a DF later
-        dictrow = Dict("tick" => Int16(t))
+    # If we have detections, process them
+    if nrow(detections) > 0
+        # Extract columns as vectors
+        det_ticks = detections.tick
+        det_SIs = detections.SI
 
-        # given, that dataframe will probably not have an entry
-        # for each possible tick, find largest tick with tick <= t
-        end_index = findlast(row -> row.tick <= t, eachrow(detections))
+        for t in 1:final_tick
+            # Use binary search 
+            end_index = searchsortedlast(det_ticks, t)
+            
+            start_t = t - windowsize + 1
+            start_index = searchsortedfirst(det_ticks, start_t)
 
-        # find start index (based on window-size)
-        start_index = findfirst(row -> row.tick > t - windowsize + 1, eachrow(detections))
+            # Check if we actually found a valid window
+            if end_index >= 1 && start_index <= length(det_ticks) && start_index <= end_index
+                
+                # enforce case threshold
+                if (end_index - start_index + 1) < casethreshold
+                    start_index = max(1, end_index - casethreshold + 1)
+                end
 
-        # if neither start nor end-index is missing, proceed to calculate values
-        # end_index, for exmaple, is missing for all values where t is below the tick of the first detected case
-        if !isnothing(end_index) && !isnothing(start_index)
-
-            # if window does not at least contain 50 cases, update start_index
-            if (end_index - start_index) < casethreshold
-                start_index = max(1, end_index - casethreshold)
+                # Calculate aggregates using a view to avoid copying the array slice
+                agg = aggregate_values(@view det_SIs[start_index:end_index])
+                
+                # Check the confidence interval immediately, avoiding the secondary loop
+                lower = get(agg, "lower_95", missing)
+                
+                if !ismissing(lower) && !isnan(lower) && lower > 0
+                    min_SI[t] = get(agg, "min", missing)
+                    max_SI[t] = get(agg, "max", missing)
+                    lower_95_SI[t] = lower
+                    upper_95_SI[t] = get(agg, "upper_95", missing)
+                    std_SI[t] = get(agg, "std", missing)
+                    mean_SI[t] = get(agg, "mean", missing)
+                end
             end
-
-            # call aggregate values function to get mean, range, and confidence intervals
-            dictrow = merge(dictrow, Dict(k * "_SI" => v for (k, v) in aggregate_values(detections.SI[start_index:end_index])))
-            push!(res, dictrow)
         end
     end
 
-    # if result vector is empty, return empty dataframe
-    if res |> length <= 0
-        return(
-            DataFrame(
-                tick = 1:final_tick,
-                min_SI = Vector{Union{Int16, Missing}}(missing, final_tick),
-                max_SI = Vector{Union{Int16, Missing}}(missing, final_tick),
-                lower_95_SI = Vector{Union{Float64, Missing}}(missing, final_tick),
-                upper_95_SI = Vector{Union{Float64, Missing}}(missing, final_tick),
-                std_SI = Vector{Union{Float64, Missing}}(missing, final_tick),
-                mean_SI = Vector{Union{Float64, Missing}}(missing, final_tick)
-            )
-        )
-    end
-
-    # convert array to dataframe
-    res = DataFrame(res)
-
-    # remove values with "negative" confidence intervals
-    for row in eachrow(res)
-        if ismissing(row.lower_95_SI) || isnan(row.lower_95_SI) || row.lower_95_SI <= 0
-            row.mean_SI = NaN
-            row.std_SI = NaN
-            row.lower_95_SI = NaN
-            row.upper_95_SI = NaN
-        end
-    end
-
-    # result dataframe from combining dicts
-    return(
-        res |>
-            x -> leftjoin(DataFrame(tick = 1:final_tick), x, on = [:tick => :tick]) |>
-            x -> sort(x, :tick)
+    # Build and return the final dataframe directly from the arrays
+    return DataFrame(
+        tick = 1:final_tick,
+        min_SI = min_SI,
+        max_SI = max_SI,
+        lower_95_SI = lower_95_SI,
+        upper_95_SI = upper_95_SI,
+        std_SI = std_SI,
+        mean_SI = mean_SI
     )
 end
 
