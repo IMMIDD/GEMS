@@ -234,11 +234,11 @@ Sets all dangling IDs, i.e., IDs that do not point to any setting, to the defaul
 function _delete_dangling_for_type!(
     setting_list::Vector{Setting}, 
     cntnr::SettingsContainer, 
-    ::Type{T}
-) where {T}
+    settingtype::Type{T}
+) where {T <: Setting}
     
-    has_contained = hasfield(T, :contained)
-    has_contains = hasfield(T, :contains)
+    has_contained = hasfield(settingtype, :contained)
+    has_contains = hasfield(settingtype, :contains)
 
     # return if the type has neither field
     if !has_contained && !has_contains
@@ -246,7 +246,7 @@ function _delete_dangling_for_type!(
     end
 
     for setting_abs in setting_list
-        setting = setting_abs::T 
+        setting = setting_abs::settingtype 
         
         # Handle settings with a contained field
         if has_contained

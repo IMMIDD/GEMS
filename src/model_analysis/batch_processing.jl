@@ -386,13 +386,13 @@ end
 ###
 
 """
-    setting_age_contacts(batchProcessor::BatchProcessor, ::Type{T})
+    setting_age_contacts(batchProcessor::BatchProcessor, settingtype::Type{T}) where {T <: Setting}
 
 Returns a `{String, DataFrame}` dictionary containing an age X age matrix with sampled
 contacts for a provided settingtype T (i.e. Households) for each population files
 of this batch. 
 """
-function setting_age_contacts(batchProcessor::BatchProcessor, ::Type{T}) where T
+function setting_age_contacts(batchProcessor::BatchProcessor, settingtype::Type{T}) where {T <: Setting}
     
     res = Dict{String, Any}()
 
@@ -401,7 +401,7 @@ function setting_age_contacts(batchProcessor::BatchProcessor, ::Type{T}) where T
         pf = rd |> population_file
 
         if !haskey(res, pf)
-            res[pf] = setting_age_contacts(rd, T)
+            res[pf] = setting_age_contacts(rd, settingtype)
         end
     end
 

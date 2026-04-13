@@ -1,7 +1,7 @@
 export setting_age_contacts
 
 """
-    setting_age_contacts(postProcessor::PostProcessor, ::Type{T})
+    setting_age_contacts(postProcessor::PostProcessor, settingtype::Type{T}) where {T <: Setting}
 
 Returns an age X age matrix containing sampled contacts for a provided settingtype T (i.e. Households)
 
@@ -10,10 +10,10 @@ Returns an age X age matrix containing sampled contacts for a provided settingty
 - `Matrix{Int32}`: Sampled contacts in age-age matrix
 
 """
-function setting_age_contacts(postProcessor::PostProcessor, ::Type{T}) where T
+function setting_age_contacts(postProcessor::PostProcessor, settingtype::Type{T}) where {T <: Setting}
 
     # sample contacts for analysis
-    df = contact_samples(postProcessor |> simulation, T, false)
+    df = contact_samples(postProcessor |> simulation, settingtype, false)
 
     # build age x age contact matrix
     mx = max((postProcessor |> simulation |> population |> maxage), 0)

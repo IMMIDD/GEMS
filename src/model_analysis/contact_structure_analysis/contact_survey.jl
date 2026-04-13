@@ -2,7 +2,7 @@
 export contact_samples
 
 """
-    contact_samples(simulation::Simulation, settingtype::DataType, include_non_contacts::Bool)::DataFrame
+    contact_samples(simulation::Simulation, settingtype::Type{T}, include_non_contacts::Bool)::DataFrame  where {T <: Setting}
 
 Returns a dataframe with data on two individuals per row (contact).
 The contacts are sampled for a provided setting type according to the 
@@ -31,8 +31,8 @@ If no settings exist for `settingtype`, an empty DataFrame with the Columns defi
 
 If no contacts are sampled in `GEMS.CONTACT_SAMPLES` many iterations, an empty DataFrame with the Columns defined above is returned.
 """
-function contact_samples(simulation::Simulation, ::Type{T}, include_non_contacts::Bool)::DataFrame where T
-    stngs = settings(simulation, T)
+function contact_samples(simulation::Simulation, settingtype::Type{T}, include_non_contacts::Bool)::DataFrame where {T <: Setting}
+    stngs = settings(simulation, settingtype)
 
     # set up contact dataframe with empty columns. Each row will be added at runtime.
     a_id_vec = Vector{Int32}(undef, CONTACT_SAMPLES)
@@ -85,7 +85,7 @@ function contact_samples(simulation::Simulation, ::Type{T}, include_non_contacts
         end
         
         raw_s = stngs[gems_rand(simulation, 1:length(stngs))]
-        s = raw_s::T
+        s = raw_s::settingtype
 
         if s !== last_s
             empty!(present_inds)

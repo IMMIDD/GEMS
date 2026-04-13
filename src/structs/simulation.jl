@@ -750,9 +750,9 @@ end
 
 
 # Helper function to avoid dynamic dispatch when setting the contact sampling method
-function _set_contact_sampling_method!(setting_list::Vector{Setting}, method, ::Type{T}) where {T}
+function _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
     for s_abs in setting_list
-        s = s_abs::T
+        s = s_abs::settingtype
         s.contact_sampling_method = method
     end
 end

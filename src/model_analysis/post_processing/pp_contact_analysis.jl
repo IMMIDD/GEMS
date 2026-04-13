@@ -203,7 +203,7 @@ end
 
 
 """
-    mean_contacts_per_age_group(post_processor::PostProcessor, ::Type{T}, interval_steps::Int64)::ContactMatrix{Float64}
+    mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where {T <: Setting}
 
 Calculates the mean number of contacts between two age groups. The age gropus are defined by the size of `interval_steps`.
 The population data is accessed via the postProcessor object to get the number of individuals per age group.
@@ -211,10 +211,10 @@ The population data is accessed via the postProcessor object to get the number o
 # Returns
 Returns a ContactMatrix object containing the calculated mean contacts per age group and the interval steps.
 """
-function mean_contacts_per_age_group(post_processor::PostProcessor, ::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where T
+function mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where {T <: Setting}
     
     # contact matrix data calculated from the simulation at the last step
-    simulation_contact_matrix_data = setting_age_contacts(post_processor, T)
+    simulation_contact_matrix_data = setting_age_contacts(post_processor, settingtype)
 
     if size(simulation_contact_matrix_data) == (1,1)
         return contact_matrix
