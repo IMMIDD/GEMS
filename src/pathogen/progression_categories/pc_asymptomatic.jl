@@ -58,7 +58,15 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Asymptom
     )
 end
 
-#Keyword wrapper for calculate_progression
-function calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory; rng::Xoshiro = DEFAULT_GEMS_RNG)
-    return calculate_progression(individual, tick, dp, rng)
+"""
+Fallback: Translates internal positional calls to user-defined keyword calls 
+for custom ProgressionCategories.
+"""
+function calculate_progression(
+    individual::Individual, 
+    tick::Int16, 
+    dp::ProgressionCategory, 
+    rng::Xoshiro
+)
+    return calculate_progression(individual, tick, dp; rng=rng)
 end

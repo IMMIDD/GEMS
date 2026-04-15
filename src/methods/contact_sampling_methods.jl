@@ -4,10 +4,33 @@ export create_contact_sampling_method
 """
     sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)::ErrorException
 
-Abstract function as Fallback if no specific method is available.
+    Fallback: determine which keyword-based method  a user defined (mutating or non-mutating) and routes the internal positional call accordingly.
 """
-function sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)::ErrorException
-    error("Currently, no specific implementation of this function is known. Please provide a method for type: $(typeof(contact_sampling_method))")
+function sample_contacts!(
+    indivs::Vector{Individual},
+    csm::ContactSamplingMethod,
+    setting::Setting,
+    individual_index::Int,
+    present_inds::Vector{Individual},
+    tick::Int16,
+    replace::Bool,
+    rng::Xoshiro
+)
+    # mutating keyword method
+    if hasmethod(sample_contacts!, Tuple{Vector{Individual}, typeof(csm), Setting, Int, Vector{Individual}, Int16})
+        return sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
+    
+    # non-mutating keyword method
+    elseif hasmethod(sample_contacts, Tuple{typeof(csm), Setting, Int, Vector{Individual}, Int16})
+        new_contacts = sample_contacts(csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
+        empty!(indivs)
+        append!(indivs, new_contacts)
+        return indivs
+        
+    # if they defined neither, throw error
+    else
+        error("Currently, no specific implementation of this function is known. Please provide a method for type: $(typeof(contact_sampling_method))")
+    end
 end
 
 """
@@ -200,85 +223,3 @@ function create_contact_sampling_method(config::Dict)
 
 end
 
-"""
-    sample_contacts!(
-        indivs::Vector{Individual},
-        csm::ContactSamplingMethod, 
-        setting::Setting, 
-        individual_index::Int, 
-        present_inds::Vector{Individual}, 
-        tick::Int16; 
-        replace::Bool = true, 
-        rng::Xoshiro = DEFAULT_GEMS_RNG
-    )
-
-Wrapper for optional keyword arguments.
-"""
-function sample_contacts!(
-    indivs::Vector{Individual},
-    csm::ContactSamplingMethod, 
-    setting::Setting, 
-    individual_index::Int, 
-    present_inds::Vector{Individual}, 
-    tick::Int16; 
-    replace::Bool = true, 
-    rng::Xoshiro = DEFAULT_GEMS_RNG
-)
-    return sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
-end
-
-
-"""
-    sample_contacts(
-        csm::ContactSamplingMethod, 
-        setting::Setting, 
-        individual_index::Int, 
-        present_inds::Vector{Individual}, 
-        tick::Int16,
-        replace::Bool, 
-        rng::Xoshiro
-    )
-
-Wrapper without buffer
-"""
-function sample_contacts(
-    csm::ContactSamplingMethod, 
-    setting::Setting, 
-    individual_index::Int, 
-    present_inds::Vector{Individual}, 
-    tick::Int16,
-    replace::Bool, 
-    rng::Xoshiro
-)
-    indivs = Vector{Individual}()
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
-    return indivs
-end
-
-
-"""
-    sample_contacts(
-        csm::ContactSamplingMethod, 
-        setting::Setting, 
-        individual_index::Int, 
-        present_inds::Vector{Individual}, 
-        tick::Int16; 
-        replace::Bool = true, 
-        rng::Xoshiro = DEFAULT_GEMS_RNG
-    )
-
-Wrapper without buffer and optional keyword arguments
-"""
-function sample_contacts(
-    csm::ContactSamplingMethod, 
-    setting::Setting, 
-    individual_index::Int, 
-    present_inds::Vector{Individual}, 
-    tick::Int16; 
-    replace::Bool = true, 
-    rng::Xoshiro = DEFAULT_GEMS_RNG
-)
-    indivs = Vector{Individual}()
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
-    return indivs
-end
