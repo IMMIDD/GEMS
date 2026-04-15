@@ -61,7 +61,7 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
     # started in a household
     home_chain_col = zeros(Int32, nrow(infs))
     
-    # flag whether this individual is the first to introduce
+    # flag whether this infection was acquired outside the household (primary cases)
     # an infection into its household
     started_chain_col = fill(true, nrow(infs))
     
@@ -77,7 +77,6 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
     # iterate through sorted infections dataframe backwards
     # and "semi-recursively" add up the infection chain
     # in their household starting from this individual
-    # TODO: This loop can probably be parallelized
     for i in nrow(infs):-1:1
         current_inf_id = inf_id_col[i]
         
@@ -107,7 +106,7 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         # join infections with household data
         x -> leftjoin(x, hh_sizes, on = [:id_b => :ind_id]) |>
         x -> DataFrames.select(x, :tick, :hh_id, :home_chain, :started_chain, :hh_size) |>
-        # filter for infections that were the first introduced in a household
+        # filter for all primary household cases (introductions from outside)
         x -> x[x.started_chain, :] |>
         # group by household IDs to find first introduction
         x -> groupby(x, :hh_id) |>

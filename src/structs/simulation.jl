@@ -749,7 +749,11 @@ function determine_population_and_settings(configfile_params::Dict, population, 
 end
 
 
-# Helper function to avoid dynamic dispatch when setting the contact sampling method
+"""
+    _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
+
+Internal function barrier to calculate the number of individuals in setting `x`. Mutates the pre-allocated `indivs` buffer to ensure type stability and avoid memory allocations during iteration.
+"""
 function _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
     for s_abs in setting_list
         s = s_abs::settingtype

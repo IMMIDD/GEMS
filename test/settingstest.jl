@@ -647,7 +647,7 @@
         @test !isactive(sc1) && !isactive(sy1) && !isactive(s1)
 
         # Trigger recursive activation from the bottom
-        activate_with_containers!(sc1, sim)
+        activate!(sc1, sim)
 
         @test isactive(sc1) == true
         @test isactive(sy1) == true

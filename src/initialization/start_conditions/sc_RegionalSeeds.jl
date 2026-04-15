@@ -136,7 +136,7 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_samp
         for (type, id) in settings_tuple(i)
             if id != DEFAULT_SETTING_ID
                 current_setting = settings(simulation, type)[id]
-                activate_with_containers!(current_setting, simulation)
+                activate!(current_setting, simulation)
             end
         end
     end

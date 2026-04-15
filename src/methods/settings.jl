@@ -2,7 +2,7 @@ export household, office, schoolclass, municipality, getsetting
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
 export geolocation, lat, lon, remove_empty_settings!, present_individuals!, present_individuals, is_open, get_open_contained!, open!, close!
 export sample_individuals
-export activate_with_containers!
+export activate!
 
 
 ### setting extraction from individuals
@@ -547,11 +547,11 @@ function Base.size(setting::IndividualSetting, simulation::Simulation)::Int
 end
 
 """
-    min_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    min_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns the minimum number of individuals across all provided settings.
 """
-function min_individuals(stngs::Vector{Setting}, simulation::Simulation)
+function min_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     min = nothing
 
     for s in stngs
@@ -568,11 +568,11 @@ end
 
 
 """
-    max_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    max_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns the maximum number of individuals across all provided settings.
 """
-function max_individuals(stngs::Vector{Setting}, simulation::Simulation)
+function max_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     max = nothing
 
     for s in stngs
@@ -589,11 +589,11 @@ end
 
 
 """
-    avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns the average number of individuals across all provided settings.
 """
-function avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
+function avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     cnt = length(stngs)
 
     if cnt <= 0
@@ -609,12 +609,12 @@ function avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
 end
 
 """
-    min_max_avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    min_max_avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns a three-way tuple with `(minimum, maximum, mean)` number of individuals associated with 
 a setting in the provided `stngs` vector.
 """
-function min_max_avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
+function min_max_avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     scnt = length(stngs)
     
     if scnt <= 0
@@ -734,16 +734,16 @@ end
 
 
 """
-    activate_with_containers!(setting::Setting, sim::Simulation)
+    activate!(setting::Setting, sim::Simulation)
 
 Activates setting and recursively activates the the containing setting.
 """
-function activate_with_containers!(setting::Setting, sim::Simulation)
+function activate!(setting::Setting, sim::Simulation)
     activate!(setting)
     # Check if this setting is contained within a parent setting
     if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
         # Recursively activate the parent
         parent_setting = settings(sim, setting.contained_type)[setting.contained]
-        activate_with_containers!(parent_setting, sim)
+        activate!(parent_setting, sim)
     end
 end

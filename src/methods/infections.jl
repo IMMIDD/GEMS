@@ -498,7 +498,7 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
                             for (type, id) in settings_tuple(c)
                                 if id != DEFAULT_SETTING_ID
                                     current_setting = settings(sim, type)[id]
-                                    activate_with_containers!(current_setting, sim)
+                                    activate!(current_setting, sim)
                                 end
                             end
                         end

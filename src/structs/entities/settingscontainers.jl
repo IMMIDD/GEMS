@@ -226,11 +226,10 @@ function new_setting_ids!(cntnr::SettingsContainer, renaming_dict::Dict = Dict()
 end
 
 """
-    delete_dangling_ids!(cntnr::SettingsContainer)
+    _delete_dangling_for_type!(setting_list::Vector{Setting}, cntnr::SettingsContainer, settingtype::Type{T}) where {T <: Setting}
 
-Sets all dangling IDs, i.e., IDs that do not point to any setting, to the default setting ID.
+Internal function barrier to clean up out-of-bounds IDs without dynamic dispatch. Asserting the concrete `settingtype` inside the loop ensures fast, type-stable access to the `:contained` and `:contains` fields of the abstract `Vector{Setting}`.
 """
-# Helper function to process dangling IDs without dynamic dispatch
 function _delete_dangling_for_type!(
     setting_list::Vector{Setting}, 
     cntnr::SettingsContainer, 
@@ -274,6 +273,11 @@ function _delete_dangling_for_type!(
     end
 end
 
+"""
+    delete_dangling_ids!(cntnr::SettingsContainer)
+
+Sets all dangling IDs, i.e., IDs that do not point to any setting, to the default setting ID.
+"""
 function delete_dangling_ids!(cntnr::SettingsContainer)
     # Iterate through the settings container
     for (type, setting_list) in settings(cntnr)
@@ -282,7 +286,11 @@ function delete_dangling_ids!(cntnr::SettingsContainer)
 end
 
 
-# Helper function to update setting columns without dynamic dispatch
+"""
+    update_setting_column!(setting_vec::Vector{Setting}, col_data::AbstractVector, renaming_dict, id_data::AbstractVector, ::Type{T}, ::Val{F}) where {T, F}
+
+Internal function barrier to bulk-update setting columns without dynamic dispatch. Passing the concrete type `Type{T}` and field name `Val{F}` ensures the type assertion and `setfield!` operations remain fully type-stable when iterating over the abstract `Vector{Setting}`.
+"""
 function update_setting_column!(
     setting_vec::Vector{Setting}, 
     col_data::AbstractVector, 

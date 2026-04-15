@@ -54,6 +54,13 @@ the generation of ResultData can be parallelized.
 """
 function process_funcs(func_dicts::Dict)
 
+    if PARALLEL_POST_PROCESSING
+        # print warning if memory might not suffice
+        if Sys.free_memory() / Sys.total_memory() < 0.5
+            @warn "You are running the Post Processor in parallel-mode with less than 50% available system memory. If you encounter severe performance issues, please disable the PARALLEL_POST_PROCESSING flag in constants.jl"
+        end 
+    end
+
     data = Dict{String, Any}()
 
     for (key, dct) in func_dicts

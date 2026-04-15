@@ -1,5 +1,16 @@
 export setting_sizes
 
+"""
+    _get_size(indivs, x::T, sim) where T
+
+Internal function barrier to efficiently calculate the number of individuals in a setting `x`. This resolves potential type instabilities when iterating over settings.
+"""
+function _get_size(indivs, x::T, sim) where T
+    empty!(indivs)
+    individuals!(indivs, x, sim)
+    return length(indivs)
+end
+
 """ 
     setting_sizes(postProcessor::PostProcessor)
 
@@ -14,13 +25,6 @@ of the setting sizes.
     countmap with the key being a setting size (e.g., 5) and the value the number of occurences.
 
 """
-
-function _get_size(indivs, x::T, sim) where T
-    empty!(indivs)
-    individuals!(indivs, x, sim)
-    return length(indivs)
-end
-
 function setting_sizes(postProcessor::PostProcessor)
     dic = Dict()
     sim = simulation(postProcessor)
