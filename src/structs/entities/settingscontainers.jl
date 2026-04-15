@@ -343,7 +343,7 @@ function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict
         default_sampling = RandomSampling()
 
         # Get all setting types from the settings dictionary
-        prov_settingtypes = [eval(x) for x in keys(settings)]
+        prov_settingtypes = DataType[eval(x) for x in keys(settings)]
 
         # Add all setting types to the container
         add_types!(cntnr, [s for s in prov_settingtypes if s <: Setting && isconcretetype(s)])
