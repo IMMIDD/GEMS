@@ -223,3 +223,60 @@ function create_contact_sampling_method(config::Dict)
 
 end
 
+
+
+
+"""
+    sample_contacts(
+        csm::ContactSamplingMethod, 
+        setting::Setting, 
+        individual_index::Int, 
+        present_inds::Vector{Individual}, 
+        tick::Int16,
+        replace::Bool, 
+        rng::Xoshiro
+    )
+
+Wrapper for non-mutating function
+"""
+function sample_contacts(
+    csm::ContactSamplingMethod, 
+    setting::Setting, 
+    individual_index::Int, 
+    present_inds::Vector{Individual}, 
+    tick::Int16,
+    replace::Bool, 
+    rng::Xoshiro
+)
+    indivs = Vector{Individual}()
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return indivs
+end
+
+
+"""
+    sample_contacts(
+        csm::ContactSamplingMethod, 
+        setting::Setting, 
+        individual_index::Int, 
+        present_inds::Vector{Individual}, 
+        tick::Int16; 
+        replace::Bool = true, 
+        rng::Xoshiro = DEFAULT_GEMS_RNG
+    )
+
+Wrapper for non-mutating function and keyword arguments
+"""
+function sample_contacts(
+    csm::ContactSamplingMethod, 
+    setting::Setting, 
+    individual_index::Int, 
+    present_inds::Vector{Individual}, 
+    tick::Int16; 
+    replace::Bool = true, 
+    rng::Xoshiro = DEFAULT_GEMS_RNG
+)
+    indivs = Vector{Individual}()
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return indivs
+end
