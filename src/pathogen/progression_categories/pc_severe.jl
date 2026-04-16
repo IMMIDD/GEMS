@@ -60,18 +60,11 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Severe, 
     recovery = Int16(severeness_offset + rand_val(dp.severeness_offset_to_recovery, rng))
 
     return DiseaseProgression(
-        tick,
-        infectiousness_onset,
-        symptom_onset,
-        severeness_onset,
-        Int16(-1),
-        Int16(-1),
-        Int16(-1),
-        Int16(-1),
-        Int16(-1),
-        Int16(-1),
-        severeness_offset,
-        recovery,
-        Int16(-1)
+        exposure = tick,
+        infectiousness_onset = infectiousness_onset,
+        symptom_onset = symptom_onset,
+        severeness_onset = severeness_onset,
+        severeness_offset = severeness_offset,
+        recovery = recovery
     )
 end
