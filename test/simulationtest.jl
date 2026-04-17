@@ -401,26 +401,74 @@
             @test GEMS.has_future_interventions(sim) == true
         end
 
-        @testset "fast_forward!" begin
-            # Setup a sim with a short limit
-            sim = Simulation(stop_criterion = TimesUp(limit = 100))
-            @test tick(sim) == 0
+        @testset "is_dormant evaluation" begin
+            sim = Simulation(pop_size = 100)
             
-            # Take one real step to populate the loggers with initial data
+            # tick 0: state logger is empty, so it should not be dormant yet
+            @test GEMS.is_dormant(sim) == false
+            
+            # take one real step to populate the loggers with zeros
             step!(sim)
             @test tick(sim) == 1
             
-            # Manually invoke fast-forward to instantly finish the remaining 99 ticks
-            GEMS.fast_forward!(sim)
+            # tick 1: 0 infections, 0 quarantines logged, so it should be dormant
+            @test GEMS.is_dormant(sim) == true
             
-            @test tick(sim) == 100
+            # inject a manual active case into the logger to test wake-up
+            tid = Threads.threadid()
+            push!(statelogger(sim).infectious[tid], 1)
+            @test GEMS.is_dormant(sim) == false
             
-            # Verify loggers were populated for the skipped ticks
+            # revert manual injection
+            pop!(statelogger(sim).infectious[tid])
+        end
+
+        @testset "Event Checkers" begin
+            sim = Simulation(pop_size = 100)
+            current_tick = Int16(5)
+            
+            # initially no events occurred
+            @test GEMS.did_critical_event_occur(sim, current_tick) == false
+            @test GEMS.did_background_event_occur(sim, current_tick) == false
+            
+            # trip a critical logger (Infection)
+            infectionlogger(sim).last_modified_tick[] = current_tick
+            @test GEMS.did_critical_event_occur(sim, current_tick) == true
+            @test GEMS.did_background_event_occur(sim, current_tick) == false
+            
+            # reset and trip a background logger (Vaccination)
+            infectionlogger(sim).last_modified_tick[] = GEMS.DEFAULT_TICK
+            vaccinationlogger(sim).last_modified_tick[] = current_tick
+            @test GEMS.did_critical_event_occur(sim, current_tick) == false
+            @test GEMS.did_background_event_occur(sim, current_tick) == true
+        end
+
+        @testset "catch_up_logs!" begin
+            sim = Simulation(pop_size = 100)
+            @test tick(sim) == 0
+            
+            # populate initial empty state
+            step!(sim)
+            @test tick(sim) == 1
+            
+            # manually simulate skipping 5 dormant ticks
+            skipped_ticks = 5
+            sim.tick += skipped_ticks
+            @test tick(sim) == 6
+            
+            # catch up the logs for the 5 skipped ticks
+            GEMS.catch_up_logs!(sim, skipped_ticks)
+            
+            # verify the statelogger was backfilled
             sl = statelogger(sim)
             df = dataframe(sl)
             
-            @test nrow(df) == 100
-            @test df.tick[end] == 99 # Ticks are 0-indexed in the logger
+            # total rows should be 6 (tick 0 + 5 backfilled ticks)
+            @test nrow(df) == 6 
+            
+            # the last recorded tick in the logger should be 5 
+            # (since tick 6 hasn't taken its normal step! yet)
+            @test df.tick[end] == 5
         end
     end
 

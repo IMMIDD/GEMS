@@ -1270,7 +1270,12 @@ function evaluate(simulation::Simulation, criterion::StopCriterion)
         *string(typeof(criterion)))
 end
 
+"""
+    limit(criterion::StopCriterion)
 
+Returns the maximum number of ticks for the criterion, or `nothing` if the criterion does not have a fixed limit.
+"""
+limit(criterion::StopCriterion) = nothing
 
 
 ### GETTERS & SETTERS

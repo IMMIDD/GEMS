@@ -32,6 +32,9 @@
         @testset "Creation and Basic Functionality" begin
             il = InfectionLogger()
 
+            # test new last_modified_tick attribute initialization
+            @test il.last_modified_tick[] == GEMS.DEFAULT_TICK
+
             # logger works with Vector of Vectors now, check if total length is 0
             for attr in attributes
                 @test sum(length, getproperty(il, Symbol(attr))) == 0
@@ -62,6 +65,9 @@
                 ags = Int32(0),
                 source_infection_id = Int32(0)
             )
+
+            # test that last_modified_tick was updated by the log! function
+            @test il.last_modified_tick[] == Int16(0)
 
             # check if logged correctly across all threads
             for attr in attributes
@@ -169,12 +175,17 @@
         @testset "Creation and Basic Functionality" begin
             vl = VaccinationLogger()
 
+            @test vl.last_modified_tick[] == GEMS.DEFAULT_TICK
+
             for attr in attributes
                 @test sum(length, getproperty(vl, Symbol(attr))) == 0
             end
 
             log!(vl, Int32(0), Int16(0))
             
+            # test that last_modified_tick was updated by the log! function
+            @test vl.last_modified_tick[] == Int16(0)
+
             # Use dataframe to flatten arrays for tests
             df_vl = dataframe(vl)
             for attr in attributes
@@ -201,11 +212,16 @@
         @testset "Creation and Basic Functionality" begin
             dl = DeathLogger()
 
+            @test dl.last_modified_tick[] == GEMS.DEFAULT_TICK
+
             for attr in attributes
                 @test sum(length, getproperty(dl, Symbol(attr))) == 0
             end
 
             log!(dl, Int32(0), Int16(0))
+
+            # test that last_modified_tick was updated by the log! function
+            @test dl.last_modified_tick[] == Int16(0)
 
             df_dl = dataframe(dl)
             for attr in attributes

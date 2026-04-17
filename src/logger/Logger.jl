@@ -32,6 +32,8 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
 @with_kw mutable struct InfectionLogger <: EventLogger 
     # Atomic counter for generating unique infection IDs safely across threads
     infection_counter::Threads.Atomic{Int32} = Threads.Atomic{Int32}(0)
+    # Atomic tick for the last modification
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
     # Infection ID
     infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
@@ -120,6 +122,8 @@ function log!(
     push!(logger.lon[tid], lon)
     push!(logger.ags[tid], ags)
     push!(logger.source_infection_id[tid], source_infection_id)
+
+    Threads.atomic_xchg!(logger.last_modified_tick, tick)
 
     return(new_infection_id)
 end
@@ -250,6 +254,7 @@ Base.length(logger::InfectionLogger) = sum(length, logger.tick)
 ### VaccinationLogger
 ###
 @with_kw mutable struct VaccinationLogger <: EventLogger 
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
 end
@@ -262,6 +267,7 @@ function log!(
     tid = Threads.threadid()
     push!(vacclogger.id[tid], id)
     push!(vacclogger.tick[tid], tick)
+    Threads.atomic_xchg!(vacclogger.last_modified_tick, tick)
 end
 
 function save(vacclogger::VaccinationLogger, path::AbstractString)
@@ -289,6 +295,7 @@ Base.length(logger::VaccinationLogger) = sum(length, logger.tick)
 ### DeathLogger
 ###
 @with_kw mutable struct DeathLogger <: EventLogger 
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
 end
@@ -301,6 +308,7 @@ function log!(
     tid = Threads.threadid()
     push!(deathlogger.id[tid], id)
     push!(deathlogger.tick[tid], tick)
+    Threads.atomic_xchg!(deathlogger.last_modified_tick, tick)
 end
 
 function save(deathlogger::DeathLogger, path::AbstractString)
@@ -329,6 +337,7 @@ Base.length(logger::DeathLogger) = sum(length, logger.tick)
 ###
 @with_kw mutable struct TestLogger <: EventLogger 
     test_counter::Threads.Atomic{Int32} = Threads.Atomic{Int32}(0)
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
     test_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
@@ -361,6 +370,8 @@ function log!(
     push!(testlogger.infection_id[tid], infection_id)
     push!(testlogger.test_type[tid], test_type)
     push!(testlogger.reportable[tid], reportable)
+
+    Threads.atomic_xchg!(testlogger.last_modified_tick, tick)
 end
 
 function save(testlogger::TestLogger, path::AbstractString)
@@ -400,6 +411,7 @@ Base.length(logger::TestLogger) = sum(length, logger.test_tick)
 ### PoolTestLogger
 ###
 @with_kw mutable struct PoolTestLogger <: EventLogger 
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     setting_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     setting_type::Vector{Vector{Char}} = [Vector{Char}() for _ in 1:Threads.maxthreadid()]
     test_tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
@@ -427,6 +439,8 @@ function log!(
     push!(poollogger.no_of_individuals[tid], no_of_individuals)
     push!(poollogger.no_of_infected[tid], no_of_infected)
     push!(poollogger.test_type[tid], test_type)
+
+    Threads.atomic_xchg!(poollogger.last_modified_tick, tick)
 end
 
 function save(poollogger::PoolTestLogger, path::AbstractString)
@@ -465,6 +479,7 @@ Base.length(logger::PoolTestLogger) = sum(length, logger.test_tick)
 ###
 @with_kw mutable struct SeroprevalenceLogger <: EventLogger
     test_counter::Threads.Atomic{Int32} = Threads.Atomic{Int32}(0)
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
     test_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
@@ -497,6 +512,8 @@ function log!(
     push!(logger.was_infected[tid], was_infected)
     push!(logger.infection_id[tid], infection_id)
     push!(logger.test_type[tid], test_type)
+
+    Threads.atomic_xchg!(logger.last_modified_tick, tick)
 end
 
 function save(logger::SeroprevalenceLogger, path::AbstractString)
@@ -536,6 +553,7 @@ Base.length(logger::SeroprevalenceLogger) = sum(length, logger.test_tick)
 ### QuarantineLogger
 ###
 @with_kw mutable struct QuarantineLogger <: TickLogger 
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     quarantined::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
@@ -554,6 +572,8 @@ function log!(
     push!(quarantinelogger.quarantined[tid], quarantined)
     push!(quarantinelogger.students[tid], students)
     push!(quarantinelogger.workers[tid], workers)
+
+    Threads.atomic_xchg!(quarantinelogger.last_modified_tick, tick)
 end
 
 function dataframe(quarantinelogger::QuarantineLogger)::DataFrame
@@ -572,6 +592,7 @@ Base.length(logger::QuarantineLogger) = sum(length, logger.tick)
 ### StateLogger
 ###
 @with_kw mutable struct StateLogger <: TickLogger 
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     exposed::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
     infectious::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
@@ -614,6 +635,8 @@ function log!(
     push!(statelogger.quarantined_workers[tid], quarantined_workers)
     push!(statelogger.isolated_workers[tid], isolated_workers)
     push!(statelogger.unable_to_attend_workers[tid], unable_to_attend_workers)
+
+    Threads.atomic_xchg!(statelogger.last_modified_tick, tick)
 end
 
 function dataframe(statelogger::StateLogger)::DataFrame
