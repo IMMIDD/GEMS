@@ -383,20 +383,20 @@
         @test !isempty(output)
     end
 
-    @testset "Simulation Acceleration" begin
+    @testset "Simulation Acceleration (Dormancy)" begin
         @testset "has_future_interventions" begin
             sim = Simulation()
             
-            # Initially false (default tick triggers have no interval/-1)
+            # initially false (default tick triggers have no interval/-1)
             @test GEMS.has_future_interventions(sim) == false
             
-            # Case: Scheduled event in queue
+            # case: scheduled event in queue
             enqueue!(sim.event_queue, IMeasureEvent(Individual(id=1, age=1, sex=1), GEMS.CancelSelfIsolation(), (_) -> true), Int16(10))
             @test GEMS.has_future_interventions(sim) == true
             
             sim = Simulation()
 
-            # Case: Recurring tick trigger
+            # case: recurring tick trigger
             add_tick_trigger!(sim, ITickTrigger(IStrategy("test", sim), interval=Int16(7)))
             @test GEMS.has_future_interventions(sim) == true
         end
@@ -423,24 +423,26 @@
             pop!(statelogger(sim).infectious[tid])
         end
 
-        @testset "Event Checkers" begin
+        @testset "handle_dormant_state! wake up" begin
             sim = Simulation(pop_size = 100)
-            current_tick = Int16(5)
             
-            # initially no events occurred
-            @test GEMS.did_critical_event_occur(sim, current_tick) == false
-            @test GEMS.did_background_event_occur(sim, current_tick) == false
+            # take one real step to populate the loggers
+            step!(sim)
+            @test tick(sim) == 1
             
-            # trip a critical logger (Infection)
-            infectionlogger(sim).last_modified_tick[] = current_tick
-            @test GEMS.did_critical_event_occur(sim, current_tick) == true
-            @test GEMS.did_background_event_occur(sim, current_tick) == false
+            # manually set tick and simulate dormant ticks
+            sim.tick = 5
+            skipped_ticks = 4
             
-            # reset and trip a background logger (Vaccination)
-            infectionlogger(sim).last_modified_tick[] = GEMS.DEFAULT_TICK
-            vaccinationlogger(sim).last_modified_tick[] = current_tick
-            @test GEMS.did_critical_event_occur(sim, current_tick) == false
-            @test GEMS.did_background_event_occur(sim, current_tick) == true
+            # no loggers touched -> remains asleep, returns skipped + 1
+            skipped_ticks = GEMS.handle_dormant_state!(sim, skipped_ticks)
+            @test skipped_ticks == 5
+            
+            # trip an outbreak-starting logger (Infection)
+            sim.tick = 6
+            infectionlogger(sim).last_modified_tick[] = 6
+            skipped_ticks = GEMS.handle_dormant_state!(sim, skipped_ticks)
+            @test skipped_ticks == 0
         end
 
         @testset "catch_up_logs!" begin

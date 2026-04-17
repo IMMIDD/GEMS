@@ -182,10 +182,10 @@
             end
 
             log!(vl, Int32(0), Int16(0))
-            
+
             # test that last_modified_tick was updated by the log! function
             @test vl.last_modified_tick[] == Int16(0)
-
+            
             # Use dataframe to flatten arrays for tests
             df_vl = dataframe(vl)
             for attr in attributes

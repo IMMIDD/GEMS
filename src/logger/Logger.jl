@@ -371,7 +371,7 @@ function log!(
     push!(testlogger.test_type[tid], test_type)
     push!(testlogger.reportable[tid], reportable)
 
-    Threads.atomic_xchg!(testlogger.last_modified_tick, tick)
+    Threads.atomic_xchg!(testlogger.last_modified_tick, test_tick)
 end
 
 function save(testlogger::TestLogger, path::AbstractString)
@@ -440,7 +440,7 @@ function log!(
     push!(poollogger.no_of_infected[tid], no_of_infected)
     push!(poollogger.test_type[tid], test_type)
 
-    Threads.atomic_xchg!(poollogger.last_modified_tick, tick)
+    Threads.atomic_xchg!(poollogger.last_modified_tick, test_tick)
 end
 
 function save(poollogger::PoolTestLogger, path::AbstractString)
@@ -513,7 +513,7 @@ function log!(
     push!(logger.infection_id[tid], infection_id)
     push!(logger.test_type[tid], test_type)
 
-    Threads.atomic_xchg!(logger.last_modified_tick, tick)
+    Threads.atomic_xchg!(logger.last_modified_tick, test_tick)
 end
 
 function save(logger::SeroprevalenceLogger, path::AbstractString)
