@@ -232,22 +232,29 @@ end
 
 
 # RUN STEP
+
 """
     step!(simulation::Simulation)
 
 Increments the simulation status by one tick and executes all events that shall be handled during this tick.
 """
 function step!(simulation::Simulation)
+    dormant = is_dormant(simulation)
+
     # update disease state
-    Threads.@threads :static for i in simulation |> population |> individuals
-        update_individual!(i, tick(simulation), simulation)
+    if !dormant
+        Threads.@threads :static for i in simulation |> population |> individuals
+            update_individual!(i, tick(simulation), simulation)
+        end
     end
 
     # infect individuals in settings
-    for type in settingtypes_sorted(settingscontainer(simulation))
-        Threads.@threads :static for stng in settings(simulation, type)
-            if isactive(stng)
-                spread_infection!(stng, simulation, pathogen(simulation))
+    if !dormant
+        for type in settingtypes_sorted(settingscontainer(simulation))
+            Threads.@threads :static for stng in settings(simulation, type)
+                if isactive(stng)
+                    spread_infection!(stng, simulation, pathogen(simulation))
+                end
             end
         end
     end
@@ -262,12 +269,17 @@ function step!(simulation::Simulation)
     process_events!(simulation)
 
     # update quarantine state
-    Threads.@threads :static for i in simulation |> population |> individuals
-        quarantined!(i, is_quarantined(i, tick(simulation)))
+    if !dormant
+        Threads.@threads :static for i in simulation |> population |> individuals
+            quarantined!(i, is_quarantined(i, tick(simulation)))
+        end
     end
 
-    log_stepinfo(simulation)
-
+    if dormant && !woke_up(simulation, tick(simulation))
+        copy_last_log_state!(simulation)
+    else
+        log_stepinfo(simulation)
+    end
 
     # fire custom loggers
     fire_custom_loggers!(simulation)
@@ -276,40 +288,6 @@ function step!(simulation::Simulation)
     simulation.stepmod(simulation)
 
     increment!(simulation)
-end
-
-"""
-    dormant_step!(simulation::Simulation)
-
-Processes triggers, events, and step modifiers for a dormant simulation.
-"""
-function dormant_step!(simulation::Simulation)
-    for tt in simulation |> tick_triggers
-        if should_fire(tt, tick(simulation))
-            trigger(tt, simulation)
-        end
-    end
-    process_events!(simulation)
-    fire_custom_loggers!(simulation)
-    simulation.stepmod(simulation)
-end
-
-
-"""
-    has_future_interventions(sim::Simulation)
-
-Determines if there are delayed or scheduled interventions still active in the simulation.
-"""
-function has_future_interventions(sim::Simulation)
-    !isempty(sim.event_queue) && return true
-    
-    for t in sim.tick_triggers
-        if interval(t) > 0 || switch_tick(t) > tick(sim)
-            return true
-        end
-    end
-    
-    return false
 end
 
 """
@@ -333,34 +311,17 @@ function is_dormant(simulation::Simulation)
 end
 
 """
-    handle_dormant_state!(simulation::Simulation)
+    woke_up(simulation::Simulation, current_tick)
 
-Executes a lightweight step. If no logger triggers occur, it copies the previous
-logger states. If the simulation wakes up, it logs the full state.
+Checks if any of the core loggers were modified during the current tick.
 """
-function handle_dormant_state!(simulation::Simulation)
-    # Run triggers, events, and stepmod
-    dormant_step!(simulation)
-    
-    current_tick = tick(simulation)
-    
-    # Check if any crucial logger was touched during this tick
-    woke_up = simulation.infectionlogger.last_modified_tick[] == current_tick || 
-              simulation.quarantinelogger.last_modified_tick[] == current_tick ||
-              simulation.deathlogger.last_modified_tick[] == current_tick ||
-              simulation.testlogger.last_modified_tick[] == current_tick ||
-              simulation.pooltestlogger.last_modified_tick[] == current_tick ||
-              simulation.seroprevalencelogger.last_modified_tick[] == current_tick
-    
-    if woke_up
-        # run the full logging function
-        log_stepinfo(simulation) 
-    else
-        # copy the previous logger states
-        copy_last_log_state!(simulation)
-    end
-
-    increment!(simulation)
+function woke_up(simulation::Simulation, current_tick)
+    loggers = (
+        simulation.infectionlogger, simulation.quarantinelogger, 
+        simulation.deathlogger, simulation.testlogger, 
+        simulation.pooltestlogger, simulation.seroprevalencelogger
+    )
+    return any(l -> l.last_modified_tick[] == current_tick, loggers)
 end
 
 """
@@ -431,11 +392,8 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
             break
         end
 
-        if is_dormant(simulation)
-            handle_dormant_state!(simulation)
-        else
-            step!(simulation)
-        end
+        # The unified step! handles both active and dormant states
+        step!(simulation)
 
         if !has_time_limit 
             @info "\r  \u2514 Currently simulating $(tickunit(simulation)): $(tick(simulation))"

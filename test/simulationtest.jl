@@ -384,23 +384,6 @@
     end
 
     @testset "Simulation Acceleration (Dormancy)" begin
-        @testset "has_future_interventions" begin
-            sim = Simulation()
-            
-            # initially false (default tick triggers have no interval/-1)
-            @test GEMS.has_future_interventions(sim) == false
-            
-            # case: scheduled event in queue
-            enqueue!(sim.event_queue, IMeasureEvent(Individual(id=1, age=1, sex=1), GEMS.CancelSelfIsolation(), (_) -> true), Int16(10))
-            @test GEMS.has_future_interventions(sim) == true
-            
-            sim = Simulation()
-
-            # case: recurring tick trigger
-            add_tick_trigger!(sim, ITickTrigger(IStrategy("test", sim), interval=Int16(7)))
-            @test GEMS.has_future_interventions(sim) == true
-        end
-
         @testset "is_dormant evaluation" begin
             sim = Simulation(pop_size = 100)
             
@@ -421,35 +404,6 @@
             
             # revert manual injection
             pop!(statelogger(sim).infectious[tid])
-        end
-
-        @testset "handle_dormant_state! behavior" begin
-            sim = Simulation(pop_size = 100)
-            
-            # take one real step to populate the loggers
-            step!(sim)
-            @test tick(sim) == 1
-            
-            # manually set tick and simulate dormant step
-            sim.tick = 2
-            
-            # no loggers touched -> remains asleep, copies log states
-            GEMS.handle_dormant_state!(sim)
-            
-            # verify state was logged for tick 2
-            df = dataframe(statelogger(sim))
-            @test df.tick[end] == 2
-            
-            # trip an outbreak-starting logger (Infection) to simulate wake up
-            sim.tick = 3
-            infectionlogger(sim).last_modified_tick[] = 3
-            
-            # This should trigger log_stepinfo instead of copy_last_log_state!
-            GEMS.handle_dormant_state!(sim)
-            
-            # verify state was correctly updated for tick 3
-            df = dataframe(statelogger(sim))
-            @test df.tick[end] == 3
         end
 
         @testset "copy_last_log_state!" begin
