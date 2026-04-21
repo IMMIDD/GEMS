@@ -419,7 +419,7 @@
             @test GEMS.is_dormant(sim) == true
         end
 
-        @testset "copy_last_log_state!" begin
+        @testset "copy_last_log_state" begin
             sim = Simulation(pop_size = 100)
             @test tick(sim) == 0
             
@@ -431,8 +431,8 @@
             sim.tick += 1
             @test tick(sim) == 2
             
-            # trigger the function to copy previous step's state in O(1) time
-            GEMS.copy_last_log_state!(sim)
+            # trigger the function to copy previous step's state 
+            GEMS.copy_last_log_state(sim)
             
             # verify the statelogger
             sl = statelogger(sim)

@@ -161,6 +161,42 @@ function log_stepinfo(simulation::Simulation)
 end
 
 """
+    copy_last_log_state(simulation::Simulation)
+
+Fills the loggers for the current dormant tick by copying the last known state.
+"""
+function copy_last_log_state(simulation::Simulation)
+    sl = statelogger(simulation)
+    ql = quarantinelogger(simulation)
+    tid = Threads.threadid()
+    
+    # Get last known state
+    last_exposed = isempty(sl.exposed[tid]) ? 0 : sl.exposed[tid][end]
+    last_infectious = isempty(sl.infectious[tid]) ? 0 : sl.infectious[tid][end]
+    last_dead = isempty(sl.dead[tid]) ? 0 : sl.dead[tid][end]
+    last_detected = isempty(sl.detected[tid]) ? 0 : sl.detected[tid][end]
+    
+    last_quar = isempty(sl.quarantined[tid]) ? 0 : sl.quarantined[tid][end]
+    last_quar_st = isempty(sl.quarantined_students[tid]) ? 0 : sl.quarantined_students[tid][end]
+    last_isol_st = isempty(sl.isolated_students[tid]) ? 0 : sl.isolated_students[tid][end]
+    last_unab_st = isempty(sl.unable_to_attend_students[tid]) ? 0 : sl.unable_to_attend_students[tid][end]
+    
+    last_quar_wo = isempty(sl.quarantined_workers[tid]) ? 0 : sl.quarantined_workers[tid][end]
+    last_isol_wo = isempty(sl.isolated_workers[tid]) ? 0 : sl.isolated_workers[tid][end]
+    last_unab_wo = isempty(sl.unable_to_attend_workers[tid]) ? 0 : sl.unable_to_attend_workers[tid][end]
+    
+    current_tick = tick(simulation)
+    
+    # Log the copied state for the current tick
+    log!(ql, current_tick, last_quar, last_quar_st, last_quar_wo)
+    log!(sl; tick=current_tick, exposed=last_exposed, infectious=last_infectious, dead=last_dead, 
+         detected=last_detected, quarantined=last_quar, quarantined_students=last_quar_st, 
+         isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
+         quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
+         unable_to_attend_workers=last_unab_wo)             
+end
+
+"""
     fire_custom_loggers!(sim::Simulation)
 
 Executes all custom functions that are stored in the `CustomLogger`
@@ -278,7 +314,7 @@ function step!(simulation::Simulation)
     if !dormant
         log_stepinfo(simulation)
     else
-        copy_last_log_state!(simulation)
+        copy_last_log_state(simulation)
     end
 
     # fire custom loggers
@@ -324,42 +360,6 @@ function is_dormant(simulation::Simulation)
     cur_quar = sl.quarantined[tid][end]
     
     return cur_exp == 0 && cur_inf == 0 && cur_quar == 0
-end
-
-"""
-    copy_last_log_state!(simulation::Simulation)
-
-Fills the loggers for the current dormant tick by copying the last known state.
-"""
-function copy_last_log_state!(simulation::Simulation)
-    sl = statelogger(simulation)
-    ql = quarantinelogger(simulation)
-    tid = Threads.threadid()
-    
-    # Get last known state
-    last_exposed = isempty(sl.exposed[tid]) ? 0 : sl.exposed[tid][end]
-    last_infectious = isempty(sl.infectious[tid]) ? 0 : sl.infectious[tid][end]
-    last_dead = isempty(sl.dead[tid]) ? 0 : sl.dead[tid][end]
-    last_detected = isempty(sl.detected[tid]) ? 0 : sl.detected[tid][end]
-    
-    last_quar = isempty(sl.quarantined[tid]) ? 0 : sl.quarantined[tid][end]
-    last_quar_st = isempty(sl.quarantined_students[tid]) ? 0 : sl.quarantined_students[tid][end]
-    last_isol_st = isempty(sl.isolated_students[tid]) ? 0 : sl.isolated_students[tid][end]
-    last_unab_st = isempty(sl.unable_to_attend_students[tid]) ? 0 : sl.unable_to_attend_students[tid][end]
-    
-    last_quar_wo = isempty(sl.quarantined_workers[tid]) ? 0 : sl.quarantined_workers[tid][end]
-    last_isol_wo = isempty(sl.isolated_workers[tid]) ? 0 : sl.isolated_workers[tid][end]
-    last_unab_wo = isempty(sl.unable_to_attend_workers[tid]) ? 0 : sl.unable_to_attend_workers[tid][end]
-    
-    current_tick = tick(simulation)
-    
-    # Log the copied state for the current tick
-    log!(ql, current_tick, last_quar, last_quar_st, last_quar_wo)
-    log!(sl; tick=current_tick, exposed=last_exposed, infectious=last_infectious, dead=last_dead, 
-         detected=last_detected, quarantined=last_quar, quarantined_students=last_quar_st, 
-         isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
-         quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
-         unable_to_attend_workers=last_unab_wo)             
 end
 
 
