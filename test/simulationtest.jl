@@ -397,13 +397,26 @@
             # tick 1: 0 infections, 0 quarantines logged, so it should be dormant
             @test GEMS.is_dormant(sim) == true
             
-            # inject a manual active case into the logger to test wake-up
+            # inject manual states into the logger to test the macroscopic wake-up logic
             tid = Threads.threadid()
+            
+            # test Infectious wake-up
             push!(statelogger(sim).infectious[tid], 1)
             @test GEMS.is_dormant(sim) == false
+            pop!(statelogger(sim).infectious[tid]) # revert
             
-            # revert manual injection
-            pop!(statelogger(sim).infectious[tid])
+            # test Exposed wake-up
+            push!(statelogger(sim).exposed[tid], 1)
+            @test GEMS.is_dormant(sim) == false
+            pop!(statelogger(sim).exposed[tid]) # revert
+            
+            # test Quarantine wake-up
+            push!(statelogger(sim).quarantined[tid], 1)
+            @test GEMS.is_dormant(sim) == false
+            pop!(statelogger(sim).quarantined[tid]) # revert
+            
+            # Ensure it goes back to sleep when all states are 0
+            @test GEMS.is_dormant(sim) == true
         end
 
         @testset "copy_last_log_state!" begin
@@ -418,7 +431,7 @@
             sim.tick += 1
             @test tick(sim) == 2
             
-            # trigger the function to copy previous step's state
+            # trigger the function to copy previous step's state in O(1) time
             GEMS.copy_last_log_state!(sim)
             
             # verify the statelogger
@@ -434,6 +447,7 @@
             # Verify the states are properly copied and haven't arbitrarily spiked
             @test df.exposed[end] == 0
             @test df.infectious[end] == 0
+            @test df.quarantined[end] == 0
         end
     end
 
