@@ -290,6 +290,7 @@ function dormant_step!(simulation::Simulation)
         end
     end
     process_events!(simulation)
+    fire_custom_loggers!(simulation)
     simulation.stepmod(simulation)
 end
 
@@ -345,13 +346,16 @@ function handle_dormant_state!(simulation::Simulation, skipped_ticks::Int)
     
     # Check if any crucial logger was touched during this tick
     woke_up = simulation.infectionlogger.last_modified_tick[] == current_tick || 
-              simulation.quarantinelogger.last_modified_tick[] == current_tick
+              simulation.quarantinelogger.last_modified_tick[] == current_tick ||
+              simulation.deathlogger.last_modified_tick[] == current_tick ||
+              simulation.testlogger.last_modified_tick[] == current_tick ||
+              simulation.pooltestlogger.last_modified_tick[] == current_tick ||
+              simulation.seroprevalencelogger.last_modified_tick[] == current_tick
     
     if woke_up
         # Backfill logs up to (but not including) the current tick
         catch_up_logs!(simulation, skipped_ticks)
         log_stepinfo(simulation) 
-        fire_custom_loggers!(simulation)
         return 0 # Reset skipped ticks
     else
         return skipped_ticks + 1 # Still asleep
@@ -399,9 +403,7 @@ function catch_up_logs!(simulation::Simulation, skipped_ticks::Int)
              detected=last_detected, quarantined=last_quar, quarantined_students=last_quar_st, 
              isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
              quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
-             unable_to_attend_workers=last_unab_wo)
-             
-        fire_custom_loggers!(simulation)
+             unable_to_attend_workers=last_unab_wo)             
     end
     
     simulation.tick = current_actual_tick # Restore actual tick
