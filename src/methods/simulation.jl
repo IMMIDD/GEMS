@@ -333,12 +333,12 @@ function is_dormant(simulation::Simulation)
 end
 
 """
-    handle_dormant_state!(simulation::Simulation, skipped_ticks::Int)
+    handle_dormant_state!(simulation::Simulation)
 
-Executes a lightweight step and manages the transition between dormant and active states. 
-Returns the updated number of skipped ticks.
+Executes a lightweight step. If no logger triggers occur, it copies the previous
+logger states. If the simulation wakes up, it logs the full state.
 """
-function handle_dormant_state!(simulation::Simulation, skipped_ticks::Int)
+function handle_dormant_state!(simulation::Simulation)
     # Run triggers, events, and stepmod
     dormant_step!(simulation)
     
@@ -353,25 +353,22 @@ function handle_dormant_state!(simulation::Simulation, skipped_ticks::Int)
               simulation.seroprevalencelogger.last_modified_tick[] == current_tick
     
     if woke_up
-        # Backfill logs up to (but not including) the current tick
-        catch_up_logs!(simulation, skipped_ticks)
+        # run the full logging function
         log_stepinfo(simulation) 
-        return 0 # Reset skipped ticks
     else
-        return skipped_ticks + 1 # Still asleep
+        # copy the previous logger states
+        copy_last_log_state!(simulation)
     end
+
+    increment!(simulation)
 end
 
 """
-    catch_up_logs!(simulation::Simulation, skipped_ticks::Int)
+    copy_last_log_state!(simulation::Simulation)
 
-Fills the loggers for the bypassed dormant ticks without running the heavy simulation logic.
+Fills the loggers for the current dormant tick by copying the last known state.
 """
-function catch_up_logs!(simulation::Simulation, skipped_ticks::Int)
-    if skipped_ticks <= 0
-        return
-    end
-    
+function copy_last_log_state!(simulation::Simulation)
     sl = statelogger(simulation)
     ql = quarantinelogger(simulation)
     tid = Threads.threadid()
@@ -391,22 +388,15 @@ function catch_up_logs!(simulation::Simulation, skipped_ticks::Int)
     last_isol_wo = isempty(sl.isolated_workers[tid]) ? 0 : sl.isolated_workers[tid][end]
     last_unab_wo = isempty(sl.unable_to_attend_workers[tid]) ? 0 : sl.unable_to_attend_workers[tid][end]
     
-    current_actual_tick = tick(simulation)
-    start_tick = current_actual_tick - skipped_ticks
+    current_tick = tick(simulation)
     
-    # Backfill missing logs
-    for t in start_tick : (current_actual_tick - 1)
-        simulation.tick = Int16(t) # Temporarily override tick for accurate logging
-        
-        log!(ql, Int16(t), last_quar, last_quar_st, last_quar_wo)
-        log!(sl; tick=Int16(t), exposed=last_exposed, infectious=last_infectious, dead=last_dead, 
-             detected=last_detected, quarantined=last_quar, quarantined_students=last_quar_st, 
-             isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
-             quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
-             unable_to_attend_workers=last_unab_wo)             
-    end
-    
-    simulation.tick = current_actual_tick # Restore actual tick
+    # Log the copied state for the current tick
+    log!(ql, current_tick, last_quar, last_quar_st, last_quar_wo)
+    log!(sl; tick=current_tick, exposed=last_exposed, infectious=last_infectious, dead=last_dead, 
+         detected=last_detected, quarantined=last_quar, quarantined_students=last_quar_st, 
+         isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
+         quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
+         unable_to_attend_workers=last_unab_wo)             
 end
 
 
@@ -414,7 +404,8 @@ end
 """
     run!(simulation::Simulation; with_progressbar::Bool = true)
 
-Takes and initializes Simulation object and calls the stepping function (step!) until the stop criterion is met.
+Takes and initializes Simulation object and calls the stepping 
+function (step!) until the stop criterion is met.
 
 # Returns
 
@@ -435,28 +426,20 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
         iter = Iterators.countfrom(1)
     end
 
-    skipped_dormant_ticks = 0
-
     for _ in iter
         if evaluate(simulation, sc)
             break
         end
 
         if is_dormant(simulation)
-            skipped_dormant_ticks = handle_dormant_state!(simulation, skipped_dormant_ticks)
-            increment!(simulation)
+            handle_dormant_state!(simulation)
         else
             step!(simulation)
         end
 
-        if !has_time_limit && skipped_dormant_ticks == 0
+        if !has_time_limit 
             @info "\r  \u2514 Currently simulating $(tickunit(simulation)): $(tick(simulation))"
         end
-    end
-
-    # If the simulation ends while still asleep, ensure final ticks are logged
-    if skipped_dormant_ticks > 0
-        catch_up_logs!(simulation, skipped_dormant_ticks)
     end
 
     println()

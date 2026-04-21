@@ -423,54 +423,63 @@
             pop!(statelogger(sim).infectious[tid])
         end
 
-        @testset "handle_dormant_state! wake up" begin
+        @testset "handle_dormant_state! behavior" begin
             sim = Simulation(pop_size = 100)
             
             # take one real step to populate the loggers
             step!(sim)
             @test tick(sim) == 1
             
-            # manually set tick and simulate dormant ticks
-            sim.tick = 5
-            skipped_ticks = 4
+            # manually set tick and simulate dormant step
+            sim.tick = 2
             
-            # no loggers touched -> remains asleep, returns skipped + 1
-            skipped_ticks = GEMS.handle_dormant_state!(sim, skipped_ticks)
-            @test skipped_ticks == 5
+            # no loggers touched -> remains asleep, copies log states
+            GEMS.handle_dormant_state!(sim)
             
-            # trip an outbreak-starting logger (Infection)
-            sim.tick = 6
-            infectionlogger(sim).last_modified_tick[] = 6
-            skipped_ticks = GEMS.handle_dormant_state!(sim, skipped_ticks)
-            @test skipped_ticks == 0
+            # verify state was logged for tick 2
+            df = dataframe(statelogger(sim))
+            @test df.tick[end] == 2
+            
+            # trip an outbreak-starting logger (Infection) to simulate wake up
+            sim.tick = 3
+            infectionlogger(sim).last_modified_tick[] = 3
+            
+            # This should trigger log_stepinfo instead of copy_last_log_state!
+            GEMS.handle_dormant_state!(sim)
+            
+            # verify state was correctly updated for tick 3
+            df = dataframe(statelogger(sim))
+            @test df.tick[end] == 3
         end
 
-        @testset "catch_up_logs!" begin
+        @testset "copy_last_log_state!" begin
             sim = Simulation(pop_size = 100)
             @test tick(sim) == 0
             
-            # populate initial empty state
+            # populate initial empty state (generates log entry for tick 1)
             step!(sim)
             @test tick(sim) == 1
             
-            # manually simulate skipping 5 dormant ticks
-            skipped_ticks = 5
-            sim.tick += skipped_ticks
-            @test tick(sim) == 6
+            # manually increment tick to simulate next step loop
+            sim.tick += 1
+            @test tick(sim) == 2
             
-            # catch up the logs for the 5 skipped ticks
-            GEMS.catch_up_logs!(sim, skipped_ticks)
+            # trigger the function to copy previous step's state
+            GEMS.copy_last_log_state!(sim)
             
-            # verify the statelogger was backfilled
+            # verify the statelogger
             sl = statelogger(sim)
             df = dataframe(sl)
             
-            # total rows should be 6 (tick 0 + 5 backfilled ticks)
-            @test nrow(df) == 6 
+            # total rows should be 2 (tick 1 + tick 2)
+            @test nrow(df) == 2 
             
-            # the last recorded tick in the logger should be 5 
-            # (since tick 6 hasn't taken its normal step! yet)
-            @test df.tick[end] == 5
+            # the last recorded tick in the logger should be 2 
+            @test df.tick[end] == 2
+            
+            # Verify the states are properly copied and haven't arbitrarily spiked
+            @test df.exposed[end] == 0
+            @test df.infectious[end] == 0
         end
     end
 
