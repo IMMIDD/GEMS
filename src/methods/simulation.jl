@@ -275,10 +275,10 @@ function step!(simulation::Simulation)
         end
     end
 
-    if dormant && !woke_up(simulation, tick(simulation))
-        copy_last_log_state!(simulation)
-    else
+    if !dormant
         log_stepinfo(simulation)
+    else
+        copy_last_log_state!(simulation)
     end
 
     # fire custom loggers
@@ -293,9 +293,25 @@ end
 """
     is_dormant(simulation::Simulation)
 
-Checks if the simulation is in a steady state (no active infections, exposed, or quarantines).
+Checks if the simulation can be safely fast-forwarded. 
+Returns `false` if there is active disease, active quarantines, or any events/triggers scheduled for today.
 """
 function is_dormant(simulation::Simulation)
+    current_t = tick(simulation)
+
+    # wake up if an event is scheduled for today (or was missed)
+    if !isempty(simulation.event_queue) && first(simulation.event_queue)[2] <= current_t
+        return false 
+    end
+
+    # wake up if a trigger fires today
+    for tt in simulation.tick_triggers
+        if should_fire(tt, current_t)
+            return false 
+        end
+    end
+
+    # wake up if disease or quarantines are active
     sl = statelogger(simulation)
     tid = Threads.threadid()
     
@@ -308,20 +324,6 @@ function is_dormant(simulation::Simulation)
     cur_quar = sl.quarantined[tid][end]
     
     return cur_exp == 0 && cur_inf == 0 && cur_quar == 0
-end
-
-"""
-    woke_up(simulation::Simulation, current_tick)
-
-Checks if any of the core loggers were modified during the current tick.
-"""
-function woke_up(simulation::Simulation, current_tick)
-    loggers = (
-        simulation.infectionlogger, simulation.quarantinelogger, 
-        simulation.deathlogger, simulation.testlogger, 
-        simulation.pooltestlogger, simulation.seroprevalencelogger
-    )
-    return any(l -> l.last_modified_tick[] == current_tick, loggers)
 end
 
 """
