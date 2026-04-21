@@ -23,22 +23,21 @@ mutable struct Population
     params::Dict{String, Any}
     maxage::Int8 # maximum age of any individual. Is updated upon first call of maxage function (for caching)
     minid::Int32 # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
-    id_map::Vector{Int32} # largest id of any individual. Needed when ids aren't in order, (e.g.; when usind subsets of the Gesyland population)
+    id_map::Vector{Int32} # Maps (id - minid + 1) to the individual's index in the `individuals` array. Needed for O(1) lookups.
     
 
     @doc """
-        make_id_map(population::Population)
+        make_id_map!(population::Population)
 
     Creates an `id_map` for the given Population to avoid missmatches later.
     """
-    function make_id_map(pop::Population)
+    function make_id_map!(pop::Population)
         map_size = isempty(pop.individuals) ? 0 : maximum(x -> x.id, pop.individuals) - pop.minid + 1
         pop.id_map = zeros(Int32, map_size)
 
         for (i, ind) in enumerate(pop.individuals)
             pop.id_map[ind.id - pop.minid + 1] = i 
         end
-        return pop
     end
     
     @doc """
@@ -51,7 +50,8 @@ mutable struct Population
         pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
-        return make_id_map(pop)
+        make_id_map!(pop)
+        return pop
     end
 
     
@@ -107,7 +107,8 @@ mutable struct Population
         pop.params["populationfile"] = path
         pop.minid = isempty(individuals(pop)) ? -1 : minimum(x -> x.id, individuals(pop))
 
-        return make_id_map(pop)
+        make_id_map!(pop)
+        return pop
     end
 
     @doc """
@@ -253,7 +254,8 @@ mutable struct Population
         pop.params["avg_office_size"] = avg_office_size
         pop.params["avg_school_size"] = avg_school_size
 
-        return make_id_map(pop)
+        make_id_map!(pop)
+        return pop
     end
 end
 
