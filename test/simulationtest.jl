@@ -311,6 +311,38 @@
             run!(sim)
             @test cntr == 5
         end
+        @testset "Reinitialize" begin
+            sim = Simulation(pop_size=100)
+            
+            # Simulate a few steps manually
+            increment!(sim)
+            increment!(sim)
+            @test tick(sim) == 2
+            
+            # Infect the first individual
+            ind = individuals(sim)[1]
+            infected!(ind, true)
+            
+            # Add data to loggers
+            log!(deathlogger(sim), Int32(1), Int16(2))
+            @test length(deathlogger(sim)) == 1
+            
+            # Add NPI triggers and strategies
+            test_strategy = IStrategy("test strategy", sim)
+            add_symptom_trigger!(sim, SymptomTrigger(test_strategy))
+            @test length(symptom_triggers(sim)) == 1
+            @test length(strategies(sim)) == 1
+            
+            # Reinitialize the simulation
+            reinitialize!(sim)
+            
+            # Assert simulation was reset properly
+            @test tick(sim) == 0
+            @test !isinfected(individuals(sim)[1])
+            @test length(deathlogger(sim)) == 0
+            @test length(symptom_triggers(sim)) == 0
+            @test length(strategies(sim)) == 0
+        end
     
     end
 
@@ -372,6 +404,41 @@
             @test_throws ArgumentError("'contactparameter' is -1.0, but the 'contactparameter' has to be non-negative!") ContactparameterSampling(-1.0)
             @test_throws ArgumentError("'contactparameter' is -1, but the 'contactparameter' has to be non-negative!") ContactparameterSampling(-1)
         end
+    end
+
+    @testset "Calibration" begin
+        # Test norm calculations used in calibration
+        ref_ts = [1.0, 2.0, 3.0]
+        sim_ts = [1.1, 1.9, 3.2]
+        
+        @test GEMS.l1_norm(sim_ts, ref_ts) ≈ (0.1 + 0.1 + 0.2) / 3
+        @test GEMS.l2_norm(sim_ts, ref_ts) ≈ sqrt((0.01 + 0.01 + 0.04) / 3)
+        
+        # Setup a basic test for parameter assignments (internal calibration mechanics)
+        sim = Simulation(pop_size=100)
+        x_vals = [0.15]
+        args = ["households"]
+        
+        # Provide initial setup
+        for s in settings(sim, Household)
+            s.contact_sampling_method = GEMS.ContactparameterSampling(0.0)
+        end
+        
+        # Run parameter assignment used by calibrate!
+        GEMS.assign_values_to_parameters!(sim, x=x_vals, arg=args)
+        
+        # Assert parameter has successfully changed
+        for s in settings(sim, Household)
+            @test s.contact_sampling_method.contactparameter == 0.15
+        end
+        
+        # verify loss computation and param assignments
+        target_fn(s) = [1.1, 1.9, 3.2]
+        loss_fn = GEMS.l2_norm
+        p_array = [sim, ref_ts, loss_fn, target_fn, 1, args, [0.0], [1.0]]
+        
+        loss_score = GEMS.compute_loss(x_vals, p_array)
+        @test typeof(loss_score) <: Float64
     end
 
     @testset "Helper Functions" begin
