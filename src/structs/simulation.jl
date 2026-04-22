@@ -1689,21 +1689,31 @@ function reinitialize!(simulation::Simulation)
     # reset individual to initial state
     reset!.(individuals(simulation))
     reset!(simulation)
+    
+    # Reset all loggers 
     simulation.infectionlogger = InfectionLogger()
     simulation.deathlogger = DeathLogger()
     simulation.testlogger = TestLogger()
     simulation.pooltestlogger = PoolTestLogger()
+    simulation.seroprevalencelogger = SeroprevalenceLogger()
     simulation.quarantinelogger = QuarantineLogger()
+    simulation.statelogger = StateLogger()
     simulation.customlogger = CustomLogger()
+    
+    # Reset NPI triggers and strategies
     simulation.symptom_triggers = []
     simulation.tick_triggers = []
     simulation.hospitalization_triggers = []
     simulation.event_queue = EventQueue()
     simulation.strategies = []
     simulation.testtypes = []
-    if ~isnothing(simulation.seed)
-        initialize_seed(simulation.seed)
+    
+    # Re-initialize RNGs
+    if !isnothing(simulation.seed)
+        simulation.rngs = [Xoshiro(gems_rand(Xoshiro(simulation.seed), UInt)) for _ in 1:Threads.maxthreadid()]
     end
+    
+    # Initialize the simulation's start condition
     initialize!(simulation)
 end
 
