@@ -2,6 +2,7 @@ export age_incidence
 
 """
     age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::Int64)
+    age_incidence(postProcessor::PostProcessor; timespan::Int64 = 7, basesize::Int64 = 100_000)
 
 Returns a `DataFrame` containing the infection incidence stratified by (10-year) age groups.
 The `timespan` parameter defines a time window in ticks and the `basesize` parameter
@@ -101,3 +102,5 @@ function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::
 
     return incidence
 end
+
+age_incidence(postProcessor::PostProcessor; timespan::Int64 = 7, basesize::Int64 = 100_000) = age_incidence(postProcessor, timespan, basesize)

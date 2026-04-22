@@ -1,4 +1,4 @@
-# 7 - Logging & Post-Processing
+# 8 - Logging & Post-Processing
 
 GEMS offers a variety of options to collect data during simulation runs and process them to obtain aggregated statistics.
 This tutorial teaches you how to access the data and customize how data is being collected and processed.
@@ -25,16 +25,16 @@ dataframe(inf_logger)
 [ Info: 23:40:28 | └ Creating simulation object
 [ Info: 23:40:29 | Running Simulation Simulation 79
 100.0%┣████████████████████████████████████████┫ 365 days/365 days [00:29<00:00, 13 days/s]
-75908×19 DataFrame
-   Row │ infection_id  tick   id_a   id_b   infectious_tick  removed_tick  death_tick  ⋯
-       │ Int32         Int16  Int32  Int32  Int16            Int16         Int16       ⋯
-───────┼───────────────────────────────────────────────────────────────────────────────────
-     1 │            1      0     -1  74571                5            13          -1   ⋯         
-     2 │            2      0     -1  48307                1             7          -1   ⋯  
-   ⋮   │      ⋮          ⋮      ⋮      ⋮           ⋮              ⋮            ⋮             ⋮ 
- 75907 │        75907    177   4685  36171              177           183          -1   ⋯ 
- 75908 │        75908    181   4685  33557              185           191          -1   ⋯  
-                                                        10 columns and 75904 rows omitted
+74078×23 DataFrame
+   Row │ infection_id  tick   id_a   id_b   progression_category  infectiousness_onset ⋯
+       │ Int32         Int16  Int32  Int32  Symbol                Int16                ⋯
+───────┼────────────────────────────────────────────────────────────────────────────────
+     1 │            1      0     -1  81435  Critical                                 1 ⋯
+     2 │            2      0     -1  37134  Asymptomatic                             2  
+   ⋮   │      ⋮          ⋮      ⋮      ⋮             ⋮                     ⋮           ⋱
+ 74077 │        74077    183  20556  41661  Hospitalized                           184  
+ 74078 │        74078    190  81857  73144  Symptomatic                            191  
+                                                       17 columns and 74031 rows omitted                                                     
 ```
 
 !!! info "Where can I find out what these columns mean?"
@@ -45,7 +45,7 @@ dataframe(inf_logger)
 
 The `PostProcessor` is the binding element between the raw data coming from the simulation's internal loggers and the `ResultData` object.
 It is instantiated with the `Simulation` object and performs some initial operations and joins on the raw data, and stores the results in internal dataframes (`infectionsDF`, `populationDF`, `deathsDF`, `testsDF`, `pooltestsDF`, `quarantinesDF`).
-An exception is the `sim_infectionsDF`-dataframe which only contains infections that happend during the simulation, exluding all initial, seeding infections.
+An exception is the `sim_infectionsDF`-dataframe which only contains infections that happened during the simulation, excluding all initial, seeding infections.
 This example shows how the `PostProcessor`'s internal infections-dataframe is already joined with data from the population-dataframe:
 
 ```julia
@@ -65,15 +65,16 @@ infectionsDF(pp)
 [ Info: 23:41:40 | └ Creating simulation object
 [ Info: 23:41:41 | Running Simulation Simulation 80
 100.0%┣█████████████████████████████████████████┫ 365 days/365 days [00:57<00:00, 6 days/s]
-75798×47 DataFrame
-Row │ infection_id  tick   id_a   id_b    infectious_tick  removed_tick  ⋯
-    │ Int32         Int16  Int32  Int32   Int16            Int16         ⋯
-    ┼────────────────────────────────────────────────────────────────────────
-  1 │         7180     36  61265       1               38            44  ⋯    
-  2 │        71586     88  77749       2               91            98  ⋯
-⋮     │        ⋮          ⋮      ⋮      ⋮                 ⋮              ⋮      
-75798 │        42048     60  61117  100000             64            72  ⋯      
-38 columns and 75794 rows omitted
+74549×52 DataFrame
+   Row │ infection_id  tick   id_a   id_b    progression_category  infectiousness_onse ⋯
+       │ Int32         Int16  Int32  Int32   Symbol                Int16               ⋯
+───────┼────────────────────────────────────────────────────────────────────────────────
+     1 │        37305     55  99752       1  Symptomatic                             5 ⋯
+     2 │        68257     81  57862       2  Severe                                  8  
+   ⋮   │      ⋮          ⋮      ⋮      ⋮              ⋮                     ⋮          ⋱
+ 74548 │        20815     45  38327   99999  Symptomatic                             4  
+ 74549 │        74126    113  16508  100000  Hospitalized                           11  
+                                                       47 columns and 74502 rows omitted
 ```
 
 You might have noticed, that this dataframe contains characteristics about the infecting and infected individuals (e.g., `age` or `sex`) or whether they were detected.
@@ -111,7 +112,7 @@ effectiveR(pp)
 ```
 
 
-!!! info "Where's the list of availble post-processing functions?"
+!!! info "Where's the list of available post-processing functions?"
     Look up the Post-Processor section in the API documentation for a full list of available options.
 
 
@@ -163,9 +164,166 @@ These things will be explained in the subsequent sections.
 
 ## The ResultData object
 
+`ResultData` collects post-processed simulation results for analysis and plotting. It can be created from a `Simulation`, a `PostProcessor`, multiple simulations/postprocessors, or a `Batch`.
+For example, you can access the cumulative cases directly from the ResultData object like this:
+
+```julia
+using GEMS
+sim = Simulation()
+run!(sim)
+rd = ResultData(sim)
+cumulative_cases(rd)
+```
+
+**Output**
+```
+366×4 DataFrame
+ Row │ exposed_cum  infectious_cum  recovered_cum  deaths_cum 
+     │ Int64        Int64           Int64          Int64      
+─────┼────────────────────────────────────────────────────────
+   1 │         100               0              0           0
+   2 │         116              42              0           0
+   3 │         137              70              0           0
+   4 │         164              97              2           0
+   5 │         204             130              6           0
+  ⋮  │      ⋮             ⋮               ⋮            ⋮
+ 363 │       75971           75971          74821        1150
+ 364 │       75971           75971          74821        1150
+ 365 │       75971           75971          74821        1150
+ 366 │       75971           75971          74821        1150
+                                              357 rows omitted
+```
+
+You can also explore other results directly, for example by running `effectiveR(rd)`, `observed_R(rd)` or `cumulative_deaths(rd)`.
+
+Run the `info(...)` function to get an overview of values that you can retrieve from a `ResultData` object by calling a function of the same name on the `ResultData` object:
+
+```julia
+info(rd)
+```
+
+**Output**
+
+```
+ResultData Entries
+└ aggregated_setting_age_contacts
+  └ Office
+  └ ....
+└ meta_data
+  └ config_file_val
+  └ GEMS_version
+  └ ....
+└ dataframes
+  └ compartment_periods
+  └ deaths
+  └ ....
+└ sim_data
+  └ label
+  └ initial_infections
+  └ number_of_individuals
+  └ ....
+└ setting_age_contacts
+└ system_data
+  └ cpu_data
+  └ ....
+```
+
+**ResultData Styles**
+
+By default, `ResultData` contains all raw and aggregated results.  
+
+You can also use the lighter version to keep only aggregated statistics (saves memory, no raw individual-level data):
+
+```julia
+rd = ResultData(sim; style="LightRD")
+```
+
+```
+ResultData Object
+└ Dataframes inside: 24
+└ Config file: DefaultConf.toml
+  └ Pathogens: ["Covid19"]
+└ Population file: Not available.
+  └ Individuals: 100000
+  └ Settings: ["Household", "SchoolClass", "Office"]
+└ Simulation:
+  └ Total infections: 75971
+  └ Attack rate: 0.75971
+  └ Total quarantine days: 0
+  └ Total tests: NamedTuple()
+  └ Test detection rate: 0.0
+```
+
 ## Custom ResultDataStyles
 
-- how to get custom post-processing functions in here?
+You can create your own `ResultDataStyle` to include only the data you need.  
+Each custom style is defined as a struct with a `data::Dict{String, Any}` field — this is the common structure used in GEMS and ensures consistency with the built-in styles.
+After creating a `ResultData` object with your custom style, you can call the usual built-in functions (like `label(rd)`) directly. For your own new fields, we recommend defining a small function that makes them accessible in the same convenient way.
+
+```julia
+using GEMS
+
+# 1. Custom post-processing function
+function old_infects_young(pp::PostProcessor)
+    infs = sim_infectionsDF(pp)
+    filtered = infs[infs.age_a .> infs.age_b, :]
+    grouped = groupby(filtered, :tick)
+    res = combine(grouped, nrow => :count)
+    return res
+end
+
+# 2. Custom ResultDataStyle using the PostProcessor
+mutable struct NewResultDataStyle <: ResultDataStyle
+    data::Dict{String, Any}
+    # constructor
+    NewResultDataStyle(pP::PostProcessor) = new(Dict(
+        "sim_data" => Dict(
+            "label" => label(simulation(pP)),
+        ),
+        "dataframes" => Dict(
+            "old_infects_young" => old_infects_young(pP)
+    )))
+end
+
+# 3. Run simulation and postprocessor
+sim = Simulation(label = "Test Simulation")
+run!(sim)
+
+# 4. Create ResultData with custom style
+rd = ResultData(sim; style="NewResultDataStyle")
+
+# 5. Define new functions to access custom data
+old_infects_young(rd::ResultData) = rd.data["dataframes"]["old_infects_young"]
+
+# 6. Access custom and built-in fields
+label(rd)
+```
+**Output**
+```
+"Test Simulation"
+```
+and 
+```julia
+old_infects_young(rd)
+```
+**Output**
+```
+139×2 DataFrame
+ Row │ tick   count 
+     │ Int16  Int64
+─────┼──────────────
+   1 │     1      3
+   2 │     2     11
+   3 │     3     20
+   4 │     4     14
+   5 │     5     23
+  ⋮  │   ⋮      ⋮
+ 136 │   138      1
+ 137 │   139      2
+ 138 │   141      1
+ 139 │   143      1
+    130 rows omitted
+```
 
 ## Custom Loggers
 

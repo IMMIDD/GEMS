@@ -14,6 +14,7 @@ export SimulationReportStyle, BatchReportStyle
 
 ### INCLUDES
 include("plots.jl")
+include("heatmaps.jl")
 include("maps.jl")
 include("markdown.jl")
 include("sections.jl")

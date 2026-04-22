@@ -136,6 +136,7 @@ function generate_movie(rd::ResultData; seconds::Int64 = 60, fps::Int64 = 24, sa
 
     # prepare infections dataframe
     data = rd |> infections |>
+        x -> transform(x, [:recovery, :death] => ((r, d) -> max(r,d)) => :removed_tick) |>
         x -> DataFrames.select(x,:infection_id, :tick, :removed_tick, :lat, :lon) # only interested in time window to plot
 
     # select data with geolocations

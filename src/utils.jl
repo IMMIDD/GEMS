@@ -1,5 +1,6 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
+export duplicates
 export concrete_subtypes, is_existing_subtype, find_subtype
 export isdate
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
@@ -10,11 +11,32 @@ export get_missing_docs
 export parameters
 export lognow, printinfo, subinfo
 export _int
-export remove_kw
-export germanshapes
+export remove_kw, prepare_kw_args
+export germanshapes, state_data, county_data, municipality_data
+export gemscolors
+export haspath
+export rand_val
 
 # contact stuff
 export calculate_absolute_error
+
+###
+### GENERAL UTILS
+###
+
+"""
+    duplicates(vec)
+
+Returns values that are duplicates in a provided array.
+"""
+function duplicates(vec)
+    return collect(keys(filter(x -> x[2] > 1, countmap(vec))))
+end
+
+
+###
+### TYPING AND SUBTYPES
+###
 
 function concrete_subtypes(type::Type)::Vector{Type}
     if subtypes(type) == []
@@ -37,6 +59,20 @@ function is_existing_subtype(subtype::String, type::Type)::Bool
     return subtype in [t[end] for t in split.(string.(concrete_subtypes(type)), ".")]
     # return subtype in string.(concrete_subtypes(type))
 end
+
+"""
+    structname(string::String)
+    structname(type::DataType)
+
+Returns the last part of a dot-separated series of strings or composed type.
+If input is `GEMS.Household`, it will return `Household`.
+"""
+function structname(string::String)
+    parts = split(string, ".")
+    return length(parts) > 1 ? parts[end] : string
+end
+
+structname(type::Type) = structname(string(type))
 
 """
     is_subtype(type::String, parent::DataType)
@@ -72,17 +108,56 @@ Returns the `DataType` which is a subtype of `parent` specified by the `type` st
 This function supersedes `find_subtype(...)`
 
 """
-function get_subtype(type::String, parent::DataType)
+function get_subtype(type::String, parent::Type)
     stypes = subtypes(parent)
-    gems_string = string(nameof(@__MODULE__))
-    # find index of matching type
-    i = findfirst(x -> x == type || x == "$gems_string.$type", string.(stypes))
+
+    # throw exception if multiple modules define a struct subtype
+    # of the same name. This can happen if GEMS is used as a dependency in
+    # another module
+    doubles = duplicates(structname.(stypes))
+    !isempty(doubles) ? throw("There are multiple $(structname(parent)) structs of the same name: $(join(doubles, ", ")). Did you (re-)define them in a custom module?") : nothing
+
+    # find right struct's index
+    i = findfirst(x -> x == structname(type), structname.(stypes))
+
+    # if type is not subtype of parent, throw exception
+    isnothing(i) ? throw("'$(structname(type))' is not a known subtype of $(structname(parent)); try any of these: $(join(structname.(stypes), ", "))") : nothing
+
     # return index
     return stypes[i]
 end
 
-get_subtype(type::Symbol, parent::DataType) = get_subtype(string(type), parent)
+get_subtype(type::Symbol, parent::Type) = get_subtype(string(type), parent)
 
+"""
+    type_in_collection(type::String, collection::Vector{String})
+    type_in_collection(type::DataType, collection::Vector{String})
+    type_in_collection(type::String, collection::Vector{DataType})
+    type_in_collection(type::DataType, collection::Vector{DataType})
+
+
+Returns true if `Household` is in `[Household, Office]` or
+`GEMS.Household` is in `[Household, Office]` or `Household` is in
+`[GEMS.Household, GEMS.Office]` or
+"""
+function type_in_collection(type::String, collection::Vector{String})
+    return structname(type) in structname.(collection)
+end
+
+type_in_collection(type::DataType, collection::Vector{String}) =
+    type_in_collection(string(type), collection)
+
+type_in_collection(type::String, collection::Vector{DataType}) =
+    type_in_collection(type, string.(collection))
+
+type_in_collection(type::DataType, collection::Vector{DataType}) =
+    type_in_collection(string(type), string.(collection))
+
+
+
+###
+### OTHER STUFF
+###
 
 # helper function to check whether input is valid date format
 function isdate(x)
@@ -867,6 +942,15 @@ end
 
 
 """
+    prepare_kw_args(dict::Dict)
+
+Converts a dictionary with string keys to a dictionary with Symbol keys.
+"""
+function prepare_kw_args(dict::Dict{String, <:Any})
+    return Dict(Symbol(k) => v for (k, v) in dict)
+end
+
+"""
     germanshapes(level::Int64)
 
 Returns the `Shapefile.Table` object read from the respective shapefile.
@@ -942,4 +1026,102 @@ function germanshapes(level::Int64)
 
     # return shapefile
     return(Shapefile.Table(filename))
+end
+
+"""
+    haspath(dict::Dict, path::Vector{<:Any})
+
+Checks if a dictionary has a path of keys.
+The path is a vector of keys that should be present in the dictionary.
+
+# Example
+
+```julia
+julia> d = Dict(:a => Dict(:b => Dict(:c => 1)))
+julia> haspath(d, [:a, :b, :c])
+true
+```
+"""
+function haspath(dict::Dict, path::Vector{<:Any})
+    d = dict
+    for p in path
+        if haskey(d, p)
+            d = d[p]
+        else
+            return false
+        end
+    end
+    return true
+end
+
+
+"""
+    rand_val(val::Real, rng::AbstractRNG)
+    rand_val(dist::Distribution, rng::AbstractRNG)
+
+If the input is a real number, it is returned as is.
+If the input is a distribution, a random value is drawn from it.
+"""
+rand_val(val::Real, rng::AbstractRNG) = val
+rand_val(dist::Distribution, rng::AbstractRNG) = gems_rand(rng, dist)
+
+"""
+    state_data()
+
+Returns a dataframe with AGS and string-names of German states.
+"""
+function state_data()
+    return germanshapes(1) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+
+"""
+    county_data()
+
+Returns a dataframe with AGS and string-names of German counties.
+"""
+function county_data()
+    return germanshapes(2) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+
+"""
+    municipality_data()
+
+Returns a dataframe with AGS and string-names of German municipalities.
+"""
+function municipality_data()
+    return germanshapes(3) |>
+        shps -> DataFrame(ags = AGS.(shps.AGS_0), gen = shps.GEN) |>
+        df -> groupby(df, :ags) |>
+        df -> combine(df, :gen => first => :gen)
+end
+
+"""
+    gemscolors(l::Int64)
+
+Returns the GEMS ColorScheme for plots.
+The `l` parameter defines the number of colors you would like to get in your scheme.
+"""
+function gemscolors(l::Int64)
+    if l <= 0
+        return []
+    end
+
+    if l <= 2
+        return palette(:auto, l)
+    end
+
+    if l <= 9
+        tab10 = [palette(:tab10)...]
+        return [gemscolors(2)..., tab10[4:(1+l)]...]
+    end
+
+    return [gemscolors(9)..., palette(:darktest, l-9)...]
 end

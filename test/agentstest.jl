@@ -23,15 +23,19 @@
             @testset "Times Setter & Getter" begin
                 i = Individual(id = 1, sex = 0, age = 31)
                 # testing default ticks in disease progression
-                getter = [  exposed_tick,
-                            infectious_tick,
-                            onset_of_symptoms,
-                            onset_of_severeness,
-                            hospitalized_tick,
-                            ventilation_tick,
-                            icu_tick,
-                            death_tick,
-                            removed_tick
+                getter = [  exposure,
+                            infectiousness_onset,
+                            symptom_onset,
+                            severeness_onset,
+                            hospital_admission,
+                            icu_admission,
+                            icu_discharge,
+                            ventilation_admission,
+                            ventilation_discharge,
+                            hospital_discharge,
+                            severeness_offset,
+                            recovery,
+                            death
                         ]
                 for g in getter
                     # test default
@@ -52,40 +56,15 @@
                     setter(i, Int16(GEMS.DEFAULT_TICK)) # reset the time for the tests
                 end
             end
-            @testset "Disease Setter & Getter" begin
-                i = Individual(id = 1, sex = 0, age = 31)
-                # defaults
-                getter = [symptomatic, presymptomatic, severe, critical]
-                for g in getter
-                    @test g(i) == false
-                end
-
-                @test exposed(i) == false
-                p = Pathogen(id = 1, name = "COVID")
-                infect!(i, Int16(0), p)
-                @test exposed(i) == true
-
-                # setters should be exclusive to each other
-                for f in getter
-                    setter = getfield(GEMS, Symbol(string(f)*"!"))
-                    setter(i)
-                    for g in getter
-                        if g==f
-                            @test g(i) == true
-                        else
-                            @test g(i) == false
-                        end
-                    end
-                end
-            end
+            
         end 
         @testset "Quarantine" begin
             i = Individual(id=0, sex=1, age=42)
 
-            @testset quarantine_tick(i) == GEMS.DEFAULT_TICK
-            @testset quarantine_release_tick(i) == GEMS.DEFAULT_TICK
-            @testset !isquarantined(i)
-            @testset quarantine_status(i) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
+            @test quarantine_tick(i) == GEMS.DEFAULT_TICK
+            @test quarantine_release_tick(i) == GEMS.DEFAULT_TICK
+            @test !isquarantined(i)
+            @test quarantine_status(i) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
 
             quarantine_release_tick!(i, Int16(42))
             @test quarantine_release_tick(i) == 42
@@ -94,16 +73,15 @@
             @test quarantine_tick(i) == 42
 
             home_quarantine!(i)
-            @testset isquarantined(i)
-            @testset quarantine_status(i) == GEMS.QUARANTINE_STATE_HOUSEHOLD_QUARANTINE
+            @test isquarantined(i)
+            @test quarantine_status(i) == GEMS.QUARANTINE_STATE_HOUSEHOLD_QUARANTINE
 
             end_quarantine!(i)
-            @testset !isquarantined(i)
-            @testset quarantine_status(i) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
+            @test !isquarantined(i)
+            @test quarantine_status(i) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
 
-            hospitalize!(i)
-            @testset isquarantined(i)
-            @testset quarantine_status(i) == GEMS.QUARANTINE_STATE_HOSPITAL
+            hospitalized!(i, true)
+            @test ishospitalized(i)
         end
     end
 end

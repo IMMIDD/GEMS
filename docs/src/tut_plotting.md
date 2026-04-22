@@ -29,7 +29,7 @@ gemsplot(rd, type = :CumulativeCases)
 !!! info "Where do I find an explanation available plot types?"
     Put a `?` into the Julia REPL and call `help?> gemsplot` to get an overview of graphs you can generate using the [`gemsplot`](@ref) function or look up the Plotting section of the API documentation.
 
-Additonally, it is possible to pass multiple types as a tuple to make them appear in the same plot:
+Additionally, it is possible to pass multiple types as a tuple to make them appear in the same plot:
 
 ```julia
 gemsplot(rd, type = (:CumulativeCases, :EffectiveReproduction))
@@ -91,7 +91,8 @@ If you try to plot any `gemsmap` for the first time, it will trigger the downloa
 ```julia
 using GEMS
 sim = Simulation(population = "MV")
-gemsmap(sim, type = :PopDensityMap, clims = (0, 100))
+gemsmap(sim, type = :PopDensityMap)
+gemsmap(sim, type = :PopDensityMap)
 ```
 
 **Plot**
@@ -198,10 +199,10 @@ rd = ResultData(sim)
 # pass as many plots to the "plot" functions as you want
 plot(
     histogram(ages, xlabel = "Age", ylabel = "Number of Individuals", label = "Individuals per Age"),
-    gemsmap(sim, type = :PopDensityMap, clims = (0, 100)),
+    gemsmap(sim, type = :PopDensityMap, top_margin = -8Plots.mm, bottom_margin = -8Plots.mm),
     gemsplot(rd, type = :CumulativeCases, xlims = (0, 100)),
     layout = (3, 1),
-    size = (400, 1000)
+    size = (600, 1000)
 )
 ```
 
@@ -212,6 +213,9 @@ plot(
     <img src="../assets/tutorials/tut_plotting_combined.png" width="60%"/>
 </p>
 ``` 
+
+The `top_margin` and `bottom_margin` keywords in the example are used to arrange subplots.
+Please look up the `Plots.jl` package's documentation to learn more.
 
 
 ## Saving Plots
@@ -284,6 +288,6 @@ gp = gemsplot(rd, type = :TotalInfections)
 
 You might have seen that the `gemsplot()` function can also work with multiple `ResultData` objects.
 If you want multiple simulation runs in one custom plot, you need to define a generate-function with this signature: `generate(plt::YourNewType, rd::Vector{ResultData}; plotargs...)`.
-This function can exsist additionally to the single-`ResultData` implementation.
+This function can exist additionally to the single-`ResultData` implementation.
 It does not have to replace it.
 If no multi-`ResultData` generate-function is available for a particular type, calling `gemsplot()` with this type and multiple `ResultData` objects will cause the function to return a multi-plot with one subplot for each `ResultData` object.

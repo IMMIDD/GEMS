@@ -68,7 +68,7 @@ function compute_loss(x::AbstractArray, p::Vector)
 end
 
 #callback function to observe training
-function plot_loss_callback(state::Optimization.OptimizationState, l::Float64; doplot=false::Bool, loss_history::Vector, pl::Plots.Plot)
+function plot_loss_callback(state, l::Float64; doplot=false::Bool, loss_history::Vector, pl::Plots.Plot)
     println("Loss:\t", l)
     push!(loss_history, l)
     # plot current learning curve

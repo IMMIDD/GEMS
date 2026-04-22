@@ -52,6 +52,10 @@ const R_CALCULATION_THRESHOLD = 10
 # (limit for performance reasons)
 const HOUSEHOLD_ATTACK_RATE_SAMPLES = 15_000
 
+# fraction of infections that is used to calculate the R0 value
+# has to be between 0 and 1. A value of 0.05 means that the first
+# 5% of infections are used to calculate the R0 value.
+const R0_CALCULATION_SAMPLE_FRACTION = 0.05
 
 #################
 # LOOKUP VALUES #
@@ -120,7 +124,7 @@ const LOCALDATA_PATH = BASE_FOLDER = joinpath(dirname(dirname(pathof(GEMS))), "l
 const DEFAULT_CONFIGFILE::String = "data/DefaultConf.toml"
 
 # remote location of population files (ZIP)
-const popurl(identifier::String) = "https://uni-muenster.sciebo.de/s/SoogCFyijz4ctBA/download?path=%2F&files=$identifier.zip"
+const popurl(identifier::String) = "https://github.com/IMMIDD/GEMS/releases/download/v0.7.1/$(identifier).zip"
 # local location of population and setting files (JLD2)
 const poplocal(identifier::String) = joinpath(LOCALDATA_PATH, identifier)
 const peoplelocal(identifier::String) = joinpath(poplocal(identifier), "people_$identifier.jld2")
@@ -130,6 +134,9 @@ const settingslocal(identifier::String) = joinpath(poplocal(identifier), "settin
 const SHAPEFILE_FOLDER_PATH = joinpath(LOCALDATA_PATH, "shapefiles")
 const GERMAN_SHAPEFILE(identifier::String) = joinpath(SHAPEFILE_FOLDER_PATH, "vg250-ew_12-31.gk3.shape.ebenen", "vg250-ew_ebenen_1231", "VG250_$identifier.shp")
 const GERMAN_SHAPEFILE_URL = "https://daten.gdz.bkg.bund.de/produkte/vg/vg250-ew_ebenen_1231/aktuell/vg250-ew_12-31.gk3.shape.ebenen.zip"
+
+# throw error when global RNG is used in gems_rand/gems_sample functions
+const ENFORCE_SIM_RNGS = true
 
 ########################
 # PERFORMANCE SETTINGS #
@@ -146,7 +153,7 @@ PARALLEL_POST_PROCESSING = false
 # calls to speed up subsequent steps. However, be aware for large models, these
 # intermediate dataframes can be excessive and a severe strain on system memory.
 # Please only set this "true" if you are sure to have enough memory available.
-POST_PROCESSOR_CACHING = true
+POST_PROCESSOR_CACHING = false
 
 # if "true", report sections will be generated in parallel. While this speeds up
 # the generation process significantly, it requires more system memory which might

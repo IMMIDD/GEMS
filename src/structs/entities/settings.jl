@@ -102,7 +102,7 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 - `income::Int8 = -1` *(optional)*: Category of income for the household
 - `dwelling::Int8 = -1  *(optional)*`: Category of dwelliung size
 - `last_infectious::Int16 = -1` *(optional)*: Tick indicating the last presence of an infected individual
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*:
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the Household.
 - `lon::Float32 = NaN` *(optional)*: Longitude of the household
@@ -116,7 +116,7 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
     income::Int8 = -1 # 1 byte
     dwelling::Int8 = -1 # 1 byte
     last_infectious::Int16 = -1 # 2 bytes
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     lon::Float32 = NaN # 4 bytes
     lat::Float32 = NaN # 4 bytes
@@ -154,7 +154,7 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 
 - `id::Int32`: Unique identifier of the municipality
 - `individuals::Vector{Individual} = []` *(optional)*: List of associated individuals
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*: Sampling Method, defining how contacts are drawn.
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the municipality.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
@@ -162,7 +162,7 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 @with_kw mutable struct Municipality <: IndividualSetting
     id::Int32 # 4 bytes // Municipality identifier
     individuals::Vector{Individual} = [] # 40 + n*8 bytes // List of associated individuals
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     # active settings approach
     isactive::Bool = false
@@ -201,7 +201,7 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`SchoolYear`) 
 - `contained_type::DataType = SchoolYear` *(optional)*: Parent setting tye (`SchoolYear`)
 - `last_infectious::Int16 = -1` *(optional)*: Tick indicating the last presence of an infected individual
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*:
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `ags::Int32 = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the schoolclass.
 - `lon::Float32 = NaN` *(optional)*: Longitude of the schoolclass
@@ -216,7 +216,7 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     contained::Int32 = DEFAULT_SETTING_ID # 4 bytes
     contained_type::DataType = SchoolYear
     last_infectious::Int16 = -1 # 2 bytes
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     lon::Float32 = NaN # 4 bytes
     lat::Float32 = NaN # 4 bytes
@@ -258,7 +258,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`School`)
 - `contained_type::DataType = School` *(optional)*: Parent setting tye (`School`)
 - `type::Int32 = -1` *(optional)*: Type of school year (e.g. grade)
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*: Sampling Method, defining how contacts are drawn.
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 """
@@ -269,7 +269,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     contained::Int32 = DEFAULT_SETTING_ID
     contained_type::DataType = School
     type::Int32 = -1# 1 byte
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
 
     # active settings approach
     isactive::Bool = false
@@ -307,7 +307,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`SchoolComplex`)
 - `contained_type::DataType = School` *(optional)*: Parent setting tye (`SchoolComplex`)
 - `type::Int32 = -1` *(optional)*: Type of school (e.g. primary, highschool, ...)
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*: Sampling Method, defining how contacts are drawn.
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 """
@@ -318,7 +318,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     contained::Int32 = DEFAULT_SETTING_ID
     contained_type::DataType = SchoolComplex
     type::Int32 = -1# 1 byte
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     # active settings approach
     isactive::Bool = false
 
@@ -352,7 +352,7 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 - `id::Int32`: Unique identifier of the school complex
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `School`s
 - `contains_type::DataType = SchoolYear` *(optional)*: Type of contained settings (`School`)
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*: Sampling Method, defining how contacts are drawn.
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 """
@@ -360,7 +360,7 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contains_type::DataType = School
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     type::Int32 = -1# 1 byte
     # active settings approach
     isactive::Bool = false
@@ -398,7 +398,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 - `contains_type::DataType = Workplace` *(optional)*: Type of contained settings (`Workplace`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace site.
 - `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*: Sampling Method, defining how contacts are drawn.
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: Whether the workplace is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 """
@@ -408,7 +408,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     contains_type::DataType = Workplace
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
 
     # active settings approach
     isactive::Bool = false
@@ -444,7 +444,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 - `contained_type::DataType = WorkplaceSite` *(optional)*: Parent setting type (`WorkplaceSite`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace (e.g., farm, office).
 - `last_infectious::Int16 -1` *(optional)*: The last simulation tick when an infectious individual was present.
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*:
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: Whether the workplace is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
@@ -457,7 +457,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     contained_type::DataType = WorkplaceSite
     type::Int32 = -1 # 1 byte
     last_infectious::Int16 = -1 # 2 bytes
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     # active settings approach
     isactive::Bool = false
 
@@ -492,7 +492,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 - `contained_type::DataType = Workplace` *(optional)*: Parent setting type (`Workplace`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of department.
 - `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*:
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: Whether the department is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
@@ -505,7 +505,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     contained_type::DataType = Workplace
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
 
     
     
@@ -543,7 +543,7 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 - `contained_type::DataType = Department` *(optional)*: Parent setting tye (`Department`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of office
 - `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present
-- `contact_sampling_method::ContactSamplingMethod = RandomSampling()` *(optional)*:
+- `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the office
 - `inroom::Int8 = -1` *(optional)*: Describes the amount of indoor work done in the office
@@ -560,7 +560,7 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     contained_type::DataType = Department
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
-    contact_sampling_method::ContactSamplingMethod = RandomSampling()
+    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     inroom::Int8 = -1 # 1 byte
     workhome::Int8 = -1 # 1 byte
@@ -802,7 +802,7 @@ function settings_from_population(population::Population, global_setting::Bool =
     renaming = Dict()
 
     # Default sampling method
-    default_sampling = RandomSampling()
+    default_sampling = ContactparameterSampling(0)
 
     # Get all concrete subtypes of IndividualSetting as these may be contained in the population
     stngtypes = concrete_subtypes(IndividualSetting)

@@ -137,4 +137,27 @@
         @test (show(io, MIME("text/plain"), inds); !isempty(String(take!(io))))
     end
 
+
+    @testset "Typing System" begin
+
+        # not exported but important to test
+        @test GEMS.structname("GEMS.Household") == "Household"
+        @test GEMS.structname(GEMS.Household) == "Household"
+
+        plt_types = convert.(DataType, subtypes(SimulationPlot))
+        test_plt = plt_types[1]
+
+        @test GEMS.type_in_collection(string(test_plt), plt_types)
+        @test GEMS.type_in_collection("GEMS.$test_plt", plt_types)
+        @test GEMS.type_in_collection("Other.$test_plt", plt_types)
+        @test GEMS.type_in_collection(test_plt, plt_types)
+        @test GEMS.type_in_collection(string(test_plt), string.(plt_types))
+        @test GEMS.type_in_collection(test_plt, string.(plt_types))
+        @test GEMS.type_in_collection(test_plt, (x -> "GEMS.$x").(plt_types))
+              
+        # transmission functions
+        tfs = transmission_functions()
+        @test all(x -> isa(x, DataType) && x <: TransmissionFunction, tfs)
+
+    end
 end

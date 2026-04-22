@@ -1,4 +1,4 @@
-# 4 - Running Batches
+# 5 - Running Batches
 
 In most situations, running a simulation once is not sufficient.
 This tutorial teaches you how to work with so-called batches of simulations.
@@ -91,6 +91,49 @@ gemsplot(rd, legend = :topright)
 </p>
 ``` 
 
+You can also vary multiple parameters at once and show the results in a heatmap.
+This example runs simulations varying the `transmission_rate` and daily `household_contacts`, and plots the calculated `r0` value of all combinations in a heatmap:
+
+```julia
+using GEMS
+
+xvals = []
+yvals = []
+outvals = []
+
+# vary transmission rate
+for tr in 0.05:0.01:0.15
+    # vary household contacts
+    for con in 0:0.5:5
+        sim = Simulation(transmission_rate = tr, household_contacts = con)
+        run!(sim)
+        rd = ResultData(sim, style = "LightRD")
+
+        # extract data for heatmap
+        push!(xvals, tr)
+        push!(yvals, con)
+        push!(outvals, r0(rd))
+    end
+end
+
+gemsheatmap(xvals, yvals, outvals,
+    xlabel = "Transmission Rate",
+    ylabel = "Daily Household Contacts",
+    colorbar_title = "Basic Reproduction Number",
+    color = :r0) 
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_sweep_heatmap.png" width="80%"/>
+</p>
+``` 
+
+
+!!! info "How can I run more than one repetition per combination?"
+    You can enclose the experiment in another loop, running each combination as many times as you want. The `gemsheatmap()` function can take multiple entries of the same (`xvals`, `yvals`) combinations. It automatically generates the mean value across observations. You can also change the aggregation function. Please lookup the `gemsheatmap()` documentation.
 
 ## Running Scenarios
 
@@ -127,7 +170,7 @@ gemsplot(rd)
 Use the `combined = :bylabel` keyword to show both scenarios side-by-side (pass the `ylims` attribute to unify axis-scaling):
 
 ```julia
-gemsplot(rd, type = :TickCases, combined = :bylabel, ylims = (0, 2000))
+gemsplot(rd, type = :TickCases, combined = :bylabel, ylims = (0, 2200))
 ```
 
 
@@ -186,7 +229,7 @@ gemsplot(rd, type = :TickCases)
 ## *BatchData* Objects
 
 While `ResultData` objects are the processed output of single simulation runs, `BatchData` objects are processed output of Batches.
-They contain aggregated data on the simulations, e.g., the average number of total infections including standard devation, confidence intervals and ranges.
+They contain aggregated data on the simulations, e.g., the average number of total infections including standard deviation, confidence intervals and ranges.
 While you do not necessarily need a `BatchData` object to plot batches, they do contain a lot of helpful data.
 Here's an example:
 

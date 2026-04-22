@@ -31,8 +31,9 @@ end
     ContactparameterSampling <: ContactSamplingMethod
 
 Sample random contacts based on a Poisson-Distribution spread around `contactparameter`.
+If provided with no parameter, `0` contacts are assumed.
 """
-@with_kw struct ContactparameterSampling <: ContactSamplingMethod
+struct ContactparameterSampling <: ContactSamplingMethod
     contactparameter::Float64
 
     function ContactparameterSampling(contactparameter::Float64)
@@ -49,7 +50,13 @@ Sample random contacts based on a Poisson-Distribution spread around `contactpar
 
         return new(contactparameter)
     end
+
+    ContactparameterSampling(; contactparameter = 0) = ContactparameterSampling(contactparameter)
 end
+
+# empty constructor calls constructor with 0 contacts
+#ContactparameterSampling() = ContactparameterSampling(0)
+
 
 """
     AgeBasedContactSampling <: ContactSamplingMethod
@@ -79,7 +86,8 @@ mutable struct AgeBasedContactSampling <: ContactSamplingMethod
                 throw(ArgumentError("Sum of row $i in 'contact_matrix' is $s, but the sum has to be equal to 1.0!"))
             end
         end
-        contact_matrix = ContactMatrix{Float64}(matrix, interval)
+        aggregation_bound = size(matrix)[1] * interval
+        contact_matrix = ContactMatrix{Float64}(matrix, interval, aggregation_bound)
         return new(contactparameter, interval, contact_matrix, Float64[])
     end
 

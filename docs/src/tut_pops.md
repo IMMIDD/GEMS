@@ -1,4 +1,4 @@
-# [5 - Creating Populations](@id tut_pops)
+# [6 - Creating Populations](@id tut_pops)
 
 If you spawn the default scenario like `sim = Simulation()`, GEMS will generate a non-representative population with `100,000` individuals households of average size `3`, schools/school classes of average size `100` and workplaces/offices of average size `5`.
 The age distribution and household compositions is similar to the German population (not accurate, not representative).
@@ -24,7 +24,7 @@ You can generate a custom population from a dataframe.
 This dataframe needs to have one row per individual and the columns must be named identical to the fields of the `Individual` struct.
 Every individual needs at least an `id`, an `age` and a `sex`.
 Therefore, these are the minimal requirements for column in your dataframe.
-The example below generates a synthetic population of `100,000` individuals with random ages from `1 to 100` and two indiviuals per household.
+The example below generates a synthetic population of `100,000` individuals with random ages from `1 to 100` and two individuals per household.
 This is achieved via the `household` column as two individuals with the same value will be placed in the same households.
 The example assigns each value from `1 to 50_000` to two of the individuals.
 
@@ -79,7 +79,7 @@ Loading a new population model for the first time will spark a download of the f
 The inbuilt models are geo-referencal, therefore they can be visualized using the `gemsmap()` function (e.g., to take a look at the population density):
 
 ```julia
-gemsmap(sim, type = :PopDensityMap, clims = (0, 100))
+gemsmap(sim, type = :PopDensityMap)
 ```
 
 
@@ -103,7 +103,7 @@ This way, you can load populations that originate from other projects or tools (
 
 CSV-files must adhere to the same data structure as in the "Using Dataframes" section.
 They are basically just an export of the generated dataframe.
-Here's an exmaple file:
+Here's an example file:
 
 ```csv
 id,age,sex,household
@@ -165,7 +165,10 @@ inds = individuals(pop)
 df = DataFrame(age = age.(inds), vaccinations = number_of_vaccinations.(inds))
 df_grouped = groupby(df, :age)
 df_combined = combine(df_grouped, :vaccinations => (v -> sum(v) / length(v)) => :vacc_fraction)
-plot(df_combined.age, df_combined.vacc_fraction)
+plot(df_combined.age, df_combined.vacc_fraction,
+    xlabel = "Age",
+    ylabel = "Vaccination Coverage",
+    legend = false)
 ```
 
 **Plot**

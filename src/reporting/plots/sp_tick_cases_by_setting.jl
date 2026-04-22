@@ -50,8 +50,8 @@ function generate(plt::TickCasesBySetting, rd::ResultData; plotargs...)
     # The returned DataFrame might have columns: "tick", "school", "office", ...
     tick_cases_data = rd |> tick_cases_per_setting
     
-    # Get unique setting types 
-    unique_settings = unique(tick_cases_data.setting_type) 
+    # Get unique setting types and sort (so coloring remains the same across scenarios)
+    unique_settings = unique(tick_cases_data.setting_type) |> sort
     
     # Determine the tickunit to use it for the xlabel
     uticks = rd |> tick_unit |> uppercasefirst

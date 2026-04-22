@@ -17,6 +17,7 @@ using TimerOutputs
 using TOML
 using Parameters
 using StatsBase
+using Suppressor
 
 @testset "GEMS" begin
     testfiles = [
@@ -35,7 +36,8 @@ using StatsBase
         "utilstest.jl",
         "contactsamplingtest.jl",
         "contactmatrixtest.jl",
-        "interventionstest.jl"
+        "interventionstest.jl",
+        "codevalidationtest.jl"
     ]
 
     println("Begin to run test cases.")

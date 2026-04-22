@@ -39,6 +39,39 @@ municipality(::AGS)
 state(::AGS)
 ```
 
+## Age Group
+
+### Constructors
+
+```@docs
+AgeGroup
+```
+
+### Functions
+
+```@docs
+in_group
+check_continuity
+```
+
+## Random Number Generation
+
+```@docs
+set_global_seed
+gems_rand
+gems_sample
+gems_sample!
+gems_shuffle
+gems_shuffle!
+gems_randn
+```
+
+## Exceptions
+
+```@docs
+ConfigfileError
+```
+
 ## Utils
 
 ```@docs
@@ -48,6 +81,7 @@ aggregate_dfs
 aggregate_dfs_multcol
 foldercount(::AbstractString)
 group_by_age(::DataFrame)
+prepare_kw_args
 print_aggregates
 printinfo(::String)
 remove_kw

@@ -46,11 +46,6 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 """
 function generate(plt::PopDensityMap, sim::Simulation; level::Int = 3, plotargs...)
     
-    # print warning if user tries to map density on any other level than municipalities
-    if level != 3
-        @warn "The Population Density Map can only be generated on municipality level (3). Keyword argument level = $level will be ignored."
-    end
-
     if isnothing(sim |> municipalities)
         # return default emptyplot if no municipalities available
         return emptyplot("There are no municipalities in this simulation.")
@@ -63,15 +58,21 @@ function generate(plt::PopDensityMap, sim::Simulation; level::Int = 3, plotargs.
 
     # transform data
     region_info(sim) |>
-        x -> prepare_map_df!(x, level = 3) |>
-        x -> x[.!ismissing.(x.area) .&& x.area .!= 0, :] |>
-        x -> transform(x, [:pop_size, :area] => ByRow((p, a) -> p/a) => :density) |>
-        x -> DataFrames.select(x, [:ags, :density]) |>
+        # filter missing regions
+        x -> x[.!ismissing.(x.area) .&& x.area .!= 0, :] |>    
+        x -> prepare_map_df!(x, level = level) |>
+        x -> groupby(x, :ags) |>
+        x -> combine(x, 
+            :pop_size => sum => :pop_size,
+            :area => sum => :area) |>
+        x -> transform(x, [:pop_size, :area] => ByRow((p, a) -> log10(p/a)) => :log_density) |>
+        x -> DataFrames.select(x, [:ags, :log_density]) |>
 
         # generate map
         x -> agsmap(x,
-            level = 3,
-            title="Individuals/km²",
+            #title="Individuals/km²",
+            colorbar_title = "Individuals/km² on Logarithmic Scale (Base 10)",
+            clims = (minimum(x.log_density) * 0.9, maximum(x.log_density) * 1.05),
             fontfamily = "Times Roman";
             plotargs...)
 end

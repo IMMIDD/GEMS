@@ -21,7 +21,7 @@ Being vaguely familiar with their core functionalities might help when following
 ## Hello World
 
 This code creates the default simulation and runs it.
-It then applies default post-processing methods, genrating the `ResultData` object before a summary of the simulation run is being plotted.
+It then applies default post-processing methods, generating the `ResultData` object before a summary of the simulation run is being plotted.
 
 ```julia
 using GEMS
@@ -105,7 +105,7 @@ run!(sim)
 ## Comparing Scenarios
 
 GEMS makes it very easy to run and compare infection scenarios.
-Here's an example that spanws two simulations, runs them, and calls the `gemsplot()` function with a vector of `ResultData` objects:
+Here's an example that spawns two simulations, runs them, and calls the `gemsplot()` function with a vector of `ResultData` objects:
 
 ```julia
 using GEMS

@@ -38,13 +38,14 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `plt::AgeMap`: `MapPlot` struct with meta data (i.e. title, description, and filename)
 - `sim::Simulation`: Input data used to generate plot
+- `fit_lims::Bool = false` *(optional)*: If `true`, the color limits of the plot will be set to the minimum and maximum age.
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
 
 - `Plots.Plot`: Average age map
 """
-function generate(plt::AgeMap, sim::Simulation; level::Int = 3, plotargs...)
+function generate(plt::AgeMap, sim::Simulation; level::Int = 2, fit_lims::Bool = false, plotargs...)
     
     if all(isunset.(ags.(sim |> households)))
         # return default emptyplot if no AGS data available
@@ -61,8 +62,8 @@ function generate(plt::AgeMap, sim::Simulation; level::Int = 3, plotargs...)
         
         # generate map
         x -> agsmap(x,
-            level = level,
             fontfamily = "Times Roman",
-            clims = (0, 100);
+            # if fit_lims is true, set clims to min and max of age
+            clims = fit_lims ? (minimum(x.age), maximum(x.age)) : (0, 100);
             plotargs...)
 end

@@ -33,6 +33,7 @@ WorkplaceSite
 ## Functions
 ```@docs
 activate!
+add!(::Setting, ::Individual)
 add!(::IndividualSetting, ::Individual)
 add!(::SettingsContainer, ::Setting)
 add_type!

@@ -387,6 +387,16 @@ function attack_rate(bd::BatchData)
 end
 
 """
+    r0(bd::BatchData)
+
+Returns aggregated values for the basic reproduction number`r0` accross the simulation runs in this batch.
+It returns mean, standard deviation, range, and confidence intervals.
+"""
+function r0(bd::BatchData)
+    return(get(bd |> sim_data, "r0", ""))
+end
+
+"""
     total_quarantines(batchData)
 
 Returns aggregated values for `total_quarantines` accross the simulation runs in this batch.
@@ -540,6 +550,7 @@ function Base.show(io::IO, bd::BatchData)
     
     infs = total_infections(bd)
     attr = attack_rate(bd)
+    r0vals = r0(bd)
     quar = total_quarantines(bd)
     
     lines = [
@@ -548,6 +559,7 @@ function Base.show(io::IO, bd::BatchData)
         () -> "\u2514 Simulation:"
         () -> "  \u2514 Total infections: $(round(infs["mean"], digits = 2)) ($(round(infs["lower_95"], digits = 2)) - $(round(infs["upper_95"], digits = 2)) 95% CI)"
         () -> "  \u2514 Attack rate: $(round(attr["mean"], digits = 2)) ($(round(attr["lower_95"], digits = 2)) - $(round(attr["upper_95"], digits = 2)) 95% CI)"
+        () -> "  \u2514 Basic reproduction number (R0): $(round(r0vals["mean"], digits = 2)) ($(round(r0vals["lower_95"], digits = 2)) - $(round(r0vals["upper_95"], digits = 2)) 95% CI)"
         () -> "  \u2514 Total quarantine days: $(round(quar["mean"], digits = 2)) ($(round(quar["lower_95"], digits = 2)) - $(round(quar["upper_95"], digits = 2)) 95% CI)"
     ]
 

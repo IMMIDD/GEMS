@@ -2,7 +2,7 @@
 ### POPULATIONS (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export Population
-export popuationfile, params
+export populationfile, params
 export add!, remove!, individuals, maxage, num_of_infected, issubset
 export save, dataframe
 export size, count, each!, first
@@ -21,9 +21,25 @@ A Type for a simple population. Acts as a container for a collection of individu
 mutable struct Population
     individuals::Vector{Individual}
     params::Dict{String, Any}
-    maxage # maximum age of any individual. Is updated upon first call of maxage function (for caching)
-    minid # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
+    maxage::Int8 # maximum age of any individual. Is updated upon first call of maxage function (for caching)
+    minid::Int32 # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
+    id_map::Vector{Int32} # Maps (id - minid + 1) to the individual's index in the `individuals` array. Needed for O(1) lookups.
+    
 
+    @doc """
+        make_id_map!(population::Population)
+
+    Creates an `id_map` for the given Population to avoid missmatches later.
+    """
+    function make_id_map!(pop::Population)
+        map_size = isempty(pop.individuals) ? 0 : maximum(x -> x.id, pop.individuals) - pop.minid + 1
+        pop.id_map = zeros(Int32, map_size)
+
+        for (i, ind) in enumerate(pop.individuals)
+            pop.id_map[ind.id - pop.minid + 1] = i 
+        end
+    end
+    
     @doc """
         Population(individuals::Vector{Individual})
 
@@ -31,9 +47,10 @@ mutable struct Population
     """
     function Population(individuals::Vector{Individual})
         # Create the Population object
-        pop = new(individuals, Dict("populationfile" => "Not available."), -1)
+        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
+        make_id_map!(pop)
         return pop
     end
 
@@ -90,45 +107,47 @@ mutable struct Population
         pop.params["populationfile"] = path
         pop.minid = isempty(individuals(pop)) ? -1 : minimum(x -> x.id, individuals(pop))
 
+        make_id_map!(pop)
         return pop
     end
 
     @doc """
-        Population(; n::Int64 = 100_000, avg_household_size::Int64 = 3, avg_office_size::Int64 = 5, avg_school_size::Int64 = 100)
+        Population(; n::Int64 = 100_000, avg_household_size::Real = 3.0, avg_office_size::Real = 5.0, avg_school_size::Real = 100.0)
 
     Creates a `Population` object without an explicit data source and randomly generates the individuals.
     
     # Parameters
 
     - `n::Int64 = 100_000` *(optional)*: Number of individuals in the population (default = `100_000`)
-    - `avg_household_size::Int64 = 3` *(optional)*: Average size of households (default = `3`)
-    - `avg_office_size::Int64 = 5` *(optional)*: Average size of offices (default = `5`)
-    - `avg_school_size::Int64 = 100` *(optional)*: Average size of schools (default = `100`)
+    - `avg_household_size::Real = 3.0` *(optional)*: Average size of households (default = `3`)
+    - `avg_office_size::Real = 5.0` *(optional)*: Average size of offices (default = `5`)
+    - `avg_school_size::Real = 100.0` *(optional)*: Average size of schools (default = `100`)
     - `empty::Bool = false` *(optional)*: If true, overrides all other arguments and returns a completely empty population object
     """
     function Population(;
         n::Int64 = 100_000,
-        avg_household_size::Int64 = 3,
-        avg_office_size::Int64 = 5,
-        avg_school_size::Int64 = 100,
+        avg_household_size::Real = 3.0,
+        avg_office_size::Real = 5.0,
+        avg_school_size::Real = 100.0,
+        rng::AbstractRNG = Random.default_rng(),
         empty::Bool = false)
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
-            return new(Individual[], Dict("populationfile" => "Not available."), -1)
+            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, Int32[])
         end
 
         # exception handling
-        n <= 0 ? throw("The number of individuals must be a positive integer") : nothing
-        avg_household_size <= 0 ? throw("The average household size must be a positive integer") : nothing
-        avg_household_size > n ? throw("The average household size cannot be larger than the population (n)") : nothing
-        avg_office_size <= 0 ? throw("The average office size must be a positive integer") : nothing
-        avg_office_size > n ? throw("The average office size cannot be larger than the population (n)") : nothing
-        avg_school_size <= 0 ? throw("The average school size must be a positive integer") : nothing
-        avg_school_size > n ? throw("The average school size cannot be larger than the population (n)") : nothing
+        n <= 0 ? throw(ArgumentError("The number of individuals must be a positive integer")) : nothing
+        avg_household_size <= 0 ? throw(ArgumentError("The average household size must be a positive number")) : nothing
+        avg_household_size > n ? throw(ArgumentError("The average household size cannot be larger than the population (n)")) : nothing
+        avg_office_size <= 0 ? throw(ArgumentError("The average office size must be a positive number")) : nothing
+        avg_office_size > n ? throw(ArgumentError("The average office size cannot be larger than the population (n)")) : nothing
+        avg_school_size <= 0 ? throw(ArgumentError("The average school size must be a positive number")) : nothing
+        avg_school_size > n ? throw(ArgumentError("The average school size cannot be larger than the population (n)")) : nothing
 
         # helper functions
-        group_to_age(g) = 5 * (g-1) + rand(0:4)
+        group_to_age(g) = 5 * (g-1) + gems_rand(rng, 0:4)
         age_to_group(a) = min(17, (a ÷ 5) + 1)
 
         # GENERATE ONE INDEX INDIVIDUAL FOR EACH HOUSEHOLD BASED ON DEMOGRAPHIC DATA
@@ -152,8 +171,8 @@ mutable struct Population
         # build the initial dataframe
         df = DataFrame(
             id = Int32.(collect(1:n)),
-            age = Int8.([rand(Categorical(weights), n_households); fill(-1, n - n_households)]),
-            sex = Int8.(rand(1:2, n)),
+            age = Int8.([gems_rand(rng, Categorical(weights), n_households); fill(-1, n - n_households)]),
+            sex = Int8.(gems_rand(rng, 1:2, n)),
             household = Int32.([collect(1:n_households); fill(-1, n - n_households)]),
             schoolclass = Int32.(fill(-1, n)),
             office = Int32.(fill(-1, n))
@@ -176,7 +195,7 @@ mutable struct Population
 
         for i in (n_households+1):nrow(df)
             # sample household to place individual into
-            hh_id = rand(1:n_households)
+            hh_id = gems_rand(rng, 1:n_households)
 
             # store household
             df.household[i] = hh_id
@@ -184,7 +203,7 @@ mutable struct Population
             # sample age for new individual based on index individual age
             df.age[i] = df.age[hh_id] |> age_to_group |>
                 x -> contacts[:,x] |>
-                x -> rand(Categorical(x)) |> group_to_age
+                x -> gems_rand(rng, Categorical(x)) |> group_to_age
         end
 
         # number of people
@@ -194,18 +213,21 @@ mutable struct Population
         n_workers = count(isworker, df.age)
 
         # number of other settings
-        n_schools = ceil(n_students / avg_school_size)
-        n_offices = ceil(n_workers / avg_office_size)
+        n_schools = Int64(ceil(n_students / avg_school_size))
+        n_offices = Int64(ceil(n_workers / avg_office_size))
 
         # assign other settings
-        Threads.@threads for i in 1:nrow(df)
-            isstudent(df.age[i]) ? df.schoolclass[i] = Int32(rand(1:n_schools)) : nothing
-            isworker(df.age[i]) ? df.office[i] = Int32(rand(1:n_offices)) : nothing
+        # create set of thread-safe RNGs, seeded from the main RNG
+        thread_rngs = [Xoshiro(gems_rand(rng, UInt64)) for _ in 1:Threads.maxthreadid()]
+        Threads.@threads :static for i in 1:nrow(df)
+            local_rng = thread_rngs[Threads.threadid()]
+            isstudent(df.age[i]) ? df.schoolclass[i] = Int32(gems_rand(local_rng, 1:n_schools)) : nothing
+            isworker(df.age[i]) ? df.office[i] = Int32(gems_rand(local_rng, 1:n_offices)) : nothing
         end
 
         # make sure all IDs start at 1 and are consecutive
-        unique_off_ids = unique(df.office) |> x -> x[x .> 0]
-        unique_sch_ids = unique(df.schoolclass) |> x -> x[x .> 0]
+        unique_off_ids = unique(df.office) |> x -> x[x .> 0] |> sort
+        unique_sch_ids = unique(df.schoolclass) |> x -> x[x .> 0] |> sort
 
         off_join = DataFrame(
             office = unique_off_ids,
@@ -232,6 +254,7 @@ mutable struct Population
         pop.params["avg_office_size"] = avg_office_size
         pop.params["avg_school_size"] = avg_school_size
 
+        make_id_map!(pop)
         return pop
     end
 end
@@ -301,7 +324,7 @@ end
 
 Returns the maximum age of any individual in the population
 """
-function maxage(population::Population)
+function maxage(population::Population)::Int8
     if population.maxage >= 0
         return(population.maxage)
     end
@@ -439,8 +462,11 @@ function get_individual_by_id(population::Population, ind::Int32)
     # compute index with offset
     idx = ind - population.minid + 1
     
-    if 1 <= idx <= length(population.individuals)
-        @inbounds return population.individuals[idx]
+    if 1 <= idx <= length(population.id_map)
+        arr_idx = population.id_map[idx]
+        if arr_idx > 0
+            @inbounds return population.individuals[arr_idx]
+        end
     end
     
     return nothing

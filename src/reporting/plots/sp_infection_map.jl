@@ -81,7 +81,7 @@ function generate(plt::InfectionMap, rd::ResultData; plotargs...)
     # else, plot map.
     # if there're more data points than are being allowed in 'MAX_MAP_POINTS', sample data
     if nrow(coords) > MAX_MAP_POINTS
-        coords = coords[sample(1:nrow(coords), MAX_MAP_POINTS, replace=false), :]
+        coords = coords[gems_sample(MersenneTwister(0), 1:nrow(coords), MAX_MAP_POINTS, replace=false), :]
     end
 
     # make sure, temp folder exists

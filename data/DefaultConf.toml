@@ -3,16 +3,18 @@
     # seed = 1234
     tickunit = 'd'
     GlobalSetting = false
-    startdate = '2024.01.01'
-    enddate = '2024.12.31'
+    startdate = '2024-01-01'
+    enddate = '2024-12-31'
     [Simulation.StartCondition]
         type = "InfectedFraction"
-        fraction = 0.001
-        pathogen = "Covid19"   # BE AWARE, THAT NAME MUST BE THE SAME AS IN TOML SECTION
+        [Simulation.StartCondition.parameters]
+            fraction = 0.001
+            #pathogen = "Covid19"
 
     [Simulation.StopCriterion]
         type = "TimesUp"
-        limit = 365
+        [Simulation.StopCriterion.parameters]
+            limit = 365
 
 [Population]
     n = 100_000
@@ -29,64 +31,147 @@
             [Pathogens.Covid19.transmission_function.parameters]
                 transmission_rate = 0.2
 
-        [Pathogens.Covid19.onset_of_symptoms]
-            distribution = "Poisson"
-            parameters = [3]
+        [Pathogens.Covid19.progressions]
 
+            # ASYMPTOMATIC PROGRESSION [TOTAL DURATION ~ 10 DAYS]
+            [Pathogens.Covid19.progressions.Asymptomatic]
+                # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
+                [Pathogens.Covid19.progressions.Asymptomatic.exposure_to_infectiousness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to recovery (after infectiousness onset)
+                [Pathogens.Covid19.progressions.Asymptomatic.infectiousness_onset_to_recovery]
+                    distribution = "Poisson"
+                    parameters = [8]
 
-        [Pathogens.Covid19.time_to_recovery]
-            distribution = "Poisson"
-            parameters = [7]
+            # SYMPTOMATIC PROGRESSION [TOTAL DURATION ~ 10 DAYS]
+            [Pathogens.Covid19.progressions.Symptomatic]
+                # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
+                [Pathogens.Covid19.progressions.Symptomatic.exposure_to_infectiousness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to symptom onset (after infectiousness onset)
+                [Pathogens.Covid19.progressions.Symptomatic.infectiousness_onset_to_symptom_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to recovery (after symptom onset)
+                [Pathogens.Covid19.progressions.Symptomatic.symptom_onset_to_recovery]
+                    distribution = "Poisson"
+                    parameters = [7]
 
-        [Pathogens.Covid19.onset_of_severeness]
-            distribution = "Poisson"
-            parameters = [3]
+            # SEVERE PROGRESSION [TOTAL DURATION ~ 15 DAYS]
+            [Pathogens.Covid19.progressions.Severe]
+                # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
+                [Pathogens.Covid19.progressions.Severe.exposure_to_infectiousness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to symptom onset (after infectiousness onset)
+                [Pathogens.Covid19.progressions.Severe.infectiousness_onset_to_symptom_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to severeness onset (after symptom onset)
+                [Pathogens.Covid19.progressions.Severe.symptom_onset_to_severeness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to severeness offset (after severeness onset)
+                [Pathogens.Covid19.progressions.Severe.severeness_onset_to_severeness_offset]
+                    distribution = "Poisson"
+                    parameters = [7]
+                # time to recovery (after severeness offset)
+                [Pathogens.Covid19.progressions.Severe.severeness_offset_to_recovery]
+                    distribution = "Poisson"
+                    parameters = [4]
 
-        [Pathogens.Covid19.infectious_offset]
-            distribution = "Poisson"
-            parameters = [1]
+            # HOSPITALIZED PROGRESSION [TOTAL DURATION ~ 20 DAYS]
+            [Pathogens.Covid19.progressions.Hospitalized]
+                # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
+                [Pathogens.Covid19.progressions.Hospitalized.exposure_to_infectiousness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to symptom onset (after infectiousness onset)
+                [Pathogens.Covid19.progressions.Hospitalized.infectiousness_onset_to_symptom_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to severeness onset (after symptom onset)
+                [Pathogens.Covid19.progressions.Hospitalized.symptom_onset_to_severeness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to hospitalization (after severeness onset)
+                [Pathogens.Covid19.progressions.Hospitalized.severeness_onset_to_hospital_admission]
+                    distribution = "Poisson"
+                    parameters = [2]
+                # time to recovery (after hospitalization)
+                [Pathogens.Covid19.progressions.Hospitalized.hospital_admission_to_hospital_discharge]
+                    distribution = "Poisson"
+                    parameters = [7]
+                # time to recovery (after hospital discharge)
+                [Pathogens.Covid19.progressions.Hospitalized.hospital_discharge_to_severeness_offset]
+                    distribution = "Poisson"
+                    parameters = [3]
+                [Pathogens.Covid19.progressions.Hospitalized.severeness_offset_to_recovery]
+                    distribution = "Poisson"
+                    parameters = [4]
 
-        [Pathogens.Covid19.mild_death_rate]
-            distribution = "Binomial"
-            parameters = [1, 0.0]
+            # CRITICAL PROGRESSION [TOTAL DURATION ~ 30 DAYS]
+            [Pathogens.Covid19.progressions.Critical]
+                # probability of death (after ICU admission)
+                death_probability = 0.3
+                
+                # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
+                [Pathogens.Covid19.progressions.Critical.exposure_to_infectiousness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to symptom onset (after infectiousness onset)
+                [Pathogens.Covid19.progressions.Critical.infectiousness_onset_to_symptom_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to severeness onset (after symptom onset)
+                [Pathogens.Covid19.progressions.Critical.symptom_onset_to_severeness_onset]
+                    distribution = "Poisson"
+                    parameters = [1]
+                # time to hospitalization (after severeness onset)
+                [Pathogens.Covid19.progressions.Critical.severeness_onset_to_hospital_admission]
+                    distribution = "Poisson"
+                    parameters = [2]
+                # time to ICU admission (after hospitalization)
+                [Pathogens.Covid19.progressions.Critical.hospital_admission_to_icu_admission]
+                    distribution = "Poisson"
+                    parameters = [2]
+                
+                # RECOVERY PATHWAY
+                # time to ICU discharge (after ICU admission)
+                [Pathogens.Covid19.progressions.Critical.icu_admission_to_icu_discharge]
+                    distribution = "Poisson"
+                    parameters = [7]
+                # time to hospital discharge (after ICU discharge)
+                [Pathogens.Covid19.progressions.Critical.icu_discharge_to_hospital_discharge]
+                    distribution = "Poisson"
+                    parameters = [7]
+                # time to recovery (after hospital discharge)
+                [Pathogens.Covid19.progressions.Critical.hospital_discharge_to_severeness_offset]
+                    distribution = "Poisson"
+                    parameters = [3]
+                [Pathogens.Covid19.progressions.Critical.severeness_offset_to_recovery]
+                    distribution = "Poisson"
+                    parameters = [4]
 
-        [Pathogens.Covid19.severe_death_rate]
-            distribution = "Binomial"
-            parameters = [1, 0.05]
+                # DEATH PATHWAY
+                # time to death (after ICU admission)
+                [Pathogens.Covid19.progressions.Critical.icu_admission_to_death]
+                    distribution = "Poisson"
+                    parameters = [10]
 
-        [Pathogens.Covid19.critical_death_rate]
-            distribution = "Binomial"
-            parameters = [1, 0.2]
-
-        [Pathogens.Covid19.hospitalization_rate]
-            distribution = "Binomial"
-            parameters = [1, 0.3]
-
-        [Pathogens.Covid19.ventilation_rate]
-            distribution = "Binomial"
-            parameters = [1, 0.3]
-
-        [Pathogens.Covid19.icu_rate]
-            distribution = "Binomial"
-            parameters = [1, 0.3]
-
-        [Pathogens.Covid19.time_to_hospitalization]
-            distribution = "Poisson"
-            parameters = [7]
-
-        [Pathogens.Covid19.time_to_icu]
-            distribution = "Poisson"
-            parameters = [7]
-
-        [Pathogens.Covid19.length_of_stay]
-            distribution = "Poisson"
-            parameters = [7]
-
-        [Pathogens.Covid19.dpr]
-        # Matrix with Disease Progression
-            age_groups = ["0+"]
-            disease_compartments = ["Asymptomatic", "Mild", "Severe", "Critical"]
-            stratification_matrix = [[0.4, 0.45, 0.1, 0.05]]
+        # progression assignment method
+        [Pathogens.Covid19.progression_assignment]
+            type = "AgeBasedProgressionAssignment"
+            [Pathogens.Covid19.progression_assignment.parameters]
+                #progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Critical"]
+                # Matrix with Disease Progression
+                age_groups = ["-14", "15-65", "66-"]
+                progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Hospitalized", "Critical"]
+                stratification_matrix = [[0.400, 0.580, 0.010, 0.007, 0.003], # age group -14
+                                         [0.250, 0.600, 0.110, 0.030, 0.010], # age group 15-65
+                                         [0.150, 0.400, 0.250, 0.120, 0.080]] # age group 66-
 
 [Settings]
 

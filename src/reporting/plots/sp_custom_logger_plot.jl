@@ -56,6 +56,11 @@ function generate(plt::CustomLoggerPlot, rd::ResultData; plotargs...)
     cl_data = rd |> customlogger |>
         x -> select(x, Not(:tick))
 
+    # check if custom logger has any functions
+    if isempty(cl_data)
+        return emptyplot("No custom data was logged in this ResultData object.")
+    end
+    
     # tickunits
     uticks = rd |> tick_unit
     upper_ticks = uticks |> uppercasefirst
