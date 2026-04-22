@@ -16,13 +16,13 @@ function assign_values_to_parameters!(sim; x, arg)
         # if parameter involves settings names
         settings_list = [:households :municipalities :households :schoolclasses :schoolyears :schools :schoolcomplexes :offices :departments :workplaces :workplacesites :individuals]
         if Symbol(parts[end]) in settings_list
-            t = typeof(getfield(Main, Symbol(parts[end]))(sim)[1].contact_sampling_method)
+            t = typeof(getfield(@__MODULE__, Symbol(parts[end]))(sim)[1].contact_sampling_method)
             new_rate = t(eval(Symbol(parts[end] * "_val")))
             # assing rate to all settings of specified type
-            (s -> s.contact_sampling_method = new_rate).(getfield(Main, Symbol(parts[end]))(sim))
+            (s -> s.contact_sampling_method = new_rate).(getfield(@__MODULE__, Symbol(parts[end]))(sim))
         else # when it is only ordinary parameter
             # unpack parameter from its full path
-            obj = getfield(Main, Symbol(parts[begin]))
+            obj = getfield(@__MODULE__, Symbol(parts[begin]))
             for f in parts[2:end-1]
                 obj = getfield(obj, Symbol(f))
             end
