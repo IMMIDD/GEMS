@@ -78,14 +78,18 @@ function generate(plt::ProgressionCategories, rd::ResultData; plotargs...)
             ), on = [:progression_category, :bin]) |>
         # add missing values as 0 counts
         df -> transform(df, :count => (c -> coalesce.(c, 0)) => :count) |>
+        df -> transform(df, :bin => (b -> parse.(Int, string.(b))) => :bin) |>
+        df -> sort(df, :bin) |>
         df -> unstack(df, :progression_category, :bin, :count, fill=0.0) |>
-        df -> Matrix(df[:, Not(:progression_category)]) |>
-        mat -> heatmap(
-            reverse(mat, dims = 2);
+        # Re-sort to fix unstack's alphabetization
+        df -> sort(df, :progression_category, by = x -> get(order_dict, string(x), typemax(Int))) |>
+        # Combine Matrix and Heatmap
+        df -> heatmap(
+            Matrix(df[:, Not(:progression_category)]);
             color = :viridis,
             xlabel = "Age Group",
             xticks = 1:(length(names(df))-1),
-            xformatter = x -> "$(Int(5(x-1))) - $(Int(5x -1))",
+            xformatter = x -> "$(Int(5(x-1)))-$(Int(5x -1))",
             xrotation = 45,
             yticks = (1:nrow(df), df.progression_category),
             ylabel = "Progression Category",

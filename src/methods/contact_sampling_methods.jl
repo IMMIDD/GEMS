@@ -121,8 +121,8 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     end
     
     interval = contactparameter_sampling.contact_matrix.interval_steps
-    max_age = contactparameter_sampling.contact_matrix.aggregation_bound
-    orig_bin = (individual.age ÷ interval) + 1
+    max_age = contactparameter_sampling.contact_matrix.aggregation_bound - 1
+    orig_bin = (min(individual.age, max_age) ÷ interval) + 1
     contact_matrix::Matrix{Float64} = contactparameter_sampling.contact_matrix.data
     age_pyramid = contactparameter_sampling.age_pyramid
     
@@ -130,7 +130,7 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     if size(age_pyramid)[1] == 0
         age_pyramid = zeros(size(contact_matrix)[1])
         for ind in present_inds
-            interval_id = ind.age ÷ interval + 1
+            interval_id = min(ind.age, max_age) ÷ interval + 1
             age_pyramid[interval_id] += 1
         end
         age_pyramid = age_pyramid ./ sum(age_pyramid)
@@ -174,7 +174,7 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     keep_count = 0
     for i = 1:length(indivs)
         candidate = indivs[i]
-        dest_bin = (candidate.age ÷ interval) + 1
+        dest_bin = (min(candidate.age, max_age) ÷ interval) + 1
         m = contact_matrix[orig_bin, dest_bin]
         
         if m > 0.0
