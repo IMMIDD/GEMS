@@ -407,38 +407,80 @@
     end
 
     @testset "Calibration" begin
-        # Test norm calculations used in calibration
-        ref_ts = [1.0, 2.0, 3.0]
-        sim_ts = [1.1, 1.9, 3.2]
         
-        @test GEMS.l1_norm(sim_ts, ref_ts) ≈ (0.1 + 0.1 + 0.2) / 3
-        @test GEMS.l2_norm(sim_ts, ref_ts) ≈ sqrt((0.01 + 0.01 + 0.04) / 3)
-        
-        # Setup a basic test for parameter assignments (internal calibration mechanics)
-        sim = Simulation(pop_size=100)
-        x_vals = [0.15]
-        args = ["households"]
-        
-        # Provide initial setup
-        for s in settings(sim, Household)
-            s.contact_sampling_method = GEMS.ContactparameterSampling(0.0)
+        @testset "Error Metrics" begin
+            # Test norm calculations used in calibration
+            ref_ts = [1.0, 2.0, 3.0]
+            sim_ts = [1.1, 1.9, 3.2]
+            
+            @test GEMS.mae(sim_ts, ref_ts) ≈ (0.1 + 0.1 + 0.2) / 3
+            @test GEMS.rmse(sim_ts, ref_ts) ≈ sqrt((0.01 + 0.01 + 0.04) / 3)
+        end
+
+        @testset "assign_values_to_parameters!" begin
+            sim = Simulation(pop_size=100)
+            
+            # Provide initial setup
+            for s in settings(sim, Household)
+                s.contact_sampling_method = GEMS.ContactparameterSampling(0.0)
+            end
+            
+            # Run parameter assignment for a setting
+            GEMS.assign_values_to_parameters!(sim, x=[0.15], arg=["households"])
+            
+            # Assert parameter has successfully changed
+            for s in settings(sim, Household)
+                @test s.contact_sampling_method.contactparameter == 0.15
+            end
+
+            # Ordinary Parameter
+            sim.seed = 1 # Reset seed
+            GEMS.assign_values_to_parameters!(sim, x=[42], arg=["seed"])
+            @test sim.seed == 42
+            
+            GEMS.assign_values_to_parameters!(sim, x=[0.75], arg=["sim.pathogen.transmission_function.transmission_rate"])
+            @test sim.pathogen.transmission_function.transmission_rate == 0.75
         end
         
-        # Run parameter assignment used by calibrate!
-        GEMS.assign_values_to_parameters!(sim, x=x_vals, arg=args)
-        
-        # Assert parameter has successfully changed
-        for s in settings(sim, Household)
-            @test s.contact_sampling_method.contactparameter == 0.15
-        end
-        
-        # verify loss computation and param assignments
-        target_fn(s) = [1.1, 1.9, 3.2]
-        loss_fn = GEMS.l2_norm
-        p_array = [sim, ref_ts, loss_fn, target_fn, 1, args, [0.0], [1.0]]
-        
-        loss_score = GEMS.compute_loss(x_vals, p_array)
-        @test typeof(loss_score) <: Float64
+        using Random # for setting the seed
+
+        @testset "calibrate!" begin
+            # Make the stochastic optimizer deterministic for this test
+            Random.seed!(42) 
+            
+            sim = Simulation(pop_size=100)
+            
+            # dummy reference data
+            ref_data = [50.0]
+            
+            # Use a continuous parameter that exists in your model, like a modifier or rate
+            p_args = ["sim.pathogen.transmission_function.transmission_rate"]
+            initial_x = [10.0]
+            
+            # dummy target function: just returns the current value of the parameter
+            dummy_target_fn(s) = [s.pathogen.transmission_function.transmission_rate] 
+            
+            # Call calibrate! 
+            res = GEMS.calibrate!(
+                sim;
+                target = dummy_target_fn,
+                loss = GEMS.rmse, # Assuming this is available
+                ref_ts = ref_data,
+                arg_x0 = p_args,
+                x0 = initial_x,
+                lower_limit = [0.0],
+                upper_limit = [100.0],
+                n = 1,
+                maxiters = 5,
+                plot_training = false
+            )
+            
+            # Verify that the Optimization returned a valid result object
+            @test res !== nothing
+            
+            # Verify that the optimizer moved `x` towards our target of 50.0
+            @test res.u[1] > 10.0 
+        end     
     end
 
     @testset "Helper Functions" begin

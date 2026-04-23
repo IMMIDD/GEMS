@@ -1,35 +1,59 @@
-export l1_norm, l2_norm, calibrate!
+export mae, rmse, calibrate!
 
-function l1_norm(x::Vector, y::Vector)
+function mae(x::Vector, y::Vector)
     return sum(abs.(x - y)) / length(x)
 end
 
-function l2_norm(x::Vector, y::Vector)
+function rmse(x::Vector, y::Vector)
     return sqrt(sum((x - y) .^ 2) / length(x))
 end
 
 function assign_values_to_parameters!(sim; x, arg)
     # iterate over parameters (k) and values (v)
-    for (k, v) in zip(arg, x)
-        parts = split(k, '.')
-        @eval $(Symbol(parts[end] * "_val")) = $v
+    for (path, value) in zip(arg, x)
+        parts     = split(path, '.')
+        param_key = Symbol(parts[end])
+
         # if parameter involves settings names
-        settings_list = [:households :municipalities :households :schoolclasses :schoolyears :schools :schoolcomplexes :offices :departments :workplaces :workplacesites :individuals]
-        if Symbol(parts[end]) in settings_list
-            t = typeof(getfield(@__MODULE__, Symbol(parts[end]))(sim)[1].contact_sampling_method)
-            new_rate = t(eval(Symbol(parts[end] * "_val")))
-            # assing rate to all settings of specified type
-            (s -> s.contact_sampling_method = new_rate).(getfield(@__MODULE__, Symbol(parts[end]))(sim))
-        else # when it is only ordinary parameter
-            # unpack parameter from its full path
-            obj = getfield(@__MODULE__, Symbol(parts[begin]))
-            for f in parts[2:end-1]
-                obj = getfield(obj, Symbol(f))
+        if isdefined(@__MODULE__, param_key) && getfield(@__MODULE__, param_key) isa Function
+            instances = getfield(@__MODULE__, param_key)(sim)
+            
+            if instances isa AbstractVector && eltype(instances) <: Setting
+                if !isempty(instances)
+                    csm_type = typeof(first(instances).contact_sampling_method)
+                    new_csm  = csm_type(value)
+                    # assing rate to all settings of specified type
+                    for s in instances
+                        contact_sampling_method!(s, new_csm)
+                    end
+                end      
+                continue 
             end
-            # assign value to parameter with casting to proper type
-            setfield!(obj, Symbol(parts[end]), typeof(getfield(obj, Symbol(parts[end])))(v))
         end
+
+        if length(parts) == 1
+            obj = sim
+            field = Symbol(parts[1])
+        else
+            if parts[1] == "sim" || parts[1] == "simulation"
+                obj = sim
+            else
+                # unpack parameter from its full path
+                obj = getfield(@__MODULE__, Symbol(parts[1]))
+            end
+            
+            for part in parts[2:end-1]
+                obj = getproperty(obj, Symbol(part))
+            end
+            field = Symbol(parts[end])
+        end
+        
+        # assign value to parameter with casting to proper type
+        TargetType = typeof(getproperty(obj, field))
+        setproperty!(obj, field, convert(TargetType, value))
     end
+    
+    return sim
 end
 
 function compute_loss(x::AbstractArray, p::Vector)
@@ -68,7 +92,7 @@ function compute_loss(x::AbstractArray, p::Vector)
 end
 
 #callback function to observe training
-function plot_loss_callback(state, l::Float64; doplot=false::Bool, loss_history::Vector, pl::Plots.Plot)
+function plot_loss_callback(state, l::Float64; doplot::Bool=false, loss_history::Vector, pl::Plots.Plot)
     println("Loss:\t", l)
     push!(loss_history, l)
     # plot current learning curve
@@ -81,8 +105,25 @@ function plot_loss_callback(state, l::Float64; doplot=false::Bool, loss_history:
 end
 
 """
-    calibrate!(sim::Simulation; ref_ts::Vector, target::Function, x0::Vector, arg_x0::Vector, lower_limit=nothing::Union{Vector, Nothing}, upper_limit=nothing::Union{Vector, Nothing}, loss=l2_norm::Function, n=1::Int64, alg=CMAEvolutionStrategyOpt(), maxiters=100::Int64, compute_loss=compute_loss::Function, callback=nothing::Union{Function, Nothing}, plot_training=false::Bool, OptimizationFunction_kwargs=Dict()::Dict, OptimizationProblem_kwargs=Dict()::Dict, solve_kwargs=Dict()::Dict)
-
+    calibrate!(
+    sim::Simulation;
+    ref_ts::Vector,
+    target::Function,
+    x0::Vector,
+    arg_x0::Vector,
+    lower_limit::Union{Vector, Nothing} = nothing,
+    upper_limit::Union{Vector, Nothing} = nothing,
+    loss::Function = l2_norm,
+    n::Int64 = 1,
+    alg = CMAEvolutionStrategyOpt(),
+    maxiters::Int64 = 100,
+    compute_loss::Function = compute_loss,
+    callback::Union{Function, Nothing} = nothing,
+    plot_training::Bool = false,
+    OptimizationFunction_kwargs::Dict = Dict(),
+    OptimizationProblem_kwargs::Dict = Dict(),
+    solve_kwargs::Dict = Dict()
+)
 Runs calibration using Optimization.jl library as backend. Allows customization of the optimization. Sim object is modifed and has optimal parameters after excecution.
 
 # Parameters
@@ -124,8 +165,26 @@ score = calibrate!(sim;
                     )
 
 """
-function calibrate!(sim::Simulation; ref_ts::Vector, target::Function, x0::Vector, arg_x0::Vector, lower_limit::Union{Vector, Nothing}=nothing, upper_limit::Union{Vector, Nothing}=nothing, loss::Function=l2_norm, n::Int64=1, alg=CMAEvolutionStrategyOpt(), maxiters::Int64=100, compute_loss::Function=compute_loss, callback::Union{Function, Nothing}=nothing, plot_training::Bool=false, OptimizationFunction_kwargs=Dict()::Dict, OptimizationProblem_kwargs::Dict=Dict(), solve_kwargs::Dict=Dict())
-    limit = sim.stop_criterion.limit + 1
+function calibrate!(
+    sim::Simulation;
+    ref_ts::Vector,
+    target::Function,
+    x0::Vector,
+    arg_x0::Vector,
+    lower_limit::Union{Vector, Nothing} = nothing,
+    upper_limit::Union{Vector, Nothing} = nothing,
+    loss::Function = l2_norm,
+    n::Int64 = 1,
+    alg = CMAEvolutionStrategyOpt(),
+    maxiters::Int64 = 100,
+    compute_loss::Function = compute_loss,
+    callback::Union{Function, Nothing} = nothing,
+    plot_training::Bool = false,
+    OptimizationFunction_kwargs::Dict = Dict(),
+    OptimizationProblem_kwargs::Dict = Dict(),
+    solve_kwargs::Dict = Dict()
+)
+    limit = hasproperty(sim.stop_criterion, :limit) ? min(sim.stop_criterion.limit + 1, length(ref_ts)) : length(ref_ts)
     local_ts = ref_ts[1:limit]
     lower_limit = isnothing(lower_limit) ? [nothing for i = 1:length(x0)] : lower_limit
     upper_limit = isnothing(upper_limit) ? [nothing for i = 1:length(x0)] : upper_limit
