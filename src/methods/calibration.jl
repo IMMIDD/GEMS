@@ -113,7 +113,7 @@ end
     arg_x0::Vector,
     lower_limit::Union{Vector, Nothing} = nothing,
     upper_limit::Union{Vector, Nothing} = nothing,
-    loss::Function = l2_norm,
+    loss::Function = rmse,
     n::Int64 = 1,
     alg = CMAEvolutionStrategyOpt(),
     maxiters::Int64 = 100,
@@ -135,7 +135,7 @@ Runs calibration using Optimization.jl library as backend. Allows customization 
 - `arg_x0::Vector`: parameters name (e.g. `["households", "sim.pathogen.infection_rate"]`)
 - `lower_limit=nothing::Union{Vector, Nothing}` *(optional)*: Lower strict inequality constraints of parameters
 - `upper_limit=nothing::Union{Vector, Nothing}` *(optional)*: Upper strict inequality constraints of parameters
-- `loss=l2_norm::Function` *(optional)*: Loss function that processes two vectors (e.g l2 norm)
+- `loss=rmse::Function` *(optional)*: Loss function that processes two vectors (e.g rmse)
 - `n=1::Int64` *(optional)*: Number of simulations with changing seed per loss computation
 - `alg=CMAEvolutionStrategyOpt()` *(optional)*: Optimization algorithm available for Optimization.jl
 - `maxiters=100::Int64` *(optional)*: Maximum algorithm iterations
@@ -173,7 +173,7 @@ function calibrate!(
     arg_x0::Vector,
     lower_limit::Union{Vector, Nothing} = nothing,
     upper_limit::Union{Vector, Nothing} = nothing,
-    loss::Function = l2_norm,
+    loss::Function = rmse,
     n::Int64 = 1,
     alg = CMAEvolutionStrategyOpt(),
     maxiters::Int64 = 100,
