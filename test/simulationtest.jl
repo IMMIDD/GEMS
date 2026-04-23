@@ -464,7 +464,7 @@
             res = GEMS.calibrate!(
                 sim;
                 target = dummy_target_fn,
-                loss = GEMS.rmse, # Assuming this is available
+                loss = GEMS.rmse,
                 ref_ts = ref_data,
                 arg_x0 = p_args,
                 x0 = initial_x,
