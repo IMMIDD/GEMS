@@ -1680,12 +1680,13 @@ function initialize!(simulation::Simulation)
 end
 
 """
-    reinitialize!(simulation::Simulation)
+    reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
 
 Reinitializes the simulation model according to its start condition.
-This resets the simulation tick and re-applies the start condition.
+This resets the simulation tick and re-applies the start condition. 
+If `reset_interventions` is true, it also deletes all interventions.
 """
-function reinitialize!(simulation::Simulation)
+function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
     # reset individual to initial state
     reset!.(individuals(simulation))
     reset!(simulation)
@@ -1701,12 +1702,14 @@ function reinitialize!(simulation::Simulation)
     simulation.customlogger = CustomLogger()
     
     # Reset NPI triggers and strategies
-    simulation.symptom_triggers = []
-    simulation.tick_triggers = []
-    simulation.hospitalization_triggers = []
     simulation.event_queue = EventQueue()
-    simulation.strategies = []
-    simulation.testtypes = []
+    if reset_interventions
+        simulation.symptom_triggers = []
+        simulation.tick_triggers = []
+        simulation.hospitalization_triggers = []
+        simulation.strategies = []
+        simulation.testtypes = []
+    end
     
     # Re-initialize RNGs
     if !isnothing(simulation.seed)

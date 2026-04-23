@@ -76,18 +76,21 @@ function compute_loss(x::AbstractArray, p::Vector)
     end
     assign_values_to_parameters!(sim, x=x, arg=arg)
     # run simulations and compute loss
+    original_seed = sim.seed
     score = 0.0
-    for _ in 1:n
-        sim.seed += 1
+    try
+        for _ in 1:n
+            sim.seed += 1
+            reinitialize!(sim)
+            run!(sim)
+            res = target(sim)
+            score += loss(res, ts)
+        end
+        score /= n
+    finally
+        sim.seed = original_seed
         reinitialize!(sim)
-        run!(sim)
-        res = target(sim)
-        score += loss(res, ts)
     end
-    score /= n
-    # rewind seed
-    sim.seed -= n
-    reinitialize!(sim)
     return score
 end
 
@@ -117,7 +120,7 @@ end
     n::Int64 = 1,
     alg = CMAEvolutionStrategyOpt(),
     maxiters::Int64 = 100,
-    compute_loss::Function = compute_loss,
+    loss_fn::Function = compute_loss,
     callback::Union{Function, Nothing} = nothing,
     plot_training::Bool = false,
     OptimizationFunction_kwargs::Dict = Dict(),
@@ -139,7 +142,7 @@ Runs calibration using Optimization.jl library as backend. Allows customization 
 - `n=1::Int64` *(optional)*: Number of simulations with changing seed per loss computation
 - `alg=CMAEvolutionStrategyOpt()` *(optional)*: Optimization algorithm available for Optimization.jl
 - `maxiters=100::Int64` *(optional)*: Maximum algorithm iterations
-- `compute_loss=compute_loss::Function` *(optional)*: Custom function to run simulations and compute loss
+- `loss_fn=compute_loss::Function` *(optional)*: Custom function to run simulations and compute loss
 - `callback=nothing::Union{Function, Nothing}` *(optional)*: Callback function with `callback = (state, loss_val) -> false` footprint 
 - `plot_training=false::Bool` *(optional)*: If plotting of training curve is expected
 - `OptimizationFunction_kwargs=Dict()::Dict` *(optional)*: custom OptimizationFunction kwargs (check Optimization.jl documentation)
@@ -177,7 +180,7 @@ function calibrate!(
     n::Int64 = 1,
     alg = CMAEvolutionStrategyOpt(),
     maxiters::Int64 = 100,
-    compute_loss::Function = compute_loss,
+    loss_fn::Function = compute_loss,
     callback::Union{Function, Nothing} = nothing,
     plot_training::Bool = false,
     OptimizationFunction_kwargs::Dict = Dict(),
@@ -189,10 +192,10 @@ function calibrate!(
     lower_limit = isnothing(lower_limit) ? [nothing for i = 1:length(x0)] : lower_limit
     upper_limit = isnothing(upper_limit) ? [nothing for i = 1:length(x0)] : upper_limit
     p = [sim, local_ts, loss, target, n, arg_x0, lower_limit, upper_limit]
-    f = Optimization.OptimizationFunction(compute_loss, AutoFiniteDiff(); OptimizationFunction_kwargs...)
+    f = Optimization.OptimizationFunction(loss_fn, AutoFiniteDiff(); OptimizationFunction_kwargs...)
     prob = Optimization.OptimizationProblem(f, x0, p; OptimizationProblem_kwargs...)
     if isnothing(callback)
-        loss_history = []
+        loss_history = Float64[]
         callback = (state, l) -> plot_loss_callback(state, l; doplot=plot_training, loss_history=loss_history, pl=plot())
     end
     solve_kwargs = haskey(solve_kwargs, :callback) ? solve_kwargs : merge(solve_kwargs, Dict(:callback => callback))
