@@ -1,10 +1,16 @@
-# X - Calibration
+# 10 - Calibration
 
 This tutorial explains how to fit simulation parameters to observed data using GEMS's built-in calibration tools.
 Calibration finds values for one or more parameters that minimise the difference between a simulated output and a reference time series.
 Under the hood, GEMS uses [Optimization.jl](https://docs.sciml.ai/Optimization/stable/) as the optimisation backend, so any compatible solver can be plugged in.
 
-You need three things: a `Simulation` object, a **reference time series** (the real-world data you want to match), and a **target function** that extracts the comparable quantity from the simulation after it has been run.
+!!! info "What do I need to calibrate?"
+    You need three things: a `Simulation` object, a **reference time series** (the real-world data you want to match), and a **target function** that extracts the comparable quantity from the simulation after it has been run.
+ 
+!!! warning "The simulation is modified in place"
+    `calibrate!` writes the best-found parameter values back into the `sim` object and calls `reinitialize!` before returning.
+    Any state accumulated during optimisation is therefore discarded and the simulation is ready to be run fresh with the optimal parameters.
+
 
 ## Error Metrics
 
@@ -52,10 +58,18 @@ mutable struct CalibrationStyle <: GEMS.ResultDataStyle
     end
 end
 ```
-Whenever we need to extract the target data during the calibration loop, we can now pass this custom style to the ResultData constructor like this: 
+Whenever we need to extract the target data during the calibration loop, we can now pass 
+this custom style to the `ResultData` constructor like this:
+
 ```julia
 ResultData(sim, style = "CalibrationStyle")
 ```
+
+!!! warning "Adapt the style to your target quantity"
+    The `CalibrationStyle` defined above only computes `tick_cases`. If you calibrate on a 
+    different quantity — for example hospitalisations or recovered counts — you need to add 
+    the corresponding processing function to the `funcs` dict and update your `target_fn` 
+    accordingly. Including unnecessary data frames will slow down each calibration iteration.
 
 ## Calibrating a Single Parameter
 
