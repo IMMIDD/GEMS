@@ -34,114 +34,116 @@ If no contacts are sampled in `GEMS.CONTACT_SAMPLES` many iterations, an empty D
 function contact_samples(simulation::Simulation, settingtype::Type{T}, include_non_contacts::Bool)::DataFrame where {T <: Setting}
     stngs = settings(simulation, settingtype)
 
-    # set up contact dataframe with empty columns. Each row will be added at runtime.
-    a_id_vec = Vector{Int32}(undef, CONTACT_SAMPLES)
-    a_age_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
-    a_sex_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
-    b_id_vec = Vector{Int32}(undef, CONTACT_SAMPLES)
-    b_age_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
-    b_sex_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
-    settingtype_vec = Vector{DataType}(undef, CONTACT_SAMPLES)
-
     # return an empty df, if no settings for the given settingtype exist
     if isnothing(stngs) || isempty(stngs)
         return DataFrame(
-                        a_id = Int32[], 
-                        a_age = Int8[], 
-                        a_sex = Int8[],
-                        b_id = Int32[],  
-                        b_age = Int8[], 
-                        b_sex = Int8[],
-                        settingtype = DataType[]
+            a_id = Int32[], 
+            a_age = Int8[], 
+            a_sex = Int8[],
+            b_id = Int32[],  
+            b_age = Int8[], 
+            b_sex = Int8[],
+            settingtype = DataType[]
         )
     end
 
-    cnt = 1
-    last_s = nothing
+    # set up pre-allocated output vectors
+    a_id_vec       = Vector{Int32}(undef, CONTACT_SAMPLES)
+    a_age_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
+    a_sex_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
+    b_id_vec       = Vector{Int32}(undef, CONTACT_SAMPLES)
+    b_age_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
+    b_sex_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
+    settingtype_vec = Vector{DataType}(undef, CONTACT_SAMPLES)
+
+    cnt         = 1
+    last_s      = nothing
     present_inds = simulation.present_buffers[Threads.threadid()]
-    contacts = simulation.contact_buffers[Threads.threadid()]
+    contacts    = simulation.contact_buffers[Threads.threadid()]
 
-    # counter how many iterations of the loop where performed
-    loop_cnt = 0
+    # reusable batch buffer
+    batch = Vector{Int}(undef, CONTACT_SAMPLES)
 
-    # fill data frame with sample contacts
     while cnt <= CONTACT_SAMPLES
-        
-        loop_cnt += 1
-        
-        # end loop after trying "GEMS.CONTACT_SAMPLES" many times
-        if cnt <= 1 && loop_cnt > GEMS.CONTACT_SAMPLES
 
-            # return empty df, if there are no contacts until now
-                return DataFrame(
-                    a_id = Int32[], 
-                    a_age = Int8[], 
-                    a_sex = Int8[],
-                    b_id = Int32[],  
-                    b_age = Int8[], 
-                    b_sex = Int8[],
-                    settingtype = DataType[]
-                )
+        # sample a batch of setting indices and sort for cache coherence
+        for i in eachindex(batch)
+            batch[i] = gems_rand(simulation, 1:length(stngs))
         end
-        
-        raw_s = stngs[gems_rand(simulation, 1:length(stngs))]
-        s = raw_s::settingtype
+        sort!(batch)
 
-        if s !== last_s
-            empty!(present_inds)
-            present_individuals!(present_inds, s, simulation)
-            last_s = s
-        end
+        cnt_before_batch = cnt
 
-        # jump to next iteration if there are not individuals present
-        if isempty(present_inds) continue end
+        for sidx in batch
+            cnt > CONTACT_SAMPLES && break
 
-        ind_index = gems_rand(simulation, 1:length(present_inds))
-        ind = present_inds[ind_index]
+            s = stngs[sidx]::T
 
-        # sample contacts for an individual based on the individuals present in the setting at the current tick
-        sample_contacts!(contacts, s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, rng(simulation))
+            if s !== last_s
+                empty!(present_inds)
+                present_individuals!(present_inds, s, simulation)
+                last_s = s
+            end
 
-        if length(contacts) > 0
-            for contact in contacts
-                # add a row with information about "ego" and "contact" to the df
-                if cnt <= CONTACT_SAMPLES
-                    a_id_vec[cnt] = id(ind)
-                    a_age_vec[cnt] = age(ind)
-                    a_sex_vec[cnt] = sex(ind)
-                    b_id_vec[cnt] = id(contact)
-                    b_age_vec[cnt] = age(contact)
-                    b_sex_vec[cnt] = sex(contact)
+            isempty(present_inds) && continue
+
+            ind_index = gems_rand(simulation, 1:length(present_inds))
+            ind = present_inds[ind_index]
+
+            sample_contacts!(contacts, s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, rng(simulation))
+
+            if length(contacts) > 0
+                for contact in contacts
+                    cnt > CONTACT_SAMPLES && break
+                    a_id_vec[cnt]       = id(ind)
+                    a_age_vec[cnt]      = age(ind)
+                    a_sex_vec[cnt]      = sex(ind)
+                    b_id_vec[cnt]       = id(contact)
+                    b_age_vec[cnt]      = age(contact)
+                    b_sex_vec[cnt]      = sex(contact)
                     settingtype_vec[cnt] = T
                     cnt += 1
                 end
             end
+
+            if include_non_contacts && isempty(contacts) && cnt <= CONTACT_SAMPLES
+                a_id_vec[cnt]       = id(ind)
+                a_age_vec[cnt]      = age(ind)
+                a_sex_vec[cnt]      = sex(ind)
+                b_id_vec[cnt]       = Int32(-1)
+                b_age_vec[cnt]      = Int8(-1)
+                b_sex_vec[cnt]      = Int8(-1)
+                settingtype_vec[cnt] = T
+                cnt += 1
+            end
         end
 
-        if include_non_contacts && (length(contacts) == 0) && (cnt <= CONTACT_SAMPLES)
-            a_id_vec[cnt] = id(ind)
-            a_age_vec[cnt] = age(ind)
-            a_sex_vec[cnt] = sex(ind)
-            b_id_vec[cnt] = id(contact)
-            b_age_vec[cnt] = age(contact)
-            b_sex_vec[cnt] = sex(contact)
-            settingtype_vec[cnt] = T
-            cnt += 1
+        # if the entire batch produced no new rows, return
+        if cnt == cnt_before_batch
+            return DataFrame(
+                a_id = Int32[], 
+                a_age = Int8[], 
+                a_sex = Int8[],
+                b_id = Int32[],  
+                b_age = Int8[], 
+                b_sex = Int8[],
+                settingtype = DataType[]
+            )
         end
-        
+
     end
 
-    valid_rows = 1:(cnt-1)
+    valid_rows = 1:(cnt - 1)
     df = DataFrame(
-        a_id = a_id_vec[valid_rows],
-        a_age = a_age_vec[valid_rows],
-        a_sex = a_sex_vec[valid_rows],
-        b_id = b_id_vec[valid_rows],
-        b_age = b_age_vec[valid_rows],
-        b_sex = b_sex_vec[valid_rows],
+        a_id        = a_id_vec[valid_rows],
+        a_age       = a_age_vec[valid_rows],
+        a_sex       = a_sex_vec[valid_rows],
+        b_id        = b_id_vec[valid_rows],
+        b_age       = b_age_vec[valid_rows],
+        b_sex       = b_sex_vec[valid_rows],
         settingtype = settingtype_vec[valid_rows]
     )
 
     # filter for non-self-contacts
-    return(df[(df.a_id .!= df.b_id), :])
+    return df[(df.a_id .!= df.b_id), :]
 end
