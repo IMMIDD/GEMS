@@ -48,18 +48,18 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
     end
 
     # set up pre-allocated output vectors
-    a_id_vec       = Vector{Int32}(undef, CONTACT_SAMPLES)
-    a_age_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
-    a_sex_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
-    b_id_vec       = Vector{Int32}(undef, CONTACT_SAMPLES)
-    b_age_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
-    b_sex_vec      = Vector{Int8}(undef, CONTACT_SAMPLES)
+    a_id_vec = Vector{Int32}(undef, CONTACT_SAMPLES)
+    a_age_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
+    a_sex_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
+    b_id_vec = Vector{Int32}(undef, CONTACT_SAMPLES)
+    b_age_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
+    b_sex_vec = Vector{Int8}(undef, CONTACT_SAMPLES)
     settingtype_vec = Vector{DataType}(undef, CONTACT_SAMPLES)
 
-    cnt         = 1
-    last_s      = nothing
+    cnt = 1
+    last_s = nothing
     present_inds = simulation.present_buffers[Threads.threadid()]
-    contacts    = simulation.contact_buffers[Threads.threadid()]
+    contacts = simulation.contact_buffers[Threads.threadid()]
 
     # reusable batch buffer
     batch = Vector{Int}(undef, CONTACT_SAMPLES)
@@ -95,24 +95,24 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             if length(contacts) > 0
                 for contact in contacts
                     cnt > CONTACT_SAMPLES && break
-                    a_id_vec[cnt]       = id(ind)
-                    a_age_vec[cnt]      = age(ind)
-                    a_sex_vec[cnt]      = sex(ind)
-                    b_id_vec[cnt]       = id(contact)
-                    b_age_vec[cnt]      = age(contact)
-                    b_sex_vec[cnt]      = sex(contact)
+                    a_id_vec[cnt] = id(ind)
+                    a_age_vec[cnt] = age(ind)
+                    a_sex_vec[cnt] = sex(ind)
+                    b_id_vec[cnt] = id(contact)
+                    b_age_vec[cnt] = age(contact)
+                    b_sex_vec[cnt] = sex(contact)
                     settingtype_vec[cnt] = T
                     cnt += 1
                 end
             end
 
             if include_non_contacts && isempty(contacts) && cnt <= CONTACT_SAMPLES
-                a_id_vec[cnt]       = id(ind)
-                a_age_vec[cnt]      = age(ind)
-                a_sex_vec[cnt]      = sex(ind)
-                b_id_vec[cnt]       = Int32(-1)
-                b_age_vec[cnt]      = Int8(-1)
-                b_sex_vec[cnt]      = Int8(-1)
+                a_id_vec[cnt] = id(ind)
+                a_age_vec[cnt] = age(ind)
+                a_sex_vec[cnt] = sex(ind)
+                b_id_vec[cnt] = Int32(-1)
+                b_age_vec[cnt] = Int8(-1)
+                b_sex_vec[cnt] = Int8(-1)
                 settingtype_vec[cnt] = T
                 cnt += 1
             end
@@ -135,12 +135,12 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
     valid_rows = 1:(cnt - 1)
     df = DataFrame(
-        a_id        = a_id_vec[valid_rows],
-        a_age       = a_age_vec[valid_rows],
-        a_sex       = a_sex_vec[valid_rows],
-        b_id        = b_id_vec[valid_rows],
-        b_age       = b_age_vec[valid_rows],
-        b_sex       = b_sex_vec[valid_rows],
+        a_id = a_id_vec[valid_rows],
+        a_age = a_age_vec[valid_rows],
+        a_sex = a_sex_vec[valid_rows],
+        b_id = b_id_vec[valid_rows],
+        b_age = b_age_vec[valid_rows],
+        b_sex = b_sex_vec[valid_rows],
         settingtype = settingtype_vec[valid_rows]
     )
 
