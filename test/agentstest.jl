@@ -19,6 +19,26 @@
             @test class_id(i) == GEMS.DEFAULT_SETTING_ID
         end
 
+        @testset "Comorbidities" begin
+            # Test default Individual (no comorbidities)
+            i_default = Individual(id = 1, sex = 0, age = 31)
+            @test !has_comorbidity(i_default, Int16(1))
+            @test !has_comorbidity(i_default, Int16(16))
+            
+            # Test with specific comorbidities set
+            # UInt16(5) is binary 0000000000000101, meaning the 1st and 3rd bits are 1
+            i_comorbid = Individual(id = 2, sex = 0, age = 31, comorbidities = UInt16(5))
+            
+            @test has_comorbidity(i_comorbid, Int16(1))  # 1st bit is 1
+            @test !has_comorbidity(i_comorbid, Int16(2)) # 2nd bit is 0
+            @test has_comorbidity(i_comorbid, Int16(3))  # 3rd bit is 1
+            @test !has_comorbidity(i_comorbid, Int16(4)) # 4th bit is 0
+            
+            # Test boundaries for the Int16 index
+            @test_throws ArgumentError has_comorbidity(i_comorbid, Int16(0))
+            @test_throws ArgumentError has_comorbidity(i_comorbid, Int16(17))
+        end
+
         @testset "Disease Progression & Hospitalization" begin
             @testset "Times Setter & Getter" begin
                 i = Individual(id = 1, sex = 0, age = 31)

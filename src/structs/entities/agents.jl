@@ -14,7 +14,7 @@ export mandate_compliance, mandate_compliance!, social_factor, social_factor!
 export setting_id, setting_id!, household_id, class_id, office_id, municipality_id, settings_tuple
 export is_working, is_student, has_municipality
 # health status
-export comorbidities
+export comorbidities, has_comorbidity
 export is_infected, isinfected, infected, infected!
 export is_infectious, isinfectious, infectious, infectious!
 export is_exposed, isexposed, exposed
@@ -459,6 +459,22 @@ Returns an individual's comorbidities.
 """
 function comorbidities(individual::Individual)::UInt16
     return individual.comorbidities
+end
+
+"""
+    has_comorbidity(individual::Individual, n::Int16)
+
+Returns `true` if the individual has the `n`-th comorbidity flag set. 
+`n` is 1-indexed and should be between 1 and 16.
+"""
+function has_comorbidity(individual::Individual, n::Int16)
+    # Ensure n is in the valid range for a UInt16
+    if !(1 <= n <= 16)
+        throw(ArgumentError("Comorbidity index must be between 1 and 16."))
+    end
+    
+    # Shift a bit to the (n-1)th position and apply bitwise AND
+    return (individual.comorbidities & (UInt16(1) << (n - 1))) != 0
 end
 
 """
