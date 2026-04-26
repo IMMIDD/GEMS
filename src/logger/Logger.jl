@@ -584,7 +584,7 @@ function dataframe(quarantinelogger::QuarantineLogger)::DataFrame
     )
 end
 
-Base.length(logger::QuarantineLogger) = sum(length, logger.tick)
+Base.length(logger::QuarantineLogger) = length(logger.tick)
 
 
 ###
@@ -654,7 +654,7 @@ function dataframe(statelogger::StateLogger)::DataFrame
     )
 end
 
-Base.length(logger::StateLogger) = sum(length, logger.tick)
+Base.length(logger::StateLogger) = length(logger.tick)
 
 
 ###
