@@ -554,10 +554,10 @@ Base.length(logger::SeroprevalenceLogger) = sum(length, logger.test_tick)
 ###
 @with_kw mutable struct QuarantineLogger <: TickLogger 
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    quarantined::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
+    tick::Vector{Int16} = Vector{Int16}()
+    quarantined::Vector{Int64} = Vector{Int64}()
+    students::Vector{Int64} = Vector{Int64}()
+    workers::Vector{Int64} = Vector{Int64}()
 end
 
 function log!(
@@ -567,21 +567,20 @@ function log!(
     students::Int64,
     workers::Int64
 )
-    tid = Threads.threadid()
-    push!(quarantinelogger.tick[tid], tick)
-    push!(quarantinelogger.quarantined[tid], quarantined)
-    push!(quarantinelogger.students[tid], students)
-    push!(quarantinelogger.workers[tid], workers)
+    push!(quarantinelogger.tick, tick)
+    push!(quarantinelogger.quarantined, quarantined)
+    push!(quarantinelogger.students, students)
+    push!(quarantinelogger.workers, workers)
 
     Threads.atomic_xchg!(quarantinelogger.last_modified_tick, tick)
 end
 
 function dataframe(quarantinelogger::QuarantineLogger)::DataFrame
     return DataFrame(
-        tick = vcat(quarantinelogger.tick...),
-        quarantined = vcat(quarantinelogger.quarantined...),
-        students = vcat(quarantinelogger.students...),
-        workers = vcat(quarantinelogger.workers...)
+        tick = quarantinelogger.tick,
+        quarantined = quarantinelogger.quarantined,
+        students = quarantinelogger.students,
+        workers = quarantinelogger.workers
     )
 end
 
@@ -593,18 +592,18 @@ Base.length(logger::QuarantineLogger) = sum(length, logger.tick)
 ###
 @with_kw mutable struct StateLogger <: TickLogger 
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    exposed::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    infectious::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    dead::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    detected::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    quarantined::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    quarantined_students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    isolated_students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    unable_to_attend_students::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    quarantined_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    isolated_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
-    unable_to_attend_workers::Vector{Vector{Int64}} = [Vector{Int64}() for _ in 1:Threads.maxthreadid()]
+    tick::Vector{Int16} = Vector{Int16}()
+    exposed::Vector{Int64} = Vector{Int64}()
+    infectious::Vector{Int64} = Vector{Int64}()
+    dead::Vector{Int64} = Vector{Int64}()
+    detected::Vector{Int64} = Vector{Int64}()
+    quarantined::Vector{Int64} = Vector{Int64}()
+    quarantined_students::Vector{Int64} = Vector{Int64}()
+    isolated_students::Vector{Int64} = Vector{Int64}()
+    unable_to_attend_students::Vector{Int64} = Vector{Int64}()
+    quarantined_workers::Vector{Int64} = Vector{Int64}()
+    isolated_workers::Vector{Int64} = Vector{Int64}()
+    unable_to_attend_workers::Vector{Int64} = Vector{Int64}()
 end
 
 function log!(
@@ -622,37 +621,36 @@ function log!(
     isolated_workers::Int64,
     unable_to_attend_workers::Int64
 )
-    tid = Threads.threadid()
-    push!(statelogger.tick[tid], tick)
-    push!(statelogger.exposed[tid], exposed)
-    push!(statelogger.infectious[tid], infectious)
-    push!(statelogger.dead[tid], dead)
-    push!(statelogger.detected[tid], detected)
-    push!(statelogger.quarantined[tid], quarantined)
-    push!(statelogger.quarantined_students[tid], quarantined_students)
-    push!(statelogger.isolated_students[tid], isolated_students)
-    push!(statelogger.unable_to_attend_students[tid], unable_to_attend_students)
-    push!(statelogger.quarantined_workers[tid], quarantined_workers)
-    push!(statelogger.isolated_workers[tid], isolated_workers)
-    push!(statelogger.unable_to_attend_workers[tid], unable_to_attend_workers)
+    push!(statelogger.tick, tick)
+    push!(statelogger.exposed, exposed)
+    push!(statelogger.infectious, infectious)
+    push!(statelogger.dead, dead)
+    push!(statelogger.detected, detected)
+    push!(statelogger.quarantined, quarantined)
+    push!(statelogger.quarantined_students, quarantined_students)
+    push!(statelogger.isolated_students, isolated_students)
+    push!(statelogger.unable_to_attend_students, unable_to_attend_students)
+    push!(statelogger.quarantined_workers, quarantined_workers)
+    push!(statelogger.isolated_workers, isolated_workers)
+    push!(statelogger.unable_to_attend_workers, unable_to_attend_workers)
 
     Threads.atomic_xchg!(statelogger.last_modified_tick, tick)
 end
 
 function dataframe(statelogger::StateLogger)::DataFrame
     return DataFrame(
-        tick = vcat(statelogger.tick...),
-        exposed = vcat(statelogger.exposed...),
-        infectious = vcat(statelogger.infectious...),
-        dead = vcat(statelogger.dead...),
-        detected = vcat(statelogger.detected...),
-        quarantined = vcat(statelogger.quarantined...),
-        quarantined_students = vcat(statelogger.quarantined_students...),
-        isolated_students = vcat(statelogger.isolated_students...),
-        unable_to_attend_students = vcat(statelogger.unable_to_attend_students...),
-        quarantined_workers = vcat(statelogger.quarantined_workers...),
-        isolated_workers = vcat(statelogger.isolated_workers...),
-        unable_to_attend_workers = vcat(statelogger.unable_to_attend_workers...)
+        tick = statelogger.tick,
+        exposed = statelogger.exposed,
+        infectious = statelogger.infectious,
+        dead = statelogger.dead,
+        detected = statelogger.detected,
+        quarantined = statelogger.quarantined,
+        quarantined_students = statelogger.quarantined_students,
+        isolated_students = statelogger.isolated_students,
+        unable_to_attend_students = statelogger.unable_to_attend_students,
+        quarantined_workers = statelogger.quarantined_workers,
+        isolated_workers = statelogger.isolated_workers,
+        unable_to_attend_workers = statelogger.unable_to_attend_workers
     )
 end
 

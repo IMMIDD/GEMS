@@ -401,19 +401,19 @@
             tid = Threads.threadid()
             
             # test Infectious wake-up
-            push!(statelogger(sim).infectious[tid], 1)
+            push!(statelogger(sim).infectious, 1)
             @test GEMS.is_dormant(sim) == false
-            pop!(statelogger(sim).infectious[tid]) # revert
+            pop!(statelogger(sim).infectious) # revert
             
             # test Exposed wake-up
-            push!(statelogger(sim).exposed[tid], 1)
+            push!(statelogger(sim).exposed, 1)
             @test GEMS.is_dormant(sim) == false
-            pop!(statelogger(sim).exposed[tid]) # revert
+            pop!(statelogger(sim).exposed) # revert
             
             # test Quarantine wake-up
-            push!(statelogger(sim).quarantined[tid], 1)
+            push!(statelogger(sim).quarantined, 1)
             @test GEMS.is_dormant(sim) == false
-            pop!(statelogger(sim).quarantined[tid]) # revert
+            pop!(statelogger(sim).quarantined) # revert
             
             # Ensure it goes back to sleep when all states are 0
             @test GEMS.is_dormant(sim) == true

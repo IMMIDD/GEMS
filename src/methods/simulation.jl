@@ -168,22 +168,21 @@ Fills the loggers for the current dormant tick by copying the last known state.
 function copy_last_log_state(simulation::Simulation)
     sl = statelogger(simulation)
     ql = quarantinelogger(simulation)
-    tid = Threads.threadid()
     
     # Get last known state
-    last_exposed = isempty(sl.exposed[tid]) ? 0 : sl.exposed[tid][end]
-    last_infectious = isempty(sl.infectious[tid]) ? 0 : sl.infectious[tid][end]
-    last_dead = isempty(sl.dead[tid]) ? 0 : sl.dead[tid][end]
-    last_detected = isempty(sl.detected[tid]) ? 0 : sl.detected[tid][end]
+    last_exposed = isempty(sl.exposed) ? 0 : sl.exposed[end]
+    last_infectious = isempty(sl.infectious) ? 0 : sl.infectious[end]
+    last_dead = isempty(sl.dead) ? 0 : sl.dead[end]
+    last_detected = isempty(sl.detected) ? 0 : sl.detected[end]
     
-    last_quar = isempty(sl.quarantined[tid]) ? 0 : sl.quarantined[tid][end]
-    last_quar_st = isempty(sl.quarantined_students[tid]) ? 0 : sl.quarantined_students[tid][end]
-    last_isol_st = isempty(sl.isolated_students[tid]) ? 0 : sl.isolated_students[tid][end]
-    last_unab_st = isempty(sl.unable_to_attend_students[tid]) ? 0 : sl.unable_to_attend_students[tid][end]
+    last_quar = isempty(sl.quarantined) ? 0 : sl.quarantined[end]
+    last_quar_st = isempty(sl.quarantined_students) ? 0 : sl.quarantined_students[end]
+    last_isol_st = isempty(sl.isolated_students) ? 0 : sl.isolated_students[end]
+    last_unab_st = isempty(sl.unable_to_attend_students) ? 0 : sl.unable_to_attend_students[end]
     
-    last_quar_wo = isempty(sl.quarantined_workers[tid]) ? 0 : sl.quarantined_workers[tid][end]
-    last_isol_wo = isempty(sl.isolated_workers[tid]) ? 0 : sl.isolated_workers[tid][end]
-    last_unab_wo = isempty(sl.unable_to_attend_workers[tid]) ? 0 : sl.unable_to_attend_workers[tid][end]
+    last_quar_wo = isempty(sl.quarantined_workers) ? 0 : sl.quarantined_workers[end]
+    last_isol_wo = isempty(sl.isolated_workers) ? 0 : sl.isolated_workers[end]
+    last_unab_wo = isempty(sl.unable_to_attend_workers) ? 0 : sl.unable_to_attend_workers[end]
     
     current_tick = tick(simulation)
     
@@ -349,15 +348,14 @@ function is_dormant(simulation::Simulation)
 
     # wake up if disease or quarantines are active
     sl = statelogger(simulation)
-    tid = Threads.threadid()
     
-    if isempty(sl.exposed[tid])
+    if isempty(sl.exposed)
         return false
     end
     
-    cur_exp = sl.exposed[tid][end]
-    cur_inf = sl.infectious[tid][end]
-    cur_quar = sl.quarantined[tid][end]
+    cur_exp = sl.exposed[end]
+    cur_inf = sl.infectious[end]
+    cur_quar = sl.quarantined[end]
     
     return cur_exp == 0 && cur_inf == 0 && cur_quar == 0
 end
