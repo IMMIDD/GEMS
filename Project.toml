@@ -1,7 +1,7 @@
 name = "GEMS"
 uuid = "be47d99e-7859-414d-a902-bf4cb6b83c8a"
-version = "0.7.0"
-authors = ["Johannes Ponge", "Janik Suer", "Lukas Bayer", "Wolfgang Bock", "Julian Patzner"]
+version = "1.0.0"
+authors = ["Johannes Ponge", "Janik Suer", "Lukas Bayer", "Wolfgang Bock", "Julian Patzner", "Karol Niedzielewski", "Harry Zaunstöck"]
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
