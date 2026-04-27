@@ -11,10 +11,10 @@ export age, id, education, occupation, sex
 # behaviour
 export mandate_compliance, mandate_compliance!, social_factor, social_factor!
 # settings
-export setting_id, setting_id!, household_id, class_id, office_id, municipality_id
+export setting_id, setting_id!, household_id, class_id, office_id, municipality_id, settings_tuple
 export is_working, is_student, has_municipality
 # health status
-export comorbidities
+export comorbidities, has_comorbidity
 export is_infected, isinfected, infected, infected!
 export is_infectious, isinfectious, infectious, infectious!
 export is_exposed, isexposed, exposed
@@ -92,8 +92,8 @@ A type to represent individuals, that act as agents inside the simulation.
         to mandates. Can be anywhere between -1 and 1 with neutral state is 0.
 
 - Health Status
-    - `comorbidities::Vector{Bool}`: Indicating prevalence of certain health conditions. True,
-        if the individual is preconditioned with the comorbidity associated to the array index.
+    - `comorbidities::UInt16`: Indicating prevalence of certain health conditions. True,
+        if the individual is preconditioned with the comorbidity associated to the bit.
     - `dead::Bool`: Flag indicating individual's decease
     - `infected::Bool`: Flag indicating individual's infection status
 
@@ -152,7 +152,7 @@ A type to represent individuals, that act as agents inside the simulation.
     mandate_compliance::Float32 = 0 # 4 bytes
 
     # HEALTH STATUS
-    comorbidities::Vector{Bool} = Vector{Bool}() # 40 + n bytes
+    comorbidities::UInt16 = 0 # 2 bytes
     infected::Bool = false # 1 byte
     infectious::Bool = false # 1 byte
     symptomatic::Bool = false # 1 byte
@@ -373,6 +373,20 @@ function municipality_id(individual::Individual)::Int32
 end
 
 """
+    settings_tuple(individual::Individual)
+
+Returns all individual's associated setting IDs as a Tuple.
+"""
+function settings_tuple(individual::Individual)
+    return (
+        (Household, individual.household),
+        (Office, individual.office),
+        (SchoolClass, individual.schoolclass),
+        (Municipality, individual.municipality)
+    )
+end
+
+"""
     setting_id(individual::Individual, type::DataType)
 
 Returns the id of the setting of `type` associated with the individual. If the settingtype
@@ -443,8 +457,24 @@ has_municipality(individual::Individual) = municipality_id(individual) != DEFAUL
 
 Returns an individual's comorbidities.
 """
-function comorbidities(individual::Individual)::Array{Bool}
+function comorbidities(individual::Individual)::UInt16
     return individual.comorbidities
+end
+
+"""
+    has_comorbidity(individual::Individual, n::Int16)
+
+Returns `true` if the individual has the `n`-th comorbidity flag set. 
+`n` is 1-indexed and should be between 1 and 16.
+"""
+function has_comorbidity(individual::Individual, n::Int16)
+    # Ensure n is in the valid range for a UInt16
+    if !(1 <= n <= 16)
+        throw(ArgumentError("Comorbidity index must be between 1 and 16."))
+    end
+    
+    # Shift a bit to the (n-1)th position and apply bitwise AND
+    return (individual.comorbidities & (UInt16(1) << (n - 1))) != 0
 end
 
 """

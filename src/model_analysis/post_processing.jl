@@ -41,12 +41,11 @@ mutable struct PostProcessor
     # dataframe cache to speed up calculations
     cache::Dict{String, Any}
 
-    @doc """
+@doc """
 
         PostProcessor(simulation::Simulation)
 
-    Create a `PostProcessor` object for an associated `Simulation`.
-    Post Processing requires a simulation to be done.
+    Create a `PostProcessor` object for an associated `Simulation`. Post Processing requires a simulation to be done.
     """
     function PostProcessor(simulation::Simulation)
        
@@ -62,53 +61,60 @@ mutable struct PostProcessor
         # join all infections with additional info from population DF
         infections = simulation |> infectionlogger |> dataframe
 
-        infections = infections |>
-            # calculate generation time and serial interval (self join)
-            x -> leftjoin(x, 
-                DataFrames.select(infections, [:infection_id, :tick, :symptom_onset]),
-                on = [:source_infection_id => :infection_id],
-                renamecols = "" => "_source") |>
-            x -> transform(x,
-                [:tick, :tick_source] => ByRow(-) => :generation_time,
-                [:symptom_onset, :symptom_onset_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval,
-                copycols = false) |>
-            x -> DataFrames.select(x, Not([:tick_source, :symptom_onset_source]))
+        # calculate generation time and serial interval (self join)
+        # Using a lightweight renamed view to avoid leftjoin allocation
+        source_info = DataFrames.select(infections, 
+            :infection_id, 
+            :tick => :tick_source, 
+            :symptom_onset => :symptom_onset_source, 
+            copycols=false
+        )
+        
+        leftjoin!(infections, source_info, on = [:source_infection_id => :infection_id])
 
-        infections = infections |>
-            # add tests
-            x -> leftjoin(x, detection_ticks(tests), on = :infection_id) |>
+        transform!(infections,
+            [:tick, :tick_source] => ByRow(-) => :generation_time,
+            [:symptom_onset, :symptom_onset_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval
+        )
+        select!(infections, Not([:tick_source, :symptom_onset_source]))
 
-            # add poulation data
-            x -> leftjoin(x, pop, on = [:id_a => :id], renamecols = "" => "_a") |>
-            x -> leftjoin(x, pop, on = [:id_b => :id], renamecols = "" => "_b")
+        # add tests
+        leftjoin!(infections, detection_ticks(tests), on = :infection_id)
 
-        # lookup home-AGS for each individual
-        infections.household_ags_a =
-            (h_id -> ismissing(h_id) ? missing : ags(households(simulation)[h_id])).(infections.household_a)
-        infections.household_ags_b =
-            (h_id -> ismissing(h_id) ? missing : ags(households(simulation)[h_id])).(infections.household_b)
+        # add poulation data
+        # We rename columns of a shallow copy of pop, avoiding copying the underlying arrays
+        pop_a = rename(pop, names(pop) .=> [n == "id" ? "id" : n * "_a" for n in names(pop)])
+        leftjoin!(infections, pop_a, on = [:id_a => :id])
+
+        pop_b = rename(pop, names(pop) .=> [n == "id" ? "id" : n * "_b" for n in names(pop)])
+        leftjoin!(infections, pop_b, on = [:id_b => :id])
+
+        sim_households = households(simulation)
+
+        transform!(infections, 
+            :household_a => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_a,
+            :household_b => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_b
+        )
 
         # join deaths with additional info from population DF
-        deaths = dataframe(deathlogger(simulation)) |>
-            x -> leftjoin(x, pop, on = [:id => :id])
-
+        deaths = dataframe(deathlogger(simulation))
+        leftjoin!(deaths, pop, on = :id)
 
         # join tests with population data
-        tests = tests |>
-        x -> leftjoin(x, pop, on = [:id => :id])
+        leftjoin!(tests, pop, on = :id)
         
         pooltests = dataframe(pooltestlogger(simulation))
 
         # add "Other" column to quarantines DF indicating all non-student and non-worker quarantines
-        quarantines = dataframe(quarantinelogger(simulation)) |>
-            x -> transform(x, [:quarantined, :students, :workers] => ByRow((q, s, w) -> q - s -w) => :other)
+        quarantines = dataframe(quarantinelogger(simulation))
+        transform!(quarantines, [:quarantined, :students, :workers] => ByRow((q, s, w) -> q - s - w) => :other)
 
-        compartments = dataframe(statelogger(simulation)) |>
-            df -> rename!(df,
-                :exposed => :exposed_cnt,
-                :infectious => :infectious_cnt,
-                :detected => :detected_cnt,
-                :dead => :dead_cnt)
+        compartments = dataframe(statelogger(simulation))
+        rename!(compartments,
+            :exposed => :exposed_cnt,
+            :infectious => :infectious_cnt,
+            :detected => :detected_cnt,
+            :dead => :dead_cnt)
 
         new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, Dict{String, Any}())
     end
@@ -205,9 +211,9 @@ reportable test.
 """
 function detection_ticks(testDF::DataFrame)
     return testDF |>
-        x -> x[x.test_result .& x.infected .& x.reportable, :] |> # filter reportable true positives
-        x -> rename!(x, :test_tick => :first_detected_tick) |>
-        x -> (isempty(x) ? x : groupby(x, :infection_id)) |> # is empty check prevents function from crashing if no infection was reported
+        x -> subset(x, :test_result => ByRow(identity), :infected => ByRow(identity), :reportable => ByRow(identity), view=true) |> 
+        x -> rename(x, :test_tick => :first_detected_tick) |>
+        x -> (isempty(x) ? x : groupby(x, :infection_id)) |> 
         x -> isempty(x) ? x : combine(x,
             [:first_detected_tick, :test_type] => ((tick, type) -> type[argmin(tick)]) => :test_type,    
             :first_detected_tick => minimum => :first_detected_tick)
@@ -473,7 +479,7 @@ function sim_infectionsDF(postProcessor::PostProcessor)
 
     # return only values that have an infecter-id (i.e. runtime-infections)
     sim_infs = infectionsDF(postProcessor) |>
-        df -> df[df.id_a .> 0, :]
+        df -> subset(df, :id_a => ByRow(>(0)), view=true)
     
     # store in internal cache
     store_cache(postProcessor, "sim_infectionsDF", sim_infs)

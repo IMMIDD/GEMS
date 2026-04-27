@@ -63,21 +63,25 @@ mutable struct Population
     `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
     """
     function Population(df::DataFrame)
-    
-        # filter for columns available in DF and Individual struct
-        df_content = df |>
-            x -> DataFrames.select(x, intersect(map(string, fieldnames(Individual)), names(x)))
+        
+        # Intersect using Symbols  
+        valid_cols = intersect(fieldnames(Individual), propertynames(df))
+        valid_cols_tuple = Tuple(valid_cols)
+        
+        # Extract into a NamedTuple 
+        col_table = NamedTuple{valid_cols_tuple}(Tuple(df[!, c] for c in valid_cols_tuple))
 
-        # Pre-allocate an array for the population
-        individuals = Vector{Individual}(undef, size(df_content, 1))
+        # Pre-allocate array 
+        individuals = Vector{Individual}(undef, nrow(df))
 
         # Create individuals in parallel
         Threads.@threads for i in eachindex(individuals)
-            @inbounds individuals[i] = Individual(df_content[i, :])
+            row_kwargs = map(col -> col[i], col_table)
+            @inbounds individuals[i] = Individual(; row_kwargs...)
         end
 
         pop = Population(individuals)
-        pop.params["populationfile"] = "Not available." # update input parameters
+        pop.params["populationfile"] = "Not available."
         return pop
     end
 
@@ -129,7 +133,7 @@ mutable struct Population
         avg_household_size::Real = 3.0,
         avg_office_size::Real = 5.0,
         avg_school_size::Real = 100.0,
-        rng::AbstractRNG = Random.default_rng(),
+        rng::Xoshiro = default_gems_rng(),
         empty::Bool = false)
 
         # if "empty" keyword is passed, generate an empty population object

@@ -22,7 +22,7 @@ Base.show(io::IO, ctr::ConstantTransmissionRate) = write(io, "ConstantTranmissio
 
 
 """
-    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())
+    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
 
 Calculates the transmission probability for the `ConstantTransmissionRate`. Returns the `transmission_rate`
 for all individuals who have not been infected in the past. If the individual has already recovered,
@@ -35,14 +35,14 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
-- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
+- `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
 
 # Returns
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 
 """
-function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::AbstractRNG)::Float64
+function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # error handling
     !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
     
@@ -54,4 +54,4 @@ function transmission_probability(transFunc::ConstantTransmissionRate, infecter:
 end
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infected, setting, tick, Random.default_rng())
+    transmission_probability(transFunc, infecter, infected, setting, tick, default_gems_rng())

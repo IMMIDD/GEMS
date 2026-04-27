@@ -73,7 +73,7 @@ include.(
 ### ABSTRACT INTERFACE
 
 # fallback for assign functions
-function assign(individual::Individual, pa_func::ProgressionAssignmentFunction, rng::AbstractRNG)
+function assign(individual::Individual, pa_func::ProgressionAssignmentFunction, rng::Xoshiro)
     @error "The assign function is not defined for the provided ProgressionAssignmentFunction struct $(typeof(pa_func))."
 end
 
@@ -87,12 +87,12 @@ function transmission_probability(transFunc::TransmissionFunction, infecter::Ind
 end
 
 """
-    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::AbstractRNG = Random.default_rng())
+    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
 
 General function for TransmissionFunction struct. Should be overwritten for newly created structs, as it only serves
 to catch undefined `transmission_probability` functions.
 """
-function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, rng::AbstractRNG)::Float64
+function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # this is the fallback function that is called if no of the specific transmission_proability
     # functions has already fired. In that case, we try finding a transmission_probability
     # function without a dedicated RNG passed. If that doesn't work, the default 
@@ -122,6 +122,7 @@ progression_assignments() = subtypes(ProgressionAssignmentFunction)
 Returns all known transmission functions (subtypes of `TransmissionFunction`).
 """
 transmission_functions() = subtypes(TransmissionFunction)
+
 
 
 # JP TODO: Add abstract interface for progression assignments and progression categories

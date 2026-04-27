@@ -94,29 +94,28 @@ mutable struct Critical <: ProgressionCategory
 end
 
 
-function calculate_progression(individual::Individual, tick::Int16, dp::Critical;
-        rng::AbstractRNG = Random.default_rng())
+function calculate_progression(individual::Individual, tick::Int16, dp::Critical, rng::Xoshiro)
 
     # Calculate the time to infectiousness
-    infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
+    infectiousness_onset = Int16(tick + 1 + rand_val(dp.exposure_to_infectiousness_onset, rng))
 
     # Calculate the time to symptom onset
-    symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset, rng)
+    symptom_onset = Int16(infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset, rng))
 
     # Calculate the time to severeness onset
-    severeness_onset = symptom_onset + rand_val(dp.symptom_onset_to_severeness_onset, rng)
+    severeness_onset = Int16(symptom_onset + rand_val(dp.symptom_onset_to_severeness_onset, rng))
 
     # Calculate the time to hospital admission
-    hospital_admission = severeness_onset + rand_val(dp.severeness_onset_to_hospital_admission, rng)
+    hospital_admission = Int16(severeness_onset + rand_val(dp.severeness_onset_to_hospital_admission, rng))
 
     # Calculate the time to ICU admission
-    icu_admission = hospital_admission + rand_val(dp.hospital_admission_to_icu_admission, rng)
+    icu_admission = Int16(hospital_admission + rand_val(dp.hospital_admission_to_icu_admission, rng))
 
     # Decide recovery or death
     # If individual dies
     if gems_rand(rng) <= dp.death_probability
         # Calculate the time to death
-        death = icu_admission + rand_val(dp.icu_admission_to_death, rng)
+        death = Int16(icu_admission + rand_val(dp.icu_admission_to_death, rng))
 
         return DiseaseProgression(
             exposure = tick,
@@ -125,7 +124,6 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
             severeness_onset = severeness_onset,
             hospital_admission = hospital_admission,
             icu_admission = icu_admission,
-            # set icu and hospital discharge to death time
             icu_discharge = death,
             hospital_discharge = death,
             severeness_offset = death,
@@ -135,16 +133,16 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
 
     # If individual recovers
     # Calculate the time to ICU discharge
-    icu_discharge = icu_admission + rand_val(dp.icu_admission_to_icu_discharge, rng)
+    icu_discharge = Int16(icu_admission + rand_val(dp.icu_admission_to_icu_discharge, rng))
 
     # Calculate the time to hospital discharge
-    hospital_discharge = icu_discharge + rand_val(dp.icu_discharge_to_hospital_discharge, rng)
+    hospital_discharge = Int16(icu_discharge + rand_val(dp.icu_discharge_to_hospital_discharge, rng))
 
     # Calculate the time to severeness offset
-    severeness_offset = hospital_discharge + rand_val(dp.hospital_discharge_to_severeness_offset, rng)
+    severeness_offset = Int16(hospital_discharge + rand_val(dp.hospital_discharge_to_severeness_offset, rng))
 
     # Calculate the time to recovery
-    recovery = severeness_offset + rand_val(dp.severeness_offset_to_recovery, rng)
+    recovery = Int16(severeness_offset + rand_val(dp.severeness_offset_to_recovery, rng))
 
     return DiseaseProgression(
         exposure = tick,

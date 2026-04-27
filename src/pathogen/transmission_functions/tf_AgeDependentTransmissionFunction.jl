@@ -52,7 +52,7 @@ end
 
 
 """
-    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::AbstractRNG)::Float64
+    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
 
 Calculates the transmission probability based on the age of the infectee using age-dependent transmission rates.
 
@@ -64,13 +64,13 @@ Calculates the transmission probability based on the age of the infectee using a
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
-- `rng::AbstractRNG = Random.default_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
+- `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
 
 # Returns
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
-function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::AbstractRNG)::Float64
+function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # error handling
     !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
     
@@ -89,4 +89,4 @@ end
 
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infected, setting, tick, Random.default_rng())
+    transmission_probability(transFunc, infecter, infected, setting, tick, default_gems_rng())

@@ -160,3 +160,9 @@ POST_PROCESSOR_CACHING = false
 # become a bottleneck. Please only set this "true" if you are sure to have enough
 # memory available.
 PARALLEL_REPORT_GENERATION = false
+
+
+
+# One seeded, globally available Xoshiro RNG per thread.
+const _DEFAULT_GEMS_RNGS = Random.Xoshiro[]
+@inline default_gems_rng() = _DEFAULT_GEMS_RNGS[Threads.threadid()]

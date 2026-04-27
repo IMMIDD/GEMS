@@ -58,7 +58,6 @@ There should only be one `GlobalSetting` instance in any simulation.
 - `contact_sampling_method::ContactSamplingMethod`: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool`: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool`: Whether the setting is open for contacts.
-- `lock::ReentrantLock`: A lock to use in a parallelized setting to ensure data race free
     conditions
 """
 @with_kw mutable struct GlobalSetting <: IndividualSetting
@@ -68,13 +67,10 @@ There should only be one `GlobalSetting` instance in any simulation.
     ags::AGS= AGS() # 4 bytes
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -123,13 +119,10 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -165,13 +158,10 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -222,13 +212,10 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     lat::Float32 = NaN # 4 bytes
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -270,15 +257,13 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     contained_type::DataType = School
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -319,14 +304,12 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     contained_type::DataType = SchoolComplex
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -360,16 +343,15 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contains_type::DataType = School
+     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
-    type::Int32 = -1# 1 byte
+    ags::AGS = AGS()
+
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 ###
@@ -409,15 +391,13 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 """
@@ -458,14 +438,12 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     type::Int32 = -1 # 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 """
@@ -506,17 +484,15 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
 
     
     
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
 end
 
 
@@ -569,14 +545,10 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 
 
     # active settings approach
-    isactive::Bool = false
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
-
-    # Lock for parallelization
-    lock::ReentrantLock = ReentrantLock()
-
 end
 ###
 ### SETTING UTILS
@@ -707,7 +679,7 @@ Returns whether the setting is considered active for simulation, e.g. an infecti
 spread in the setting.
 """
 function isactive(setting::Setting)::Bool
-    return setting.isactive
+    return setting.isactive[]
 end
 
 """
@@ -716,10 +688,8 @@ end
 Sets the setting active for simulation.
 """
 function activate!(setting::Setting)
-    lock(setting.lock) do
-        if hasproperty(setting, :contains) || setting |> individuals |> length > 1
-            setting.isactive = true
-        end
+    if hasproperty(setting, :contains) || setting |> individuals |> length > 1
+        Threads.atomic_xchg!(setting.isactive, true)
     end
 end
 
@@ -729,9 +699,7 @@ end
 Sets the setting as inactive for simulation.
 """
 function deactivate!(setting::Setting)
-    lock(setting.lock) do
-        setting.isactive = false
-    end
+    Threads.atomic_xchg!(setting.isactive, false)
 end
 
 """
@@ -788,6 +756,57 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 
 
 ### CREATION OF SETTINGS
+
+"""
+    construct_and_add_settings!(container_vec::Vector{Setting}, pairs::Vector{Tuple{Int32, Individual}}, settingtype::Type{T}, default_sampling) where {T <: Setting}
+
+Helper function to construct settings from a sorted list of ID-Individual pairs without dynamic dispatch.
+"""
+function construct_and_add_settings!(
+    container_vec::Vector{Setting}, 
+    pairs::Vector{Tuple{Int32, Individual}}, 
+    settingtype::Type{T}, 
+    default_sampling
+) where {T <: Setting}
+    n = length(pairs)
+    
+    # Pre-calculate the number of unique settings to avoid push! reallocations
+    if n > 0
+        num_unique = 1
+        for k in 2:n
+            if pairs[k][1] != pairs[k-1][1]
+                num_unique += 1
+            end
+        end
+        # Pre-allocate the memory needed
+        sizehint!(container_vec, length(container_vec) + num_unique)
+    end
+
+    i = 1
+    # Iterate through the sorted pairs
+    while i <= n
+        current_id = pairs[i][1]
+        
+        # Find the block of individuals sharing this ID
+        j = i
+        while j <= n && pairs[j][1] == current_id
+            j += 1
+        end
+        
+        # Exact pre-allocation for the members array
+        count = j - i
+        members = Vector{Individual}(undef, count)
+        for k in 0:(count-1)
+            members[k+1] = pairs[i+k][2]
+        end
+        
+        setting = settingtype(id=current_id, individuals=members, contact_sampling_method=default_sampling)
+        push!(container_vec, setting)
+        
+        i = j # Move to the next unique ID
+    end
+end
+
 """
     settings_from_population(population::Population, global_setting::Bool = false)
 
@@ -798,55 +817,97 @@ settings.
 function settings_from_population(population::Population, global_setting::Bool = false)::Tuple{SettingsContainer, Dict}
     # Set keys for every concrete type of Setting
     settings = SettingsContainer()
-
     renaming = Dict()
-
-    # Default sampling method
     default_sampling = ContactparameterSampling(0)
 
-    # Get all concrete subtypes of IndividualSetting as these may be contained in the population
+    # Get all concrete subtypes of IndividualSetting
     stngtypes = concrete_subtypes(IndividualSetting)
-
-    # remove GlobalSetting if not wanted
     if !global_setting
         stngtypes = filter(x -> x != GlobalSetting, stngtypes)
     end
 
+    inds = individuals(population)
+    max_inds = length(inds)
+
+    pairs_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+    # Pre-allocate another buffer for Counting Sort
+    sorted_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+
     # Iterate over all settingtypes in parallel
-    #=Threads.@threads=# for stngType in stngtypes
-
-        # Create a dictionary to store all individuals with the same setting id
-        ids = Dict{Int32, Vector{Individual}}()
-
-        # Iterate over all individuals and add them to the dictionary
-        for individual in individuals(population)
-
-            id = setting_id(individual, stngType)   
+    for stngType in stngtypes
+        
+        resize!(pairs_buffer, max_inds)
+        
+        valid_count = 0
+        min_id = typemax(Int32)
+        max_id = typemin(Int32)
+        
+        # Iterate over all individuals and add them to the buffer
+        for i in 1:max_inds
+            ind = inds[i]
+            id = setting_id(ind, stngType)
             if id != DEFAULT_SETTING_ID
-                if haskey(ids, id)
-                    push!(ids[id], individual) 
-                else
-                    ids[id] = Vector{Individual}([individual])
-                end
+                valid_count += 1
+                
+                # Track ID bounds for Counting Sort
+                min_id = id < min_id ? id : min_id
+                max_id = id > max_id ? id : max_id
+                
+                @inbounds pairs_buffer[valid_count] = (id, ind)
             end
         end
-        if length(ids) > 0
-            add_type!(settings, stngType)
-        else
+        
+        if valid_count == 0
             continue
         end
-        for (id, members) in ids
-            add!(settings, stngType(id=id, individuals=members, contact_sampling_method = default_sampling))
+
+        resize!(pairs_buffer, valid_count)
+        
+        id_range = Int64(max_id) - Int64(min_id) + 1
+        
+        # Counting Sort
+        if id_range <= valid_count * 5 
+            counts = zeros(Int, id_range + 1)
+            
+            # Count occurrences
+            @inbounds for i in 1:valid_count
+                counts[pairs_buffer[i][1] - min_id + 2] += 1
+            end
+            
+            #Accumulate offsets
+            @inbounds for i in 2:length(counts)
+                counts[i] += counts[i-1]
+            end
+            
+            # Place elements directly into their sorted positions
+            resize!(sorted_buffer, valid_count)
+            @inbounds for i in 1:valid_count
+                val = pairs_buffer[i]
+                idx = val[1] - min_id + 1
+                sorted_buffer[counts[idx] + 1] = val
+                counts[idx] += 1
+            end
+            
+            # Transfer back to original buffer
+            copyto!(pairs_buffer, sorted_buffer)
+        else
+            sort!(pairs_buffer, by = first)
         end
 
+        add_type!(settings, stngType)
+        setting_vec = get(settings, stngType)
+        
+        construct_and_add_settings!(setting_vec, pairs_buffer, stngType, default_sampling)
+
         # Sort the vector of settings by ID and check if the ids are continuous and start from 1
-        # Otherwise rename them and save the changes in a dictionary
-        sort!(get(settings, stngType), by = x -> x.id)
-        if length(get(settings, stngType)) != 0 && (get(settings, stngType) |> Base.first |> id != 1 || get(settings, stngType) |> Base.last |> id != length(get(settings, stngType)))
+        if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
             @warn "Setting ids of type $(stngType) are not continuous or do not start from 1. Ids will be reassigned, containers might not be correctly linked."
-            renaming[stngType] = Dict()
-            for (i, setting) in enumerate(get(settings, stngType))
-                renaming[stngType][setting.id] = i
+            
+            type_renaming = Dict{Int32, Int32}() 
+            renaming[stngType] = type_renaming
+            
+            for (i, setting) in enumerate(setting_vec)
+                type_renaming[setting.id] = i
                 setting.id = i
                 for individual in setting.individuals
                     setting_id!(individual, stngType, Int32(i))

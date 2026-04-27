@@ -62,6 +62,16 @@ end
     AgeBasedContactSampling <: ContactSamplingMethod
 
 Sample random contacts based on a Poissoin-Distribution spread around `contactparameter_sampling.contactparameter` with weighted sampling based on age distance.
+We sample according to formula
+pi = e * wi * qi * mi / N
+where e - expected number of contacts, wi - normalization factor, qi - age group probability based on the age pyramid,
+mi - mixing factor between age groups, N - number of agents
+Normalization factor is required to normalize the sampling ditribution in order to
+get expected number of contacts in the end.
+We use two fold approach.
+Firstly, we sample uniformly with probability pi = e * wi * qi * m_max / N
+m_max - maximal mixing factor between age groups
+Secondly, we sample with adapted probability mi = mi / m_max
 
 # Parameters
 

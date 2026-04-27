@@ -23,6 +23,7 @@ export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export stepmod
 export rng, rngs, seed
+export present_buffers, contact_buffers
 
 export info
 
@@ -156,7 +157,7 @@ sim = Simulation(params)
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
     - `seed::Int64`: Seed used to initialize the main RNG
-    - `rngs::Vector{AbstractRNG}`: RNG instances for each thread
+    - `rngs::Vector{Xoshiro}`: RNG instances for each thread
 
 """
 mutable struct Simulation 
@@ -201,7 +202,11 @@ mutable struct Simulation
 
     # RNG
     seed::Int64
-    rngs::Vector{AbstractRNG} # rng for each thread
+    rngs::Vector{Xoshiro} # rng for each thread
+
+    # THREAD-LOCAL BUFFERS
+    present_buffers::Vector{Vector{Individual}}
+    contact_buffers::Vector{Vector{Individual}}
 
     # inner default constructor
     function Simulation(
@@ -216,7 +221,7 @@ mutable struct Simulation
         pathogen::Pathogen,
         stepmod::Function,
         seed::Int64,
-        rngs::Vector{<:AbstractRNG}
+        rngs::Vector{<:Xoshiro}
     )
         sim = new(
             # config
@@ -257,7 +262,11 @@ mutable struct Simulation
 
             # RNG
             seed,
-            rngs
+            rngs,
+            
+            # INITIALIZE BUFFERS
+            [Vector{Individual}() for _ in 1:Threads.maxthreadid()], # present_buffers
+            [Vector{Individual}() for _ in 1:Threads.maxthreadid()]  # contact_buffers
         )
 
         # increase simulation counter
@@ -288,9 +297,8 @@ mutable struct Simulation
 
     # constructor from dictionary
     Simulation(params::Dict) = Simulation(;params...)
-
-        
 end
+
 
 function _BUILD_Simulation(;
         configfile::String = "",
@@ -434,6 +442,8 @@ function _BUILD_Simulation(;
             rngs
         )
 
+        precompute_ags!(sim)
+        
         # update label
         sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
@@ -738,6 +748,18 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     return pop, settings
 end
 
+
+"""
+    _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
+
+Internal function barrier to calculate the number of individuals in setting `x`. Mutates the pre-allocated `indivs` buffer to ensure type stability and avoid memory allocations during iteration.
+"""
+function _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
+    for s_abs in setting_list
+        s = s_abs::settingtype
+        s.contact_sampling_method = method
+    end
+end
 """
     determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
 
@@ -755,20 +777,19 @@ determine_setting_type_config!(settings_container, Household, configfile_params;
 This will set the number of contacts for all `Household` settings to `3.5`.
 """
 function determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
+    # Fetch the list of settings
+    setting_list = settings(stngs, type)
 
     # if custom parameter is provided, use it
     if !isnothing(custom_par)
         # if a ContactSamplingMethod is provided, use it
         if isa(custom_par, ContactSamplingMethod)
-            for s in settings(stngs, type)
-                s.contact_sampling_method = custom_par
-            end
+            _set_contact_sampling_method!(setting_list, custom_par, type)
             return stngs
         # if a number is provided set it as number of contacts
         elseif isa(custom_par, Real)
-            for s in settings(stngs, type)
-                s.contact_sampling_method = ContactparameterSampling(contactparameter = custom_par)
-            end
+            method = ContactparameterSampling(contactparameter = custom_par)
+            _set_contact_sampling_method!(setting_list, method, type)
             return stngs
         else
             throw(ArgumentError("Provided parameter for `$(structname(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
@@ -778,21 +799,23 @@ function determine_setting_type_config!(stngs::SettingsContainer, type::DataType
     # if no custom parameters are provided, check if config file has section for the setting type
     if !haspath(configfile_params, ["Settings", structname(type)])
         @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
-        return settings
+        return stngs 
     end
 
     # check if the setting type has a config part for contact sampling method
     if !haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
         @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
-        return settings
+        return stngs 
     end
 
     # build contact sampling method
     csm_params = configfile_params["Settings"][structname(type)]["contact_sampling_method"]
     sampling_method = create_contact_sampling_method(csm_params)
-    for s in settings(stngs, type)
-        s.contact_sampling_method = sampling_method
-    end    
+    
+    # Apply the sampling method
+    _set_contact_sampling_method!(setting_list, sampling_method, type)
+    
+    return stngs
 end
 
 """
@@ -1247,7 +1270,12 @@ function evaluate(simulation::Simulation, criterion::StopCriterion)
         *string(typeof(criterion)))
 end
 
+"""
+    limit(criterion::StopCriterion)
 
+Returns the maximum number of ticks for the criterion, or `nothing` if the criterion does not have a fixed limit.
+"""
+limit(criterion::StopCriterion) = nothing
 
 
 ### GETTERS & SETTERS
@@ -1342,6 +1370,24 @@ Returns seed associated with the simulation run.
 """
 function seed(simulation::Simulation)
     return simulation.seed
+end
+
+"""
+    present_buffers(simulation::Simulation)
+
+Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
+"""
+function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+    return simulation.present_buffers
+end
+
+"""
+    contact_buffers(simulation::Simulation)
+
+Returns the thread-local buffers for storing sampled contacts, used to eliminate array allocations.
+"""
+function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+    return simulation.contact_buffers
 end
 
 

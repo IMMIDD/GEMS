@@ -19,10 +19,20 @@ and excludes the seeding infection (as they have no infector ags).
 """
 function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCULATION_SAMPLE_FRACTION)
 
-
     if postProcessor |> simulation |> municipalities |> isempty
         #@warn "There are no regions (municipalities) in the input model. Therefore, GEMS cannot process regional incidences."
         return DataFrame()
+    end
+
+    # Precompute secondary cases
+    infs = infectionsDF(postProcessor)
+    max_inf_id = isempty(infs) ? 0 : maximum(infs.infection_id)
+    
+    secondary_counts = zeros(Int, max_inf_id)
+    for sid in infs.source_infection_id
+        if !ismissing(sid) && sid > 0 && sid <= max_inf_id
+            secondary_counts[sid] += 1
+        end
     end
 
     # calcuates R for infection ids in grouped dataframe
@@ -30,12 +40,12 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
         sample_size = max(Int(ceil(sample_fraction * length(infection_ids))), 1)
         
         # select first "sample_fraction" infections
-        return sort(infection_ids) |>
-            vec -> vec[1:sample_size] |>
-            vec -> DataFrame(id = vec) |>
-            # join with source infection to get secondary cases
-            df -> leftjoin(df, select(infectionsDF(postProcessor), :source_infection_id), on = [:id => :source_infection_id]) |>
-            df -> (nrow(df) / sample_size)
+        sampled_ids = sort(infection_ids)[1:sample_size]
+        
+        # sum precomputed secondary cases 
+        total_secondary = sum(id <= max_inf_id ? secondary_counts[id] : 0 for id in sampled_ids)
+        
+        return total_secondary / sample_size
     end
 
     return sim_infectionsDF(postProcessor) |>

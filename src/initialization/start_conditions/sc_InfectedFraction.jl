@@ -76,8 +76,11 @@ function initialize!(simulation::Simulation, condition::InfectedFraction; seed_s
     for i in to_infect
         infect!(i, tick(simulation), pathogen(simulation), sim = simulation, rng = rng_sample)
 
-        for (type, id) in settings(i, simulation)
-            activate!(settings(simulation, type)[id])
+        for (type, id) in settings_tuple(i)
+            if id != DEFAULT_SETTING_ID
+                current_setting = settings(simulation, type)[id]
+                activate!(current_setting, simulation)
+            end
         end
     end
 

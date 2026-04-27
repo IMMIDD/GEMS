@@ -1,7 +1,8 @@
 export household, office, schoolclass, municipality, getsetting
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
-export geolocation, lat, lon, remove_empty_settings!, present_individuals, present_individuals!, is_open, get_open_contained!, open!, close!
+export geolocation, lat, lon, remove_empty_settings!, present_individuals!, present_individuals, is_open, get_open_contained!, open!, close!
 export sample_individuals
+export activate!
 
 
 ### setting extraction from individuals
@@ -293,7 +294,7 @@ Appends the individuals associated with a given IndividualSetting to the provide
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
+function individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     append!(indivs, setting |> individuals)
 end
 
@@ -309,9 +310,9 @@ recursively calling the `individuals!` function.
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+function individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     for s in setting.contains
-        individuals!(settings(simulation, setting.contains_type)[s], indivs, simulation)
+        individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
     end
 end
 
@@ -333,18 +334,18 @@ all contained settings using the `individuals!` function.
 function individuals(setting::ContainerSetting, simulation::Simulation)::Vector{Individual}
     indivs = Vector{Individual}()
     for s in setting.contains
-        individuals!(settings(simulation, setting.contains_type)[s], indivs, simulation)
+        individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
     end
     return indivs
 end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
+    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::AbstractRNG = Random.default_rng())
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
     if n >= length(individuals)
         return individuals
     else
@@ -354,11 +355,11 @@ end
 
 
 """
-    sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng())
+    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_gems_rng())
 
 Returns a subsample of the setting's `Individuals` of sample size `n`.
 """
-sample_individuals(setting::IndividualSetting, n::Int64; rng::AbstractRNG = Random.default_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
+sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_gems_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
 
 
 """
@@ -368,11 +369,11 @@ Pushes the individuals present in a given IndividualSetting, i.e., only those in
 
 # Parameters
 
-- `setting::IndividualSetting`: Setting to get the individuals from
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
+- `setting::IndividualSetting`: Setting to get the individuals from
 - `simulation::Simulation`: Simulation object
 """
-function present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
+function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     if is_open(setting)
         append!(indivs, setting |> individuals)
     end
@@ -385,69 +386,86 @@ Pushes the individuals present in a given ContainerSetting, i.e., only those in 
 
 # Parameters
 
-- `setting::ContainerSetting`: Setting to get the individuals from
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
+- `setting::ContainerSetting`: Setting to get the individuals from
 - `simulation::Simulation`: Simulation object
 """
-function present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     # Check that setting and all containers are open
     if setting |> is_open
         for s in setting |> contains
-            present_individuals!(settings(simulation, setting.contains_type)[s], indivs, simulation)
+            present_individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
         end
     end
 end
 
 """
-    present_individuals(setting::IndividualSetting, simulation::Simulation)
+    present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
 
-Returns the individuals present in a given IndividualSetting, i.e., only those in open settings. 
-"""
-function present_individuals(setting::IndividualSetting, simulation::Simulation)::Vector{Individual}
-    if is_open(setting)
-        return individuals(setting)
-    else
-        return Vector{Individual}()
-    end
-end
+Pushes the individuals present in a given IndividualSetting, i.e., only those in open settings to the provided `indivs` vector. 
 
-"""
-    present_individuals(setting::ContainerSetting, simulation::Simulation)
+# Parameters
 
-Returns the individuals present in a given ContainerSetting, i.e., only those in open contained settings. 
+- `setting::IndividualSetting`: Setting to get the individuals from
+- `simulation::Simulation`: Simulation object
 """
-function present_individuals(setting::ContainerSetting, simulation::Simulation)::Vector{Individual}
-    # Check that setting and all containers are open
+function present_individuals(setting::IndividualSetting, simulation::Simulation)
     indivs = Vector{Individual}()
-    present_individuals!(setting, indivs, simulation)
+    present_individuals!(indivs, setting, simulation)
     return indivs
 end
 
 """
-    ags(stng::ContainerSetting, sim::Simulation)
+    present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
 
-Get the ags of a ContainerSetting.
+Pushes the individuals present in a given ContainerSetting, i.e., only those in open contained settings to the provided `indivs` vector.  
+
+# Parameters
+
+- `setting::ContainerSetting`: Setting to get the individuals from
+- `simulation::Simulation`: Simulation object
 """
-function ags(stng::ContainerSetting, sim::Simulation)::AGS
-    return length(stng.contains) > 0 ? ags(settings(sim, stng.contains_type)[stng.contains |> Base.first], sim) : AGS()
+function present_individuals(setting::ContainerSetting, simulation::Simulation)
+    indivs = Vector{Individual}()
+    present_individuals!(indivs, setting, simulation)
+    return indivs
 end
 
-"""
-    ags(stng::IndividualSetting)
 
-Get the ags of a IndividualSetting.
 """
-function ags(stng::IndividualSetting)::AGS
+    ags(stng::Setting)
+Get the statically computed ags of any Setting.
+"""
+function ags(stng::Setting)::AGS
     return stng.ags
 end
 
 """
-    ags(stng::IndividualSetting, sim::Simulation)
-
-Get the ags of a IndividualSetting.
+    precompute_ags!(sim::Simulation)
+Precomputes and statically assigns the AGS field for all ContainerSettings
 """
-function ags(stng::IndividualSetting, simulation::Simulation)::AGS
-    return stng |> ags
+function precompute_ags!(sim::Simulation)
+    function _calc_ags(stng::Setting)::AGS
+        if stng isa IndividualSetting
+            return stng.ags
+        end
+        if length(stng.contains) > 0
+            child = settings(sim, stng.contains_type)[first(stng.contains)]
+            stng.ags = _calc_ags(child)
+            return stng.ags
+        else
+            stng.ags = AGS()
+            return stng.ags
+        end
+    end
+
+    for st in settingtypes(settingscontainer(sim))
+        if st <: ContainerSetting
+            for s in settings(sim, st)
+                _calc_ags(s)
+            end
+        end
+    end
 end
 
 
@@ -529,11 +547,11 @@ function Base.size(setting::IndividualSetting, simulation::Simulation)::Int
 end
 
 """
-    min_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    min_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns the minimum number of individuals across all provided settings.
 """
-function min_individuals(stngs::Vector{Setting}, simulation::Simulation)
+function min_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     min = nothing
 
     for s in stngs
@@ -550,11 +568,11 @@ end
 
 
 """
-    max_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    max_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns the maximum number of individuals across all provided settings.
 """
-function max_individuals(stngs::Vector{Setting}, simulation::Simulation)
+function max_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     max = nothing
 
     for s in stngs
@@ -571,11 +589,11 @@ end
 
 
 """
-    avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns the average number of individuals across all provided settings.
 """
-function avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
+function avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     cnt = length(stngs)
 
     if cnt <= 0
@@ -591,49 +609,40 @@ function avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
 end
 
 """
-    min_max_avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
+    min_max_avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
 
 Returns a three-way tuple with `(minimum, maximum, mean)` number of individuals associated with 
 a setting in the provided `stngs` vector.
 """
-function min_max_avg_individuals(stngs::Vector{Setting}, simulation::Simulation)
-
-    min = nothing
-    max = nothing
-
+function min_max_avg_individuals(stngs::Vector{<:Setting}, simulation::Simulation)
     scnt = length(stngs)
     
     if scnt <= 0
-        return(
-            (nothing, nothing, nothing)
-        )
+        return (nothing, nothing, nothing)
     end
 
+    indivs = simulation.present_buffers[Threads.threadid()]
+
+    min_val = typemax(Int)
+    max_val = -1
     total = 0
 
     for s in stngs
-        cnt = length(individuals(s, simulation))
+        empty!(indivs)
+        individuals!(indivs, s, simulation)
+        cnt = length(indivs)
+
         total += cnt
 
-        # update min
-        if isnothing(min)
-            min = cnt
-        elseif cnt < min
-            min = cnt 
+        if cnt < min_val
+            min_val = cnt 
         end
-
-        # update max
-        if isnothing(max)
-            max = cnt
-        elseif cnt > max
-            max = cnt 
+        if cnt > max_val
+            max_val = cnt 
         end
     end
 
-    return(
-        (min, max, total/scnt)
-    )
-
+    return (min_val, max_val, total / scnt)
 end
 
 ### Open and Closing Settings
@@ -722,3 +731,19 @@ function remove_empty_settings!(sim::Simulation)
     # Update all ids
     new_setting_ids!(settingscontainer(sim))
 end 
+
+
+"""
+    activate!(setting::Setting, sim::Simulation)
+
+Activates setting and recursively activates the the containing setting.
+"""
+function activate!(setting::Setting, sim::Simulation)
+    activate!(setting)
+    # Check if this setting is contained within a parent setting
+    if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
+        # Recursively activate the parent
+        parent_setting = settings(sim, setting.contained_type)[setting.contained]
+        activate!(parent_setting, sim)
+    end
+end

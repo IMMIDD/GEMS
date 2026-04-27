@@ -13,10 +13,30 @@
             @test occupation(i) == -1
             @test social_factor(i) == 0
             @test mandate_compliance(i) == 0
-            @test comorbidities(i) == Bool[]
+            @test comorbidities(i) == 0
             @test household_id(i) == GEMS.DEFAULT_SETTING_ID
             @test office_id(i) == GEMS.DEFAULT_SETTING_ID
             @test class_id(i) == GEMS.DEFAULT_SETTING_ID
+        end
+
+        @testset "Comorbidities" begin
+            # Test default Individual (no comorbidities)
+            i_default = Individual(id = 1, sex = 0, age = 31)
+            @test !has_comorbidity(i_default, Int16(1))
+            @test !has_comorbidity(i_default, Int16(16))
+            
+            # Test with specific comorbidities set
+            # UInt16(5) is binary 0000000000000101, meaning the 1st and 3rd bits are 1
+            i_comorbid = Individual(id = 2, sex = 0, age = 31, comorbidities = UInt16(5))
+            
+            @test has_comorbidity(i_comorbid, Int16(1))  # 1st bit is 1
+            @test !has_comorbidity(i_comorbid, Int16(2)) # 2nd bit is 0
+            @test has_comorbidity(i_comorbid, Int16(3))  # 3rd bit is 1
+            @test !has_comorbidity(i_comorbid, Int16(4)) # 4th bit is 0
+            
+            # Test boundaries for the Int16 index
+            @test_throws ArgumentError has_comorbidity(i_comorbid, Int16(0))
+            @test_throws ArgumentError has_comorbidity(i_comorbid, Int16(17))
         end
 
         @testset "Reset" begin
@@ -157,6 +177,7 @@
             end
             
         end 
+        
         @testset "Quarantine" begin
             i = Individual(id=0, sex=1, age=42)
 
@@ -182,5 +203,22 @@
             hospitalized!(i, true)
             @test ishospitalized(i)
         end
+    end
+    
+    @testset "Settings Tuple" begin
+    # Test individual with specific setting assignments
+    i = Individual(id = 1, sex = 0, age = 1, household=10, office=20, schoolclass=30, municipality=40)
+    res = settings_tuple(i)
+    
+    @test res isa Tuple
+    @test length(res) == 4
+    @test res[1] == (Household, Int32(10))
+    @test res[2] == (Office, Int32(20))
+    @test res[3] == (SchoolClass, Int32(30))
+    @test res[4] == (Municipality, Int32(40))
+
+    # Test default/undefined settings
+    i_default = Individual(id=2, sex = 0, age = 1)
+    @test all(pair -> pair[2] == GEMS.DEFAULT_SETTING_ID, settings_tuple(i_default))
     end
 end

@@ -126,4 +126,20 @@
         @test_throws ArgumentError sample_contacts(abcs1, empty_h, i_index, individuals(empty_h), GEMS.DEFAULT_TICK, rng = Xoshiro())
 
     end
+
+    @testset "Buffer-aware Sampling" begin
+        rs = RandomSampling()
+        indis = [Individual(id=j, age=18, sex=1, household=1) for j in 0:10]
+        h = Household(id=1, individuals=indis, contact_sampling_method=rs)
+        
+        # Create an empty buffer
+        buffer = Vector{Individual}()
+        
+        # Call the new ! version
+        sample_contacts!(buffer, rs, h, 1, indis, Int16(1), true, Xoshiro(42))
+        
+        @test length(buffer) == 1
+        @test buffer[1] isa Individual
+        @test buffer[1].id != indis[1].id # Should not sample self
+    end
 end

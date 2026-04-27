@@ -83,18 +83,27 @@ end
 ###
 
 """
-    assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::AbstractRNG)
+    assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::Xoshiro)
 
 Assigns a disease progression category to an individual based on their age using the provided AgeBasedProgressionAssignment.
 """
-function assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::AbstractRNG)
+function assign(individual::Individual, age_based_assignment::AgeBasedProgressionAssignment, rng::Xoshiro)
     # get the index of the age group the individual belongs to
     pos = findfirst(g -> in_group(individual.age, g), age_based_assignment.age_groups)
 
     isnothing(pos) && throw(ArgumentError("No age group found for individual with age $(individual.age)."))
 
-    # sample from the categorical distribution defined by the stratification matrix for the age group
-    return Categorical(age_based_assignment.stratification_matrix[:, pos]) |>
-        dist -> gems_rand(rng, dist) |>
-        rval -> age_based_assignment.progression_categories[rval]
+
+    # sample through manual cumulative sum
+    u = gems_rand(rng) 
+    matrix = age_based_assignment.stratification_matrix
+    cum_prob = 0.0
+    for i in 1:size(matrix, 1)
+        cum_prob += matrix[i, pos]  
+        if u <= cum_prob
+            return age_based_assignment.progression_categories[i]
+        end
+    end
+    # Fallback return in case floating-point math makes the sum slightly less than 1.0
+    return age_based_assignment.progression_categories[end]
 end
