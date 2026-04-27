@@ -133,7 +133,7 @@ mutable struct Population
         avg_household_size::Real = 3.0,
         avg_office_size::Real = 5.0,
         avg_school_size::Real = 100.0,
-        rng::Xoshiro = DEFAULT_GEMS_RNG,
+        rng::Xoshiro = default_gems_rng(),
         empty::Bool = false)
 
         # if "empty" keyword is passed, generate an empty population object

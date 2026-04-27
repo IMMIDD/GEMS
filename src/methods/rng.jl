@@ -28,7 +28,7 @@ Mainly used for debugging purposes.
 """
 function gems_rand(rng::Xoshiro, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
     # throw error if global RNG is used and enforcement is enabled
-    enforce_sim_rngs && rng == DEFAULT_GEMS_RNG && throw(ArgumentError("Using the global RNG in `gems_rand`."))
+    enforce_sim_rngs && rng === default_gems_rng() && throw(ArgumentError("Using the global RNG in `gems_rand`."))
     return Random.rand(rng, args...)
 end
 gems_rand(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_rand(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)
@@ -49,7 +49,7 @@ Mainly used for debugging purposes.
 """
 function gems_sample(rng::Xoshiro, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
     # throw error if global RNG is used and enforcement is enabled
-    enforce_sim_rngs && rng == DEFAULT_GEMS_RNG && throw(ArgumentError("Using the global RNG in `gems_sample`."))
+    enforce_sim_rngs && rng === default_gems_rng() && throw(ArgumentError("Using the global RNG in `gems_sample`."))
     return StatsBase.sample(rng, args...; kwargs...)
 end
 gems_sample(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...) = gems_sample(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs, kwargs...)
@@ -70,7 +70,7 @@ Mainly used for debugging purposes.
 """
 function gems_sample!(rng::Xoshiro, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...)
     # throw error if global RNG is used and enforcement is enabled
-    enforce_sim_rngs && rng == DEFAULT_GEMS_RNG && throw(ArgumentError("Using the global RNG in `gems_sample!`."))
+    enforce_sim_rngs && rng === default_gems_rng() && throw(ArgumentError("Using the global RNG in `gems_sample!`."))
     return StatsBase.sample!(rng, args...; kwargs...)
 end
 gems_sample!(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS, kwargs...) = gems_sample!(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs, kwargs...)
@@ -91,7 +91,7 @@ Mainly used for debugging purposes.
 """
 function gems_shuffle!(rng::Xoshiro, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
     # throw error if global RNG is used and enforcement is enabled
-    enforce_sim_rngs && rng == DEFAULT_GEMS_RNG && throw(ArgumentError("Using the global RNG in `gems_shuffle!`."))
+    enforce_sim_rngs && rng === default_gems_rng() && throw(ArgumentError("Using the global RNG in `gems_shuffle!`."))
     return Random.shuffle!(rng, args...)
 end
 gems_shuffle!(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_shuffle!(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)
@@ -111,7 +111,7 @@ If `enforce_sim_rngs` is set to `true`, an error is thrown when the global RNG i
 Mainly used for debugging purposes.
 """
 function gems_shuffle(rng::Xoshiro, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
-    enforce_sim_rngs && rng == DEFAULT_GEMS_RNG && throw(ArgumentError("Using the global RNG in `gems_shuffle`."))
+    enforce_sim_rngs && rng === default_gems_rng() && throw(ArgumentError("Using the global RNG in `gems_shuffle`."))
     return Random.shuffle(rng, args...)
 end
 gems_shuffle(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_shuffle(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)
@@ -132,7 +132,7 @@ Mainly used for debugging purposes.
 """
 function gems_randn(rng::Xoshiro, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS)
     # throw error if global RNG is used and enforcement is enabled
-    enforce_sim_rngs && rng == DEFAULT_GEMS_RNG && throw(ArgumentError("Using the global RNG in `gems_randn`."))
+    enforce_sim_rngs && rng === default_gems_rng() && throw(ArgumentError("Using the global RNG in `gems_randn`."))
     return Random.randn(rng, args...)
 end
 gems_randn(sim::Simulation, args...; enforce_sim_rngs::Bool = ENFORCE_SIM_RNGS) = gems_randn(rng(sim), args...; enforce_sim_rngs = enforce_sim_rngs)

@@ -341,11 +341,11 @@ end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG)
+    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG)
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
     if n >= length(individuals)
         return individuals
     else
@@ -355,11 +355,11 @@ end
 
 
 """
-    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG)
+    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_gems_rng())
 
 Returns a subsample of the setting's `Individuals` of sample size `n`.
 """
-sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = DEFAULT_GEMS_RNG) = sample_individuals(setting |> individuals, n, rng=rng)
+sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_gems_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
 
 
 """

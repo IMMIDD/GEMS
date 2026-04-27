@@ -688,10 +688,8 @@ end
 Sets the setting active for simulation.
 """
 function activate!(setting::Setting)
-    if !isactive(setting)
-        if hasproperty(setting, :contains) || setting |> individuals |> length > 1
-            Threads.atomic_xchg!(setting.isactive, true)
-        end
+    if hasproperty(setting, :contains) || setting |> individuals |> length > 1
+        Threads.atomic_xchg!(setting.isactive, true)
     end
 end
 

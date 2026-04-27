@@ -163,5 +163,6 @@ PARALLEL_REPORT_GENERATION = false
 
 
 
-# A single, globally available Xoshiro RNG
-const DEFAULT_GEMS_RNG = Xoshiro()
+# One seeded, globally available Xoshiro RNG per thread.
+const _DEFAULT_GEMS_RNGS = Random.Xoshiro[]
+@inline default_gems_rng() = _DEFAULT_GEMS_RNGS[Threads.threadid()]
