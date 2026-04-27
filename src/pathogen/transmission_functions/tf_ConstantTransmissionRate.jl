@@ -22,7 +22,7 @@ Base.show(io::IO, ctr::ConstantTransmissionRate) = write(io, "ConstantTranmissio
 
 
 """
-    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
+    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, state::InfectionState, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
 
 Calculates the transmission probability for the `ConstantTransmissionRate`. Returns the `transmission_rate`
 for all individuals who have not been infected in the past. If the individual has already recovered,
@@ -42,16 +42,16 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 
 """
-function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infectee::Individual, state::InfectionState, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # error handling
     !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
     
-    if  -1 < recovery(infectee) <= tick # if the agent has already recovered (natural immunity)
+    if  -1 < recovery(infectee, state) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
     return transFunc.transmission_rate
 end
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infected, setting, tick, default_gems_rng())
+transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, state::InfectionState, setting::Setting, tick::Int16) = 
+    transmission_probability(transFunc, infecter, infected, state, setting, tick, default_gems_rng())

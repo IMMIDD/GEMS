@@ -178,6 +178,7 @@ mutable struct Simulation
     population::Population
     settings::SettingsContainer
     pathogen::Pathogen
+    infection_state::InfectionState
 
     # logger
     infectionlogger::InfectionLogger
@@ -238,6 +239,7 @@ mutable struct Simulation
             population,
             settings,
             pathogen,
+            InfectionState(size(population)),
 
             # logger
             InfectionLogger(),
@@ -1533,6 +1535,15 @@ Returns the pathogen of the simulation.
 """
 function pathogen(simulation::Simulation)::Pathogen
     return simulation.pathogen
+end
+
+"""
+    infection_state(simulation)
+
+Returns the infection state of the simulation.
+"""
+function infection_state(simulation::Simulation)::InfectionState
+    return simulation.infection_state
 end
 
 

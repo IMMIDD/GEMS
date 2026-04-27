@@ -52,7 +52,7 @@ end
 
 
 """
-    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, state::InfectionState, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
 
 Calculates the transmission probability based on the age of the infectee using age-dependent transmission rates.
 
@@ -70,11 +70,11 @@ Calculates the transmission probability based on the age of the infectee using a
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
-function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, state::InfectionState, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # error handling
     !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
     
-    if  -1 < recovery(infectee) <= tick # if the agent has already recovered (natural immunity)
+    if  -1 < recovery(infectee, state) <= tick # if the agent has already recovered (natural immunity)
         return 0.0
     end
     
@@ -88,5 +88,5 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, infec
 end
 
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infected, setting, tick, default_gems_rng())
+transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infected::Individual, state::InfectionState, setting::Setting, tick::Int16) = 
+    transmission_probability(transFunc, infecter, infected, state, setting, tick, default_gems_rng())

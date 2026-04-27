@@ -46,6 +46,7 @@ end
     infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen,
+        infection_state::InfectionState,
         sim::Union{Simulation, Nothing},
         rng::Xoshiro,
         infecter_id::Int32,
@@ -66,6 +67,7 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 - `infectee::Individual`: Individual to infect
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
+- `infection_state::InfectionState`: DiseaseProgression of all active Infections
 - `sim::Union{Simulation, Nothing}` = Simulation object (used to get logger)
 - `rng::Xoshiro`: RNG to use for stochastic parts
 - `infecter_id::Int32`: Infecting individual
@@ -84,6 +86,7 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 function infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen,
+        infection_state::InfectionState,
         sim::Union{Simulation, Nothing},
         rng::Xoshiro,
         infecter_id::Int32,
@@ -96,28 +99,15 @@ function infect!(infectee::Individual,
 
 
     # calculate disease progression
-    # get progression category
     paf = progression_assignment(pathogen)
     pc = assign(infectee, paf, rng)
-    
-    # calculate the actual disease progression
+
     prog = progressions(pathogen)[pc]
     dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
 
-    # set the progression for the individual
-    set_progression!(infectee, dp)
-
-    # pathogen id
-    pathogen_id!(infectee, id(pathogen))
-
-    # increase number of infections
-    inc_number_of_infections!(infectee)
-
-    # update agent health status
-    progress_disease!(infectee, tick)
-
-    if isnothing(sim)
-        return -1
+    # If they are already in the registry, remove the entries
+    if infection_state.id_to_index[infectee.id] != 0
+        remove_infection!(infection_state, infectee.id)
     end
 
     # log infection
@@ -127,18 +117,18 @@ function infect!(infectee::Individual,
         id(infectee),
         nameof(pc),
         tick,
-        infectee.infectiousness_onset,
-        infectee.symptom_onset,
-        infectee.severeness_onset,
-        infectee.hospital_admission,
-        infectee.hospital_discharge,
-        infectee.icu_admission,
-        infectee.icu_discharge,
-        infectee.ventilation_admission,
-        infectee.ventilation_discharge,
-        infectee.severeness_offset,
-        infectee.recovery,
-        infectee.death,
+        infectiousness_onset(dp),
+        symptom_onset(dp),
+        severeness_onset(dp),
+        hospital_admission(dp),
+        hospital_discharge(dp),
+        icu_admission(dp),
+        icu_discharge(dp),
+        ventilation_admission(dp),
+        ventilation_discharge(dp),
+        severeness_offset(dp),
+        recovery(dp),
+        death(dp),
         setting_id,
         setting_type,
         lat,
@@ -147,8 +137,15 @@ function infect!(infectee::Individual,
         source_infection_id
     )
 
-    # set the infectees current infection_id to the value that was returned by the logger
-    infection_id!(infectee, new_infection_id)
+    # push new progression to infection_state
+    set_progression!(infectee, infection_state, id(pathogen), new_infection_id, dp)
+
+    # increase lifetime number of infections
+    inc_number_of_infections!(infectee)
+
+    # update agent health status boolean proxy flags
+    progress_disease!(infectee, infection_state, tick)
+    
     return new_infection_id
 end
 
@@ -156,6 +153,7 @@ end
     infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen;
+        infection_state::InfectionState,
         sim::Union{Simulation, Nothing} = nothing,
         rng::Xoshiro = default_gems_rng(),
         infecter_id::Int32 = Int32(-1),
@@ -173,6 +171,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 - `infectee::Individual`: Individual to infect
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
+- `infection_state::InfectionState`: DiseaseProgression of all active Infections
 - `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
 - `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG to use for stochastic parts
 - `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
@@ -191,7 +190,8 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 
 function infect!(infectee::Individual,
         tick::Int16,
-        pathogen::Pathogen;
+        pathogen::Pathogen,
+        infection_state::InfectionState;
         # optional keyword arguments (mainly needed for logging)
         sim::Union{Simulation, Nothing} = nothing,
         rng::Xoshiro = default_gems_rng(),
@@ -203,7 +203,7 @@ function infect!(infectee::Individual,
         ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)
 
-        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
+        infect!(infectee, tick, pathogen, infection_state, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
 end
 """
     infect!(infectee::Individual, sim::Simulation)
@@ -212,7 +212,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 Mainly a convenience wrapper around `infect!` with less parameters.
 Used for example in test cases.
 """
-infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), pathogen(sim); sim = sim, rng = rng(sim))
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), pathogen(sim), infection_state(sim); sim = sim, rng = rng(sim))
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,
@@ -260,7 +260,7 @@ function try_to_infect!(infctr::Individual,
     end
 
     # calculate infection probability
-    infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, rng(sim))
+    infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, sim.infection_state, setting, sim |> tick, rng(sim))
 
     # try to infect
     if gems_rand(sim) < infection_probability
@@ -324,35 +324,27 @@ end
 
 Update the individual disease progression, handle its recovery and log its possible death.
 If the individual is not infected, this function will just return.
-
-# Parameters
-
-- `indiv::Individual`: Individual to update
-- `tick::Int16`: Current tick
-- `sim::Simulation`: Simulation object
 """
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
-
     # progress disease if infected
-    if infected(indiv) 
-
-        progress_disease!(indiv, tick)
-
+    if infected(indiv)
+        progress_disease!(indiv, sim.infection_state, tick)
+        
         # if individual died in this tick, log it
-        if death(indiv) == tick
+        if death(indiv, sim.infection_state) == tick
             log!(deathlogger(sim), id(indiv), tick)
         end
     end
-
+    
     # if onset of symptoms is this tick, trigger all symptom triggers
-    if symptom_onset(indiv) == tick
+    if symptom_onset(indiv, sim.infection_state) == tick
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim)
         end
     end
-
+    
     # if hospital admission is this tick, trigger all hospitalization triggers
-    if hospital_admission(indiv) == tick
+    if hospital_admission(indiv, sim.infection_state) == tick
         for ht in sim |> hospitalization_triggers
             trigger(ht, indiv, sim)
         end
