@@ -1327,8 +1327,8 @@ end
 """
     reset!(individual::Individual)
 
-Resets all non-static values like the disease progression timing. The individual will get
-back into a state where it was never infected, vaccinated, tested, etc.
+Resets all non-static values like the disease progression timing.
+The individual will get back into a state where it was never infected, vaccinated, tested, etc.
 """
 function reset!(individual::Individual)
     # health status
@@ -1337,14 +1337,17 @@ function reset!(individual::Individual)
     individual.symptomatic = false
     individual.severe = false
     individual.hospitalized = false
-    individual.isicu = false
+    individual.icu = false
     individual.ventilated = false
     individual.dead = false
+    individual.detected = false
+    
     # infections status
     individual.pathogen_id = DEFAULT_PATHOGEN_ID
-    individual.disease_state = DISEASE_STATE_NOT_INFECTED
+    individual.infection_id = DEFAULT_INFECTION_ID
     individual.infectiousness = 0
     individual.number_of_infections = 0
+ 
     # reset disease progression
     individual.exposure = DEFAULT_TICK
     individual.infectiousness_onset = DEFAULT_TICK
@@ -1356,16 +1359,20 @@ function reset!(individual::Individual)
     individual.ventilation_admission = DEFAULT_TICK
     individual.ventilation_discharge = DEFAULT_TICK
     individual.hospital_discharge = DEFAULT_TICK
+    individual.severeness_offset = DEFAULT_TICK
     individual.recovery = DEFAULT_TICK
     individual.death = DEFAULT_TICK
+    
     # TESTING
     individual.last_test = DEFAULT_TICK
     individual.last_test_result = false
     individual.last_reported_at = DEFAULT_TICK
+    
     # VACCINATION
     individual.vaccine_id = DEFAULT_VACCINE_ID
     individual.number_of_vaccinations = 0
     individual.vaccination_tick = DEFAULT_TICK
+    
     # INTERVENTIONS
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
     individual.quarantine_release_tick = DEFAULT_TICK

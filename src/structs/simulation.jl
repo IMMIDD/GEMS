@@ -12,7 +12,7 @@ export region_info
 export pathogen, pathogen!
 export configfile, populationfile
 export evaluate
-export initialize!
+export initialize!, reinitialize!
 export increment!, reset!
 export tickunit
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
@@ -1677,6 +1677,47 @@ Initializes the simulation model with a provided start condition.
 """
 function initialize!(simulation::Simulation)
     initialize!(simulation, start_condition(simulation))
+end
+
+"""
+    reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
+
+Reinitializes the simulation model according to its start condition.
+This resets the simulation tick and re-applies the start condition. 
+If `reset_interventions` is true, it also deletes all interventions.
+"""
+function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
+    # reset individual to initial state
+    reset!.(individuals(simulation))
+    reset!(simulation)
+    
+    # Reset all loggers 
+    simulation.infectionlogger = InfectionLogger()
+    simulation.deathlogger = DeathLogger()
+    simulation.testlogger = TestLogger()
+    simulation.pooltestlogger = PoolTestLogger()
+    simulation.seroprevalencelogger = SeroprevalenceLogger()
+    simulation.quarantinelogger = QuarantineLogger()
+    simulation.statelogger = StateLogger()
+    simulation.customlogger = CustomLogger()
+    
+    # Reset NPI triggers and strategies
+    simulation.event_queue = EventQueue()
+    if reset_interventions
+        simulation.symptom_triggers = []
+        simulation.tick_triggers = []
+        simulation.hospitalization_triggers = []
+        simulation.strategies = []
+        simulation.testtypes = []
+    end
+    
+    # Re-initialize RNGs
+    if !isnothing(simulation.seed)
+        simulation.rngs = [Xoshiro(gems_rand(Xoshiro(simulation.seed), UInt)) for _ in 1:Threads.maxthreadid()]
+    end
+    
+    # Initialize the simulation's start condition
+    initialize!(simulation)
 end
 
 ###
