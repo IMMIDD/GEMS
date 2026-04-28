@@ -378,7 +378,7 @@ function flush_pending_infections!(sim::Simulation)
     for buf in sim.infection_buffers
         for p in buf
             if infections.id_to_index[p.host_id] != 0
-                remove_infection!(infections, p.host_id)
+                remove_infection!(infections, p.host_id, p.pathogen_id)
             end
         end
     end

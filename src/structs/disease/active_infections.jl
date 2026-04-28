@@ -11,6 +11,9 @@ mutable struct ActiveInfections
     # Index Map (0 means not infected)
     id_to_index::Vector{Int32}
 
+    # Points to the next infection index in the SoA for the same host
+    next_infection_index::Vector{Int32}
+
     # Entity reference
     host_id::Vector{Int32}
     
@@ -37,10 +40,10 @@ mutable struct ActiveInfections
     function ActiveInfections(population_size::Int32)
         return new(
             zeros(Int32, population_size),
-            Int32[], Int8[], Int32[], Int8[],
-            Int16[], Int16[], Int16[], Int16[],
-            Int16[], Int16[], Int16[], Int16[],
-            Int16[], Int16[], Int16[], Int16[], Int16[]
+            Int32[], Int32[], Int8[], Int32[], Int8[],
+            Int16[], Int16[], Int16[], Int16[], Int16[], 
+            Int16[], Int16[], Int16[], Int16[], Int16[], 
+            Int16[], Int16[], Int16[]
         )
     end
 end
@@ -140,8 +143,16 @@ end
 Pushes a new infection record into the `ActiveInfections` struct. 
 """
 function push_infection!(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
-    # Check if already infected to prevent duplicate rows
-    infections.id_to_index[host_id] != 0 && return nothing
+    # Traverse linked list to prevent duplicate infections of the same pathogen
+    curr_idx = infections.id_to_index[host_id]
+    while curr_idx != 0
+        if infections.pathogen_id[curr_idx] == pathogen_id
+            return nothing # Already infected with this pathogen
+        end
+        curr_idx = infections.next_infection_index[curr_idx]
+    end
+
+    new_idx = length(infections.host_id) + 1
 
     push!(infections.host_id, host_id)
     push!(infections.pathogen_id, pathogen_id)
@@ -162,19 +173,35 @@ function push_infection!(infections::ActiveInfections, host_id::Int32, pathogen_
     push!(infections.recovery, recovery(dp))
     push!(infections.death, death(dp))
 
-    @inbounds infections.id_to_index[host_id] = length(infections.host_id)
+    push!(infections.next_infection_index, infections.id_to_index[host_id]) 
+    @inbounds infections.id_to_index[host_id] = new_idx
     return nothing
 end
 
 """
-    remove_infection!(infections::ActiveInfections, host_id::Int32)
+    remove_infection!(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8)
 
 Removes an infection from the SoA by swapping it to the end and then popping it.
 """
-function remove_infection!(infections::ActiveInfections, host_id::Int32)
-    @inbounds idx_to_remove = infections.id_to_index[host_id]
-    idx_to_remove == 0 && return nothing # Not infected
+function remove_infection!(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8)
+    prev_idx = 0
+    idx_to_remove = infections.id_to_index[host_id]
     
+    # find the infection to remove
+    while idx_to_remove != 0 && infections.pathogen_id[idx_to_remove] != pathogen_id
+        prev_idx = idx_to_remove
+        idx_to_remove = infections.next_infection_index[idx_to_remove]
+    end
+    idx_to_remove == 0 && return nothing # Not found
+
+    # unlink idx_to_remove from its host's list
+    next_idx = infections.next_infection_index[idx_to_remove]
+    if prev_idx == 0
+        infections.id_to_index[host_id] = next_idx
+    else
+        infections.next_infection_index[prev_idx] = next_idx
+    end
+
     last_idx = length(infections.host_id)
     
     # if the one we want to remove is not the last one, we swap
@@ -182,11 +209,27 @@ function remove_infection!(infections::ActiveInfections, host_id::Int32)
         @inbounds begin
             # identify who is currently at the end of the arrays
             last_host_id = infections.host_id[last_idx]
+
+            # find who points to last_idx to update their pointer
+            prev_of_last = 0
+            curr = infections.id_to_index[last_host_id]
+            while curr != last_idx && curr != 0
+                prev_of_last = curr
+                curr = infections.next_infection_index[curr]
+            end
+            
+            # patch the pointer
+            if prev_of_last == 0
+                infections.id_to_index[last_host_id] = idx_to_remove
+            else
+                infections.next_infection_index[prev_of_last] = idx_to_remove
+            end
             
             # overwrite the removed slot with the data from the last slot
             infections.host_id[idx_to_remove] = infections.host_id[last_idx]
             infections.pathogen_id[idx_to_remove] = infections.pathogen_id[last_idx]
             infections.infection_id[idx_to_remove] = infections.infection_id[last_idx]
+            infections.next_infection_index[idx_to_remove] = infections.next_infection_index[last_idx] # <-- FIXED
             infections.infectiousness[idx_to_remove] = infections.infectiousness[last_idx]
             infections.exposure[idx_to_remove] = infections.exposure[last_idx]
             infections.infectiousness_onset[idx_to_remove] = infections.infectiousness_onset[last_idx]
@@ -200,10 +243,7 @@ function remove_infection!(infections::ActiveInfections, host_id::Int32)
             infections.hospital_discharge[idx_to_remove] = infections.hospital_discharge[last_idx]
             infections.severeness_offset[idx_to_remove] = infections.severeness_offset[last_idx]
             infections.recovery[idx_to_remove] = infections.recovery[last_idx]
-            infections.death[idx_to_remove] = infections.death[last_idx]
-            
-            # update the map for the host we just moved
-            infections.id_to_index[last_host_id] = idx_to_remove
+            infections.death[idx_to_remove] = infections.death[last_idx] 
         end
     end
     
@@ -211,6 +251,7 @@ function remove_infection!(infections::ActiveInfections, host_id::Int32)
     pop!(infections.host_id)
     pop!(infections.pathogen_id)
     pop!(infections.infection_id)
+    pop!(infections.next_infection_index) # <-- FIXED
     pop!(infections.infectiousness)
     pop!(infections.exposure)
     pop!(infections.infectiousness_onset)
@@ -226,8 +267,21 @@ function remove_infection!(infections::ActiveInfections, host_id::Int32)
     pop!(infections.recovery)
     pop!(infections.death)
     
-    # clear the map for the recovered host
-    @inbounds infections.id_to_index[host_id] = 0
+    
+    return nothing
+end
+
+"""
+Removes all active infections for a given host.
+"""
+function remove_infection!(infections::ActiveInfections, host_id::Int32)
+    # Continue as long as the host has at least one active infection
+    while infections.id_to_index[host_id] != 0
+        curr_head_idx = infections.id_to_index[host_id]
+        pid_to_remove = infections.pathogen_id[curr_head_idx]
+        
+        remove_infection!(infections, host_id, pid_to_remove)
+    end
     
     return nothing
 end
