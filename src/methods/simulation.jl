@@ -97,7 +97,7 @@ function log_stepinfo(simulation::Simulation)
     s_classes = schoolclasses(simulation)
     chunk_size_sc = max(1, length(s_classes) ÷ Threads.nthreads())
     
-    Threads.@threads for chunk in collect(Iterators.partition(s_classes, chunk_size_sc))
+    Threads.@threads :static for chunk in collect(Iterators.partition(s_classes, chunk_size_sc))
         tid = Threads.threadid()
         loc_st_unab = 0
         
@@ -118,7 +118,7 @@ function log_stepinfo(simulation::Simulation)
     offs = offices(simulation)
     chunk_size_off = max(1, length(offs) ÷ Threads.nthreads())
     
-    Threads.@threads for chunk in collect(Iterators.partition(offs, chunk_size_off))
+    Threads.@threads :static for chunk in collect(Iterators.partition(offs, chunk_size_off))
         tid = Threads.threadid()
         loc_wo_unab = 0
         
