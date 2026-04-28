@@ -24,6 +24,7 @@ export add_strategy!, strategies, add_testtype!, testtypes
 export stepmod
 export rng, rngs, seed
 export present_buffers, contact_buffers
+export infection_buffers
 
 export info
 
@@ -178,7 +179,7 @@ mutable struct Simulation
     population::Population
     settings::SettingsContainer
     pathogen::Pathogen
-    infection_state::InfectionState
+    active_infections::ActiveInfections
 
     # logger
     infectionlogger::InfectionLogger
@@ -208,6 +209,7 @@ mutable struct Simulation
     # THREAD-LOCAL BUFFERS
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
+    infection_buffers::Vector{Vector{PendingInfection}}
 
     # inner default constructor
     function Simulation(
@@ -239,7 +241,7 @@ mutable struct Simulation
             population,
             settings,
             pathogen,
-            InfectionState(size(population)),
+            ActiveInfections(population.maxid),
 
             # logger
             InfectionLogger(),
@@ -268,7 +270,8 @@ mutable struct Simulation
             
             # INITIALIZE BUFFERS
             [Vector{Individual}() for _ in 1:Threads.maxthreadid()], # present_buffers
-            [Vector{Individual}() for _ in 1:Threads.maxthreadid()]  # contact_buffers
+            [Vector{Individual}() for _ in 1:Threads.maxthreadid()],  # contact_buffers
+            [Vector{PendingInfection}() for _ in 1:Threads.maxthreadid()] # infection buffers
         )
 
         # increase simulation counter
@@ -1392,6 +1395,15 @@ function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
     return simulation.contact_buffers
 end
 
+"""
+    infection_buffers(simulation::Simulation)
+
+Returns the thread-local buffers for storing pending infectinos, used to eliminate race conditions.
+"""
+function infection_buffers(simulation::Simulation)::Vector{Vector{PendingInfection}}
+    return simulation.infection_buffers
+end
+
 
 """
     start_condition(simulation)
@@ -1538,12 +1550,12 @@ function pathogen(simulation::Simulation)::Pathogen
 end
 
 """
-    infection_state(simulation)
+    active_infections(simulation)
 
-Returns the infection state of the simulation.
+Returns the active infections of the simulation.
 """
-function infection_state(simulation::Simulation)::InfectionState
-    return simulation.infection_state
+function active_infections(simulation::Simulation)::ActiveInfections
+    return simulation.active_infections
 end
 
 
@@ -1745,7 +1757,7 @@ If `reset_interventions` is true, it also deletes all interventions.
 """
 function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
     # reset individual to initial state
-    reset!.(individuals(simulation))
+    reset!.(individuals(simulation), active_infections(simulation))
     reset!(simulation)
     
     # Reset all loggers 

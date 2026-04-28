@@ -17,12 +17,14 @@ A Type for a simple population. Acts as a container for a collection of individu
 - `individuals::Vector{Individual}`: List of associated individuals
 - `maxage`: Age of the oldest individual
 - `minid`: smallest id of any individual
+- `maxid`: largest id of any individual
 """
 mutable struct Population
     individuals::Vector{Individual}
     params::Dict{String, Any}
     maxage::Int8 # maximum age of any individual. Is updated upon first call of maxage function (for caching)
-    minid::Int32 # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
+    minid::Int32 # smallest id of any individual.
+    maxid::Int32 # largest id of any individual.
     id_map::Vector{Int32} # Maps (id - minid + 1) to the individual's index in the `individuals` array. Needed for O(1) lookups.
     
 
@@ -32,7 +34,7 @@ mutable struct Population
     Creates an `id_map` for the given Population to avoid missmatches later.
     """
     function make_id_map!(pop::Population)
-        map_size = isempty(pop.individuals) ? 0 : maximum(x -> x.id, pop.individuals) - pop.minid + 1
+        map_size = isempty(pop.individuals) ? 0 : pop.maxid - pop.minid + 1
         pop.id_map = zeros(Int32, map_size)
 
         for (i, ind) in enumerate(pop.individuals)
@@ -47,9 +49,10 @@ mutable struct Population
     """
     function Population(individuals::Vector{Individual})
         # Create the Population object
-        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
+        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, -1, Int32[])
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
+        pop.maxid = isempty(individuals) ? -1 : maximum(x -> x.id, individuals)
         make_id_map!(pop)
         return pop
     end
@@ -110,6 +113,7 @@ mutable struct Population
 
         pop.params["populationfile"] = path
         pop.minid = isempty(individuals(pop)) ? -1 : minimum(x -> x.id, individuals(pop))
+        pop.maxid = isempty(individuals(pop)) ? -1 : maximum(x -> x.id, individuals(pop))
 
         make_id_map!(pop)
         return pop
@@ -138,7 +142,7 @@ mutable struct Population
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
-            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, Int32[])
+            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, -1, Int32[])
         end
 
         # exception handling

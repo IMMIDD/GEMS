@@ -292,6 +292,9 @@ function step!(simulation::Simulation)
                 end
             end
         end
+
+        # push pending infections to ActiveInfections SoA
+        flush_pending_infections!(simulation)
     end
 
     # trigger tick triggers
@@ -358,6 +361,82 @@ function is_dormant(simulation::Simulation)
     cur_quar = sl.quarantined[end]
     
     return cur_exp == 0 && cur_inf == 0 && cur_quar == 0
+end
+
+"""
+    flush_pending_infections!(sim::Simulation)
+
+Flushes all pending infections staged in the per-thread `infection_buffers` into the
+`ActiveInfections` struct. This is called once per tick after the threaded
+`spread_infection!` phase, ensuring all mutations to `ActiveInfections` happen
+outside of parallel sections.
+"""
+function flush_pending_infections!(sim::Simulation)
+    infections = active_infections(sim)
+
+    # handle reinfections 
+    for buf in sim.infection_buffers
+        for p in buf
+            if infections.id_to_index[p.host_id] != 0
+                remove_infection!(infections, p.host_id)
+            end
+        end
+    end
+
+    # compute per-buffer write offsets + one resize per array
+    base = length(infections.host_id)
+    offsets = Vector{Int}(undef, length(sim.infection_buffers) + 1)
+    offsets[1] = base
+    for (i, buf) in enumerate(sim.infection_buffers)
+        offsets[i+1] = offsets[i] + length(buf)
+    end
+    total = offsets[end]
+
+    resize!(infections.host_id, total)
+    resize!(infections.pathogen_id, total)
+    resize!(infections.infection_id, total)
+    resize!(infections.infectiousness, total)
+    resize!(infections.exposure, total)
+    resize!(infections.infectiousness_onset, total)
+    resize!(infections.symptom_onset, total)
+    resize!(infections.severeness_onset, total)
+    resize!(infections.hospital_admission, total)
+    resize!(infections.icu_admission, total)
+    resize!(infections.icu_discharge, total)
+    resize!(infections.ventilation_admission, total)
+    resize!(infections.ventilation_discharge, total)
+    resize!(infections.hospital_discharge, total)
+    resize!(infections.severeness_offset, total)
+    resize!(infections.recovery, total)
+    resize!(infections.death, total)
+
+    # each thread writes its own buffer into its pre-assigned slot range.
+    Threads.@threads for i in eachindex(sim.infection_buffers)
+        buf = sim.infection_buffers[i]
+        slot = offsets[i]
+        for p in buf
+            slot += 1
+            infections.host_id[slot] = p.host_id
+            infections.pathogen_id[slot] = p.pathogen_id
+            infections.infection_id[slot] = p.infection_id
+            infections.infectiousness[slot] = Int8(0)
+            infections.exposure[slot] = exposure(p.dp)
+            infections.infectiousness_onset[slot] = infectiousness_onset(p.dp)
+            infections.symptom_onset[slot] = symptom_onset(p.dp)
+            infections.severeness_onset[slot] = severeness_onset(p.dp)
+            infections.hospital_admission[slot] = hospital_admission(p.dp)
+            infections.icu_admission[slot] = icu_admission(p.dp)
+            infections.icu_discharge[slot] = icu_discharge(p.dp)
+            infections.ventilation_admission[slot] = ventilation_admission(p.dp)
+            infections.ventilation_discharge[slot] = ventilation_discharge(p.dp)
+            infections.hospital_discharge[slot] = hospital_discharge(p.dp)
+            infections.severeness_offset[slot] = severeness_offset(p.dp)
+            infections.recovery[slot] = recovery(p.dp)
+            infections.death[slot] = death(p.dp)
+            infections.id_to_index[p.host_id] = Int32(slot)
+        end
+        empty!(buf)
+    end
 end
 
 

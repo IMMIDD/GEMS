@@ -82,17 +82,17 @@ end
 
 
 # fallback for tranmission functions
-function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, state::InfectionState, setting::Setting, tick::Int16)::Float64
+function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, infections::ActiveInfections, setting::Setting, tick::Int16)::Float64
     @error "The transmission_probability function is not defined for the provided TransmissionFunction struct $(typeof(transFunc))."
 end
 
 """
-    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, state::InfectionState, setting::Setting, tick::Int16, rng::Xoshiro)
+    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, infections::ActiveInfections, setting::Setting, tick::Int16, rng::Xoshiro)
 
 General function for TransmissionFunction struct. Should be overwritten for newly created structs, as it only serves
 to catch undefined `transmission_probability` functions.
 """
-function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, state::InfectionState, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, infections::ActiveInfections, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # this is the fallback function that is called if no of the specific transmission_proability
     # functions has already fired. In that case, we try finding a transmission_probability
     # function without a dedicated RNG passed. If that doesn't work, the default 
