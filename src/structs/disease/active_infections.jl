@@ -1,5 +1,5 @@
-export ActiveInfections, PendingInfection
-export push_infection!, remove_infection!
+export ActiveInfections, InfectionState, PendingInfection
+export get_infection_state, push_infection!, remove_infection!
 
 """
     ActiveInfections
@@ -74,6 +74,27 @@ struct InfectionState
 end
 
 """
+    PendingInfection
+
+A lightweight transfer struct used to temporarily hold new infection data 
+during the multithreaded contact simulation phase. 
+
+By storing newly generated infections in thread-local vectors of `PendingInfection`, 
+the simulation avoids race conditions and expensive thread locks. These pending 
+infections are later flushed into the global `ActiveInfections` SoA using 
+high-performance block memory allocation.
+"""
+struct PendingInfection
+    host_id::Int32
+    pathogen_id::Int8
+    infection_id::Int32
+    dp::DiseaseProgression
+end
+
+
+
+
+"""
     get_infection_state(id::Int32, infections::ActiveInfections)::InfectionState
 
 Extracts a stack-allocated `InfectionState` from the global `ActiveInfections` pool.
@@ -113,13 +134,6 @@ function get_infection_state(id::Int32, infections::ActiveInfections)::Infection
     )
 end
 
-struct PendingInfection
-    host_id::Int32
-    pathogen_id::Int8
-    infection_id::Int32
-    dp::DiseaseProgression
-end
-
 """
     push_infection!(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
 
@@ -151,7 +165,6 @@ function push_infection!(infections::ActiveInfections, host_id::Int32, pathogen_
     @inbounds infections.id_to_index[host_id] = length(infections.host_id)
     return nothing
 end
-
 
 """
     remove_infection!(infections::ActiveInfections, host_id::Int32)
