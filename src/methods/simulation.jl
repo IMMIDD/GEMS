@@ -395,6 +395,7 @@ function flush_pending_infections!(sim::Simulation)
     resize!(infections.host_id, total)
     resize!(infections.pathogen_id, total)
     resize!(infections.infection_id, total)
+    resize!(infections.next_infection_index, total)
     resize!(infections.infectiousness, total)
     resize!(infections.exposure, total)
     resize!(infections.infectiousness_onset, total)
@@ -419,6 +420,8 @@ function flush_pending_infections!(sim::Simulation)
             infections.host_id[slot] = p.host_id
             infections.pathogen_id[slot] = p.pathogen_id
             infections.infection_id[slot] = p.infection_id
+            infections.next_infection_index[slot] = infections.id_to_index[p.host_id]
+            infections.id_to_index[p.host_id] = Int32(slot)
             infections.infectiousness[slot] = Int8(0)
             infections.exposure[slot] = exposure(p.dp)
             infections.infectiousness_onset[slot] = infectiousness_onset(p.dp)

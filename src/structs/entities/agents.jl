@@ -1364,22 +1364,50 @@ Updates the proxy disease progression status flags of the individual at the give
 by reading from the global ActiveInfections.
 """
 function progress_disease!(individual::Individual, infections::ActiveInfections, tick::Int16)
-
-    # do not update, if individual is dead
     if individual.dead
-        return
+        return nothing
     end
 
-    # update disease progression proxy status flags in the individual
-    infected!(individual, is_infected(individual, infections, tick))
-    infectious!(individual, is_infectious(individual, infections, tick))
-    symptomatic!(individual, is_symptomatic(individual, infections, tick))
-    severe!(individual, is_severe(individual, infections, tick))
-    hospitalized!(individual, is_hospitalized(individual, infections, tick))
-    icu!(individual, is_icu(individual, infections, tick))
-    ventilated!(individual, is_ventilated(individual, infections, tick))
-    dead!(individual, is_dead(individual, infections, tick))
-    detected!(individual, is_detected(individual, infections, tick))
+    curr_idx = infections.id_to_index[individual.id]
+    
+    _is_inf, _is_infectious, _is_symp, _is_sev = false, false, false, false
+    _is_hosp, _is_icu, _is_vent, _is_det = false, false, false, false
+
+    while curr_idx != 0
+        # get infection state
+        state = get_infection_state(infections, curr_idx, individual.id)
+        
+        # handle death
+        if 0 <= state.death <= tick
+            dead!(individual, true)
+            return nothing
+        end
+
+        # aggregate via logical OR
+        _is_inf |= state.exposure <= tick < max(state.recovery, state.death)
+        _is_infectious |= state.infectiousness_onset <= tick < max(state.recovery, state.death)
+        _is_symp |= 0 <= state.symptom_onset <= tick < max(state.recovery, state.death)
+        _is_sev |= 0 <= state.severeness_onset <= tick < state.severeness_offset
+        _is_hosp |= 0 <= state.hospital_admission <= tick < state.hospital_discharge
+        _is_icu |= 0 <= state.icu_admission <= tick < state.icu_discharge
+        _is_vent |= 0 <= state.ventilation_admission <= tick < state.ventilation_discharge
+        
+        _is_det |= _is_inf && state.exposure <= last_reported_at(individual)
+
+        curr_idx = infections.next_infection_index[curr_idx]
+    end
+
+    # update individual's health status
+    infected!(individual, _is_inf)
+    infectious!(individual, _is_infectious)
+    symptomatic!(individual, _is_symp)
+    severe!(individual, _is_sev)
+    hospitalized!(individual, _is_hosp)
+    icu!(individual, _is_icu)
+    ventilated!(individual, _is_vent)
+    detected!(individual, _is_det)
+    
+    return nothing
 end
 
 

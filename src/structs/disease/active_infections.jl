@@ -37,9 +37,9 @@ mutable struct ActiveInfections
     recovery::Vector{Int16}
     death::Vector{Int16}
     
-    function ActiveInfections(population_size::Int32)
+    function ActiveInfections(n::Int32)
         return new(
-            zeros(Int32, population_size),
+            zeros(Int32, n),
             Int32[], Int32[], Int8[], Int32[], Int8[],
             Int16[], Int16[], Int16[], Int16[], Int16[], 
             Int16[], Int16[], Int16[], Int16[], Int16[], 
@@ -98,17 +98,16 @@ end
 
 
 """
-    get_infection_state(id::Int32, infections::ActiveInfections)::InfectionState
+    get_infection_state(infections::ActiveInfections, idx::Int, host_id::Int32)
 
-Extracts a stack-allocated `InfectionState` from the global `ActiveInfections` pool.
+Extracts a stack-allocated `InfectionState` from the global `ActiveInfections` pool by index idx.
+If `idx == 0` , it returns a default uninfected `InfectionState. 
 """
-function get_infection_state(id::Int32, infections::ActiveInfections)::InfectionState
-    @inbounds idx = infections.id_to_index[id]
-    
+function get_infection_state(infections::ActiveInfections, idx::Int32, host_id::Int32)::InfectionState
     if idx == 0
-        # Return a blank state if the agent is not infected
+        # Return a blank state if there is no infection
         return InfectionState(
-            false, id, Int8(0), Int32(0), Int8(0), 
+            false, host_id, Int8(0), Int32(0), Int8(0), 
             Int16(-1), Int16(-1), Int16(-1), Int16(-1), 
             Int16(-1), Int16(-1), Int16(-1), Int16(-1), 
             Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1)
@@ -135,6 +134,28 @@ function get_infection_state(id::Int32, infections::ActiveInfections)::Infection
         infections.recovery[idx],
         infections.death[idx]
     )
+end
+
+"""
+    get_infection_state(host_id::Int32, infections::ActiveInfections, pathogen_id::Int8)
+
+Retrieves the `InfectionState` for a specific host and pathogen by traversing 
+the active infections linked list. Returns a default uninfected state if the 
+host is not currently infected with the specified pathogen.
+"""
+function get_infection_state(host_id::Int32, infections::ActiveInfections, pathogen_id::Int8)::InfectionState
+    @inbounds idx = infections.id_to_index[host_id]
+    
+    # Traverse the linked list to find the specific pathogen
+    while idx != 0
+        @inbounds if infections.pathogen_id[idx] == pathogen_id
+            return get_infection_state(infections, idx, host_id)
+        end
+        @inbounds idx = infections.next_infection_index[idx]
+    end
+    
+    # Pathogen not found, return the blank state using the internal helper
+    return get_infection_state(infections, Int32(0), host_id)
 end
 
 """

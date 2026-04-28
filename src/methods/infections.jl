@@ -255,8 +255,8 @@ function try_to_infect!(infctr::Individual,
     end
 
     # calculate infection probability
-    infecter_state = get_infection_state(infctr.id, sim.active_infections)
-    infectee_state = get_infection_state(infctd.id, sim.active_infections)
+    infecter_state = get_infection_state(infctr.id, sim.active_infections, pathogen.id)
+    infectee_state = get_infection_state(infctd.id, sim.active_infections, pathogen.id)
     infection_probability = transmission_probability(
         pathogen |> transmission_function, 
         infctr, infctd, 
