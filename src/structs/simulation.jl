@@ -9,7 +9,7 @@ export Simulation
 export tick, label, start_condition, stop_criterion, settingscontainer, settings, population
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
-export pathogen, pathogen!
+export pathogens, pathogens!, add_pathogen!, get_pathogen
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
@@ -81,7 +81,7 @@ Here's a list of all available parameters:
 | `start_condition`         | `StartCondition`                   | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
 | `infected_fraction`       | `Float`                            | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
 | `stop_criterion`          | `StopCriterion`                    | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
-| `pathogen`                | `Pathogen`                         | A `Pathogen` object defining the pathogen to be simulated.                                                                                                                        |
+| `pathogens`               | `Dict{Int8, Pathogen}`             | A Dict of `Pathogen`s with their ids as keys defining the pathogens to be simulated.                                                                                                                        |
 | `transmission_function`   | `TransmissionFunction`             | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
 | `transmission_rate`       | `Float`                            | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
 | `stepmod`                 | `Function`                         | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |
@@ -138,7 +138,7 @@ sim = Simulation(params)
 - Model
     - `population::Population`: Container to hold all present individuals
     - `settings::SettingsContainer`: All settings present in the simulation
-    - `pathogen::Pathogen`: The pathogen of which infections are simulated
+    - `pathogens::Dict{Int8, Pathogen}`: A Dict of Pathoges of which infections are simulated
 - Logger
     - `infectionlogger::InfectionLogger`: A logger tracking all infections    
     - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
@@ -178,7 +178,7 @@ mutable struct Simulation
     # model
     population::Population
     settings::SettingsContainer
-    pathogen::Pathogen
+    pathogens::Dict{Int8, Pathogen}
     active_infections::ActiveInfections
 
     # logger
@@ -221,7 +221,7 @@ mutable struct Simulation
         stop_criterion::StopCriterion,
         population::Population,
         settings::SettingsContainer,
-        pathogen::Pathogen,
+        pathogens::Dict{Int8, Pathogen},
         stepmod::Function,
         seed::Int64,
         rngs::Vector{<:Xoshiro}
@@ -240,7 +240,7 @@ mutable struct Simulation
             # model
             population,
             settings,
-            pathogen,
+            pathogens,
             ActiveInfections(population.maxid),
 
             # logger
@@ -422,7 +422,7 @@ function _BUILD_Simulation(;
             stop_criterion)
 
         # PATHOGENS
-        pathogen = determine_pathogen(
+        pathogen_dict = determine_pathogens(
             config,
             pathogen,
             transmission_function,
@@ -441,7 +441,7 @@ function _BUILD_Simulation(;
             stop_criterion,
             pop,
             settings,
-            pathogen,
+            pathogen_dict,
             stepmod,
             rng_seed,
             rngs
@@ -625,33 +625,58 @@ If a `transmission_function` is provided, it will be set for the pathogen.
 If a `transmission_rate` is provided, it will be set as a `ConstantTransmissionRate` for the pathogen.
 The `transmission_rate` will be ignored if a `transmission_function` is provided.
 """
-function determine_pathogen(configfile_params::Dict, pathogen, transmission_function, transmission_rate)
-    if !isnothing(pathogen)
-        !isa(pathogen, Pathogen) && throw(ArgumentError("Provided pathogen must be an object of type Pathogen!"))
+function determine_pathogens(configfile_params::Dict, pathogens, transmission_function, transmission_rate)
+    pathogen_dict = Dict{Int8, Pathogen}()
+
+    if !isnothing(pathogens)
+        # handle single pathogen, vector, or dictionary gracefully
+        if isa(pathogens, Pathogen)
+            pathogen_dict[id(pathogens)] = pathogens
+        elseif isa(pathogens, Vector{Pathogen})
+            for p in pathogens
+                pathogen_dict[id(p)] = p
+            end
+        elseif isa(pathogens, Dict{Int8, Pathogen})
+            pathogen_dict = pathogens
+        else
+            throw(ArgumentError("Provided pathogens must be of type Pathogen, Vector{Pathogen}, or Dict{Int8, Pathogen}!"))
+        end
         
         # throw warnings for unused parameters
-        !isnothing(transmission_rate) && @warn "A pathogen was provided, therefore transmission_rate will be ignored."
+        !isnothing(transmission_rate) && @warn "Pathogens were provided, therefore transmission_rate will be ignored."
         
-        return pathogen
+        return pathogen_dict
     end
 
-    # if no pathogen is provided, create one from config file parameters
-    !haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogen found in config file! Without a provided 'pathogen' argument, a '[Pathogens]' section must be specified in the config file."))
-    pg = create_pathogens(configfile_params["Pathogens"])[1]# TODO: allow multiple pathogens
+    # if no pathogen is provided, create them from config file parameters
+    !haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogens found in config file! Without a provided 'pathogens' argument, a '[Pathogens]' section must be specified in the config file."))
+    
+    # generate all pathogens and store them in the dict by their ID
+    created_pgs = create_pathogens(configfile_params["Pathogens"])
+    for pg in created_pgs
+        pathogen_dict[id(pg)] = pg
+    end
     
     if !isnothing(transmission_function)
         !isa(transmission_function, TransmissionFunction) && throw(ArgumentError("Provided transmission_function must be an object of type TransmissionFunction!"))
-        transmission_function!(pg, transmission_function)
+        
+        # apply the global transmission function to all pathogens
+        for pg in values(pathogen_dict)
+            transmission_function!(pg, transmission_function)
+        end
+        
         !isnothing(transmission_rate) && @warn "A transmission_function was provided, therefore transmission_rate will be ignored."
-        return pg
+        return pathogen_dict
     end
 
-     # if a transmission rate is provided, set
+     # if a transmission rate is provided, set it for all pathogens
     if !isnothing(transmission_rate)
-        transmission_function!(pg, ConstantTransmissionRate(transmission_rate = transmission_rate))
+        for pg in values(pathogen_dict)
+            transmission_function!(pg, ConstantTransmissionRate(transmission_rate = transmission_rate))
+        end
     end
     
-    return pg
+    return pathogen_dict
 end
 
 """
@@ -1541,12 +1566,12 @@ end
 ###
 
 """
-    pathogen(simulation)
+    pathogens(simulation)
 
-Returns the pathogen of the simulation.
+Returns the Dict `Dict{Int8, Pathogen}` of Pathogens of the simulation.
 """
-function pathogen(simulation::Simulation)::Pathogen
-    return simulation.pathogen
+function pathogens(simulation::Simulation)::Dict{Int8, Pathogen}
+    return simulation.pathogens
 end
 
 """
@@ -1560,14 +1585,31 @@ end
 
 
 """
-    pathogen!(simulation, pathogen)
+    pathogens!(simulation, Dict{Int8, Pathogen})
 
 Sets the pathogen of the simulation.
 """
-function pathogen!(simulation::Simulation, pathogen::Pathogen)
-    simulation.pathogen = pathogen
+function pathogens!(simulation::Simulation, pathogens::Dict{Int8, Pathogen})
+    simulation.pathogens = pathogens
 end
 
+"""
+    add_pathogen!(simulation::Simulation, pathogen::Pathogen)
+
+Adds a single new pathogen to the simulation. 
+"""
+function add_pathogen!(simulation::Simulation, pathogen::Pathogen)
+    simulation.pathogens[id(pathogen)] = pathogen
+end
+
+"""
+    get_pathogen(sim::Simulation, pid::Int8)
+
+Retrieves a specific `Pathogen` object from the simulation's registry using its unique identifier. 
+"""
+function get_pathogen(simulation::Simulation, pid::Int8)::Pathogen
+    return simulation.pathogens[pid]
+end
 
 
 """
@@ -1935,11 +1977,18 @@ function info(sim::Simulation)
     
     # pathogen (use the pathogen's show method for detailed info)
     buf = IOBuffer()
-    show(buf, pathogen(sim))       # writes into the buffer
+    for p in values(pathogens(sim))
+        show(buf, p)
+        write(buf, "\n")
+    end
     s = String(take!(buf))    # convert buffer → String
 
     lines = split(s, "\n", keepempty = true)
-    res *= join(["\u2514 $(lines[1])"; " " .* lines[2:end]], "\n")
+    if !isempty(lines)
+        res *= join(["\u2514 $(lines[1])"; " " .* lines[2:end]], "\n")
+    else
+        res *= "\u2514 No Pathogens\n"
+    end
     
     # intervention strategies
     if sim |> strategies |> length > 0

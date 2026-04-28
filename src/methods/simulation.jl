@@ -288,7 +288,7 @@ function step!(simulation::Simulation)
         for type in settingtypes_sorted(settingscontainer(simulation))
             Threads.@threads :static for stng in settings(simulation, type)
                 if isactive(stng)
-                    spread_infection!(stng, simulation, pathogen(simulation))
+                    spread_infection!(stng, simulation)
                 end
             end
         end

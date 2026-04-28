@@ -445,7 +445,7 @@ end
 
 
 """
-    spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen)
+    spread_infection!(setting::Setting, sim::Simulation)
 
 Spreads the infection of `pathogen` inside the provided setting. This will simulate the
 infection dynamics at the time `tick(sim)` inside `setting` within the context of the
@@ -456,10 +456,9 @@ infection is successful.
 
 - `setting::Setting`: Setting in which the pathogen shall be spreaded
 - `sim::Simulation`: Simulation object
-- `pathogen::Pathogen`: Pathogen to spread
 
 """
-function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen)
+function spread_infection!(setting::Setting, sim::Simulation)
     tid = Threads.threadid()
     p_buffer = sim.present_buffers[tid]
     c_buffer = sim.contact_buffers[tid]
@@ -469,7 +468,7 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
 
     csm = setting.contact_sampling_method
 
-    num_infected = process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
+    num_infected = process_infections!(p_buffer, c_buffer, csm, setting, sim)
 
     if num_infected == 0
         for ind in individuals(setting, sim)
@@ -484,7 +483,7 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
 end
 
 
-function process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
+function process_infections!(p_buffer, c_buffer, csm, setting, sim)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
@@ -495,14 +494,22 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
             num_infected += 1
             if can_infect(ind, setting)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
+
+                pids = pathogen_ids(ind, active_infections(sim))
+                length(pids) > 1 && gems_shuffle!(current_rng, pids)
                 
                 for c in c_buffer
                     if can_be_contacted(c, setting)
-                        if try_to_infect!(ind, c, sim, pathogen, setting, infection_id(ind, active_infections(sim), id(pathogen)))
-                            for (type, id) in settings_tuple(c)
-                                if id != DEFAULT_SETTING_ID
-                                    current_setting = settings(sim, type)[id]
-                                    activate!(current_setting, sim)
+                        for pid in pids
+                            if is_infectious(ind, active_infections(sim), pid, current_tick)
+                                pat = get_pathogen(sim, pid)
+                                if try_to_infect!(ind, c, sim, pat, setting, infection_id(ind, active_infections(sim), id(pat)))
+                                    for (type, id) in settings_tuple(c)
+                                        if id != DEFAULT_SETTING_ID
+                                            current_setting = settings(sim, type)[id]
+                                            activate!(current_setting, sim)
+                                        end
+                                    end
                                 end
                             end
                         end
