@@ -45,6 +45,74 @@ mutable struct ActiveInfections
     end
 end
 
+"""
+    InfectionState
+
+An immutable, stack-allocated representation of a single individual's disease state.
+Used to cleanly pass all relevant disease progression data into pure mathematical models 
+without exposing the underlying `ActiveInfections` memory pool.
+"""
+struct InfectionState
+    active::Bool          # False if the agent is not currently infected
+    host_id::Int32
+    pathogen_id::Int8
+    infection_id::Int32
+    infectiousness::Int8
+    exposure::Int16
+    infectiousness_onset::Int16
+    symptom_onset::Int16
+    severeness_onset::Int16
+    hospital_admission::Int16
+    icu_admission::Int16
+    icu_discharge::Int16
+    ventilation_admission::Int16
+    ventilation_discharge::Int16
+    hospital_discharge::Int16
+    severeness_offset::Int16
+    recovery::Int16
+    death::Int16
+end
+
+"""
+    get_infection_state(id::Int32, infections::ActiveInfections)::InfectionState
+
+Extracts a stack-allocated `InfectionState` from the global `ActiveInfections` pool.
+"""
+function get_infection_state(id::Int32, infections::ActiveInfections)::InfectionState
+    @inbounds idx = infections.id_to_index[id]
+    
+    if idx == 0
+        # Return a blank state if the agent is not infected
+        return InfectionState(
+            false, id, Int8(0), Int32(0), Int8(0), 
+            Int16(-1), Int16(-1), Int16(-1), Int16(-1), 
+            Int16(-1), Int16(-1), Int16(-1), Int16(-1), 
+            Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1)
+        )
+    end
+    
+    @inbounds return InfectionState(
+        true,
+        infections.host_id[idx],
+        infections.pathogen_id[idx],
+        infections.infection_id[idx],
+        infections.infectiousness[idx],
+        infections.exposure[idx],
+        infections.infectiousness_onset[idx],
+        infections.symptom_onset[idx],
+        infections.severeness_onset[idx],
+        infections.hospital_admission[idx],
+        infections.icu_admission[idx],
+        infections.icu_discharge[idx],
+        infections.ventilation_admission[idx],
+        infections.ventilation_discharge[idx],
+        infections.hospital_discharge[idx],
+        infections.severeness_offset[idx],
+        infections.recovery[idx],
+        infections.death[idx]
+    )
+end
+
 struct PendingInfection
     host_id::Int32
     pathogen_id::Int8
