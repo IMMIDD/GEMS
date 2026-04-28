@@ -329,25 +329,34 @@ Update the individual disease progression, handle its recovery and log its possi
 If the individual is not infected, this function will just return.
 """
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
+    # Snapshot aggregate flags 
+    was_dead = dead(indiv)
+    was_symptomatic = symptomatic(indiv)
+    was_hospitalized = is_hospitalized(indiv)
+
     # progress disease if infected
     if infected(indiv)
         progress_disease!(indiv, sim.active_infections, tick)
+
+        if dead(indiv)
+            infected!(indiv, false)   # prevent perpetual no-op calls
+        end
         
         # if individual died in this tick, log it
-        if death(indiv, sim.active_infections) == tick
+        if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), tick)
         end
     end
     
     # if onset of symptoms is this tick, trigger all symptom triggers
-    if symptom_onset(indiv, sim.active_infections) == tick
+    if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim)
         end
     end
     
     # if hospital admission is this tick, trigger all hospitalization triggers
-    if hospital_admission(indiv, sim.active_infections) == tick
+    if !was_hospitalized && is_hospitalized(indiv)
         for ht in sim |> hospitalization_triggers
             trigger(ht, indiv, sim)
         end
@@ -489,7 +498,7 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
                 
                 for c in c_buffer
                     if can_be_contacted(c, setting)
-                        if try_to_infect!(ind, c, sim, pathogen, setting, infection_id(ind, active_infections(sim)))
+                        if try_to_infect!(ind, c, sim, pathogen, setting, infection_id(ind, active_infections(sim), id(pathogen)))
                             for (type, id) in settings_tuple(c)
                                 if id != DEFAULT_SETTING_ID
                                     current_setting = settings(sim, type)[id]

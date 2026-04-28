@@ -43,7 +43,7 @@ export ventilation_discharge, ventilation_discharge!
 export hospital_discharge, hospital_discharge!
 export recovery, recovery!
 export death, death!
-export pathogen_id, pathogen_id!, infection_id, infection_id!
+export pathogen_ids, infection_id, infection_id!
 export infectiousness, infectiousness!
 export number_of_infections
 export inc_number_of_infections!
@@ -428,7 +428,7 @@ end
 """
     has_comorbidity(individual::Individual, n::Int16)
 
-Returns `true` if the individual has the `n`-th comorbidity flag set. 
+Returns `true` if the individual has the `n`-th comorbidity flag set.
 `n` is 1-indexed and should be between 1 and 16.
 """
 function has_comorbidity(individual::Individual, n::Int16)
@@ -620,331 +620,353 @@ end
 
 
 """
-    get_infection_index(ind::Individual, infections::ActiveInfections)
+    find_infection_index(ind::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Instant O(1) lookup to find the row index of an individual's active infection 
-in the global `ActiveInfections` arrays.
+Returns the index of the infection for the given pathogen, or 0 if not infected.
 """
-@inline function get_infection_index(ind::Individual, infections::ActiveInfections)::Int
+@inline function find_infection_index(ind::Individual, infections::ActiveInfections, pathogen_id::Int8)::Int
     @inbounds idx = infections.id_to_index[ind.id]
-    idx == 0 && throw(ArgumentError("Individual $(ind.id) is not currently in the active ActiveInfections."))
+    while idx != 0
+        @inbounds if infections.pathogen_id[idx] == pathogen_id
+            return idx
+        end
+        @inbounds idx = infections.next_infection_index[idx]
+    end
+    return 0
+end
+
+"""
+    get_infection_index(ind::Individual, infections::ActiveInfections, pathogen_id::Int8)
+
+Instant lookup to find the row index of an individual's active infection 
+in the global `ActiveInfections` arrays for a specific pathogen.
+Throws an ArgumentError if not found.
+"""
+@inline function get_infection_index(ind::Individual, infections::ActiveInfections, pathogen_id::Int8)::Int
+    idx = find_infection_index(ind, infections, pathogen_id)
+    idx == 0 && throw(ArgumentError("Individual $(ind.id) is not currently infected with pathogen $(pathogen_id)."))
     return idx
 end
 
 # --- PATHOGEN ATTRIBUTES ---
 
 """
-    pathogen_id(individual::Individual, infections::ActiveInfections)
+    pathogen_ids(individual::Individual, infections::ActiveInfections)
 
-Returns an individual's pathogen (currently infected).
+Returns an individual's active pathogens.
 """
-function pathogen_id(individual::Individual, infections::ActiveInfections)::Int8
+function pathogen_ids(individual::Individual, infections::ActiveInfections)::Vector{Int8}
     @inbounds idx = infections.id_to_index[individual.id]
-    return infections.pathogen_id[idx]
+    pids = Int8[]
+    while idx != 0
+        @inbounds push!(pids, infections.pathogen_id[idx])
+        @inbounds idx = infections.next_infection_index[idx]
+    end
+    return pids
 end
 
 """
-    infection_id(individual::Individual, infections::ActiveInfections)
+    infection_id(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's infection_id (currently infected).
+Returns an individual's infection_id for the given pathogen.
 """
-function infection_id(individual::Individual, infections::ActiveInfections)::Int32
-    @inbounds idx = infections.id_to_index[individual.id]
+function infection_id(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)::Int32
+    idx = get_infection_index(individual, infections, pathogen_id)
     return infections.infection_id[idx]
 end
 
 """
-    infectiousness(individual::Individual, infections::ActiveInfections)
+    infectiousness(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's infectiousness (currently infected).
+Returns an individual's infectiousness for the given pathogen.
 """
-function infectiousness(individual::Individual, infections::ActiveInfections)::Int8
-    @inbounds idx = infections.id_to_index[individual.id]
+function infectiousness(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)::Int8
+    idx = get_infection_index(individual, infections, pathogen_id)
     return infections.infectiousness[idx]
 end
 
 """
-    infectiousness!(individual::Individual, infections::ActiveInfections, infectiousness)
+    infectiousness!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, infectiousness)
 
-Assigns a specified infectiousness (0-127) to an individual.
+Assigns a specified infectiousness (0-127) to an individual for the given pathogen.
 """
-function infectiousness!(individual::Individual, infections::ActiveInfections, infectiousness)
-    idx = get_infection_index(individual, infections)
+function infectiousness!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, infectiousness)
+    idx = get_infection_index(individual, infections, pathogen_id)
     infections.infectiousness[idx] = Int8(infectiousness)
 end
 
 ### NATURAL DISEASE HISTORY ###
 
 """
-    exposure(individual::Individual, infections::ActiveInfections)
+    exposure(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last exposure tick.
+Returns an individual's last exposure tick for the given pathogen.
 Return -1 if never exposed or not in active infection infections.
 """
-function exposure(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function exposure(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.exposure[idx]
 end
 
 """
-    exposure!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    exposure!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's exposure tick.
+Sets an individual's exposure tick for the given pathogen.
 """
-function exposure!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function exposure!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.exposure[idx] = tick
 end
 
 """
-    infectiousness_onset(individual::Individual, infections::ActiveInfections)
+    infectiousness_onset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last infectiousness onset tick.
+Returns an individual's last infectiousness onset tick for the given pathogen.
 Return -1 if never infectious.
 """
-function infectiousness_onset(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function infectiousness_onset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.infectiousness_onset[idx]
 end
 
 """
-    infectiousness_onset!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    infectiousness_onset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's infectiousness onset tick.
+Sets an individual's infectiousness onset tick for the given pathogen.
 """
-function infectiousness_onset!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function infectiousness_onset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.infectiousness_onset[idx] = tick
 end
 
 """
-    symptom_onset(individual::Individual, infections::ActiveInfections)
+    symptom_onset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last symptom onset tick.
+Returns an individual's last symptom onset tick for the given pathogen.
 Return -1 if never symptomatic.
 """
-function symptom_onset(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function symptom_onset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.symptom_onset[idx]
 end
 
 """
-    symptom_onset!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    symptom_onset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's symptom onset tick.
+Sets an individual's symptom onset tick for the given pathogen.
 """
-function symptom_onset!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function symptom_onset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.symptom_onset[idx] = tick
 end
 
 """
-    severeness_onset(individual::Individual, infections::ActiveInfections)
+    severeness_onset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last severeness onset tick.
+Returns an individual's last severeness onset tick for the given pathogen.
 Return -1 if never severe.
 """
-function severeness_onset(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function severeness_onset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.severeness_onset[idx]
 end
 
 """
-    severeness_onset!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    severeness_onset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's severeness onset tick.
+Sets an individual's severeness onset tick for the given pathogen.
 """
-function severeness_onset!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function severeness_onset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.severeness_onset[idx] = tick
 end
 
 """
-    severeness_offset(individual::Individual, infections::ActiveInfections)
+    severeness_offset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last severeness offset tick.
+Returns an individual's last severeness offset tick for the given pathogen.
 Return -1 if never severe.
 """
-function severeness_offset(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function severeness_offset(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.severeness_offset[idx]
 end
 
 """
-    severeness_offset!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    severeness_offset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's severeness offset tick.
+Sets an individual's severeness offset tick for the given pathogen.
 """
-function severeness_offset!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function severeness_offset!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.severeness_offset[idx] = tick
 end
 
 """
-    hospital_admission(individual::Individual, infections::ActiveInfections)
+    hospital_admission(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last hospital admission tick.
+Returns an individual's last hospital admission tick for the given pathogen.
 Return -1 if never hospitalized.
 """
-function hospital_admission(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function hospital_admission(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.hospital_admission[idx]
 end
 
 """
-    hospital_admission!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    hospital_admission!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's hospital admission tick.
+Sets an individual's hospital admission tick for the given pathogen.
 """
-function hospital_admission!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function hospital_admission!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.hospital_admission[idx] = tick
 end
 
 """
-    icu_admission(individual::Individual, infections::ActiveInfections)
+    icu_admission(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last icu admission tick.
+Returns an individual's last icu admission tick for the given pathogen.
 Return -1 if never admitted to icu.
 """
-function icu_admission(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function icu_admission(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.icu_admission[idx]
 end
 
 """
-    icu_admission!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    icu_admission!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's icu admission tick.
+Sets an individual's icu admission tick for the given pathogen.
 """
-function icu_admission!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function icu_admission!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.icu_admission[idx] = tick
 end
 
 """
-    icu_discharge(individual::Individual, infections::ActiveInfections)
+    icu_discharge(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last icu discharge tick.
+Returns an individual's last icu discharge tick for the given pathogen.
 Return -1 if never discharged from icu.
 """
-function icu_discharge(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function icu_discharge(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.icu_discharge[idx]
 end
 
 """
-    icu_discharge!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    icu_discharge!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's icu discharge tick.
+Sets an individual's icu discharge tick for the given pathogen.
 """
-function icu_discharge!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function icu_discharge!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.icu_discharge[idx] = tick
 end
 
 """
-    ventilation_admission(individual::Individual, infections::ActiveInfections)
+    ventilation_admission(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last ventilation admission tick.
+Returns an individual's last ventilation admission tick for the given pathogen.
 Return -1 if never admitted to ventilation.
 """
-function ventilation_admission(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function ventilation_admission(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.ventilation_admission[idx]
 end
 
 """
-    ventilation_admission!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    ventilation_admission!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's ventilation admission tick.
+Sets an individual's ventilation admission tick for the given pathogen.
 """
-function ventilation_admission!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function ventilation_admission!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.ventilation_admission[idx] = tick
 end
 
 """
-    ventilation_discharge(individual::Individual, infections::ActiveInfections)
+    ventilation_discharge(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last ventilation discharge tick.
+Returns an individual's last ventilation discharge tick for the given pathogen.
 Return -1 if never discharged from ventilation.
 """
-function ventilation_discharge(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function ventilation_discharge(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.ventilation_discharge[idx]
 end
 
 """
-    ventilation_discharge!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    ventilation_discharge!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's ventilation discharge tick.
+Sets an individual's ventilation discharge tick for the given pathogen.
 """
-function ventilation_discharge!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function ventilation_discharge!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.ventilation_discharge[idx] = tick
 end
 
 """
-    hospital_discharge(individual::Individual, infections::ActiveInfections)
+    hospital_discharge(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last hospital discharge tick.
+Returns an individual's last hospital discharge tick for the given pathogen.
 Return -1 if never discharged from hospital.
 """
-function hospital_discharge(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function hospital_discharge(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.hospital_discharge[idx]
 end
 
 """
-    hospital_discharge!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    hospital_discharge!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's hospital discharge tick.
+Sets an individual's hospital discharge tick for the given pathogen.
 """
-function hospital_discharge!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function hospital_discharge!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.hospital_discharge[idx] = tick
 end
 
 """
-    recovery(individual::Individual, infections::ActiveInfections)
+    recovery(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last recovery tick.
+Returns an individual's last recovery tick for the given pathogen.
 Return -1 if never recovered.
 """
-function recovery(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function recovery(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.recovery[idx]
 end
 
 """
-    recovery!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    recovery!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's recovery tick.
+Sets an individual's recovery tick for the given pathogen.
 """
-function recovery!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function recovery!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.recovery[idx] = tick
 end
 
 """
-    death(individual::Individual, infections::ActiveInfections)
+    death(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
 
-Returns an individual's last death tick.
+Returns an individual's last death tick for the given pathogen.
 Return -1 if never died.
 """
-function death(individual::Individual, infections::ActiveInfections)
-    @inbounds idx = infections.id_to_index[individual.id]
+function death(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    idx = find_infection_index(individual, infections, pathogen_id)
     return idx == 0 ? Int16(-1) : infections.death[idx]
 end
 
 """
-    death!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    death!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
 
-Sets an individual's death tick.
+Sets an individual's death tick for the given pathogen.
 """
-function death!(individual::Individual, infections::ActiveInfections, tick::Int16)
-    idx = get_infection_index(individual, infections)
+function death!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, tick::Int16)
+    idx = get_infection_index(individual, infections, pathogen_id)
     @inbounds infections.death[idx] = tick
 end
 
@@ -952,160 +974,160 @@ end
 ### DISEASE STATUS ###
 
 """
-    is_infected(individual::Individual, infections::ActiveInfections, t::Int16)
-    isinfected(individual::Individual, infections::ActiveInfections, t::Int16)
-    infected(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_infected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isinfected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    infected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is infected at tick `t`.
+Returns `true` if the individual is infected with the given pathogen at tick `t`.
 """
-is_infected(individual::Individual, infections::ActiveInfections, t::Int16) = exposure(individual, infections) >= 0 && exposure(individual, infections) <= t < max(recovery(individual, infections), death(individual, infections))
-isinfected(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t)
-infected(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t)
-
-"""
-    is_infectious(individual::Individual, infections::ActiveInfections, t::Int16)
-    isinfectious(individual::Individual, infections::ActiveInfections, t::Int16)
-    infectious(individual::Individual, infections::ActiveInfections, t::Int16)
-
-Returns `true` if the individual is infectious at tick `t`.
-"""
-is_infectious(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && infectiousness_onset(individual, infections) <= t < max(recovery(individual, infections), death(individual, infections))
-isinfectious(individual::Individual, infections::ActiveInfections, t::Int16) = is_infectious(individual, infections, t)
-infectious(individual::Individual, infections::ActiveInfections, t::Int16) = is_infectious(individual, infections, t)
+is_infected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = exposure(individual, infections, pathogen_id) >= 0 && exposure(individual, infections, pathogen_id) <= t < max(recovery(individual, infections, pathogen_id), death(individual, infections, pathogen_id))
+isinfected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t)
+infected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t)
 
 """
-    is_exposed(individual::Individual, infections::ActiveInfections, t::Int16)
-    isexposed(individual::Individual, infections::ActiveInfections, t::Int16)
-    exposed(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_infectious(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isinfectious(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    infectious(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is exposed at tick `t`.
+Returns `true` if the individual is infectious with the given pathogen at tick `t`.
+"""
+is_infectious(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && infectiousness_onset(individual, infections, pathogen_id) <= t < max(recovery(individual, infections, pathogen_id), death(individual, infections, pathogen_id))
+isinfectious(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infectious(individual, infections, pathogen_id, t)
+infectious(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infectious(individual, infections, pathogen_id, t)
+
+"""
+    is_exposed(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isexposed(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    exposed(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+
+Returns `true` if the individual is exposed with the given pathogen at tick `t`.
 Exposed means infected but not yet infectious.
 """
-is_exposed(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && exposure(individual, infections) <= t < infectiousness_onset(individual, infections)
-isexposed(individual::Individual, infections::ActiveInfections, t::Int16) = is_exposed(individual, infections, t)
-exposed(individual::Individual, infections::ActiveInfections, t::Int16) = is_exposed(individual, infections, t)
+is_exposed(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && exposure(individual, infections, pathogen_id) <= t < infectiousness_onset(individual, infections, pathogen_id)
+isexposed(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_exposed(individual, infections, pathogen_id, t)
+exposed(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_exposed(individual, infections, pathogen_id, t)
 
 """
-    is_presymptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
-    ispresymptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
-    presymptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_presymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    ispresymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    presymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is presymptomatic at tick `t`.
+Returns `true` if the individual is presymptomatic with the given pathogen at tick `t`.
 Presymptomatic means infected, will develop symptoms, but is not yet symptomatic.
 """
-is_presymptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && t < symptom_onset(individual, infections)
-ispresymptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_presymptomatic(individual, infections, t)
-presymptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_presymptomatic(individual, infections, t)
+is_presymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && t < symptom_onset(individual, infections, pathogen_id)
+ispresymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, infections, pathogen_id, t)
+presymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, infections, pathogen_id, t)
 
 """
-    is_symptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
-    issymptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
-    symptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_symptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    issymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    symptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is symptomatic at tick `t`.
+Returns `true` if the individual is symptomatic with the given pathogen at tick `t`.
 """
-is_symptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && 0 <= symptom_onset(individual, infections) <= t < max(recovery(individual, infections), death(individual, infections))
-issymptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_symptomatic(individual, infections, t)
-symptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_symptomatic(individual, infections, t)
+is_symptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && 0 <= symptom_onset(individual, infections, pathogen_id) <= t < max(recovery(individual, infections, pathogen_id), death(individual, infections, pathogen_id))
+issymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, infections, pathogen_id, t)
+symptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, infections, pathogen_id, t)
 
 """
-    is_asymptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
-    isasymptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
-    asymptomatic(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_asymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isasymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    asymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is asymptomatic at tick `t`.
+Returns `true` if the individual is asymptomatic with the given pathogen at tick `t`.
 Asymptomatic means infected and will not develop symptoms.
 """
-is_asymptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && !is_symptomatic(individual, infections, t) && symptom_onset(individual, infections) < exposure(individual, infections)
-isasymptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_asymptomatic(individual, infections, t)
-asymptomatic(individual::Individual, infections::ActiveInfections, t::Int16) = is_asymptomatic(individual, infections, t)
+is_asymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && !is_symptomatic(individual, infections, pathogen_id, t) && symptom_onset(individual, infections, pathogen_id) < exposure(individual, infections, pathogen_id)
+isasymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_asymptomatic(individual, infections, pathogen_id, t)
+asymptomatic(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_asymptomatic(individual, infections, pathogen_id, t)
 
 """
-    is_severe(individual::Individual, infections::ActiveInfections, t::Int16)
-    issevere(individual::Individual, infections::ActiveInfections, t::Int16)
-    severe(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_severe(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    issevere(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    severe(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is in a severe infections at tick `t`.
+Returns `true` if the individual is in a severe infections with the given pathogen at tick `t`.
 """
-is_severe(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && 0 <= severeness_onset(individual, infections) <= t < severeness_offset(individual, infections)
-issevere(individual::Individual, infections::ActiveInfections, t::Int16) = is_severe(individual, infections, t)
-severe(individual::Individual, infections::ActiveInfections, t::Int16) = is_severe(individual, infections, t)
+is_severe(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && 0 <= severeness_onset(individual, infections, pathogen_id) <= t < severeness_offset(individual, infections, pathogen_id)
+issevere(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_severe(individual, infections, pathogen_id, t)
+severe(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_severe(individual, infections, pathogen_id, t)
 
 """
-    is_mild(individual::Individual, infections::ActiveInfections, t::Int16)
-    ismild(individual::Individual, infections::ActiveInfections, t::Int16)
-    mild(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_mild(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    ismild(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    mild(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is in a mild infections at tick `t`.
+Returns `true` if the individual is in a mild infections with the given pathogen at tick `t`.
 Mild means symptomatic but not severe.
 """
-is_mild(individual::Individual, infections::ActiveInfections, t::Int16) = is_symptomatic(individual, infections, t) && !is_severe(individual, infections, t)
-ismild(individual::Individual, infections::ActiveInfections, t::Int16) = is_mild(individual, infections, t)
-mild(individual::Individual, infections::ActiveInfections, t::Int16) = is_mild(individual, infections, t)
+is_mild(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, infections, pathogen_id, t) && !is_severe(individual, infections, pathogen_id, t)
+ismild(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_mild(individual, infections, pathogen_id, t)
+mild(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_mild(individual, infections, pathogen_id, t)
 
 """
-    is_hospitalized(individual::Individual, infections::ActiveInfections, t::Int16)    
-    ishospitalized(individual::Individual, infections::ActiveInfections, t::Int16)
-    hospitalized(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_hospitalized(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)    
+    ishospitalized(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    hospitalized(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is hospitalized at tick `t`.
+Returns `true` if the individual is hospitalized with the given pathogen at tick `t`.
 """
-is_hospitalized(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && 0 <= hospital_admission(individual, infections) <= t < hospital_discharge(individual, infections)
-ishospitalized(individual::Individual, infections::ActiveInfections, t::Int16) = is_hospitalized(individual, infections, t)
-hospitalized(individual::Individual, infections::ActiveInfections, t::Int16) = is_hospitalized(individual, infections, t)
-
-"""
-    is_icu(individual::Individual, infections::ActiveInfections, t::Int16)
-    isicu(individual::Individual, infections::ActiveInfections, t::Int16)
-    icu(individual::Individual, infections::ActiveInfections, t::Int16)
-
-Returns `true` if the individual is in ICU at tick `t`.
-"""
-is_icu(individual::Individual, infections::ActiveInfections, t::Int16) = is_hospitalized(individual, infections, t) && 0 <= icu_admission(individual, infections) <= t < icu_discharge(individual, infections)
-isicu(individual::Individual, infections::ActiveInfections, t::Int16) = is_icu(individual, infections, t)
-icu(individual::Individual, infections::ActiveInfections, t::Int16) = is_icu(individual, infections, t)
+is_hospitalized(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && 0 <= hospital_admission(individual, infections, pathogen_id) <= t < hospital_discharge(individual, infections, pathogen_id)
+ishospitalized(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_hospitalized(individual, infections, pathogen_id, t)
+hospitalized(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_hospitalized(individual, infections, pathogen_id, t)
 
 """
-    is_ventilated(individual::Individual, infections::ActiveInfections, t::Int16)
-    isventilated(individual::Individual, infections::ActiveInfections, t::Int16)
-    ventilated(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_icu(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isicu(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    icu(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is ventilated at tick `t`.
+Returns `true` if the individual is in ICU with the given pathogen at tick `t`.
 """
-is_ventilated(individual::Individual, infections::ActiveInfections, t::Int16) = is_hospitalized(individual, infections, t) && 0 <= ventilation_admission(individual, infections) <= t < ventilation_discharge(individual, infections)
-isventilated(individual::Individual, infections::ActiveInfections, t::Int16) = is_ventilated(individual, infections, t)
-ventilated(individual::Individual, infections::ActiveInfections, t::Int16) = is_ventilated(individual, infections, t)
-
-"""
-    is_recovered(individual::Individual, infections::ActiveInfections, t::Int16)
-    isrecovered(individual::Individual, infections::ActiveInfections, t::Int16)
-    recovered(individual::Individual, infections::ActiveInfections, t::Int16)
-
-Returns `true` if the individual is recovered at tick `t`.
-"""
-is_recovered(individual::Individual, infections::ActiveInfections, t::Int16) = 0 <= recovery(individual, infections) <= t
-isrecovered(individual::Individual, infections::ActiveInfections, t::Int16) = is_recovered(individual, infections, t)
-recovered(individual::Individual, infections::ActiveInfections, t::Int16) = is_recovered(individual, infections, t)
+is_icu(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_hospitalized(individual, infections, pathogen_id, t) && 0 <= icu_admission(individual, infections, pathogen_id) <= t < icu_discharge(individual, infections, pathogen_id)
+isicu(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_icu(individual, infections, pathogen_id, t)
+icu(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_icu(individual, infections, pathogen_id, t)
 
 """
-    is_dead(individual::Individual, infections::ActiveInfections, t::Int16)
-    isdead(individual::Individual, infections::ActiveInfections, t::Int16)
-    dead(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_ventilated(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isventilated(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    ventilated(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is dead at tick `t`.
+Returns `true` if the individual is ventilated with the given pathogen at tick `t`.
 """
-is_dead(individual::Individual, infections::ActiveInfections, t::Int16) = 0 <= death(individual, infections) <= t
-isdead(individual::Individual, infections::ActiveInfections, t::Int16) = is_dead(individual, infections, t)
-dead(individual::Individual, infections::ActiveInfections, t::Int16) = is_dead(individual, infections, t)
+is_ventilated(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_hospitalized(individual, infections, pathogen_id, t) && 0 <= ventilation_admission(individual, infections, pathogen_id) <= t < ventilation_discharge(individual, infections, pathogen_id)
+isventilated(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_ventilated(individual, infections, pathogen_id, t)
+ventilated(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_ventilated(individual, infections, pathogen_id, t)
 
 """
-    is_detected(individual::Individual, infections::ActiveInfections, t::Int16)
+    is_recovered(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isrecovered(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    recovered(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is currently infected and has been detected (i.e. tested positive) prior to or at tick `t`.
+Returns `true` if the individual is recovered from the given pathogen at tick `t`.
 """
-is_detected(individual::Individual, infections::ActiveInfections, t::Int16) = is_infected(individual, infections, t) && exposure(individual, infections) <= last_reported_at(individual)
-isdetected(individual::Individual, infections::ActiveInfections, t::Int16) = is_detected(individual, infections, t)
-detected(individual::Individual, infections::ActiveInfections, t::Int16) = is_detected(individual, infections, t)
+is_recovered(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = 0 <= recovery(individual, infections, pathogen_id) <= t
+isrecovered(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_recovered(individual, infections, pathogen_id, t)
+recovered(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_recovered(individual, infections, pathogen_id, t)
+
+"""
+    is_dead(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    isdead(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+    dead(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+
+Returns `true` if the individual is dead from the given pathogen at tick `t`.
+"""
+is_dead(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = 0 <= death(individual, infections, pathogen_id) <= t
+isdead(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_dead(individual, infections, pathogen_id, t)
+dead(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_dead(individual, infections, pathogen_id, t)
+
+"""
+    is_detected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16)
+
+Returns `true` if the individual is currently infected with the given pathogen and has been detected (i.e. tested positive) prior to or at tick `t`.
+"""
+is_detected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t) && exposure(individual, infections, pathogen_id) <= last_reported_at(individual)
+isdetected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
+detected(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
 
 """
     number_of_infections(individual::Individual)
@@ -1376,7 +1398,7 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
     while curr_idx != 0
         # get infection state
         state = get_infection_state(infections, curr_idx, individual.id)
-        
+       
         # handle death
         if 0 <= state.death <= tick
             dead!(individual, true)
@@ -1393,7 +1415,7 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
         _is_vent |= 0 <= state.ventilation_admission <= tick < state.ventilation_discharge
         
         _is_det |= _is_inf && state.exposure <= last_reported_at(individual)
-
+     
         curr_idx = infections.next_infection_index[curr_idx]
     end
 
@@ -1431,7 +1453,7 @@ function reset!(individual::Individual, infections::ActiveInfections)
     individual.detected = false
     
     # infections status
-    individual.number_of_infections = 0
+    individual.number_of_infections = 0    
  
     # remove from the global ActiveInfections registry if they are in it
     if infections.id_to_index[individual.id] != 0
