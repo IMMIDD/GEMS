@@ -618,7 +618,6 @@ function detected!(individual::Individual, detected::Bool)
     individual.detected = detected
 end
 
-### NATURAL DISEASE HISTORY ###
 
 """
     get_infection_index(ind::Individual, infections::ActiveInfections)
@@ -673,6 +672,8 @@ function infectiousness!(individual::Individual, infections::ActiveInfections, i
     idx = get_infection_index(individual, infections)
     infections.infectiousness[idx] = Int8(infectiousness)
 end
+
+### NATURAL DISEASE HISTORY ###
 
 """
     exposure(individual::Individual, infections::ActiveInfections)

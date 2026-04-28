@@ -261,7 +261,8 @@ function try_to_infect!(infctr::Individual,
         pathogen |> transmission_function, 
         infctr, infctd, 
         infecter_state, infectee_state,
-        setting, sim |> tick, rng(sim))
+        setting, sim |> tick, rng(sim)
+    )
 
     # try to infect
     if gems_rand(sim) < infection_probability
