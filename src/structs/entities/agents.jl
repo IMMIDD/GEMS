@@ -43,7 +43,7 @@ export ventilation_discharge, ventilation_discharge!
 export hospital_discharge, hospital_discharge!
 export recovery, recovery!
 export death, death!
-export pathogen_ids, infection_id, infection_id!
+export get_active_pathogens, infection_id, infection_id!
 export infectiousness, infectiousness!
 export number_of_infections
 export inc_number_of_infections!
@@ -160,6 +160,7 @@ A type to represent individuals, that act as agents inside the simulation.
 
     # PATHOGEN MEMORY
     number_of_infections::Int8 = 0 # 1 byte
+    active_pathogens::NTuple{4, Int8} = (Int8(0), Int8(0), Int8(0), Int8(0))
     
     # TESTING
     last_test::Int16 = DEFAULT_TICK # 2 bytes
@@ -598,6 +599,17 @@ Set the `dead` flag of the individual.
 """
 function dead!(individual::Individual, dead::Bool)
     individual.dead = dead
+    if dead 
+        infected!(individual, false)
+        individual.infectious = false
+        individual.symptomatic = false
+        individual.severe = false
+        individual.hospitalized = false
+        individual.icu = false
+        individual.ventilated = false
+        individual.detected = false
+        individual.active_pathogens = (Int8(0), Int8(0), Int8(0), Int8(0))
+    end
 end
 
 """
@@ -651,19 +663,11 @@ end
 # --- PATHOGEN ATTRIBUTES ---
 
 """
-    pathogen_ids(individual::Individual, infections::ActiveInfections)
+    get_active_pathogens(individual::Individual)::NTuple{4, Int8}
 
 Returns an individual's active pathogens.
 """
-function pathogen_ids(individual::Individual, infections::ActiveInfections)::Vector{Int8}
-    @inbounds idx = infections.id_to_index[individual.id]
-    pids = Int8[]
-    while idx != 0
-        @inbounds push!(pids, infections.pathogen_id[idx])
-        @inbounds idx = infections.next_infection_index[idx]
-    end
-    return pids
-end
+@inline get_active_pathogens(ind::Individual) = ind.active_pathogens
 
 """
     infection_id(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
@@ -1395,6 +1399,9 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
     _is_inf, _is_infectious, _is_symp, _is_sev = false, false, false, false
     _is_hosp, _is_icu, _is_vent, _is_det = false, false, false, false
 
+    _active_pids = (Int8(0), Int8(0), Int8(0), Int8(0))
+    _slot = 1
+
     while curr_idx != 0
         # get infection state
         state = get_infection_state(infections, curr_idx, individual.id)
@@ -1403,6 +1410,17 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
         if 0 <= state.death <= tick
             dead!(individual, true)
             return nothing
+        end
+
+        # add active pathogens
+        _active = state.exposure <= tick < max(state.recovery, state.death)
+        if _active 
+            if _slot <= 4
+                _active_pids = Base.setindex(_active_pids, state.pathogen_id, _slot)
+                _slot += 1
+            else
+                @warn "Individual $(individual.id) exceeded maximum concurrent pathogens (4)."
+            end
         end
 
         # aggregate via logical OR
@@ -1428,6 +1446,8 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
     icu!(individual, _is_icu)
     ventilated!(individual, _is_vent)
     detected!(individual, _is_det)
+
+    individual.active_pathogens = _active_pids
     
     return nothing
 end

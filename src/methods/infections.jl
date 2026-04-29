@@ -337,10 +337,6 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     # progress disease if infected
     if infected(indiv)
         progress_disease!(indiv, sim.active_infections, tick)
-
-        if dead(indiv)
-            infected!(indiv, false)   # prevent perpetual no-op calls
-        end
         
         # if individual died in this tick, log it
         if !was_dead && dead(indiv)
@@ -495,12 +491,14 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim)
             if can_infect(ind, setting)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
 
-                pids = pathogen_ids(ind, active_infections(sim))
-                length(pids) > 1 && gems_shuffle!(current_rng, pids)
+                pids = get_active_pathogens(ind)
+                pathogen_iter = gems_rand(current_rng, Bool) ? (4:-1:1) : (1:4)
                 
                 for c in c_buffer
                     if can_be_contacted(c, setting)
-                        for pid in pids
+                        for i in pathogen_iter
+                            pid = pids[i]
+                            pid == 0 && continue
                             if is_infectious(ind, active_infections(sim), pid, current_tick)
                                 pat = get_pathogen(sim, pid)
                                 if try_to_infect!(ind, c, sim, pat, setting, infection_id(ind, active_infections(sim), id(pat)))
