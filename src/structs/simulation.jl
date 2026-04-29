@@ -241,7 +241,7 @@ mutable struct Simulation
             population,
             settings,
             pathogens,
-            ActiveInfections(population.maxid, Int32(length(population.individuals))),
+            ActiveInfections(population.maxid),
 
             # logger
             InfectionLogger(),
