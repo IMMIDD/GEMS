@@ -82,8 +82,7 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_samp
     # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
     rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
 
-    # TODO handle pathogen selection
-    # TODO handle multiple pathogens
+    pathogen = get_pathogen(simulation, condition.pathogen)
 
     # takes an input vector of AGS and a reference AGS
     # returns a bitvector indicating whether the respective
@@ -131,7 +130,7 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_samp
 
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), only(values(pathogens(simulation))), active_infections(simulation), sim = simulation, rng = rng_sample)
+        infect!(i, tick(simulation), pathogen, active_infections(simulation), sim = simulation, rng = rng_sample)
 
         for (type, id) in settings_tuple(i)
             if id != DEFAULT_SETTING_ID

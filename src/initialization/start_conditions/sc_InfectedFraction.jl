@@ -63,18 +63,17 @@ the seed is drawn from `rng(simulation)`. Otherwise, the provided `seed_sample` 
 function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
     # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
     rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
-
-    # TODO handle pathogen selection
-    # TODO handle multiple pathogens
     
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_sample = Int64(round(fraction(condition) * length(ind)))
     to_infect = gems_sample(rng_sample, ind, to_sample, replace=false)
 
+    pathogen = get_pathogen(simulation, condition.pathogen)
+
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), only(values(pathogens(simulation))), active_infections(simulation), sim = simulation, rng = rng_sample)
+        infect!(i, tick(simulation), pathogen, active_infections(simulation), sim = simulation, rng = rng_sample)
 
         for (type, id) in settings_tuple(i)
             if id != DEFAULT_SETTING_ID

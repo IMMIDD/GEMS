@@ -568,8 +568,21 @@ If neither is provided, it will return the default start condition from the conf
 function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
     # return configfile start condition if nothing else provided
     if isnothing(start_condition) && isnothing(infected_fraction)
-        !haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' section must be specified in the config file."))
-        return try 
+        sim_params = configfile_params["Simulation"]
+
+        # array-of-tables form [[Simulation.StartConditions]]
+        if haskey(sim_params, "StartConditions")
+            conditions = try
+                [create_start_condition(sc) for sc in sim_params["StartConditions"]]
+            catch e
+                throw(ConfigfileError("'[[Simulation.StartConditions]]' could not be read from config file.", e))
+            end
+            return length(conditions) == 1 ? conditions[1] : MultiStartCondition(conditions)
+        end
+
+        # single [Simulation.StartCondition]
+        !haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' or '[[Simulation.StartConditions]]' section must be specified in the config file."))
+        return try
             create_start_condition(configfile_params["Simulation"]["StartCondition"])
         catch e
             throw(ConfigfileError("'[Simulation.StartCondition]' could not be read from config file.", e))
@@ -588,7 +601,6 @@ function determine_start_condition(configfile_params::Dict, start_condition, inf
         fraction = infected_fraction,
         pathogen = ""
     )
-
 end
 
 """
@@ -1605,10 +1617,25 @@ end
 """
     get_pathogen(sim::Simulation, pid::Int8)
 
-Retrieves a specific `Pathogen` object from the simulation's registry using its unique identifier. 
+Retrieves a specific `Pathogen` object from the simulation's dict using its unique identifier. 
 """
 function get_pathogen(simulation::Simulation, pid::Int8)::Pathogen
     return simulation.pathogens[pid]
+end
+
+"""
+    get_pathogen(sim::Simulation, pid::Int8)
+
+Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name. 
+Returns the only pathogen is `pname` is empty for backwards compatibility.
+"""
+function get_pathogen(simulation::Simulation, pname::String)::Pathogen
+    if isempty(pname)
+        return only(values(pathogens(simulation))) 
+    end
+    p = findfirst(p -> p.name == pname, values(pathogens(simulation)))
+    isnothing(p) && throw(ArgumentError("Pathogen '$pname' not found in simulation."))
+    return p
 end
 
 
