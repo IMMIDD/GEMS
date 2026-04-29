@@ -37,14 +37,20 @@ mutable struct ActiveInfections
     recovery::Vector{Int16}
     death::Vector{Int16}
     
-    function ActiveInfections(n::Int32)
-        return new(
-            zeros(Int32, n),
-            Int32[], Int32[], Int8[], Int32[], Int8[],
-            Int16[], Int16[], Int16[], Int16[], Int16[], 
-            Int16[], Int16[], Int16[], Int16[], Int16[], 
-            Int16[], Int16[], Int16[]
-        )
+    function ActiveInfections(max_ind_id::Int32, population_size::Int32)
+    infections = new(
+        zeros(Int32, max_ind_id), 
+        Int32[], Int32[], Int8[], Int32[], Int8[], # Metadata
+        Int16[], Int16[], Int16[], Int16[], Int16[], 
+        Int16[], Int16[], Int16[], Int16[], Int16[], 
+        Int16[], Int16[], Int16[] # Disease History
+    )
+    
+    for field in fieldnames(ActiveInfections)[2:end]
+        sizehint!(getfield(infections, field), population_size)
+    end
+    
+    return infections
     end
 end
 
