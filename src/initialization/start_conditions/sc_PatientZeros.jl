@@ -26,7 +26,6 @@ struct PatientZeros <: StartCondition
 
     function PatientZeros(;pathogen::String = "", ags::Vector{Int64} = Int64[])
         isempty(ags) && throw(ArgumentError("At least one ags must be provided!"))
-        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in PatientZeros will have no effect."
         AGS.(ags) # try casting to AGS (will throw error if invalid)
             
         return new(pathogen, ags)

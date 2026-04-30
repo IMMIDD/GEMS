@@ -10,6 +10,7 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, pathogens!, add_pathogen!, get_pathogen
+export active_infections
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
@@ -1631,11 +1632,12 @@ Returns the only pathogen is `pname` is empty for backwards compatibility.
 """
 function get_pathogen(simulation::Simulation, pname::String)::Pathogen
     if isempty(pname)
-        return only(values(pathogens(simulation))) 
+        return only(values(pathogens(simulation)))
     end
-    p = findfirst(p -> p.name == pname, values(pathogens(simulation)))
-    isnothing(p) && throw(ArgumentError("Pathogen '$pname' not found in simulation."))
-    return p
+    for p in values(pathogens(simulation))
+        p.name == pname && return p
+    end
+    throw(ArgumentError("Pathogen '$pname' not found in simulation."))
 end
 
 

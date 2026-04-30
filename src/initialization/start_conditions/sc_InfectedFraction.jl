@@ -25,8 +25,6 @@ struct InfectedFraction <: StartCondition
         fraction < 0.0 && throw(ArgumentError("Fraction must be greater than or equal to 0!"))
         fraction > 1.0 && throw(ArgumentError("Fraction must be less than or equal to 1!"))
         
-        # TODO remove this warning when multi-pathogen simulations are supported
-        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in InfectedFraction will have no effect."
         return new(fraction, pathogen)
     end
 end

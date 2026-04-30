@@ -20,9 +20,6 @@ struct PatientZero <: StartCondition
     pathogen::String
 
     function PatientZero(;pathogen::String = "") 
-        
-        # TODO remove this warning when multi-pathogen simulations are supported
-        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in PatientZero will have no effect."
         return new(pathogen)
     end
 end
