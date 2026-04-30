@@ -98,6 +98,10 @@ const QUARANTINE_STATE_NO_QUARANTINE = Int8(0)
 const QUARANTINE_STATE_HOUSEHOLD_QUARANTINE = Int8(1)
 const QUARANTINE_STATE_HOSPITAL = Int8(2)
 
+# Maximum number of concurrent infections an individual can carry.
+const MAX_CONCURRENT_INFECTIONS = 4
+
+
 
 ##########################
 # VISUALIZATION DEFAULTS #
