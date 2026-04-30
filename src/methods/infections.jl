@@ -494,13 +494,13 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim)
                 pids = get_active_pathogens(ind)
                 pathogen_iter = gems_rand(current_rng, Bool) ? (4:-1:1) : (1:4)
                 
-                for c in c_buffer
-                    if can_be_contacted(c, setting)
-                        for i in pathogen_iter
-                            pid = pids[i]
-                            pid == 0 && continue
-                            if is_infectious(ind, active_infections(sim), pid, current_tick)
-                                pat = get_pathogen(sim, pid)
+                for i in pathogen_iter
+                    pid = pids[i]
+                    pid == 0 && continue
+                    if is_infectious(ind, active_infections(sim), pid, current_tick)
+                        pat = get_pathogen(sim, pid)
+                        for c in c_buffer
+                            if can_be_contacted(c, setting)
                                 if try_to_infect!(ind, c, sim, pat, setting, infection_id(ind, active_infections(sim), id(pat)))
                                     for (type, id) in settings_tuple(c)
                                         if id != DEFAULT_SETTING_ID
