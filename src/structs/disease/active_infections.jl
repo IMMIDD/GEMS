@@ -91,7 +91,7 @@ end
 Returns the lookup-table slot and the row index for the given`(host_id, pathogen_id)` pair, 
 or `(0, 0)` if the host has no record for this pathogen.
 """
-@inline function _find_slot_and_row(infections::ActiveInfections, host_id::Integer, pathogen_id::Int8)
+@inline function _find_slot_and_row(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
         row_idx = infections.slot_to_row[s, host_id]
         row_idx == 0 && continue
@@ -107,7 +107,7 @@ end
 
 First slot index in `slot_to_row[:, host_id]` whose entry is 0, or 0 if all `MAX_CONCURRENT_INFECTIONS` slots are occupied.
 """
-@inline function _find_empty_slot(infections::ActiveInfections, host_id::Integer)
+@inline function _find_empty_slot(infections::ActiveInfections, host_id::Int32)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
         if infections.slot_to_row[s, host_id] == 0
             return s
@@ -196,7 +196,7 @@ end
 
 Internal swap-and-pop removal. The row currently at `row_idx` is removed by moving the last row of `rows` into its place (if it isn't already last) and popping. 
 """
-@inline function _remove_at_slot!(infections::ActiveInfections, host_id::Integer, slot::Integer, row_idx::Integer)
+@inline function _remove_at_slot!(infections::ActiveInfections, host_id::Int32, slot::Int32, row_idx::Int32)
     last_idx = length(infections.rows)
 
     if row_idx != last_idx
@@ -224,17 +224,17 @@ end
 
 Return the row index in `infections.rows` for the given `(host_id, pathogen_id)`, or `0` if no such record exists.
 """
-@inline function find_infection_index(infections::ActiveInfections, host_id::Integer, pathogen_id::Int8)::Int
+@inline function find_infection_index(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8)::Int
     _, idx = _find_slot_and_row(infections, host_id, pathogen_id)
     return idx
 end
 
 """
-    get_infection_state(infections::ActiveInfections, idx::Integer, host_id::Int32)::InfectionState
+    get_infection_state(infections::ActiveInfections, idx::Int32, host_id::Int32)::InfectionState
 
 Build an `InfectionState` from a known row index. `idx == 0` returns the empty (uninfected) state.
 """
-function get_infection_state(infections::ActiveInfections, idx::Integer, host_id::Int32)::InfectionState
+function get_infection_state(infections::ActiveInfections, idx::Int32, host_id::Int32)::InfectionState
     idx == 0 && return _empty_state(host_id)
     @inbounds return _row_to_state(infections.rows[idx])
 end
