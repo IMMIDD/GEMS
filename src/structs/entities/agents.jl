@@ -16,7 +16,7 @@ export is_working, is_student, has_municipality
 # health status
 export comorbidities, has_comorbidity
 export is_infected, isinfected, infected, infected!
-export is_infectious, isinfectious, infectious, infectious!
+export is_infectious, isinfectious, infectious
 export is_exposed, isexposed, exposed
 export is_presymptomatic, ispresymptomatic, presymptomatic
 export is_symptomatic, issymptomatic, symptomatic, symptomatic!
@@ -44,7 +44,7 @@ export hospital_discharge, hospital_discharge!
 export recovery, recovery!
 export death, death!
 export get_active_pathogens, infection_id, infection_id!
-export infectiousness, infectiousness!
+export infectiousness
 export number_of_infections
 export inc_number_of_infections!
 # testing
@@ -95,7 +95,6 @@ A type to represent individuals, that act as agents inside the simulation.
     - `comorbidities::UInt16`: Indicating prevalence of certain health conditions.
     - `dead::Bool`: Flag indicating individual's decease
     - `infected::Bool`: Flag indicating individual's infection status
-    - `infectious::Bool`: Flag indicating individual is infectious
     - `symptomatic::Bool`: Flag indicating individual is showing symptoms
     - `severe::Bool`: Flag indicating individual is experiencing severe symptoms
     - `hospitalized::Bool`: Flag indicating individual is in the hospital
@@ -111,6 +110,9 @@ A type to represent individuals, that act as agents inside the simulation.
 
 - Pathogen Memory
     - `number_of_infections::Int8`: Lifetime infection count
+    - `active_pathogens::NTuple{N, Int8}`: pathogen id occupying slot `s`
+    - `infectiousness::NTuple{N, Int8}`: current shedding level for that pathogen 
+    - `infection_ids::NTuple{N, Int32}`: `infection_id` of the active infection in slot `s` 
 
 - Testing
     - `last_test::Int16`: Tick of last test for pathogen
@@ -143,7 +145,6 @@ A type to represent individuals, that act as agents inside the simulation.
     # HEALTH STATUS
     comorbidities::UInt16 = 0 # 2 bytes
     infected::Bool = false # 1 byte
-    infectious::Bool = false # 1 byte
     symptomatic::Bool = false # 1 byte
     severe::Bool = false # 1 byte
     hospitalized::Bool = false # 1 byte
@@ -161,6 +162,8 @@ A type to represent individuals, that act as agents inside the simulation.
     # PATHOGEN MEMORY
     number_of_infections::Int8 = 0 # 1 byte
     active_pathogens::NTuple{MAX_CONCURRENT_INFECTIONS, Int8} = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+    infectiousness::NTuple{MAX_CONCURRENT_INFECTIONS, Int8} = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+    infection_ids::NTuple{MAX_CONCURRENT_INFECTIONS, Int32} = ntuple(_ -> DEFAULT_INFECTION_ID, MAX_CONCURRENT_INFECTIONS)
     
     # TESTING
     last_test::Int16 = DEFAULT_TICK # 2 bytes
@@ -465,9 +468,14 @@ infected!(individual::Individual, infected::Bool) = (individual.infected = infec
     isinfectious(individual::Individual)
     infectious(individual::Individual)
 
-Returns the `infectious` flag of the individual.
+Returns `true` iff the individual currently has nonzero shedding for at least one of their active pathogens.
 """
-is_infectious(individual::Individual) = individual.infectious
+@inline function is_infectious(individual::Individual)::Bool
+    @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
+        individual.infectiousness[s] != 0 && return true
+    end
+    return false
+end
 isinfectious(individual::Individual) = is_infectious(individual)
 infectious(individual::Individual) = is_infectious(individual)
 
@@ -483,12 +491,6 @@ is_exposed(individual::Individual) = is_infected(individual) && !is_infectious(i
 isexposed(individual::Individual) = is_exposed(individual)
 exposed(individual::Individual) = is_exposed(individual)
 
-"""
-    infectious!(individual::Individual, infectious::Bool)
-
-Sets the `infectious` flag of the individual.
-"""
-infectious!(individual::Individual, infectious::Bool) = (individual.infectious = infectious)
 
 
 """
@@ -601,7 +603,6 @@ function dead!(individual::Individual, dead::Bool)
     individual.dead = dead
     if dead 
         infected!(individual, false)
-        individual.infectious = false
         individual.symptomatic = false
         individual.severe = false
         individual.hospitalized = false
@@ -609,6 +610,8 @@ function dead!(individual::Individual, dead::Bool)
         individual.ventilated = false
         individual.detected = false
         individual.active_pathogens = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+        individual.infectiousness = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+        individual.infection_ids = ntuple(_ -> DEFAULT_INFECTION_ID, MAX_CONCURRENT_INFECTIONS)
     end
 end
 
@@ -662,34 +665,37 @@ Returns an individual's active pathogens.
 @inline get_active_pathogens(ind::Individual) = ind.active_pathogens
 
 """
-    infection_id(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    infection_id(individual::Individual, pathogen_id::Int8)::Int32
 
-Returns an individual's infection_id for the given pathogen.
+Returns the `infection_id` of the individual's currently active infection
+with `pathogen_id`, or `DEFAULT_INFECTION_ID` if no such infection exists.
 """
-function infection_id(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)::Int32
-    idx = get_infection_index(individual, infections, pathogen_id)
-    @inbounds return infections.rows[idx].infection_id
+@inline function infection_id(individual::Individual, pathogen_id::Int8)::Int32
+    @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
+        if individual.active_pathogens[s] == pathogen_id
+            return individual.infection_ids[s]
+        end
+    end
+    return DEFAULT_INFECTION_ID
 end
 
 """
-    infectiousness(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)
+    infectiousness(individual::Individual, pathogen_id::Int8)::Int8
 
-Returns an individual's infectiousness for the given pathogen.
+Returns the individual's current infectiousness for the given pathogen
+(`Int8`, 0–127). Returns `0` if the individual is not currently infected
+with that pathogen, or is in the exposed-but-not-yet-infectious window,
+or has recovered.
 """
-function infectiousness(individual::Individual, infections::ActiveInfections, pathogen_id::Int8)::Int8
-    idx = get_infection_index(individual, infections, pathogen_id)
-    @inbounds return infections.rows[idx].infectiousness
+@inline function infectiousness(individual::Individual, pathogen_id::Int8)::Int8
+    @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
+        if individual.active_pathogens[s] == pathogen_id
+            return individual.infectiousness[s]
+        end
+    end
+    return Int8(0)
 end
 
-"""
-    infectiousness!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, infectiousness)
-
-Assigns a specified infectiousness (0-127) to an individual for the given pathogen.
-"""
-function infectiousness!(individual::Individual, infections::ActiveInfections, pathogen_id::Int8, infectiousness)
-    idx = get_infection_index(individual, infections, pathogen_id)
-    @inbounds infections.rows[idx] = _setrow(infections.rows[idx], Val(:infectiousness), Int8(infectiousness))
-end
 
 ### NATURAL DISEASE HISTORY ###
 
@@ -1540,20 +1546,30 @@ end
 ### UPDATE DISEASE PROGRESSION IN AGENTS ###
 
 """
-    progress_disease!(individual::Individual, infections::ActiveInfections, tick::Int16)
+    progress_disease!(individual::Individual, infections::ActiveInfections, pathogens::Dict{Int8, Pathogen}, tick::Int16)
 
-Updates the proxy disease progression status flags of the individual at the given tick 
-by reading from the global ActiveInfections.
+Updates the proxy disease progression status flags of the individual at the
+given tick by reading from the global `ActiveInfections`. Also populates the
+three per-slot tuples on the individual (`active_pathogens`, `infectiousness`,
+`infection_ids`) so that the spread/transmission phase later in the same tick
+can read everything it needs directly from the individual — no row lookups
+required.
+
+`pathogens` is the simulation's pathogen registry; each active slot's
+`InfectionState` is fed through that pathogen's `InfectiousnessProfile`
+to compute the cached infectiousness level.
 """
-function progress_disease!(individual::Individual, infections::ActiveInfections, tick::Int16)
+function progress_disease!(individual::Individual, infections::ActiveInfections, pathogens::Dict{Int8, Pathogen}, tick::Int16)
     if individual.dead
         return nothing
     end
 
-    _is_inf, _is_infectious, _is_symp, _is_sev = false, false, false, false
+    _is_inf, _is_symp, _is_sev = false, false, false
     _is_hosp, _is_icu, _is_vent, _is_det = false, false, false, false
 
     _active_pids = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+    _infectiousness = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+    _infection_ids = ntuple(_ -> DEFAULT_INFECTION_ID, MAX_CONCURRENT_INFECTIONS)
     _slot = 1
 
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
@@ -1569,16 +1585,19 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
             return nothing
         end
 
-        # add active pathogens
+        # add active pathogens + infectiousness + infection_id
         _active = state.exposure <= tick < max(state.recovery, state.death)
         if _active
+            profile = infectiousness_profile(pathogens[state.pathogen_id])
+            level = infectiousness(profile, state, tick)
             _active_pids = Base.setindex(_active_pids, state.pathogen_id, _slot)
+            _infectiousness = Base.setindex(_infectiousness, level, _slot)
+            _infection_ids = Base.setindex(_infection_ids, state.infection_id, _slot)
             _slot += 1
         end
 
         # aggregate via logical OR
         _is_inf |= state.exposure <= tick < max(state.recovery, state.death)
-        _is_infectious |= state.infectiousness_onset <= tick < max(state.recovery, state.death)
         _is_symp |= 0 <= state.symptom_onset <= tick < max(state.recovery, state.death)
         _is_sev |= 0 <= state.severeness_onset <= tick < state.severeness_offset
         _is_hosp |= 0 <= state.hospital_admission <= tick < state.hospital_discharge
@@ -1590,7 +1609,6 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
 
     # update individual's health status
     infected!(individual, _is_inf)
-    infectious!(individual, _is_infectious)
     symptomatic!(individual, _is_symp)
     severe!(individual, _is_sev)
     hospitalized!(individual, _is_hosp)
@@ -1599,7 +1617,9 @@ function progress_disease!(individual::Individual, infections::ActiveInfections,
     detected!(individual, _is_det)
 
     individual.active_pathogens = _active_pids
-    
+    individual.infectiousness = _infectiousness
+    individual.infection_ids = _infection_ids
+
     return nothing
 end
 
@@ -1614,7 +1634,6 @@ The individual will get back into a infections where it was never infected, vacc
 function reset!(individual::Individual, infections::ActiveInfections)
     # health status proxy booleans
     individual.infected = false
-    individual.infectious = false
     individual.symptomatic = false
     individual.severe = false
     individual.hospitalized = false
@@ -1622,7 +1641,12 @@ function reset!(individual::Individual, infections::ActiveInfections)
     individual.ventilated = false
     individual.dead = false
     individual.detected = false
-    
+
+    # per-slot pathogen state
+    individual.active_pathogens = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+    individual.infectiousness = ntuple(_ -> Int8(0), MAX_CONCURRENT_INFECTIONS)
+    individual.infection_ids = ntuple(_ -> DEFAULT_INFECTION_ID, MAX_CONCURRENT_INFECTIONS)
+
     # infections status
     individual.number_of_infections = 0    
  
@@ -1665,7 +1689,6 @@ function Base.show(io::IO, individual::Individual)
         "Mandate Compliance" => individual.mandate_compliance,
         
         "Is Infected" => individual.infected,
-        "Is Infectious" => individual.infectious,
         "Is Symptomatic" => individual.symptomatic,
         "Is Severe" => individual.severe,
         "Is Hospitalized" => individual.hospitalized,

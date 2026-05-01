@@ -55,7 +55,7 @@ module GEMS
 
     include("pathogen/pathogen_components.jl")
     include("initialization/startconditions.jl")
-     include("termination/stopcriteria.jl")
+    include("termination/stopcriteria.jl")
     include("interventions/interventions.jl")
     
     include("model_analysis/post_processing.jl")

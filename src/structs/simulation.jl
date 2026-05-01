@@ -1060,6 +1060,23 @@ function create_transmission_function(params::Dict)
 end
 
 """
+    create_infectiousness_profile(params::Dict)
+
+Creates an infectiousness profile based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the infectiousness profile
+and a `parameters` key with a list of parameters for the infectiousness profile constructor.
+"""
+function create_infectiousness_profile(params::Dict)
+    ip_type = GEMS.get_subtype(params["type"], InfectiousnessProfile)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return try
+        ip_type(;kw_args...)
+    catch e
+        throw("InfectiousnessProfile of type '$ip_type' could not be created. $(sprint(showerror, e))")
+    end
+end
+
+"""
     create_pathogen(params::Dict, name, id)
 
 Creates a pathogen based on the provided parameters.
@@ -1089,12 +1106,22 @@ function create_pathogen(params::Dict, name, id)
         throw(ConfigfileError("transmission function for pathogen '$name' could not be created from config file.", e))
     end
 
+    # create infectiousness profile
+    ip = haskey(params, "infectiousness_profile") ?
+        try
+            create_infectiousness_profile(params["infectiousness_profile"])
+        catch e
+            throw(ConfigfileError("infectiousness_profile for pathogen '$name' could not be created from config file.", e))
+        end :
+        ConstantInfectiousness()
+
     return Pathogen(
         id = id,
         name = name,
         progressions = progressions,
         progression_assignment = pa,
-        transmission_function = tf
+        transmission_function = tf,
+        infectiousness_profile = ip
     )
 end
 

@@ -52,7 +52,7 @@ end
 
 
 """
-    transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, infecter_state::InfectionState, infectee_state::InfectionState, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+    transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
 
 Calculates the transmission probability based on the age of the infected using age-dependent transmission rates.
 
@@ -60,10 +60,9 @@ Calculates the transmission probability based on the age of the infected using a
 # Parameters
 
 - `transFunc::AgeDependentTransmissionRate`: Transmission function struct
+- `pathogen_id::Int8`: ID of the current pathogen
 - `infecter::Individual`: Infecting individual
 - `infectee::Individual`: Individual to infect
-- `infecter_state::InfectionState`: Disease Progression State of the Infecting Individual
-- `infectee_state::InfectionState`: Disease Progression State of the Infected Individual
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
 - `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
@@ -72,14 +71,10 @@ Calculates the transmission probability based on the age of the infected using a
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
-function transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, infecter_state::InfectionState, infectee_state::InfectionState, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+function transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # error handling
-    !infecter_state.active && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
-    
-    if  -1 < infectee_state.recovery <= tick # if the agent has already recovered (natural immunity)
-        return 0.0
-    end
-    
+    infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+
     for (i, ag) in enumerate(transFunc.age_groups)
         if in_group(infectee.age, ag)
             return transFunc.age_transmission_rates[i]
@@ -90,5 +85,5 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, infec
 end
 
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::AgeDependentTransmissionRate, infecter::Individual, infectee::Individual, infecter_state::InfectionState, infectee_state::InfectionState, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infectee, infecter_state, infectee_state, setting, tick, default_gems_rng())
+transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16) = 
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, default_gems_rng())

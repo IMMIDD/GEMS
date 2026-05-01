@@ -10,7 +10,6 @@ struct InfectionRow
     host_id::Int32
     pathogen_id::Int8
     infection_id::Int32
-    infectiousness::Int8
 
     # Natural disease history
     exposure::Int16
@@ -53,7 +52,6 @@ struct InfectionState
     host_id::Int32
     pathogen_id::Int8
     infection_id::Int32
-    infectiousness::Int8
     exposure::Int16
     infectiousness_onset::Int16
     symptom_onset::Int16
@@ -126,7 +124,6 @@ Build a new `InfectionRow` from the pending-infection inputs.
         host_id,
         pathogen_id,
         infection_id,
-        Int8(0),                     
         exposure(dp),
         infectiousness_onset(dp),
         symptom_onset(dp),
@@ -154,7 +151,6 @@ Convert a stored row into the public snapshot type. `active` is true because row
         row.host_id,
         row.pathogen_id,
         row.infection_id,
-        row.infectiousness,
         row.exposure,
         row.infectiousness_onset,
         row.symptom_onset,
@@ -173,7 +169,7 @@ end
 
 @inline function _empty_state(host_id::Int32)::InfectionState
     return InfectionState(
-        false, host_id, Int8(0), Int32(0), Int8(0),
+        false, host_id, Int8(0), Int32(0),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1),

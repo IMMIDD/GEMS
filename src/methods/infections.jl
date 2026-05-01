@@ -46,7 +46,6 @@ end
     infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen,
-        infections::ActiveInfections,
         sim::Union{Simulation, Nothing},
         rng::Xoshiro,
         infecter_id::Int32,
@@ -67,7 +66,6 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 - `infectee::Individual`: Individual to infect
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
-- `infections::ActiveInfections`: DiseaseProgression of all active Infections
 - `sim::Union{Simulation, Nothing}` = Simulation object (used to get logger)
 - `rng::Xoshiro`: RNG to use for stochastic parts
 - `infecter_id::Int32`: Infecting individual
@@ -86,7 +84,6 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 function infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen,
-        infections::ActiveInfections,
         sim::Union{Simulation, Nothing},
         rng::Xoshiro,
         infecter_id::Int32,
@@ -148,7 +145,6 @@ end
     infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen;
-        infections::ActiveInfections,
         sim::Union{Simulation, Nothing} = nothing,
         rng::Xoshiro = default_gems_rng(),
         infecter_id::Int32 = Int32(-1),
@@ -166,7 +162,6 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 - `infectee::Individual`: Individual to infect
 - `tick::Int16`: Infection tick
 - `pathogen::Pathogen`: Pathogen to infect the individual with
-- `infections::ActiveInfections`: DiseaseProgression of all active Infections
 - `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
 - `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG to use for stochastic parts
 - `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
@@ -185,8 +180,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 
 function infect!(infectee::Individual,
         tick::Int16,
-        pathogen::Pathogen,
-        infections::ActiveInfections;
+        pathogen::Pathogen;
         # optional keyword arguments (mainly needed for logging)
         sim::Union{Simulation, Nothing} = nothing,
         rng::Xoshiro = default_gems_rng(),
@@ -198,7 +192,7 @@ function infect!(infectee::Individual,
         ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID)
 
-        infect!(infectee, tick, pathogen, infections, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
+        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
 end
 """
     infect!(infectee::Individual, sim::Simulation)
@@ -207,7 +201,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 Mainly a convenience wrapper around `infect!` with less parameters.
 Used for example in test cases.
 """
-infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), pathogen(sim), active_infections(sim); sim = sim, rng = rng(sim))
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), only(values(pathogens(sim))); sim = sim, rng = rng(sim))
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,
@@ -249,18 +243,23 @@ function try_to_infect!(infctr::Individual,
         return false
     end
     
-    # if infectee is already infected
-    if infected(infctd)
+    # if infectee is already infected with the current pathogen
+    if any(==(id(pathogen)), infctd.active_pathogens)
+        return false
+    end
+
+    # TODO rework Immunity
+    # if infectee has already recovered from this pathogen (natural immunity)
+    infectee_recovery = recovery(infctd, active_infections(sim), id(pathogen))
+    if -1 < infectee_recovery <= tick(sim)
         return false
     end
 
     # calculate infection probability
-    infecter_state = get_infection_state(infctr.id, sim.active_infections, pathogen.id)
-    infectee_state = infctd.number_of_infections == 0 ? _empty_state(infctd.id) : get_infection_state(infctd.id, sim.active_infections, pathogen.id)
     infection_probability = transmission_probability(
         pathogen |> transmission_function, 
+        pathogen |> id,
         infctr, infctd, 
-        infecter_state, infectee_state,
         setting, sim |> tick, rng(sim)
     )
 
@@ -270,7 +269,6 @@ function try_to_infect!(infctr::Individual,
         infect!(infctd, 
             tick(sim), 
             pathogen,
-            active_infections(sim),
             sim,
             rng(sim),
             id(infctr),
@@ -336,7 +334,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
     # progress disease if infected
     if infected(indiv)
-        progress_disease!(indiv, sim.active_infections, tick)
+        progress_disease!(indiv, sim.active_infections, pathogens(sim), tick)
         
         # if individual died in this tick, log it
         if !was_dead && dead(indiv)
@@ -483,7 +481,7 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
-    
+
     for ind_index in 1:length(p_buffer)
         ind = p_buffer[ind_index]
         if infected(ind)
@@ -491,22 +489,27 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim)
             if can_infect(ind, setting)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
 
-                pids = get_active_pathogens(ind)
+                pids = ind.active_pathogens
+                inflev = ind.infectiousness
+                infids = ind.infection_ids
                 pathogen_iter = gems_rand(current_rng, Bool) ? (4:-1:1) : (1:4)
-                
+
                 for i in pathogen_iter
                     pid = pids[i]
                     pid == 0 && continue
-                    if is_infectious(ind, active_infections(sim), pid, current_tick)
-                        pat = get_pathogen(sim, pid)
-                        for c in c_buffer
-                            if can_be_contacted(c, setting)
-                                if try_to_infect!(ind, c, sim, pat, setting, infection_id(ind, active_infections(sim), id(pat)))
-                                    for (type, id) in settings_tuple(c)
-                                        if id != DEFAULT_SETTING_ID
-                                            current_setting = settings(sim, type)[id]
-                                            activate!(current_setting, sim)
-                                        end
+                    level = inflev[i]
+                    level == 0 && continue 
+
+                    pat = get_pathogen(sim, pid)
+                    src_inf_id = infids[i]
+
+                    for c in c_buffer
+                        if can_be_contacted(c, setting)
+                            if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
+                                for (type, sid) in settings_tuple(c)
+                                    if sid != DEFAULT_SETTING_ID
+                                        current_setting = settings(sim, type)[sid]
+                                        activate!(current_setting, sim)
                                     end
                                 end
                             end
@@ -516,6 +519,6 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim)
             end
         end
     end
-    
+
     return num_infected
 end

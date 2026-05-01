@@ -5,16 +5,19 @@ export Pathogen
 export ProgressionCategory
 export ProgressionAssignmentFunction
 export TransmissionFunction
+export InfectiousnessProfile
 
 export id, name
 export progressions, progression, progression_assignment, transmission_function
 export transmission_function!
+export infectiousness_profile, infectiousness_profile!
 
 
 # Abstract types for disease progression categories and progression assignment functions
 abstract type ProgressionCategory end
 abstract type ProgressionAssignmentFunction end
 abstract type TransmissionFunction end
+abstract type InfectiousnessProfile end
 
 """
     Pathogen <: Parameter
@@ -75,13 +78,17 @@ mutable struct Pathogen <: Parameter
     # Function for the transmission Probability
     transmission_function::TransmissionFunction
 
+    # per-stage infectiousness levels
+    infectiousness_profile::InfectiousnessProfile
+
     # default constructor
     function Pathogen(;
         id::Int64 = -1,  # id is set later
         name::String = "",
         progressions::Vector{<:ProgressionCategory} = ProgressionCategory[],
         progression_assignment::Union{ProgressionAssignmentFunction, Nothing} = nothing,
-        transmission_function::Union{TransmissionFunction, Nothing} = nothing
+        transmission_function::Union{TransmissionFunction, Nothing} = nothing,
+        infectiousness_profile::InfectiousnessProfile = ConstantInfectiousness()
     )
 
         # exception handling
@@ -119,7 +126,8 @@ mutable struct Pathogen <: Parameter
             name,
             prg,
             progression_assignment,
-            transmission_function
+            transmission_function,
+            infectiousness_profile
         )
     end
 
@@ -138,8 +146,10 @@ progressions(p::Pathogen) = p.progressions
 progression(p::Pathogen, dp_type::DataType) = p.progressions[dp_type]
 progression_assignment(p::Pathogen) = p.progression_assignment
 transmission_function(p::Pathogen) = p.transmission_function
+infectiousness_profile(p::Pathogen) = p.infectiousness_profile
 
 transmission_function!(p::Pathogen, tf::TransmissionFunction) = p.transmission_function = tf
+infectiousness_profile!(p::Pathogen, ip::InfectiousnessProfile) = p.infectiousness_profile = ip
 
 
 function Base.show(io::IO, p::Pathogen)
@@ -158,5 +168,6 @@ function Base.show(io::IO, p::Pathogen)
     end
     res *= "\u2514 Progression Assignment: $(p.progression_assignment)\n"
     res *= "\u2514 Transmission Function: $(p.transmission_function)\n"
+    res *= "\u2514 Infectiousness Profile: $(p.infectiousness_profile)\n"
     print(io, res)
 end
