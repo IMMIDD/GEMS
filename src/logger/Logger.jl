@@ -303,16 +303,19 @@ Base.length(logger::VaccinationLogger) = sum(length, logger.tick)
 @with_kw mutable struct DeathLogger <: EventLogger 
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
 end
 
 function log!(
         deathlogger::DeathLogger,
         id::Int32,
+        pathogen_id::Int8,
         tick::Int16,
     )
     tid = Threads.threadid()
     push!(deathlogger.id[tid], id)
+    push!(deathlogger.pathogen_id[tid], pathogen_id)
     push!(deathlogger.tick[tid], tick)
     Threads.atomic_xchg!(deathlogger.last_modified_tick, tick)
 end
@@ -325,13 +328,15 @@ function save_JLD2(deathlogger::DeathLogger, path::AbstractString)
     jldopen(path,"w") do file
         file["tick"] = vcat(deathlogger.tick...)
         file["id"] = vcat(deathlogger.id...)
+        file["pathogen_id"] = vcat(deathlogger.pathogen_id...)
     end
 end
 
 function dataframe(deathlogger::DeathLogger)::DataFrame
     return DataFrame(
         tick = vcat(deathlogger.tick...),
-        id = vcat(deathlogger.id...)
+        id = vcat(deathlogger.id...),
+        pathogen_id = vcat(deathlogger.pathogen_id...)
     )
 end
 

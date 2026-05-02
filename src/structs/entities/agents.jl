@@ -94,6 +94,7 @@ A type to represent individuals, that act as agents inside the simulation.
 
 - Health Status (Proxy Flags)
     - `comorbidities::UInt16`: Indicating prevalence of certain health conditions.
+    - `killing_pathogen_id::Int8`: Pathogen that killed the agent.
     - `dead::Bool`: Flag indicating individual's decease
     - `infected::Bool`: Flag indicating individual's infection status
     - `symptomatic::Bool`: Flag indicating individual is showing symptoms
@@ -144,6 +145,7 @@ A type to represent individuals, that act as agents inside the simulation.
 
     # HEALTH STATUS
     comorbidities::UInt16 = 0 # 2 bytes
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # 1 byte
     infected::Bool = false # 1 byte
     symptomatic::Bool = false # 1 byte
     severe::Bool = false # 1 byte
@@ -595,13 +597,15 @@ isdead(individual::Individual) = is_dead(individual)
 dead(individual::Individual) = is_dead(individual)
 
 """
-    dead!(individual::Individual, dead::Bool)
+    dead!(individual::Individual, pathogen_id::Int8, dead::Bool)
 
 Set the `dead` flag of the individual.
 """
-function dead!(individual::Individual, dead::Bool)
+function dead!(individual::Individual, pathogen_id::Int8, dead::Bool)
     individual.dead = dead
     if dead 
+        individual.killing_pathogen_id = pathogen_id
+
         infected!(individual, false)
         individual.symptomatic = false
         individual.severe = false
@@ -1666,7 +1670,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         end_tick = max(state.recovery, state.death)
 
         if 0 <= state.death <= tick
-            dead!(individual, true)
+            dead!(individual, state.pathogen_id, true)
             return nothing
         end
 
@@ -1736,6 +1740,9 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
 
     # infection count
     individual.number_of_infections = 0
+
+    # killing pathogen
+    individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
 
     # remove from global registries
     remove_infection!(infections, individual.id)

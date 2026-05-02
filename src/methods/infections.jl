@@ -336,7 +336,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         progress_disease!(indiv, sim.infection_registry, pathogens(sim), tick)
 
         if !was_dead && dead(indiv)
-            log!(deathlogger(sim), id(indiv), tick)
+            log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
         end
     end
 
