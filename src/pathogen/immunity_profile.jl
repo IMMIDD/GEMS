@@ -17,6 +17,10 @@ struct FullImmunity <: ImmunityProfile end
     return (has_natural || has_vaccine) ? Int8(100) : Int8(0)
 end
 
+@inline immunity_is_stable(::FullImmunity, state::ImmunityState, tick::Int16) =
+    (state.natural_acquired_tick != DEFAULT_TICK && tick >= state.natural_acquired_tick) ||
+    (state.vaccine_acquired_tick != DEFAULT_TICK && tick >= state.vaccine_acquired_tick)
+
 """
     NoImmunity <: ImmunityProfile
 
@@ -28,6 +32,8 @@ struct NoImmunity <: ImmunityProfile end
 @inline function calculate_immunity(::NoImmunity, ::ImmunityState, ::Int16)::Int8
     return Int8(0)
 end
+
+@inline immunity_is_stable(::NoImmunity, ::ImmunityState, ::Int16) = true
 
 """
     ExponentialWaning <: ImmunityProfile
@@ -67,4 +73,11 @@ end
     vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ?
         _waning_level(p, state.vaccine_acquired_tick, tick) : Int8(0)
     return max(nat_level, vac_level)
+end
+
+@inline function immunity_is_stable(p::ExponentialWaning, state::ImmunityState, tick::Int16)
+    nat_pending = state.natural_acquired_tick != DEFAULT_TICK && tick < state.natural_acquired_tick
+    vac_pending = state.vaccine_acquired_tick != DEFAULT_TICK && tick < state.vaccine_acquired_tick
+    (nat_pending || vac_pending) && return false
+    return calculate_immunity(p, state, tick) <= p.floor
 end

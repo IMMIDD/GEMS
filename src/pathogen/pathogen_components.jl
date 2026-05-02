@@ -4,6 +4,7 @@ export progression_categories
 export progression_assignments
 export infectiousness
 export calculate_immunity
+export immunity_is_stable
 
 # the main defintion of pathogens is in src/structs/parameters/pathogens.jl
 
@@ -126,6 +127,15 @@ function calculate_immunity(profile::ImmunityProfile, ::ImmunityState, ::Int16):
     return Int8(0)
 end
 
+"""
+    immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, tick::Int16)::Bool
+
+Returns `true` if the immunity level produced by `profile` for the given `state` at `tick`
+is guaranteed not to change in any future tick, allowing the per-individual immunity cache
+to skip recomputation. Falls back to `false` for any profile that does not provide a
+concrete method, which is always safe.
+"""
+immunity_is_stable(::ImmunityProfile, ::ImmunityState, ::Int16)::Bool = false
 
 
 """

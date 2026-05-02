@@ -168,7 +168,7 @@ A type to represent individuals, that act as agents inside the simulation.
     # IMMUNITY MEMORY
     immune_pathogens::NTuple{MAX_TRACKED_IMMUNITIES, Int8} = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     immunity_level ::NTuple{MAX_TRACKED_IMMUNITIES, Int8} = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
-    immunity_cache_tick::Int16 = DEFAULT_TICK
+    needs_immunity_update::Bool = false
     
     # TESTING
     last_test::Int16 = DEFAULT_TICK # 2 bytes
@@ -1513,7 +1513,7 @@ function vaccinate!(individual::Individual, vaccine::Vaccine, tick::Int16, regis
         tick,
         id(vaccine),
     )
-    individual.immunity_cache_tick = DEFAULT_TICK
+    individual.needs_immunity_update = true
 end
 
 """
@@ -1586,6 +1586,7 @@ function update_immunity!(
     _immune_levels = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     _cache_slot = 1
     _processed = UInt8(0)
+    _all_stable    = true
 
     @inbounds for s in 1:MAX_TRACKED_IMMUNITIES
         (_processed >> (s - 1)) & UInt8(1) == UInt8(1) && continue
@@ -1608,6 +1609,8 @@ function update_immunity!(
         state = get_immunity_state(registry, individual.id, pid)
         profile = immunity_profile(pathogens[pid])
         level = _calculate_immunity(profile, state, tick)
+        _all_stable &= immunity_is_stable(profile, state, tick)
+
         level == Int8(0) && continue
 
         _immune_pids = Base.setindex(_immune_pids, pid, _cache_slot)
@@ -1617,6 +1620,11 @@ function update_immunity!(
 
     individual.immune_pathogens = _immune_pids
     individual.immunity_level = _immune_levels
+
+    if _all_stable
+        individual.needs_immunity_update = false
+    end
+
     return nothing
 end
 
@@ -1724,7 +1732,7 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     # immunity cache
     individual.immune_pathogens = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     individual.immunity_level = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
-    individual.immunity_cache_tick = DEFAULT_TICK
+    individual.needs_immunity_update = false
 
     # infection count
     individual.number_of_infections = 0
