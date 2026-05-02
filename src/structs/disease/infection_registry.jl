@@ -1,4 +1,4 @@
-export ActiveInfections, InfectionRow, InfectionState, PendingInfection
+export InfectionRegistry, InfectionRow, InfectionState, PendingInfection
 export get_infection_state, push_infection!, remove_infection!, find_infection_index
 
 """
@@ -28,15 +28,15 @@ struct InfectionRow
 end
 
 """
-    ActiveInfections
+    InfectionRegistry
 
 Two-level storage for all active infections in the simulation.
 """
-mutable struct ActiveInfections
+mutable struct InfectionRegistry
     rows::Vector{InfectionRow}
     slot_to_row::Matrix{Int32} 
 
-    function ActiveInfections(n::Int32)
+    function InfectionRegistry(n::Int32)
         return new(InfectionRow[], zeros(Int32, MAX_CONCURRENT_INFECTIONS, n))
     end
 end
@@ -71,7 +71,7 @@ end
     PendingInfection
 
 Per-thread transfer struct staged in `infection_buffers` during the threaded
-contact phase, then drained into `ActiveInfections` by `flush_pending_infections!`.
+contact phase, then drained into `InfectionRegistry` by `flush_pending_infections!`.
 """
 struct PendingInfection
     host_id::Int32
@@ -89,7 +89,7 @@ end
 Returns the lookup-table slot and the row index for the given`(host_id, pathogen_id)` pair, 
 or `(0, 0)` if the host has no record for this pathogen.
 """
-@inline function _find_slot_and_row(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8)
+@inline function _find_slot_and_row(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
         row_idx = infections.slot_to_row[s, host_id]
         row_idx == 0 && continue
@@ -105,7 +105,7 @@ end
 
 First slot index in `slot_to_row[:, host_id]` whose entry is 0, or 0 if all `MAX_CONCURRENT_INFECTIONS` slots are occupied.
 """
-@inline function _find_empty_slot(infections::ActiveInfections, host_id::Int32)
+@inline function _find_empty_slot(infections::InfectionRegistry, host_id::Int32)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
         if infections.slot_to_row[s, host_id] == 0
             return s
@@ -192,7 +192,7 @@ end
 
 Internal swap-and-pop removal. The row currently at `row_idx` is removed by moving the last row of `rows` into its place (if it isn't already last) and popping. 
 """
-@inline function _remove_at_slot!(infections::ActiveInfections, host_id::Int32, slot::Int32, row_idx::Int32)
+@inline function _remove_at_slot!(infections::InfectionRegistry, host_id::Int32, slot::Int32, row_idx::Int32)
     last_idx = length(infections.rows)
 
     if row_idx != last_idx
@@ -216,31 +216,31 @@ end
 
 
 """
-    find_infection_index(infections::ActiveInfections, host_id, pathogen_id)::Int
+    find_infection_index(infections::InfectionRegistry, host_id, pathogen_id)::Int
 
 Return the row index in `infections.rows` for the given `(host_id, pathogen_id)`, or `0` if no such record exists.
 """
-@inline function find_infection_index(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8)::Int
+@inline function find_infection_index(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8)::Int
     _, idx = _find_slot_and_row(infections, host_id, pathogen_id)
     return idx
 end
 
 """
-    get_infection_state(infections::ActiveInfections, idx::Int32, host_id::Int32)::InfectionState
+    get_infection_state(infections::InfectionRegistry, idx::Int32, host_id::Int32)::InfectionState
 
 Build an `InfectionState` from a known row index. `idx == 0` returns the empty (uninfected) state.
 """
-function get_infection_state(infections::ActiveInfections, idx::Int32, host_id::Int32)::InfectionState
+function get_infection_state(infections::InfectionRegistry, idx::Int32, host_id::Int32)::InfectionState
     idx == 0 && return _empty_state(host_id)
     @inbounds return _row_to_state(infections.rows[idx])
 end
 
 """
-    get_infection_state(host_id::Int32, infections::ActiveInfections, pathogen_id::Int8)::InfectionState
+    get_infection_state(host_id::Int32, infections::InfectionRegistry, pathogen_id::Int8)::InfectionState
 
 Look up `InfectionState` for `(host_id, pathogen_id)`. Returns the empty state if the host has no record for that pathogen.
 """
-function get_infection_state(host_id::Int32, infections::ActiveInfections, pathogen_id::Int8)::InfectionState
+function get_infection_state(host_id::Int32, infections::InfectionRegistry, pathogen_id::Int8)::InfectionState
     idx = find_infection_index(infections, host_id, pathogen_id)
     idx == 0 && return _empty_state(host_id)
     @inbounds return _row_to_state(infections.rows[idx])
@@ -253,7 +253,7 @@ end
 
 Insert a new infection record for `(host_id, pathogen_id)`.
 """
-function push_infection!(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
+function push_infection!(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
     existing_s, _ = _find_slot_and_row(infections, host_id, pathogen_id)
     if existing_s != 0
         return nothing 
@@ -275,7 +275,7 @@ end
 
 Remove the (host_id, pathogen_id) record.
 """
-function remove_infection!(infections::ActiveInfections, host_id::Int32, pathogen_id::Int8)
+function remove_infection!(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8)
     s, row_idx = _find_slot_and_row(infections, host_id, pathogen_id)
     s == 0 && return nothing
     return _remove_at_slot!(infections, host_id, s, row_idx)
@@ -286,7 +286,7 @@ end
 
 Remove every record for the given host.
 """
-function remove_infection!(infections::ActiveInfections, host_id::Int32)
+function remove_infection!(infections::InfectionRegistry, host_id::Int32)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
         row_idx = infections.slot_to_row[s, host_id]
         row_idx == 0 && continue

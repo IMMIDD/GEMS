@@ -439,8 +439,6 @@ function dataframe(population::Population)
             id = map(id, population |> individuals),
             sex = map(sex, population |> individuals),
             age = map(age, population |> individuals),
-            number_of_vaccinations = map(number_of_vaccinations, population |> individuals),
-            vaccination_tick = map(vaccination_tick, population |> individuals),
             education = map(education, population |> individuals),
             occupation = map(occupation, population |> individuals),
             household = map(household_id, population |> individuals),

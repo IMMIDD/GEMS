@@ -248,12 +248,6 @@ function try_to_infect!(infctr::Individual,
         return false
     end
 
-    # TODO rework Immunity
-    # if infectee has already recovered from this pathogen (natural immunity)
-    infectee_recovery = recovery(infctd, active_infections(sim), id(pathogen))
-    if -1 < infectee_recovery <= tick(sim)
-        return false
-    end
 
     # calculate infection probability
     infection_probability = transmission_probability(
@@ -327,29 +321,27 @@ Update the individual disease progression, handle its recovery and log its possi
 If the individual is not infected, this function will just return.
 """
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
-    # Snapshot aggregate flags 
     was_dead = dead(indiv)
     was_symptomatic = symptomatic(indiv)
     was_hospitalized = is_hospitalized(indiv)
 
-    # progress disease if infected
+    # progress disease for currently infected individuals
     if infected(indiv)
-        progress_disease!(indiv, sim.active_infections, pathogens(sim), tick)
-        
-        # if individual died in this tick, log it
+        progress_disease!(indiv, sim.infection_registry, pathogens(sim), tick)
+
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), tick)
         end
     end
-    
-    # if onset of symptoms is this tick, trigger all symptom triggers
+
+    # refresh immunity cache for all individuals every tick
+    update_immunity!(indiv, sim.immunity_registry, pathogens(sim), tick)
+
     if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim)
         end
     end
-    
-    # if hospital admission is this tick, trigger all hospitalization triggers
     if !was_hospitalized && is_hospitalized(indiv)
         for ht in sim |> hospitalization_triggers
             trigger(ht, indiv, sim)

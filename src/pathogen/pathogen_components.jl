@@ -2,6 +2,8 @@ export transmission_probability
 export transmission_functions
 export progression_categories
 export progression_assignments
+export infectiousness
+export calculate_immunity
 
 # the main defintion of pathogens is in src/structs/parameters/pathogens.jl
 
@@ -69,7 +71,8 @@ include.(
 )
 
 # includde infectiousness
-include(basefolder() * "/src/pathogen/infectiousness.jl")
+include(basefolder() * "/src/pathogen/infectiousness_profile.jl")
+include(basefolder() * "/src/pathogen/immunity_profile.jl")
 
 
 
@@ -102,6 +105,27 @@ function transmission_probability(transFunc::TransmissionFunction, pathogen_id::
     # TF-function (above) will trigger an error
     return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick)
 end
+
+"""
+    infectiousness(profile::InfectiousnessProfile, state::InfectionState, t::Int16)::Int8
+
+This fallback raises an error; any concrete subtype must provide its own method.
+"""
+function infectiousness(profile::InfectiousnessProfile, ::InfectionState, ::Int16)::Int8
+    @error "infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile))."
+    return Int8(0)
+end
+
+"""
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, tick::Int16)::Int8
+
+This fallback raises an error; any concrete subtype must provide its own method.
+"""
+function calculate_immunity(profile::ImmunityProfile, ::ImmunityState, ::Int16)::Int8
+    @error "calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile))."
+    return Int8(0)
+end
+
 
 
 """

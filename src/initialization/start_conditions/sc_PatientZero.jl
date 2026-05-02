@@ -63,6 +63,6 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed_sample
         end
     end
 
-    # push pending infections to ActiveInfections SoA
+    # push pending infections to InfectionRegistry 
     flush_pending_infections!(simulation)
 end

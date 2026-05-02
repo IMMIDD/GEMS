@@ -10,7 +10,7 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, pathogens!, add_pathogen!, get_pathogen
-export active_infections
+export infection_registry, immunity_registry
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
@@ -180,7 +180,8 @@ mutable struct Simulation
     population::Population
     settings::SettingsContainer
     pathogens::Dict{Int8, Pathogen}
-    active_infections::ActiveInfections
+    infection_registry::InfectionRegistry
+    immunity_registry::ImmunityRegistry
 
     # logger
     infectionlogger::InfectionLogger
@@ -242,7 +243,8 @@ mutable struct Simulation
             population,
             settings,
             pathogens,
-            ActiveInfections(population.maxid),
+            InfectionRegistry(population.maxid),
+            ImmunityRegistry(population.maxid),
 
             # logger
             InfectionLogger(),
@@ -1615,12 +1617,21 @@ function pathogens(simulation::Simulation)::Dict{Int8, Pathogen}
 end
 
 """
-    active_infections(simulation)
+    infection_registry(simulation)
 
 Returns the active infections of the simulation.
 """
-function active_infections(simulation::Simulation)::ActiveInfections
-    return simulation.active_infections
+function infection_registry(simulation::Simulation)::InfectionRegistry
+    return simulation.infection_registry
+end
+
+"""
+    immunity_registry(simulation)
+
+Returns the `ImmunityRegistry` of the simulation.
+"""
+function immunity_registry(simulation::Simulation)::ImmunityRegistry
+    return simulation.immunity_registry
 end
 
 
@@ -1855,9 +1866,9 @@ If `reset_interventions` is true, it also deletes all interventions.
 """
 function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
     # reset individual to initial state
-    reset!.(individuals(simulation), active_infections(simulation))
+    reset!.(individuals(simulation), infection_registry(simulation), immunity_registry(simulation))
     reset!(simulation)
-    
+
     # Reset all loggers 
     simulation.infectionlogger = InfectionLogger()
     simulation.deathlogger = DeathLogger()
@@ -1867,7 +1878,7 @@ function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
     simulation.quarantinelogger = QuarantineLogger()
     simulation.statelogger = StateLogger()
     simulation.customlogger = CustomLogger()
-    
+
     # Reset NPI triggers and strategies
     simulation.event_queue = EventQueue()
     if reset_interventions
@@ -1877,12 +1888,12 @@ function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
         simulation.strategies = []
         simulation.testtypes = []
     end
-    
+
     # Re-initialize RNGs
     if !isnothing(simulation.seed)
         simulation.rngs = [Xoshiro(gems_rand(Xoshiro(simulation.seed), UInt)) for _ in 1:Threads.maxthreadid()]
     end
-    
+
     # Initialize the simulation's start condition
     initialize!(simulation)
 end

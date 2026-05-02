@@ -81,6 +81,6 @@ function initialize!(simulation::Simulation, condition::InfectedFraction; seed_s
         end
     end
 
-    # push pending infections to ActiveInfections SoA
+    # push pending infections to InfectionRegistry 
     flush_pending_infections!(simulation)
 end

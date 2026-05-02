@@ -47,7 +47,7 @@ function transmission_probability(transFunc::ConstantTransmissionRate, pathogen_
     # error handling
     infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
 
-    return transFunc.transmission_rate
+    return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id) / 100.0)
 end
 
 # if no RNG was passed, use default RNG

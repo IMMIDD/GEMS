@@ -293,7 +293,7 @@ function step!(simulation::Simulation)
             end
         end
 
-        # push pending infections to ActiveInfections
+        # push pending infections to InfectionRegistry
         flush_pending_infections!(simulation)
     end
 
@@ -366,21 +366,22 @@ end
 """
     flush_pending_infections!(sim::Simulation)
  
-Drains every `PendingInfection` staged in `sim.infection_buffers` into `sim.active_infections`. 
+Drains every `PendingInfection` staged in `sim.infection_buffers` into `sim.infection_registry`. 
 Empties each buffer when done.
 """
 function flush_pending_infections!(sim::Simulation)
-    infections = active_infections(sim)
- 
+    infections = infection_registry(sim)
+    immunities = immunity_registry(sim)
+
     @inbounds for buf in sim.infection_buffers
         for p in buf
             existing_s, existing_idx = _find_slot_and_row(infections, p.host_id, p.pathogen_id)
- 
+
             if existing_s != 0
-                # reinfection: overwrite the existing row in place. 
+                # reinfection: overwrite the active-infection row in-place
                 infections.rows[existing_idx] = _row_from_pending(p.host_id, p.pathogen_id, p.infection_id, p.dp)
             else
-                # new infection: pick the first empty slot, append the row, wire up the lookup table.
+                # new infection: claim a slot, append row, wire lookup table
                 s = _find_empty_slot(infections, p.host_id)
                 if s == 0
                     @warn "Individual $(p.host_id) has all $MAX_CONCURRENT_INFECTIONS concurrent infection slots filled — skipping new infection with pathogen $(p.pathogen_id)."
@@ -388,6 +389,18 @@ function flush_pending_infections!(sim::Simulation)
                 end
                 push!(infections.rows, _row_from_pending(p.host_id, p.pathogen_id, p.infection_id, p.dp))
                 infections.slot_to_row[s, p.host_id] = Int32(length(infections.rows))
+            end
+
+            # pre-record natural immunity keyed on the projected recovery tick.
+            if p.dp.recovery >= 0
+                push_immunity!(
+                    immunities,
+                    p.host_id,
+                    p.pathogen_id,
+                    IMMUNITY_SOURCE_NATURAL,
+                    p.dp.recovery,
+                    DEFAULT_VACCINE_ID,
+                )
             end
         end
         empty!(buf)

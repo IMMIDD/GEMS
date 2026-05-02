@@ -1,5 +1,4 @@
 export ConstantInfectiousness, StagedInfectiousness
-export infectiousness
 
 
 """
@@ -44,7 +43,7 @@ Per-pathogen mapping from disease stage to infectiousness level (`Int8`, 0–127
     severe::Int8 = Int8(100)
     critical::Int8 = Int8(100)
 
-    function InfectiousnessProfile(asymptomatic, presymptomatic, symptomatic, severe, critical)
+    function StagedInfectiousness(asymptomatic, presymptomatic, symptomatic, severe, critical)
         for (nm, v) in (
             (:asymptomatic, asymptomatic), (:presymptomatic, presymptomatic),
             (:symptomatic, symptomatic),  (:severe, severe), (:critical, critical),

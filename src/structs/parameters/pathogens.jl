@@ -6,6 +6,7 @@ export ProgressionCategory
 export ProgressionAssignmentFunction
 export TransmissionFunction
 export InfectiousnessProfile
+export ImmunityProfile
 
 export id, name
 export progressions, progression, progression_assignment, transmission_function
@@ -18,6 +19,7 @@ abstract type ProgressionCategory end
 abstract type ProgressionAssignmentFunction end
 abstract type TransmissionFunction end
 abstract type InfectiousnessProfile end
+abstract type ImmunityProfile end
 
 """
     Pathogen <: Parameter
@@ -80,6 +82,7 @@ mutable struct Pathogen <: Parameter
 
     # per-stage infectiousness levels
     infectiousness_profile::InfectiousnessProfile
+    immunity_profile::ImmunityProfile
 
     # default constructor
     function Pathogen(;
@@ -88,7 +91,8 @@ mutable struct Pathogen <: Parameter
         progressions::Vector{<:ProgressionCategory} = ProgressionCategory[],
         progression_assignment::Union{ProgressionAssignmentFunction, Nothing} = nothing,
         transmission_function::Union{TransmissionFunction, Nothing} = nothing,
-        infectiousness_profile::InfectiousnessProfile = ConstantInfectiousness()
+        infectiousness_profile::InfectiousnessProfile = ConstantInfectiousness(),
+        immunity_profile::ImmunityProfile = FullImmunity()
     )
 
         # exception handling
@@ -127,7 +131,8 @@ mutable struct Pathogen <: Parameter
             prg,
             progression_assignment,
             transmission_function,
-            infectiousness_profile
+            infectiousness_profile,
+            immunity_profile
         )
     end
 
@@ -151,6 +156,9 @@ infectiousness_profile(p::Pathogen) = p.infectiousness_profile
 transmission_function!(p::Pathogen, tf::TransmissionFunction) = p.transmission_function = tf
 infectiousness_profile!(p::Pathogen, ip::InfectiousnessProfile) = p.infectiousness_profile = ip
 
+immunity_profile(p::Pathogen) = p.immunity_profile
+immunity_profile!(p::Pathogen, ip::ImmunityProfile) = p.immunity_profile = ip
+
 
 function Base.show(io::IO, p::Pathogen)
     res = "Pathogen: $(p.name) (ID: $(p.id))\n"
@@ -169,5 +177,6 @@ function Base.show(io::IO, p::Pathogen)
     res *= "\u2514 Progression Assignment: $(p.progression_assignment)\n"
     res *= "\u2514 Transmission Function: $(p.transmission_function)\n"
     res *= "\u2514 Infectiousness Profile: $(p.infectiousness_profile)\n"
+    res *= "\u2514 Immunity Profile: $(p.immunity_profile)\n"
     print(io, res)
 end

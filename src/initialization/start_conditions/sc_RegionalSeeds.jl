@@ -140,6 +140,6 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_samp
         end
     end
 
-    # push pending infections to ActiveInfections SoA
+    # push pending infections to InfectionRegistry 
     flush_pending_infections!(simulation)
 end

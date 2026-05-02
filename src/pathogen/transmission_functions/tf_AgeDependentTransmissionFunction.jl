@@ -77,7 +77,7 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, patho
 
     for (i, ag) in enumerate(transFunc.age_groups)
         if in_group(infectee.age, ag)
-            return transFunc.age_transmission_rates[i]
+            return transFunc.age_transmission_rates[i] * (infectiousness(infecter, pathogen_id) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id) / 100.0)
         end
     end
 
