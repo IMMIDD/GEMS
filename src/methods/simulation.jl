@@ -402,9 +402,7 @@ function flush_pending_infections!(sim::Simulation)
                     DEFAULT_VACCINE_ID,
                 )
                 ind = get_individual_by_id(population(sim), p.host_id)
-                if !isnothing(ind)
-                    ind.needs_immunity_update = true
-                end
+                ind.needs_immunity_update = true
             end
         end
         empty!(buf)

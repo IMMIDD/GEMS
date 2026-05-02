@@ -41,6 +41,22 @@ function settings(individual::Individual, sim::Simulation)::Dict{DataType, Int32
     return d
 end
 
+"""
+    claim_active_slot!(individual::Individual, pathogen_id::Int8)
+
+Immediately writes `pathogen_id` into the first free slot of `individual.active_pathogens`
+so that concurrent infectors in the same setting cannot infect the same individual twice
+within a single tick.
+"""
+@inline function claim_active_slot!(individual::Individual, pathogen_id::Int8)
+    @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
+        if individual.active_pathogens[s] == Int8(0)
+            individual.active_pathogens = Base.setindex(individual.active_pathogens, pathogen_id, s)
+            return nothing
+        end
+    end
+end
+
 
 """
     infect!(infectee::Individual,
@@ -136,6 +152,9 @@ function infect!(infectee::Individual,
     # increase lifetime number of infections
     inc_number_of_infections!(infectee)
 
+    # block same-tick re-infection by the same pathogen
+    claim_active_slot!(infectee, id(pathogen))
+    
     # set infected flag
     infected!(infectee, true)
     
