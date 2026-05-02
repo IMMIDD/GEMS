@@ -168,6 +168,7 @@ A type to represent individuals, that act as agents inside the simulation.
     # IMMUNITY MEMORY
     immune_pathogens::NTuple{MAX_TRACKED_IMMUNITIES, Int8} = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     immunity_level ::NTuple{MAX_TRACKED_IMMUNITIES, Int8} = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
+    immunity_cache_tick::Int16 = DEFAULT_TICK
     
     # TESTING
     last_test::Int16 = DEFAULT_TICK # 2 bytes
@@ -1512,6 +1513,7 @@ function vaccinate!(individual::Individual, vaccine::Vaccine, tick::Int16, regis
         tick,
         id(vaccine),
     )
+    individual.immunity_cache_tick = DEFAULT_TICK
 end
 
 """
@@ -1557,6 +1559,15 @@ function number_of_vaccinations(individual::Individual, registry::ImmunityRegist
 end
 
 """
+    _calculate_immunity(profile::P, state::ImmunityState, tick::Int16)::Int8 where {P <: ImmunityProfile}
+
+Internal barrier function to ensure `calculate_immunity` is statically dispatched on the concrete profile type.
+"""
+@inline function _calculate_immunity(profile::P, state::ImmunityState, tick::Int16)::Int8 where {P <: ImmunityProfile}
+    return calculate_immunity(profile, state, tick)
+end
+
+"""
     update_immunity!(individual, registry, pathogens, tick)
 
 Refresh the per-individual immunity cache (`immune_pathogens`, `immunity_level`)
@@ -1574,44 +1585,34 @@ function update_immunity!(
     _immune_pids = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     _immune_levels = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     _cache_slot = 1
-
-    # Track which pathogen_ids we've already processed to avoid double-counting
-    # when both a natural and vaccine row exist for the same pathogen.
-    _seen_pids = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
-    _seen_count = 0
+    _processed = UInt8(0)
 
     @inbounds for s in 1:MAX_TRACKED_IMMUNITIES
+        (_processed >> (s - 1)) & UInt8(1) == UInt8(1) && continue
+
         row_idx = registry.slot_to_row[s, individual.id]
         row_idx == 0 && continue
 
-        row = registry.rows[row_idx]
-        pid = row.pathogen_id
+        pid = registry.rows[row_idx].pathogen_id
+        _processed |= UInt8(1) << (s - 1)
 
-        # skip if we already handled this pathogen via its other source row
-        already_seen = false
-        for i in 1:_seen_count
-            if _seen_pids[i] == pid
-                already_seen = true
+        for s2 in (s + 1):MAX_TRACKED_IMMUNITIES
+            row_idx2 = registry.slot_to_row[s2, individual.id]
+            row_idx2 == 0 && continue
+            if registry.rows[row_idx2].pathogen_id == pid
+                _processed |= UInt8(1) << (s2 - 1)
                 break
             end
         end
-        already_seen && continue
-
-        _seen_count += 1
-        _seen_pids = Base.setindex(_seen_pids, pid, _seen_count)
 
         state = get_immunity_state(registry, individual.id, pid)
         profile = immunity_profile(pathogens[pid])
-        level = calculate_immunity(profile, state, tick)
+        level = _calculate_immunity(profile, state, tick)
         level == Int8(0) && continue
 
-        if _cache_slot <= MAX_TRACKED_IMMUNITIES
-            _immune_pids = Base.setindex(_immune_pids, pid, _cache_slot)
-            _immune_levels = Base.setindex(_immune_levels, level, _cache_slot)
-            _cache_slot += 1
-        else
-            @warn "Individual $(individual.id): immunity cache full, pathogen $pid dropped."
-        end
+        _immune_pids = Base.setindex(_immune_pids, pid, _cache_slot)
+        _immune_levels = Base.setindex(_immune_levels, level, _cache_slot)
+        _cache_slot += 1
     end
 
     individual.immune_pathogens = _immune_pids
@@ -1723,6 +1724,7 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     # immunity cache
     individual.immune_pathogens = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     individual.immunity_level = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
+    individual.immunity_cache_tick = DEFAULT_TICK
 
     # infection count
     individual.number_of_infections = 0

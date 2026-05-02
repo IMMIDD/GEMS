@@ -248,6 +248,11 @@ function try_to_infect!(infctr::Individual,
         return false
     end
 
+    # updated immunity of infctd if cache is stale
+    if infctd.immunity_cache_tick != tick(sim)
+        update_immunity!(infctd, immunity_registry(sim), pathogens(sim), tick(sim))
+        infctd.immunity_cache_tick = tick(sim)
+    end
 
     # calculate infection probability
     infection_probability = transmission_probability(
@@ -334,8 +339,6 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         end
     end
 
-    # refresh immunity cache for all individuals every tick
-    update_immunity!(indiv, sim.immunity_registry, pathogens(sim), tick)
 
     if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
