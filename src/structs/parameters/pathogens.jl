@@ -80,8 +80,9 @@ mutable struct Pathogen <: Parameter
     # Function for the transmission Probability
     transmission_function::TransmissionFunction
 
-    # per-stage infectiousness levels
+    # infectiousness profile
     infectiousness_profile::InfectiousnessProfile
+    # immunity profile
     immunity_profile::ImmunityProfile
 
     # default constructor
