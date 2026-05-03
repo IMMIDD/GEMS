@@ -82,6 +82,7 @@ mutable struct Pathogen <: Parameter
 
     # infectiousness profile
     infectiousness_profile::InfectiousnessProfile
+    
     # immunity profile
     immunity_profile::ImmunityProfile
 
