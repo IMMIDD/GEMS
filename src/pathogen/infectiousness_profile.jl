@@ -16,7 +16,7 @@ struct ConstantInfectiousness <: InfectiousnessProfile
     ConstantInfectiousness(; level::Integer = 100) = new(Int8(level))
 end
 
-@inline function infectiousness(p::ConstantInfectiousness, state::InfectionState, t::Int16)::Int8
+@inline function calculate_infectiousness(p::ConstantInfectiousness, state::InfectionState, t::Int16)::Int8
     end_t = max(state.recovery, state.death)
     return (state.infectiousness_onset >= 0 && state.infectiousness_onset <= t < end_t) ? p.level : Int8(0)
 end
@@ -56,7 +56,7 @@ Per-pathogen mapping from disease stage to infectiousness level (`Int8`, 0–127
 end
 
 """
-    infectiousness(profile::InfectiousnessProfile, state::InfectionState, t::Int16)::Int8
+    calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, t::Int16)::Int8
 
 Compute the current infectiousness for a single (host, pathogen) infection
 at tick `t`, given the pathogen's `profile` and the infection's `state`.
@@ -66,7 +66,7 @@ Returns `Int8(0)` if `t` is outside the infectious window
 profile field that matches the highest active disease stage at `t`.
 
 """
-@inline function infectiousness(profile::StagedInfectiousness, state::InfectionState, t::Int16)::Int8
+@inline function calculate_infectiousness(profile::StagedInfectiousness, state::InfectionState, t::Int16)::Int8
     end_t = max(state.recovery, state.death)
     # outside the infectious window
     if state.infectiousness_onset < 0 || t < state.infectiousness_onset || t >= end_t

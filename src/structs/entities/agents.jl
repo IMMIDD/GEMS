@@ -1677,7 +1677,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         _active = state.exposure <= tick < end_tick
         if _active
             profile = infectiousness_profile(pathogens[state.pathogen_id])
-            level = infectiousness(profile, state, tick)
+            level = calculate_infectiousness(profile, state, tick)
             _active_pids = Base.setindex(_active_pids, state.pathogen_id, _slot)
             _infectiousness = Base.setindex(_infectiousness, level, _slot)
             _infection_ids = Base.setindex(_infection_ids, state.infection_id, _slot)

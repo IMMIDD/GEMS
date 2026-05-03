@@ -2,7 +2,7 @@ export transmission_probability
 export transmission_functions
 export progression_categories
 export progression_assignments
-export infectiousness
+export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
 
@@ -108,12 +108,12 @@ function transmission_probability(transFunc::TransmissionFunction, pathogen_id::
 end
 
 """
-    infectiousness(profile::InfectiousnessProfile, state::InfectionState, t::Int16)::Int8
+    calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, t::Int16)::Int8
 
 This fallback raises an error; any concrete subtype must provide its own method.
 """
-function infectiousness(profile::InfectiousnessProfile, ::InfectionState, ::Int16)::Int8
-    @error "infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile))."
+function calculate_infectiousness(profile::InfectiousnessProfile, ::InfectionState, ::Int16)::Int8
+    @error "calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile))."
     return Int8(0)
 end
 

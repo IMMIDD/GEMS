@@ -1,5 +1,4 @@
 export FullImmunity, NoImmunity, ExponentialWaning
-export calculate_immunity
 
 
 """
