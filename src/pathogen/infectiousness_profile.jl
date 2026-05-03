@@ -9,7 +9,7 @@ throughout the entire infectious window `[infectiousness_onset, max(recovery, de
 regardless of disease stage.
 
 # Fields
-- `level::Int8`: Shedding level during the infectious window (0–127, default 100).
+- `level::Int8`: Shedding level during the infectious window (0–100, default 100).
 """
 struct ConstantInfectiousness <: InfectiousnessProfile
     level::Int8
@@ -25,7 +25,7 @@ end
 """
     StagedInfectiousness
 
-Per-pathogen mapping from disease stage to infectiousness level (`Int8`, 0–127).
+Per-pathogen mapping from disease stage to infectiousness level (`Int8`, 0–100).
 
 # Fields
 - `asymptomatic::Int8`: Infectious individuals who never become symptomatic

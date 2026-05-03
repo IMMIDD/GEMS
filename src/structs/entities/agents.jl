@@ -687,7 +687,7 @@ end
     infectiousness(individual::Individual, pathogen_id::Int8)::Int8
 
 Returns the individual's current infectiousness for the given pathogen
-(`Int8`, 0–127). Returns `0` if the individual is not currently infected
+(`Int8`, 0–100). Returns `0` if the individual is not currently infected
 with that pathogen, or is in the exposed-but-not-yet-infectious window,
 or has recovered.
 """
