@@ -268,6 +268,11 @@ function try_to_infect!(infctr::Individual,
         return false
     end
 
+    # if infectee already has MAX_CONCURRENT_INFECTIONS active pathogens
+    if !any(==(Int8(0)), infctd.active_pathogens)
+        return false
+    end
+
 
     # calculate infection probability
     infection_probability = transmission_probability(
@@ -507,7 +512,7 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim)
                 pids = ind.active_pathogens
                 inflev = ind.infectiousness
                 infids = ind.infection_ids
-                pathogen_iter = gems_rand(current_rng, Bool) ? (4:-1:1) : (1:4)
+                pathogen_iter = gems_rand(current_rng, Bool) ? (MAX_CONCURRENT_INFECTIONS:-1:1) : (1:MAX_CONCURRENT_INFECTIONS)
 
                 for i in pathogen_iter
                     pid = pids[i]
