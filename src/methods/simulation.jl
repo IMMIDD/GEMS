@@ -383,6 +383,22 @@ function flush_pending_infections!(sim::Simulation)
             else
                 # new infection: claim a slot, append row, wire lookup table
                 s = _find_empty_slot(infections, p.host_id)
+
+                if s == 0
+                    current_tick = tick(sim)
+                    @inbounds for candidate in 1:MAX_CONCURRENT_INFECTIONS
+                        row_idx = infections.slot_to_row[candidate, p.host_id]
+                        row_idx == 0 && continue
+                        row = infections.rows[row_idx]
+                        end_tick = max(row.recovery, row.death)
+                        if 0 <= end_tick <= current_tick
+                            _remove_at_slot!(infections, p.host_id, Int32(candidate), Int32(row_idx))
+                            s = candidate
+                            break
+                        end
+                    end
+                end
+
                 if s == 0
                     @warn "Individual $(p.host_id) has all $MAX_CONCURRENT_INFECTIONS concurrent infection slots filled — skipping new infection with pathogen $(p.pathogen_id)."
                     continue
