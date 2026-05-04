@@ -1562,6 +1562,17 @@ function number_of_vaccinations(individual::Individual, registry::ImmunityRegist
     return registry.rows[idx].dose_number
 end
 
+"""
+    _immunity_level_and_stable(pathogen, state, individual, tick, rng)
+
+Function barrier that extracts the `ImmunityProfile` from `pathogen` and calls `calculate_immunity` and `immunity_is_stable`. 
+"""
+function _immunity_level_and_stable(pathogen, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)
+    profile = immunity_profile(pathogen)
+    level = calculate_immunity(profile, state, individual, tick, rng)
+    stable = immunity_is_stable(profile, state, individual, tick)
+    return level, stable
+end
 
 """
     update_immunity!(individual::Individual, registry::ImmunityRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
@@ -1574,7 +1585,7 @@ once. The result is written to the per-individual NTuple cache.
 function update_immunity!(
         individual::Individual,
         registry::ImmunityRegistry,
-        pathogens::Dict{Int8, Pathogen},
+        pathogens::Dict{Int8, Any},
         tick::Int16,
         rng::Xoshiro
 )
@@ -1603,9 +1614,8 @@ function update_immunity!(
         end
 
         state = get_immunity_state(registry, individual.id, pid)
-        profile = immunity_profile(pathogens[pid])
-        level = calculate_immunity(profile, state, individual, tick, rng)
-        _all_stable &= immunity_is_stable(profile, state, individual, tick)
+        level, stable = _immunity_level_and_stable(pathogens[pid], state, individual, tick, rng)
+        _all_stable &= stable
 
         level == Int8(0) && continue
 
@@ -1628,7 +1638,17 @@ end
 ### UPDATE DISEASE PROGRESSION IN AGENTS ###
 
 """
-    progress_disease!(individual::Individual, infections::InfectionRegistry, tick::Int16, rng::Xoshiro)
+    _infectiousness_level(pathogen, state, individual, tick, rng)
+
+Function barrier that extracts the `InfectiousnessProfile` from `pathogen` and calls `calculate_infectiousness`.
+"""
+function _infectiousness_level(pathogen, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)
+    profile = infectiousness_profile(pathogen) 
+    return calculate_infectiousness(profile, state, individual, tick, rng)
+end
+
+"""
+    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Any}, tick::Int16, rng::Xoshiro)
 
 Updates the proxy disease progression status flags of the individual at the
 given tick by reading from the global `InfectionRegistry`. Also populates the
@@ -1640,7 +1660,7 @@ can read everything it needs directly from the individual.
 `InfectionState` is fed through that pathogen's `InfectiousnessProfile`
 to compute the cached infectiousness level.
 """
-function progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
+function progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Any}, tick::Int16, rng::Xoshiro)
     if individual.dead
         return nothing
     end
@@ -1667,8 +1687,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
 
         _active = state.exposure <= tick < end_tick
         if _active
-            profile = infectiousness_profile(pathogens[state.pathogen_id])
-            level = calculate_infectiousness(profile, state, individual, tick, rng)
+            level = _infectiousness_level(pathogens[state.pathogen_id], state, individual, tick, rng)
             _active_pids = Base.setindex(_active_pids, state.pathogen_id, _slot)
             _infectiousness = Base.setindex(_infectiousness, level, _slot)
             _infection_ids = Base.setindex(_infection_ids, state.infection_id, _slot)

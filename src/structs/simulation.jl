@@ -82,7 +82,7 @@ Here's a list of all available parameters:
 | `start_condition`         | `StartCondition`                   | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
 | `infected_fraction`       | `Float`                            | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
 | `stop_criterion`          | `StopCriterion`                    | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
-| `pathogens`               | `Dict{Int8, Pathogen}`             | A Dict of `Pathogen`s with their ids as keys defining the pathogens to be simulated.                                                                                                                        |
+| `pathogens`               | `Dict{Int8, Any}`             | A Dict of `Pathogen`s with their ids as keys defining the pathogens to be simulated.                                                                                                                        |
 | `transmission_function`   | `TransmissionFunction`             | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
 | `transmission_rate`       | `Float`                            | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
 | `stepmod`                 | `Function`                         | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |
@@ -139,7 +139,7 @@ sim = Simulation(params)
 - Model
     - `population::Population`: Container to hold all present individuals
     - `settings::SettingsContainer`: All settings present in the simulation
-    - `pathogens::Dict{Int8, Pathogen}`: A Dict of Pathoges of which infections are simulated
+    - `pathogens::Dict{Int8, Any}`: A Dict of Pathoges of which infections are simulated
 - Logger
     - `infectionlogger::InfectionLogger`: A logger tracking all infections    
     - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
@@ -179,7 +179,7 @@ mutable struct Simulation
     # model
     population::Population
     settings::SettingsContainer
-    pathogens::Dict{Int8, Pathogen}
+    pathogens::Dict{Int8, Any}
     infection_registry::InfectionRegistry
     immunity_registry::ImmunityRegistry
 
@@ -223,7 +223,7 @@ mutable struct Simulation
         stop_criterion::StopCriterion,
         population::Population,
         settings::SettingsContainer,
-        pathogens::Dict{Int8, Pathogen},
+        pathogens::Dict{Int8, Any},
         stepmod::Function,
         seed::Int64,
         rngs::Vector{<:Xoshiro}
@@ -641,20 +641,22 @@ If a `transmission_rate` is provided, it will be set as a `ConstantTransmissionR
 The `transmission_rate` will be ignored if a `transmission_function` is provided.
 """
 function determine_pathogens(configfile_params::Dict, pathogens, transmission_function, transmission_rate)
-    pathogen_dict = Dict{Int8, Pathogen}()
+    pathogen_dict = Dict{Int8, Any}()
 
     if !isnothing(pathogens)
         # handle single pathogen, vector, or dictionary gracefully
         if isa(pathogens, Pathogen)
             pathogen_dict[id(pathogens)] = pathogens
-        elseif isa(pathogens, Vector{Pathogen})
+        elseif isa(pathogens, Vector{<:Pathogen})
             for p in pathogens
                 pathogen_dict[id(p)] = p
             end
-        elseif isa(pathogens, Dict{Int8, Pathogen})
-            pathogen_dict = pathogens
+        elseif isa(pathogens, Dict{Int8, <:Pathogen})
+            for (k, v) in pathogens
+                pathogen_dict[k] = v
+            end
         else
-            throw(ArgumentError("Provided pathogens must be of type Pathogen, Vector{Pathogen}, or Dict{Int8, Pathogen}!"))
+            throw(ArgumentError("Provided pathogens must be of type Pathogen, Vector{<:Pathogen}, or Dict{Int8, <:Pathogen}!"))
         end
         
         # throw warnings for unused parameters
@@ -675,9 +677,10 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
     if !isnothing(transmission_function)
         !isa(transmission_function, TransmissionFunction) && throw(ArgumentError("Provided transmission_function must be an object of type TransmissionFunction!"))
         
-        # apply the global transmission function to all pathogens
-        for pg in values(pathogen_dict)
-            transmission_function!(pg, transmission_function)
+        # Rebuild each pathogen with the new transmission function type
+        # (cannot mutate in-place because it may change the type parameter TF)
+        for pid in collect(keys(pathogen_dict))
+            pathogen_dict[pid] = _rebuild_pathogen(pathogen_dict[pid]; transmission_function = transmission_function)
         end
         
         !isnothing(transmission_rate) && @warn "A transmission_function was provided, therefore transmission_rate will be ignored."
@@ -686,8 +689,8 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
 
      # if a transmission rate is provided, set it for all pathogens
     if !isnothing(transmission_rate)
-        for pg in values(pathogen_dict)
-            transmission_function!(pg, ConstantTransmissionRate(transmission_rate = transmission_rate))
+        for pid in collect(keys(pathogen_dict))
+            pathogen_dict[pid] = _rebuild_pathogen(pathogen_dict[pid]; transmission_function = ConstantTransmissionRate(transmission_rate = transmission_rate))
         end
     end
     
@@ -1610,9 +1613,9 @@ end
 """
     pathogens(simulation)
 
-Returns the Dict `Dict{Int8, Pathogen}` of Pathogens of the simulation.
+Returns the Dict `Dict{Int8, Any}` of Pathogens of the simulation.
 """
-function pathogens(simulation::Simulation)::Dict{Int8, Pathogen}
+function pathogens(simulation::Simulation)::Dict{Int8, Any}
     return simulation.pathogens
 end
 
@@ -1636,12 +1639,12 @@ end
 
 
 """
-    pathogens!(simulation, Dict{Int8, Pathogen})
+    pathogens!(simulation, AbstractDict)
 
 Sets the pathogen of the simulation.
 """
-function pathogens!(simulation::Simulation, pathogens::Dict{Int8, Pathogen})
-    simulation.pathogens = pathogens
+function pathogens!(simulation::Simulation, pathogens::AbstractDict)
+    simulation.pathogens = Dict{Int8, Any}(pathogens)
 end
 
 """
@@ -1658,7 +1661,7 @@ end
 
 Retrieves a specific `Pathogen` object from the simulation's dict using its unique identifier. 
 """
-function get_pathogen(simulation::Simulation, pid::Int8)::Pathogen
+function get_pathogen(simulation::Simulation, pid::Int8)
     return simulation.pathogens[pid]
 end
 
@@ -1668,7 +1671,7 @@ end
 Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name. 
 Returns the only pathogen is `pname` is empty for backwards compatibility.
 """
-function get_pathogen(simulation::Simulation, pname::String)::Pathogen
+function get_pathogen(simulation::Simulation, pname::String)
     if isempty(pname)
         return only(values(pathogens(simulation)))
     end

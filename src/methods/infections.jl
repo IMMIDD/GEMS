@@ -483,7 +483,7 @@ function spread_infection!(setting::Setting, sim::Simulation)
 
     csm = setting.contact_sampling_method
 
-    num_infected = process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    num_infected = _process_infections!(p_buffer, c_buffer, csm, setting, sim)
 
     if num_infected == 0
         for ind in individuals(setting, sim)
@@ -498,7 +498,7 @@ function spread_infection!(setting::Setting, sim::Simulation)
 end
 
 
-function process_infections!(p_buffer, c_buffer, csm, setting, sim)
+function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
@@ -519,27 +519,29 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim)
                     pid = pids[i]
                     pid == 0 && continue
                     level = inflev[i]
-                    level == 0 && continue 
+                    level == 0 && continue
 
-                    pat = get_pathogen(sim, pid)
                     src_inf_id = infids[i]
-
-                    for c in c_buffer
-                        if can_be_contacted(c, setting)
-                            if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
-                                for (type, sid) in settings_tuple(c)
-                                    if sid != DEFAULT_SETTING_ID
-                                        current_setting = settings(sim, type)[sid]
-                                        activate!(current_setting, sim)
-                                    end
-                                end
-                            end
-                        end
-                    end
+                    _spread_to_contacts!(get_pathogen(sim, pid), ind, c_buffer, sim, setting, src_inf_id)
                 end
             end
         end
     end
 
     return num_infected
+end
+
+function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id)
+    for c in c_buffer
+        if can_be_contacted(c, setting)
+            if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
+                for (type, sid) in settings_tuple(c)
+                    if sid != DEFAULT_SETTING_ID
+                        current_setting = settings(sim, type)[sid]
+                        activate!(current_setting, sim)
+                    end
+                end
+            end
+        end
+    end
 end

@@ -67,7 +67,7 @@ pathogen = Pathogen(
 ```
 
 """
-mutable struct Pathogen
+mutable struct Pathogen{TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<:ImmunityProfile}
     id::Int8
     name::String
 
@@ -78,13 +78,13 @@ mutable struct Pathogen
     progression_assignment::ProgressionAssignmentFunction
 
     # Function for the transmission Probability
-    transmission_function::TransmissionFunction
+    transmission_function::TF
 
     # infectiousness profile
-    infectiousness_profile::InfectiousnessProfile
+    infectiousness_profile::IP
     
     # immunity profile
-    immunity_profile::ImmunityProfile
+    immunity_profile::IM
 
     # default constructor
     function Pathogen(;
@@ -127,7 +127,7 @@ mutable struct Pathogen
             prg[typeof(dp)] = dp
         end
 
-        return new(
+        return new{typeof(transmission_function), typeof(infectiousness_profile), typeof(immunity_profile)}(
             id,
             name,
             prg,
@@ -181,4 +181,27 @@ function Base.show(io::IO, p::Pathogen)
     res *= "\u2514 Infectiousness Profile: $(p.infectiousness_profile)\n"
     res *= "\u2514 Immunity Profile: $(p.immunity_profile)\n"
     print(io, res)
+end
+
+"""
+    _rebuild_pathogen(pg::Pathogen, tf, ip, im)
+
+Internal helper: returns a new Pathogen with one or more of the three hot-path
+components replaced by a different concrete type. Used by `determine_pathogens`
+to override the transmission function after initial construction without violating
+the parametric type constraint.
+"""
+function _rebuild_pathogen(pg::Pathogen;
+        transmission_function  = pg.transmission_function,
+        infectiousness_profile = pg.infectiousness_profile,
+        immunity_profile  = pg.immunity_profile)
+    return Pathogen(
+        id  = Int64(id(pg)),
+        name = name(pg),
+        progressions = collect(values(progressions(pg))),
+        progression_assignment = progression_assignment(pg),
+        transmission_function = transmission_function,
+        infectiousness_profile = infectiousness_profile,
+        immunity_profile  = immunity_profile
+    )
 end
