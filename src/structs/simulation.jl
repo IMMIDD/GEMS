@@ -82,7 +82,7 @@ Here's a list of all available parameters:
 | `start_condition`         | `StartCondition`                   | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
 | `infected_fraction`       | `Float`                            | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
 | `stop_criterion`          | `StopCriterion`                    | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
-| `pathogens`               | `Dict{Int8, Any}`             | A Dict of `Pathogen`s with their ids as keys defining the pathogens to be simulated.                                                                                                                        |
+| `pathogens`               | `Dict{Int8, Pathogen}`             | A Dict of `Pathogen`s with their ids as keys defining the pathogens to be simulated.                                                                                                                        |
 | `transmission_function`   | `TransmissionFunction`             | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
 | `transmission_rate`       | `Float`                            | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
 | `stepmod`                 | `Function`                         | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |
@@ -139,7 +139,7 @@ sim = Simulation(params)
 - Model
     - `population::Population`: Container to hold all present individuals
     - `settings::SettingsContainer`: All settings present in the simulation
-    - `pathogens::Dict{Int8, Any}`: A Dict of Pathoges of which infections are simulated
+    - `pathogens::Dict{Int8, Pathogen}`: A Dict of Pathoges of which infections are simulated
 - Logger
     - `infectionlogger::InfectionLogger`: A logger tracking all infections    
     - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
@@ -179,7 +179,7 @@ mutable struct Simulation
     # model
     population::Population
     settings::SettingsContainer
-    pathogens::Dict{Int8, Any}
+    pathogens::Dict{Int8, Pathogen}
     infection_registry::InfectionRegistry
     immunity_registry::ImmunityRegistry
 
@@ -223,7 +223,7 @@ mutable struct Simulation
         stop_criterion::StopCriterion,
         population::Population,
         settings::SettingsContainer,
-        pathogens::Dict{Int8, Any},
+        pathogens::Dict{Int8, Pathogen},
         stepmod::Function,
         seed::Int64,
         rngs::Vector{<:Xoshiro}
@@ -641,7 +641,7 @@ If a `transmission_rate` is provided, it will be set as a `ConstantTransmissionR
 The `transmission_rate` will be ignored if a `transmission_function` is provided.
 """
 function determine_pathogens(configfile_params::Dict, pathogens, transmission_function, transmission_rate)
-    pathogen_dict = Dict{Int8, Any}()
+    pathogen_dict = Dict{Int8, Pathogen}()
 
     if !isnothing(pathogens)
         # handle single pathogen, vector, or dictionary gracefully
@@ -1613,9 +1613,9 @@ end
 """
     pathogens(simulation)
 
-Returns the Dict `Dict{Int8, Any}` of Pathogens of the simulation.
+Returns the Dict `Dict{Int8, Pathogen}` of Pathogens of the simulation.
 """
-function pathogens(simulation::Simulation)::Dict{Int8, Any}
+function pathogens(simulation::Simulation)::Dict{Int8, Pathogen}
     return simulation.pathogens
 end
 
@@ -1644,7 +1644,7 @@ end
 Sets the pathogen of the simulation.
 """
 function pathogens!(simulation::Simulation, pathogens::AbstractDict)
-    simulation.pathogens = Dict{Int8, Any}(pathogens)
+    simulation.pathogens = Dict{Int8, Pathogen}(pathogens)
 end
 
 """

@@ -1567,7 +1567,7 @@ end
 
 Function barrier that extracts the `ImmunityProfile` from `pathogen` and calls `calculate_immunity` and `immunity_is_stable`. 
 """
-function _immunity_level_and_stable(pathogen, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)
+function _immunity_level_and_stable(pathogen, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Tuple{Int8, Bool}
     profile = immunity_profile(pathogen)
     level = calculate_immunity(profile, state, individual, tick, rng)
     stable = immunity_is_stable(profile, state, individual, tick)
@@ -1585,7 +1585,7 @@ once. The result is written to the per-individual NTuple cache.
 function update_immunity!(
         individual::Individual,
         registry::ImmunityRegistry,
-        pathogens::Dict{Int8, Any},
+        pathogens::Dict{Int8, Pathogen},
         tick::Int16,
         rng::Xoshiro
 )
@@ -1642,13 +1642,13 @@ end
 
 Function barrier that extracts the `InfectiousnessProfile` from `pathogen` and calls `calculate_infectiousness`.
 """
-function _infectiousness_level(pathogen, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)
+function _infectiousness_level(pathogen, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     profile = infectiousness_profile(pathogen) 
     return calculate_infectiousness(profile, state, individual, tick, rng)
 end
 
 """
-    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Any}, tick::Int16, rng::Xoshiro)
+    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
 
 Updates the proxy disease progression status flags of the individual at the
 given tick by reading from the global `InfectionRegistry`. Also populates the
@@ -1660,7 +1660,7 @@ can read everything it needs directly from the individual.
 `InfectionState` is fed through that pathogen's `InfectiousnessProfile`
 to compute the cached infectiousness level.
 """
-function progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Any}, tick::Int16, rng::Xoshiro)
+function progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
     if individual.dead
         return nothing
     end
