@@ -67,7 +67,7 @@ pathogen = Pathogen(
 ```
 
 """
-mutable struct Pathogen <: Parameter
+mutable struct Pathogen
     id::Int8
     name::String
 

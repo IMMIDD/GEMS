@@ -6,7 +6,7 @@ export id, name, waning
 export parameters
 
 """
-    Vaccine <: Parameter
+    Vaccine
 
 A type representing a vaccine.
 
@@ -16,7 +16,7 @@ A type representing a vaccine.
 - `target_pathogen_id::Int8`: Identifier of the pathogen this vaccine targets
 - `logger::VaccinationLogger`. Logger to log vaccinations with the vaccine
 """
-@with_kw mutable struct Vaccine <: Parameter
+@with_kw mutable struct Vaccine
     id::Int8
     name::String
     target_pathogen_id::Int8          # pathogen this vaccine protects against

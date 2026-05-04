@@ -279,7 +279,8 @@ function try_to_infect!(infctr::Individual,
         pathogen |> transmission_function, 
         pathogen |> id,
         infctr, infctd, 
-        setting, sim |> tick, rng(sim)
+        setting, sim |> tick, 
+        rng(sim)
     )
 
     # try to infect

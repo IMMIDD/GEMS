@@ -1,9 +1,5 @@
 export Parameter
 
-### PARAMETER
-"Supertype for all simulation parameters"
-abstract type Parameter end
-
 # CONCRETE SUBTYPES
 include("parameters/pathogens.jl")
 include("parameters/vaccines.jl")

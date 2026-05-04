@@ -1562,14 +1562,6 @@ function number_of_vaccinations(individual::Individual, registry::ImmunityRegist
     return registry.rows[idx].dose_number
 end
 
-"""
-    _calculate_immunity(profile::P, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 where {P <: ImmunityProfile}
-
-Internal barrier function to ensure `calculate_immunity` is statically dispatched on the concrete profile type.
-"""
-@inline function _calculate_immunity(profile::P, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 where {P <: ImmunityProfile}
-    return calculate_immunity(profile, state, individual, tick, rng)
-end
 
 """
     update_immunity!(individual::Individual, registry::ImmunityRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
@@ -1590,7 +1582,7 @@ function update_immunity!(
     _immune_levels = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     _cache_slot = 1
     _processed = UInt8(0)
-    _all_stable    = true
+    _all_stable = true
 
     @inbounds for s in 1:MAX_TRACKED_IMMUNITIES
         (_processed >> (s - 1)) & UInt8(1) == UInt8(1) && continue
@@ -1612,7 +1604,7 @@ function update_immunity!(
 
         state = get_immunity_state(registry, individual.id, pid)
         profile = immunity_profile(pathogens[pid])
-        level = _calculate_immunity(profile, state, individual, tick, rng)
+        level = calculate_immunity(profile, state, individual, tick, rng)
         _all_stable &= immunity_is_stable(profile, state, individual, tick)
 
         level == Int8(0) && continue
@@ -1634,15 +1626,6 @@ end
 
 
 ### UPDATE DISEASE PROGRESSION IN AGENTS ###
-
-"""
-    _calculate_infectiousness(profile::P, state::InfectionState, individual::Individual, t::Int16, rng::Xoshiro)::Int8 where {P <: InfectiousnessProfile}
-
-Internal barrier function to ensure `calculate_infectiousness` is statically dispatched on the concrete profile type.
-"""
-@inline function _calculate_infectiousness(profile::P, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 where {P <: InfectiousnessProfile}
-    return calculate_infectiousness(profile, state, individual, tick, rng)
-end
 
 """
     progress_disease!(individual::Individual, infections::InfectionRegistry, tick::Int16, rng::Xoshiro)
@@ -1685,7 +1668,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         _active = state.exposure <= tick < end_tick
         if _active
             profile = infectiousness_profile(pathogens[state.pathogen_id])
-            level = _calculate_infectiousness(profile, state, individual, tick, rng)
+            level = calculate_infectiousness(profile, state, individual, tick, rng)
             _active_pids = Base.setindex(_active_pids, state.pathogen_id, _slot)
             _infectiousness = Base.setindex(_infectiousness, level, _slot)
             _infection_ids = Base.setindex(_infection_ids, state.infection_id, _slot)
