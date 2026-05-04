@@ -351,13 +351,13 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_hospitalized = is_hospitalized(indiv)
 
     # update immunity levels
-    if indiv.needs_immunity_update 
-        update_immunity!(indiv, immunity_registry(sim), pathogens(sim), tick)
+    if indiv.needs_immunity_update
+        update_immunity!(indiv, immunity_registry(sim), pathogens(sim), tick, rng(sim))
     end
 
     # progress disease for currently infected individuals
     if infected(indiv)
-        progress_disease!(indiv, sim.infection_registry, pathogens(sim), tick)
+        progress_disease!(indiv, sim.infection_registry, pathogens(sim), tick, rng(sim))
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)

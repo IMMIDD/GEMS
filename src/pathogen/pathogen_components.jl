@@ -108,34 +108,34 @@ function transmission_probability(transFunc::TransmissionFunction, pathogen_id::
 end
 
 """
-    calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, t::Int16)::Int8
+    calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
 This fallback raises an error; any concrete subtype must provide its own method.
 """
-function calculate_infectiousness(profile::InfectiousnessProfile, ::InfectionState, ::Int16)::Int8
+function calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     @error "calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile))."
     return Int8(0)
 end
 
 """
-    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, tick::Int16)::Int8
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
 This fallback raises an error; any concrete subtype must provide its own method.
 """
-function calculate_immunity(profile::ImmunityProfile, ::ImmunityState, ::Int16)::Int8
+function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     @error "calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile))."
     return Int8(0)
 end
 
 """
-    immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, tick::Int16)::Bool
+    immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool
 
 Returns `true` if the immunity level produced by `profile` for the given `state` at `tick`
 is guaranteed not to change in any future tick, allowing the per-individual immunity cache
 to skip recomputation. Falls back to `false` for any profile that does not provide a
 concrete method, which is always safe.
 """
-immunity_is_stable(::ImmunityProfile, ::ImmunityState, ::Int16)::Bool = false
+immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool = false
 
 
 """

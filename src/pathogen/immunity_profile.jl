@@ -10,13 +10,13 @@ respective acquired tick is in the past). Never wanes.
 """
 struct FullImmunity <: ImmunityProfile end
 
-@inline function calculate_immunity(::FullImmunity, state::ImmunityState, tick::Int16)::Int8
+@inline function calculate_immunity(profile::FullImmunity, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     has_natural = state.natural_acquired_tick != DEFAULT_TICK && tick >= state.natural_acquired_tick
     has_vaccine = state.vaccine_acquired_tick != DEFAULT_TICK && tick >= state.vaccine_acquired_tick
     return (has_natural || has_vaccine) ? Int8(100) : Int8(0)
 end
 
-@inline immunity_is_stable(::FullImmunity, state::ImmunityState, tick::Int16) =
+@inline immunity_is_stable(profile::FullImmunity, state::ImmunityState, individual::Individual, tick::Int16) =
     (state.natural_acquired_tick != DEFAULT_TICK && tick >= state.natural_acquired_tick) ||
     (state.vaccine_acquired_tick != DEFAULT_TICK && tick >= state.vaccine_acquired_tick)
 
@@ -28,11 +28,11 @@ history.
 """
 struct NoImmunity <: ImmunityProfile end
 
-@inline function calculate_immunity(::NoImmunity, ::ImmunityState, ::Int16)::Int8
+@inline function calculate_immunity(profile::NoImmunity, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     return Int8(0)
 end
 
-@inline immunity_is_stable(::NoImmunity, ::ImmunityState, ::Int16) = true
+@inline immunity_is_stable(profile::NoImmunity, state::ImmunityState, individual::Individual, tick::Int16) = true
 
 """
     ExponentialWaning <: ImmunityProfile
@@ -59,24 +59,36 @@ Level at elapsed ticks e:  `max(floor, 100 × 0.5^(e / halflife))`
     end
 end
 
-@inline function _waning_level(p::ExponentialWaning, acquired_tick::Int16, tick::Int16)::Int8
+@inline function _waning_level(profile::ExponentialWaning, acquired_tick::Int16, tick::Int16)::Int8
     tick < acquired_tick && return Int8(0)
     elapsed = Float32(tick - acquired_tick)
-    level = 100.0f0 * 0.5f0^(elapsed / p.halflife)
-    return Int8(max(Int(p.floor), clamp(round(Int, level), 0, 100)))
+    level = 100.0f0 * 0.5f0^(elapsed / profile.halflife)
+    return Int8(max(Int(profile.floor), clamp(round(Int, level), 0, 100)))
 end
 
-@inline function calculate_immunity(p::ExponentialWaning, state::ImmunityState, tick::Int16)::Int8
+@inline function calculate_immunity(profile::ExponentialWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     nat_level = state.natural_acquired_tick != DEFAULT_TICK ?
-        _waning_level(p, state.natural_acquired_tick, tick) : Int8(0)
+        _waning_level(profile, state.natural_acquired_tick, tick) : Int8(0)
     vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ?
-        _waning_level(p, state.vaccine_acquired_tick, tick) : Int8(0)
+        _waning_level(profile, state.vaccine_acquired_tick, tick) : Int8(0)
     return max(nat_level, vac_level)
 end
 
-@inline function immunity_is_stable(p::ExponentialWaning, state::ImmunityState, tick::Int16)
+
+@inline function immunity_is_stable(profile::ExponentialWaning, state::ImmunityState, individual::Individual, tick::Int16)
     nat_pending = state.natural_acquired_tick != DEFAULT_TICK && tick < state.natural_acquired_tick
     vac_pending = state.vaccine_acquired_tick != DEFAULT_TICK && tick < state.vaccine_acquired_tick
     (nat_pending || vac_pending) && return false
-    return calculate_immunity(p, state, tick) <= p.floor
+    return calculate_immunity(profile, state, individual, tick) <= profile.floor
+end
+
+
+
+"""
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
+
+Fallback for `ImmunityProfile` that doesn't need an RNG.
+"""
+@inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
+    return calculate_immunity(profile, state, individual, tick, default_gems_rng())
 end
