@@ -67,7 +67,7 @@ pathogen = Pathogen(
 ```
 
 """
-mutable struct Pathogen{TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<:ImmunityProfile}
+mutable struct Pathogen{PA<:ProgressionAssignmentFunction, TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<:ImmunityProfile}
     id::Int8
     name::String
 
@@ -75,7 +75,7 @@ mutable struct Pathogen{TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<
     progressions::OrderedDict{DataType, ProgressionCategory}
 
     # progression assignment
-    progression_assignment::ProgressionAssignmentFunction
+    progression_assignment::PA
 
     # Function for the transmission Probability
     transmission_function::TF
@@ -127,7 +127,7 @@ mutable struct Pathogen{TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<
             prg[typeof(dp)] = dp
         end
 
-        return new{typeof(transmission_function), typeof(infectiousness_profile), typeof(immunity_profile)}(
+        return new{typeof(progression_assignment), typeof(transmission_function), typeof(infectiousness_profile), typeof(immunity_profile)}(
             id,
             name,
             prg,
@@ -192,14 +192,15 @@ to override the transmission function after initial construction without violati
 the parametric type constraint.
 """
 function _rebuild_pathogen(pg::Pathogen;
+        progression_assignment = pg.progression_assignment,
         transmission_function  = pg.transmission_function,
         infectiousness_profile = pg.infectiousness_profile,
-        immunity_profile  = pg.immunity_profile)
+        immunity_profile = pg.immunity_profile)
     return Pathogen(
         id  = Int64(id(pg)),
         name = name(pg),
         progressions = collect(values(progressions(pg))),
-        progression_assignment = progression_assignment(pg),
+        progression_assignment = progression_assignment,
         transmission_function = transmission_function,
         infectiousness_profile = infectiousness_profile,
         immunity_profile  = immunity_profile

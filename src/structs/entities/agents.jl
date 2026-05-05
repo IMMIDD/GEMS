@@ -1575,7 +1575,7 @@ function _immunity_level_and_stable(pathogen, state::ImmunityState, individual::
 end
 
 """
-    update_immunity!(individual::Individual, registry::ImmunityRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
+    update_immunity!(individual::Individual, registry::ImmunityRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
 
 Refresh the per-individual immunity cache (`immune_pathogens`, `immunity_level`)
 from the `ImmunityRegistry`. For each pathogen with at least one immunity record,
@@ -1585,10 +1585,10 @@ once. The result is written to the per-individual NTuple cache.
 function update_immunity!(
         individual::Individual,
         registry::ImmunityRegistry,
-        pathogens::Dict{Int8, Pathogen},
+        pathogens::P,
         tick::Int16,
         rng::Xoshiro
-)
+) where {P<:Tuple}
     _immune_pids = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     _immune_levels = ntuple(_ -> Int8(0), MAX_TRACKED_IMMUNITIES)
     _cache_slot = 1
@@ -1614,7 +1614,7 @@ function update_immunity!(
         end
 
         state = get_immunity_state(registry, individual.id, pid)
-        level, stable = _immunity_level_and_stable(pathogens[pid], state, individual, tick, rng)
+        level, stable = _immunity_level_and_stable(get_pathogen(pathogens, state.pathogen_id), state, individual, tick, rng)
         _all_stable &= stable
 
         level == Int8(0) && continue
@@ -1648,7 +1648,7 @@ function _infectiousness_level(pathogen, state::InfectionState, individual::Indi
 end
 
 """
-    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
+    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
 
 Updates the proxy disease progression status flags of the individual at the
 given tick by reading from the global `InfectionRegistry`. Also populates the
@@ -1660,7 +1660,7 @@ can read everything it needs directly from the individual.
 `InfectionState` is fed through that pathogen's `InfectiousnessProfile`
 to compute the cached infectiousness level.
 """
-function progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::Dict{Int8, Pathogen}, tick::Int16, rng::Xoshiro)
+function progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
     if individual.dead
         return nothing
     end
@@ -1687,7 +1687,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
 
         _active = state.exposure <= tick < end_tick
         if _active
-            level = _infectiousness_level(pathogens[state.pathogen_id], state, individual, tick, rng)
+            level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, individual, tick, rng)
             _active_pids = Base.setindex(_active_pids, state.pathogen_id, _slot)
             _infectiousness = Base.setindex(_infectiousness, level, _slot)
             _infection_ids = Base.setindex(_infection_ids, state.infection_id, _slot)

@@ -221,7 +221,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 Mainly a convenience wrapper around `infect!` with less parameters.
 Used for example in test cases.
 """
-infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), only(values(pathogens(sim))); sim = sim, rng = rng(sim))
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), only(pathogens(sim)); sim = sim, rng = rng(sim))
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,
@@ -353,12 +353,12 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
     # update immunity levels
     if indiv.needs_immunity_update
-        update_immunity!(indiv, immunity_registry(sim), pathogens(sim), tick, rng(sim))
+        update_immunity!(indiv, immunity_registry(sim), sim.pathogens, tick, rng(sim))
     end
 
     # progress disease for currently infected individuals
     if infected(indiv)
-        progress_disease!(indiv, sim.infection_registry, pathogens(sim), tick, rng(sim))
+        progress_disease!(indiv, sim.infection_registry, sim.pathogens, tick, rng(sim))
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
