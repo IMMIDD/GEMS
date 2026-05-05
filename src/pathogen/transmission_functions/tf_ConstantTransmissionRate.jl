@@ -22,7 +22,7 @@ Base.show(io::IO, ctr::ConstantTransmissionRate) = write(io, "ConstantTranmissio
 
 
 """
-    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
+    transmission_probability(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
 
 Calculates the transmission probability for the `ConstantTransmissionRate`. Returns the `transmission_rate`
 for all individuals who have not been infected in the past. If the individual has already recovered,
@@ -31,6 +31,7 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 # Parameters
 
 - `transFunc::ConstantTransmissionRate`: Transmission function struct
+- `pathogen_id::Int8`: ID of the current pathogen
 - `infecter::Individual`: Infecting individual
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
@@ -42,16 +43,13 @@ the function returns `0.0`, assuming full indefinite natural immunity.
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 
 """
-function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+function transmission_probability(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
     # error handling
-    !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
-    
-    if  -1 < recovery(infectee) <= tick # if the agent has already recovered (natural immunity)
-        return 0.0
-    end
-    
-    return transFunc.transmission_rate
+    infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+
+    return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id) / 100.0)
 end
+
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infected, setting, tick, default_gems_rng())
+transmission_probability(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16) = 
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, default_gems_rng())

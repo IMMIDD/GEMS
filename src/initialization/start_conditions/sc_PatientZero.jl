@@ -20,9 +20,6 @@ struct PatientZero <: StartCondition
     pathogen::String
 
     function PatientZero(;pathogen::String = "") 
-        
-        # TODO remove this warning when multi-pathogen simulations are supported
-        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in PatientZero will have no effect."
         return new(pathogen)
     end
 end
@@ -47,16 +44,16 @@ Initialize the simulation model by infecting a single individual at random at th
 function initialize!(simulation::Simulation, condition::PatientZero; seed_sample::Union{Int64,Nothing}=nothing)
     # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
     rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
-    # TODO handle pathogen selection
-    # TODO handle multiple pathogens
     
     # number of individuals to infect
     ind = individuals(population(simulation))
     to_infect = gems_sample(rng_sample, ind, 1, replace=false)
 
+    pathogen = get_pathogen(simulation, condition.pathogen)
+
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(simulation), sim = simulation, rng = rng_sample)
+        infect!(i, tick(simulation), pathogen, sim = simulation, rng = rng_sample)
 
         for (type, id) in settings_tuple(i)
             if id != DEFAULT_SETTING_ID
@@ -65,4 +62,7 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed_sample
             end
         end
     end
+
+    # push pending infections to InfectionRegistry 
+    flush_pending_infections!(simulation)
 end

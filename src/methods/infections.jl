@@ -41,6 +41,22 @@ function settings(individual::Individual, sim::Simulation)::Dict{DataType, Int32
     return d
 end
 
+"""
+    claim_active_slot!(individual::Individual, pathogen_id::Int8)
+
+Immediately writes `pathogen_id` into the first free slot of `individual.active_pathogens`
+so that concurrent infectors in the same setting cannot infect the same individual twice
+within a single tick.
+"""
+@inline function claim_active_slot!(individual::Individual, pathogen_id::Int8)
+    @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
+        if individual.active_pathogens[s] == Int8(0)
+            individual.active_pathogens = Base.setindex(individual.active_pathogens, pathogen_id, s)
+            return nothing
+        end
+    end
+end
+
 
 """
     infect!(infectee::Individual,
@@ -96,49 +112,32 @@ function infect!(infectee::Individual,
 
 
     # calculate disease progression
-    # get progression category
     paf = progression_assignment(pathogen)
     pc = assign(infectee, paf, rng)
-    
-    # calculate the actual disease progression
+
     prog = progressions(pathogen)[pc]
     dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
-
-    # set the progression for the individual
-    set_progression!(infectee, dp)
-
-    # pathogen id
-    pathogen_id!(infectee, id(pathogen))
-
-    # increase number of infections
-    inc_number_of_infections!(infectee)
-
-    # update agent health status
-    progress_disease!(infectee, tick)
-
-    if isnothing(sim)
-        return -1
-    end
 
     # log infection
     new_infection_id = log!(
         infectionlogger(sim),
         infecter_id,
         id(infectee),
+        id(pathogen),
         nameof(pc),
         tick,
-        infectee.infectiousness_onset,
-        infectee.symptom_onset,
-        infectee.severeness_onset,
-        infectee.hospital_admission,
-        infectee.hospital_discharge,
-        infectee.icu_admission,
-        infectee.icu_discharge,
-        infectee.ventilation_admission,
-        infectee.ventilation_discharge,
-        infectee.severeness_offset,
-        infectee.recovery,
-        infectee.death,
+        infectiousness_onset(dp),
+        symptom_onset(dp),
+        severeness_onset(dp),
+        hospital_admission(dp),
+        hospital_discharge(dp),
+        icu_admission(dp),
+        icu_discharge(dp),
+        ventilation_admission(dp),
+        ventilation_discharge(dp),
+        severeness_offset(dp),
+        recovery(dp),
+        death(dp),
         setting_id,
         setting_type,
         lat,
@@ -147,8 +146,18 @@ function infect!(infectee::Individual,
         source_infection_id
     )
 
-    # set the infectees current infection_id to the value that was returned by the logger
-    infection_id!(infectee, new_infection_id)
+    # stage for serial flush after the threaded phase
+    push!(infection_buffers(sim)[Threads.threadid()], PendingInfection(id(infectee), id(pathogen), new_infection_id, dp))
+
+    # increase lifetime number of infections
+    inc_number_of_infections!(infectee)
+
+    # block same-tick re-infection by the same pathogen
+    claim_active_slot!(infectee, id(pathogen))
+    
+    # set infected flag
+    infected!(infectee, true)
+    
     return new_infection_id
 end
 
@@ -212,7 +221,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 Mainly a convenience wrapper around `infect!` with less parameters.
 Used for example in test cases.
 """
-infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), pathogen(sim); sim = sim, rng = rng(sim))
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), only(pathogens(sim)); sim = sim, rng = rng(sim))
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,
@@ -254,13 +263,25 @@ function try_to_infect!(infctr::Individual,
         return false
     end
     
-    # if infectee is already infected
-    if infected(infctd)
+    # if infectee is already infected with the current pathogen
+    if any(==(id(pathogen)), infctd.active_pathogens)
         return false
     end
 
+    # if infectee already has MAX_CONCURRENT_INFECTIONS active pathogens
+    if !any(==(Int8(0)), infctd.active_pathogens)
+        return false
+    end
+
+
     # calculate infection probability
-    infection_probability = transmission_probability(pathogen |> transmission_function, infctr, infctd, setting, sim |> tick, rng(sim))
+    infection_probability = transmission_probability(
+        pathogen |> transmission_function, 
+        pathogen |> id,
+        infctr, infctd, 
+        setting, sim |> tick, 
+        rng(sim)
+    )
 
     # try to infect
     if gems_rand(sim) < infection_probability
@@ -324,35 +345,33 @@ end
 
 Update the individual disease progression, handle its recovery and log its possible death.
 If the individual is not infected, this function will just return.
-
-# Parameters
-
-- `indiv::Individual`: Individual to update
-- `tick::Int16`: Current tick
-- `sim::Simulation`: Simulation object
 """
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
+    was_dead = dead(indiv)
+    was_symptomatic = symptomatic(indiv)
+    was_hospitalized = is_hospitalized(indiv)
 
-    # progress disease if infected
-    if infected(indiv) 
+    # update immunity levels
+    if indiv.needs_immunity_update
+        update_immunity!(indiv, immunity_registry(sim), sim.pathogens, tick, rng(sim))
+    end
 
-        progress_disease!(indiv, tick)
+    # progress disease for currently infected individuals
+    if infected(indiv)
+        progress_disease!(indiv, sim.infection_registry, sim.pathogens, tick, rng(sim))
 
-        # if individual died in this tick, log it
-        if death(indiv) == tick
-            log!(deathlogger(sim), id(indiv), tick)
+        if !was_dead && dead(indiv)
+            log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
         end
     end
 
-    # if onset of symptoms is this tick, trigger all symptom triggers
-    if symptom_onset(indiv) == tick
+
+    if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim)
         end
     end
-
-    # if hospital admission is this tick, trigger all hospitalization triggers
-    if hospital_admission(indiv) == tick
+    if !was_hospitalized && is_hospitalized(indiv)
         for ht in sim |> hospitalization_triggers
             trigger(ht, indiv, sim)
         end
@@ -441,7 +460,7 @@ end
 
 
 """
-    spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen)
+    spread_infection!(setting::Setting, sim::Simulation)
 
 Spreads the infection of `pathogen` inside the provided setting. This will simulate the
 infection dynamics at the time `tick(sim)` inside `setting` within the context of the
@@ -452,10 +471,9 @@ infection is successful.
 
 - `setting::Setting`: Setting in which the pathogen shall be spreaded
 - `sim::Simulation`: Simulation object
-- `pathogen::Pathogen`: Pathogen to spread
 
 """
-function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen)
+function spread_infection!(setting::Setting, sim::Simulation)
     tid = Threads.threadid()
     p_buffer = sim.present_buffers[tid]
     c_buffer = sim.contact_buffers[tid]
@@ -465,7 +483,7 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
 
     csm = setting.contact_sampling_method
 
-    num_infected = process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
+    num_infected = _process_infections!(p_buffer, c_buffer, csm, setting, sim)
 
     if num_infected == 0
         for ind in individuals(setting, sim)
@@ -480,33 +498,50 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
 end
 
 
-function process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
+function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
-    
+
     for ind_index in 1:length(p_buffer)
         ind = p_buffer[ind_index]
         if infected(ind)
             num_infected += 1
             if can_infect(ind, setting)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
-                
-                for c in c_buffer
-                    if can_be_contacted(c, setting)
-                        if try_to_infect!(ind, c, sim, pathogen, setting, infection_id(ind))
-                            for (type, id) in settings_tuple(c)
-                                if id != DEFAULT_SETTING_ID
-                                    current_setting = settings(sim, type)[id]
-                                    activate!(current_setting, sim)
-                                end
-                            end
-                        end
+
+                pids = ind.active_pathogens
+                inflev = ind.infectiousness
+                infids = ind.infection_ids
+                pathogen_iter = gems_rand(current_rng, Bool) ? (MAX_CONCURRENT_INFECTIONS:-1:1) : (1:MAX_CONCURRENT_INFECTIONS)
+
+                for i in pathogen_iter
+                    pid = pids[i]
+                    pid == 0 && continue
+                    level = inflev[i]
+                    level == 0 && continue
+
+                    src_inf_id = infids[i]
+                    _spread_to_contacts!(get_pathogen(sim, pid), ind, c_buffer, sim, setting, src_inf_id)
+                end
+            end
+        end
+    end
+
+    return num_infected
+end
+
+function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id)
+    for c in c_buffer
+        if can_be_contacted(c, setting)
+            if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
+                for (type, sid) in settings_tuple(c)
+                    if sid != DEFAULT_SETTING_ID
+                        current_setting = settings(sim, type)[sid]
+                        activate!(current_setting, sim)
                     end
                 end
             end
         end
     end
-    
-    return num_infected
 end

@@ -26,7 +26,6 @@ struct PatientZeros <: StartCondition
 
     function PatientZeros(;pathogen::String = "", ags::Vector{Int64} = Int64[])
         isempty(ags) && throw(ArgumentError("At least one ags must be provided!"))
-        length(pathogen) > 0 && @warn "GEMS currently only supports single-pathogen simulations. Specifying a pathogen in PatientZeros will have no effect."
         AGS.(ags) # try casting to AGS (will throw error if invalid)
             
         return new(pathogen, ags)
@@ -62,8 +61,8 @@ Initializes the simulation model, infecting a single individual in each of the r
 function initialize!(simulation::Simulation, condition::PatientZeros; seed_sample::Union{Int64,Nothing}=nothing)
     # create a new Xoshiro RNG for sampling, seeded from rng(simulation) if seed_sample is nothing, or from seed_sample otherwise
     rng_sample = isnothing(seed_sample) ? rng(simulation) : Xoshiro(seed_sample)
-    # TODO handle pathogen selection
-    # TODO handle multiple pathogens
+
+    pathogen = get_pathogen(simulation, condition.pathogen)
 
     # number of individuals to infect
     to_infect = []
@@ -84,7 +83,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros; seed_sampl
    
     # infect individuals
     for i in to_infect
-        infect!(i, tick(simulation), pathogen(simulation), sim = simulation, rng = rng_sample)
+        infect!(i, tick(simulation), pathogen, sim = simulation, rng = rng_sample)
         for (type, id) in settings_tuple(i)
             if id != DEFAULT_SETTING_ID
                 current_setting = settings(simulation, type)[id]
@@ -92,4 +91,7 @@ function initialize!(simulation::Simulation, condition::PatientZeros; seed_sampl
             end
         end
     end
+
+    # push pending infections to InfectionRegistry 
+    flush_pending_infections!(simulation)
 end

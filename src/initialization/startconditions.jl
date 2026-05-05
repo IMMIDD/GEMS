@@ -1,4 +1,29 @@
 export start_conditions
+export MultiStartCondition
+
+"""
+    MultiStartCondition <: StartCondition
+
+A composite `StartCondition` that wraps multiple individual start conditions,
+one per pathogen. Each sub-condition is initialized in order.
+"""
+struct MultiStartCondition <: StartCondition
+    conditions::Vector{StartCondition}
+
+    function MultiStartCondition(conditions::Vector{<:StartCondition})
+        isempty(conditions) && throw(ArgumentError("At least one StartCondition must be provided."))
+        return new(conditions)
+    end
+end
+
+function initialize!(simulation::Simulation, condition::MultiStartCondition; kwargs...)
+    for sc in condition.conditions
+        initialize!(simulation, sc; kwargs...)
+    end
+end
+
+
+Base.show(io::IO, c::MultiStartCondition) = write(io, "MultiStartCondition($(join(c.conditions, ", ")))")
 
 ###
 ### INCLUDE START CONDITIONS

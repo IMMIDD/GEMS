@@ -43,6 +43,7 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
 
     # Infected data
     id_b::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
     progression_category::Vector{Vector{Symbol}} = [Vector{Symbol}() for _ in 1:Threads.maxthreadid()]
     infectiousness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     symptom_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
@@ -71,6 +72,7 @@ function log!(
         logger::InfectionLogger,
         a::Int32,
         b::Int32,
+        pathogen_id::Int8,
         progression_category::Symbol,
         tick::Int16,
         infectiousness_onset::Int16,
@@ -102,6 +104,7 @@ function log!(
     push!(logger.infection_id[tid], new_infection_id)
     push!(logger.id_a[tid], a)
     push!(logger.id_b[tid], b)
+    push!(logger.pathogen_id[tid], pathogen_id)
     push!(logger.progression_category[tid], progression_category)
     push!(logger.tick[tid], tick)
     push!(logger.infectiousness_onset[tid], infectiousness_onset)
@@ -132,6 +135,7 @@ function log!(;
         logger::InfectionLogger,
         a::Int32,
         b::Int32,
+        pathogen_id::Int8,
         progression_category::Symbol,
         tick::Int16,
         infectiousness_onset::Int16,
@@ -155,7 +159,7 @@ function log!(;
     )
 
     return log!(
-        logger, a, b, progression_category, tick, 
+        logger, a, b, pathogen_id, progression_category, tick, 
         infectiousness_onset, symptom_onset, severeness_onset, 
         hospital_admission, hospital_discharge, icu_admission, icu_discharge, 
         ventilation_admission, ventilation_discharge, severeness_offset, 
@@ -197,6 +201,7 @@ function dataframe(logger::InfectionLogger)
         tick = vcat(logger.tick...),
         id_a = vcat(logger.id_a...),
         id_b = vcat(logger.id_b...),
+        pathogen_id = vcat(logger.pathogen_id...),
         progression_category = vcat(logger.progression_category...),
         infectiousness_onset = vcat(logger.infectiousness_onset...),
         symptom_onset = vcat(logger.symptom_onset...),
@@ -225,6 +230,7 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["tick"] = vcat(logger.tick...)
         file["id_a"] = vcat(logger.id_a...)
         file["id_b"] = vcat(logger.id_b...)
+        file["pathogen_id"] = vcat(logger.pathogen_id...)
         file["progression_category"] = vcat(logger.progression_category...)
         file["infectiousness_onset"] = vcat(logger.infectiousness_onset...)
         file["symptom_onset"] = vcat(logger.symptom_onset...)
@@ -297,16 +303,19 @@ Base.length(logger::VaccinationLogger) = sum(length, logger.tick)
 @with_kw mutable struct DeathLogger <: EventLogger 
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
 end
 
 function log!(
         deathlogger::DeathLogger,
         id::Int32,
+        pathogen_id::Int8,
         tick::Int16,
     )
     tid = Threads.threadid()
     push!(deathlogger.id[tid], id)
+    push!(deathlogger.pathogen_id[tid], pathogen_id)
     push!(deathlogger.tick[tid], tick)
     Threads.atomic_xchg!(deathlogger.last_modified_tick, tick)
 end
@@ -319,13 +328,15 @@ function save_JLD2(deathlogger::DeathLogger, path::AbstractString)
     jldopen(path,"w") do file
         file["tick"] = vcat(deathlogger.tick...)
         file["id"] = vcat(deathlogger.id...)
+        file["pathogen_id"] = vcat(deathlogger.pathogen_id...)
     end
 end
 
 function dataframe(deathlogger::DeathLogger)::DataFrame
     return DataFrame(
         tick = vcat(deathlogger.tick...),
-        id = vcat(deathlogger.id...)
+        id = vcat(deathlogger.id...),
+        pathogen_id = vcat(deathlogger.pathogen_id...)
     )
 end
 

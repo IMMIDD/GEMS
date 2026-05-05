@@ -64,21 +64,21 @@ function schedule!(
     end
 end
 
-"""
-    vaccinate!(scheduler, tick)
 
-Vaccinates all individuals that are scheduled to be vaccinated at time tick.
 """
-function vaccinate!(scheduler::VaccinationScheduler, tick::Int16)
-    if tick in keys(scheduler.schedule)
-        for (indiv, vacc) in scheduler.schedule[tick]
-            if !infected(indiv)
-            # how to handle already infected and how to reschedule?
-                vaccinate!(indiv, vacc, tick)
-            end
+    vaccinate!(scheduler, tick, registry)
+
+Vaccinates all individuals scheduled for `tick` and records their immunity in
+`registry`. Prefer this overload over the two-argument version whenever the
+`ImmunityRegistry` is available.
+"""
+function vaccinate!(scheduler::VaccinationScheduler, tick::Int16, registry::ImmunityRegistry)
+    tick in keys(scheduler.schedule) || return
+    for (indiv, vacc) in scheduler.schedule[tick]
+        if !infected(indiv)
+            vaccinate!(indiv, vacc, tick, registry)
         end
     end
-    # remove saved ticks?
 end
 
 ###
