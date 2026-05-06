@@ -608,20 +608,6 @@ Set the `dead` flag of the individual.
 """
 function dead!(individual::Individual, pathogen_id::Int8, dead::Bool)
     individual.dead = dead
-    if dead
-        individual.killing_pathogen_id = pathogen_id
-        individual.infected = false
-        individual.infectious = false
-        individual.symptomatic = false
-        individual.severe = false
-        individual.hospitalized = false
-        individual.icu = false
-        individual.ventilated = false
-        individual.detected = false
-        individual.infection_cache = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE)
-        individual.infection_overflow = false
-        individual.active_pathogens_mask = 0
-    end
 end
 
 """
@@ -1378,6 +1364,49 @@ function _infectiousness_level(pathogen, state::InfectionState, individual::Indi
 end
 
 """
+    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{Tuple{Int32,Int32}})
+
+Handles the health flags and memory-management when an individual dies.
+"""
+@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{Tuple{Int32,Int32}})
+    dead!(individual, pathogen_id, true)
+    
+    individual.killing_pathogen_id = pathogen_id
+    individual.active_pathogens_mask = 0
+
+    individual.infected = false
+    individual.infectious = false
+    individual.symptomatic = false
+    individual.severe = false
+    individual.hospitalized = false
+    individual.icu = false
+    individual.ventilated = false
+    individual.detected = false
+
+    # stage all active cache memory for removal
+    @inbounds for c in 1:INFECTIONS_CACHE_SIZE
+        if individual.infection_cache[c].active
+            push!(removal_buf, (individual.id, Int32(-c)))
+            # Clear it AFTER pushing to the buffer
+            individual.infection_cache = Base.setindex(individual.infection_cache, _empty_infection_state(), c)
+        end
+    end
+    
+    # stage all active overflow memory for removal
+    if individual.infection_overflow
+        node_idx = infections.head[individual.id]
+        while node_idx != 0
+            push!(removal_buf, (individual.id, Int32(node_idx)))
+            node_idx = infections.states[node_idx].next
+        end
+        # Clear the flag AFTER walking the list
+        individual.infection_overflow = false
+    end
+    
+    return nothing
+end
+
+"""
     progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
 
 Updates the proxy disease progression status flags of the individual at the
@@ -1393,45 +1422,46 @@ to compute the cached infectiousness level.
 function progress_disease!(individual::Individual, infections::InfectionRegistry,
     pathogens::P, removal_buf::Vector{Tuple{Int32,Int32}},
     tick::Int16, rng::Xoshiro) where {P<:Tuple}
+    
     individual.dead && return nothing
 
-    _is_inf = false
-    _is_infectious = false
-    _is_symp = false
-    _is_sev = false
-    _is_hosp = false
-    _is_icu = false
-    _is_vent = false
-    _is_det = false
+    # initialize trackers 
+    _is_inf = _is_infectious = _is_symp = _is_sev = false
+    _is_hosp = _is_icu = _is_vent = _is_det = false
 
+    # process cache
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         state = individual.infection_cache[i]
         !state.active && continue
 
-        end_tick = max(state.recovery, state.death)
+        # check death
+        if Int16(0) < state.death <= tick
+            _process_death!(individual, state.pathogen_id, infections, removal_buf)
+            return nothing
+        end
 
-        # queue for overflow promotion check
-        if end_tick > Int16(0) && end_tick <= tick
+        # check recovery
+        if Int16(0) < state.recovery <= tick
             individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
             individual.infection_cache = Base.setindex(individual.infection_cache, _empty_infection_state(), i)
             push!(removal_buf, (individual.id, Int32(-i)))
             continue
         end
 
-        if Int16(0) <= state.death <= tick
-            dead!(individual, state.pathogen_id, true)
-            return nothing
-        end
-
+        # update infectiousness
+        end_tick = max(state.recovery, state.death)
         _active = state.exposure <= tick < end_tick
+        
         if _active
             level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, individual, tick, rng)
             if level != state.infectiousness
-                individual.infection_cache = Base.setindex(individual.infection_cache, _setstate(state, Val(:infectiousness), level), i)
+                state = _setstate(state, Val(:infectiousness), level)
+                individual.infection_cache = Base.setindex(individual.infection_cache, state, i)
             end
         end
 
-        _is_inf |= _active
+        # accumulate state flags
+        _is_inf|= _active
         _is_infectious |= state.infectiousness_onset <= tick < end_tick
         _is_symp |= Int16(0) <= state.symptom_onset <= tick < end_tick
         _is_sev |= Int16(0) <= state.severeness_onset <= tick < state.severeness_offset
@@ -1441,34 +1471,40 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         _is_det |= _active && state.exposure <= last_reported_at(individual)
     end
 
-    # Overflow slots (multi-pathogen only)
+    # process registry
     if individual.infection_overflow
         node = infections.head[individual.id]
         while node != 0
             @inbounds state = infections.states[node]
             next_node = state.next
-            end_tick = max(state.recovery, state.death)
 
-            if end_tick > Int16(0) && end_tick <= tick
+            # check death
+            if Int16(0) < state.death <= tick
+                _process_death!(individual, state.pathogen_id, infections, removal_buf)
+                return nothing 
+            end
+
+            # check recovery
+            if Int16(0) < state.recovery <= tick
                 individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
                 push!(removal_buf, (individual.id, Int32(node)))
                 node = next_node
                 continue
             end
 
-            if Int16(0) <= state.death <= tick
-                dead!(individual, state.pathogen_id, true)
-                return nothing
-            end
-
+            # update infectiousness
+            end_tick = max(state.recovery, state.death)
             _active = state.exposure <= tick < end_tick
+            
             if _active
                 level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, individual, tick, rng)
                 if level != state.infectiousness
-                    @inbounds infections.states[node] = _setstate(state, Val(:infectiousness), level)
+                    state = _setstate(state, Val(:infectiousness), level)
+                    @inbounds infections.states[node] = state
                 end
             end
 
+            # accumulate state flags
             _is_inf |= _active
             _is_infectious |= state.infectiousness_onset <= tick < end_tick
             _is_symp |= Int16(0) <= state.symptom_onset <= tick < end_tick
@@ -1482,6 +1518,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         end
     end
 
+    # commit states
     infected!(individual, _is_inf)
     infectious!(individual, _is_infectious)
     symptomatic!(individual, _is_symp)
@@ -1490,6 +1527,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
     icu!(individual, _is_icu)
     ventilated!(individual, _is_vent)
     detected!(individual, _is_det)
+    
     return nothing
 end
 
