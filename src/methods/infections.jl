@@ -49,13 +49,16 @@ so that concurrent infectors in the same setting cannot infect the same individu
 within a single tick.
 """
 @inline function claim_active_slot!(individual::Individual, pathogen_id::Int8)
-    @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
-        if individual.active_pathogens[s] == Int8(0)
-            individual.active_pathogens = Base.setindex(individual.active_pathogens, pathogen_id, s)
+    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
+        if !individual.infection_cache[i].active
+            individual.infection_cache = Base.setindex(individual.infection_cache,
+                _placeholder_infection_state(pathogen_id), i)
             return nothing
         end
     end
+    individual.infection_overflow = true
 end
+
 
 
 """
@@ -263,15 +266,19 @@ function try_to_infect!(infctr::Individual,
         return false
     end
     
-    # if infectee is already infected with the current pathogen
-    if any(==(id(pathogen)), infctd.active_pathogens)
-        return false
+    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
+        s = infctd.infection_cache[i]
+        s.active && s.pathogen_id == id(pathogen) && return false
+    end
+    if infctd.infection_overflow
+        node = infection_registry(sim).head[infctd.id]
+        while node != 0
+            @inbounds s = infection_registry(sim).states[node]
+            s.pathogen_id == id(pathogen) && return false
+            node = s.next
+        end
     end
 
-    # if infectee already has MAX_CONCURRENT_INFECTIONS active pathogens
-    if !any(==(Int8(0)), infctd.active_pathogens)
-        return false
-    end
 
 
     # calculate infection probability
@@ -280,6 +287,8 @@ function try_to_infect!(infctr::Individual,
         pathogen |> id,
         infctr, infctd, 
         setting, sim |> tick, 
+        sim |> infection_registry,
+        sim |> immunity_registry,
         rng(sim)
     )
 
@@ -502,6 +511,7 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
+    infections = infection_registry(sim)
 
     for ind_index in 1:length(p_buffer)
         ind = p_buffer[ind_index]
@@ -510,19 +520,27 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
             if can_infect(ind, setting)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
 
-                pids = ind.active_pathogens
-                inflev = ind.infectiousness
-                infids = ind.infection_ids
-                pathogen_iter = gems_rand(current_rng, Bool) ? (MAX_CONCURRENT_INFECTIONS:-1:1) : (1:MAX_CONCURRENT_INFECTIONS)
+                # Randomise pathogen order for fairness
+                pathogen_iter = gems_rand(current_rng, Bool) ? (INFECTIONS_CACHE_SIZE:-1:1) : (1:INFECTIONS_CACHE_SIZE)
 
-                for i in pathogen_iter
-                    pid = pids[i]
-                    pid == 0 && continue
-                    level = inflev[i]
-                    level == 0 && continue
+                @inbounds for i in pathogen_iter
+                    state = ind.infection_cache[i]
+                    !state.active && continue
+                    state.infectiousness == 0 && continue
+                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id)
+                end
 
-                    src_inf_id = infids[i]
-                    _spread_to_contacts!(get_pathogen(sim, pid), ind, c_buffer, sim, setting, src_inf_id)
+                # Overflow infections (multi-pathogen)
+                if ind.infection_overflow
+                    node = infections.head[ind.id]
+                    while node != 0
+                        @inbounds state = infections.states[node]
+                        nxt = state.next
+                        if state.active && state.infectiousness != 0
+                            _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id)
+                        end
+                        node = nxt
+                    end
                 end
             end
         end

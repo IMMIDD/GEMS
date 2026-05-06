@@ -86,8 +86,7 @@ Base.show(io::IO, tf::CrossImmunityTransmissionRate) = print(io,
 
 
 """
-    transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8,
-        infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)
+    transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry, rng::Xoshiro)
 
 Calculates the transmission probability using a constant base rate modulated by
 the infecter's current shedding level and an effective immunity of the infectee
@@ -122,37 +121,31 @@ function transmission_probability(
         infectee::Individual,
         setting::Setting,
         tick::Int16,
+        infections::InfectionRegistry,
+        immunities::ImmunityRegistry,
         rng::Xoshiro)::Float64
 
-    infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+    infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError( "Infecting individual must have nonzero infectiousness to calculate transmission probability."))
 
-    # row index of the exposed pathogen in the matrix (nothing if not covered)
     exposed_idx = findfirst(==(pathogen_id), transFunc.pathogen_ids)
-
     remaining_susceptibility = 1.0
-    @inbounds for s in 1:MAX_TRACKED_IMMUNITIES
-        pid = infectee.immune_pathogens[s]
-        pid == Int8(0) && break
 
-        if pid == pathogen_id
-            # direct immunity against the current pathogen always has full weight
-            scale = 1.0
+    for s in each_immunity(infectee, immunities)
+        scale = if s.pathogen_id == pathogen_id
+            1.0
         elseif exposed_idx !== nothing
-            # look up the cross-immunity factor from the matrix if both pathogens are covered
-            prior_idx = findfirst(==(pid), transFunc.pathogen_ids)
-            scale = prior_idx !== nothing ?
-                transFunc.cross_immunity_matrix[exposed_idx, prior_idx] :
-                transFunc.default_cross_factor
+            prior_idx = findfirst(==(s.pathogen_id), transFunc.pathogen_ids)
+            prior_idx !== nothing ? transFunc.cross_immunity_matrix[exposed_idx, prior_idx] :
+                                    transFunc.default_cross_factor
         else
-            scale = transFunc.default_cross_factor
+            transFunc.default_cross_factor
         end
-
-        remaining_susceptibility *= (1.0 - infectee.immunity_level[s] / 100.0 * scale)
+        remaining_susceptibility *= (1.0 - s.immunity_level / 100.0 * scale)
     end
 
     return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id) / 100.0) * remaining_susceptibility
 end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default
-transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, default_gems_rng())
+transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry) =
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, infections, immunities, default_gems_rng())

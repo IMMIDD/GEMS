@@ -98,11 +98,10 @@ const QUARANTINE_STATE_NO_QUARANTINE = Int8(0)
 const QUARANTINE_STATE_HOUSEHOLD_QUARANTINE = Int8(1)
 const QUARANTINE_STATE_HOSPITAL = Int8(2)
 
-# Maximum number of concurrent infections an individual can carry.
-const MAX_CONCURRENT_INFECTIONS = 4
-
-# Maximum number of immunizations (recovery/vaccination per pathogen) for which immunity is tracked per individual
-const MAX_TRACKED_IMMUNITIES = 8
+# Maximum number of cached infections
+const INFECTIONS_CACHE_SIZE = 1
+# Maximum number cached immunizations
+const IMMUNITY_CACHE_SIZE = 1
 
 # Source flags stored in ImmunityRow / ImmunityState.
 const IMMUNITY_SOURCE_NATURAL = Int8(1)

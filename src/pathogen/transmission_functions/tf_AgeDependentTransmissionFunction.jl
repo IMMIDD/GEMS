@@ -52,7 +52,7 @@ end
 
 
 """
-    transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+    transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry, rng::Xoshiro)::Float64
 
 Calculates the transmission probability based on the age of the infected using age-dependent transmission rates.
 
@@ -71,7 +71,17 @@ Calculates the transmission probability based on the age of the infected using a
 
 - `Float64`: Transmission probability p (`0 <= p <= 1`)
 """
-function transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
+function transmission_probability(
+        transFunc::AgeDependentTransmissionRate,
+        pathogen_id::Int8,
+        infecter::Individual,
+        infectee::Individual,
+        setting::Setting,
+        tick::Int16,
+        infections::InfectionRegistry, 
+        immunities::ImmunityRegistry,
+        rng::Xoshiro)::Float64
+
     # error handling
     infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
 
@@ -85,5 +95,5 @@ function transmission_probability(transFunc::AgeDependentTransmissionRate, patho
 end
 
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, default_gems_rng())
+transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry) = 
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, infections, immunities, default_gems_rng())

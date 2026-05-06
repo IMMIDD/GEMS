@@ -365,6 +365,53 @@ function is_dormant(simulation::Simulation)
 end
 
 """
+    push_immunity_to_individual!(ind::Individual, registry::ImmunityRegistry, host_id::Int32, pathogen_id::Int8, source::Int8, acquired_tick::Int16, vaccine_id::Int8)
+ 
+Cache-first immunity write. Used by flush_pending_infections! and vaccinate!.
+"""
+function push_immunity_to_individual!(
+    ind::Individual,
+    registry::ImmunityRegistry,
+    host_id::Int32,
+    pathogen_id::Int8,
+    source::Int8,
+    acquired_tick::Int16,
+    vaccine_id::Int8
+)
+    # Update existing cache entry for this pathogen
+    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
+        s = ind.immunity_cache[i]
+        _is_active_immunity(s) && s.pathogen_id == pathogen_id || continue
+        ind.immunity_cache = Base.setindex(ind.immunity_cache,
+            if source == IMMUNITY_SOURCE_NATURAL
+                ImmunityState(Int32(0), acquired_tick, s.vaccine_acquired_tick, s.immunity_level, pathogen_id, s.vaccine_id, s.dose_number)
+            else
+                ImmunityState(Int32(0), s.natural_acquired_tick, acquired_tick, s.immunity_level, pathogen_id, vaccine_id, s.dose_number + Int8(1))
+            end, i)
+        return nothing
+    end
+ 
+    # Free cache slot
+    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
+        s = ind.immunity_cache[i]
+        _is_active_immunity(s) && continue
+        ind.immunity_cache = Base.setindex(ind.immunity_cache,
+            if source == IMMUNITY_SOURCE_NATURAL
+                ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, Int8(0), pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
+            else
+                ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, Int8(0), pathogen_id, vaccine_id, Int8(1))
+            end, i)
+        return nothing
+    end
+ 
+    # Cache full: write to overflow registry
+    push_immunity!(registry, host_id, pathogen_id, source, acquired_tick, vaccine_id)
+    ind.immunity_overflow = true
+    return nothing
+end
+
+
+"""
     flush_pending_infections!(sim::Simulation)
  
 Drains every `PendingInfection` staged in `sim.infection_buffers` into `sim.infection_registry`. 
@@ -373,46 +420,31 @@ Empties each buffer when done.
 function flush_pending_infections!(sim::Simulation)
     infections = infection_registry(sim)
     immunities = immunity_registry(sim)
+    pop = population(sim)
  
     @inbounds for buf in sim.infection_buffers
         for p in buf
-            existing_s, existing_idx = _find_slot_and_row(infections, p.host_id, p.pathogen_id)
+            ind = get_individual_by_id(pop, p.host_id)
+            full_state = _state_from_pending(p.pathogen_id, p.infection_id, p.dp)
  
-            if existing_s != 0
-                # reinfection: overwrite the existing state in-place
-                @inbounds infections.states[existing_idx] = _state_from_pending(p.pathogen_id, p.infection_id, p.dp) 
-            else
-                s = _find_empty_slot(infections, p.host_id)
- 
-                if s == 0
-                    # try to evict an infection whose end tick has already passed
-                    current_tick = tick(sim)
-                    @inbounds for candidate in 1:MAX_CONCURRENT_INFECTIONS
-                        row_idx = infections.slot_to_row[candidate, p.host_id]
-                        row_idx == 0 && continue
-                        st = infections.states[row_idx]
-                        end_tick = max(st.recovery, st.death)
-                        if 0 <= end_tick <= current_tick
-                            _free_slot!(infections, p.host_id, Int32(candidate), Int32(row_idx))
-                            s = candidate
-                            break
-                        end
-                    end
+            # Replace the placeholder written by claim_active_slot!
+            placed = false
+            @inbounds for i in 1:INFECTIONS_CACHE_SIZE
+                s = ind.infection_cache[i]
+                if s.active && s.pathogen_id == p.pathogen_id && s.infection_id == DEFAULT_INFECTION_ID
+                    ind.infection_cache = Base.setindex(ind.infection_cache, full_state, i)
+                    placed = true
+                    break
                 end
+            end
  
-                if s == 0
-                    @warn "Individual $(p.host_id) has all $MAX_CONCURRENT_INFECTIONS infection slots filled — skipping pathogen $(p.pathogen_id)."
-                    continue
-                end
- 
-                idx = _alloc_state!(infections, _state_from_pending(p.pathogen_id, p.infection_id, p.dp))
-                @inbounds infections.slot_to_row[s, p.host_id] = idx
+            if !placed
+                # claim_active_slot! set infection_overflow; write to registry now
+                _push_overflow!(infections, p.host_id, full_state)
             end
  
             if p.dp.recovery >= 0
-                push_immunity!(immunities, p.host_id, p.pathogen_id,
-                               IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
-                ind = get_individual_by_id(population(sim), p.host_id)
+                push_immunity_to_individual!(ind, immunities, p.host_id, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
                 ind.needs_immunity_update = true
             end
         end
@@ -420,6 +452,28 @@ function flush_pending_infections!(sim::Simulation)
     end
     return nothing
 end
+
+"""
+    _promote_overflow_to_cache!(ind::Individual, reg::InfectionRegistry, cache_slot::Int32)
+ 
+Moves the first overflow node into a freed cache slot.
+"""
+@inline function _promote_overflow_to_cache!(ind::Individual, reg::InfectionRegistry, cache_slot::Int32)
+    head_idx = reg.head[ind.id]
+    head_idx == 0 && (ind.infection_overflow = false; return nothing)
+ 
+    @inbounds promoted = reg.states[head_idx]
+    # Promote: clear the next chain pointer for the cache state
+    ind.infection_cache = Base.setindex(ind.infection_cache, _setstate(promoted, Val(:next), Int32(0)), Int(cache_slot))
+ 
+    reg.head[ind.id] = promoted.next
+    push!(reg.free_slots, head_idx)
+ 
+    reg.head[ind.id] == 0 && (ind.infection_overflow = false)
+    return nothing
+end
+
+
 
 """
     flush_ended_infections!(sim)
@@ -430,16 +484,29 @@ the free list so they can be reused.
 """
 function flush_ended_infections!(sim::Simulation)
     reg = infection_registry(sim)
+    pop = population(sim)
+ 
     @inbounds for buf in sim.removal_buffers
-        for (host_id, slot) in buf
-            row_idx = reg.slot_to_row[slot, host_id]
-            row_idx == 0 && continue
-            _free_slot!(reg, host_id, Int32(slot), Int32(row_idx))
+        for (host_id, val) in buf
+            ind = get_individual_by_id(pop, host_id)
+            if val < 0
+                # Freed cache slot
+                if ind.infection_overflow
+                    _promote_overflow_to_cache!(ind, reg, Int32(-val))
+                end
+            else
+                # Ended overflow node 
+                _remove_overflow_node!(reg, host_id, Int32(val))
+                if reg.head[host_id] == 0
+                    ind.infection_overflow = false
+                end
+            end
         end
         empty!(buf)
     end
     return nothing
 end
+
 
 
 
