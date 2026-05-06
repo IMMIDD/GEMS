@@ -427,13 +427,12 @@ function flush_pending_infections!(sim::Simulation)
             ind = get_individual_by_id(pop, p.host_id)
             full_state = _state_from_pending(p.pathogen_id, p.infection_id, p.dp)
  
-            # Replace the placeholder written by claim_active_slot!
             placed = false
             @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-                s = ind.infection_cache[i]
-                if s.active && s.pathogen_id == p.pathogen_id && s.infection_id == DEFAULT_INFECTION_ID
+                if ind.claimed_pathogens[i] == p.pathogen_id && !ind.infection_cache[i].active
                     ind.infection_cache = Base.setindex(ind.infection_cache, full_state, i)
                     placed = true
+                    ind.claimed_pathogens = Base.setindex(ind.claimed_pathogens, Int8(0), i)
                     break
                 end
             end

@@ -50,9 +50,8 @@ within a single tick.
 """
 @inline function claim_active_slot!(individual::Individual, pathogen_id::Int8)
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        if !individual.infection_cache[i].active
-            individual.infection_cache = Base.setindex(individual.infection_cache,
-                _placeholder_infection_state(pathogen_id), i)
+        if individual.claimed_pathogens[i] == Int8(0)
+            individual.claimed_pathogens = Base.setindex(individual.claimed_pathogens, pathogen_id, i)
             return nothing
         end
     end
@@ -267,8 +266,7 @@ function try_to_infect!(infctr::Individual,
     end
     
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        s = infctd.infection_cache[i]
-        s.active && s.pathogen_id == id(pathogen) && return false
+        infctd.claimed_pathogens[i] == id(pathogen) && return false
     end
     if infctd.infection_overflow
         node = infection_registry(sim).head[infctd.id]
