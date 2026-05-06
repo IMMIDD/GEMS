@@ -147,7 +147,7 @@ function infect!(infectee::Individual,
     )
 
     # stage for serial flush after the threaded phase
-    push!(infection_buffers(sim)[Threads.threadid()], PendingInfection(id(infectee), id(pathogen), new_infection_id, dp))
+    push!(infection_buffers(sim)[Threads.threadid()], PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
 
     # increase lifetime number of infections
     inc_number_of_infections!(infectee)
@@ -358,7 +358,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
     # progress disease for currently infected individuals
     if infected(indiv)
-        progress_disease!(indiv, sim.infection_registry, sim.pathogens, tick, rng(sim))
+        progress_disease!(indiv, sim.infection_registry, sim.pathogens, sim.removal_buffers[Threads.threadid()], tick, rng(sim))
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)

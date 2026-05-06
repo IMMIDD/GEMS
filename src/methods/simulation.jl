@@ -281,6 +281,7 @@ function step!(simulation::Simulation)
         Threads.@threads :static for i in simulation |> population |> individuals
             update_individual!(i, tick(simulation), simulation)
         end
+        flush_ended_infections!(simulation)
     end
 
     # infect individuals in settings
@@ -372,51 +373,45 @@ Empties each buffer when done.
 function flush_pending_infections!(sim::Simulation)
     infections = infection_registry(sim)
     immunities = immunity_registry(sim)
-
+ 
     @inbounds for buf in sim.infection_buffers
         for p in buf
             existing_s, existing_idx = _find_slot_and_row(infections, p.host_id, p.pathogen_id)
-
+ 
             if existing_s != 0
-                # reinfection: overwrite the active-infection row in-place
-                infections.rows[existing_idx] = _row_from_pending(p.host_id, p.pathogen_id, p.infection_id, p.dp)
+                # reinfection: overwrite the existing state in-place
+                @inbounds infections.states[existing_idx] = _state_from_pending(p.pathogen_id, p.infection_id, p.dp) 
             else
-                # new infection: claim a slot, append row, wire lookup table
                 s = _find_empty_slot(infections, p.host_id)
-
+ 
                 if s == 0
+                    # try to evict an infection whose end tick has already passed
                     current_tick = tick(sim)
                     @inbounds for candidate in 1:MAX_CONCURRENT_INFECTIONS
                         row_idx = infections.slot_to_row[candidate, p.host_id]
                         row_idx == 0 && continue
-                        row = infections.rows[row_idx]
-                        end_tick = max(row.recovery, row.death)
+                        st = infections.states[row_idx]
+                        end_tick = max(st.recovery, st.death)
                         if 0 <= end_tick <= current_tick
-                            _remove_at_slot!(infections, p.host_id, Int32(candidate), Int32(row_idx))
+                            _free_slot!(infections, p.host_id, Int32(candidate), Int32(row_idx))
                             s = candidate
                             break
                         end
                     end
                 end
-
+ 
                 if s == 0
-                    @warn "Individual $(p.host_id) has all $MAX_CONCURRENT_INFECTIONS concurrent infection slots filled — skipping new infection with pathogen $(p.pathogen_id)."
+                    @warn "Individual $(p.host_id) has all $MAX_CONCURRENT_INFECTIONS infection slots filled — skipping pathogen $(p.pathogen_id)."
                     continue
                 end
-                push!(infections.rows, _row_from_pending(p.host_id, p.pathogen_id, p.infection_id, p.dp))
-                infections.slot_to_row[s, p.host_id] = Int32(length(infections.rows))
+ 
+                idx = _alloc_state!(infections, _state_from_pending(p.pathogen_id, p.infection_id, p.dp))
+                @inbounds infections.slot_to_row[s, p.host_id] = idx
             end
-
-            # pre-record natural immunity keyed on the projected recovery tick.
+ 
             if p.dp.recovery >= 0
-                push_immunity!(
-                    immunities,
-                    p.host_id,
-                    p.pathogen_id,
-                    IMMUNITY_SOURCE_NATURAL,
-                    p.dp.recovery,
-                    DEFAULT_VACCINE_ID,
-                )
+                push_immunity!(immunities, p.host_id, p.pathogen_id,
+                               IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
                 ind = get_individual_by_id(population(sim), p.host_id)
                 ind.needs_immunity_update = true
             end
@@ -425,6 +420,28 @@ function flush_pending_infections!(sim::Simulation)
     end
     return nothing
 end
+
+"""
+    flush_ended_infections!(sim)
+ 
+Drains `removal_buffers` after the threaded update phase: clears `slot_to_row`
+entries for infections that ended during this tick and returns their indices to
+the free list so they can be reused.
+"""
+function flush_ended_infections!(sim::Simulation)
+    reg = infection_registry(sim)
+    @inbounds for buf in sim.removal_buffers
+        for (host_id, slot) in buf
+            row_idx = reg.slot_to_row[slot, host_id]
+            row_idx == 0 && continue
+            _free_slot!(reg, host_id, Int32(slot), Int32(row_idx))
+        end
+        empty!(buf)
+    end
+    return nothing
+end
+
+
 
 
 

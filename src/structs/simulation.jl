@@ -212,6 +212,7 @@ mutable struct Simulation{P<:Tuple}
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
     infection_buffers::Vector{Vector{PendingInfection}}
+    removal_buffers::Vector{Vector{Tuple{Int32, Int32}}}
 
     # inner default constructor
     function Simulation(
@@ -274,7 +275,8 @@ mutable struct Simulation{P<:Tuple}
             # INITIALIZE BUFFERS
             [Vector{Individual}() for _ in 1:Threads.maxthreadid()], # present_buffers
             [Vector{Individual}() for _ in 1:Threads.maxthreadid()],  # contact_buffers
-            [Vector{PendingInfection}() for _ in 1:Threads.maxthreadid()] # infection buffers
+            [Vector{PendingInfection}() for _ in 1:Threads.maxthreadid()], # infection buffers
+            [Vector{Tuple{Int32,Int32}}() for _ in 1:Threads.maxthreadid()] # infection removal buffers
         )
 
         # increase simulation counter
@@ -640,7 +642,7 @@ gets a fully concrete `P`.
 All elements must share the same concrete `Pathogen{TF,IP,IM,PA}` type. For
 heterogeneous pathogen types, the user must supply a Tuple directly.
 """
-function _make_pathogen_tuple(v::AbstractVector)                    # NEW function
+function _make_pathogen_tuple(v::AbstractVector) 
     isempty(v) && throw(ArgumentError("At least one pathogen must be provided."))
     length(v) > 8 && throw(ArgumentError(
         "At most 8 distinct pathogen type slots are supported; got $(length(v)). " *

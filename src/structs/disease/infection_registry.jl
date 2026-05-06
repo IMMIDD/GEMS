@@ -1,56 +1,21 @@
-export InfectionRegistry, InfectionRow, InfectionState, PendingInfection
+export InfectionRegistry, InfectionState, PendingInfection
 export get_infection_state, push_infection!, remove_infection!, find_infection_index
-
-"""
-    InfectionRow
-
-Immutable, bits-type record for one active (host, pathogen) infection.
-"""
-struct InfectionRow
-    host_id::Int32
-    pathogen_id::Int8
-    infection_id::Int32
-
-    # Natural disease history
-    exposure::Int16
-    infectiousness_onset::Int16
-    symptom_onset::Int16
-    severeness_onset::Int16
-    hospital_admission::Int16
-    icu_admission::Int16
-    icu_discharge::Int16
-    ventilation_admission::Int16
-    ventilation_discharge::Int16
-    hospital_discharge::Int16
-    severeness_offset::Int16
-    recovery::Int16
-    death::Int16
-end
-
-"""
-    InfectionRegistry
-
-Two-level storage for all active infections in the simulation.
-"""
-mutable struct InfectionRegistry
-    rows::Vector{InfectionRow}
-    slot_to_row::Matrix{Int32} 
-
-    function InfectionRegistry(n::Int32)
-        return new(InfectionRow[], zeros(Int32, MAX_CONCURRENT_INFECTIONS, n))
-    end
-end
-
+ 
+ 
 """
     InfectionState
-
-Public, stack-allocated snapshot of an individual's disease state for one
-pathogen.
+ 
+Immutable, bits-type record used for both storage inside `InfectionRegistry`
+and as the public snapshot passed to `InfectiousnessProfile.calculate_infectiousness`.
+There is no separate row type.
+ 
+`active = false` signals that no record was found (returned by `get_infection_state`
+when the index is 0). All tick fields default to `Int16(-1)` in that case.
+ 
+Field layout (32 bytes, zero padding):
+  infection_id::Int32 (4), 13×Int16 (26), pathogen_id::Int8 (1), active::Bool (1)
 """
 struct InfectionState
-    active::Bool
-    host_id::Int32
-    pathogen_id::Int8
     infection_id::Int32
     exposure::Int16
     infectiousness_onset::Int16
@@ -65,8 +30,37 @@ struct InfectionState
     severeness_offset::Int16
     recovery::Int16
     death::Int16
+    pathogen_id::Int8
+    active::Bool
 end
-
+ 
+"""
+    InfectionRegistry
+ 
+Two-level storage for all active infections in the simulation.
+ 
+- `states::Vector{InfectionState}`: flat record store. Indices are stable across
+  the lifetime of an infection — freed indices go onto `free_slots` and are
+  reclaimed by the next insertion, so the vector never grows beyond its peak size.
+- `free_slots::Vector{Int32}`: LIFO stack of reusable indices.
+- `slot_to_row::Matrix{Int32}`: `MAX_CONCURRENT_INFECTIONS × n_individuals`
+  lookup table. A zero entry means the slot is unoccupied.
+"""
+mutable struct InfectionRegistry
+    states::Vector{InfectionState}
+    free_slots::Vector{Int32}
+    slot_to_row::Matrix{Int32}
+ 
+    function InfectionRegistry(n::Int32; concurrent_fraction::Float64 = 0.5) 
+        states = InfectionState[]
+        sizehint!(states, round(Int, n * concurrent_fraction))
+        free_slots = Int32[]
+        sizehint!(free_slots, round(Int, n * concurrent_fraction))
+        return new(states, free_slots, zeros(Int32, MAX_CONCURRENT_INFECTIONS, n))
+    end
+end
+ 
+ 
 """
     PendingInfection
 
@@ -75,54 +69,35 @@ contact phase, then drained into `InfectionRegistry` by `flush_pending_infection
 """
 struct PendingInfection
     host_id::Int32
-    pathogen_id::Int8
     infection_id::Int32
+    pathogen_id::Int8
     dp::DiseaseProgression
 end
 
-
-
-
-"""
-    _find_slot_and_row(infections, host_id, pathogen_id)::(slot, row_idx)
-
-Returns the lookup-table slot and the row index for the given`(host_id, pathogen_id)` pair, 
-or `(0, 0)` if the host has no record for this pathogen.
-"""
-@inline function _find_slot_and_row(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8)
+ 
+@inline function _find_slot_and_row(reg::InfectionRegistry, host_id::Int32, pathogen_id::Int8)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
-        row_idx = infections.slot_to_row[s, host_id]
+        row_idx = reg.slot_to_row[s, host_id]
         row_idx == 0 && continue
-        if infections.rows[row_idx].pathogen_id == pathogen_id
-            return s, Int(row_idx)
-        end
+        reg.states[row_idx].pathogen_id == pathogen_id && return s, Int(row_idx)
     end
     return 0, 0
 end
-
-"""
-    _find_empty_slot(infections, host_id)::slot
-
-First slot index in `slot_to_row[:, host_id]` whose entry is 0, or 0 if all `MAX_CONCURRENT_INFECTIONS` slots are occupied.
-"""
-@inline function _find_empty_slot(infections::InfectionRegistry, host_id::Int32)
+ 
+@inline function _find_empty_slot(reg::InfectionRegistry, host_id::Int32)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
-        if infections.slot_to_row[s, host_id] == 0
-            return s
-        end
+        reg.slot_to_row[s, host_id] == 0 && return s
     end
     return 0
 end
-
+ 
 """
-    _row_from_pending(host_id, pathogen_id, infection_id, dp)::InfectionRow
-
-Build a new `InfectionRow` from the pending-infection inputs.
+    _state_from_pending(pathogen_id, infection_id, dp)::InfectionState
+ 
+Build an `InfectionState` from a pending infection.
 """
-@inline function _row_from_pending(host_id::Int32, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)::InfectionRow
-    return InfectionRow(
-        host_id,
-        pathogen_id,
+@inline function _state_from_pending(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)::InfectionState
+    return InfectionState(
         infection_id,
         exposure(dp),
         infectiousness_onset(dp),
@@ -137,160 +112,140 @@ Build a new `InfectionRow` from the pending-infection inputs.
         severeness_offset(dp),
         recovery(dp),
         death(dp),
+        pathogen_id,
+        true
     )
 end
-
-"""
-    _row_to_state(row::InfectionRow)::InfectionState
-
-Convert a stored row into the public snapshot type. `active` is true because rows only exist for live records; the empty case is handled separately by `_empty_state`.
-"""
-@inline function _row_to_state(row::InfectionRow)::InfectionState
+ 
+@inline function _empty_infection_state()::InfectionState
     return InfectionState(
-        true,
-        row.host_id,
-        row.pathogen_id,
-        row.infection_id,
-        row.exposure,
-        row.infectiousness_onset,
-        row.symptom_onset,
-        row.severeness_onset,
-        row.hospital_admission,
-        row.icu_admission,
-        row.icu_discharge,
-        row.ventilation_admission,
-        row.ventilation_discharge,
-        row.hospital_discharge,
-        row.severeness_offset,
-        row.recovery,
-        row.death,
-    )
-end
-
-@inline function _empty_state(host_id::Int32)::InfectionState
-    return InfectionState(
-        false, host_id, Int8(0), Int32(0),
+        Int32(0),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1),
+        Int8(0),
+        false,
     )
 end
-
+ 
 """
-    _setrow(row, ::Val{name}, value)::InfectionRow
-
-Return a copy of `row` with field `name` replaced by `value`.
+    _setstate(state, ::Val{name}, value)::InfectionState
+ 
+Return a copy of `state` with field `name` replaced by `value`.
+Used by the disease-history tick-setter functions.
 """
-@inline @generated function _setrow(row::InfectionRow, ::Val{name}, value) where {name}
-    fields = fieldnames(InfectionRow)
-    args = Expr[ field === name ? :value : :(getfield(row, $(QuoteNode(field)))) for field in fields ]
-    return :(InfectionRow($(args...)))
+@inline @generated function _setstate(state::InfectionState, ::Val{name}, value) where {name}
+    fields = fieldnames(InfectionState)
+    args = Expr[field === name ? :value : :(getfield(state, $(QuoteNode(field)))) for field in fields]
+    return :(InfectionState($(args...)))
 end
-
+ 
 """
-    _remove_at_slot!(infections, host_id, slot, row_idx)
-
-Internal swap-and-pop removal. The row currently at `row_idx` is removed by moving the last row of `rows` into its place (if it isn't already last) and popping. 
+    _alloc_state!(reg, state)::Int32
+ 
+Write `state` to the next free index (from `free_slots` if available, otherwise
+appends to `states`). Returns the index used.
 """
-@inline function _remove_at_slot!(infections::InfectionRegistry, host_id::Int32, slot::Int32, row_idx::Int32)
-    last_idx = length(infections.rows)
-
-    if row_idx != last_idx
-        @inbounds last_row = infections.rows[last_idx]
-        last_host = last_row.host_id
-
-        @inbounds for ds in 1:MAX_CONCURRENT_INFECTIONS
-            if infections.slot_to_row[ds, last_host] == last_idx
-                infections.slot_to_row[ds, last_host] = Int32(row_idx)
-                break
-            end
-        end
-        @inbounds infections.rows[row_idx] = last_row
+@inline function _alloc_state!(reg::InfectionRegistry, state::InfectionState)::Int32 
+    if isempty(reg.free_slots)
+        push!(reg.states, state)
+        return Int32(length(reg.states))
+    else
+        idx = pop!(reg.free_slots)
+        @inbounds reg.states[idx] = state
+        return idx
     end
-
-    pop!(infections.rows)
-    @inbounds infections.slot_to_row[slot, host_id] = Int32(0)
+end
+ 
+"""
+    _free_slot!(reg, host_id, slot, row_idx)
+ 
+Clear `slot_to_row[slot, host_id]` and push `row_idx` onto `free_slots` so the
+index can be reused by the next insertion.
+"""
+@inline function _free_slot!(reg::InfectionRegistry, host_id::Int32, slot::Int32, row_idx::Int32) 
+    push!(reg.free_slots, row_idx)
+    @inbounds reg.slot_to_row[slot, host_id] = Int32(0)
     return nothing
 end
-
-
-
+ 
+ 
+ 
 """
-    find_infection_index(infections::InfectionRegistry, host_id, pathogen_id)::Int
-
-Return the row index in `infections.rows` for the given `(host_id, pathogen_id)`, or `0` if no such record exists.
+    find_infection_index(infections, host_id, pathogen_id)::Int
+ 
+Return the index in `infections.states` for `(host_id, pathogen_id)`, or 0 if absent.
 """
-@inline function find_infection_index(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8)::Int
-    _, idx = _find_slot_and_row(infections, host_id, pathogen_id)
+@inline function find_infection_index(reg::InfectionRegistry, host_id::Int32, pathogen_id::Int8)::Int
+    _, idx = _find_slot_and_row(reg, host_id, pathogen_id)
     return idx
 end
 
+ 
 """
-    get_infection_state(infections::InfectionRegistry, idx::Int32, host_id::Int32)::InfectionState
-
-Build an `InfectionState` from a known row index. `idx == 0` returns the empty (uninfected) state.
+    get_infection_state(infections, idx)::InfectionState
+ 
+Direct index lookup. Returns the inactive sentinel state when `idx == 0`.
 """
-function get_infection_state(infections::InfectionRegistry, idx::Int32, host_id::Int32)::InfectionState
-    idx == 0 && return _empty_state(host_id)
-    @inbounds return _row_to_state(infections.rows[idx])
+@inline function get_infection_state(reg::InfectionRegistry, idx::Int32)::InfectionState
+    idx == 0 && return _empty_infection_state()
+    @inbounds return reg.states[idx]
 end
-
+ 
+ 
 """
-    get_infection_state(host_id::Int32, infections::InfectionRegistry, pathogen_id::Int8)::InfectionState
-
-Look up `InfectionState` for `(host_id, pathogen_id)`. Returns the empty state if the host has no record for that pathogen.
+    get_infection_state(host_id, infections, pathogen_id)::InfectionState
+ 
+Lookup by `(host_id, pathogen_id)`. Returns the inactive sentinel state if absent.
 """
-function get_infection_state(host_id::Int32, infections::InfectionRegistry, pathogen_id::Int8)::InfectionState
-    idx = find_infection_index(infections, host_id, pathogen_id)
-    idx == 0 && return _empty_state(host_id)
-    @inbounds return _row_to_state(infections.rows[idx])
+function get_infection_state(host_id::Int32, reg::InfectionRegistry, pathogen_id::Int8)::InfectionState
+    idx = find_infection_index(reg, host_id, pathogen_id)
+    return get_infection_state(reg, Int32(idx))
 end
-
-
-
+ 
 """
     push_infection!(infections, host_id, pathogen_id, infection_id, dp)
-
-Insert a new infection record for `(host_id, pathogen_id)`.
+ 
+Insert a new infection record. No-op if a record for this pathogen already exists.
+Warns and skips if all `MAX_CONCURRENT_INFECTIONS` slots are occupied.
 """
-function push_infection!(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
-    existing_s, _ = _find_slot_and_row(infections, host_id, pathogen_id)
-    if existing_s != 0
-        return nothing 
-    end
-
-    s = _find_empty_slot(infections, host_id)
+function push_infection!(reg::InfectionRegistry, host_id::Int32, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
+    existing_s, _ = _find_slot_and_row(reg, host_id, pathogen_id)
+    existing_s != 0 && return nothing
+ 
+    s = _find_empty_slot(reg, host_id)
     if s == 0
-        @warn "Individual $host_id has all $MAX_CONCURRENT_INFECTIONS concurrent infection slots filled — skipping new infection with pathogen $pathogen_id."
+        @warn "Individual $host_id has all $MAX_CONCURRENT_INFECTIONS infection slots filled — skipping pathogen $pathogen_id."
         return nothing
     end
-
-    push!(infections.rows, _row_from_pending(host_id, pathogen_id, infection_id, dp))
-    @inbounds infections.slot_to_row[s, host_id] = Int32(length(infections.rows))
+ 
+    idx = _alloc_state!(reg, _state_from_pending(pathogen_id, infection_id, dp))
+    @inbounds reg.slot_to_row[s, host_id] = idx
     return nothing
 end
-
+ 
 """
     remove_infection!(infections, host_id, pathogen_id)
-
-Remove the (host_id, pathogen_id) record.
+ 
+Remove the `(host_id, pathogen_id)` record and return its index to the free list.
 """
-function remove_infection!(infections::InfectionRegistry, host_id::Int32, pathogen_id::Int8)
-    s, row_idx = _find_slot_and_row(infections, host_id, pathogen_id)
+function remove_infection!(reg::InfectionRegistry, host_id::Int32, pathogen_id::Int8)
+    s, row_idx = _find_slot_and_row(reg, host_id, pathogen_id)
     s == 0 && return nothing
-    return _remove_at_slot!(infections, host_id, s, row_idx)
+    _free_slot!(reg, host_id, Int32(s), Int32(row_idx))
+    return nothing
 end
-
+ 
 """
     remove_infection!(infections, host_id)
-
-Remove every record for the given host.
+ 
+Remove every infection record for `host_id` (called from `reset!`).
 """
-function remove_infection!(infections::InfectionRegistry, host_id::Int32)
+function remove_infection!(reg::InfectionRegistry, host_id::Int32)
     @inbounds for s in 1:MAX_CONCURRENT_INFECTIONS
-        row_idx = infections.slot_to_row[s, host_id]
+        row_idx = reg.slot_to_row[s, host_id]
         row_idx == 0 && continue
-        _remove_at_slot!(infections, host_id, s, Int(row_idx))
+        _free_slot!(reg, host_id, Int32(s), Int32(row_idx))
     end
     return nothing
 end
