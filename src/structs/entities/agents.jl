@@ -79,33 +79,32 @@ abstract type Agent <: Entity end
 """
     Individual <: Agent
 
-A type to represent individuals, that act as agents inside the simulation.
+A type to represent individuals that act as agents inside the simulation.
 
 # Fields
 - General
     - `id::Int32`: Unique identifier of the individual
-    - `sex::Int8`: Sex  (Female (1), Male(2), Diverse (3))
+    - `sex::Int8`: Sex (Female (1), Male(2), Diverse (3))
     - `age::Int8`: Age
-    - `education::Int8`: Education class (i.e. highest degree)
     - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
+    - `education::Int8`: Education class (i.e. highest degree)
 
-- Behaviour
-    - `social_factor::Float32`: Parameter for the risk-willingness. Can be anywhere between
-       -1 and 1 with neutral infections is 0.
-    - `mandate_compliance::Float32`. Paremeter which influences the probability of complying
-        to mandates. Can be anywhere between -1 and 1 with neutral infections is 0.
-
-- Health Status (Proxy Flags)
-    - `comorbidities::UInt16`: Indicating prevalence of certain health conditions.
-    - `killing_pathogen_id::Int8`: Pathogen that killed the agent.
-    - `dead::Bool`: Flag indicating individual's decease
+- Health Status
+    - `killing_pathogen_id::Int8`: Pathogen that killed the agent
     - `infected::Bool`: Flag indicating individual's infection status
+    - `infectious::Bool`: Flag indicating if individual is infectious with any pathogen
     - `symptomatic::Bool`: Flag indicating individual is showing symptoms
     - `severe::Bool`: Flag indicating individual is experiencing severe symptoms
     - `hospitalized::Bool`: Flag indicating individual is in the hospital
     - `icu::Bool`: Flag indicating individual is in the ICU
     - `ventilated::Bool`: Flag indicating individual is on a ventilator
+    - `dead::Bool`: Flag indicating individual's decease
     - `detected::Bool`: Flag indicating individual tested positive
+    - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
+
+- Behaviour
+    - `social_factor::Float32`: Parameter for risk-willingness (-1 to 1)
+    - `mandate_compliance::Float32`: Probability of complying to mandates (-1 to 1)
 
 - Associated Settings
     - `household::Int32`: Reference to household id
@@ -114,75 +113,77 @@ A type to represent individuals, that act as agents inside the simulation.
     - `municipality::Int32`: Reference to municipality id
 
 - Pathogen Memory
+    - `infection_cache::NTuple{N, InfectionState}`: Fixed-size cache of current infections
+    - `infection_overflow::Bool`: Flag if agent has more infections than cache size
     - `number_of_infections::Int8`: Lifetime infection count
-    - `active_pathogens::NTuple{N, Int8}`: pathogen id occupying slot `s`
-    - `infectiousness::NTuple{N, Int8}`: current shedding level for that pathogen 
-    - `infection_ids::NTuple{N, Int32}`: `infection_id` of the active infection in slot `s` 
+    - `active_pathogens_mask::UInt32`: Bitmask of currently active pathogen types
 
 - Immunity Memory
-    - `immune_pathogens::NTuple{N, Int8}`: pathogen id with non-zero immunity in slot `s`; packed from index 1, trailing zeros unused
-    - `immunity_level::NTuple{N, Int8}`: current immunity level (0–100) for the pathogen in slot `s`
+    - `immunity_cache::NTuple{N, ImmunityState}`: Fixed-size cache of pathogen immunities
+    - `immunity_overflow::Bool`: Flag if agent has more immunity records than cache size
+    - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
 
 - Testing
-    - `last_test::Int16`: Tick of last test for pathogen
+    - `last_test::Int16`: Tick of last test
     - `last_test_result::Bool`: Flag for positivity of last test
     - `last_reported_at::Int16`: Tick at which this individual was last reported
 
 - Interventions
-    - `quarantine_status::Int8`: Status to indicate quarantine 
-        (none, household_quarantined, hospitalized, etc...)
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
+    - `quarantine_status::Int8`: Status indicator (none, household, etc.)
 """
 @with_kw_noshow mutable struct Individual <: Agent
     # GENERAL
-    id::Int32  # 4 bytes
-    sex::Int8  # 1 byte
-    age::Int8  # 1 byte
-    occupation::Int16 = DEFAULT_SETTING_ID # 2 byte
-    education::Int8 = DEFAULT_SETTING_ID # 1 byte
+    id::Int32                               # 4 bytes
+    sex::Int8                               # 1 byte
+    age::Int8                               # 1 byte
+    occupation::Int16 = DEFAULT_SETTING_ID  # 2 bytes
+    education::Int8 = DEFAULT_SETTING_ID    # 1 byte
 
     # HEALTH STATUS
     killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # 1 byte
-    infected::Bool = false # 1 byte
-    symptomatic::Bool = false # 1 byte
-    severe::Bool = false # 1 byte
-    hospitalized::Bool = false # 1 byte
-    icu::Bool = false # 1 byte
-    ventilated::Bool = false # 1 byte
-    dead:: Bool = false # 1 byte
-    detected::Bool = false # 1 byte
-    comorbidities::UInt16 = 0 # 2 bytes
+    infected::Bool = false                  # 1 byte
+    infectious::Bool = false                  # 1 byte
+    symptomatic::Bool = false               # 1 byte
+    severe::Bool = false                    # 1 byte
+    hospitalized::Bool = false              # 1 byte
+    icu::Bool = false                       # 1 byte
+    ventilated::Bool = false                # 1 byte
+    dead::Bool = false                      # 1 byte
+    detected::Bool = false                  # 1 byte
+    comorbidities::UInt16 = 0               # 2 bytes
 
     # BEHAVIOR
-    social_factor::Float32 = 0 # 4 bytes
-    mandate_compliance::Float32 = 0 # 4 bytes
+    social_factor::Float32 = 0              # 4 bytes
+    mandate_compliance::Float32 = 0         # 4 bytes
 
     # ASSIGNED SETTINGS
-    household::Int32 = DEFAULT_SETTING_ID # 4 bytes
-    office::Int32 = DEFAULT_SETTING_ID # 4 bytes
+    household::Int32 = DEFAULT_SETTING_ID   # 4 bytes
+    office::Int32 = DEFAULT_SETTING_ID      # 4 bytes
     schoolclass::Int32 = DEFAULT_SETTING_ID # 4 bytes
     municipality::Int32 = DEFAULT_SETTING_ID # 4 bytes
 
     # PATHOGEN MEMORY
-    infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE)
-    infection_overflow::Bool = false
-    number_of_infections::Int8 = 0 # 1 byte
+    infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE) # INFECTIONS_CACHE_SIZE * sizeof(InfectionState)
+    infection_overflow::Bool = false        # 1 byte
+    number_of_infections::Int8 = 0          # 1 byte
+    active_pathogens_mask::UInt32 = 0       # 4 bytes
 
     # IMMUNITY MEMORY
-    immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} = ntuple(_ -> _empty_immunity_state(), IMMUNITY_CACHE_SIZE)
-    immunity_overflow::Bool = false
-    needs_immunity_update::Bool = false
+    immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} = ntuple(_ -> _empty_immunity_state(), IMMUNITY_CACHE_SIZE) # IMMUNITY_CACHE_SIZE * sizeof(ImmunityState)
+    immunity_overflow::Bool = false         # 1 byte
+    needs_immunity_update::Bool = false     # 1 byte
     
     # TESTING
-    last_test::Int16 = DEFAULT_TICK # 2 bytes
-    last_test_result::Bool = false # 1 byte
-    last_reported_at::Int16 = DEFAULT_TICK # 2 bytes
+    last_test::Int16 = DEFAULT_TICK         # 2 bytes
+    last_test_result::Bool = false          # 1 byte
+    last_reported_at::Int16 = DEFAULT_TICK  # 2 bytes
 
     # INTERVENTIONS
-    quarantine_tick::Int16 = DEFAULT_TICK
-    quarantine_release_tick::Int16 = DEFAULT_TICK
-    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # 1 bytes
+    quarantine_tick::Int16 = DEFAULT_TICK           # 2 bytes
+    quarantine_release_tick::Int16 = DEFAULT_TICK   # 2 bytes
+    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # 1 byte
 end
 
 # CONSTRUCTOR
@@ -474,14 +475,16 @@ infected!(individual::Individual, infected::Bool) = (individual.infected = infec
 
 Returns `true` iff the individual currently has nonzero shedding for at least one of their active pathogens.
 """
-@inline function is_infectious(individual::Individual)::Bool
-    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        individual.infection_cache[i].infectiousness != 0 && return true
-    end
-    return false
-end
+is_infectious(individual::Individual) = individual.infectious
 isinfectious(individual::Individual) = is_infectious(individual)
 infectious(individual::Individual) = is_infectious(individual)
+
+"""
+    infectious!(individual::Individual, infectious::Bool)
+
+Sets the `infectious` flag of the individual.
+"""
+infectious!(individual::Individual, infectious::Bool) = (individual.infectious = infectious)
 
 """
     is_exposed(individual::Individual)
@@ -607,7 +610,8 @@ function dead!(individual::Individual, pathogen_id::Int8, dead::Bool)
     individual.dead = dead
     if dead
         individual.killing_pathogen_id = pathogen_id
-        infected!(individual, false)
+        individual.infected = false
+        individual.infectious = false
         individual.symptomatic = false
         individual.severe = false
         individual.hospitalized = false
@@ -616,6 +620,7 @@ function dead!(individual::Individual, pathogen_id::Int8, dead::Bool)
         individual.detected = false
         individual.infection_cache = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE)
         individual.infection_overflow = false
+        individual.active_pathogens_mask = 0
     end
 end
 
@@ -695,7 +700,7 @@ with `pathogen_id`, or `DEFAULT_INFECTION_ID` if no such infection exists.
     node = infections.head[individual.id]
     while node != 0
         @inbounds s = infections.states[node]
-        s.pathogen_id == pathogen_id && return s.infection_id
+        s.active && s.pathogen_id == pathogen_id && return s.infection_id
         node = s.next
     end
     return DEFAULT_INFECTION_ID
@@ -719,7 +724,7 @@ or has recovered.
     node = infections.head[individual.id]
     while node != 0
         @inbounds s = infections.states[node]
-        s.pathogen_id == pathogen_id && return s.infectiousness
+        s.active && s.pathogen_id == pathogen_id && return s.infectiousness
         node = s.next
     end
     return Int8(0)
@@ -735,14 +740,14 @@ or 0 if the individual has no immunity record for that pathogen.
 @inline function immunity_level(individual::Individual, pathogen_id::Int8, immunities::ImmunityRegistry)::Int8
     @inbounds for i in 1:IMMUNITY_CACHE_SIZE
         s = individual.immunity_cache[i]
-        !_is_active_immunity(s) && break
+        !_is_active_immunity(s) && continue
         s.pathogen_id == pathogen_id && return s.immunity_level
     end
     individual.immunity_overflow || return Int8(0)
     node = immunities.head[individual.id]
     while node != 0
         @inbounds s = immunities.states[node]
-        s.pathogen_id == pathogen_id && return s.immunity_level
+        _is_active_immunity(s) && s.pathogen_id == pathogen_id && return s.immunity_level
         node = s.next
     end
     return Int8(0)
@@ -1391,6 +1396,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
     individual.dead && return nothing
 
     _is_inf = false
+    _is_infectious = false
     _is_symp = false
     _is_sev = false
     _is_hosp = false
@@ -1398,15 +1404,15 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
     _is_vent = false
     _is_det = false
 
-    # Cache slots: zero registry access for single-pathogen
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         state = individual.infection_cache[i]
         !state.active && continue
 
         end_tick = max(state.recovery, state.death)
 
-        # Infection ended: zero slot inline, queue for overflow promotion check
+        # queue for overflow promotion check
         if end_tick > Int16(0) && end_tick <= tick
+            individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
             individual.infection_cache = Base.setindex(individual.infection_cache, _empty_infection_state(), i)
             push!(removal_buf, (individual.id, Int32(-i)))
             continue
@@ -1426,6 +1432,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         end
 
         _is_inf |= _active
+        _is_infectious |= state.infectiousness_onset <= tick < end_tick
         _is_symp |= Int16(0) <= state.symptom_onset <= tick < end_tick
         _is_sev |= Int16(0) <= state.severeness_onset <= tick < state.severeness_offset
         _is_hosp |= Int16(0) <= state.hospital_admission <= tick < state.hospital_discharge
@@ -1443,6 +1450,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
             end_tick = max(state.recovery, state.death)
 
             if end_tick > Int16(0) && end_tick <= tick
+                individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
                 push!(removal_buf, (individual.id, Int32(node)))
                 node = next_node
                 continue
@@ -1462,6 +1470,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
             end
 
             _is_inf |= _active
+            _is_infectious |= state.infectiousness_onset <= tick < end_tick
             _is_symp |= Int16(0) <= state.symptom_onset <= tick < end_tick
             _is_sev |= Int16(0) <= state.severeness_onset <= tick < state.severeness_offset
             _is_hosp |= Int16(0) <= state.hospital_admission <= tick < state.hospital_discharge
@@ -1474,6 +1483,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
     end
 
     infected!(individual, _is_inf)
+    infectious!(individual, _is_infectious)
     symptomatic!(individual, _is_symp)
     severe!(individual, _is_sev)
     hospitalized!(individual, _is_hosp)
@@ -1494,6 +1504,7 @@ The individual will get back into a infections where it was never infected, vacc
 """
 function reset!(individual::Individual, infections::InfectionRegistry, registry::ImmunityRegistry)
     individual.infected = false
+    individual.infectious = false
     individual.symptomatic = false
     individual.severe = false
     individual.hospitalized = false
@@ -1509,6 +1520,7 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     individual.infection_cache = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE)
     individual.infection_overflow = false
     individual.number_of_infections = 0
+    individual.active_pathogens_mask = 0
     individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
 
     individual.immunity_cache = ntuple(_ -> _empty_immunity_state(), IMMUNITY_CACHE_SIZE)
@@ -1625,6 +1637,7 @@ function Base.show(io::IO, individual::Individual)
         "Mandate Compliance" => individual.mandate_compliance,
         
         "Is Infected" => individual.infected,
+        "Is Infectious" => individual.infectious,
         "Is Symptomatic" => individual.symptomatic,
         "Is Severe" => individual.severe,
         "Is Hospitalized" => individual.hospitalized,

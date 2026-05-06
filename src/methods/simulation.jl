@@ -427,19 +427,19 @@ function flush_pending_infections!(sim::Simulation)
             ind = get_individual_by_id(pop, p.host_id)
             full_state = _state_from_pending(p.pathogen_id, p.infection_id, p.dp)
  
-            # Replace the placeholder written by claim_active_slot!
+            # look for the first free cache slot
             placed = false
             @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-                s = ind.infection_cache[i]
-                if s.active && s.pathogen_id == p.pathogen_id && s.infection_id == DEFAULT_INFECTION_ID
+                if !ind.infection_cache[i].active
                     ind.infection_cache = Base.setindex(ind.infection_cache, full_state, i)
                     placed = true
                     break
                 end
             end
  
+            # if cache is full, flag overflow and push to registry
             if !placed
-                # claim_active_slot! set infection_overflow; write to registry now
+                ind.infection_overflow = true
                 _push_overflow!(infections, p.host_id, full_state)
             end
  

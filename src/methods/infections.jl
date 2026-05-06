@@ -41,24 +41,6 @@ function settings(individual::Individual, sim::Simulation)::Dict{DataType, Int32
     return d
 end
 
-"""
-    claim_active_slot!(individual::Individual, pathogen_id::Int8)
-
-Immediately writes `pathogen_id` into the first free slot of `individual.infection_cache`
-so that concurrent infectors in the same setting cannot infect the same individual twice
-within a single tick.
-"""
-@inline function claim_active_slot!(individual::Individual, pathogen_id::Int8)
-    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        if !individual.infection_cache[i].active
-            individual.infection_cache = Base.setindex(individual.infection_cache,
-                _placeholder_infection_state(pathogen_id), i)
-            return nothing
-        end
-    end
-    individual.infection_overflow = true
-end
-
 
 
 """
@@ -155,8 +137,8 @@ function infect!(infectee::Individual,
     # increase lifetime number of infections
     inc_number_of_infections!(infectee)
 
-    # block same-tick re-infection by the same pathogen
-    claim_active_slot!(infectee, id(pathogen))
+    # flag this pathogen as currently active
+    infectee.active_pathogens_mask |= (UInt32(1) << (id(pathogen) - 1))
     
     # set infected flag
     infected!(infectee, true)
@@ -266,19 +248,8 @@ function try_to_infect!(infctr::Individual,
         return false
     end
     
-    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        s = infctd.infection_cache[i]
-        s.active && s.pathogen_id == id(pathogen) && return false
-    end
-    if infctd.infection_overflow
-        node = infection_registry(sim).head[infctd.id]
-        while node != 0
-            @inbounds s = infection_registry(sim).states[node]
-            s.pathogen_id == id(pathogen) && return false
-            node = s.next
-        end
-    end
-
+    # check if infctd is already infected with this pathogen
+    (infctd.active_pathogens_mask & (UInt32(1) << (id(pathogen) - 1))) != 0 && return false
 
 
     # calculate infection probability

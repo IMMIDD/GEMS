@@ -91,16 +91,6 @@ end
 end
 
 
-@inline function _placeholder_infection_state(pathogen_id::Int8)::InfectionState
-    return InfectionState(
-        DEFAULT_INFECTION_ID, Int32(0),
-        Int16(-1), Int16(-1), Int16(-1), Int16(-1),
-        Int16(-1), Int16(-1), Int16(-1), Int16(-1),
-        Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1),
-        Int8(0), pathogen_id, true,
-    )
-end
-
 @inline function _state_from_pending(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)::InfectionState
     return InfectionState(
         infection_id, Int32(0),
