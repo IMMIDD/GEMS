@@ -125,7 +125,7 @@ function transmission_probability(
         immunities::ImmunityRegistry,
         rng::Xoshiro)::Float64
 
-    infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError( "Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+    infectiousness(infecter, pathogen_id, infections) == 0 && throw(ArgumentError( "Infecting individual must have nonzero infectiousness to calculate transmission probability."))
 
     exposed_idx = findfirst(==(pathogen_id), transFunc.pathogen_ids)
     remaining_susceptibility = 1.0
@@ -143,7 +143,7 @@ function transmission_probability(
         remaining_susceptibility *= (1.0 - s.immunity_level / 100.0 * scale)
     end
 
-    return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id) / 100.0) * remaining_susceptibility
+    return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id, infections) / 100.0) * remaining_susceptibility
 end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default

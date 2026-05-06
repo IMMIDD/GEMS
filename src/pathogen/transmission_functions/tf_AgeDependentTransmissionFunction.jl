@@ -83,11 +83,11 @@ function transmission_probability(
         rng::Xoshiro)::Float64
 
     # error handling
-    infectiousness(infecter, pathogen_id) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+    infectiousness(infecter, pathogen_id, infections) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
 
     for (i, ag) in enumerate(transFunc.age_groups)
         if in_group(infectee.age, ag)
-            return transFunc.age_transmission_rates[i] * (infectiousness(infecter, pathogen_id) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id) / 100.0)
+            return transFunc.age_transmission_rates[i] * (infectiousness(infecter, pathogen_id, infections) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id, immunities) / 100.0)
         end
     end
 

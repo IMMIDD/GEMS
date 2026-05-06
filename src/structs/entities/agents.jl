@@ -681,46 +681,50 @@ Returns an individual's active pathogens.
 end
 
 """
-    infection_id(individual::Individual, pathogen_id::Int8)::Int32
+    infection_id(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int32
 
 Returns the `infection_id` of the individual's currently active infection
 with `pathogen_id`, or `DEFAULT_INFECTION_ID` if no such infection exists.
 """
-@inline function infection_id(individual::Individual, pathogen_id::Int8)::Int32
+@inline function infection_id(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int32
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         s = individual.infection_cache[i]
         s.active && s.pathogen_id == pathogen_id && return s.infection_id
     end
+    individual.infection_overflow || return DEFAULT_INFECTION_ID
+    node = infections.head[individual.id]
+    while node != 0
+        @inbounds s = infections.states[node]
+        s.pathogen_id == pathogen_id && return s.infection_id
+        node = s.next
+    end
     return DEFAULT_INFECTION_ID
 end
 
-# Returns the first active infection's id.
-function infection_id(individual::Individual, infections::InfectionRegistry)::Int32
-    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        s = individual.infection_cache[i]
-        s.active && return s.infection_id
-    end
-    individual.infection_overflow || return DEFAULT_INFECTION_ID
-    h = infections.head[individual.id]
-    h == 0 && return DEFAULT_INFECTION_ID
-    return infections.states[h].infection_id
-end
 
 """
-    infectiousness(individual::Individual, pathogen_id::Int8)::Int8
+    infectiousness(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int8
 
 Returns the individual's current infectiousness for the given pathogen
 (`Int8`, 0–100). Returns `0` if the individual is not currently infected
 with that pathogen, or is in the exposed-but-not-yet-infectious window,
 or has recovered.
 """
-@inline function infectiousness(individual::Individual, pathogen_id::Int8)::Int8
+@inline function infectiousness(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int8
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         s = individual.infection_cache[i]
         s.active && s.pathogen_id == pathogen_id && return s.infectiousness
     end
+    individual.infection_overflow || return Int8(0)
+    node = infections.head[individual.id]
+    while node != 0
+        @inbounds s = infections.states[node]
+        s.pathogen_id == pathogen_id && return s.infectiousness
+        node = s.next
+    end
     return Int8(0)
 end
+
 
 """
     immunity_level(individual::Individual, pathogen_id::Int8)::Int8
@@ -728,11 +732,18 @@ end
 Returns the current cached immunity level (0-100) against `pathogen_id`,
 or 0 if the individual has no immunity record for that pathogen.
 """
-@inline function immunity_level(individual::Individual, pathogen_id::Int8)::Int8
+@inline function immunity_level(individual::Individual, pathogen_id::Int8, immunities::ImmunityRegistry)::Int8
     @inbounds for i in 1:IMMUNITY_CACHE_SIZE
         s = individual.immunity_cache[i]
         !_is_active_immunity(s) && break
         s.pathogen_id == pathogen_id && return s.immunity_level
+    end
+    individual.immunity_overflow || return Int8(0)
+    node = immunities.head[individual.id]
+    while node != 0
+        @inbounds s = immunities.states[node]
+        s.pathogen_id == pathogen_id && return s.immunity_level
+        node = s.next
     end
     return Int8(0)
 end
