@@ -166,7 +166,6 @@ A type to represent individuals, that act as agents inside the simulation.
 
     # PATHOGEN MEMORY
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE)
-    claimed_pathogens::NTuple{INFECTIONS_CACHE_SIZE, Int8} = ntuple(_ -> Int8(0), INFECTIONS_CACHE_SIZE)
     infection_overflow::Bool = false
     number_of_infections::Int8 = 0 # 1 byte
 
@@ -680,7 +679,6 @@ Returns an individual's active pathogens.
 @inline function get_active_pathogens(ind::Individual)
     ntuple(i -> ind.infection_cache[i].active ? ind.infection_cache[i].pathogen_id : Int8(0), INFECTIONS_CACHE_SIZE)
 end
-
 
 """
     infection_id(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int32
@@ -1509,7 +1507,6 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     individual.immunity_overflow && remove_immunity!(registry, individual.id)
 
     individual.infection_cache = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE)
-    individual.claimed_pathogens = ntuple(_ -> Int8(0), INFECTIONS_CACHE_SIZE)
     individual.infection_overflow = false
     individual.number_of_infections = 0
     individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
@@ -1529,6 +1526,11 @@ end
 
 
 
+# =============================================================================
+# FILE: src/structs/entities/agents.jl  (or a dedicated iterators file)
+# Export these so user-defined TransmissionFunctions can use them without
+# knowing anything about the cache/overflow architecture.
+# =============================================================================
 
 export each_immunity, each_infection
 
