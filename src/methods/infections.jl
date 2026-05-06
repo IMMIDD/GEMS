@@ -44,7 +44,7 @@ end
 """
     claim_active_slot!(individual::Individual, pathogen_id::Int8)
 
-Immediately writes `pathogen_id` into the first free slot of `individual.active_pathogens`
+Immediately writes `pathogen_id` into the first free slot of `individual.infection_cache`
 so that concurrent infectors in the same setting cannot infect the same individual twice
 within a single tick.
 """

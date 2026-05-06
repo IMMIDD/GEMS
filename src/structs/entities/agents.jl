@@ -1526,14 +1526,6 @@ end
 
 
 
-# =============================================================================
-# FILE: src/structs/entities/agents.jl  (or a dedicated iterators file)
-# Export these so user-defined TransmissionFunctions can use them without
-# knowing anything about the cache/overflow architecture.
-# =============================================================================
-
-export each_immunity, each_infection
-
 """
     ImmunityIterator
 
@@ -1565,7 +1557,7 @@ covering both on-individual cache slots and any overflow nodes in `registry`.
             _is_active_immunity(s) && return (s, (i + Int32(1), true))
             i += Int32(1)
         end
-        i = iter.individual.immunity_overflow_head
+        i = iter.individual.immunity_overflow ? iter.registry.head[iter.individual.id] : Int32(0)
     end
 
     i == Int32(0) && return nothing
@@ -1603,7 +1595,7 @@ Returns an iterator over all active `InfectionState` entries for `individual`.
             s.active && return (s, (i + Int32(1), true))
             i += Int32(1)
         end
-        i = iter.individual.infection_overflow_head
+        i = iter.individual.infection_overflow ? iter.registry.head[iter.individual.id] : Int32(0)
     end
 
     i == Int32(0) && return nothing
