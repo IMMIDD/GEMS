@@ -10,7 +10,7 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen
-export infection_registry, immunity_registry
+export infection_registry, immunity_registry, owner_shard
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
@@ -25,7 +25,6 @@ export add_strategy!, strategies, add_testtype!, testtypes
 export stepmod
 export rng, rngs, seed
 export present_buffers, contact_buffers
-export infection_buffers
 
 export info
 
@@ -180,8 +179,8 @@ mutable struct Simulation{P<:Tuple}
     population::Population
     settings::SettingsContainer
     pathogens::P
-    infection_registry::InfectionRegistry
-    immunity_registry::ImmunityRegistry
+    infection_registries::Vector{InfectionRegistry}
+    immunity_registries::Vector{ImmunityRegistry}
 
     # logger
     infectionlogger::InfectionLogger
@@ -211,8 +210,8 @@ mutable struct Simulation{P<:Tuple}
     # THREAD-LOCAL BUFFERS
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
-    infection_buffers::Vector{Vector{PendingInfection}}
-    removal_buffers::Vector{Vector{Tuple{Int32, Int32}}}
+    infection_buffers::Matrix{Vector{PendingInfection}}
+    removal_buffers::Matrix{Vector{Tuple{Int32, Int32}}}
 
     # inner default constructor
     function Simulation(
@@ -229,6 +228,7 @@ mutable struct Simulation{P<:Tuple}
         seed::Int64,
         rngs::Vector{<:Xoshiro}
     ) where {P<:Tuple} 
+    num_shards = Threads.maxthreadid()
         sim = new{P}(
             # config
             configfile,
@@ -244,8 +244,8 @@ mutable struct Simulation{P<:Tuple}
             population,
             settings,
             pathogens,
-            InfectionRegistry(population.maxid),
-            ImmunityRegistry(population.maxid),
+            [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
+            [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
 
             # logger
             InfectionLogger(),
@@ -273,10 +273,10 @@ mutable struct Simulation{P<:Tuple}
             rngs,
             
             # INITIALIZE BUFFERS
-            [Vector{Individual}() for _ in 1:Threads.maxthreadid()], # present_buffers
-            [Vector{Individual}() for _ in 1:Threads.maxthreadid()],  # contact_buffers
-            [Vector{PendingInfection}() for _ in 1:Threads.maxthreadid()], # infection buffers
-            [Vector{Tuple{Int32,Int32}}() for _ in 1:Threads.maxthreadid()] # infection removal buffers
+            [Vector{Individual}() for _ in 1:num_shards], # present_buffers
+            [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
+            [Vector{PendingInfection}() for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
+            [Vector{Tuple{Int32,Int32}}() for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
         )
 
         # increase simulation counter
@@ -1479,14 +1479,6 @@ function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
     return simulation.contact_buffers
 end
 
-"""
-    infection_buffers(simulation::Simulation)
-
-Returns the thread-local buffers for storing pending infectinos, used to eliminate race conditions.
-"""
-function infection_buffers(simulation::Simulation)::Vector{Vector{PendingInfection}}
-    return simulation.infection_buffers
-end
 
 
 """
@@ -1634,22 +1626,48 @@ function pathogens(simulation::Simulation)
 end
 
 """
-    infection_registry(simulation)
+    owner_shard(ind_id::Int32)
 
-Returns the active infections of the simulation.
+Returns the shard index (1 to `Threads.maxthreadid()`) assigned to the given `ind_id`.
 """
-function infection_registry(simulation::Simulation)::InfectionRegistry
-    return simulation.infection_registry
+@inline owner_shard(ind_id::Int32) = mod(ind_id - Int32(1), Int32(Threads.maxthreadid())) + 1
+
+"""
+    infection_registry(simulation, ind_id::Int32)::InfectionRegistry
+
+Returns the specific `InfectionRegistry` shard that owns the given individual id.
+"""
+function infection_registry(simulation::Simulation, ind_id::Int32)::InfectionRegistry
+    return simulation.infection_registries[owner_shard(ind_id)]
 end
 
 """
-    immunity_registry(simulation)
+    infection_registry(simulation, individual::Individual)::InfectionRegistry
 
-Returns the `ImmunityRegistry` of the simulation.
+Returns the specific `InfectionRegistry` shard that owns the given individual.
 """
-function immunity_registry(simulation::Simulation)::ImmunityRegistry
-    return simulation.immunity_registry
+function infection_registry(simulation::Simulation, individual::Individual)::InfectionRegistry
+    return infection_registry(simulation, id(individual))
 end
+
+"""
+    immunity_registry(simulation, ind_id::Int32)::ImmunityRegistry
+
+Returns the specific `ImmunityRegistry` shard that owns the given individual id.
+"""
+function immunity_registry(simulation::Simulation, ind_id::Int32)::ImmunityRegistry
+    return simulation.immunity_registries[owner_shard(ind_id)]
+end
+
+"""
+    immunity_registry(simulation, individual::Individual)::ImmunityRegistry
+
+Returns the specific `ImmunityRegistry` shard that owns the given individual.
+"""
+function immunity_registry(simulation::Simulation, individual::Individual)::ImmunityRegistry
+    return immunity_registry(simulation, id(individual))
+end
+
 
 """
     get_pathogen(sim, pid)
@@ -1896,7 +1914,9 @@ If `reset_interventions` is true, it also deletes all interventions.
 """
 function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
     # reset individual to initial state
-    reset!.(individuals(simulation), infection_registry(simulation), immunity_registry(simulation))
+    for ind in individuals(simulation)
+        reset!(ind, infection_registry(simulation, id(ind)), immunity_registry(simulation, id(ind)))
+    end
     reset!(simulation)
 
     # Reset all loggers 

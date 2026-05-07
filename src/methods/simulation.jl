@@ -365,14 +365,13 @@ function is_dormant(simulation::Simulation)
 end
 
 """
-    push_immunity_to_individual!(ind::Individual, registry::ImmunityRegistry, host_id::Int32, pathogen_id::Int8, source::Int8, acquired_tick::Int16, vaccine_id::Int8)
+    push_immunity_to_individual!(ind::Individual, registry::ImmunityRegistry, pathogen_id::Int8, source::Int8, acquired_tick::Int16, vaccine_id::Int8)
  
 Cache-first immunity write. Used by flush_pending_infections! and vaccinate!.
 """
 function push_immunity_to_individual!(
     ind::Individual,
     registry::ImmunityRegistry,
-    host_id::Int32,
     pathogen_id::Int8,
     source::Int8,
     acquired_tick::Int16,
@@ -405,8 +404,7 @@ function push_immunity_to_individual!(
     end
  
     # Cache full: write to overflow registry
-    push_immunity!(registry, host_id, pathogen_id, source, acquired_tick, vaccine_id)
-    ind.immunity_overflow = true
+    push_immunity!(registry, ind, pathogen_id, source, acquired_tick, vaccine_id)
     return nothing
 end
 
@@ -418,58 +416,41 @@ Drains every `PendingInfection` staged in `sim.infection_buffers` into `sim.infe
 Empties each buffer when done.
 """
 function flush_pending_infections!(sim::Simulation)
-    infections = infection_registry(sim)
-    immunities = immunity_registry(sim)
     pop = population(sim)
+    num_shards = Threads.maxthreadid()
  
-    @inbounds for buf in sim.infection_buffers
-        for p in buf
-            ind = get_individual_by_id(pop, p.host_id)
-            full_state = _state_from_pending(p.pathogen_id, p.infection_id, p.dp)
+    Threads.@threads :static for shard_id in 1:num_shards
+        infections = sim.infection_registries[shard_id]
+        immunities = sim.immunity_registries[shard_id]
  
-            # look for the first free cache slot
-            placed = false
-            @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-                if !ind.infection_cache[i].active
-                    ind.infection_cache = Base.setindex(ind.infection_cache, full_state, i)
-                    placed = true
-                    break
+        # drain all buffers destined for this shard
+        @inbounds for producer_id in 1:num_shards
+            buf = sim.infection_buffers[producer_id, shard_id]
+            for p in buf
+                ind = get_individual_by_id(pop, p.host_id)
+                full_state = InfectionState(p.pathogen_id, p.infection_id, p.dp)
+     
+                placed = false
+                for i in 1:INFECTIONS_CACHE_SIZE
+                    if !ind.infection_cache[i].active
+                        ind.infection_cache = Base.setindex(ind.infection_cache, full_state, i)
+                        placed = true
+                        break
+                    end
+                end
+     
+                if !placed
+                    link_overflow!(infections, ind, full_state)
+                end
+     
+                if p.dp.recovery >= 0
+                    push_immunity_to_individual!(ind, immunities, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
+                    ind.needs_immunity_update = true
                 end
             end
- 
-            # if cache is full, flag overflow and push to registry
-            if !placed
-                ind.infection_overflow = true
-                _push_overflow!(infections, p.host_id, full_state)
-            end
- 
-            if p.dp.recovery >= 0
-                push_immunity_to_individual!(ind, immunities, p.host_id, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
-                ind.needs_immunity_update = true
-            end
+            empty!(buf)
         end
-        empty!(buf)
     end
-    return nothing
-end
-
-"""
-    _promote_overflow_to_cache!(ind::Individual, reg::InfectionRegistry, cache_slot::Int32)
- 
-Moves the first overflow node into a freed cache slot.
-"""
-@inline function _promote_overflow_to_cache!(ind::Individual, reg::InfectionRegistry, cache_slot::Int32)
-    head_idx = reg.head[ind.id]
-    head_idx == 0 && (ind.infection_overflow = false; return nothing)
- 
-    @inbounds promoted = reg.states[head_idx]
-    # Promote: clear the next chain pointer for the cache state
-    ind.infection_cache = Base.setindex(ind.infection_cache, _setstate(promoted, Val(:next), Int32(0)), Int(cache_slot))
- 
-    reg.head[ind.id] = promoted.next
-    push!(reg.free_slots, head_idx)
- 
-    reg.head[ind.id] == 0 && (ind.infection_overflow = false)
     return nothing
 end
 
@@ -483,26 +464,28 @@ entries for infections that ended during this tick and returns their indices to
 the free list so they can be reused.
 """
 function flush_ended_infections!(sim::Simulation)
-    reg = infection_registry(sim)
     pop = population(sim)
+    num_shards = Threads.maxthreadid()
  
-    @inbounds for buf in sim.removal_buffers
-        for (host_id, val) in buf
-            ind = get_individual_by_id(pop, host_id)
-            if val < 0
-                # Freed cache slot
-                if ind.infection_overflow
-                    _promote_overflow_to_cache!(ind, reg, Int32(-val))
-                end
-            else
-                # Ended overflow node 
-                _remove_overflow_node!(reg, host_id, Int32(val))
-                if reg.head[host_id] == 0
-                    ind.infection_overflow = false
+    Threads.@threads :static for shard_id in 1:num_shards
+        reg = sim.infection_registries[shard_id]
+
+        @inbounds for producer_id in 1:num_shards
+            buf = sim.removal_buffers[producer_id, shard_id]
+            for (host_id, val) in buf
+                ind = get_individual_by_id(pop, host_id)
+                if val < 0
+                    # freed cache slot: promote an overflow node if one exists
+                    if ind.infection_head != 0 
+                        promote_to_cache!(ind, reg, Int32(-val))
+                    end
+                else
+                    # ended overflow node
+                    unlink_overflow!(reg, ind, Int32(val))
                 end
             end
+            empty!(buf)
         end
-        empty!(buf)
     end
     return nothing
 end

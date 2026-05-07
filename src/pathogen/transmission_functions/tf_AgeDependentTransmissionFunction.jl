@@ -52,7 +52,7 @@ end
 
 
 """
-    transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry, rng::Xoshiro)::Float64
+    transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
 
 Calculates the transmission probability based on the age of the infected using age-dependent transmission rates.
 
@@ -65,6 +65,7 @@ Calculates the transmission probability based on the age of the infected using a
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
+- `sim::Simulation': Simulation object
 - `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
 
 # Returns
@@ -78,16 +79,15 @@ function transmission_probability(
         infectee::Individual,
         setting::Setting,
         tick::Int16,
-        infections::InfectionRegistry, 
-        immunities::ImmunityRegistry,
+        sim::Simulation,
         rng::Xoshiro)::Float64
 
     # error handling
-    infectiousness(infecter, pathogen_id, infections) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+    infectiousness(infecter, pathogen_id, sim) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
 
     for (i, ag) in enumerate(transFunc.age_groups)
         if in_group(infectee.age, ag)
-            return transFunc.age_transmission_rates[i] * (infectiousness(infecter, pathogen_id, infections) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id, immunities) / 100.0)
+            return transFunc.age_transmission_rates[i] * (infectiousness(infecter, pathogen_id, sim) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id, sim) / 100.0)
         end
     end
 
@@ -95,5 +95,5 @@ function transmission_probability(
 end
 
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry) = 
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, infections, immunities, default_gems_rng())
+transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) = 
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())

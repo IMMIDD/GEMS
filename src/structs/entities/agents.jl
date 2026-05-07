@@ -63,8 +63,6 @@ export is_quarantined, isquarantined, quarantined, quarantined!
 export update_immunity!
 export progress_disease!
 
-# imunity and infection iterators
-export each_immunity, each_infection
 
 
 ###
@@ -114,13 +112,13 @@ A type to represent individuals that act as agents inside the simulation.
 
 - Pathogen Memory
     - `infection_cache::NTuple{N, InfectionState}`: Fixed-size cache of current infections
-    - `infection_overflow::Bool`: Flag if agent has more infections than cache size
-    - `number_of_infections::Int8`: Lifetime infection count
+    - `infection_head::Int32`: Pointer to the first overflow node in the InfectionRegistry
     - `active_pathogens_mask::UInt32`: Bitmask of currently active pathogen types
+    - `number_of_infections::Int8`: Lifetime infection count
 
 - Immunity Memory
     - `immunity_cache::NTuple{N, ImmunityState}`: Fixed-size cache of pathogen immunities
-    - `immunity_overflow::Bool`: Flag if agent has more immunity records than cache size
+    - `immunity_head::Int32`: Pointer to the first overflow node in the ImmunityRegistry
     - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
 
 - Testing
@@ -165,14 +163,14 @@ A type to represent individuals that act as agents inside the simulation.
     municipality::Int32 = DEFAULT_SETTING_ID # 4 bytes
 
     # PATHOGEN MEMORY
-    infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE) # INFECTIONS_CACHE_SIZE * sizeof(InfectionState)
-    infection_overflow::Bool = false        # 1 byte
-    number_of_infections::Int8 = 0          # 1 byte
+    infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE) # INFECTIONS_CACHE_SIZE * sizeof(InfectionState)
+    infection_head::Int32 = 0               # 4 byte
     active_pathogens_mask::UInt32 = 0       # 4 bytes
+    number_of_infections::Int8 = 0          # 1 byte
 
     # IMMUNITY MEMORY
-    immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} = ntuple(_ -> _empty_immunity_state(), IMMUNITY_CACHE_SIZE) # IMMUNITY_CACHE_SIZE * sizeof(ImmunityState)
-    immunity_overflow::Bool = false         # 1 byte
+    immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE) # IMMUNITY_CACHE_SIZE * sizeof(ImmunityState)
+    immunity_head::Int32 = 0                # 4 byte
     needs_immunity_update::Bool = false     # 1 byte
     
     # TESTING
@@ -639,8 +637,8 @@ Returns (is_cache::Bool, idx::Int32).
         s = ind.infection_cache[i]
         s.active && s.pathogen_id == pathogen_id && return (true, Int32(i))
     end
-    ind.infection_overflow || return (false, Int32(0))
-    node = infections.head[ind.id]
+    ind.infection_head != 0 || return (false, Int32(0))
+    node = ind.infection_head
     while node != 0
         @inbounds s = infections.states[node]
         s.pathogen_id == pathogen_id && return (false, Int32(node))
@@ -682,14 +680,23 @@ with `pathogen_id`, or `DEFAULT_INFECTION_ID` if no such infection exists.
         s = individual.infection_cache[i]
         s.active && s.pathogen_id == pathogen_id && return s.infection_id
     end
-    individual.infection_overflow || return DEFAULT_INFECTION_ID
-    node = infections.head[individual.id]
+    individual.infection_head != 0 || return DEFAULT_INFECTION_ID
+    node = individual.infection_head
     while node != 0
         @inbounds s = infections.states[node]
         s.active && s.pathogen_id == pathogen_id && return s.infection_id
         node = s.next
     end
     return DEFAULT_INFECTION_ID
+end
+
+"""
+    infection_id(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int32
+
+Convenience wrapper that safely routes to the correct `InfectionRegistry` shard for the given individual.
+"""
+@inline function infection_id(individual::Individual, pathogen_id::Int8, sim)::Int32
+    return infection_id(individual, pathogen_id, infection_registry(sim, individual))
 end
 
 
@@ -706,8 +713,8 @@ or has recovered.
         s = individual.infection_cache[i]
         s.active && s.pathogen_id == pathogen_id && return s.infectiousness
     end
-    individual.infection_overflow || return Int8(0)
-    node = infections.head[individual.id]
+    individual.infection_head != 0 || return Int8(0)
+    node = individual.infection_head
     while node != 0
         @inbounds s = infections.states[node]
         s.active && s.pathogen_id == pathogen_id && return s.infectiousness
@@ -716,9 +723,18 @@ or has recovered.
     return Int8(0)
 end
 
+"""
+    infectiousness(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int8
+
+Convenience wrapper that safely routes to the correct `InfectionRegistry` shard for the given individual.
+"""
+@inline function infectiousness(individual::Individual, pathogen_id::Int8, sim)::Int8
+    return infectiousness(individual, pathogen_id, infection_registry(sim, individual))
+end
+
 
 """
-    immunity_level(individual::Individual, pathogen_id::Int8)::Int8
+    immunity_level(individual::Individual, pathogen_id::Int8, immunities::ImmunityRegistry)::Int8
 
 Returns the current cached immunity level (0-100) against `pathogen_id`,
 or 0 if the individual has no immunity record for that pathogen.
@@ -729,14 +745,23 @@ or 0 if the individual has no immunity record for that pathogen.
         !_is_active_immunity(s) && continue
         s.pathogen_id == pathogen_id && return s.immunity_level
     end
-    individual.immunity_overflow || return Int8(0)
-    node = immunities.head[individual.id]
+    individual.immunity_head != 0|| return Int8(0)
+    node = individual.immunity_head
     while node != 0
         @inbounds s = immunities.states[node]
         _is_active_immunity(s) && s.pathogen_id == pathogen_id && return s.immunity_level
         node = s.next
     end
     return Int8(0)
+end
+
+"""
+    immunity_level(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int8
+
+Convenience wrapper that safely routes to the correct `ImmunityRegistry` shard for the given individual.
+"""
+@inline function immunity_level(individual::Individual, pathogen_id::Int8, sim)::Int8
+    return immunity_level(individual, pathogen_id, immunity_registry(sim, individual))
 end
 
 
@@ -771,8 +796,8 @@ function infectiousness_onset(individual::Individual, infections::InfectionRegis
         s = individual.infection_cache[i]
         s.active && return s.infectiousness_onset
     end
-    individual.infection_overflow || return Int16(-1)
-    h = infections.head[individual.id]
+    individual.infection_head != 0 || return Int16(-1)
+    h = individual.infection_head
     h == 0 && return Int16(-1)
     return infections.states[h].infectiousness_onset
 end
@@ -1234,8 +1259,7 @@ end
 
 function vaccinate!(individual::Individual, vaccine::Vaccine, tick::Int16, registry::ImmunityRegistry)
     log!(logger(vaccine), id(individual), tick)
-    push_immunity_to_individual!(individual, registry, id(individual),
-        target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
+    push_immunity_to_individual!(individual, registry, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
     individual.needs_immunity_update = true
 end
 
@@ -1245,8 +1269,8 @@ end
 Returns wether the individual is vaccinated.
 """
 function isvaccinated(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Bool
-    _, idx = _find_slot_and_row_ir(registry, individual.id, pathogen_id, IMMUNITY_SOURCE_VACCINE)
-    return idx != 0
+    state = get_immunity_state(registry, individual, pathogen_id)
+    return state.vaccine_id != DEFAULT_VACCINE_ID
 end
 """
     vaccine_id(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)
@@ -1254,9 +1278,8 @@ end
 Returns the id of the vaccine the individual is vaccinated with.
 """
 function vaccine_id(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Int8
-    _, idx = _find_slot_and_row_ir(registry, individual.id, pathogen_id, IMMUNITY_SOURCE_VACCINE)
-    idx == 0 && return DEFAULT_VACCINE_ID
-    return registry.states[idx].vaccine_id
+    state = get_immunity_state(registry, individual, pathogen_id)
+    return state.vaccine_id
 end
 
 """
@@ -1265,9 +1288,8 @@ end
 Returns the time of last vaccination.
 """
 function vaccination_tick(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Int16
-    _, idx = _find_slot_and_row_ir(registry, individual.id, pathogen_id, IMMUNITY_SOURCE_VACCINE)
-    idx == 0 && return DEFAULT_TICK
-    return registry.states[idx].acquired_tick
+    state = get_immunity_state(registry, individual, pathogen_id)
+    return state.vaccine_acquired_tick
 end
 
 """
@@ -1276,9 +1298,8 @@ end
 Returns the number of vaccinations.
 """
 function number_of_vaccinations(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Int8
-    _, idx = _find_slot_and_row_ir(registry, individual.id, pathogen_id, IMMUNITY_SOURCE_VACCINE)
-    idx == 0 && return Int8(0)
-    return registry.states[idx].dose_number
+    state = get_immunity_state(registry, individual, pathogen_id)
+    return state.dose_number
 end
 
 """
@@ -1328,8 +1349,8 @@ function update_immunity!(
     end
 
     # Overflow slots
-    if individual.immunity_overflow
-        node = registry.head[individual.id]
+    if individual.immunity_head != 0
+        node = individual.immunity_head
         while node != 0
             @inbounds state = registry.states[node]
             next_node = state.next
@@ -1388,19 +1409,17 @@ Handles the health flags and memory-management when an individual dies.
         if individual.infection_cache[c].active
             push!(removal_buf, (individual.id, Int32(-c)))
             # Clear it AFTER pushing to the buffer
-            individual.infection_cache = Base.setindex(individual.infection_cache, _empty_infection_state(), c)
+            individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), c)
         end
     end
     
     # stage all active overflow memory for removal
-    if individual.infection_overflow
-        node_idx = infections.head[individual.id]
+    if individual.infection_head != 0
+        node_idx = individual.infection_head
         while node_idx != 0
             push!(removal_buf, (individual.id, Int32(node_idx)))
             node_idx = infections.states[node_idx].next
         end
-        # Clear the flag AFTER walking the list
-        individual.infection_overflow = false
     end
     
     return nothing
@@ -1443,7 +1462,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         # check recovery
         if Int16(0) < state.recovery <= tick
             individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
-            individual.infection_cache = Base.setindex(individual.infection_cache, _empty_infection_state(), i)
+            individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), i)
             push!(removal_buf, (individual.id, Int32(-i)))
             continue
         end
@@ -1472,8 +1491,8 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
     end
 
     # process registry
-    if individual.infection_overflow
-        node = infections.head[individual.id]
+    if individual.infection_head != 0
+        node = individual.infection_head
         while node != 0
             @inbounds state = infections.states[node]
             next_node = state.next
@@ -1552,17 +1571,15 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     individual.detected = false
 
     # Clean overflow before clearing flags
-    individual.infection_overflow && remove_infection!(infections, individual.id)
-    individual.immunity_overflow && remove_immunity!(registry, individual.id)
+    individual.infection_head != 0 && remove_infection!(infections, individual.id)
+    individual.immunity_overflow != 0 && remove_immunity!(registry, individual.id)
 
-    individual.infection_cache = ntuple(_ -> _empty_infection_state(), INFECTIONS_CACHE_SIZE)
-    individual.infection_overflow = false
+    individual.infection_cache = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)
     individual.number_of_infections = 0
     individual.active_pathogens_mask = 0
     individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
 
-    individual.immunity_cache = ntuple(_ -> _empty_immunity_state(), IMMUNITY_CACHE_SIZE)
-    individual.immunity_overflow = false
+    individual.immunity_cache = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)
     individual.needs_immunity_update = false
 
     individual.last_test = DEFAULT_TICK
@@ -1573,88 +1590,6 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     individual.quarantine_tick = DEFAULT_TICK
     individual.quarantine_release_tick = DEFAULT_TICK
 end
-
-
-
-"""
-    ImmunityIterator
-
-Iterates over all `ImmunityState` entries for an individual: cache slots first,
-then overflow nodes in the linked-list registry. Yields only active entries.
-Users of custom `TransmissionFunction` implementations should use this rather
-than accessing `immunity_cache` or the registry directly.
-"""
-struct ImmunityIterator
-    individual::Individual
-    registry::ImmunityRegistry
-end
-
-"""
-    each_immunity(individual, registry) → ImmunityIterator
-
-Returns an iterator over all active `ImmunityState` entries for `individual`,
-covering both on-individual cache slots and any overflow nodes in `registry`.
-"""
-@inline each_immunity(ind::Individual, reg::ImmunityRegistry) = ImmunityIterator(ind, reg)
-
-# state = (next_index::Int32, in_cache::Bool)
-@inline function Base.iterate(iter::ImmunityIterator, state::Tuple{Int32,Bool} = (Int32(1), true))
-    i, in_cache = state
-
-    if in_cache
-        while i <= Int32(IMMUNITY_CACHE_SIZE)
-            @inbounds s = iter.individual.immunity_cache[i]
-            _is_active_immunity(s) && return (s, (i + Int32(1), true))
-            i += Int32(1)
-        end
-        i = iter.individual.immunity_overflow ? iter.registry.head[iter.individual.id] : Int32(0)
-    end
-
-    i == Int32(0) && return nothing
-    @inbounds s = iter.registry.states[i]
-    return (s, (s.next, false))
-end
-
-Base.eltype(::Type{ImmunityIterator}) = ImmunityState
-Base.IteratorSize(::Type{ImmunityIterator}) = Base.SizeUnknown()
-
-"""
-    InfectionIterator
-
-Iterates over all active `InfectionState` entries for an individual: cache slots
-first, then overflow nodes. Only yields entries where `active == true`.
-"""
-struct InfectionIterator
-    individual::Individual
-    registry::InfectionRegistry
-end
-
-"""
-    each_infection(individual, registry) → InfectionIterator
-
-Returns an iterator over all active `InfectionState` entries for `individual`.
-"""
-@inline each_infection(ind::Individual, reg::InfectionRegistry) = InfectionIterator(ind, reg)
-
-@inline function Base.iterate(iter::InfectionIterator, state::Tuple{Int32,Bool} = (Int32(1), true))
-    i, in_cache = state
-
-    if in_cache
-        while i <= Int32(INFECTIONS_CACHE_SIZE)
-            @inbounds s = iter.individual.infection_cache[i]
-            s.active && return (s, (i + Int32(1), true))
-            i += Int32(1)
-        end
-        i = iter.individual.infection_overflow ? iter.registry.head[iter.individual.id] : Int32(0)
-    end
-
-    i == Int32(0) && return nothing
-    @inbounds s = iter.registry.states[i]
-    return (s, (s.next, false))
-end
-
-Base.eltype(::Type{InfectionIterator}) = InfectionState
-Base.IteratorSize(::Type{InfectionIterator}) = Base.SizeUnknown()
 
 
 

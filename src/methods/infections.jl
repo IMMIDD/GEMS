@@ -132,7 +132,8 @@ function infect!(infectee::Individual,
     )
 
     # stage for serial flush after the threaded phase
-    push!(infection_buffers(sim)[Threads.threadid()], PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
+    shard_id = owner_shard(id(infectee))
+    push!(sim.infection_buffers[Threads.threadid(), shard_id], PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
 
     # increase lifetime number of infections
     inc_number_of_infections!(infectee)
@@ -258,8 +259,7 @@ function try_to_infect!(infctr::Individual,
         pathogen |> id,
         infctr, infctd, 
         setting, sim |> tick, 
-        sim |> infection_registry,
-        sim |> immunity_registry,
+        sim,
         rng(sim)
     )
 
@@ -331,14 +331,16 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_symptomatic = symptomatic(indiv)
     was_hospitalized = is_hospitalized(indiv)
 
+    shard_id = owner_shard(id(indiv))
+
     # update immunity levels
     if indiv.needs_immunity_update
-        update_immunity!(indiv, immunity_registry(sim), sim.pathogens, tick, rng(sim))
+        update_immunity!(indiv, immunity_registry(sim, id(indiv)), sim.pathogens, tick, rng(sim))
     end
 
     # progress disease for currently infected individuals
     if infected(indiv)
-        progress_disease!(indiv, sim.infection_registry, sim.pathogens, sim.removal_buffers[Threads.threadid()], tick, rng(sim))
+        progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, rng(sim))
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
@@ -482,7 +484,6 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
-    infections = infection_registry(sim)
 
     for ind_index in 1:length(p_buffer)
         ind = p_buffer[ind_index]
@@ -502,8 +503,9 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
                 end
 
                 # Overflow infections (multi-pathogen)
-                if ind.infection_overflow
-                    node = infections.head[ind.id]
+                if ind.infection_head != 0
+                    infections = infection_registry(sim, id(ind))
+                    node = ind.infection_head
                     while node != 0
                         @inbounds state = infections.states[node]
                         nxt = state.next

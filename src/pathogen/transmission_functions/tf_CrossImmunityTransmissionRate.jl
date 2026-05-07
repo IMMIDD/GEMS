@@ -86,7 +86,7 @@ Base.show(io::IO, tf::CrossImmunityTransmissionRate) = print(io,
 
 
 """
-    transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry, rng::Xoshiro)
+    transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)
 
 Calculates the transmission probability using a constant base rate modulated by
 the infecter's current shedding level and an effective immunity of the infectee
@@ -108,6 +108,7 @@ where:
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
+- `sim::Simulation': Simulation object
 - `rng::Xoshiro`: RNG used for probability
 
 # Returns
@@ -121,16 +122,15 @@ function transmission_probability(
         infectee::Individual,
         setting::Setting,
         tick::Int16,
-        infections::InfectionRegistry,
-        immunities::ImmunityRegistry,
+        sim::Simulation,
         rng::Xoshiro)::Float64
 
-    infectiousness(infecter, pathogen_id, infections) == 0 && throw(ArgumentError( "Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+    infectiousness(infecter, pathogen_id, sim) == 0 && throw(ArgumentError( "Infecting individual must have nonzero infectiousness to calculate transmission probability."))
 
     exposed_idx = findfirst(==(pathogen_id), transFunc.pathogen_ids)
     remaining_susceptibility = 1.0
 
-    for s in each_immunity(infectee, immunities)
+    for s in each_immunity(infectee, sim)
         scale = if s.pathogen_id == pathogen_id
             1.0
         elseif exposed_idx !== nothing
@@ -143,9 +143,9 @@ function transmission_probability(
         remaining_susceptibility *= (1.0 - s.immunity_level / 100.0 * scale)
     end
 
-    return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id, infections) / 100.0) * remaining_susceptibility
+    return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id, sim) / 100.0) * remaining_susceptibility
 end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default
-transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, infections::InfectionRegistry, immunities::ImmunityRegistry) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, infections, immunities, default_gems_rng())
+transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
