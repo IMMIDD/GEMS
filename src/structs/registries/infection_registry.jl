@@ -93,7 +93,7 @@ struct InfectionRegistry
     states::Vector{InfectionState}
     free_slots::Vector{Int32}
 
-    function InfectionRegistry(n::Int32, num_shards::Int = 1; overflow_fraction::Float64 = 0.01)
+    function InfectionRegistry(n::Int32, num_shards::Int = 1; overflow_fraction::Float64 = 0.0)
         states = InfectionState[]
         capacity = max(1, round(Int, (n * overflow_fraction) / num_shards))
         sizehint!(states, capacity)
