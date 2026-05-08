@@ -645,10 +645,6 @@ heterogeneous pathogen types, the user must supply a Tuple directly.
 """
 function _make_pathogen_tuple(v::AbstractVector) 
     isempty(v) && throw(ArgumentError("At least one pathogen must be provided."))
-    length(v) > 8 && throw(ArgumentError(
-        "At most 8 distinct pathogen type slots are supported; got $(length(v)). " *
-        "Group same-concrete-type variants into a Vector per slot."
-    ))
     T = typeof(v[1])
     all(x -> typeof(x) === T, v) || throw(ArgumentError(
         "When pathogens are supplied as a Vector, all must share the same concrete " *
