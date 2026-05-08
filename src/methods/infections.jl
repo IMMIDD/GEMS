@@ -468,14 +468,7 @@ function spread_infection!(setting::Setting, sim::Simulation, pathogen::Pathogen
     num_infected = process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
 
     if num_infected == 0
-        for ind in individuals(setting, sim)
-            if infected(ind)
-                num_infected += 1
-            end
-        end
-        if num_infected == 0
-            deactivate!(setting)
-        end
+        deactivate!(setting)
     end
 end
 
