@@ -113,7 +113,7 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
 
     # Decide recovery or death
     # If individual dies
-    if gems_rand(rng) <= dp.death_probability
+    if gems_rand(rng) <= Float64(dp.death_probability)
         # Calculate the time to death
         death::Int16 = Int16(icu_admission + rand_val(dp.icu_admission_to_death, rng))
 

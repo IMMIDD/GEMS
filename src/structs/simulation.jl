@@ -229,6 +229,7 @@ mutable struct Simulation{P<:Tuple}
         rngs::Vector{<:Xoshiro}
     ) where {P<:Tuple} 
     num_shards = Threads.maxthreadid()
+    matrix_size_hint = ceil(Int, (length(population.individuals) * 0.1) / (num_shards^2))
         sim = new{P}(
             # config
             configfile,
@@ -275,8 +276,8 @@ mutable struct Simulation{P<:Tuple}
             # INITIALIZE BUFFERS
             [Vector{Individual}() for _ in 1:num_shards], # present_buffers
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
-            [Vector{PendingInfection}() for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
-            [Vector{Tuple{Int32,Int32}}() for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
+            [sizehint!(Vector{PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
+            [sizehint!(Vector{Tuple{Int32,Int32}}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
         )
 
         # increase simulation counter
