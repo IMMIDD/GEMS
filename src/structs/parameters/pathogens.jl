@@ -172,12 +172,13 @@ Emits a static if/elseif chain at compile time, enabling union-splitting.
 
 @generated function get_progression(progressions::PR, dp_type::DataType) where {PR<:Tuple}
     N = fieldcount(PR)
-    checks = [:(typeof(progressions[$i]) == dp_type && return progressions[$i]) for i in 1:N]
-
-    return quote
-        $(checks...)
-        throw(ArgumentError("No progression of type $dp_type found."))
+    exprs = Expr[]
+    for i in 1:N
+        T = fieldtype(PR, i) 
+        push!(exprs, :( $T === dp_type && return progressions[$i] ))
     end
+    push!(exprs, :(throw(ArgumentError("No progression of type $dp_type found."))))
+    return quote $(exprs...) end
 end
 get_progression(p::Pathogen, dp_type::DataType) = get_progression(p.progressions, dp_type) 
 
