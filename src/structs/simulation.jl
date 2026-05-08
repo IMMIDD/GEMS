@@ -1678,10 +1678,6 @@ distinct pathogen types.
 """
 @generated function get_pathogen(sim::Simulation{P}, pid::Int8) where P
     N = fieldcount(P)
-    N > 16 && throw(ArgumentError(
-        "Simulation supports at most 16 distinct pathogen types; got $N. " *
-        "Group same-concrete-type variants into a Vector per type slot."
-    ))
     checks = [:(sim.pathogens[$i].id == pid && return sim.pathogens[$i]) for i in 1:N]
     return quote
         $(checks...)
@@ -1698,10 +1694,6 @@ enabling union-splitting at the callsite with no dynamic dispatch.
 """
 @generated function get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
     N = fieldcount(P)
-    N > 16 && throw(ArgumentError(
-        "Simulation supports at most 16 distinct pathogen types; got $N. " *
-        "Group same-concrete-type variants into a Vector per type slot."
-    ))
     checks = [:(pathogens[$i].id == pid && return pathogens[$i]) for i in 1:N]
     return quote
         $(checks...)

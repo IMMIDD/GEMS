@@ -100,7 +100,7 @@ function infect!(infectee::Individual,
     paf = progression_assignment(pathogen)
     pc = assign(infectee, paf, rng)
 
-    prog = progressions(pathogen)[pc]
+    prog = get_progression(pathogen.progressions, pc)
     dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
 
     # log infection

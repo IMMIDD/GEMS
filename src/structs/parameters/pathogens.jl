@@ -9,10 +9,11 @@ export InfectiousnessProfile
 export ImmunityProfile
 
 export id, name
-export progressions, progression, progression_assignment, transmission_function
+export progressions, progression_assignment, transmission_function
 export transmission_function!
 export infectiousness_profile, infectiousness_profile!
 
+export get_progression
 
 # Abstract types for disease progression categories and progression assignment functions
 abstract type ProgressionCategory end
@@ -67,12 +68,12 @@ pathogen = Pathogen(
 ```
 
 """
-mutable struct Pathogen{PA<:ProgressionAssignmentFunction, TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<:ImmunityProfile}
+mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<:ImmunityProfile}
     id::Int8
     name::String
 
     # disease progressions
-    progressions::OrderedDict{DataType, ProgressionCategory}
+    progressions::PRG
 
     # progression assignment
     progression_assignment::PA
@@ -121,16 +122,13 @@ mutable struct Pathogen{PA<:ProgressionAssignmentFunction, TF<:TransmissionFunct
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.2)
         end
 
-        # convert progression vector to dict for quick lookups
-        prg = Dict{DataType, ProgressionCategory}()
-        for dp in progressions
-            prg[typeof(dp)] = dp
-        end
+        # convert progression vector to a typed tuple
+        prg_tuple = (progressions...,)
 
-        return new{typeof(progression_assignment), typeof(transmission_function), typeof(infectiousness_profile), typeof(immunity_profile)}(
+        return new{typeof(prg_tuple), typeof(progression_assignment), typeof(transmission_function), typeof(infectiousness_profile), typeof(immunity_profile)}(
             id,
             name,
-            prg,
+            prg_tuple,
             progression_assignment,
             transmission_function,
             infectiousness_profile,
@@ -150,7 +148,6 @@ id(p::Pathogen) = p.id
 name(p::Pathogen) = p.name
 
 progressions(p::Pathogen) = p.progressions
-progression(p::Pathogen, dp_type::DataType) = p.progressions[dp_type]
 progression_assignment(p::Pathogen) = p.progression_assignment
 transmission_function(p::Pathogen) = p.transmission_function
 infectiousness_profile(p::Pathogen) = p.infectiousness_profile
@@ -160,6 +157,29 @@ infectiousness_profile!(p::Pathogen, ip::InfectiousnessProfile) = p.infectiousne
 
 immunity_profile(p::Pathogen) = p.immunity_profile
 immunity_profile!(p::Pathogen, ip::ImmunityProfile) = p.immunity_profile = ip
+
+
+ """
+
+    get_progression(progressions::PR, dp_type::DataType) where {PR<:Tuple}
+
+
+Retrieves a progression by its DataType from a typed Tuple of progressions.
+
+Emits a static if/elseif chain at compile time, enabling union-splitting.
+
+"""
+
+@generated function get_progression(progressions::PR, dp_type::DataType) where {PR<:Tuple}
+    N = fieldcount(PR)
+    checks = [:(typeof(progressions[$i]) == dp_type && return progressions[$i]) for i in 1:N]
+
+    return quote
+        $(checks...)
+        throw(ArgumentError("No progression of type $dp_type found."))
+    end
+end
+get_progression(p::Pathogen, dp_type::DataType) = get_progression(p.progressions, dp_type) 
 
 
 function Base.show(io::IO, p::Pathogen)
