@@ -4,11 +4,12 @@ export get_immunity_state, push_immunity!, remove_immunities!
 
 
 """
-    _setstate(state, ::Val{name}, value)::InfectionState
+    _setstate(state::T, ::Val{name}, value)::T
 
-Return a copy of `state` with field `name` replaced by `value`.
-Used by the disease-history tick-setter functions and by `progress_disease!`
-to update `infectiousness`.
+Return a copy of `state` with field `name` replaced by `value`, preserving all
+other fields. Works for any bits-type struct `T`.
+Used by the disease-history tick-setter functions, by `progress_disease!` to update
+`infectiousness`, and by the overflow linked-list helpers to update `next` pointers.
 """
 @inline @generated function _setstate(state::T, ::Val{name}, value) where {T, name}
     fields = fieldnames(T)
@@ -22,6 +23,13 @@ end
 
 
 
+"""
+    _alloc_state!(reg::InfectionRegistry, state::InfectionState)::Int32
+
+Allocate a slot in the `InfectionRegistry` memory pool for `state`.
+Reuses an index from `free_slots` if available, otherwise appends to `states`.
+Returns the index of the allocated slot.
+"""
 @inline function _alloc_state!(reg::InfectionRegistry, state::InfectionState)::Int32
     if isempty(reg.free_slots)
         push!(reg.states, state)
@@ -81,8 +89,10 @@ end
 
 """
     _promote_to_cache!(reg::InfectionRegistry, ind::Individual, cache_slot::Int32)
- 
-Moves the first overflow node into a freed cache slot.
+
+Moves the head overflow node into the freed cache slot at `cache_slot`, clearing
+its `next` pointer, and returns the vacated overflow index to `free_slots`.
+No-op if the overflow list is empty.
 """
 @inline function _promote_to_cache!(reg::InfectionRegistry, ind::Individual, cache_slot::Int32)
     head_idx = ind.infection_head 
@@ -126,6 +136,14 @@ Returns the empty sentinel when `idx == 0`.
 end
 
 
+"""
+    push_infection!(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
+
+Cache-first infection write. Constructs a new `InfectionState` from the given
+arguments and places it in the individual's `infection_cache` if a free slot is
+available; falls back to the overflow linked list via `_link_overflow!` otherwise.
+Called by `flush_pending_infections!` for every new infection event.
+"""
 function push_infection!(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
     state = InfectionState(pathogen_id, infection_id, dp)
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
@@ -139,6 +157,16 @@ function push_infection!(reg::InfectionRegistry, ind::Individual, pathogen_id::I
 end
 
 
+"""
+    remove_infection!(reg::InfectionRegistry, ind::Individual, val::Int32)
+
+Remove a single infection that has ended, as encoded by `val` in the removal buffer:
+- `val < 0`: the infection lived in cache slot `-val`; promotes the overflow head
+  into that freed slot if one exists.
+- `val >= 0`: the infection lived in overflow node `val`; unlinks and frees it.
+
+Called by `flush_ended_infections!` after the threaded disease-update phase.
+"""
 function remove_infection!(reg::InfectionRegistry, ind::Individual, val::Int32)
     if val < 0
         ind.infection_head != 0 && _promote_to_cache!(reg, ind, Int32(-val))
@@ -171,6 +199,13 @@ end
 
 @inline _is_active_immunity(s::ImmunityState) = s.pathogen_id != DEFAULT_PATHOGEN_ID
 
+"""
+    _alloc_state!(reg::ImmunityRegistry, state::ImmunityState)::Int32
+
+Allocate a slot in the `ImmunityRegistry` memory pool for `state`.
+Reuses an index from `free_slots` if available, otherwise appends to `states`.
+Returns the index of the allocated slot.
+"""
 @inline function _alloc_state!(reg::ImmunityRegistry, state::ImmunityState)::Int32
     if isempty(reg.free_slots)
         push!(reg.states, state)
@@ -182,6 +217,14 @@ end
     end
 end
 
+"""
+    _link_overflow!(reg::ImmunityRegistry, ind::Individual, state::ImmunityState)::Int32
+
+Prepends a new `ImmunityState` to the individual's overflow linked list.
+Allocates a new slot in the `ImmunityRegistry` memory pool and updates the
+individual's `immunity_head` pointer to point to this new node. Returns the
+index of the newly allocated slot.
+"""
 @inline function _link_overflow!(reg::ImmunityRegistry, ind::Individual, state::ImmunityState)::Int32
     linked = _setstate(state, Val(:next), ind.immunity_head)
     idx = _alloc_state!(reg, linked)
@@ -189,6 +232,14 @@ end
     return idx
 end
 
+"""
+    _unlink_overflow!(reg::ImmunityRegistry, ind::Individual, node_idx::Int32)
+
+Unlinks and frees the specific overflow node at `node_idx` from the individual's
+immunity linked list. Safely updates either the previous node's `next` pointer
+or the individual's `immunity_head` (if it was the first node), and returns the
+index back to the registry's `free_slots` pool for reuse.
+"""
 @inline function _unlink_overflow!(reg::ImmunityRegistry, ind::Individual, node_idx::Int32)
     prev = Int32(0)
     cur  = ind.immunity_head
@@ -270,6 +321,21 @@ function _push_immunity_overflow!(
     return nothing
 end
 
+"""
+    push_immunity!(reg::ImmunityRegistry, ind::Individual, pathogen_id::Int8, source::Int8, acquired_tick::Int16, vaccine_id::Int8)
+
+Cache-first immunity write. Searches the individual's `immunity_cache` for an
+existing record for `pathogen_id` and updates it in place; if no record exists,
+writes to a free cache slot; if the cache is full, falls back to
+`_push_immunity_overflow!`.
+
+- Natural immunity (`source == IMMUNITY_SOURCE_NATURAL`): updates
+  `natural_acquired_tick`; vaccine fields are preserved.
+- Vaccine immunity: updates `vaccine_acquired_tick` and `vaccine_id`;
+  increments `dose_number`.
+
+Called by `flush_pending_infections!` and `vaccinate!`.
+"""
 function push_immunity!(
     reg::ImmunityRegistry,
     ind::Individual,
