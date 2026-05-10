@@ -128,6 +128,15 @@ function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, indi
 end
 
 """
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
+
+Fallback for `ImmunityProfile` that doesn't need an RNG.
+"""
+@inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
+    return calculate_immunity(profile, state, individual, tick, default_gems_rng())
+end
+
+"""
     immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool
 
 Returns `true` if the immunity level produced by `profile` for the given `state` at `tick`
