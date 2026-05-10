@@ -1,5 +1,5 @@
-export get_infection_state, push_infection!, remove_infections!, remove_infection!, find_infection_index
-export get_immunity_state, push_immunity!, remove_immunities!
+export push_infection!, remove_infections!, remove_infection!
+export push_immunity!, remove_immunities!
 
 
 
@@ -107,33 +107,6 @@ No-op if the overflow list is empty.
 end
 
 
-
-"""
-    find_infection_index(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8)::Int
-
-Return the index in `infections.states` for the overflow node `(ind, pathogen_id)`,
-or 0 if there is no overflow node. Does NOT search the individual's cache.
-"""
-@inline function find_infection_index(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8)::Int
-    node = ind.infection_head
-    while node != 0
-        @inbounds s = reg.states[node]
-        s.pathogen_id == pathogen_id && return Int(node)
-        node = s.next
-    end
-    return 0
-end
-
-"""
-    get_infection_state(reg::InfectionRegistry, idx::Int32)::InfectionState
-
-Direct index lookup into the overflow store.
-Returns the empty sentinel when `idx == 0`.
-"""
-@inline function get_infection_state(reg::InfectionRegistry, idx::Int32)::InfectionState
-    idx == 0 && return InfectionState()
-    @inbounds return reg.states[idx]
-end
 
 
 """
@@ -260,22 +233,6 @@ index back to the registry's `free_slots` pool for reuse.
 end
 
 
-
-"""
-    get_immunity_state(reg::ImmunityRegistry, ind::Individual, pathogen_id::Int8)::ImmunityState
-
-Lookup in the overflow store only. For the hot path, read `individual.immunity_cache`
-directly instead.
-"""
-function get_immunity_state(reg::ImmunityRegistry, ind::Individual, pathogen_id::Int8)::ImmunityState
-    node = ind.immunity_head
-    while node != 0
-        @inbounds s = reg.states[node]
-        s.pathogen_id == pathogen_id && return s
-        node = s.next
-    end
-    return ImmunityState(pathogen_id)
-end
 
 """
     _push_immunity_overflow!(reg::ImmunityRegistry, ind::Individual, pathogen_id::Int8, source::Int8, acquired_tick::Int16, vaccine_id::Int8)

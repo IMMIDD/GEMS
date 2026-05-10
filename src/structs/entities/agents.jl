@@ -1269,7 +1269,7 @@ end
 Returns wether the individual is vaccinated.
 """
 function isvaccinated(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Bool
-    state = get_immunity_state(registry, individual, pathogen_id)
+    state = get_immunity_state(individual, registry, pathogen_id)
     return state.vaccine_id != DEFAULT_VACCINE_ID
 end
 """
@@ -1278,7 +1278,7 @@ end
 Returns the id of the vaccine the individual is vaccinated with.
 """
 function vaccine_id(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Int8
-    state = get_immunity_state(registry, individual, pathogen_id)
+    state = get_immunity_state(individual, registry, pathogen_id)
     return state.vaccine_id
 end
 
@@ -1288,7 +1288,7 @@ end
 Returns the time of last vaccination.
 """
 function vaccination_tick(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Int16
-    state = get_immunity_state(registry, individual, pathogen_id)
+    state = get_immunity_state(individual, registry, pathogen_id)
     return state.vaccine_acquired_tick
 end
 
@@ -1298,8 +1298,29 @@ end
 Returns the number of vaccinations.
 """
 function number_of_vaccinations(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)::Int8
-    state = get_immunity_state(registry, individual, pathogen_id)
+    state = get_immunity_state(individual, registry, pathogen_id)
     return state.dose_number
+end
+
+"""
+    get_immunity_state(ind::Individual, reg::ImmunityRegistry, pathogen_id::Int8)::ImmunityState
+
+Cache-first lookup of the full `ImmunityState` for `(ind, pathogen_id)`.
+Searches `ind.immunity_cache` first; falls back to the overflow linked list if not found.
+Returns an empty sentinel `ImmunityState` if no record exists for `pathogen_id`.
+"""
+function get_immunity_state(ind::Individual, reg::ImmunityRegistry, pathogen_id::Int8)::ImmunityState
+    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
+        s = ind.immunity_cache[i]
+        _is_active_immunity(s) && s.pathogen_id == pathogen_id && return s
+    end
+    node = ind.immunity_head
+    while node != 0
+        @inbounds s = reg.states[node]
+        s.pathogen_id == pathogen_id && return s
+        node = s.next
+    end
+    return ImmunityState(pathogen_id)
 end
 
 """
@@ -1559,7 +1580,7 @@ end
 Resets all non-static values like the disease progression timing.
 The individual will get back into a infections where it was never infected, vaccinated, tested, etc.
 """
-function reset!(individual::Individual, infections::InfectionRegistry, registry::ImmunityRegistry)
+function reset!(individual::Individual, infections::InfectionRegistry, immunities::ImmunityRegistry)
     individual.infected = false
     individual.infectious = false
     individual.symptomatic = false
@@ -1571,8 +1592,8 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     individual.detected = false
 
     # Clean overflow before clearing flags
-    individual.infection_head != 0 && remove_infections!(infections, individual.id)
-    individual.immunity_overflow != 0 && remove_immunities!(registry, individual.id)
+    individual.infection_head != 0 && remove_infections!(infections, individual)
+    individual.immunity_overflow != 0 && remove_immunities!(immunities, individual)
 
     individual.infection_cache = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)
     individual.number_of_infections = 0
