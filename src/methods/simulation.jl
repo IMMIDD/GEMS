@@ -364,49 +364,6 @@ function is_dormant(simulation::Simulation)
     return cur_exp == 0 && cur_inf == 0 && cur_quar == 0
 end
 
-"""
-    push_immunity_to_individual!(ind::Individual, registry::ImmunityRegistry, pathogen_id::Int8, source::Int8, acquired_tick::Int16, vaccine_id::Int8)
- 
-Cache-first immunity write. Used by flush_pending_infections! and vaccinate!.
-"""
-function push_immunity_to_individual!(
-    ind::Individual,
-    registry::ImmunityRegistry,
-    pathogen_id::Int8,
-    source::Int8,
-    acquired_tick::Int16,
-    vaccine_id::Int8
-)
-    # Update existing cache entry for this pathogen
-    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
-        s = ind.immunity_cache[i]
-        _is_active_immunity(s) && s.pathogen_id == pathogen_id || continue
-        ind.immunity_cache = Base.setindex(ind.immunity_cache,
-            if source == IMMUNITY_SOURCE_NATURAL
-                ImmunityState(Int32(0), acquired_tick, s.vaccine_acquired_tick, s.immunity_level, pathogen_id, s.vaccine_id, s.dose_number)
-            else
-                ImmunityState(Int32(0), s.natural_acquired_tick, acquired_tick, s.immunity_level, pathogen_id, vaccine_id, s.dose_number + Int8(1))
-            end, i)
-        return nothing
-    end
- 
-    # Free cache slot
-    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
-        s = ind.immunity_cache[i]
-        _is_active_immunity(s) && continue
-        ind.immunity_cache = Base.setindex(ind.immunity_cache,
-            if source == IMMUNITY_SOURCE_NATURAL
-                ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, Int8(0), pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
-            else
-                ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, Int8(0), pathogen_id, vaccine_id, Int8(1))
-            end, i)
-        return nothing
-    end
- 
-    # Cache full: write to overflow registry
-    push_immunity!(registry, ind, pathogen_id, source, acquired_tick, vaccine_id)
-    return nothing
-end
 
 
 """
@@ -428,23 +385,9 @@ function flush_pending_infections!(sim::Simulation)
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
                 ind = get_individual_by_id(pop, p.host_id)
-                full_state = InfectionState(p.pathogen_id, p.infection_id, p.dp)
-     
-                placed = false
-                for i in 1:INFECTIONS_CACHE_SIZE
-                    if !ind.infection_cache[i].active
-                        ind.infection_cache = Base.setindex(ind.infection_cache, full_state, i)
-                        placed = true
-                        break
-                    end
-                end
-     
-                if !placed
-                    link_overflow!(infections, ind, full_state)
-                end
-     
+                push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp)
                 if p.dp.recovery >= 0
-                    push_immunity_to_individual!(ind, immunities, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
+                    push_immunity!(immunities, ind, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
                     ind.needs_immunity_update = true
                 end
             end
@@ -474,15 +417,7 @@ function flush_ended_infections!(sim::Simulation)
             buf = sim.removal_buffers[producer_id, shard_id]
             for (host_id, val) in buf
                 ind = get_individual_by_id(pop, host_id)
-                if val < 0
-                    # freed cache slot: promote an overflow node if one exists
-                    if ind.infection_head != 0 
-                        promote_to_cache!(ind, reg, Int32(-val))
-                    end
-                else
-                    # ended overflow node
-                    unlink_overflow!(reg, ind, Int32(val))
-                end
+                remove_infection!(reg, ind, val)
             end
             empty!(buf)
         end

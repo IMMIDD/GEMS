@@ -1259,7 +1259,7 @@ end
 
 function vaccinate!(individual::Individual, vaccine::Vaccine, tick::Int16, registry::ImmunityRegistry)
     log!(logger(vaccine), id(individual), tick)
-    push_immunity_to_individual!(individual, registry, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
+    push_immunity!(registry, individual, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
     individual.needs_immunity_update = true
 end
 
@@ -1571,8 +1571,8 @@ function reset!(individual::Individual, infections::InfectionRegistry, registry:
     individual.detected = false
 
     # Clean overflow before clearing flags
-    individual.infection_head != 0 && remove_infection!(infections, individual.id)
-    individual.immunity_overflow != 0 && remove_immunity!(registry, individual.id)
+    individual.infection_head != 0 && remove_infections!(infections, individual.id)
+    individual.immunity_overflow != 0 && remove_immunities!(registry, individual.id)
 
     individual.infection_cache = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)
     individual.number_of_infections = 0

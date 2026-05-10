@@ -59,9 +59,9 @@ struct ImmunityRegistry
     states::Vector{ImmunityState}
     free_slots::Vector{Int32}
 
-    function ImmunityRegistry(n::Int32, num_shards::Int = 1; eventual_fraction::Float64 = 0.0)
+    function ImmunityRegistry(n::Int32, num_shards::Int = 1; overflow_fraction::Float64 = 0.0)
         states = ImmunityState[]
-        capacity = max(1, round(Int, (n * eventual_fraction) / num_shards))
+        capacity = max(1, round(Int, (n * overflow_fraction) / num_shards))
         sizehint!(states, capacity)
         free_slots = Int32[]
         sizehint!(free_slots, capacity)
