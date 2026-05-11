@@ -169,11 +169,6 @@ A type to represent individuals that act as agents inside the simulation.
     immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE) # IMMUNITY_CACHE_SIZE * sizeof(ImmunityState)
     immunity_head::Int32 = 0                # 4 byte
     needs_immunity_update::Bool = false     # 1 byte
-    
-    # TESTING
-    last_test::Int16 = DEFAULT_TICK         # 2 bytes
-    last_test_result::Bool = false          # 1 byte
-    last_reported_at::Int16 = DEFAULT_TICK  # 2 bytes
 
     # INTERVENTIONS
     quarantine_tick::Int16 = DEFAULT_TICK           # 2 bytes

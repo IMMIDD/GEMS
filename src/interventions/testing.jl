@@ -220,11 +220,11 @@ undetected individual.
 function apply_test(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
  
     # apply test
-    test_pos = infected(ind, testtype.pathogen_id, sim) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
-        !infected(ind, testtype.pathogen_id, sim) && gems_rand(rng(sim)) > testtype |> specificity
+    test_pos = infected(ind, testtype.pathogen_id) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
+        !infected(ind, testtype.pathogen_id) && gems_rand(rng(sim)) > testtype |> specificity
  
     # record test result into the InfectionState for this pathogen 
-    infected(ind, testtype.pathogen_id, sim) &&
+    infected(ind, testtype.pathogen_id) &&
         record_test!(ind, infection_registry(sim, ind), testtype.pathogen_id, sim |> tick, test_pos, reportable)
  
     # log test in sim object
