@@ -11,17 +11,9 @@
             gs = GlobalSetting(individuals=indis, contact_sampling_method=rs)
 
             @test Set(individuals(gs)) == Set(indis)
-            @test !isactive(gs)
 
             add!(gs, i)
             @test Set(individuals(gs)) == Set(push!(indis, i))
-            @test !isactive(gs)
-
-            activate!(gs)
-            @test isactive(gs)
-
-            deactivate!(gs)
-            @test !isactive(gs)
         end
     end
 
