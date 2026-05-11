@@ -799,6 +799,29 @@ Convenience wrapper that safely routes to the correct `ImmunityRegistry` shard f
     return immunity_level(individual, pathogen_id, immunity_registry(sim, individual))
 end
 
+"""
+    earliest_infectiousness_onset(ind::Individual, infections::InfectionRegistry)::Int16
+
+Returns the earliest `infectiousness_onset` tick across all of `ind`'s currently
+active infections, or `Int16(-1)` if the individual has no active infections.
+"""
+function earliest_infectiousness_onset(ind::Individual, infections::InfectionRegistry)::Int16
+    result = typemax(Int16)
+    for state in each_infection(ind, infections)
+        state.infectiousness_onset >= 0 && (result = min(result, state.infectiousness_onset))
+    end
+    return result == typemax(Int16) ? Int16(-1) : result
+end
+
+"""
+    earliest_infectiousness_onset(ind::Individual, sim::Simulation)::Int16
+
+Convenience wrapper that routes to the correct `InfectionRegistry` shard for the given individual.
+"""
+function earliest_infectiousness_onset(ind::Individual, sim)::Int16
+    return earliest_infectiousness_onset(ind, infection_registry(sim, ind))
+end
+
 
 ### NATURAL DISEASE HISTORY ###
 

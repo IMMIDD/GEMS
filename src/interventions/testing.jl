@@ -276,7 +276,8 @@ function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; 
     no_of_ind = subset === nothing ? setting |> individuals |> length : subset |> length
 
     # number of infected. If no subset provided, use all individuals from setting
-    no_of_inf = subset === nothing ? setting |> individuals |> num_of_infected : subset |> num_of_infected
+    pid = pathogen_id(testtype)
+    no_of_inf = subset === nothing ? num_of_infected(individuals(setting), pid) : num_of_infected(subset, pid)
 
     # apply test
     test_pos = no_of_inf > 0 && gems_rand(rng(sim)) <= testtype |> sensitivity ||
@@ -317,7 +318,8 @@ function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simu
 
     # apply test
     # check if individual has ever been infected
-    was_infected = number_of_infections(ind) > 0
+    imm = get_immunity_state(ind, immunity_registry(sim, ind), testtype.pathogen_id)
+    was_infected = imm.natural_acquired_tick != DEFAULT_TICK
 
     # simulate test result with test sensitivity and specificity
     test_pos = was_infected && gems_rand(rng(sim)) <= sensitivity(testtype) ||
