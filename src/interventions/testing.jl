@@ -218,16 +218,15 @@ undetected individual.
     might lead to false negatives or false positives)
 """
 function apply_test(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
-
+ 
     # apply test
     test_pos = infected(ind, testtype.pathogen_id, sim) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
         !infected(ind, testtype.pathogen_id, sim) && gems_rand(rng(sim)) > testtype |> specificity
-
-    # add test information in agent
-    last_test!(ind, sim |> tick)
-    last_test_result!(ind, test_pos)
-    test_pos && reportable ? last_reported_at!(ind, sim |> tick) : nothing
-
+ 
+    # record test result into the InfectionState for this pathogen 
+    infected(ind, testtype.pathogen_id, sim) &&
+        record_test!(ind, infection_registry(sim, ind), testtype.pathogen_id, sim |> tick, test_pos, reportable)
+ 
     # log test in sim object
     log!(
         sim |> testlogger,
@@ -238,9 +237,11 @@ function apply_test(ind::Individual, testtype::TestType, sim::Simulation, report
         infected(ind, testtype.pathogen_id) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
         testtype |> name,
         test_pos && reportable)
-
+ 
     return test_pos
 end
+
+
 
 
 

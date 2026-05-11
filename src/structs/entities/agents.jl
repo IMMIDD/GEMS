@@ -52,6 +52,7 @@ export inc_number_of_infections!
 export last_test, last_test!
 export last_test_result, last_test_result!
 export last_reported_at, last_reported_at!
+export record_test!
 export isdetected
 # vaccination
 export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
@@ -98,7 +99,6 @@ A type to represent individuals that act as agents inside the simulation.
     - `icu::Bool`: Flag indicating individual is in the ICU
     - `ventilated::Bool`: Flag indicating individual is on a ventilator
     - `dead::Bool`: Flag indicating individual's decease
-    - `detected::Bool`: Flag indicating individual tested positive
     - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
 
 - Behaviour
@@ -115,17 +115,13 @@ A type to represent individuals that act as agents inside the simulation.
     - `infection_cache::NTuple{N, InfectionState}`: Fixed-size cache of current infections
     - `infection_head::Int32`: Pointer to the first overflow node in the InfectionRegistry
     - `active_pathogens_mask::UInt32`: Bitmask of currently active pathogen types
+    - `detected_mask::UInt32`: Bitmask of pathogens for which an infection is detected
     - `number_of_infections::Int8`: Lifetime infection count
 
 - Immunity Memory
     - `immunity_cache::NTuple{N, ImmunityState}`: Fixed-size cache of pathogen immunities
     - `immunity_head::Int32`: Pointer to the first overflow node in the ImmunityRegistry
     - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
-
-- Testing
-    - `last_test::Int16`: Tick of last test
-    - `last_test_result::Bool`: Flag for positivity of last test
-    - `last_reported_at::Int16`: Tick at which this individual was last reported
 
 - Interventions
     - `quarantine_tick::Int16`: Start tick of quarantine
@@ -150,7 +146,6 @@ A type to represent individuals that act as agents inside the simulation.
     icu::Bool = false                       # 1 byte
     ventilated::Bool = false                # 1 byte
     dead::Bool = false                      # 1 byte
-    detected::Bool = false                  # 1 byte
     comorbidities::UInt16 = 0               # 2 bytes
 
     # BEHAVIOR
@@ -167,6 +162,7 @@ A type to represent individuals that act as agents inside the simulation.
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE) # INFECTIONS_CACHE_SIZE * sizeof(InfectionState)
     infection_head::Int32 = 0               # 4 byte
     active_pathogens_mask::UInt32 = 0       # 4 bytes
+    detected_mask::UInt32 = 0               # 4 bytes
     number_of_infections::Int8 = 0          # 1 byte
 
     # IMMUNITY MEMORY
@@ -611,21 +607,33 @@ end
 
 """
     is_detected(individual::Individual)
-
-Returns `true` if the individual is currently infected and has been detected (i.e. tested positive).
+ 
+Returns `true` if the individual has been detected for any currently active pathogen.
 """
-is_detected(individual::Individual) = individual.detected
+is_detected(individual::Individual) = individual.detected_mask != 0
 isdetected(individual::Individual) = is_detected(individual)
 detected(individual::Individual) = is_detected(individual)
-
+ 
 """
-    detected!(individual::Individual, detected::Bool)
-
-Sets the `detected` flag of the individual.
+    is_detected(individual::Individual, pathogen_id::Int8)
+ 
+Returns `true` if the individual has been detected for the specific `pathogen_id`.
 """
-function detected!(individual::Individual, detected::Bool)
-    individual.detected = detected
+is_detected(individual::Individual, pathogen_id::Int8) = (individual.detected_mask & (UInt32(1) << (pathogen_id - 1))) != 0
+ 
+"""
+    detected!(individual::Individual, pathogen_id::Int8, val::Bool)
+ 
+Sets or clears the detected bit for `pathogen_id` on the individual.
+"""
+function detected!(individual::Individual, pathogen_id::Int8, val::Bool)
+    if val
+        individual.detected_mask |= (UInt32(1) << (pathogen_id - 1))
+    else
+        individual.detected_mask &= ~(UInt32(1) << (pathogen_id - 1))
+    end
 end
+
 
 # --- Registry GETTERS ---
 
@@ -1080,17 +1088,18 @@ dead(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t
 
 """
     is_detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-
-Returns `true` if the individual is currently infected with the given pathogen and has been detected (i.e. tested positive) prior to or at tick `t`.
+ 
+Returns `true` if the individual is currently infected with the given pathogen and has been detected at any point during this infection.
 """
 function is_detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
     !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
-    return state.exposure <= last_reported_at(individual)
+    return state.last_reported_at != DEFAULT_TICK
 end
 isdetected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
 detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
+
 
 """
     number_of_infections(individual::Individual)
@@ -1214,58 +1223,72 @@ end
 ### TESTING STATUS ###
 
 """
-    last_test(individual::Individual)
-
-Returns last test date (tick).
+    last_test(state::InfectionState)
+ 
+Returns the tick of the most recent test for this infection.
+Returns `DEFAULT_TICK` (-1) if the individual has never been tested for this pathogen.
 """
-function last_test(individual::Individual)
-    return(individual.last_test)
-end
-
+last_test(state::InfectionState) = state.last_test
+ 
 """
-    last_test!(individual::Individual, tick::Int16)
-
-Sets last test date (tick).
+    last_test_result(state::InfectionState)
+ 
+Returns whether the most recent test for this infection was positive.
+Defaults to `false` when the individual has never been tested.
 """
-function last_test!(individual::Individual, tick::Int16)
-    individual.last_test = tick
-end
-
+last_test_result(state::InfectionState) = state.last_test_result
+ 
 """
-    last_test_result(individual::Individual)
-
-Returns whether last test was positive.
-Defaults to false.
+    last_reported_at(state::InfectionState)
+ 
+Returns the tick at which this infection was last reported.
+Returns `DEFAULT_TICK` (-1) if this infection has never been reported.
 """
-function last_test_result(individual::Individual)
-    return(individual.last_test_result)
-end
+last_reported_at(state::InfectionState) = state.last_reported_at
+
 
 """
-    last_test_result!(individual::Individual, test_result::Bool)
-
-Sets last test result.
+    record_test!(ind::Individual, infections::InfectionRegistry,
+                 pathogen_id::Int8, test_tick::Int16,
+                 test_result::Bool, reportable::Bool)
+ 
+Records a test outcome directly into the `InfectionState` for `pathogen_id` and
+updates `ind.detected_mask` accordingly. Does nothing if the individual has no 
+active infection for `pathogen_id`.
+ 
 """
-function last_test_result!(individual::Individual, test_result::Bool)
-    individual.last_test_result = test_result
-end
-
-"""
-    last_reported_at(individual::Individual)
-
-Returns the last tick this individual was a reported case.
-"""
-function last_reported_at(individual::Individual)
-    return(individual.last_reported_at)
-end
-
-"""
-    last_reported_at!(individual::Individual, report_tick::Int16)
-
-Sets last tick this individual was last reported.
-"""
-function last_reported_at!(individual::Individual, report_tick::Int16)
-    individual.last_reported_at = report_tick
+@inline function record_test!(ind::Individual, infections::InfectionRegistry, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
+    # cache-first: find slot, build updated state, write back
+    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
+        s = ind.infection_cache[i]
+        s.active && s.pathogen_id == pathogen_id || continue
+ 
+        new_state = _setstate(s, Val(:last_test), test_tick)
+        new_state = _setstate(new_state, Val(:last_test_result), test_result)
+        (test_result && reportable) && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
+ 
+        ind.infection_cache = Base.setindex(ind.infection_cache, new_state, i)
+        test_result && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
+        return nothing
+    end
+ 
+    # overflow linked-list
+    node = ind.infection_head
+    while node != 0
+        @inbounds s = infections.states[node]
+        if s.pathogen_id == pathogen_id
+            new_state = _setstate(s, Val(:last_test), test_tick)
+            new_state = _setstate(new_state, Val(:last_test_result), test_result)
+            (test_result && reportable) && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
+ 
+            @inbounds infections.states[node] = new_state
+            test_result && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
+            return nothing
+        end
+        node = s.next
+    end
+ 
+    return nothing
 end
 
 
@@ -1418,7 +1441,7 @@ Handles the health flags and memory-management when an individual dies.
     individual.hospitalized = false
     individual.icu = false
     individual.ventilated = false
-    individual.detected = false
+    individual.detected_mask = 0
 
     # stage all active cache memory for removal
     @inbounds for c in 1:INFECTIONS_CACHE_SIZE
@@ -1462,7 +1485,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
 
     # initialize trackers 
     _is_inf = _is_infectious = _is_symp = _is_sev = false
-    _is_hosp = _is_icu = _is_vent = _is_det = false
+    _is_hosp = _is_icu = _is_vent = false
 
     # process cache
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
@@ -1478,6 +1501,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         # check recovery
         if Int16(0) < state.recovery <= tick
             individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
+            individual.detected_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
             individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), i)
             push!(removal_buf, (individual.id, Int32(-i)))
             continue
@@ -1503,7 +1527,6 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
         _is_hosp |= Int16(0) <= state.hospital_admission <= tick < state.hospital_discharge
         _is_icu |= Int16(0) <= state.icu_admission <= tick < state.icu_discharge
         _is_vent |= Int16(0) <= state.ventilation_admission <= tick < state.ventilation_discharge
-        _is_det |= _active && state.exposure <= last_reported_at(individual)
     end
 
     # process registry
@@ -1522,6 +1545,7 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
             # check recovery
             if Int16(0) < state.recovery <= tick
                 individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
+                individual.detected_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
                 push!(removal_buf, (individual.id, Int32(node)))
                 node = next_node
                 continue
@@ -1547,7 +1571,6 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
             _is_hosp |= Int16(0) <= state.hospital_admission <= tick < state.hospital_discharge
             _is_icu |= Int16(0) <= state.icu_admission <= tick < state.icu_discharge
             _is_vent |= Int16(0) <= state.ventilation_admission <= tick < state.ventilation_discharge
-            _is_det |= _active && state.exposure <= last_reported_at(individual)
 
             node = next_node
         end
@@ -1561,7 +1584,6 @@ function progress_disease!(individual::Individual, infections::InfectionRegistry
     hospitalized!(individual, _is_hosp)
     icu!(individual, _is_icu)
     ventilated!(individual, _is_vent)
-    detected!(individual, _is_det)
     
     return nothing
 end
@@ -1584,7 +1606,6 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.icu = false
     individual.ventilated = false
     individual.dead = false
-    individual.detected = false
 
     # Clean overflow before clearing flags
     individual.infection_head != 0 && remove_infections!(infections, individual)
@@ -1593,14 +1614,11 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.infection_cache = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)
     individual.number_of_infections = 0
     individual.active_pathogens_mask = 0
+    individual.detected_mask = 0
     individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
 
     individual.immunity_cache = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)
     individual.needs_immunity_update = false
-
-    individual.last_test = DEFAULT_TICK
-    individual.last_test_result = false
-    individual.last_reported_at = DEFAULT_TICK
 
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
     individual.quarantine_tick = DEFAULT_TICK
@@ -1640,10 +1658,6 @@ function Base.show(io::IO, individual::Individual)
         "Municipality ID" => individual.municipality != DEFAULT_SETTING_ID ? individual.municipality : "n/a",
 
         "Number of Infections" => individual.number_of_infections,
-
-        "Last Test" => individual.last_test != DEFAULT_TICK ? individual.last_test : "n/a",
-        "Last Test Result" => individual.last_test != DEFAULT_TICK ? individual.last_test_result : "n/a",
-        "Last Reported At" => individual.last_reported_at != DEFAULT_TICK ? individual.last_reported_at : "n/a",
         
         "Quarantine Status" => individual.quarantine_status,
         "Quarantine Tick" => individual.quarantine_tick != DEFAULT_TICK ? individual.quarantine_tick : "n/a",
