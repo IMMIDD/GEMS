@@ -736,6 +736,23 @@ Convenience wrapper that safely routes to the correct `InfectionRegistry` shard 
 end
 
 """
+    infected(individual::Individual, pathogen_id::Int8)::Bool
+
+Returns `true` if the individual currently has an active infection with the given
+`pathogen_id`. Uses the per-individual `active_pathogens_mask`.
+
+This is the preferred overload for use in `IStrategy` conditions, as the condition
+function only receives an `Individual`:
+
+```julia
+IStrategy("isolate-pathogen-a", sim, condition = ind -> infected(ind, Int8(1)))
+```
+"""
+@inline function infected(individual::Individual, pathogen_id::Int8)::Bool
+    return (individual.active_pathogens_mask & (UInt32(1) << (pathogen_id - 1))) != 0
+end
+
+"""
     infectiousness(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int8
 
 Returns the individual's current infectiousness for the given pathogen
