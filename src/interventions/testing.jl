@@ -235,7 +235,7 @@ function apply_test(ind::Individual, testtype::TestType, sim::Simulation, report
         sim |> tick,
         test_pos,
         ind |> infected,
-        infected(ind) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
+        infected(ind, testtype.pathogen_id) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
         testtype |> name,
         test_pos && reportable)
 
@@ -333,7 +333,7 @@ function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simu
         test_pos,
         ind |> infected,
         was_infected,
-        infected(ind) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
+        infected(ind, testtype.pathogen_id) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
         testtype |> name)
 
     return test_pos
