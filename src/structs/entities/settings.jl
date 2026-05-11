@@ -67,7 +67,7 @@ There should only be one `GlobalSetting` instance in any simulation.
     ags::AGS= AGS() # 4 bytes
 
     # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(true)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -700,6 +700,15 @@ Sets the setting as inactive for simulation.
 """
 function deactivate!(setting::Setting)
     Threads.atomic_xchg!(setting.isactive, false)
+end
+
+"""
+    deactivate!(setting::GlobalSetting)
+
+Deactivating GlobalSetting is a no-op
+"""
+function deactivate!(setting::GlobalSetting)
+    return nothing
 end
 
 """
