@@ -273,11 +273,6 @@ function markdown(vaccine::Vaccine)
     )
 end
 
-function markdown(scheduler::VaccinationScheduler)
-    return(
-        "To be implemented."
-    ) 
-end
 
 
 function markdown(strategy::Strategy)
