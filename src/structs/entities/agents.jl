@@ -731,7 +731,7 @@ end
 
 Convenience wrapper that safely routes to the correct `InfectionRegistry` shard for the given individual.
 """
-@inline function infected(individual::Individual, pathogen_id::Int8, sim::Simulation)::Bool
+@inline function infected(individual::Individual, pathogen_id::Int8, sim)::Bool
     return infected(individual, pathogen_id, infection_registry(sim, individual))
 end
 
