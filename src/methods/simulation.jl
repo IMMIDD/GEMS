@@ -221,46 +221,57 @@ The `base_size` provides the population size reference (default: 100_000 individ
 
 - `simulation::Simulation`: Simulation object
 - `pathogen::Pathogen`: Pathogen for which the incidence shall be calculated
-- `base_size::Int = 100_000` *(optional)*: Reference popuation size for incidence calculation
+- `base_size::Int = 100_000` *(optional)*: Reference population size for incidence calculation
 - `duration::Int16 = Int16(7)` *(optional)*: Reference duration (in ticks) for the incidence calculation
 
 # Returns
 
 - `Float64`: Incidence
-
 """
 function incidence(simulation::Simulation, pathogen::Pathogen, base_size::Int = 100_000, duration::Int16 = Int16(7))
+    logger = infectionlogger(simulation)
+    current_tick = tick(simulation)
+    start_tick = current_tick - duration
     
-    return(
-        # count number of infection events from (now - duration) until (now) and divide it by (population_size / base_size)
-        (simulation |> infectionlogger |> ticks |>
-            x -> count(y -> tick(simulation) - duration <= y <= tick(simulation), x))
-            /
-        ((simulation |> population |> Base.size) / base_size)
-    )
+    target_pathogen_id = pathogen.id
+    infection_count = 0
+    
+    # Iterate through each thread's log buffers
+    for tid in 1:Threads.maxthreadid()
+        ticks_tid = logger.tick[tid]
+        pids_tid = logger.pathogen_id[tid]
+        
+        for i in length(ticks_tid):-1:1
+            t = ticks_tid[i]     
+            t < start_tick && break 
+            
+            if t <= current_tick && pids_tid[i] == target_pathogen_id
+                infection_count += 1
+            end
+        end
+    end
+    
+    pop_size = Base.size(population(simulation))
+    
+    return (infection_count / (pop_size / base_size))
 end
 
+"""
+    incidence(simulation::Simulation, pathogen_id::Int8, base_size::Int = 100_000, duration::Int16 = Int16(7))
+
+Convenience wrapper to calculate incidence using a pathogen ID.
+"""
+function incidence(simulation::Simulation, pathogen_id::Int8, base_size::Int = 100_000, duration::Int16 = Int16(7))
+    return incidence(simulation, get_pathogen(simulation, pathogen_id), base_size, duration)
+end
 
 """
-    incidence(simulation::Simulation, base_size::Int = 100_000, duration::Int16 = Int16(7))
+    incidence(simulation::Simulation, pathogen_name::String, base_size::Int = 100_000, duration::Int16 = Int16(7))
 
-Returns the incidence at a particular point in time (current simulation tick).
-NOTE: This will only work for the single-pathogen version. 
-The `duration` defines a time-span for which the incidence is measured (default: 7 ticks).
-The `base_size` provides the population size reference (default: 100_000 individuals)
-
-# Parameters
-
-- `simulation::Simulation`: Simulation object
-- `base_size::Int = 100_000` *(optional)*: Reference popuation size for incidence calculation
-- `duration::Int16 = Int16(7)` *(optional)*: Reference duration (in ticks) for the incidence calculation
-
-# Returns
-
-- `Float64`: Incidence
+Convenience wrapper to calculate incidence using a pathogen name.
 """
-function incidence(simulation::Simulation, base_size::Int = 100_000, duration::Int16 = Int16(7))
-    return(incidence(simulation, simulation |> pathogen, base_size, duration))
+function incidence(simulation::Simulation, pathogen_name::String, base_size::Int = 100_000, duration::Int16 = Int16(7))
+    return incidence(simulation, get_pathogen(simulation, pathogen_name), base_size, duration)
 end
 
 

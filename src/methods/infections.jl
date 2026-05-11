@@ -207,7 +207,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 Mainly a convenience wrapper around `infect!` with less parameters.
 Used for example in test cases.
 """
-infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), only(pathogens(sim)); sim = sim, rng = rng(sim))
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), first_pathogen(sim); sim = sim, rng = rng(sim))
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,

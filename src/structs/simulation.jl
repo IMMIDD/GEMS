@@ -9,7 +9,7 @@ export Simulation
 export tick, label, start_condition, stop_criterion, settingscontainer, settings, population
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
-export pathogens, get_pathogen
+export pathogens, get_pathogen, first_pathogen
 export infection_registry, immunity_registry, owner_shard
 export configfile, populationfile
 export evaluate
@@ -82,8 +82,8 @@ Here's a list of all available parameters:
 | `infected_fraction`       | `Float`                            | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
 | `stop_criterion`          | `StopCriterion`                    | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
 | `pathogens`               | `Tuple`                            | A Tuple of `Pathogen`s to be simulated.                                                                                                                                           |
-| `transmission_function`   | `TransmissionFunction`             | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
-| `transmission_rate`       | `Float`                            | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
+| `transmission_function`   | `TransmissionFunction`             | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if `pathogens` is provided.                                                  |
+| `transmission_rate`       | `Float`                            | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if `pathogens` or `transmission_function` is provided. |
 | `stepmod`                 | `Function`                         | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |
 
 # Examples
@@ -353,7 +353,7 @@ function _BUILD_Simulation(;
         stop_criterion = nothing,
 
         # pathogen
-        pathogen = nothing,
+        pathogens = nothing,
         transmission_function = nothing,
         transmission_rate = nothing,
 
@@ -428,9 +428,9 @@ function _BUILD_Simulation(;
             stop_criterion)
 
         # PATHOGENS
-        pathogen_dict = determine_pathogens(
+        pathogen_tuple = determine_pathogens(
             config,
-            pathogen,
+            pathogens,
             transmission_function,
             transmission_rate
         )
@@ -447,7 +447,7 @@ function _BUILD_Simulation(;
             stop_criterion,
             pop,
             settings,
-            pathogen_dict,
+            pathogen_tuple,
             stepmod,
             rng_seed,
             rngs
@@ -655,16 +655,13 @@ function _make_pathogen_tuple(v::AbstractVector)
 end
  
 # Function barrier: T is now a compile-time parameter so the returned Tuple is typed.
-function _as_pathogen_tuple(v::Vector{T}) where {T<:Pathogen} 
-    n = length(v)
-    n == 1 && return (v[1],)
-    n == 2 && return (v[1], v[2])
-    n == 3 && return (v[1], v[2], v[3])
-    n == 4 && return (v[1], v[2], v[3], v[4])
-    n == 5 && return (v[1], v[2], v[3], v[4], v[5])
-    n == 6 && return (v[1], v[2], v[3], v[4], v[5], v[6])
-    n == 7 && return (v[1], v[2], v[3], v[4], v[5], v[6], v[7])
-    return    (v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8])
+function _as_pathogen_tuple(v::Vector{T}) where {T<:Pathogen}
+    return _build_typed_tuple(v, Val(length(v)))
+end
+
+@generated function _build_typed_tuple(v::Vector{T}, ::Val{N}) where {T<:Pathogen, N}
+    exprs = [:(v[$i]) for i in 1:N]
+    return :( ($(exprs...),) )
 end
 
 
@@ -1707,12 +1704,22 @@ Returns the only pathogen is `pname` is empty for backwards compatibility.
 """
 function get_pathogen(simulation::Simulation, pname::String)
     if isempty(pname)
-        return only(values(pathogens(simulation)))
+        return first_pathogen(simulation)
     end
-    for p in values(pathogens(simulation))
+    for p in pathogens(simulation)
         p.name == pname && return p
     end
     throw(ArgumentError("Pathogen '$pname' not found in simulation."))
+end
+
+"""
+    first_pathogen(sim::Simulation)
+
+Returns the first (or only) pathogen in the simulation. 
+Useful as a convenience function when running single-disease models.
+"""
+function first_pathogen(sim::Simulation)
+    return first(pathogens(sim))
 end
 
 
@@ -2083,7 +2090,7 @@ function info(sim::Simulation)
     
     # pathogen (use the pathogen's show method for detailed info)
     buf = IOBuffer()
-    for p in values(pathogens(sim))
+    for p in pathogens(sim)
         show(buf, p)
         write(buf, "\n")
     end

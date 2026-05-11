@@ -121,7 +121,7 @@ function intervention_test()
             report = true,    
             mod! = function(sim::Simulation)
                 
-                nicer_test = TestType("Nicer Test", pathogen(sim), sim)
+                nicer_test = TestType("Nicer Test", first_pathogen(sim), sim)
 
                 cancel_isolation = IStrategy("cancel isolation", sim)
                     add_measure!(cancel_isolation, CancelSelfIsolation())

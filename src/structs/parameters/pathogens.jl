@@ -23,31 +23,30 @@ abstract type InfectiousnessProfile end
 abstract type ImmunityProfile end
 
 """
-    Pathogen <: Parameter
+    Pathogen
 
 A type that holds all relevant information about a pathogen.
 
 # Fields
 - `id::Int8`: Unique identifier for the pathogen.
 - `name::String`: Name of the pathogen.
-- `progressions::OrderedDict{DataType, ProgressionCategory}`: An ordered dictionary that
-    maps progression category types to their instances.
-- `progression_assignment::ProgressionAssignmentFunction`: A function that assigns a
-    progression category to an individual. Must be a subtype of `ProgressionAssignmentFunction`.
-- `transmission_function::TransmissionFunction`: A function that calculates the
-    transmission probability of the pathogen. Must be a subtype of `TransmissionFunction`.
+- `progressions::Tuple`: A typed tuple containing instances of `ProgressionCategory` that define the possible disease progressions.
+- `progression_assignment::ProgressionAssignmentFunction`: A function that assigns a progression category to an individual. Must be a subtype of `ProgressionAssignmentFunction`.
+- `transmission_function::TransmissionFunction`: A function that calculates the transmission probability of the pathogen. Must be a subtype of `TransmissionFunction`.
+- `infectiousness_profile::InfectiousnessProfile`: The profile defining the infectiousness dynamics over time.
+- `immunity_profile::ImmunityProfile`: The profile defining the immunity dynamics (e.g., acquisition and waning).
 
 # Example
 
 ```julia
 # Define disease progressions
 dp_a = Asymptomatic(
-    exposure_to_infectiousness = Poisson(2),
+    exposure_to_infectiousness_onset = Poisson(2),
     symptom_onset_to_recovery = Poisson(5)
 )
 dp_s = Symptomatic(
-    exposure_to_infectiousness = Poisson(3),
-    infectiousness_to_symptom_onset = Poisson(1),
+    exposure_to_infectiousness_onset = Poisson(3),
+    infectiousness_onset_to_symptom_onset = Poisson(1),
     symptom_onset_to_recovery = Poisson(7)
 )
 
@@ -64,9 +63,8 @@ pathogen = Pathogen(
     progressions = [dp_a, dp_s],
     progression_assignment = pa,
     transmission_function = tf
+    # infectiousness_profile and immunity_profile will use their defaults
 )
-```
-
 """
 mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:TransmissionFunction, IP<:InfectiousnessProfile, IM<:ImmunityProfile}
     id::Int8
@@ -188,19 +186,23 @@ function Base.show(io::IO, p::Pathogen)
     res *= "\u2514 Progressions:\n"
     
     # get column width for pretty printing
-    max_width = [maximum(length.(string.(fieldnames(dp_type)))) for (dp_type, _) in p.progressions] |> maximum
+    max_width = isempty(p.progressions) ? 0 : maximum(maximum(length.(string.(fieldnames(typeof(prog))))) for prog in p.progressions)
 
-    for (dp_type, progression) in p.progressions
+    for progression in p.progressions
+        dp_type = typeof(progression) # Extract the type from the object
         res *= "  \u2514 $(dp_type)\n"
+        
         for nm in fieldnames(dp_type)
             value = getfield(progression, nm)
             res *= "    \u2514 $(rpad(string(nm) * ":", max_width + 1)) $(value)\n"
         end
     end
+    
     res *= "\u2514 Progression Assignment: $(p.progression_assignment)\n"
     res *= "\u2514 Transmission Function: $(p.transmission_function)\n"
     res *= "\u2514 Infectiousness Profile: $(p.infectiousness_profile)\n"
     res *= "\u2514 Immunity Profile: $(p.immunity_profile)\n"
+    
     print(io, res)
 end
 
@@ -220,7 +222,7 @@ function _rebuild_pathogen(pg::Pathogen;
     return Pathogen(
         id  = Int64(id(pg)),
         name = name(pg),
-        progressions = collect(values(progressions(pg))),
+        progressions = collect(progressions(pg)),
         progression_assignment = progression_assignment,
         transmission_function = transmission_function,
         infectiousness_profile = infectiousness_profile,
