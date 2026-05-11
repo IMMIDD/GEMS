@@ -483,6 +483,7 @@ function process_infections!(p_buffer, c_buffer, csm, setting, sim, pathogen)
         if infected(ind)
             num_infected += 1
             if can_infect(ind, setting)
+                empty!(c_buffer)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
                 
                 for c in c_buffer
