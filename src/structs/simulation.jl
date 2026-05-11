@@ -689,7 +689,7 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
         end
     else
         !haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogens found in config file!"))
-        _make_pathogen_tuple(create_pathogens(configfile_params["Pathogens"]))
+        create_pathogens(configfile_params["Pathogens"])
     end
 
     if !isnothing(transmission_function)
@@ -1141,20 +1141,14 @@ end
 """
     create_pathogens(params::Dict)
 
-Creates a list of pathogens based on the provided parameters.
+Creates a tuple of pathogens based on the provided parameters.
 The `params` dictionary must contain the parameters for each pathogen constructor.
 """
 function create_pathogens(params::Dict)
-    pathogens = []
-    for (pathogen_name, pathogen_params) in params
-        # create pathogen
-        p = create_pathogen(pathogen_params, pathogen_name, length(pathogens) + 1)
-        push!(pathogens, p)
-    end
-
-    # check if at least one pathogen was created
-    length(pathogens) == 0 && throw(ConfigfileError("No pathogens were found in the config file! At least one pathogen must be specified in the '[Pathogens]' section. E.g., '[Pathogens.Covid19]'."))
-    return pathogens
+    items = collect(params)
+    length(items) == 0 && throw(ConfigfileError("No pathogens were found..."))
+    pathogens = [create_pathogen(pars, name, i) for (i, (name, pars)) in enumerate(items)]
+    return Tuple(pathogens)
 end
 
 """
