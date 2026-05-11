@@ -43,7 +43,7 @@ function sample_contacts!(indivs::Vector{Individual}, random_sampling_method::Ra
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
-    offset = gems_rand(rng, 1:length(present_inds)-1)
+    offset = gems_rand(rng, 1:length(present_inds) -1 )
     contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
     push!(indivs, present_inds[contact_index])  
 end
@@ -69,11 +69,12 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     number_of_contacts = gems_rand(rng, Poisson(contactparameter_sampling.contactparameter))
 
     if replace
-        # sample contacts 
-        for i in 1:number_of_contacts
-            offset = gems_rand(rng, 1:length(present_inds)-1)
+        resize!(indivs, number_of_contacts)
+        # sample contacts
+        @inbounds for i in 1:number_of_contacts
+            offset = gems_rand(rng, 1:length(present_inds) - 1)
             contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-            push!(indivs, present_inds[contact_index])
+            indivs[i] = present_inds[contact_index]
         end
     else
         number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
@@ -144,7 +145,7 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     if replace
         # sample contacts 
         for i in 1:number_of_contacts
-            offset = gems_rand(rng, 1:length(present_inds)-1)
+            offset = gems_rand(rng, 1:length(present_inds) - 1)
             contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
             push!(indivs, present_inds[contact_index])
         end
