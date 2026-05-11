@@ -1258,6 +1258,9 @@ active infection for `pathogen_id`.
  
 """
 @inline function record_test!(ind::Individual, infections::InfectionRegistry, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
+ 
+    detected = test_result && reportable
+ 
     # cache-first: find slot, build updated state, write back
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         s = ind.infection_cache[i]
@@ -1265,10 +1268,10 @@ active infection for `pathogen_id`.
  
         new_state = _setstate(s, Val(:last_test), test_tick)
         new_state = _setstate(new_state, Val(:last_test_result), test_result)
-        (test_result && reportable) && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
+        detected && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
  
         ind.infection_cache = Base.setindex(ind.infection_cache, new_state, i)
-        test_result && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
+        detected && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
         return nothing
     end
  
@@ -1279,10 +1282,10 @@ active infection for `pathogen_id`.
         if s.pathogen_id == pathogen_id
             new_state = _setstate(s, Val(:last_test), test_tick)
             new_state = _setstate(new_state, Val(:last_test_result), test_result)
-            (test_result && reportable) && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
+            detected && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
  
             @inbounds infections.states[node] = new_state
-            test_result && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
+            detected && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
             return nothing
         end
         node = s.next
