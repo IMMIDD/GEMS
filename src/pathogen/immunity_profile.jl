@@ -59,7 +59,7 @@ Level at elapsed ticks e:  `max(floor, 100 × 0.5^(e / halflife))`
     end
 end
 
-@inline function _waning_level(profile::ExponentialWaning, acquired_tick::Int16, tick::Int16)::Int8
+@inline function _exponential_level(profile::ExponentialWaning, acquired_tick::Int16, tick::Int16)::Int8
     tick < acquired_tick && return Int8(0)
     elapsed = Float32(tick - acquired_tick)
     level = 100.0f0 * 0.5f0^(elapsed / profile.halflife)
@@ -68,9 +68,9 @@ end
 
 @inline function calculate_immunity(profile::ExponentialWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     nat_level = state.natural_acquired_tick != DEFAULT_TICK ?
-        _waning_level(profile, state.natural_acquired_tick, tick) : Int8(0)
+        _exponential_level(profile, state.natural_acquired_tick, tick) : Int8(0)
     vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ?
-        _waning_level(profile, state.vaccine_acquired_tick, tick) : Int8(0)
+        _exponential_level(profile, state.vaccine_acquired_tick, tick) : Int8(0)
     return Int8(clamp(round(Int, nat_level + vac_level - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
 end
 
@@ -79,8 +79,8 @@ end
     nat_pending = state.natural_acquired_tick != DEFAULT_TICK && tick < state.natural_acquired_tick
     vac_pending = state.vaccine_acquired_tick != DEFAULT_TICK && tick < state.vaccine_acquired_tick
     (nat_pending || vac_pending) && return false
-    nat_level = state.natural_acquired_tick != DEFAULT_TICK ? _waning_level(profile, state.natural_acquired_tick, tick) : Int8(0)
-    vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ? _waning_level(profile, state.vaccine_acquired_tick, tick) : Int8(0)
+    nat_level = state.natural_acquired_tick != DEFAULT_TICK ? _exponential_level(profile, state.natural_acquired_tick, tick) : Int8(0)
+    vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ? _exponential_level(profile, state.vaccine_acquired_tick, tick) : Int8(0)
     return nat_level <= profile.floor && vac_level <= profile.floor
 end
 
