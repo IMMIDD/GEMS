@@ -1,6 +1,6 @@
 export TestType
 export SeroprevalenceTestType
-export pathogen, sensitivity, specificity, name
+export pathogen_id, sensitivity, specificity, name
 
 export apply_test, apply_pool_test
 
@@ -16,31 +16,31 @@ A type to specify a type of pathogen test (e.g. 'PCR Test') and its parameteriza
 
 # Fields
 - `name::String`: Name of the test (e.g. 'Rapid Test' or 'PCR Test')
-- `pathogen::Pathogen`: Pathogen that this test will detect
+- `pathogen_id::Int8`: Pathogen that this test will detect
 - `sensitivity::Float64 = 1.0`: Probability (0-1) that this test will positively identify an infection (true positive rate) 
 - `specificity::Float64 = 1.0`: Probability (0-1) that this test will negatively identify a non-infection (true negative rate)
 
 """
 struct TestType <: AbstractTestType
     name::String
-    pathogen::Pathogen
+    pathogen_id::Int8
     sensitivity::Float64 # 0-1
     specificity::Float64 # 0-1
 
     @doc """
-        TestType(name::String, pathogen::Pathogen, sim::Simulation;
+        TestType(name::String, pathogen_id::Int8, sim::Simulation;
             sensitivity::Float64 = 1.0, specificity::Float64 = 1.0, reportable::Bool = true)
 
     Creates a TestType object.
 
     # Parameters
       - `name::String`: Name of the test (e.g. 'Rapid Test' or 'PCR Test')
-      - `pathogen::Pathogen`: Pathogen that this test will detect
+      - `pathogen_id::Int8`: Pathogen that this test will detect
       - `sim::Simulation`: Simulation object (required to interlink test with simulation)
       - `sensitivity::Float64 = 1.0` *(optional)*: Probability (0-1) that this test will positively identify an infection (true positive rate) 
       - `specificity::Float64 = 1.0` *(optional)*: Probability (0-1) that this test will negatively identify a non-infection (true negative rate)
     """
-    function TestType(name::String, pathogen::Pathogen, sim::Simulation;
+    function TestType(name::String, pathogen_id::Int8, sim::Simulation;
         sensitivity::Float64=1.0, specificity::Float64=1.0)
 
         # check input
@@ -52,7 +52,7 @@ struct TestType <: AbstractTestType
             throw(ArgumentError("Test specificity value must be between 0 and 1"))
         end
 
-        temp = new(name, pathogen, sensitivity, specificity)
+        temp = new(name, pathogen_id, sensitivity, specificity)
 
         add_testtype!(sim, temp)
 
@@ -67,29 +67,29 @@ Represents a serological test used to detect antibodies against a specific patho
 
 # Fields
 - `name::String`: The name of the test (e.g., "ELISA", "Rapid Test").
-- `pathogen::Pathogen`: The pathogen that the test is designed to detect antibodies for.
+- `pathogen_id::Int8`: The pathogen that the test is designed to detect antibodies for.
 - `sensitivity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who have antibodies (true positive rate).
 - `specificity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who do not have antibodies (true negative rate).
 """
 struct SeroprevalenceTestType <: AbstractTestType
     name::String
-    pathogen::Pathogen
+    pathogen_id::Int8
     sensitivity::Float64 # 0-1
     specificity::Float64 # 0-1
 
     @doc """
-        SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation;
+        SeroprevalenceTestType(name::String, pathogen_id::Int8, sim::Simulation;
             sensitivity::Float64 = 1.0, specificity::Float64 = 1.0)
 
     Creates a SeroprevalenceTestType object.
 
     # Parameters
       - `name::String`: The name of the test (e.g., "ELISA", "Rapid Test").
-      - `pathogen::Pathogen`: The pathogen that the test is designed to detect antibodies for.
+      - `pathogen_id::Int8`: The pathogen that the test is designed to detect antibodies for.
       - `sensitivity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who have antibodies (true positive rate).
       - `specificity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who do not have antibodies (true negative rate).
     """
-    function SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation;
+    function SeroprevalenceTestType(name::String, pathogen_id::Int8, sim::Simulation;
         sensitivity::Float64=1.0, specificity::Float64=1.0)
 
         # check input
@@ -101,7 +101,7 @@ struct SeroprevalenceTestType <: AbstractTestType
             throw(ArgumentError("Test specificity value must be between 0 and 1"))
         end
 
-        temp = new(name, pathogen, sensitivity, specificity)
+        temp = new(name, pathogen_id, sensitivity, specificity)
 
         add_testtype!(sim, temp)
 
@@ -119,12 +119,12 @@ function name(tt::TestType)
 end
 
 """
-    pathogen(tt::TestType)
+    pathogen_id(tt::TestType)
 
-Returns the TestType's associated pathogen.
+Returns the TestType's associated pathogen_id.
 """
-function pathogen(tt::TestType)
-    return (tt.pathogen)
+function pathogen_id(tt::TestType)
+    return (tt.pathogen_id)
 end
 
 """
@@ -156,12 +156,12 @@ function name(tt::SeroprevalenceTestType)
 end
 
 """
-    pathogen(tt::SeroprevalenceTestType)
+    pathogen_id(tt::SeroprevalenceTestType)
 
-Returns the SeroprevalenceTestType's associated pathogen.
+Returns the SeroprevalenceTestType's associated pathogen_id.
 """
-function pathogen(tt::SeroprevalenceTestType)
-    return (tt.pathogen)
+function pathogen_id(tt::SeroprevalenceTestType)
+    return (tt.pathogen_id)
 end
 
 """
@@ -186,9 +186,9 @@ end
 ### PRINTING
 ###
 
-Base.show(io::IO, tt::TestType) = print(io, "$(tt.pathogen.name)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
+Base.show(io::IO, tt::TestType) = print(io, "$(tt.pathogen_id)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
 
-Base.show(io::IO, tt::SeroprevalenceTestType) = print(io, "$(tt.pathogen.name)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
+Base.show(io::IO, tt::SeroprevalenceTestType) = print(io, "$(tt.pathogen_id)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
 
 
 ###
@@ -220,8 +220,8 @@ undetected individual.
 function apply_test(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
 
     # apply test
-    test_pos = infected(ind) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
-        !infected(ind) && gems_rand(rng(sim)) > testtype |> specificity
+    test_pos = infected(ind, testtype.pathogen_id, sim) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
+        !infected(ind, testtype.pathogen_id, sim) && gems_rand(rng(sim)) > testtype |> specificity
 
     # add test information in agent
     last_test!(ind, sim |> tick)
@@ -235,7 +235,7 @@ function apply_test(ind::Individual, testtype::TestType, sim::Simulation, report
         sim |> tick,
         test_pos,
         ind |> infected,
-        infected(ind) ? infection_id(ind, infection_registry(sim)) : DEFAULT_INFECTION_ID,
+        infected(ind) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
         testtype |> name,
         test_pos && reportable)
 
@@ -331,7 +331,7 @@ function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simu
         test_pos,
         ind |> infected,
         was_infected,
-        infected(ind) ? infection_id(ind, infection_registry(sim)) : DEFAULT_INFECTION_ID,
+        infected(ind) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
         testtype |> name)
 
     return test_pos
