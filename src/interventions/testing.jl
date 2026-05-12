@@ -235,6 +235,7 @@ function apply_test(ind::Individual, testtype::TestType, sim::Simulation, report
         test_pos,
         ind |> infected,
         infected(ind, testtype.pathogen_id) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
+        testtype |> pathogen_id,
         testtype |> name,
         test_pos && reportable)
  
@@ -293,6 +294,7 @@ function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; 
         test_pos,
         Int16(no_of_ind),
         Int16(no_of_inf),
+        testtype |> pathogen_id,
         testtype |> name)
 
     return test_pos
@@ -335,6 +337,7 @@ function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simu
         ind |> infected,
         was_infected,
         infected(ind, testtype.pathogen_id) ? infection_id(ind, testtype.pathogen_id, sim) : DEFAULT_INFECTION_ID,
+        testtype |> pathogen_id,
         testtype |> name)
 
     return test_pos

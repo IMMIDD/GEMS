@@ -1294,7 +1294,7 @@ end
 ### VACCINATION STATUS ###
 
 function vaccinate!(individual::Individual, vaccine::Vaccine, tick::Int16, registry::ImmunityRegistry)
-    log!(logger(vaccine), id(individual), tick)
+    log!(logger(vaccine), id(individual), target_pathogen_id(vaccine), tick)
     push_immunity!(registry, individual, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
     individual.needs_immunity_update = true
 end
