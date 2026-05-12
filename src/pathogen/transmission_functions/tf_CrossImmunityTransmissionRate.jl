@@ -135,8 +135,7 @@ function transmission_probability(
             1.0
         elseif exposed_idx !== nothing
             prior_idx = findfirst(==(s.pathogen_id), transFunc.pathogen_ids)
-            prior_idx !== nothing ? transFunc.cross_immunity_matrix[exposed_idx, prior_idx] :
-                                    transFunc.default_cross_factor
+            prior_idx !== nothing ? transFunc.cross_immunity_matrix[exposed_idx, prior_idx] : transFunc.default_cross_factor
         else
             transFunc.default_cross_factor
         end
