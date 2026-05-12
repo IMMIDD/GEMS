@@ -237,11 +237,39 @@ function aggregate_dfs(dfs::Vector{DataFrame}, key::Symbol)
     )
 end
 """
+    aggregate_dfs(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+
+Joins the input vector of `dataframes` on the compound `keys` and
+aggregates the residual data. Requires all dataframes to
+provide the exact same columns and column names.
+"""
+function aggregate_dfs(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+    n_keys = length(keys)
+    res = reduce((df1, df2) -> outerjoin(df1, df2, on = keys, makeunique = true), dfs)
+
+    val_cols = res[!, n_keys+1:ncol(res)]
+    mins = [minimum(row) for row in eachrow(val_cols)]
+    maxs = [maximum(row) for row in eachrow(val_cols)]
+    avgs = [mean(row) for row in eachrow(val_cols)]
+    stds = [std(row) for row in eachrow(val_cols)]
+    CIs = [confidence_interval_95(row) for row in eachrow(val_cols)]
+
+    out = DataFrames.select(res, keys)
+    out.minimum = mins
+    out.maximum = maxs
+    out.mean = avgs
+    out.std = stds
+    out.lower_95 = [t[1] for t in CIs]
+    out.upper_95 = [t[2] for t in CIs]
+    return out
+end
+
+"""
     aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
 
-Aggregates data on the columns of the dataframes contained in the 
+Aggregates data on the columns of the dataframes contained in the
 provided vector for each value in the key column.
-All dataframes must have identical columnnames. 
+All dataframes must have identical columnnames.
 Returns a dictionary with the columnnames as keys and a dataframe as the value.
 """
 function aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
@@ -295,6 +323,58 @@ function aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
     return res_dict
 end
 
+"""
+    aggregate_dfs_multcol(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+
+Aggregates data on the columns of the dataframes contained in the
+provided vector for each combination of values in the compound `keys` columns.
+All dataframes must have identical columnnames.
+Returns a dictionary with the columnnames as keys and a dataframe as the value.
+"""
+function aggregate_dfs_multcol(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+    columns = names(dfs[1])
+
+    if !all(names(df) == columns for df in dfs)
+        @error "The dataframes do not have identical columns!"
+    elseif length(columns) == 0
+        @error "The Dataframes are empty!"
+    end
+
+    key_strings = string.(keys)
+    value_columns = filter(c -> !(c in key_strings), columns)
+
+    res_dict = Dict()
+    for c in value_columns
+        res = deepcopy(DataFrames.select(dfs[1], keys..., c))
+        for df in dfs[2:end]
+            res = outerjoin(res, DataFrames.select(df, keys..., c), on = keys, makeunique = true)
+        end
+
+        for col in names(res)
+            res[!, col] = coalesce.(res[!, col], 0)
+        end
+
+        n_keys = length(keys)
+        val_cols = res[!, n_keys+1:ncol(res)]
+        mins = [minimum(row) for row in eachrow(val_cols)]
+        maxs = [maximum(row) for row in eachrow(val_cols)]
+        avgs = [mean(row) for row in eachrow(val_cols)]
+        stds = [std(row) for row in eachrow(val_cols)]
+        CIs = [confidence_interval_95(row) for row in eachrow(val_cols)]
+
+        out = DataFrames.select(res, keys)
+        out.minimum = mins
+        out.maximum = maxs
+        out.mean = avgs
+        out.std = stds
+        out.lower_95 = [t[1] for t in CIs]
+        out.upper_95 = [t[2] for t in CIs]
+
+        res_dict[c] = out
+    end
+    return res_dict
+end
+
 function aggregate_values(values)
     return(
         Dict(
@@ -302,10 +382,33 @@ function aggregate_values(values)
             "max" => maximum(values),
             "mean" => mean(values),
             "std" => std(values),
-            "lower_95" => confidence_interval_95(values)[1], 
-            "upper_95" =>confidence_interval_95(values)[2]
+            "lower_95" => confidence_interval_95(values)[1],
+            "upper_95" => confidence_interval_95(values)[2]
         )
     )
+end
+
+"""
+    aggregate_by_pathogen(dfs::Vector{DataFrame}, value_col::Symbol)
+
+Takes a vector of per-pathogen DataFrames (one per simulation run, each with
+a `pathogen_id` column and one value column), collects values per `pathogen_id`
+across runs, and returns aggregated statistics per pathogen.
+
+# Returns
+
+- `Dict{Int8, Dict{String, Real}}`: keyed by `pathogen_id`, value is a stats
+  dict with keys `"min"`, `"max"`, `"mean"`, `"std"`, `"lower_95"`, `"upper_95"`.
+"""
+function aggregate_by_pathogen(dfs::Vector{DataFrame}, value_col::Symbol)
+    isempty(dfs) && return Dict{Int8, Dict{String, Real}}()
+    all_pids = unique(reduce(vcat, [df.pathogen_id for df in dfs]))
+    result = Dict{Int8, Dict{String, Real}}()
+    for pid in all_pids
+        values = [df[df.pathogen_id .== pid, value_col][1] for df in dfs]
+        result[pid] = aggregate_values(values)
+    end
+    return result
 end
 
 function aggregate_dicts(dicts::Vector{<:Dict})

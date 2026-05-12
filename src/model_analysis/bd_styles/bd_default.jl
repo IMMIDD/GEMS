@@ -29,11 +29,11 @@ individual runs.
     - `sim_data::Dict{String, Any}`
         - `runs::Vector{ResultData}`: ResultData objects of individual simulation runs runs
         - `number_of_runs::Int64`: Number of simulation runs
-        - `total_infections::Dict{String, Real}`: Summary statistics on total infections across simulation runs
-        - `attack_rate::Dict{String, Real}`: Summary statistics on attack rates across simulation runs
-        - `r0::Dict{String, Real}`: Summary statistics on the basic reproduction number (R0)
+        - `total_infections::Dict{Int8, Dict{String, Real}}`: Per-pathogen summary statistics on total infections across simulation runs
+        - `attack_rate::Dict{Int8, Dict{String, Real}}`: Per-pathogen summary statistics on attack rates across simulation runs
+        - `r0::Dict{Int8, Dict{String, Real}}`: Per-pathogen summary statistics on the basic reproduction number (R0)
         - `total_quarantines::Dict{String, Real}`: Summary statistics on total quarantines across simulation runs
-        - `total_tests::Dict{String, Real}`: Summary statistics on total tests across simulation runs
+        - `total_tests::DataFrame`: Aggregated test counts per `(test_type, pathogen_id)` with summary statistics across runs
         
     - `dataframes::Dict{String, Any}`
         - `tick_cases::Dataframe`: Aggregated data on infections per tick across simulation runs
@@ -76,21 +76,21 @@ mutable struct DefaultBatchData <: BatchDataStyle
                 Dict(
                     "runs" => () -> bP |> rundata, # result data objects of individual runs
                     "number_of_runs" => () -> bP |> rundata |> length,
-                    "total_infections" => () -> bP |> total_infections |> aggregate_values,
-                    "attack_rate" => () -> bP |> attack_rate |> aggregate_values,
-                    "r0" => () -> bP |> r0 |> aggregate_values,
+                    "total_infections" => () -> aggregate_by_pathogen(bP |> total_infections, :total_infections),
+                    "attack_rate" => () -> aggregate_by_pathogen(bP |> attack_rate, :attack_rate),
+                    "r0" => () -> aggregate_by_pathogen(bP |> r0, :r0),
                     "total_quarantines" => () -> bP |> total_quarantines |> aggregate_values,
-                    "total_tests" => () -> bP |> total_tests |> aggregate_dicts,
+                    "total_tests" => () -> aggregate_dfs(bP |> total_tests, [:test_type, :pathogen_id]),
                 ),
 
             # aggregated output data
             "dataframes" =>
                 Dict(
-                    "tick_cases" => () -> aggregate_dfs(tick_cases(bP), :tick),
-                    "effectiveR" => () -> aggregate_dfs(effectiveR(bP), :tick),
-                    "tests" => () -> Dict(k => aggregate_dfs_multcol(v, :tick) for (k, v) in tests(bP)),
+                    "tick_cases" => () -> aggregate_dfs(tick_cases(bP), [:tick, :pathogen_id]),
+                    "effectiveR" => () -> aggregate_dfs(effectiveR(bP), [:tick, :pathogen_id]),
+                    "tests" => () -> Dict(k => aggregate_dfs_multcol(v, [:tick, :pathogen_id]) for (k, v) in tests(bP)),
                     "cumulative_quarantines" => () -> aggregate_dfs(cumulative_quarantines(bP), :tick),
-                    "cumulative_disease_progressions" => () -> aggregate_dfs_multcol(cumulative_disease_progressions(bP), :tick),   
+                    "cumulative_disease_progressions" => () -> aggregate_dfs_multcol(cumulative_disease_progressions(bP), [:tick, :pathogen_id]),
                 )
         )
 

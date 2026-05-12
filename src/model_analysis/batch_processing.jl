@@ -456,7 +456,7 @@ function tick_cases(batchProcessor::BatchProcessor)
     # extract tick cases from each simulation run
     data = map(
         x -> tick_cases(x) |>
-            x -> DataFrames.select(x, :tick, :exposed_cnt),
+            x -> DataFrames.select(x, :tick, :pathogen_id, :exposed_cnt),
         batchProcessor |> rundata
     )
 
@@ -477,7 +477,7 @@ function effectiveR(batchProcessor::BatchProcessor)
     # extract effective R from each simulation run
     data = map(
         x -> effectiveR(x) |>
-            x -> DataFrames.select(x, :tick, :effective_R),
+            x -> DataFrames.select(x, :tick, :pathogen_id, :effective_R),
         batchProcessor |> rundata
     )
 
