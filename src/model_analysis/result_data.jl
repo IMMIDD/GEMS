@@ -1388,8 +1388,8 @@ function Base.show(io::IO, rd::ResultData)
         () -> "  \u2514 Basic Reproduction Number (R0): " * join(["$(pname(row.pathogen_id)): $(round(row.r0, digits=2))" for row in eachrow(rd |> r0)], ", ")
         () -> "  \u2514 Attack rate: " * join(["$(pname(row.pathogen_id)): $(round(row.attack_rate, digits=4))" for row in eachrow(rd |> attack_rate)], ", ")
         () -> "  \u2514 Total quarantine days: $(rd |> total_quarantines)"
-        () -> "  \u2514 Total tests: " * join(["$(row.test_type)/$(pname(row.pathogen_id)): $(row.count)" for row in eachrow(rd |> total_tests)], ", ")
-        () -> "  \u2514 Test detection rate: " * join(["$(pname(row.pathogen_id)): $(round(row.detection_rate, digits=4))" for row in eachrow(rd |> detection_rate)], ", ")
+        () -> "  \u2514 Total tests: " * (isempty(rd |> total_tests) ? "0" : join(["$(row.test_type)/$(pname(row.pathogen_id)): $(row.count)" for row in eachrow(rd |> total_tests)], ", "))
+        () -> "  \u2514 Test detection rate: " * (isempty(rd |> detection_rate) ? "-" : join(["$(pname(row.pathogen_id)): $(round(row.detection_rate, digits=4))" for row in eachrow(rd |> detection_rate)], ", "))
     ]
 
     for l in lines
