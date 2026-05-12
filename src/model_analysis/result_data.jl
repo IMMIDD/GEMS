@@ -1372,7 +1372,9 @@ function info(rd::ResultData)
 end
 
 function Base.show(io::IO, rd::ResultData)
-    
+    pid_names = try Dict(id(p) => name(p) for p in rd |> pathogens) catch; Dict{Int8,String}() end
+    pname(pid) = get(pid_names, pid, "pid $pid")
+
     lines = [
         () -> "ResultData Object"
         () -> "\u2514 Dataframes inside: $(rd.data["dataframes"] |> length)"
@@ -1382,12 +1384,12 @@ function Base.show(io::IO, rd::ResultData)
         () -> "  \u2514 Individuals: $(rd |> number_of_individuals)"
         () -> "  \u2514 Settings: $((rd |> setting_data).setting_type)"
         () -> "\u2514 Simulation:"
-        () -> "  \u2514 Total infections: $(rd |> total_infections)"
-        () -> "  \u2514 Basic Reproduction Number (R0): $(rd |> r0)"
-        () -> "  \u2514 Attack rate: $(rd |> attack_rate)"
+        () -> "  \u2514 Total infections: " * join(["$(pname(row.pathogen_id)): $(row.total_infections)" for row in eachrow(rd |> total_infections)], ", ")
+        () -> "  \u2514 Basic Reproduction Number (R0): " * join(["$(pname(row.pathogen_id)): $(round(row.r0, digits=2))" for row in eachrow(rd |> r0)], ", ")
+        () -> "  \u2514 Attack rate: " * join(["$(pname(row.pathogen_id)): $(round(row.attack_rate, digits=4))" for row in eachrow(rd |> attack_rate)], ", ")
         () -> "  \u2514 Total quarantine days: $(rd |> total_quarantines)"
-        () -> "  \u2514 Total tests: $(NamedTuple{Tuple(Symbol(k) for k in keys(rd |> total_tests))}(values(rd |> total_tests)))"
-        () -> "  \u2514 Test detection rate: $(rd |> detection_rate)"
+        () -> "  \u2514 Total tests: " * join(["$(row.test_type)/$(pname(row.pathogen_id)): $(row.count)" for row in eachrow(rd |> total_tests)], ", ")
+        () -> "  \u2514 Test detection rate: " * join(["$(pname(row.pathogen_id)): $(round(row.detection_rate, digits=4))" for row in eachrow(rd |> detection_rate)], ", ")
     ]
 
     for l in lines

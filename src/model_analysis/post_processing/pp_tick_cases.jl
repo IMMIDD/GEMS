@@ -4,7 +4,7 @@ export tick_cases
     tick_cases(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing the count of individuals currently entering in the
-respective disease states exposed, infectious, recovered, and deceased.
+respective disease states exposed, infectious, recovered, and deceased, per pathogen.
 
 # Returns
 
@@ -13,6 +13,7 @@ respective disease states exposed, infectious, recovered, and deceased.
 | Name             | Type    | Description                                         |
 | :--------------- | :------ | :-------------------------------------------------- |
 | `tick`           | `Int16` | Simulation tick (time)                              |
+| `pathogen_id`    | `Int8`  | Pathogen identifier                                 |
 | `exposed_cnt`    | `Int64` | Number of individuals entering the exposed state    |
 | `infectious_cnt` | `Int64` | Number of individuals entering the infectious state |
 | `recovered_cnt`  | `Int64` | Number of individuals recovering                    |
@@ -25,37 +26,36 @@ function tick_cases(postProcessor::PostProcessor)::DataFrame
         return(load_cache(postProcessor, "tick_cases"))
     end
 
-    exposed = infectionsDF(postProcessor) |>
-        x -> groupby(x, :tick) |>
-        x -> combine(x, nrow => :exposed_cnt) |>
-        x -> DataFrames.select(x, :tick, :exposed_cnt)
-    
-    infectious = infectionsDF(postProcessor) |>
-        x -> groupby(x, :infectiousness_onset) |>
+    infs = infectionsDF(postProcessor)
+    base = crossjoin(
+        DataFrame(tick = collect(Int16, 0:tick(simulation(postProcessor)))),
+        DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor)))))
+
+    exposed = groupby(infs, [:tick, :pathogen_id]) |>
+        x -> combine(x, nrow => :exposed_cnt)
+
+    infectious = groupby(infs, [:infectiousness_onset, :pathogen_id]) |>
         x -> combine(x, nrow => :infectious_cnt) |>
-        x -> DataFrames.select(x, :infectiousness_onset => :tick, :infectious_cnt)
+        x -> DataFrames.select(x, :infectiousness_onset => :tick, :pathogen_id, :infectious_cnt)
 
-    recovered = infectionsDF(postProcessor) |>
-        x -> groupby(x, :recovery) |>
+    recovered = groupby(infs, [:recovery, :pathogen_id]) |>
         x -> combine(x, nrow => :recovered_cnt) |>
-        x -> DataFrames.select(x, :recovery => :tick, :recovered_cnt)
+        x -> DataFrames.select(x, :recovery => :tick, :pathogen_id, :recovered_cnt)
 
-    dead = infectionsDF(postProcessor) |>
-        x -> groupby(x, :death) |>
+    dead = groupby(infs, [:death, :pathogen_id]) |>
         x -> combine(x, nrow => :dead_cnt) |>
-        x -> DataFrames.select(x, :death => :tick, :dead_cnt)
+        x -> DataFrames.select(x, :death => :tick, :pathogen_id, :dead_cnt)
 
-    res = DataFrame(tick = 0:tick(simulation(postProcessor))) |>
-        x -> leftjoin(x, exposed, on = :tick) |>
-        x -> leftjoin(x, infectious, on = :tick) |>
-        x -> leftjoin(x, recovered, on = :tick) |>
-        x -> leftjoin(x, dead, on = :tick) |>
-        x -> DataFrames.select(x, :tick,
-            :exposed_cnt => ByRow(x -> coalesce(x, 0)) => :exposed_cnt,
-            :infectious_cnt => ByRow(x -> coalesce(x, 0)) => :infectious_cnt,
-            :recovered_cnt => ByRow(x -> coalesce(x, 0)) => :recovered_cnt,
-            :dead_cnt => ByRow(x -> coalesce(x, 0)) => :dead_cnt) |>
-        x -> sort(x, :tick)
+    res = leftjoin!(base, exposed, on = [:tick, :pathogen_id])
+    leftjoin!(res, infectious, on = [:tick, :pathogen_id])
+    leftjoin!(res, recovered, on = [:tick, :pathogen_id])
+    leftjoin!(res, dead, on = [:tick, :pathogen_id])
+    select!(res, :tick, :pathogen_id,
+        :exposed_cnt => ByRow(x -> coalesce(x, 0)) => :exposed_cnt,
+        :infectious_cnt => ByRow(x -> coalesce(x, 0)) => :infectious_cnt,
+        :recovered_cnt => ByRow(x -> coalesce(x, 0)) => :recovered_cnt,
+        :dead_cnt => ByRow(x -> coalesce(x, 0)) => :dead_cnt)
+    sort!(res, [:pathogen_id, :tick])
 
     # cache dataframe
     store_cache(postProcessor, "tick_cases", res)

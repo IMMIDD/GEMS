@@ -22,14 +22,14 @@ and computationally intensive (memory & runtime) option.
         - `label::String`: Label of this simulation run (needed for plotting)
         - `final_tick::Int16`: Tick counter at the end of the simulation run
         - `number_of_individuals::Int64`: Total number of individuals in the population model
-        - `r0::Float64`: Basic reproduction number (does not consider immunity)
-        - `initial_infections::Int64`: Number of initial infected individuals
-        - `total_infections::Int64`: Row count of the PostProcessor's `infections` DataFrame
-        - `attack_rate::Float64`: Fraction of overall infected individuals
+        - `r0::DataFrame`: Per-pathogen basic reproduction number (`pathogen_id`, `r0`)
+        - `initial_infections::DataFrame`: Per-pathogen seeding infection counts (`pathogen_id`, `initial_infections`)
+        - `total_infections::DataFrame`: Per-pathogen total infection counts (`pathogen_id`, `total_infections`)
+        - `attack_rate::DataFrame`: Per-pathogen attack rate (`pathogen_id`, `attack_rate`)
         - `setting_data::DataFrame`: DataFrame containing information on all setting types
         - `setting_sizes::Dict{Any, Any}`: Dictionary containing the setting sizes distributions for all included settingtypes
         - `region_info::Dataframe`: Municipality population size and area (if geolocalized model is used)
-        - `pathogens::Vector{Pathogen}`: Array of pathogen parameters
+        - `pathogens::Vector{Pathogen}`: Array of all pathogen parameters in this simulation
         - `vaccine::Vaccine`: Vaccine parameter [CURRENTLY DEACTIVATED]
         - `vaccination_strategy::VaccineScheduler`: Vaccination strategy used in this model [CURRENTLY DEACTIVATED]
         - `tick_unit::String`: Unit of time that one tick corresponds to
@@ -39,8 +39,8 @@ and computationally intensive (memory & runtime) option.
         - `symptom_triggers::Vector{ITrigger} `: Strategies that are triggered upon experiencing symptoms
         - `testtypes::Vector{AbstractTestType}`: Test types used in the model (e.g. Antigen Tests)
         - `total_quarantines::Int64`: Total person-ticks (e.g. days) spent in isolation
-        - `total_tests::Dict{Any, Any}`: Total number of performed tests per TestType
-        - `detection_rate::Float64`: Fraction of detected infections (by testing)
+        - `total_tests::DataFrame`: Per-pathogen test counts (`test_type`, `pathogen_id`, `count`)
+        - `detection_rate::DataFrame`: Per-pathogen fraction of detected infections (`pathogen_id`, `detection_rate`)
 
     - `system_data::Dict{String, Any}`
         - `kernel::String`: System kernel
@@ -127,13 +127,13 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "final_tick" => () -> pP |> simulation |> tick,
                     "number_of_individuals" => () -> pP |> simulation |> population |> individuals |> length,
                     "r0" => () -> pP |> r0,
-                    "initial_infections" => () -> (pP |> infectionsDF |> nrow) - (pP |> sim_infectionsDF |> nrow),
-                    "total_infections" => () -> pP |> infectionsDF |> nrow,
+                    "initial_infections" => () -> pP |> initial_infections,
+                    "total_infections" => () -> pP |> total_infections,
                     "attack_rate" => () -> pP |> attack_rate,
                     "setting_data" => () -> pP |> settingdata,
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "region_info" => () -> pP |> simulation |> region_info,
-                    "pathogens" => () -> [pP |> simulation |> pathogen],
+                    "pathogens" => () -> collect(pathogens(simulation(pP))),
                     "tick_unit" => () -> pP |> simulation |> tickunit,
                     "start_condition" => () -> pP |> simulation |> start_condition,
                     "stop_criterion" =>  () -> pP |> simulation |> stop_criterion,

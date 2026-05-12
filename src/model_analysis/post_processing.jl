@@ -211,11 +211,12 @@ reportable test.
 """
 function detection_ticks(testDF::DataFrame)
     return testDF |>
-        x -> subset(x, :test_result => ByRow(identity), :infected => ByRow(identity), :reportable => ByRow(identity), view=true) |> 
-        x -> rename(x, :test_tick => :first_detected_tick) |>
-        x -> (isempty(x) ? x : groupby(x, :infection_id)) |> 
+        x -> subset(x, :test_result => ByRow(identity), :infected => ByRow(identity), :reportable => ByRow(identity), view=true) |>
+        x -> DataFrames.select(x, :infection_id, :test_tick, :test_type) |>
+        x -> rename!(x, :test_tick => :first_detected_tick) |>
+        x -> (isempty(x) ? x : groupby(x, :infection_id)) |>
         x -> isempty(x) ? x : combine(x,
-            [:first_detected_tick, :test_type] => ((tick, type) -> type[argmin(tick)]) => :test_type,    
+            [:first_detected_tick, :test_type] => ((tick, type) -> type[argmin(tick)]) => :test_type,
             :first_detected_tick => minimum => :first_detected_tick)
 end
 

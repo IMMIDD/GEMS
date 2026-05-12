@@ -3,25 +3,20 @@ export total_tests
 """
     total_tests(postProcessor::PostProcessor)
 
-Sums up the total number of tests per test type.
+Sums up the total number of tests per test type and pathogen.
 
 # Returns
 
-- `Dict{String, Int64}`: Dictionary where the key is the `TestType`'s name and the value
-    the number of tests that were applied.
+- `DataFrame` with the following columns:
+
+| Name          | Type     | Description                                 |
+| :------------ | :------- | :------------------------------------------ |
+| `test_type`   | `String` | Name of the test type                       |
+| `pathogen_id` | `Int8`   | Pathogen identifier                         |
+| `count`       | `Int64`  | Number of tests of this type for this path  |
 """
 function total_tests(postProcessor::PostProcessor)
-    # group by testtype
-    tt = postProcessor |> testsDF |> 
-        x -> groupby(x, :test_type) |>
+    return postProcessor |> testsDF |>
+        x -> groupby(x, [:test_type, :pathogen_id]) |>
         x -> combine(x, nrow => :count)
-
-    #result dict
-    dict = Dict()
-
-    for row in eachrow(tt)
-        dict[row.test_type] = row.count
-    end
-
-    return(dict)
 end

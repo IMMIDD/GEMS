@@ -4,7 +4,7 @@ export cumulative_disease_progressions
     calc_cum_dis_values(df)
 
 Helper function that calculates the cumulative number of individuals in a certain disease
-state (latent, presymptomatic, symptomatic and asymptomatic) after the 
+state (latent, presymptomatic, symptomatic and asymptomatic) after the
 individual has been infected. Rows indicate the number of elapsed ticks since infections.
 """
 function calc_cum_dis_values(df)
@@ -25,20 +25,20 @@ function calc_cum_dis_values(df)
 
 end
 
-""" 
+"""
     cumulative_disease_progressions(postProcessor::PostProcessor)
 
 Calculates the accumulated number of individuals in a certain disease
-state (latent, presymptomatic, symptomatic and asymptomatic) after the 
-individual has been infected. Rows indicate the number of elapsed
+state (latent, presymptomatic, symptomatic and asymptomatic) after the
+individual has been infected, per pathogen. Rows indicate the number of elapsed
 ticks since infections. Latent means infected but not yet infectious.
 Presymptomatic means infectious but not yet symptomatic. Symptomatic
 means infectious and symptomatic. Asymptomatic means infectious but
 not symptomatic and will never develop symptoms.
 
 Example: Row 8 showing [20, 47, 290, 50] would mean that eight ticks
-after exposure, 20 individuals were latent, 47 were presymptomatic 
-(no symptoms yet, but will be developing), 290 had symptoms and 
+after exposure, 20 individuals were latent, 47 were presymptomatic
+(no symptoms yet, but will be developing), 290 had symptoms and
 50 are not experiencing symptoms and won't ever do.
 
 # Returns
@@ -47,23 +47,32 @@ after exposure, 20 individuals were latent, 47 were presymptomatic
 
 | Name             | Type    | Description                                                  |
 | :--------------- | :------ | :----------------------------------------------------------- |
+| `pathogen_id`    | `Int8`  | Pathogen identifier                                          |
 | `latent`         | `Int64` | Number of latent individuals X ticks after exposure          |
 | `pre_symptomatic`| `Int64` | Number of pre-symptomatic individuals X ticks after exposure |
 | `symptomatic`    | `Int64` | Number of symptomatic individuals X ticks after exposure     |
 | `asymptomatic`   | `Int64` | Number of asymptomatic individuals X ticks after exposure    |
 """
 function cumulative_disease_progressions(postProcessor::PostProcessor)
+    infs = infectionsDF(postProcessor)
 
-    # return an empty DataFrame if there are no infections
-    if nrow(postProcessor |> infectionsDF) == 0
-        return DataFrame(tick=Int[], latent=Int[], pre_symptomatic=Int[], symptomatic=Int[], asymptomatic=Int[])
+    if nrow(infs) == 0
+        return DataFrame(pathogen_id=Int8[], tick=Int[], latent=Int[], pre_symptomatic=Int[], symptomatic=Int[], asymptomatic=Int[])
     end
 
-    return infectionsDF(postProcessor) |>
-        infs -> DataFrame(
-            symptom_onset = infs.symptom_onset .- infs.tick,
-            infectiousness_onset = infs.infectiousness_onset .- infs.tick,
-            removed = max.(infs.recovery, infs.death) .- infs.tick
-        ) |>
-        df -> calc_cum_dis_values(df)
+    results = DataFrame[]
+    for p in pathogens(simulation(postProcessor))
+        pid = id(p)
+        p_infs = subset(infs, :pathogen_id => ByRow(==(pid)), view=true)
+        nrow(p_infs) == 0 && continue
+        df = DataFrame(
+            symptom_onset = p_infs.symptom_onset .- p_infs.tick,
+            infectiousness_onset = p_infs.infectiousness_onset .- p_infs.tick,
+            removed = max.(p_infs.recovery, p_infs.death) .- p_infs.tick
+        )
+        res = calc_cum_dis_values(df)
+        res.pathogen_id .= pid
+        push!(results, res)
+    end
+    return isempty(results) ? DataFrame() : vcat(results...)
 end

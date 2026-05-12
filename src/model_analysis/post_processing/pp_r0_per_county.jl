@@ -3,10 +3,10 @@ export r0_per_county
 """
     r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCULATION_SAMPLE_FRACTION)
 
-Returns a two-column dataframe with AGS on county level and a regional reproduction rate.
+Returns a dataframe with AGS on county level, pathogen id and a regional reproduction rate.
 
 The R0 value is calculated as the number of infections that were caused
-by the first `sample_fraction`% of infections in each county. The default
+by the first `sample_fraction`% of infections in each county and pathogen. The default
 value can be changed in the `R0_CALCULATION_SAMPLE_FRACTION` constant
 or just pass a different value as `sample_fraction` argument.
 
@@ -27,7 +27,7 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
     # Precompute secondary cases
     infs = infectionsDF(postProcessor)
     max_inf_id = isempty(infs) ? 0 : maximum(infs.infection_id)
-    
+
     secondary_counts = zeros(Int, max_inf_id)
     for sid in infs.source_infection_id
         if !ismissing(sid) && sid > 0 && sid <= max_inf_id
@@ -38,19 +38,19 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
     # calcuates R for infection ids in grouped dataframe
     function calc_r(infection_ids)
         sample_size = max(Int(ceil(sample_fraction * length(infection_ids))), 1)
-        
+
         # select first "sample_fraction" infections
         sampled_ids = sort(infection_ids)[1:sample_size]
-        
-        # sum precomputed secondary cases 
+
+        # sum precomputed secondary cases
         total_secondary = sum(id <= max_inf_id ? secondary_counts[id] : 0 for id in sampled_ids)
-        
+
         return total_secondary / sample_size
     end
 
     return sim_infectionsDF(postProcessor) |>
         # select and transform AGS to county codes
-        df -> DataFrames.select(df, :infection_id, :household_ags_a => (a -> county.(a)) => :ags) |>
-        df -> groupby(df, :ags) |>
+        df -> DataFrames.select(df, :infection_id, :pathogen_id, :household_ags_a => (a -> county.(a)) => :ags) |>
+        df -> groupby(df, [:ags, :pathogen_id]) |>
         df -> combine(df, :infection_id => calc_r => :r0)
 end

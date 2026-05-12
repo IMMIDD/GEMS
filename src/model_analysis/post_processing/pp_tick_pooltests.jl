@@ -4,7 +4,8 @@ export tick_pooltests
      tick_pooltests(postProcessor::PostProcessor)
 
 Returns a Dict for each employed test_type containing their name as a key and
-a `DataFrame` containing the number of applied pool tests (positive/negative/total) per tick.
+a `DataFrame` containing the number of applied pool tests (positive/negative/total) per tick
+with a `pathogen_id` column.
 
 # Returns
 
@@ -14,6 +15,7 @@ a `DataFrame` containing the number of applied pool tests (positive/negative/tot
 | Name             | Type    | Description                                      |
 | :--------------- | :------ | :------------------------------------------------|
 | `tick`           | `Int16` | Simulation tick (time)                           |
+| `pathogen_id`    | `Int8`  | Pathogen identifier                              |
 | `positive_tests` | `Int64` | Number of positive tests                         |
 | `negative_tests` | `Int64` | Number of negative tests                         |
 | `total_tests`    | `Int64` | Number of tests performed                        |
@@ -25,17 +27,21 @@ function tick_pooltests(postProcessor::PostProcessor)::Dict
         return(load_cache(postProcessor, "tick_pooltests"))
     end
 
-    tick_tests = postProcessor |> pooltestsDF |> 
-        x -> groupby(x, [:test_type, :test_tick]) |>
-        x -> combine(x, [:test_result] => (x -> (positive_tests=count(x .== true), negative_tests=count(x .==false))) => AsTable ) |>
-        x -> transform(x, [:positive_tests, :negative_tests] => (+) => :total_tests)|>
+    tick_tests = postProcessor |> pooltestsDF |>
+        x -> groupby(x, [:test_type, :pathogen_id, :test_tick]) |>
+        x -> combine(x, [:test_result] => (x -> (positive_tests=count(x .== true), negative_tests=count(x .==false))) => AsTable) |>
+        x -> transform(x, [:positive_tests, :negative_tests] => (+) => :total_tests) |>
         x -> groupby(x, :test_type) |>
-        x -> Dict(key.test_type => DataFrame(group)|>
-        x -> DataFrames.select(x, Not(:test_type)) |>
-        x -> leftjoin(DataFrame(tick = 1:tick(postProcessor |> simulation)), x, on = [:tick => :test_tick])|>
-        x -> coalesce.(x,0)|>
-        x -> sort!(x, :tick) for (key, group) in pairs(x))
-    
+        x -> Dict(key.test_type => DataFrame(group) |>
+            x -> DataFrames.select(x, Not(:test_type)) |>
+            x -> leftjoin(
+                crossjoin(
+                    DataFrame(tick = 1:tick(postProcessor |> simulation)),
+                    DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor))))),
+                x, on = [:tick => :test_tick, :pathogen_id]) |>
+            x -> coalesce.(x, 0) |>
+            x -> sort!(x, [:pathogen_id, :tick]) for (key, group) in pairs(x))
+
     # cache dataframe
     store_cache(postProcessor, "tick_pooltests", tick_tests)
 

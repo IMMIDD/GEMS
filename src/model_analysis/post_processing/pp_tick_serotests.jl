@@ -3,7 +3,7 @@ export tick_serotests
     tick_serotests(postProcessor::PostProcessor)
 
 Returns a `Dict` for each seroprevalence `test_type`, keyed by its name and
-containing a `DataFrame` with counts per simulation tick.
+containing a `DataFrame` with counts per simulation tick and pathogen.
 
 # Returns
 
@@ -13,6 +13,7 @@ containing a `DataFrame` with counts per simulation tick.
 | Name              | Type      | Description                                                  |
 | :---------------- | :-------- | :----------------------------------------------------------- |
 | `tick`            | `Int16`   | Simulation tick                                              |
+| `pathogen_id`     | `Int8`    | Pathogen identifier                                          |
 | `true_positives`  | `Int64`   | Test result was positive and person was ever infected        |
 | `false_positives` | `Int64`   | Test result was positive but person was never infected       |
 | `true_negatives`  | `Int64`   | Test result was negative and person was never infected       |
@@ -36,8 +37,8 @@ function tick_serotests(postProcessor::PostProcessor)::Dict
         [:test_result, :was_infected] => ByRow((r, i) -> !r && i) => :false_negative,
     ]...)
 
-    # Step 2: Aggregate by test_type and tick
-    agg = combine(groupby(sero, [:test_type, :test_tick]),
+    # Step 2: Aggregate by test_type, pathogen and tick
+    agg = combine(groupby(sero, [:test_type, :pathogen_id, :test_tick]),
         :true_positive => sum => :true_positives,
         :false_positive => sum => :false_positives,
         :true_negative => sum => :true_negatives,
@@ -52,16 +53,18 @@ function tick_serotests(postProcessor::PostProcessor)::Dict
 
     agg = transform(agg, [:positive_tests, :negative_tests] => ByRow(+) => :total_tests)
 
-    # Step 4: Convert to Dict{String, DataFrame} with full tick range and rolling average
+    # Step 4: Convert to Dict{String, DataFrame} with full tick × pathogen range
     tickrange = 1:tick(postProcessor.simulation)
     tick_sero = Dict{String, DataFrame}()
 
     for (test_type, df) in pairs(groupby(agg, :test_type))
         df = select(df, Not(:test_type))
         df = rename(df, :test_tick => :tick)
-        full_df = leftjoin(DataFrame(tick = tickrange), df, on = :tick)
+        full_df = leftjoin(
+            crossjoin(DataFrame(tick = tickrange), DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor))))),
+            df, on = [:tick, :pathogen_id])
         full_df = coalesce.(full_df, 0)
-        full_df = sort!(full_df, :tick)
+        full_df = sort!(full_df, [:pathogen_id, :tick])
 
         tick_sero[test_type.test_type] = full_df
     end

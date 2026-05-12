@@ -3,7 +3,7 @@ export reported_tick_cases
 """
     reported_tick_cases(postProcessor::PostProcessor)
 
-Returns the number of reported positive test cases per tick.
+Returns the number of reported positive test cases per tick and pathogen.
 This analysis is based on the `testDF` dataframe.
 
 # Returns
@@ -13,17 +13,27 @@ This analysis is based on the `testDF` dataframe.
 | Name             | Type    | Description                                                                  |
 | :--------------- | :------ | :--------------------------------------------------------------------------- |
 | `tick`           | `Int16` | Simulation tick (time)                                                       |
+| `pathogen_id`    | `Int8`  | Pathogen identifier                                                          |
 | `reported_cnt`   | `Int64` | Number of newly reported infections (positive reportable tests) at that tick |
 """
 function reported_tick_cases(postProcessor::PostProcessor)
+    sim_tick = tick(postProcessor |> simulation)
+    tests = postProcessor |> testsDF |>
+        x -> subset(x, :test_result => ByRow(identity), :reportable => ByRow(identity), view=true)
 
-    return (postProcessor |> testsDF |>
-        x -> x[x.test_result .& x.reportable, :] |>
-        x -> rename!(x, :test_tick => :tick) |>
-        x -> (isempty(x) ? DataFrame(tick = Int16[], reported_cnt = Int64[]) : groupby(x, :tick)) |>
-        x -> isempty(x) ? x : combine(x, nrow => :reported_cnt)) |>
-        x -> leftjoin(DataFrame(tick = 1:tick(postProcessor |> simulation)), x, on = :tick) |>
-        x -> transform(x, :reported_cnt => ByRow(x -> coalesce(x, 0)) => :reported_cnt) |>
-        x -> sort(x, :tick)
+    base = crossjoin(
+        DataFrame(tick = collect(Int16, 1:sim_tick)),
+        DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor)))))
 
+    counts = if isempty(tests)
+        DataFrame(tick = Int16[], pathogen_id = Int8[], reported_cnt = Int64[])
+    else
+        rename!(tests, :test_tick => :tick) |>
+        x -> groupby(x, [:tick, :pathogen_id]) |>
+        x -> combine(x, nrow => :reported_cnt)
+    end
+
+    return leftjoin!(base, counts, on = [:tick, :pathogen_id]) |>
+        x -> transform!(x, :reported_cnt => ByRow(x -> coalesce(x, 0)) => :reported_cnt) |>
+        x -> sort!(x, [:pathogen_id, :tick])
 end
