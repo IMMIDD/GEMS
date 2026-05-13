@@ -615,7 +615,8 @@ detected(individual::Individual) = is_detected(individual)
 Returns `true` if the individual has been detected for the specific `pathogen_id`.
 """
 is_detected(individual::Individual, pathogen_id::Int8) = (individual.detected_mask & (UInt32(1) << (pathogen_id - 1))) != 0
- 
+isdetected(individual::Individual, pathogen_id::Int8) = is_detected(individual, pathogen_id)
+detected(individual::Individual, pathogen_id::Int8) = is_detected(individual, pathogen_id) 
 """
     detected!(individual::Individual, pathogen_id::Int8, val::Bool)
  
