@@ -222,10 +222,9 @@ function apply_test(ind::Individual, testtype::TestType, sim::Simulation, report
     # apply test
     test_pos = infected(ind, testtype.pathogen_id) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
         !infected(ind, testtype.pathogen_id) && gems_rand(rng(sim)) > testtype |> specificity
- 
-    # record test result into the InfectionState for this pathogen 
-    infected(ind, testtype.pathogen_id) &&
-        record_test!(ind, infection_registry(sim, ind), testtype.pathogen_id, sim |> tick, test_pos, reportable)
+
+    # record test result
+    record_test!(ind, test_registry(sim, ind), testtype.pathogen_id, sim |> tick, test_pos, reportable)
  
     # log test in sim object
     log!(

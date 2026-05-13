@@ -2,6 +2,7 @@
 include("structs/disease/disease_progression.jl")
 include("structs/registries/infection_registry.jl")
 include("structs/registries/immunity_registry.jl")
+include("structs/registries/test_registry.jl")
 include("structs/parameters.jl")
 include("structs/entities.jl")
 include("structs/simulation.jl") 

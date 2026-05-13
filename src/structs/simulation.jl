@@ -10,7 +10,7 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen
-export infection_registry, immunity_registry, owner_shard
+export infection_registry, immunity_registry, test_registry, owner_shard
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
@@ -181,6 +181,7 @@ mutable struct Simulation{P<:Tuple}
     pathogens::P
     infection_registries::Vector{InfectionRegistry}
     immunity_registries::Vector{ImmunityRegistry}
+    test_registries::Vector{TestRegistry}
 
     # logger
     infectionlogger::InfectionLogger
@@ -247,6 +248,7 @@ mutable struct Simulation{P<:Tuple}
             pathogens,
             [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
+            [TestRegistry() for _ in 1:num_shards],
 
             # logger
             InfectionLogger(),
@@ -1654,6 +1656,24 @@ Returns the specific `ImmunityRegistry` shard that owns the given individual.
 """
 function immunity_registry(simulation::Simulation, individual::Individual)::ImmunityRegistry
     return immunity_registry(simulation, id(individual))
+end
+
+"""
+    test_registry(simulation, ind_id::Int32)::TestRegistry
+
+Returns the specific `TestRegistry` shard that owns the given individual id.
+"""
+function test_registry(simulation::Simulation, ind_id::Int32)::TestRegistry
+    return simulation.test_registries[owner_shard(ind_id)]
+end
+
+"""
+    test_registry(simulation, individual::Individual)::TestRegistry
+
+Returns the specific `TestRegistry` shard that owns the given individual.
+"""
+function test_registry(simulation::Simulation, individual::Individual)::TestRegistry
+    return test_registry(simulation, id(individual))
 end
 
 

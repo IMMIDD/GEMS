@@ -1,5 +1,6 @@
 export push_infection!, remove_infections!, remove_infection!
 export push_immunity!, remove_immunities!
+export set_test_state!, test_key
 
 
 
@@ -342,6 +343,34 @@ function remove_immunities!(reg::ImmunityRegistry, ind::Individual)
         push!(reg.free_slots, cur)
         cur = nxt
     end
-    ind.immunity_head = Int32(0) 
+    ind.immunity_head = Int32(0)
+    return nothing
+end
+
+
+###
+### TEST REGISTRY
+###
+
+"""
+    test_key(ind_id::Int32, pathogen_id::Int8)
+
+Returns a packed `UInt64` composite key for `(ind_id, pathogen_id)` for use
+as a `TestRegistry` dict key. Unique for any `Int32` agent ID and any
+`pathogen_id` in [1, 32].
+"""
+@inline test_key(ind_id::Int32, pathogen_id::Int8) = UInt64(ind_id) * UInt64(32) + UInt64(pathogen_id - Int8(1))
+
+"""
+    set_test_state!(reg::TestRegistry, ind_id::Int32, pathogen_id::Int8,
+                    last_test::Int16, last_test_result::Bool, was_reported::Bool)
+
+Inserts or updates the `TestState` for `(ind_id, pathogen_id)` in the registry.
+`was_reported` is monotone: once set to `true` it is never cleared.
+"""
+@inline function set_test_state!(reg::TestRegistry, ind_id::Int32, pathogen_id::Int8, last_test::Int16, last_test_result::Bool, was_reported::Bool)
+    key = test_key(ind_id, pathogen_id)
+    existing = get(reg.states, key, TestState())
+    reg.states[key] = TestState(pathogen_id, last_test, last_test_result, existing.was_reported || was_reported)
     return nothing
 end

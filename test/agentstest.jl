@@ -74,10 +74,7 @@
             recovery!(i, Int16(16))
             death!(i, Int16(17))
             
-            # Modify Testing
-            last_test!(i, Int16(10))
-            last_test_result!(i, true)
-            last_reported_at!(i, Int16(11))
+            # Test state now lives in TestRegistry (not on Individual)
             
             # Modify Vaccination
             i.vaccine_id = 2
@@ -124,10 +121,7 @@
             @test recovery(i) == GEMS.DEFAULT_TICK
             @test death(i) == GEMS.DEFAULT_TICK
             
-            # Assert testing & vaccines
-            @test last_test(i) == GEMS.DEFAULT_TICK
-            @test last_test_result(i) == false
-            @test last_reported_at(i) == GEMS.DEFAULT_TICK
+            # Assert vaccines
             @test i.vaccine_id == GEMS.DEFAULT_VACCINE_ID
             @test i.number_of_vaccinations == 0
             @test i.vaccination_tick == GEMS.DEFAULT_TICK

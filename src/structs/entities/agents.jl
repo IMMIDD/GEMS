@@ -49,9 +49,10 @@ export infectiousness
 export number_of_infections
 export inc_number_of_infections!
 # testing
-export last_test, last_test!
-export last_test_result, last_test_result!
-export last_reported_at, last_reported_at!
+export get_test_state
+export last_test
+export last_test_result
+export last_reported_at
 export record_test!
 export isdetected
 # vaccination
@@ -1090,7 +1091,7 @@ function is_detected(individual::Individual, infections::InfectionRegistry, path
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
     !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
-    return state.last_reported_at != DEFAULT_TICK
+    return individual.detected_mask & (UInt32(1) << (pathogen_id - 1)) != 0
 end
 isdetected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
 detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
@@ -1218,74 +1219,73 @@ end
 ### TESTING STATUS ###
 
 """
-    last_test(state::InfectionState)
- 
-Returns the tick of the most recent test for this infection.
-Returns `DEFAULT_TICK` (-1) if the individual has never been tested for this pathogen.
+    get_test_state(individual::Individual, reg::TestRegistry, pathogen_id::Int8)
+
+Returns the `TestState` for `(individual, pathogen_id)` from the `TestRegistry`.
+Returns an empty `TestState()` sentinel if no test has been recorded.
 """
-last_test(state::InfectionState) = state.last_test
- 
+@inline function get_test_state(individual::Individual, reg::TestRegistry, pathogen_id::Int8)
+    return get(reg.states, test_key(id(individual), pathogen_id), TestState())
+end
+
 """
-    last_test_result(state::InfectionState)
- 
-Returns whether the most recent test for this infection was positive.
-Defaults to `false` when the individual has never been tested.
+    last_test(individual::Individual, reg::TestRegistry, pathogen_id::Int8)
+
+Returns the tick of the most recent test for this individual and pathogen.
+Returns `DEFAULT_TICK` (-1) if never tested.
 """
-last_test_result(state::InfectionState) = state.last_test_result
- 
+last_test(individual::Individual, reg::TestRegistry, pathogen_id::Int8) = get_test_state(individual, reg, pathogen_id).last_test
+
 """
-    last_reported_at(state::InfectionState)
- 
-Returns the tick at which this infection was last reported.
-Returns `DEFAULT_TICK` (-1) if this infection has never been reported.
+    last_test(individual::Individual, pathogen_id::Int8, sim::Simulation)
+
+Convenience wrapper that safely routes to the correct `TestRegistry` shard for the given individual.
 """
-last_reported_at(state::InfectionState) = state.last_reported_at
+last_test(individual::Individual, pathogen_id::Int8, sim) = get_test_state(individual, test_registry(sim, individual), pathogen_id).last_test
+
+"""
+    last_test_result(individual::Individual, reg::TestRegistry, pathogen_id::Int8)
+
+Returns whether the most recent test was positive for this individual and pathogen.
+"""
+last_test_result(individual::Individual, reg::TestRegistry, pathogen_id::Int8) = get_test_state(individual, reg, pathogen_id).last_test_result
+
+"""
+    last_test_result(individual::Individual, pathogen_id::Int8, sim::Simulation)
+
+Convenience wrapper that safely routes to the correct `TestRegistry` shard for the given individual.
+"""
+last_test_result(individual::Individual, pathogen_id::Int8, sim) = get_test_state(individual, test_registry(sim, individual), pathogen_id).last_test_result
 
 
 """
-    record_test!(ind::Individual, infections::InfectionRegistry,
+    was_reported(individual::Individual, reg::TestRegistry, pathogen_id::Int8)
+
+Returns `true` if a positive reportable test was ever recorded for this individual
+and pathogen.
+"""
+was_reported(individual::Individual, reg::TestRegistry, pathogen_id::Int8) = get_test_state(individual, reg, pathogen_id).was_reported
+
+"""
+    was_reported(individual::Individual, pathogen_id::Int8, sim::Simulation)
+
+Convenience wrapper that safely routes to the correct `TestRegistry` shard for the given individual.
+"""
+was_reported(individual::Individual, pathogen_id::Int8, sim) = get_test_state(individual, test_registry(sim, individual), pathogen_id).was_reported
+
+
+"""
+    record_test!(ind::Individual, tests::TestRegistry,
                  pathogen_id::Int8, test_tick::Int16,
                  test_result::Bool, reportable::Bool)
- 
-Records a test outcome directly into the `InfectionState` for `pathogen_id` and
-updates `ind.detected_mask` accordingly. Does nothing if the individual has no 
-active infection for `pathogen_id`.
- 
+
+Records a test outcome into the `TestRegistry` for `(ind, pathogen_id)` and
+updates `ind.detected_mask` if the test is a positive reportable result.
 """
-@inline function record_test!(ind::Individual, infections::InfectionRegistry, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
- 
+@inline function record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
     detected = test_result && reportable
- 
-    # cache-first: find slot, build updated state, write back
-    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        s = ind.infection_cache[i]
-        s.active && s.pathogen_id == pathogen_id || continue
- 
-        new_state = _setstate(s, Val(:last_test), test_tick)
-        new_state = _setstate(new_state, Val(:last_test_result), test_result)
-        detected && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
- 
-        ind.infection_cache = Base.setindex(ind.infection_cache, new_state, i)
-        detected && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
-        return nothing
-    end
- 
-    # overflow linked-list
-    node = ind.infection_head
-    while node != 0
-        @inbounds s = infections.states[node]
-        if s.pathogen_id == pathogen_id
-            new_state = _setstate(s, Val(:last_test), test_tick)
-            new_state = _setstate(new_state, Val(:last_test_result), test_result)
-            detected && (new_state = _setstate(new_state, Val(:last_reported_at), test_tick))
- 
-            @inbounds infections.states[node] = new_state
-            detected && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
-            return nothing
-        end
-        node = s.next
-    end
- 
+    set_test_state!(tests, id(ind), pathogen_id, test_tick, test_result, detected)
+    detected && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
     return nothing
 end
 

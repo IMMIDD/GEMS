@@ -13,12 +13,6 @@ and as the on-individual cache (`infection_cache`) and the public snapshot passe
 `infectiousness::Int8` is computed each tick by `progress_disease!` and stored
 here so the spread phase reads it directly from the individual without touching
 the registry.
-
-Test fields (`last_test`, `last_test_result`, `last_reported_at`) are per-infection
-so that multi-pathogen simulations can track testing state independently for each
-active pathogen. They are written only by `apply_test` and read during `progress_disease!`
-to derive the per-pathogen detected bit in `Individual.detected_mask`.
-`DEFAULT_TICK` (-1) is the sentinel for "never tested / never reported".
 """
 struct InfectionState
     infection_id::Int32
@@ -36,11 +30,8 @@ struct InfectionState
     severeness_offset::Int16
     recovery::Int16
     death::Int16
-    last_reported_at::Int16
-    last_test::Int16 
     infectiousness::Int8
     pathogen_id::Int8
-    last_test_result::Bool
     active::Bool
 end
 
@@ -48,7 +39,6 @@ end
     InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
 
 Constructs a new, active `InfectionState` directly from a `DiseaseProgression`.
-Test fields are initialised to their sentinel values (never tested).
 """
 function InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)::InfectionState
     return InfectionState(
@@ -66,11 +56,8 @@ function InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgr
         severeness_offset(dp),
         recovery(dp),
         death(dp),
-        DEFAULT_TICK,
-        DEFAULT_TICK,
         Int8(0),
         pathogen_id,
-        false,
         true
     )
 end
@@ -87,7 +74,7 @@ function InfectionState()::InfectionState
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1),
-        Int16(-1), Int16(-1), Int8(0), Int8(0), false, false
+        Int8(0), Int8(0), false
     )
 end
 
