@@ -1,11 +1,3 @@
-###  PLACEHOLDER
-
-function SimConstructor(; simargs...)
-    return Simulation()
-end
-
-#### REMOVE PLACEHODERS
-
 export Batch
 export add!, remove!, simulations
 
@@ -33,15 +25,13 @@ mutable struct Batch
     """
     function Batch(;n_runs::Integer = 0, print_infos::Bool = false, simargs...)
         prev_print_state = GEMS.PRINT_INFOS
-        
-        sims = []
+        sims = Vector{Simulation}()
         for i in 1:n_runs
             printinfo("Instantiating Simulation $i/$n_runs in Batch")
             GEMS.PRINT_INFOS = print_infos
-            SimConstructor(;simargs...)
+            push!(sims, Simulation(;simargs...))
             GEMS.PRINT_INFOS = prev_print_state
         end
-
         return new(sims)
     end
 
