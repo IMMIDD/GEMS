@@ -8,6 +8,7 @@ export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
 export sim_data, runs, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
 export dataframes, tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
+export dark_figure, cumulative_cases, generation_times, per_label
 
 export exportJLD, exportJSON, import_batchdata, info
 
@@ -99,7 +100,7 @@ mutable struct BatchData <: AbstractResultData
     """
     BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style::String = "LightRD",
               representative_by = nothing, keep_rundata::Bool = false) =
-        BatchData(run!(batch; rd_style, representative_by, keep_rundata), style = style)
+        BatchData(process!(batch; rd_style, representative_by, keep_rundata), style = style)
 
     @doc """
 
@@ -348,7 +349,7 @@ end
 Returns the `ResultData` objects of each of the runs in the the batch data object.
 """
 function runs(bd::BatchData)
-    get(bd |> sim_data, "runs", Dict())
+    get(bd |> sim_data, "runs", nothing)
 end
 
 """
@@ -473,6 +474,48 @@ It returns mean, standard deviation, range, and confidence intervals.
 """
 function cumulative_disease_progressions(bd::BatchData)
     return(get(bd |> dataframes, "cumulative_disease_progressions", DataFrame()))
+end
+
+"""
+    dark_figure(bd::BatchData)
+
+Returns aggregated dark figure fractions per tick across simulation runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function dark_figure(bd::BatchData)
+    return(get(bd |> dataframes, "dark_figure", DataFrame()))
+end
+
+"""
+    cumulative_cases(bd::BatchData)
+
+Returns aggregated cumulative case counts per tick across simulation runs.
+Returns a `Dict{String, DataFrame}` keyed by column name (e.g. `exposed_cum`, `recovered_cum`, `deaths_cum`).
+"""
+function cumulative_cases(bd::BatchData)
+    return(get(bd |> dataframes, "cumulative_cases", Dict()))
+end
+
+"""
+    generation_times(bd::BatchData)
+
+Returns aggregated mean generation times per tick across simulation runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function generation_times(bd::BatchData)
+    return(get(bd |> dataframes, "generation_times", DataFrame()))
+end
+
+"""
+    per_label(bd::BatchData)
+
+Returns per-label aggregated dataframes as a `Dict{String, Dict{String, DataFrame}}`.
+Keys at the outer level are simulation labels; inner keys are dataframe names
+(`"tick_cases"`, `"effectiveR"`, `"cumulative_quarantines"`, etc.).
+Returns an empty `Dict` if the batch was processed with a single label.
+"""
+function per_label(bd::BatchData)
+    return(get(bd |> dataframes, "per_label", Dict()))
 end
 
 

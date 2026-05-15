@@ -75,6 +75,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "runs" => () -> rundata(bP),
                     "representative_run" => () -> representative_run(bP),
                     "number_of_runs" => () -> n_runs(bP),
+                    "tick_unit" => () -> tick_unit(bP),
                     "total_infections" => () -> total_infections(bP),
                     "attack_rate" => () -> attack_rate(bP),
                     "r0" => () -> r0(bP),
@@ -89,6 +90,18 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "tests" => () -> tests(bP),
                     "cumulative_quarantines" => () -> cumulative_quarantines(bP),
                     "cumulative_disease_progressions" => () -> cumulative_disease_progressions(bP),
+                    "dark_figure" => () -> dark_figure(bP),
+                    "cumulative_cases" => () -> cumulative_cases(bP),
+                    "generation_times" => () -> generation_times(bP),
+                    "per_label" => () -> Dict(lab => Dict(
+                        "tick_cases" => tick_cases(lbp),
+                        "effectiveR" => effectiveR(lbp),
+                        "cumulative_quarantines" => cumulative_quarantines(lbp),
+                        "dark_figure" => dark_figure(lbp),
+                        "cumulative_cases" => cumulative_cases(lbp),
+                        "generation_times" => generation_times(lbp),
+                        "tests" => tests(lbp),
+                    ) for (lab, lbp) in bP.per_label),
                 )
         )
 

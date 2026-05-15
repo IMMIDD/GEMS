@@ -378,7 +378,64 @@ end
 
 # further dispatching
 gemsplot(rd::ResultData; plotargs...) = gemsplot([rd]; plotargs...)
-gemsplot(bd::BatchData; plotargs...) = gemsplot(bd |> runs; plotargs...)
+
+function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::String; plotargs...)
+    pl = per_label(bd)
+    if length(pl) > 1
+        colors = Dict(zip(sort(collect(keys(pl))), gemscolors(length(pl))))
+        for lab in sort(collect(keys(pl)))
+            df = get(pl[lab], df_key, DataFrame())
+            isempty(df) && continue
+            plot!(p, df[!, "tick"], df[!, "mean"],
+                ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
+                fillalpha = 0.3, linewidth = 2, label = lab, color = colors[lab])
+        end
+    else
+        df = get(dataframes(bd), df_key, DataFrame())
+        isempty(df) && return
+        plot!(p, df[!, "tick"], df[!, "mean"],
+            ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
+            fillalpha = 0.3, linewidth = 2, label = series_label)
+    end
+end
+gemsplot(::Nothing; plotargs...) = error("runs(bd) returned nothing — re-run with keep_rundata=true to store individual ResultData objects.")
+
+function gemsplot(bd::BatchData; type = :nothing, plotargs...)
+    # Always dispatch to aggregated BatchData plotting (mean+CI ribbon style).
+    # For individual-trace plots (one line per run), use gemsplot(runs(bd)) explicitly.
+
+    if type == :nothing
+        return gemsplot(bd,
+            type = (:TickCases, :CumulativeCases, :EffectiveReproduction),
+            titlefontsize = 10,
+            size = (600, 800); plotargs...)
+    end
+
+    if isa(type, Tuple{Vararg{Symbol}})
+        p = plot(((t -> gemsplot(bd, type = t; plotargs...)).(type))...,
+            titlefontsize = 12,
+            plot_titlefontsize = 12,
+            labelfontsize = 8,
+            layout = (length(type), 1),
+            size = (600, 250 * length(type)),
+            bottom_margin = 4Plots.mm)
+        plot!(p; plotargs...)
+        return p
+    end
+
+    !is_subtype(type, SimulationPlot) && throw("There's no plot type that matches $type")
+
+    plt = try
+        get_subtype(type, SimulationPlot)()
+    catch
+        throw("$type plots cannot be created via gemsplot — use generate($type(args...), bd) instead.")
+    end
+
+    hasmethod(generate, (typeof(plt), BatchData)) || error(
+        "$(typeof(plt)) has no BatchData overload. Re-run with keep_rundata=true and use gemsplot(runs(bd)) for individual-trace batch plots.")
+
+    return generate(plt, bd; plot_title = title(plt), titlefontsize = 10, plotargs...)
+end
 
 
 """

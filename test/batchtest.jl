@@ -39,7 +39,7 @@
 
     # small batch used for run and data tests
     batch5 = Batch(n_runs = 3)
-    bP = run!(batch5)
+    bP = process!(batch5)
 
     @testset "Run" begin
         @test n_runs(bP) == 3

@@ -138,3 +138,11 @@ function generate(plt::CumulativeIsolations, rds::Vector{ResultData};
 
     return(p)
 end
+
+function generate(plt::CumulativeIsolations, bd::BatchData; plotargs...)
+    uticks = get(sim_data(bd), "tick_unit", "tick")
+    p = plot(xlabel = uppercasefirst(uticks), ylabel = "Individuals in Isolation", dpi = 300, fontfamily = "Times Roman")
+    _plot_labelled_ribbon!(p, bd, "cumulative_quarantines", "Quarantined (mean ± 95% CI)"; plotargs...)
+    plot!(p; plotargs...)
+    return p
+end

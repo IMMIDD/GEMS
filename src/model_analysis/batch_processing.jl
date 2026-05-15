@@ -1,10 +1,10 @@
 # DATA PROCESSING FOR BATCHRUNS
 export BatchProcessor
 
-export rundata, n_runs, representative_run
+export rundata, n_runs, representative_run, tick_unit
 export total_infections, total_tests, attack_rate, r0
 export tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
-export total_quarantines
+export total_quarantines, dark_figure, cumulative_cases, generation_times
 
 """
     BatchProcessor
@@ -20,12 +20,13 @@ memory usage is O(1) in the number of runs regardless of batch size.
 # Optional fields
 
 - `representative_by`: pass `pp -> scalar` to keep the single `ResultData` whose
-  criterion value is closest to the running mean. Useful for "run with mean infections"
+  criterion value is closest to the running median. Useful for "run with median infections"
   style analyses without storing all N `ResultData` objects.
 - `keep_rundata`: pass `true` to store all individual `ResultData` objects (O(n) memory).
 """
 mutable struct BatchProcessor
     n_runs::Int
+    tick_unit::String
 
     # Per-tick Welford accumulators (tick -> WelfordState)
     tick_cases::Dict{Int, WelfordState}
@@ -33,6 +34,9 @@ mutable struct BatchProcessor
     compartments::Dict{String, Dict{Int, WelfordState}}
     quarantines::Dict{Int, WelfordState}
     tests::Dict{String, Dict{String, Dict{Int, WelfordState}}}
+    dark_figure::Dict{Int, WelfordState}
+    cumulative_cases::Dict{String, Dict{Int, WelfordState}}
+    generation_times::Dict{Int, WelfordState}
 
     # Scalar Welford accumulators
     total_infections::WelfordState
@@ -42,16 +46,19 @@ mutable struct BatchProcessor
     total_tests::Dict{String, WelfordState}
 
     # Representative run — O(1) ResultData in memory.
-    # Streaming approximation: stores the run whose criterion was closest to the
-    # running mean *at the time it was processed*. Accuracy improves with more runs.
-    # For exact post-hoc selection use keep_rundata=true.
+    # Criterion scalars are stored (lightweight Vector{Float64}) so the running
+    # median is exact at each step. The representative is swapped whenever the
+    # new run is closer to the current median than the stored one.
     representative_by::Union{Nothing, Function}
     representative_run::Union{Nothing, ResultData}
     representative_value::Union{Nothing, Float64}
-    running_mean_criterion::Float64
+    criterion_values::Vector{Float64}
 
     # Optional: keep all ResultData — O(n) memory, not the default
     rundata::Union{Nothing, Vector{ResultData}}
+
+    # Per-label sub-accumulators — populated by process!, empty for sub-processors themselves
+    per_label::Dict{String, BatchProcessor}
 
     @doc """
         BatchProcessor(; representative_by=nothing, keep_rundata=false)
@@ -62,7 +69,7 @@ mutable struct BatchProcessor
 
     - `representative_by`: a function `pp::PostProcessor -> scalar` that selects
       which run is "representative" (e.g. `pp -> nrow(infectionsDF(pp))`). The
-      processor keeps the single `ResultData` closest to the running mean of this
+      processor keeps the single `ResultData` closest to the running median of this
       scalar. Default: `nothing` (no representative run stored).
     - `keep_rundata`: if `true`, store every run's `ResultData` in `rundata`.
       Required for `merge(bds::BatchData...)`. Default: `false`.
@@ -70,15 +77,20 @@ mutable struct BatchProcessor
     function BatchProcessor(; representative_by = nothing, keep_rundata::Bool = false)
         new(
             0,
+            "tick",
             Dict{Int, WelfordState}(),
             Dict{Int, WelfordState}(),
             Dict{String, Dict{Int, WelfordState}}(),
             Dict{Int, WelfordState}(),
             Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
+            Dict{Int, WelfordState}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{Int, WelfordState}(),
             WelfordState(), WelfordState(), WelfordState(), WelfordState(),
             Dict{String, WelfordState}(),
-            representative_by, nothing, nothing, 0.0,
-            keep_rundata ? ResultData[] : nothing
+            representative_by, nothing, nothing, Float64[],
+            keep_rundata ? ResultData[] : nothing,
+            Dict{String, BatchProcessor}()
         )
     end
 
@@ -92,15 +104,20 @@ mutable struct BatchProcessor
     function BatchProcessor(rds::Vector{ResultData})
         bp = new(
             0,
+            "tick",
             Dict{Int, WelfordState}(),
             Dict{Int, WelfordState}(),
             Dict{String, Dict{Int, WelfordState}}(),
             Dict{Int, WelfordState}(),
             Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
+            Dict{Int, WelfordState}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{Int, WelfordState}(),
             WelfordState(), WelfordState(), WelfordState(), WelfordState(),
             Dict{String, WelfordState}(),
-            nothing, nothing, nothing, 0.0,
-            ResultData[]
+            nothing, nothing, nothing, Float64[],
+            ResultData[],
+            Dict{String, BatchProcessor}()
         )
         for rd in rds
             accumulate!(bp, rd)
@@ -145,6 +162,11 @@ constructed, before discarding the simulation and post-processor.
 function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "LightRD")
     bp.n_runs += 1
 
+    # Capture tick unit from first run
+    if bp.n_runs == 1
+        bp.tick_unit = string(tickunit(simulation(pp)))
+    end
+
     # Per-tick accumulators
     _update_singlecol!(bp.tick_cases, tick_cases(pp), :tick, :exposed_cnt)
     _update_singlecol!(bp.effectiveR, effectiveR(pp), :tick, :effective_R)
@@ -154,6 +176,29 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
         _update_multicol!(
             get!(bp.tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
             df, :tick
+        )
+    end
+
+    # Dark figure fraction per tick (non-linear — accumulate the fraction, not raw columns)
+    cf = compartment_fill(pp)
+    if !isempty(cf) && hasproperty(cf, :exposed_cnt) && hasproperty(cf, :infectious_cnt) && hasproperty(cf, :detected_cnt)
+        for row in eachrow(cf)
+            active = row[:exposed_cnt] + row[:infectious_cnt]
+            frac = active > 0 ? 1.0 - row[:detected_cnt] / active : 0.0
+            welford_update!(get!(bp.dark_figure, Int(row[:tick]), WelfordState()), frac)
+        end
+    end
+
+    # Cumulative cases (multi-column per tick)
+    _update_multicol!(bp.cumulative_cases, cumulative_cases(pp), :tick)
+
+    # Mean generation time per tick
+    gt = tick_generation_times(pp)
+    if !isempty(gt) && hasproperty(gt, :mean_generation_time)
+        _update_singlecol!(
+            bp.generation_times,
+            dropmissing(gt, :mean_generation_time),
+            :tick, :mean_generation_time
         )
     end
 
@@ -169,9 +214,10 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     # Representative run
     if bp.representative_by !== nothing
         val = Float64(bp.representative_by(pp))
-        bp.running_mean_criterion = ((bp.n_runs - 1) * bp.running_mean_criterion + val) / bp.n_runs
+        push!(bp.criterion_values, val)
+        running_median = median(bp.criterion_values)
         if bp.representative_run === nothing ||
-           abs(val - bp.running_mean_criterion) < abs(bp.representative_value - bp.running_mean_criterion)
+           abs(val - running_median) < abs(bp.representative_value - running_median)
             bp.representative_run = ResultData(pp, style = rd_style)
             bp.representative_value = val
         end
@@ -230,6 +276,30 @@ function accumulate!(bp::BatchProcessor, rd::ResultData)
         end
     end
 
+    cf = get(dataframes(rd), "compartment_fill", nothing)
+    if isa(cf, DataFrame) && !isempty(cf) && hasproperty(cf, :tick) &&
+       hasproperty(cf, :exposed_cnt) && hasproperty(cf, :infectious_cnt) && hasproperty(cf, :detected_cnt)
+        for row in eachrow(cf)
+            active = row[:exposed_cnt] + row[:infectious_cnt]
+            frac = active > 0 ? 1.0 - row[:detected_cnt] / active : 0.0
+            welford_update!(get!(bp.dark_figure, Int(row[:tick]), WelfordState()), frac)
+        end
+    end
+
+    cc = cumulative_cases(rd)
+    if isa(cc, DataFrame) && !isempty(cc) && hasproperty(cc, :tick)
+        _update_multicol!(bp.cumulative_cases, cc, :tick)
+    end
+
+    gt = get(dataframes(rd), "tick_generation_times", nothing)
+    if isa(gt, DataFrame) && !isempty(gt) && hasproperty(gt, :tick) && hasproperty(gt, :mean_generation_time)
+        _update_singlecol!(
+            bp.generation_times,
+            dropmissing(gt, :mean_generation_time),
+            :tick, :mean_generation_time
+        )
+    end
+
     # Scalar accumulators
     ti = total_infections(rd)
     isa(ti, Number) && welford_update!(bp.total_infections, ti)
@@ -268,6 +338,15 @@ Returns the number of simulation runs accumulated so far.
 """
 function n_runs(bp::BatchProcessor)
     return bp.n_runs
+end
+
+"""
+    tick_unit(bp::BatchProcessor)
+
+Returns the tick unit string captured from the first accumulated run (e.g. `"d"` for days).
+"""
+function tick_unit(bp::BatchProcessor)
+    return bp.tick_unit
 end
 
 """
@@ -384,6 +463,36 @@ Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column
 """
 function tests(bp::BatchProcessor)
     return Dict(k => welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.tests)
+end
+
+"""
+    dark_figure(bp::BatchProcessor)
+
+Returns aggregated dark figure fractions per tick across all runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function dark_figure(bp::BatchProcessor)
+    return welford_df_to_stats_df(bp.dark_figure, :tick)
+end
+
+"""
+    cumulative_cases(bp::BatchProcessor)
+
+Returns aggregated cumulative case counts per tick across all runs.
+Returns a `Dict{String, DataFrame}` keyed by column name (e.g. `exposed_cum`, `recovered_cum`, `deaths_cum`).
+"""
+function cumulative_cases(bp::BatchProcessor)
+    return welford_df_to_stats_df_multicol(bp.cumulative_cases, :tick)
+end
+
+"""
+    generation_times(bp::BatchProcessor)
+
+Returns aggregated mean generation times per tick across all runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function generation_times(bp::BatchProcessor)
+    return welford_df_to_stats_df(bp.generation_times, :tick)
 end
 
 

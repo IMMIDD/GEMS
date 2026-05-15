@@ -18,7 +18,7 @@
     end
 
     b = Batch(sims...)
-    run!(b)
+    process!(b)
     bd = BatchData(b)
 
     @testset "Markdown Conversion" begin

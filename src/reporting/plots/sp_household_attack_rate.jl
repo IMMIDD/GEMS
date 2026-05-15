@@ -204,3 +204,9 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; plotargs...
 
     return p
 end
+
+function generate(plt::HouseholdAttackRate, bd::BatchData; plotargs...)
+    r = runs(bd)
+    isnothing(r) && error("HouseholdAttackRate batch plots require per-run data. Re-run with keep_rundata=true and use gemsplot(runs(bd)).")
+    generate(plt, r; plotargs...)
+end
