@@ -27,8 +27,8 @@ This page lists the changes and release notes for GEMS.jl, automatically generat
 - **Per-simulation seeding**: every run gets a deterministic seed derived from a master
   seed. Pass `seed = N` to `process!` or `BatchData` for reproducible batches.
 - **Representative run**: by default, the simulation whose total infections are closest
-  to the median is re-run and stored as `representative_run(bp)`. Customise with
-  `representative_by = pp -> ...` or disable with `representative_by = nothing`.
+  to the median is re-run and stored as `median_run(bp)`. Customise with
+  `median_by = pp -> ...` or disable with `median_by = nothing`.
 - **Per-label aggregation**: multi-label batches accumulate statistics separately per
   label. `gemsplot(bd)` shows one mean±CI ribbon per label automatically.
 - **`BatchData`-native plots**: `gemsplot(bd::BatchData)` now dispatches directly to

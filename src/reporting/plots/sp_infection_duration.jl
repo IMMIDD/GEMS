@@ -139,11 +139,11 @@ function generate(plt::InfectionDuration, rds::Vector{ResultData}; plotargs...)
 end
 
 function generate(plt::InfectionDuration, bd::BatchData; plotargs...)
-    rep = representative_run(bd)
+    rep = median_run(bd)
     !isnothing(rep) && return generate(plt, rep; plotargs...)
     label_plts = _per_label_representative_plots(plt, bd; plotargs...)
     !isnothing(label_plts) && return label_plts
     r = runs(bd)
-    isnothing(r) && error("InfectionDuration batch plots require per-run data. Re-run with representative_by = pp -> nrow(infectionsDF(pp)) (the default) to plot the representative run, or with keep_rundata = true to plot all runs.")
+    isnothing(r) && error("InfectionDuration batch plots require per-run data. Re-run with median_by = pp -> nrow(infectionsDF(pp)) (the default) to plot the median run, or with keep_rundata = true to plot all runs.")
     generate(plt, r; plotargs...)
 end

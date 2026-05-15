@@ -239,7 +239,7 @@ BatchData Entries
   └ attack_rate
   └ total_infections
   └ total_quarantines
-  └ representative_run
+  └ median_run
   └ tick_unit
 └ system_data
 ...
@@ -301,12 +301,12 @@ seed(bd1)  # → 42
 ```
 
 
-## Representative Run
+## Median Run
 
 By default, GEMS identifies the simulation whose total infections are closest to the
 median across all runs, re-runs it with the same seed (producing the exact same result),
-and stores it as the *representative run*.
-This representative is a single `ResultData` object that can be used as a stand-in for
+and stores it as the *median run*.
+This is a single `ResultData` object that can be used as a stand-in for
 a typical run:
 
 ```julia
@@ -314,17 +314,17 @@ using GEMS
 
 b = Batch(n_runs = 10)
 bp = process!(b)
-rep = representative_run(bp)
+rep = median_run(bp)
 gemsplot(rep, type = :TickCases)
 ```
 
-You can customise the selection criterion by passing a different `representative_by`
-function, or disable it entirely with `representative_by = nothing`:
+You can customise the selection criterion by passing a different `median_by`
+function, or disable it entirely with `median_by = nothing`:
 
 ```julia
 # Select the run with median deaths instead
-bp = process!(b; representative_by = pp -> nrow(deathsDF(pp)))
+bp = process!(b; median_by = pp -> nrow(deathsDF(pp)))
 
-# Disable representative run selection
-bp = process!(b; representative_by = nothing)
+# Disable median run selection
+bp = process!(b; median_by = nothing)
 ```

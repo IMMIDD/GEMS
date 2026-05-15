@@ -28,8 +28,8 @@ be calculated from a `BatchProcessor`.
     - `sim_data::Dict{String, Any}`
         - `runs::Union{Nothing, Vector{ResultData}}`: Individual ResultData objects, or
           `nothing` if `keep_rundata` was `false` during the batch run
-        - `representative_run::Union{Nothing, ResultData}`: The run whose criterion was
-          closest to the running mean, or `nothing` if `representative_by` was not set
+        - `median_run::Union{Nothing, ResultData}`: The run whose criterion is closest to
+          the median across all runs, or `nothing` if `median_by` was not set
         - `number_of_runs::Int64`: Number of simulation runs
         - `total_infections::Dict{String, Real}`: Summary statistics on total infections across simulation runs
         - `attack_rate::Dict{String, Real}`: Summary statistics on attack rates across simulation runs
@@ -73,7 +73,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
             "sim_data" =>
                 Dict(
                     "runs" => () -> rundata(bP),
-                    "representative_run" => () -> representative_run(bP),
+                    "median_run" => () -> median_run(bP),
                     "number_of_runs" => () -> n_runs(bP),
                     "tick_unit" => () -> tick_unit(bP),
                     "seed" => () -> seed(bP),
@@ -82,6 +82,8 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "r0" => () -> r0(bP),
                     "total_quarantines" => () -> total_quarantines(bP),
                     "total_tests" => () -> total_tests(bP),
+                    "total_detected_cases" => () -> total_detected_cases(bP),
+                    "detection_rate" => () -> detection_rate(bP),
                 ),
 
             "dataframes" =>
@@ -89,11 +91,15 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "tick_cases" => () -> tick_cases(bP),
                     "effectiveR" => () -> effectiveR(bP),
                     "tests" => () -> tests(bP),
+                    "pool_tests" => () -> pool_tests(bP),
+                    "sero_tests" => () -> sero_tests(bP),
                     "cumulative_quarantines" => () -> cumulative_quarantines(bP),
                     "cumulative_disease_progressions" => () -> cumulative_disease_progressions(bP),
                     "dark_figure" => () -> dark_figure(bP),
                     "cumulative_cases" => () -> cumulative_cases(bP),
                     "generation_times" => () -> generation_times(bP),
+                    "hospitalizations" => () -> hospitalizations(bP),
+                    "observed_R" => () -> observed_R(bP),
                     "per_label" => () -> Dict(lab => Dict(
                         "tick_cases" => tick_cases(lbp),
                         "effectiveR" => effectiveR(lbp),
@@ -102,7 +108,11 @@ mutable struct DefaultBatchData <: BatchDataStyle
                         "cumulative_cases" => cumulative_cases(lbp),
                         "generation_times" => generation_times(lbp),
                         "tests" => tests(lbp),
-                        "representative_run" => representative_run(lbp),
+                        "pool_tests" => pool_tests(lbp),
+                        "sero_tests" => sero_tests(lbp),
+                        "hospitalizations" => hospitalizations(lbp),
+                        "observed_R" => observed_R(lbp),
+                        "median_run" => median_run(lbp),
                     ) for (lab, lbp) in bP.per_label),
                 )
         )

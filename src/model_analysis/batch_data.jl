@@ -6,9 +6,10 @@ export merge
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export sim_data, runs, representative_run, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
-export dataframes, tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
-export dark_figure, cumulative_cases, generation_times, per_label
+export sim_data, runs, median_run, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
+export total_detected_cases, detection_rate
+export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
+export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_label
 
 export exportJLD, exportJSON, import_batchdata, info
 
@@ -86,21 +87,21 @@ mutable struct BatchData <: AbstractResultData
 
     @doc """
 
-        BatchData(batch::Batch; style="DefaultBatchData", rd_style="LightRD", representative_by=nothing, keep_rundata=false)
+        BatchData(batch::Batch; style="DefaultBatchData", rd_style="LightRD", median_by=nothing, keep_rundata=false)
 
     Create a `BatchData` object by running all simulation configurations in `batch`
     one at a time (streaming). Peak memory is ~1× a single simulation regardless
     of batch size.
 
     - `rd_style`: the `ResultData` style used when storing representative/individual runs.
-    - `representative_by`: a function `pp -> scalar` to select a representative run
+    - `median_by`: a function `pp -> scalar` to select the median run
       (e.g. `pp -> nrow(infectionsDF(pp))`). Default: `nothing`.
     - `keep_rundata`: store all individual `ResultData` objects. Required for
       `merge(bds::BatchData...)`. Default: `false`.
     """
     BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style::String = "LightRD",
-              representative_by = nothing, keep_rundata::Bool = false) =
-        BatchData(process!(batch; rd_style, representative_by, keep_rundata), style = style)
+              median_by = nothing, keep_rundata::Bool = false) =
+        BatchData(process!(batch; rd_style, median_by, keep_rundata), style = style)
 
     @doc """
 
@@ -353,13 +354,13 @@ function runs(bd::BatchData)
 end
 
 """
-    representative_run(bd::BatchData)
+    median_run(bd::BatchData)
 
-Returns the representative `ResultData` (the run whose criterion was closest to
-the running median), or `nothing` if `representative_by` was not set.
+Returns the `ResultData` of the simulation whose criterion is closest to the
+median across all runs, or `nothing` if `median_by` was not set.
 """
-function representative_run(bd::BatchData)
-    get(bd |> sim_data, "representative_run", nothing)
+function median_run(bd::BatchData)
+    get(bd |> sim_data, "median_run", nothing)
 end
 
 """
@@ -524,6 +525,66 @@ Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
 """
 function generation_times(bd::BatchData)
     return(get(bd |> dataframes, "generation_times", DataFrame()))
+end
+
+"""
+    hospitalizations(bd::BatchData)
+
+Returns aggregated hospitalization metrics per tick across simulation runs.
+Returns a `Dict{String, DataFrame}` keyed by column name
+(e.g. `current_hospitalized`, `current_icu`, `hospital_admissions`).
+"""
+function hospitalizations(bd::BatchData)
+    return(get(bd |> dataframes, "hospitalizations", Dict()))
+end
+
+"""
+    observed_R(bd::BatchData)
+
+Returns aggregated observed reproduction number estimates per tick across simulation runs.
+Returns a `Dict{String, DataFrame}` keyed by column name
+(`mean_est_R`, `lower_est_R`, `upper_est_R`).
+"""
+function observed_R(bd::BatchData)
+    return(get(bd |> dataframes, "observed_R", Dict()))
+end
+
+"""
+    pool_tests(bd::BatchData)
+
+Returns aggregated pool test statistics per tick for each test type.
+Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
+"""
+function pool_tests(bd::BatchData)
+    return(get(bd |> dataframes, "pool_tests", Dict()))
+end
+
+"""
+    sero_tests(bd::BatchData)
+
+Returns aggregated serology test statistics per tick for each test type.
+Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
+"""
+function sero_tests(bd::BatchData)
+    return(get(bd |> dataframes, "sero_tests", Dict()))
+end
+
+"""
+    total_detected_cases(bd::BatchData)
+
+Returns aggregated values for total detected cases across simulation runs.
+"""
+function total_detected_cases(bd::BatchData)
+    return(get(bd |> sim_data, "total_detected_cases", ""))
+end
+
+"""
+    detection_rate(bd::BatchData)
+
+Returns aggregated values for the detection rate across simulation runs.
+"""
+function detection_rate(bd::BatchData)
+    return(get(bd |> sim_data, "detection_rate", ""))
 end
 
 """

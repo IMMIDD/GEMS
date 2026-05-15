@@ -161,9 +161,9 @@
             criterion = pp -> nrow(infectionsDF(pp))
             fixed_seed = 1234
 
-            bp = process!(Batch(n_runs = 5); seed = fixed_seed, representative_by = criterion)
-            @test !isnothing(representative_run(bp))
-            @test typeof(representative_run(bp)) == ResultData
+            bp = process!(Batch(n_runs = 5); seed = fixed_seed, median_by = criterion)
+            @test !isnothing(median_run(bp))
+            @test typeof(median_run(bp)) == ResultData
 
             # Re-derive per-simulation seeds the same way process! does
             sim_seeds = let rng = Xoshiro(Int64(fixed_seed))
@@ -178,7 +178,7 @@
 
             # The representative run is the bit-identical replay of the median-closest simulation,
             # so its total infections must equal that simulation's criterion value
-            @test total_infections(representative_run(bp)) == Int(criteria[best_idx])
+            @test total_infections(median_run(bp)) == Int(criteria[best_idx])
         end
 
         @testset "RepresentativeRunMultiLabel" begin
@@ -187,13 +187,13 @@
             bp = process!(merge(baseline, masks))
 
             # no global representative for multi-label batches
-            @test isnothing(representative_run(bp))
+            @test isnothing(median_run(bp))
 
             # each label has its own representative
-            @test !isnothing(bp.per_label["Baseline"].representative_run)
-            @test !isnothing(bp.per_label["Mask Wearing"].representative_run)
-            @test typeof(bp.per_label["Baseline"].representative_run) == ResultData
-            @test typeof(bp.per_label["Mask Wearing"].representative_run) == ResultData
+            @test !isnothing(bp.per_label["Baseline"].median_run)
+            @test !isnothing(bp.per_label["Mask Wearing"].median_run)
+            @test typeof(bp.per_label["Baseline"].median_run) == ResultData
+            @test typeof(bp.per_label["Mask Wearing"].median_run) == ResultData
         end
 
         @testset "Seed" begin
@@ -206,12 +206,12 @@
         @testset "EmptyBatch" begin
             bp = process!(Batch(n_runs = 0))
             @test n_runs(bp) == 0
-            @test isnothing(representative_run(bp))
+            @test isnothing(median_run(bp))
         end
 
         @testset "DisabledRepresentative" begin
-            bp = process!(Batch(n_runs = 3); representative_by = nothing)
-            @test isnothing(representative_run(bp))
+            bp = process!(Batch(n_runs = 3); median_by = nothing)
+            @test isnothing(median_run(bp))
         end
     end
 end
