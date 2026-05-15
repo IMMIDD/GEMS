@@ -271,7 +271,7 @@ gemsplot(runs(bd))  # one faded line per run, coloured by label
 
 By default, `runs(bd)` returns `nothing` to keep memory usage low.
 Use `keep_rundata = true` only when you need the individual `ResultData` objects, for
-example to merge multiple `BatchData` objects or to access per-run raw data:
+example to access per-run raw data:
 
 ```julia
 bd = BatchData(b, rd_style = "DefaultResultData", keep_rundata = true)

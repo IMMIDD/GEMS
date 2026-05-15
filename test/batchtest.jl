@@ -205,5 +205,66 @@
             bp = process!(Batch(n_runs = 3); median_by = nothing)
             @test isnothing(median_run(bp))
         end
+
+        @testset "WelfordCorrectness" begin
+            # Welford mean and std should match manual computation
+            bp = process!(Batch(n_runs = 5); seed = 7)
+            agg = total_infections(bp)
+            @test agg["mean"] isa Float64
+            @test agg["std"] >= 0.0
+            @test agg["min"] <= agg["mean"] <= agg["max"]
+            @test agg["lower_95"] <= agg["mean"] <= agg["upper_95"]
+        end
+
+        @testset "MultiColumnAccessors" begin
+            bp = process!(Batch(n_runs = 3); seed = 8)
+            # tick_cases, effectiveR, cumulative_quarantines now return Dict
+            tc = tick_cases(bp)
+            @test tc isa Dict
+            @test haskey(tc, "exposed_cnt")
+            @test haskey(tc, "dead_cnt")
+            @test nrow(tc["exposed_cnt"]) > 0
+
+            er = effectiveR(bp)
+            @test er isa Dict
+            @test haskey(er, "rolling_R")
+
+            cq = cumulative_quarantines(bp)
+            @test cq isa Dict
+            @test haskey(cq, "quarantined")
+        end
+
+        @testset "NoRateColumnsInTests" begin
+            # positive_rate and rolling_positive_rate should not be accumulated
+            bp = process!(Batch(n_runs = 3); seed = 9)
+            t = tests(bp)
+            for (_, col_dict) in t
+                @test !haskey(col_dict, "positive_rate")
+                @test !haskey(col_dict, "rolling_positive_rate")
+            end
+        end
+
+        @testset "NewScalarAccessors" begin
+            bp = process!(Batch(n_runs = 3); seed = 10)
+            bd = BatchData(bp)
+            @test seed(bp) == 10
+            @test seed(bd) == 10
+            @test tick_unit(bp) isa String
+            @test total_detected_cases(bp) isa Dict
+            @test detection_rate(bp) isa Dict
+            @test detection_rate(bp)["mean"] >= 0.0
+        end
+
+        @testset "MultiLabelAccumulators" begin
+            b1 = Batch(n_runs = 5, transmission_rate = 0.05, label = "Low")
+            b2 = Batch(n_runs = 5, transmission_rate = 0.5, label = "High")
+            bp = process!(merge(b1, b2); seed = 11)
+            # per-label accumulators should differ between the two scenarios
+            @test haskey(bp.per_label, "Low")
+            @test haskey(bp.per_label, "High")
+            low_inf = total_infections(bp.per_label["Low"])["mean"]
+            high_inf = total_infections(bp.per_label["High"])["mean"]
+            @test low_inf < high_inf
+        end
     end
 end
