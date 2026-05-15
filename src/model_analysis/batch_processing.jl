@@ -98,7 +98,9 @@ end
 
 function _update_singlecol!(accum::Dict{Int, WelfordState}, df::DataFrame, key_col::Symbol, val_col::Symbol)
     for row in eachrow(df)
-        welford_update!(get!(accum, Int(row[key_col]), WelfordState()), row[val_col])
+        val = row[val_col]
+        ismissing(val) && continue
+        welford_update!(get!(accum, Int(row[key_col]), WelfordState()), val)
     end
 end
 
@@ -107,7 +109,9 @@ function _update_multicol!(accum::Dict{String, Dict{Int, WelfordState}}, df::Dat
     for col in val_cols
         col_accum = get!(accum, col, Dict{Int, WelfordState}())
         for row in eachrow(df)
-            welford_update!(get!(col_accum, Int(row[key_col]), WelfordState()), row[col])
+            val = row[col]
+            ismissing(val) && continue
+            welford_update!(get!(col_accum, Int(row[key_col]), WelfordState()), val)
         end
     end
 end
