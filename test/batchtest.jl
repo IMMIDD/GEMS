@@ -1,94 +1,55 @@
 @testset "Batch" begin
-    
+
     basefolder = dirname(dirname(pathof(GEMS)))
-    pop_file = "test/testdata/TestPop.csv"
-    pop_path = joinpath(basefolder, pop_file)
-
-    #initialising batches
-    sims1 = Simulation[Simulation(label = "batch_test_" * string(i)) for i in 1:2]
-    batch1 = Batch(sims1...)
-
-    sims2 = Simulation[Simulation(label = "batch_test_" * string(i)) for i in 3:7]
-    batch2 = Batch(sims2...)
-
-    sims3 = Simulation[Simulation(label = "batch_test_" * string(i)) for i in 7:9]
-    batch3 = Batch(sims3...)
-
-    sims4 = Simulation[Simulation(label = "batch_test_" * string(i)) for i in 10:12]
-    batch4 = Batch(sims4...)
 
     @testset "Constructor" begin
-        @test sims1 == simulations(batch1)
-        @test sims2 == simulations(batch2)
-        @test sims3 == simulations(batch3)
-        @test sims4 == simulations(batch4)
-
-        # keyword constructor: verify n_runs simulations are actually created
+        # keyword constructor creates correct number of configs
         kw_batch = Batch(n_runs = 3)
-        @test length(simulations(kw_batch)) == 3
+        @test length(simconfigs(kw_batch)) == 3
 
-        # keyword constructor with simargs forwarded to Simulation
+        # simargs are stored in configs
         kw_batch2 = Batch(n_runs = 2, label = "kw_test")
-        @test all(s -> label(s) == "kw_test", simulations(kw_batch2))
-    end
+        @test all(cfg -> cfg.label == "kw_test", simconfigs(kw_batch2))
 
+        # empty batch
+        empty_batch = Batch(n_runs = 0)
+        @test length(simconfigs(empty_batch)) == 0
+    end
 
     @testset "SetOperations" begin
-        #test add
-        @test length(simulations(batch1)) == 2
+        b1 = Batch(n_runs = 2)
+        b2 = Batch(n_runs = 3)
+        b3 = Batch(n_runs = 4)
 
-        sim3 = Simulation(label = "batch_test_3")
-        add!(sim3, batch1)
+        # add! appends a config
+        @test length(simconfigs(b1)) == 2
+        add!((label = "extra",), b1)
+        @test length(simconfigs(b1)) == 3
 
-        @test_throws Any add!(batch3, simulations(batch3)[1])
-        @test length(simulations(batch1)) == 3
+        # merge combines configs from multiple batches
+        merged = merge(b2, b3)
+        @test length(simconfigs(merged)) == 7
 
-        #test remove
-        remove!(simulations(batch2)[5], batch2)
-        remove!(simulations(batch2)[1], batch2)
-
-        @test length(simulations(batch2)) == 3
-
-        #test merge
-        batch2 = merge(batch2, batch3, batch4)
-
-        @test length(simulations(batch2)) == 9
-
-        #test append
-        append!(batch1, batch2)
-
-        @test length(simulations(batch1)) == 12
-
-        for i in 1:12
-            @test label(simulations(batch1)[i]) == "batch_test_" * string(i)
-        end
-
+        # append! appends in-place
+        b4 = Batch(n_runs = 2)
+        b5 = Batch(n_runs = 3)
+        append!(b4, b5)
+        @test length(simconfigs(b4)) == 5
     end
 
-    @testset "Logger" begin
-        cl = CustomLogger(infected = sim -> count(infected, sim |> population))
-        customlogger!(batch1, cl)
+    # small batch used for run and data tests
+    batch5 = Batch(n_runs = 3)
+    bP = run!(batch5)
 
-        @test all(x -> (size(dataframe(cl), 2) == 2), simulations(batch1))
-        logger_ids = [objectid(customlogger(sim)) for sim in simulations(batch1)]
-        @test length(logger_ids) == length(unique(logger_ids))
-    end
-
-    sims5 = Simulation[Simulation() for i in 1:3]
-    batch5 = Batch(sims5...)
     @testset "Run" begin
-        run!(batch5)
-
-        for sim in simulations(batch5)
-            @test tick(sim) == 365
-        end
+        @test n_runs(bP) == 3
+        # confirm accumulators received 3 observations
+        @test bP.total_infections.n == 3
     end
-
 
     @testset "BatchData" begin
-        bP = BatchProcessor(batch5)
         bd = BatchData(bP)
-        # Test the default batch data generation, i.e., all fields are generated
+
         @testset "BatchDataDefault" begin
             @test typeof(bd) == BatchData
             @test haskey(bd.data, "meta_data")
@@ -99,13 +60,13 @@
         end
 
         @testset "BatchDataMerge" begin
-            bd2 = BatchData(batch5)
-            bd2 = merge(bd, bd2)
-            @test length(runs(bd2)) == 6
+            # merge requires keep_rundata=true on both BatchData objects
+            bd_a = BatchData(run!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
+            bd_b = BatchData(run!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
+            bd_merged = merge(bd_a, bd_b)
+            @test length(runs(bd_merged)) == 6
         end
 
-        # Test the creation of custom batchdata using the configfile including a custom field 
-        # and custom chunk size
         @testset "BatchDataCustom" begin
             mutable struct TestBatchData <: BatchDataStyle
                 data::Dict{String, Any}
@@ -117,14 +78,13 @@
                         ),
                         "sim_data" =>
                         Dict(
-                            "number_of_runs" => bP |> run_ids |> length,
+                            "number_of_runs" => n_runs(bP),
                         )
                     )
-                    
                     return new(funcs)
                 end
             end
-            custom_bd = BatchData(batch5, style = "TestBatchData")
+            custom_bd = BatchData(bP, style = "TestBatchData")
             @test typeof(custom_bd) == BatchData
             @test haskey(custom_bd.data, "meta_data")
             @test haskey(custom_bd.data, "sim_data")
@@ -152,8 +112,9 @@
             @test bd |> execution_date |> length != 0
             @test bd |> GEMS_version |> string |> length != 0
 
-            @test bd |> runs |> length != 0
-            @test bd |> number_of_runs |> length != 0
+            # runs is nothing by default (keep_rundata=false)
+            @test isnothing(runs(bd))
+            @test bd |> number_of_runs != 0
 
             @test bd |> sim_data |> length != 0
 
@@ -185,24 +146,21 @@
         end
 
         @testset "BatchProcessorFunctions" begin
-            # Most function are already being called during testset 'BatchDataFunctions'
-            @test bP |> config_files |> length != 0
-            @test bP |> population_files |> length != 0
-    
-            @test bP |> tick_unit |> length != 0
-            @test bP |> start_conditions |> length != 0
-            @test bP |> stop_criteria |> length != 0
-            @test bP |> number_of_individuals |> length != 0
-            @test bP |> pathogens |> length != 0
-            @test bP |> settingdata |> length != 0
-    
-            @test bP |> strategies |> length != 0
-            @test bP |> symptom_triggers |> length != 0
-            @test bP |> testtypes |> length != 0
-            
-            @test bP |> x -> setting_age_contacts(x, Household) |> length != 0
-            @test bP |> x -> setting_age_contacts(x, GlobalSetting) |> length != 0
-            @test bP |> population_pyramid |> length != 0
+            @test n_runs(bP) == 3
+            @test bP |> total_infections |> length != 0
+            @test bP |> attack_rate |> length != 0
+            @test bP |> r0 |> length != 0
+            @test bP |> total_quarantines |> length != 0
+            @test bP |> tick_cases |> nrow != 0
+            @test bP |> effectiveR |> nrow != 0
+            @test bP |> cumulative_quarantines |> nrow != 0
+            @test bP |> cumulative_disease_progressions |> length != 0
+        end
+
+        @testset "RepresentativeRun" begin
+            bp_rep = run!(Batch(n_runs = 5); representative_by = pp -> nrow(infectionsDF(pp)))
+            @test !isnothing(representative_run(bp_rep))
+            @test typeof(representative_run(bp_rep)) == ResultData
         end
     end
 end

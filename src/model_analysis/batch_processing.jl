@@ -1,551 +1,396 @@
 # DATA PROCESSING FOR BATCHRUNS
 export BatchProcessor
 
-export rundata, run_ids, config_files, population_files
-export tick_unit, start_conditions, stop_criteria, number_of_individuals, pathogens, pathogens_by_name
-export runtime, allocations
-export total_infections, total_tests, attack_rate, settingdata, strategies
-export setting_age_contacts
-export tick_cases, effectiveR
+export rundata, n_runs, representative_run
+export total_infections, total_tests, attack_rate, r0
+export tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
+export total_quarantines
 
 """
     BatchProcessor
 
-A type to provide data processing features supplying reports, plots, or other data analyses.
+Streaming accumulator for multi-run batch analysis. Analogous to `PostProcessor`
+for single runs: it is the raw accumulation layer from which `BatchData` styles
+compute their output.
+
+Accumulate one run at a time by calling `accumulate!(bp, pp)` with a completed
+`PostProcessor`. Statistics are maintained online using Welford's algorithm —
+memory usage is O(1) in the number of runs regardless of batch size.
+
+# Optional fields
+
+- `representative_by`: pass `pp -> scalar` to keep the single `ResultData` whose
+  criterion value is closest to the running mean. Useful for "run with mean infections"
+  style analyses without storing all N `ResultData` objects.
+- `keep_rundata`: pass `true` to store all individual `ResultData` objects (O(n) memory).
 """
 mutable struct BatchProcessor
+    n_runs::Int
 
-     rundata::Vector{ResultData}
+    # Per-tick Welford accumulators (tick -> WelfordState)
+    tick_cases::Dict{Int, WelfordState}
+    effectiveR::Dict{Int, WelfordState}
+    compartments::Dict{String, Dict{Int, WelfordState}}
+    quarantines::Dict{Int, WelfordState}
+    tests::Dict{String, Dict{String, Dict{Int, WelfordState}}}
 
-     @doc """
-        BatchProcessor(rundata::Vector{ResultData})
+    # Scalar Welford accumulators
+    total_infections::WelfordState
+    attack_rate::WelfordState
+    r0::WelfordState
+    total_quarantines::WelfordState
+    total_tests::Dict{String, WelfordState}
 
-    Creates a `BatchProcessor` object for a vector of `ResultData` objects.
+    # Representative run — O(1) ResultData in memory.
+    # Streaming approximation: stores the run whose criterion was closest to the
+    # running mean *at the time it was processed*. Accuracy improves with more runs.
+    # For exact post-hoc selection use keep_rundata=true.
+    representative_by::Union{Nothing, Function}
+    representative_run::Union{Nothing, ResultData}
+    representative_value::Union{Nothing, Float64}
+    running_mean_criterion::Float64
+
+    # Optional: keep all ResultData — O(n) memory, not the default
+    rundata::Union{Nothing, Vector{ResultData}}
+
+    @doc """
+        BatchProcessor(; representative_by=nothing, keep_rundata=false)
+
+    Create an empty `BatchProcessor` ready to receive runs via `accumulate!`.
+
+    # Keyword Arguments
+
+    - `representative_by`: a function `pp::PostProcessor -> scalar` that selects
+      which run is "representative" (e.g. `pp -> nrow(infectionsDF(pp))`). The
+      processor keeps the single `ResultData` closest to the running mean of this
+      scalar. Default: `nothing` (no representative run stored).
+    - `keep_rundata`: if `true`, store every run's `ResultData` in `rundata`.
+      Required for `merge(bds::BatchData...)`. Default: `false`.
     """
-     function BatchProcessor(rundata::Vector{ResultData})
-        return new(rundata)
-     end
+    function BatchProcessor(; representative_by = nothing, keep_rundata::Bool = false)
+        new(
+            0,
+            Dict{Int, WelfordState}(),
+            Dict{Int, WelfordState}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{Int, WelfordState}(),
+            Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
+            WelfordState(), WelfordState(), WelfordState(), WelfordState(),
+            Dict{String, WelfordState}(),
+            representative_by, nothing, nothing, 0.0,
+            keep_rundata ? ResultData[] : nothing
+        )
+    end
 
-     @doc """
-        BatchProcessor(batch::Batch; stysle::String = "LightRD", print_infos::Bool = false)
+    @doc """
+        BatchProcessor(rds::Vector{ResultData})
 
-    Creates a `BatchProcessor` object from a `Batch` object.
-    This constructor generates the `ResultData` object for each of the `Simulation`s
-    contained in the `Batch`. It supresses the usual info outputs that
-    are being made during the `ResultData` generation. If you want to enable them,
-    pass `print_infos = true`.
+    Backward-compatible constructor: accumulate a pre-existing vector of `ResultData`
+    objects into a new `BatchProcessor`. The individual `ResultData` objects are stored
+    in `rundata` so that `merge(bds::BatchData...)` continues to work.
     """
-     function BatchProcessor(batch::Batch; rd_style::String = "LightRD", print_infos::Bool = false)
-        prev_print_state = GEMS.PRINT_INFOS
-        cnt = 0 # counter for printing
-
-        rds = Vector{ResultData}()
-        for sim in simulations(batch)
-            printinfo("Processing Simulation $(cnt = cnt + 1)/$(batch |> simulations |> length) in Batch")
-            GEMS.PRINT_INFOS = print_infos
-            push!(rds, ResultData(sim |> PostProcessor, style = rd_style))
-            GEMS.PRINT_INFOS = prev_print_state
+    function BatchProcessor(rds::Vector{ResultData})
+        bp = new(
+            0,
+            Dict{Int, WelfordState}(),
+            Dict{Int, WelfordState}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{Int, WelfordState}(),
+            Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
+            WelfordState(), WelfordState(), WelfordState(), WelfordState(),
+            Dict{String, WelfordState}(),
+            nothing, nothing, nothing, 0.0,
+            ResultData[]
+        )
+        for rd in rds
+            accumulate!(bp, rd)
         end
-        new(rds)
-     end
+        return bp
+    end
 end
 
 
 ###
-### PRIVATE FUNCTIONS
+### INTERNAL HELPERS
 ###
 
-"""
-    extract(batchProcessor::BatchProcessor, func::Function)
-
-Applies the provided `function` to all associated `ResultData` objects in the `rundata` vector. 
-"""
-function extract(batchProcessor::BatchProcessor, func::Function)
-    return(map(
-        x -> func(x),
-        batchProcessor |> rundata
-    ))
+function _update_singlecol!(accum::Dict{Int, WelfordState}, df::DataFrame, key_col::Symbol, val_col::Symbol)
+    for row in eachrow(df)
+        welford_update!(get!(accum, Int(row[key_col]), WelfordState()), row[val_col])
+    end
 end
 
-"""
-    extract_unique(batchProcessor::BatchProcessor, func::Function)
-
-Applies the provided `function` to all associated `ResultData` objects in the `rundata` vector and returns all unique values.
-"""
-function extract_unique(batchProcessor::BatchProcessor, func::Function)
-    return(extract(batchProcessor, func) |> unique)
-end
-
-###
-### run data
-###
-
-"""
-    rundata(batchProcessor::BatchProcessor)
-
-Returns the vector of `ResultData` objects of simulation runs that are associated with this batch.
-"""
-function rundata(batchProcessor::BatchProcessor)
-    return(batchProcessor.rundata)
-end
-
-"""
-    run_ids(batchProcessor::BatchProcessor)
-
-Returns the vector of simulation run IDs that are associated with this batch.
-"""
-function run_ids(batchProcessor::BatchProcessor)
-    return(map(
-        x -> hash(x) |> string,
-        batchProcessor |> rundata
-    ))
-end
-
-"""
-    config_files(batchProcessor::BatchProcessor)
-
-Returns the associated config file.
-"""
-function config_files(batchProcessor::BatchProcessor)
-    return(map(
-        x -> config_file(x),
-        batchProcessor |> rundata
-    ) |> unique)
-end
-
-"""
-    population_files(batchProcessor::BatchProcessor)
-
-Returns the associated population file.
-"""
-function population_files(batchProcessor::BatchProcessor)
-    return(map(
-        x -> population_file(x),
-        batchProcessor |> rundata
-    ) |> unique)
+function _update_multicol!(accum::Dict{String, Dict{Int, WelfordState}}, df::DataFrame, key_col::Symbol)
+    val_cols = [name for name in names(df) if name != string(key_col)]
+    for col in val_cols
+        col_accum = get!(accum, col, Dict{Int, WelfordState}())
+        for row in eachrow(df)
+            welford_update!(get!(col_accum, Int(row[key_col]), WelfordState()), row[col])
+        end
+    end
 end
 
 
 ###
-### simulation data
+### ACCUMULATE FROM POSTPROCESSOR
 ###
 
 """
-    tick_unit(batchProcessor::BatchProcessor)
+    accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style="LightRD")
 
-Returns a vector of `tick_units` that were used in the associated simulations.
-Values are unique and can originate from multiple simulation runs.
+Update all accumulators in `bp` with data from a completed `PostProcessor`.
+Call this once per simulation run immediately after `PostProcessor(sim)` is
+constructed, before discarding the simulation and post-processor.
 """
-function tick_unit(batchProcessor::BatchProcessor)
-    return(map(
-        x -> tick_unit(x),
-        batchProcessor |> rundata
-    ) |> unique)
-end
+function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "LightRD")
+    bp.n_runs += 1
 
-"""
-    start_conditions(batchProcessor::BatchProcessor)
+    # Per-tick accumulators
+    _update_singlecol!(bp.tick_cases, tick_cases(pp), :tick, :exposed_cnt)
+    _update_singlecol!(bp.effectiveR, effectiveR(pp), :tick, :effective_R)
+    _update_multicol!(bp.compartments, cumulative_disease_progressions(pp), :tick)
+    _update_singlecol!(bp.quarantines, cumulative_quarantines(pp), :tick, :quarantined)
+    for (testtype, df) in tick_tests(pp)
+        _update_multicol!(
+            get!(bp.tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
+            df, :tick
+        )
+    end
 
-Returns a vector of `start_conditions` that were used in the associated simulations.
-Values are unique and can originate from multiple simulation runs.
-"""
-function start_conditions(batchProcessor::BatchProcessor)
-    return(extract_unique(batchProcessor, start_condition))
-end
+    # Scalar accumulators
+    welford_update!(bp.total_infections, nrow(infectionsDF(pp)))
+    welford_update!(bp.attack_rate, attack_rate(pp))
+    welford_update!(bp.r0, r0(pp))
+    welford_update!(bp.total_quarantines, total_quarantines(pp))
+    for (testtype, cnt) in total_tests(pp)
+        welford_update!(get!(bp.total_tests, testtype, WelfordState()), cnt)
+    end
 
-"""
-    stop_criteria(batchProcessor::BatchProcessor)
-
-Returns a vector of `stop_criteria` that were used in the associated simulations.
-Values are unique and can originate from multiple simulation runs.
-"""
-function stop_criteria(batchProcessor::BatchProcessor)
-    return(extract_unique(batchProcessor, stop_criterion))
-end
-
-"""
-    number_of_individuals(batchProcessor::BatchProcessor)
-
-Returns a vector of `number_of_individuals` that were used in the associated simulations.
-Values are unique and can originate from multiple simulation runs.
-"""
-function number_of_individuals(batchProcessor::BatchProcessor)
-    return(extract_unique(batchProcessor, number_of_individuals))
-end
-
-"""
-    pathogens(batchProcessor::BatchProcessor)
-
-Returns a vector of `pathogens` that were used in the associated simulations.
-Values may not be unique as multiple simulation runs can use the same pathogen configuration.
-The pathogens are not subjected to a deep sameness check.
-"""
-function pathogens(batchProcessor::BatchProcessor)
-    return(vcat(extract_unique(batchProcessor, pathogens)...))
-end
-
-
-
-"""
-    total_infections(batchProcessor::BatchProcessor)
-
-Returns a vector of the `total_infections` accross the simulation runs in this batch.
-"""
-function total_infections(batchProcessor::BatchProcessor)
-    rates = map(
-        x -> total_infections(x),
-        batchProcessor |> rundata
-    )
-
-    return(rates)
-end
-
-
-"""
-    total_tests(batchProcessor::BatchProcessor)
-
-Returns a Dict of vectors of the `total_tests` per TestType accross the simulation runs in this batch.
-"""
-function total_tests(batchProcessor::BatchProcessor)
-
-    rates = map(
-        x -> total_tests(x),
-        batchProcessor |> rundata
-    )
-    return(rates)
-end
-
-"""
-    attack_rate(batchProcessor::BatchProcessor)
-
-Returns a vector of the `attack_rate` accross the simulation runs in this batch.
-"""
-function attack_rate(batchProcessor::BatchProcessor)
-    rates = map(
-        x -> attack_rate(x),
-        batchProcessor |> rundata
-    )
-
-    return(rates)
-end
-
-"""
-    r0(batchProcessor::BatchProcessor)
-
-Returns a vector of the basic reproduction number `r0` accross the simulation runs in this batch.
-"""
-function r0(batchProcessor::BatchProcessor)
-    rates = map(
-        x -> r0(x),
-        batchProcessor |> rundata
-    )
-
-    return(rates)
-end
-
-
-"""
-    
-    settingdata(batchProcessor::BatchProcessor)
-
-Returns a `{String, DataFrame}` dictionary containing information about setting types in the population files
-in the simulation runs of this batch. Populations are distinguished by their population file name
-stored in the key of the result dictionary.
-
-# Dataframe Columns
-
-| Name                 | Type      | Description                                                      |
-| :------------------- | :-------- | :--------------------------------------------------------------- |
-| `setting_type`       | `String`  | Setting type identifier (name)                                   |
-| `number_of_settings` | `Int64`   | Overall number of settings of that type                          |
-| `min_individuals`    | `Float64` | Lowest number of individuals assigned to a setting of this type  |
-| `max_individuals`    | `Float64` | Highest number of individuals assigned to a setting of this type |
-| `avg_individuals`    | `Float64` | Average number of individuals assigned to a setting of this type |
-
-"""
-function settingdata(batchProcessor::BatchProcessor)
-
-    res = Dict{String, Any}()
-
-    for rd in batchProcessor |> rundata
-
-        pf = rd |> population_file
-
-        if !haskey(res, pf)
-            res[pf] = rd |> setting_data
+    # Representative run
+    if bp.representative_by !== nothing
+        val = Float64(bp.representative_by(pp))
+        bp.running_mean_criterion = ((bp.n_runs - 1) * bp.running_mean_criterion + val) / bp.n_runs
+        if bp.representative_run === nothing ||
+           abs(val - bp.running_mean_criterion) < abs(bp.representative_value - bp.running_mean_criterion)
+            bp.representative_run = ResultData(pp, style = rd_style)
+            bp.representative_value = val
         end
     end
 
-    return(res)
+    # Optional: all ResultData
+    if bp.rundata !== nothing
+        push!(bp.rundata, ResultData(pp, style = rd_style))
+    end
 end
 
-"""
-    strategies(batchProcessor::BatchProcessor)
-
-Returns a vector of the `strategies` accross the simulation runs in this batch.
-"""
-function strategies(batchProcessor::BatchProcessor)
-    return(extract(batchProcessor, strategies))    
-end
-
-"""
-    symptom_triggers(batchProcessor::BatchProcessor)
-
-Returns a vector of the `symptom_triggers` accross the simulation runs in this batch.
-"""
-function symptom_triggers(batchProcessor::BatchProcessor)
-    return(extract(batchProcessor, symptom_triggers))    
-end
-
-"""
-    testtypes(batchProcessor::BatchProcessor)
-
-Returns a vector of the `testtypes` accross the simulation runs in this batch.
-"""
-function testtypes(batchProcessor::BatchProcessor)
-    return(extract(batchProcessor, testtypes))    
-end
-
-"""
-    total_quarantines(batchProcessor::BatchProcessor)
-
-Returns a vector of the `total_quarantines` accross the simulation runs in this batch.
-"""
-function total_quarantines(batchProcessor::BatchProcessor)
-    rates = map(
-        x -> total_quarantines(x),
-        batchProcessor |> rundata
-    )
-
-    return(rates)
-end
 
 ###
-### system data
+### ACCUMULATE FROM RESULTDATA (backward compat)
 ###
 
 """
-    runtime(batchProcessor::BatchProcessor)
+    accumulate!(bp::BatchProcessor, rd::ResultData)
 
-Returns dataframe of the runtimes of the associated simulation runs in this batch.
-The columns correspond to the names of the inner timers while each row corresponds to one run.
-(*Note*: This data is only available if the simulation runs were done via the `main()` function)
+Update accumulators from a pre-computed `ResultData` object.
+Used by the backward-compatible `BatchProcessor(rds::Vector{ResultData})` constructor.
 """
-function runtime(batchProcessor::BatchProcessor)
-    # read timer outputs
-    tos = map(timer_output, batchProcessor |> rundata)
+function accumulate!(bp::BatchProcessor, rd::ResultData)
+    bp.n_runs += 1
 
-    # abort if no timer output found
-    if tos |> length <= 0
-        return
+    # Per-tick accumulators — read from ResultData dataframes dict
+    tc = tick_cases(rd)
+    if isa(tc, DataFrame) && !isempty(tc) && hasproperty(tc, :tick) && hasproperty(tc, :exposed_cnt)
+        _update_singlecol!(bp.tick_cases, tc, :tick, :exposed_cnt)
     end
 
-    # read names of inner timers
-    nms = unique(vcat([t |> TimerOutputs.todict |> x -> x["inner_timers"]|> keys|>x->String.(x) for t in tos]...))
-
-    # create dict entry for each inner timer with aggregated values
-    #res = Dict()
-    res = DataFrame()
-    for n in nms
-        res[!, Symbol(n)] = map(x -> TimerOutputs.todict(x)["inner_timers"]|> x -> get(x, n, Dict("time_ns" => 0))["time_ns"], tos) 
+    er = effectiveR(rd)
+    if isa(er, DataFrame) && !isempty(er) && hasproperty(er, :tick) && hasproperty(er, :effective_R)
+        _update_singlecol!(bp.effectiveR, er, :tick, :effective_R)
     end
 
-    return(res)
-end
-
-"""
-    allocations(batchProcessor::BatchProcessor)
-
-Returns a dataframe for the memory allocations of the associated simulation runs in this batch.
-The columns correspond to the names of the inner timers while each row corresponds to one run.
-(*Note*: This data is only available if the simulation runs were done via the `main()` function)
-"""
-function allocations(batchProcessor::BatchProcessor)
-        # read timer outputs
-        tos = map(timer_output, batchProcessor |> rundata)
-
-        # abort if no timer output found
-        if tos |> length <= 0
-            return
-        end
-    
-        # read names of inner timers
-        nms = unique(vcat([t |> TimerOutputs.todict |> x -> x["inner_timers"]|> keys|>x->String.(x) for t in tos]...))
-        # create dict entry for each inner timer with aggregated values
-        #res = Dict()
-        res = DataFrame()
-        for n in nms
-            res[!, Symbol(n)] = map(x -> TimerOutputs.todict(x)["inner_timers"]|> x -> get(x, n, Dict("allocated_bytes" => 0))["allocated_bytes"], tos) 
-        end
-        return(res)
-end
-
-
-###
-### setting age contacts
-###
-
-"""
-    setting_age_contacts(batchProcessor::BatchProcessor, settingtype::Type{T}) where {T <: Setting}
-
-Returns a `{String, DataFrame}` dictionary containing an age X age matrix with sampled
-contacts for a provided settingtype T (i.e. Households) for each population files
-of this batch. 
-"""
-function setting_age_contacts(batchProcessor::BatchProcessor, settingtype::Type{T}) where {T <: Setting}
-    
-    res = Dict{String, Any}()
-
-    for rd in batchProcessor |> rundata
-
-        pf = rd |> population_file
-
-        if !haskey(res, pf)
-            res[pf] = setting_age_contacts(rd, settingtype)
-        end
+    cdp = cumulative_disease_progressions(rd)
+    if isa(cdp, DataFrame) && !isempty(cdp) && hasproperty(cdp, :tick)
+        _update_multicol!(bp.compartments, cdp, :tick)
     end
 
-    return(res)
-    
-end
-
-
-###
-### data frames
-###
-"""
-    population_pyramid(batchProcessor::BatchProcessor)
-
-Returns a `{String, DataFrame}` dictionary containing
-data to generate a population pyramid for each population files
-of this batch. 
-
-# Dataframe Columns
-
-| Name     | Type     | Description                                                 |
-| :------- | :------- | :---------------------------------------------------------- |
-| `age`    | `Int8`   | 1-year age classes                                          |
-| `sex`    | `Int8`   | Sex according to population DataFame (0 = female, 1 = male) |
-| `gender` | `String` | String variant of Sex [Female, Male]                        |
-| `sum`    | `Int64`  | Total of all genders in all ages (females multiplied by -1) |
-"""
-function population_pyramid(batchProcessor::BatchProcessor)
-
-    res = Dict{String, DataFrame}()
-
-    for rd in batchProcessor |> rundata
-
-        pf = rd |> population_file
-
-        if !haskey(res, pf)
-            res[pf] = rd |> population_pyramid
-        end
+    cq = cumulative_quarantines(rd)
+    if isa(cq, DataFrame) && !isempty(cq) && hasproperty(cq, :tick) && hasproperty(cq, :quarantined)
+        _update_singlecol!(bp.quarantines, cq, :tick, :quarantined)
     end
 
-    return(res)
-end
-
-"""
-    tick_cases(batchProcessor::BatchProcessor)
-
-Returns newly exposed inviduals per tick accross the simulation runs in this batch.
-It returns mean, standard deviation, range, and confidence intervals.
-"""
-function tick_cases(batchProcessor::BatchProcessor)
-
-    # extract tick cases from each simulation run
-    data = map(
-        x -> tick_cases(x) |>
-            x -> DataFrames.select(x, :tick, :exposed_cnt),
-        batchProcessor |> rundata
-    )
-
-    # return aggregated valules
-    return(
-        data
-    )
-end
-
-"""
-    effectiveR(batchProcessor::BatchProcessor)
-
-Returns the effective R value for each tick accross the simulation runs in this batch.
-It returns mean, standard deviation, range, and confidence intervals.
-"""
-function effectiveR(batchProcessor::BatchProcessor)
-
-    # extract effective R from each simulation run
-    data = map(
-        x -> effectiveR(x) |>
-            x -> DataFrames.select(x, :tick, :effective_R),
-        batchProcessor |> rundata
-    )
-
-    # return aggregated valules
-    return data
-end
-
-
-"""
-    tests(batchProcessor::BatchProcessor)
-
-Returns newly exposed inviduals per tick accross the simulation runs in this batch.
-It returns mean, standard deviation, range, and confidence intervals.
-"""
-function tests(batchProcessor::BatchProcessor)
-    res = Dict{String, Vector{DataFrame}}()
-    # extract tick cases from each simulation run
-
-    for rd in batchProcessor |> rundata
-        for (test_name, test_df) in (rd |> tick_tests)
-            if haskey(res, test_name)
-                push!(res[test_name], test_df)
-            else
-                res[test_name] = [test_df]
+    tt = tick_tests(rd)
+    if isa(tt, Dict)
+        for (testtype, df) in tt
+            if isa(df, DataFrame) && !isempty(df) && hasproperty(df, :tick)
+                _update_multicol!(
+                    get!(bp.tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
+                    df, :tick
+                )
             end
         end
     end
-    # return aggregated valules
-    return(res)
+
+    # Scalar accumulators
+    ti = total_infections(rd)
+    isa(ti, Number) && welford_update!(bp.total_infections, ti)
+
+    ar = attack_rate(rd)
+    isa(ar, Number) && welford_update!(bp.attack_rate, ar)
+
+    r0val = r0(rd)
+    isa(r0val, Number) && welford_update!(bp.r0, r0val)
+
+    tq = total_quarantines(rd)
+    isa(tq, Number) && welford_update!(bp.total_quarantines, tq)
+
+    tt_scalar = total_tests(rd)
+    if isa(tt_scalar, Dict)
+        for (testtype, cnt) in tt_scalar
+            isa(cnt, Number) && welford_update!(get!(bp.total_tests, testtype, WelfordState()), cnt)
+        end
+    end
+
+    # Optional: store ResultData
+    if bp.rundata !== nothing
+        push!(bp.rundata, rd)
+    end
+end
+
+
+###
+### ACCESSORS
+###
+
+"""
+    n_runs(bp::BatchProcessor)
+
+Returns the number of simulation runs accumulated so far.
+"""
+function n_runs(bp::BatchProcessor)
+    return bp.n_runs
 end
 
 """
-    cumulative_quarantines(batchProcessor::BatchProcessor)
+    rundata(bp::BatchProcessor)
 
-Returns cumulative quarantines per tick accross the simulation runs in this batch.
+Returns the stored `ResultData` objects, or `nothing` if `keep_rundata` was `false`.
 """
-function cumulative_quarantines(batchProcessor::BatchProcessor)
-    # extract quarantines from each simulation run
-    data = map(
-        x -> cumulative_quarantines(x) |>
-            x -> DataFrames.select(x, :tick, :quarantined),
-        batchProcessor |> rundata
-    )
-
-    # return aggregated valules
-    return data
+function rundata(bp::BatchProcessor)
+    return bp.rundata
 end
 
 """
-    cumulative_disease_progressions(batchProcessor::BatchProcessor)
+    representative_run(bp::BatchProcessor)
 
-Returns cumulative quarantines per tick accross the simulation runs in this batch.
+Returns the representative `ResultData` (the run whose `representative_by` criterion
+was closest to the running mean), or `nothing` if `representative_by` was not set.
 """
-function cumulative_disease_progressions(batchProcessor::BatchProcessor)
-    # extract quarantines from each simulation run
-    data = map(
-        x -> cumulative_disease_progressions(x),
-        batchProcessor |> rundata
-    )
-
-    # return aggregated valules
-    return data
+function representative_run(bp::BatchProcessor)
+    return bp.representative_run
 end
+
+"""
+    total_infections(bp::BatchProcessor)
+
+Returns aggregated statistics for total infections across all runs.
+Keys: `"min"`, `"max"`, `"mean"`, `"std"`, `"lower_95"`, `"upper_95"`.
+"""
+function total_infections(bp::BatchProcessor)
+    return welford_to_aggregate(bp.total_infections)
+end
+
+"""
+    attack_rate(bp::BatchProcessor)
+
+Returns aggregated statistics for the attack rate across all runs.
+"""
+function attack_rate(bp::BatchProcessor)
+    return welford_to_aggregate(bp.attack_rate)
+end
+
+"""
+    r0(bp::BatchProcessor)
+
+Returns aggregated statistics for the basic reproduction number across all runs.
+"""
+function r0(bp::BatchProcessor)
+    return welford_to_aggregate(bp.r0)
+end
+
+"""
+    total_quarantines(bp::BatchProcessor)
+
+Returns aggregated statistics for total quarantines across all runs.
+"""
+function total_quarantines(bp::BatchProcessor)
+    return welford_to_aggregate(bp.total_quarantines)
+end
+
+"""
+    total_tests(bp::BatchProcessor)
+
+Returns a dict mapping test type name to aggregated statistics across all runs.
+"""
+function total_tests(bp::BatchProcessor)
+    return Dict(k => welford_to_aggregate(v) for (k, v) in bp.total_tests)
+end
+
+"""
+    tick_cases(bp::BatchProcessor)
+
+Returns aggregated new exposures per tick across all runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function tick_cases(bp::BatchProcessor)
+    return welford_df_to_stats_df(bp.tick_cases, :tick)
+end
+
+"""
+    effectiveR(bp::BatchProcessor)
+
+Returns aggregated effective R per tick across all runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function effectiveR(bp::BatchProcessor)
+    return welford_df_to_stats_df(bp.effectiveR, :tick)
+end
+
+"""
+    cumulative_quarantines(bp::BatchProcessor)
+
+Returns aggregated cumulative quarantines per tick across all runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function cumulative_quarantines(bp::BatchProcessor)
+    return welford_df_to_stats_df(bp.quarantines, :tick)
+end
+
+"""
+    cumulative_disease_progressions(bp::BatchProcessor)
+
+Returns aggregated disease progression counts per tick across all runs.
+Returns a `Dict{String, DataFrame}` keyed by compartment name
+(`latent`, `pre_symptomatic`, `symptomatic`, `asymptomatic`).
+"""
+function cumulative_disease_progressions(bp::BatchProcessor)
+    return welford_df_to_stats_df_multicol(bp.compartments, :tick)
+end
+
+"""
+    tests(bp::BatchProcessor)
+
+Returns aggregated test statistics per tick for each test type.
+Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
+"""
+function tests(bp::BatchProcessor)
+    return Dict(k => welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.tests)
+end
+
 
 ###
 ### PRINTING
 ###
 
-function Base.show(io::IO, batchProcessor::BatchProcessor)
-    write(io, "Batch Processor ($(batchProcessor.rundata |> length) runs)")
+function Base.show(io::IO, bp::BatchProcessor)
+    write(io, "BatchProcessor ($(bp.n_runs) runs accumulated)")
 end

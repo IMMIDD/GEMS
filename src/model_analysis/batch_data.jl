@@ -85,17 +85,21 @@ mutable struct BatchData <: AbstractResultData
 
     @doc """
 
-        BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style = "LightRD")
+        BatchData(batch::Batch; style="DefaultBatchData", rd_style="LightRD", representative_by=nothing, keep_rundata=false)
 
-    Create a `BatchData` object using a `Batch` and a `style`, that defines
-    which calculations should be done during batch processing. As the provided `batch`
-    has unprocessed simulation runs inside, this function also triggers post processing
-    for the individual simulation runs. The `rd_style` argument defines the calculations
-    that should be done during post processing of the individual runs.
-    Post processing requires a simulation to be done.
+    Create a `BatchData` object by running all simulation configurations in `batch`
+    one at a time (streaming). Peak memory is ~1× a single simulation regardless
+    of batch size.
+
+    - `rd_style`: the `ResultData` style used when storing representative/individual runs.
+    - `representative_by`: a function `pp -> scalar` to select a representative run
+      (e.g. `pp -> nrow(infectionsDF(pp))`). Default: `nothing`.
+    - `keep_rundata`: store all individual `ResultData` objects. Required for
+      `merge(bds::BatchData...)`. Default: `false`.
     """
-    BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style = "LightRD") =
-        BatchData(BatchProcessor(batch, rd_style = rd_style), style = style)
+    BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style::String = "LightRD",
+              representative_by = nothing, keep_rundata::Bool = false) =
+        BatchData(run!(batch; rd_style, representative_by, keep_rundata), style = style)
 
     @doc """
 
@@ -145,8 +149,9 @@ function Base.merge(bds::BatchData...; style::String = "DefaultBatchData")
 
     rds = ResultData[]
     for bd in bds
-        isempty(runs(bd)) ? throw("Not all passed BatchData objects have the individual simulation runs stored (ResultData). Merging BatchData objects effectively generates a new BatchData object from the internal ResultData objects (therefore they must be passed).") : nothing
-        append!(rds, runs(bd))
+        r = runs(bd)
+        (isnothing(r) || isempty(r)) && throw("Not all passed BatchData objects have the individual simulation runs stored (ResultData). Use keep_rundata=true when creating the BatchData objects, or merging is not possible.")
+        append!(rds, r)
     end
 
     return BatchData(rds, style = style)
