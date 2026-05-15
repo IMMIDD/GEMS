@@ -287,6 +287,40 @@
             end
         end
 
+        @testset "Plots with BatchData" begin
+            # bd is defined at the top of the Reporting testset (n_runs=5, pop_size=1000)
+            # Tests that each generate(plt, bd::BatchData) dispatch returns a plot
+            batch_plts = [
+                TickCases()
+                EffectiveReproduction()
+                CumulativeIsolations()
+                ActiveDarkFigure()
+                CumulativeCases()
+                GenerationTime()
+                TotalTests()
+                HouseholdAttackRate()
+                InfectionDuration()
+            ]
+            for p in batch_plts
+                @test generate(p, bd) isa Plots.Plot
+            end
+
+            # default gemsplot(bd) and type-specific
+            @test gemsplot(bd) isa Plots.Plot
+            @test gemsplot(bd, type = :TickCases) isa Plots.Plot
+            @test gemsplot(bd, type = :EffectiveReproduction) isa Plots.Plot
+            @test gemsplot(bd, type = (:TickCases, :CumulativeCases)) isa Plots.Plot
+
+            # multi-label batch
+            b_ml = merge(
+                Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.2, label = "Baseline"),
+                Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.15, label = "Masks")
+            )
+            bd_ml = BatchData(b_ml)
+            @test gemsplot(bd_ml) isa Plots.Plot
+            @test gemsplot(bd_ml, type = :TickCases) isa Plots.Plot
+        end
+
         @testset "Scenario Simulation Plots" begin
             p = AggregatedSettingAgeContacts(Household)
             @test settingtype(p) == Household

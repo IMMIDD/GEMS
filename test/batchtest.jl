@@ -128,11 +128,19 @@
             @test bd |> git_commit |> length != 0
 
             @test bd |> dataframes |> length != 0
+            # multi-column accessors now return Dict
             @test bd |> tick_cases |> length != 0
             @test bd |> effectiveR |> length != 0
             @test bd |> tests |> length >= 0
             @test bd |> cumulative_quarantines |> length != 0
             @test bd |> cumulative_disease_progressions |> length != 0
+            # new fields
+            @test bd |> total_detected_cases |> length != 0
+            @test bd |> detection_rate |> length != 0
+            @test seed(bd) == seed(bP)
+            @test isnothing(runs(bd))
+            @test !isnothing(median_run(bd))
+            @test typeof(median_run(bd)) == ResultData
 
             @test bd |> id |> length != 0
         end
@@ -265,6 +273,17 @@
             low_inf = total_infections(bp.per_label["Low"])["mean"]
             high_inf = total_infections(bp.per_label["High"])["mean"]
             @test low_inf < high_inf
+
+            # per_label(bd) exposes the per-label data through BatchData
+            bd = BatchData(bp)
+            pl = per_label(bd)
+            @test haskey(pl, "Low")
+            @test haskey(pl, "High")
+            @test haskey(pl["Low"], "tick_cases")
+            @test haskey(pl["Low"], "effectiveR")
+            @test haskey(pl["Low"], "median_run")
+            @test !isnothing(pl["Low"]["median_run"])
+            @test !isnothing(pl["High"]["median_run"])
         end
     end
 end
