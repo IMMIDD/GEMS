@@ -128,10 +128,10 @@
             @test bd |> git_commit |> length != 0
 
             @test bd |> dataframes |> length != 0
-            @test bd |> tick_cases |> nrow != 0
-            @test bd |> effectiveR |> nrow != 0
+            @test bd |> tick_cases |> length != 0
+            @test bd |> effectiveR |> length != 0
             @test bd |> tests |> length >= 0
-            @test bd |> cumulative_quarantines |> nrow != 0
+            @test bd |> cumulative_quarantines |> length != 0
             @test bd |> cumulative_disease_progressions |> length != 0
 
             @test bd |> id |> length != 0
@@ -143,9 +143,9 @@
             @test bP |> attack_rate |> length != 0
             @test bP |> r0 |> length != 0
             @test bP |> total_quarantines |> length != 0
-            @test bP |> tick_cases |> nrow != 0
-            @test bP |> effectiveR |> nrow != 0
-            @test bP |> cumulative_quarantines |> nrow != 0
+            @test bP |> tick_cases |> length != 0
+            @test bP |> effectiveR |> length != 0
+            @test bP |> cumulative_quarantines |> length != 0
             @test bP |> cumulative_disease_progressions |> length != 0
         end
 
