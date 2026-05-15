@@ -379,19 +379,25 @@ end
 # further dispatching
 gemsplot(rd::ResultData; plotargs...) = gemsplot([rd]; plotargs...)
 
-function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::String; plotargs...)
+function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::String;
+    col_key::Union{Nothing, String} = nothing, plotargs...)
+    function _extract(data_dict)
+        v = get(data_dict, df_key, nothing)
+        isnothing(v) && return DataFrame()
+        isa(v, Dict) && !isnothing(col_key) ? get(v, col_key, DataFrame()) : v
+    end
     pl = per_label(bd)
     if length(pl) > 1
         colors = Dict(zip(sort(collect(keys(pl))), gemscolors(length(pl))))
         for lab in sort(collect(keys(pl)))
-            df = get(pl[lab], df_key, DataFrame())
+            df = _extract(pl[lab])
             isempty(df) && continue
             plot!(p, df[!, "tick"], df[!, "mean"],
                 ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
                 fillalpha = 0.3, linewidth = 2, label = lab, color = colors[lab])
         end
     else
-        df = get(dataframes(bd), df_key, DataFrame())
+        df = _extract(dataframes(bd))
         isempty(df) && return
         plot!(p, df[!, "tick"], df[!, "mean"],
             ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),

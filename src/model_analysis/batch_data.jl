@@ -453,7 +453,7 @@ Returns aggregated values for newly exposed inviduals per tick accross the simul
 It returns mean, standard deviation, range, and confidence intervals.
 """
 function tick_cases(bd::BatchData)
-    return(get(bd |> dataframes, "tick_cases", DataFrame()))
+    return(get(bd |> dataframes, "tick_cases", Dict()))
 end
 
 """
@@ -463,7 +463,7 @@ Returns aggregated values for the effective R value for each tick accross the si
 It returns mean, standard deviation, range, and confidence intervals.
 """
 function effectiveR(bd::BatchData)
-    return(get(bd |> dataframes, "effectiveR", DataFrame()))
+    return(get(bd |> dataframes, "effectiveR", Dict()))
 end
 
 """
@@ -483,7 +483,7 @@ Returns aggregated values cumulative_quarantines per tick accross the simulation
 It returns mean, standard deviation, range, and confidence intervals.
 """
 function cumulative_quarantines(bd::BatchData)
-    return(get(bd |> dataframes, "cumulative_quarantines", DataFrame()))
+    return(get(bd |> dataframes, "cumulative_quarantines", Dict()))
 end
 
 """

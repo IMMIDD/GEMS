@@ -17,10 +17,10 @@ mutable struct BatchProcessor
     tick_unit::String
 
     # Per-tick Welford accumulators (tick -> WelfordState)
-    tick_cases::Dict{Int, WelfordState}
-    effectiveR::Dict{Int, WelfordState}
+    tick_cases::Dict{String, Dict{Int, WelfordState}}
+    effectiveR::Dict{String, Dict{Int, WelfordState}}
     compartments::Dict{String, Dict{Int, WelfordState}}
-    quarantines::Dict{Int, WelfordState}
+    quarantines::Dict{String, Dict{Int, WelfordState}}
     tests::Dict{String, Dict{String, Dict{Int, WelfordState}}}
     dark_figure::Dict{Int, WelfordState}
     cumulative_cases::Dict{String, Dict{Int, WelfordState}}
@@ -60,10 +60,10 @@ mutable struct BatchProcessor
         new(
             0,
             "tick",
-            Dict{Int, WelfordState}(),
-            Dict{Int, WelfordState}(),
             Dict{String, Dict{Int, WelfordState}}(),
-            Dict{Int, WelfordState}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{String, Dict{Int, WelfordState}}(),
             Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
             Dict{Int, WelfordState}(),
             Dict{String, Dict{Int, WelfordState}}(),
@@ -86,10 +86,10 @@ mutable struct BatchProcessor
         bp = new(
             0,
             "tick",
-            Dict{Int, WelfordState}(),
-            Dict{Int, WelfordState}(),
             Dict{String, Dict{Int, WelfordState}}(),
-            Dict{Int, WelfordState}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{String, Dict{Int, WelfordState}}(),
+            Dict{String, Dict{Int, WelfordState}}(),
             Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
             Dict{Int, WelfordState}(),
             Dict{String, Dict{Int, WelfordState}}(),
@@ -148,10 +148,10 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     end
 
     # Per-tick accumulators
-    _update_singlecol!(bp.tick_cases, tick_cases(pp), :tick, :exposed_cnt)
-    _update_singlecol!(bp.effectiveR, effectiveR(pp), :tick, :effective_R)
+    _update_multicol!(bp.tick_cases, tick_cases(pp), :tick)
+    _update_multicol!(bp.effectiveR, effectiveR(pp), :tick)
     _update_multicol!(bp.compartments, cumulative_disease_progressions(pp), :tick)
-    _update_singlecol!(bp.quarantines, cumulative_quarantines(pp), :tick, :quarantined)
+    _update_multicol!(bp.quarantines, cumulative_quarantines(pp), :tick)
     for (testtype, df) in tick_tests(pp)
         _update_multicol!(
             get!(bp.tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
@@ -212,13 +212,13 @@ function accumulate!(bp::BatchProcessor, rd::ResultData)
 
     # Per-tick accumulators — read from ResultData dataframes dict
     tc = tick_cases(rd)
-    if isa(tc, DataFrame) && !isempty(tc) && hasproperty(tc, :tick) && hasproperty(tc, :exposed_cnt)
-        _update_singlecol!(bp.tick_cases, tc, :tick, :exposed_cnt)
+    if isa(tc, DataFrame) && !isempty(tc) && hasproperty(tc, :tick)
+        _update_multicol!(bp.tick_cases, tc, :tick)
     end
 
     er = effectiveR(rd)
-    if isa(er, DataFrame) && !isempty(er) && hasproperty(er, :tick) && hasproperty(er, :effective_R)
-        _update_singlecol!(bp.effectiveR, er, :tick, :effective_R)
+    if isa(er, DataFrame) && !isempty(er) && hasproperty(er, :tick)
+        _update_multicol!(bp.effectiveR, er, :tick)
     end
 
     cdp = cumulative_disease_progressions(rd)
@@ -227,8 +227,8 @@ function accumulate!(bp::BatchProcessor, rd::ResultData)
     end
 
     cq = cumulative_quarantines(rd)
-    if isa(cq, DataFrame) && !isempty(cq) && hasproperty(cq, :tick) && hasproperty(cq, :quarantined)
-        _update_singlecol!(bp.quarantines, cq, :tick, :quarantined)
+    if isa(cq, DataFrame) && !isempty(cq) && hasproperty(cq, :tick)
+        _update_multicol!(bp.quarantines, cq, :tick)
     end
 
     tt = tick_tests(rd)
@@ -393,31 +393,34 @@ end
 """
     tick_cases(bp::BatchProcessor)
 
-Returns aggregated new exposures per tick across all runs as a `DataFrame`.
-Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+Returns aggregated case counts per tick across all runs.
+Returns a `Dict{String, DataFrame}` keyed by column name
+(`exposed_cnt`, `infectious_cnt`, `recovered_cnt`, `dead_cnt`).
 """
 function tick_cases(bp::BatchProcessor)
-    return welford_df_to_stats_df(bp.tick_cases, :tick)
+    return welford_df_to_stats_df_multicol(bp.tick_cases, :tick)
 end
 
 """
     effectiveR(bp::BatchProcessor)
 
-Returns aggregated effective R per tick across all runs as a `DataFrame`.
-Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+Returns aggregated effective R values per tick across all runs.
+Returns a `Dict{String, DataFrame}` keyed by column name
+(`effective_R`, `rolling_R`, `in_hh_effective_R`, `rolling_in_hh_R`, `rolling_out_hh_R`).
 """
 function effectiveR(bp::BatchProcessor)
-    return welford_df_to_stats_df(bp.effectiveR, :tick)
+    return welford_df_to_stats_df_multicol(bp.effectiveR, :tick)
 end
 
 """
     cumulative_quarantines(bp::BatchProcessor)
 
-Returns aggregated cumulative quarantines per tick across all runs as a `DataFrame`.
-Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+Returns aggregated cumulative quarantine counts per tick across all runs.
+Returns a `Dict{String, DataFrame}` keyed by column name
+(`quarantined`, `students`, `workers`, `other`).
 """
 function cumulative_quarantines(bp::BatchProcessor)
-    return welford_df_to_stats_df(bp.quarantines, :tick)
+    return welford_df_to_stats_df_multicol(bp.quarantines, :tick)
 end
 
 """

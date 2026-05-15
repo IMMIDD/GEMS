@@ -142,7 +142,7 @@ end
 function generate(plt::CumulativeIsolations, bd::BatchData; plotargs...)
     uticks = get(sim_data(bd), "tick_unit", "tick")
     p = plot(xlabel = uppercasefirst(uticks), ylabel = "Individuals in Isolation", dpi = 300, fontfamily = "Times Roman")
-    _plot_labelled_ribbon!(p, bd, "cumulative_quarantines", "Quarantined (mean ± 95% CI)"; plotargs...)
+    _plot_labelled_ribbon!(p, bd, "cumulative_quarantines", "Quarantined (mean ± 95% CI)"; col_key = "quarantined", plotargs...)
     plot!(p; plotargs...)
     return p
 end

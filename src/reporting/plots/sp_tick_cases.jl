@@ -139,7 +139,7 @@ end
 function generate(plt::TickCases, bd::BatchData; plotargs...)
     uticks = get(sim_data(bd), "tick_unit", "tick")
     p = plot(xlabel = uppercasefirst(uticks), ylabel = "Individuals", dpi = 300, fontfamily = "Times Roman")
-    _plot_labelled_ribbon!(p, bd, "tick_cases", "Exposed (mean ± 95% CI)"; plotargs...)
+    _plot_labelled_ribbon!(p, bd, "tick_cases", "Exposed (mean ± 95% CI)"; col_key = "exposed_cnt", plotargs...)
     plot!(p; plotargs...)
     return p
 end

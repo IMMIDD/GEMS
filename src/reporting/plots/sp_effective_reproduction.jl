@@ -112,7 +112,7 @@ end
 function generate(plt::EffectiveReproduction, bd::BatchData; plotargs...)
     uticks = get(sim_data(bd), "tick_unit", "tick")
     p = plot(xlabel = uppercasefirst(uticks), ylabel = "(7-$uticks Rolling) Effective R", dpi = 300, fontfamily = "Times Roman")
-    _plot_labelled_ribbon!(p, bd, "effectiveR", "Effective R (mean ± 95% CI)"; plotargs...)
+    _plot_labelled_ribbon!(p, bd, "effectiveR", "Effective R (mean ± 95% CI)"; col_key = "rolling_R", plotargs...)
     hline!(p, [1], linewidth = 1, linestyle = :dash, linecolor = :red, label = "R=1")
     plot!(p; plotargs...)
     return p
