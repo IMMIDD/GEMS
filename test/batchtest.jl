@@ -59,15 +59,7 @@
             @test !haskey(bd.data, "custom")
         end
 
-        @testset "BatchDataMerge" begin
-            # merge requires keep_rundata=true on both BatchData objects
-            bd_a = BatchData(process!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
-            bd_b = BatchData(process!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
-            bd_merged = merge(bd_a, bd_b)
-            @test length(runs(bd_merged)) == 6
-        end
-
-        @testset "BatchDataCustom" begin
+@testset "BatchDataCustom" begin
             mutable struct TestBatchData <: BatchDataStyle
                 data::Dict{String, Any}
                 function TestBatchData(bP::BatchProcessor)

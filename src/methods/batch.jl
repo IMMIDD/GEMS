@@ -15,7 +15,7 @@ results into a `BatchProcessor`.
   stored. For multi-label batches one median run per label is computed.
   Default: total infections. Pass `nothing` to disable.
 - `keep_rundata`: if `true`, every run's `ResultData` is stored in `bp.rundata`.
-  Required for `merge(bds::BatchData...)`. Default: `false`.
+  Default: `false`.
 - `rd_style`: the `ResultData` style for individual and median runs. Default: `"LightRD"`.
 """
 function process!(batch::Batch;

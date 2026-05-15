@@ -2,7 +2,6 @@
 export BatchData
 export BatchDataStyle
 
-export merge
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
@@ -96,70 +95,13 @@ mutable struct BatchData <: AbstractResultData
     - `rd_style`: the `ResultData` style used when storing representative/individual runs.
     - `median_by`: a function `pp -> scalar` to select the median run
       (e.g. `pp -> nrow(infectionsDF(pp))`). Default: `nothing`.
-    - `keep_rundata`: store all individual `ResultData` objects. Required for
-      `merge(bds::BatchData...)`. Default: `false`.
+    - `keep_rundata`: store all individual `ResultData` objects. Default: `false`.
     """
     BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style::String = "LightRD",
               median_by = nothing, keep_rundata::Bool = false) =
         BatchData(process!(batch; rd_style, median_by, keep_rundata), style = style)
 
-    @doc """
-
-        BatchData(rds::Vector{ResultData}; style::String = "DefaultBatchData")
-
-    Create a `BatchData` object using a vector of `ResultData` objects and a `style`, that defines
-    which calculations should be done during batch processing.
-    """
-    BatchData(rds::Vector{ResultData}; style::String = "DefaultBatchData") = 
-        BatchData(BatchProcessor(rds), style = style)
-
-    @doc """
-
-        BatchData(bds::BatchData...; style::String = "DefaultBatchData")
-
-    Calls the `merge()` function for the input `BatchData` objects.
-    """ 
-    BatchData(bds::BatchData...; style::String = "DefaultBatchData") =
-        merge(bds..., style = style)
-
-    @doc """
-
-        BatchData(bds::Vector{BatchData}; style::String = "DefaultBatchData")
-
-    Calls the `merge()` function for the input vector of `BatchData` objects.
-    """ 
-    BatchData(bds::Vector{BatchData}; style::String = "DefaultBatchData") =
-        BatchData(bds...; style = style)
 end
-
-"""
-    merge(bds::BatchData...; style::String = "DefaultBatchData")
-    merge(bds::Vector{BatchData}; style::String = "DefaultBatchData")
-
-Generates a new `BatchData` object from the union of all `ResultData` objects
-out of all the passed `BatchData` objects. Naturally, this requires the
-input `BatchData` objects to have internal `ResultData` objects.
-This requirement is met if the default style (`DefaultBatchData`) was used
-during the creation of the input objects. Simply: If you didn't apply
-any custom style, this should work.
-
-# Returns
-
-- `BatchData`: (New) combined `BatchData` object with all internal `ResultData` objects
-"""
-function Base.merge(bds::BatchData...; style::String = "DefaultBatchData")
-
-    rds = ResultData[]
-    for bd in bds
-        r = runs(bd)
-        (isnothing(r) || isempty(r)) && throw("Not all passed BatchData objects have the individual simulation runs stored (ResultData). Use keep_rundata=true when creating the BatchData objects, or merging is not possible.")
-        append!(rds, r)
-    end
-
-    return BatchData(rds, style = style)
-end
-
-Base.merge(bds::Vector{BatchData}; style::String = "DefaultBatchData") = merge(bds...; style = style)
 
 
 ###
