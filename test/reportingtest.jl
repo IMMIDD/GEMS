@@ -12,7 +12,7 @@
     rd = sim |> PostProcessor |> ResultData
 
     b = Batch(n_runs = 5, pop_size = 1000, label = "My Experiment")
-    bd = BatchData(b)
+    bd = BatchData(b; keep_rundata = true)
 
     @testset "Markdown Conversion" begin
 
