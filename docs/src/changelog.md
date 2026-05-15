@@ -2,6 +2,40 @@
 
 This page lists the changes and release notes for GEMS.jl, automatically generated from [GitHub Releases](https://github.com/IMMIDD/GEMS/releases).
 
+<a id="v1.0.0"></a>
+# v1.0.0 — Batch API Rewrite
+
+### Breaking changes
+
+- `Batch` now stores simulation *configurations* (keyword argument tuples) instead of
+  pre-instantiated `Simulation` objects. Use `Batch(n_runs = N, kwarg = val, ...)`.
+- `run!(::Batch)` is removed. Use `process!(::Batch)`, which returns a `BatchProcessor`
+  instead of mutating the `Batch`.
+- `simulations(batch)` is removed. Use `simconfigs(batch)`.
+- `add!(::Simulation, ::Batch)` and `remove!(::Simulation, ::Batch)` are removed.
+  Use `add!(::NamedTuple, ::Batch)`.
+- `ResultData(::Batch)` is removed. Use `BatchData(::Batch)`.
+- Several `BatchProcessor` accessor functions that required storing all `ResultData`
+  objects (`config_files`, `pathogens`, `settingdata`, `population_pyramid`,
+  `setting_age_contacts`, `strategies`, `run_ids`, etc.) are removed. See the API
+  reference for alternatives.
+
+### New features
+
+- **Streaming memory model**: `BatchProcessor` uses Welford online statistics.
+  Peak memory is proportional to a single simulation run, not to the number of runs.
+- **Per-simulation seeding**: every run gets a deterministic seed derived from a master
+  seed. Pass `seed = N` to `process!` or `BatchData` for reproducible batches.
+- **Representative run**: by default, the simulation whose total infections are closest
+  to the median is re-run and stored as `representative_run(bp)`. Customise with
+  `representative_by = pp -> ...` or disable with `representative_by = nothing`.
+- **Per-label aggregation**: multi-label batches accumulate statistics separately per
+  label. `gemsplot(bd)` shows one mean±CI ribbon per label automatically.
+- **`BatchData`-native plots**: `gemsplot(bd::BatchData)` now dispatches directly to
+  mean±CI ribbon plots without requiring `keep_rundata = true`.
+- `runs(bd)` returns `nothing` by default. Use `keep_rundata = true` to store all
+  individual `ResultData` objects.
+
 <a id="v0.4.0"></a>
 # [v0.4.0 Initial Public Version](https://github.com/IMMIDD/GEMS/releases/tag/v0.4.0) - 2025-04-16
 

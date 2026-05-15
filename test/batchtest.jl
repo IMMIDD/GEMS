@@ -202,5 +202,16 @@
             @test seed(bp1) == 42
             @test total_infections(bp1)["mean"] == total_infections(bp2)["mean"]
         end
+
+        @testset "EmptyBatch" begin
+            bp = process!(Batch(n_runs = 0))
+            @test n_runs(bp) == 0
+            @test isnothing(representative_run(bp))
+        end
+
+        @testset "DisabledRepresentative" begin
+            bp = process!(Batch(n_runs = 3); representative_by = nothing)
+            @test isnothing(representative_run(bp))
+        end
     end
 end
