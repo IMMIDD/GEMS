@@ -6,7 +6,7 @@ export merge
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export sim_data, runs, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
+export sim_data, runs, representative_run, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
 export dataframes, tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
 export dark_figure, cumulative_cases, generation_times, per_label
 
@@ -350,6 +350,26 @@ Returns the `ResultData` objects of each of the runs in the the batch data objec
 """
 function runs(bd::BatchData)
     get(bd |> sim_data, "runs", nothing)
+end
+
+"""
+    representative_run(bd::BatchData)
+
+Returns the representative `ResultData` (the run whose criterion was closest to
+the running median), or `nothing` if `representative_by` was not set.
+"""
+function representative_run(bd::BatchData)
+    get(bd |> sim_data, "representative_run", nothing)
+end
+
+"""
+    seed(bd::BatchData)
+
+Returns the master seed used to derive per-simulation seeds for this batch,
+or `0` if the batch was processed without explicit seeding.
+"""
+function seed(bd::BatchData)
+    get(bd |> sim_data, "seed", 0)
 end
 
 """

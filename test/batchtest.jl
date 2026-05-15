@@ -158,9 +158,16 @@
         end
 
         @testset "RepresentativeRun" begin
-            bp_rep = process!(Batch(n_runs = 5); representative_by = pp -> nrow(infectionsDF(pp)))
+            bp_rep = process!(Batch(n_runs = 5))
             @test !isnothing(representative_run(bp_rep))
             @test typeof(representative_run(bp_rep)) == ResultData
+        end
+
+        @testset "Seed" begin
+            bp1 = process!(Batch(n_runs = 3); seed = 42)
+            bp2 = process!(Batch(n_runs = 3); seed = 42)
+            @test seed(bp1) == 42
+            @test total_infections(bp1)["mean"] == total_infections(bp2)["mean"]
         end
     end
 end

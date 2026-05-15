@@ -1,7 +1,7 @@
 # DATA PROCESSING FOR BATCHRUNS
 export BatchProcessor
 
-export rundata, n_runs, representative_run, tick_unit
+export rundata, n_runs, representative_run, tick_unit, seed
 export total_infections, total_tests, attack_rate, r0
 export tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
 export total_quarantines, dark_figure, cumulative_cases, generation_times
@@ -9,20 +9,8 @@ export total_quarantines, dark_figure, cumulative_cases, generation_times
 """
     BatchProcessor
 
-Streaming accumulator for multi-run batch analysis. Analogous to `PostProcessor`
-for single runs: it is the raw accumulation layer from which `BatchData` styles
-compute their output.
-
-Accumulate one run at a time by calling `accumulate!(bp, pp)` with a completed
-`PostProcessor`. Statistics are maintained online using Welford's algorithm —
-memory usage is O(1) in the number of runs regardless of batch size.
-
-# Optional fields
-
-- `representative_by`: pass `pp -> scalar` to keep the single `ResultData` whose
-  criterion value is closest to the running median. Useful for "run with median infections"
-  style analyses without storing all N `ResultData` objects.
-- `keep_rundata`: pass `true` to store all individual `ResultData` objects (O(n) memory).
+A type to provide data processing features for batches of simulation runs,
+supplying reports, plots, or other data analyses.
 """
 mutable struct BatchProcessor
     n_runs::Int
@@ -45,36 +33,30 @@ mutable struct BatchProcessor
     total_quarantines::WelfordState
     total_tests::Dict{String, WelfordState}
 
-    # Representative run — O(1) ResultData in memory.
-    # Criterion scalars are stored (lightweight Vector{Float64}) so the running
-    # median is exact at each step. The representative is swapped whenever the
-    # new run is closer to the current median than the stored one.
-    representative_by::Union{Nothing, Function}
+    # Representative run — set by process! when representative_by is provided
     representative_run::Union{Nothing, ResultData}
-    representative_value::Union{Nothing, Float64}
-    criterion_values::Vector{Float64}
 
-    # Optional: keep all ResultData — O(n) memory, not the default
+    # Seed used for this batch run
+    master_seed::Int64
+
+    # Individual ResultData objects — only stored when keep_rundata=true
     rundata::Union{Nothing, Vector{ResultData}}
 
-    # Per-label sub-accumulators — populated by process!, empty for sub-processors themselves
+    # Per-label sub-accumulators, only populated for multi-label batches
     per_label::Dict{String, BatchProcessor}
 
     @doc """
-        BatchProcessor(; representative_by=nothing, keep_rundata=false)
+        BatchProcessor(; keep_rundata=false, master_seed=0)
 
-    Create an empty `BatchProcessor` ready to receive runs via `accumulate!`.
+    Creates a `BatchProcessor` object.
 
     # Keyword Arguments
 
-    - `representative_by`: a function `pp::PostProcessor -> scalar` that selects
-      which run is "representative" (e.g. `pp -> nrow(infectionsDF(pp))`). The
-      processor keeps the single `ResultData` closest to the running median of this
-      scalar. Default: `nothing` (no representative run stored).
     - `keep_rundata`: if `true`, store every run's `ResultData` in `rundata`.
       Required for `merge(bds::BatchData...)`. Default: `false`.
+    - `master_seed`: seed for this batch run. Default: `0`.
     """
-    function BatchProcessor(; representative_by = nothing, keep_rundata::Bool = false)
+    function BatchProcessor(; keep_rundata::Bool = false, master_seed::Int64 = 0)
         new(
             0,
             "tick",
@@ -88,7 +70,8 @@ mutable struct BatchProcessor
             Dict{Int, WelfordState}(),
             WelfordState(), WelfordState(), WelfordState(), WelfordState(),
             Dict{String, WelfordState}(),
-            representative_by, nothing, nothing, Float64[],
+            nothing,
+            master_seed,
             keep_rundata ? ResultData[] : nothing,
             Dict{String, BatchProcessor}()
         )
@@ -97,9 +80,7 @@ mutable struct BatchProcessor
     @doc """
         BatchProcessor(rds::Vector{ResultData})
 
-    Backward-compatible constructor: accumulate a pre-existing vector of `ResultData`
-    objects into a new `BatchProcessor`. The individual `ResultData` objects are stored
-    in `rundata` so that `merge(bds::BatchData...)` continues to work.
+    Creates a `BatchProcessor` from a vector of `ResultData` objects.
     """
     function BatchProcessor(rds::Vector{ResultData})
         bp = new(
@@ -115,7 +96,8 @@ mutable struct BatchProcessor
             Dict{Int, WelfordState}(),
             WelfordState(), WelfordState(), WelfordState(), WelfordState(),
             Dict{String, WelfordState}(),
-            nothing, nothing, nothing, Float64[],
+            nothing,
+            Int64(0),
             ResultData[],
             Dict{String, BatchProcessor}()
         )
@@ -155,9 +137,7 @@ end
 """
     accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style="LightRD")
 
-Update all accumulators in `bp` with data from a completed `PostProcessor`.
-Call this once per simulation run immediately after `PostProcessor(sim)` is
-constructed, before discarding the simulation and post-processor.
+Adds the results of a completed `PostProcessor` to a `BatchProcessor`.
 """
 function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "LightRD")
     bp.n_runs += 1
@@ -211,18 +191,6 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
         welford_update!(get!(bp.total_tests, testtype, WelfordState()), cnt)
     end
 
-    # Representative run
-    if bp.representative_by !== nothing
-        val = Float64(bp.representative_by(pp))
-        push!(bp.criterion_values, val)
-        running_median = median(bp.criterion_values)
-        if bp.representative_run === nothing ||
-           abs(val - running_median) < abs(bp.representative_value - running_median)
-            bp.representative_run = ResultData(pp, style = rd_style)
-            bp.representative_value = val
-        end
-    end
-
     # Optional: all ResultData
     if bp.rundata !== nothing
         push!(bp.rundata, ResultData(pp, style = rd_style))
@@ -231,14 +199,13 @@ end
 
 
 ###
-### ACCUMULATE FROM RESULTDATA (backward compat)
+### ACCUMULATE FROM RESULTDATA
 ###
 
 """
     accumulate!(bp::BatchProcessor, rd::ResultData)
 
-Update accumulators from a pre-computed `ResultData` object.
-Used by the backward-compatible `BatchProcessor(rds::Vector{ResultData})` constructor.
+Adds a pre-computed `ResultData` object to a `BatchProcessor`.
 """
 function accumulate!(bp::BatchProcessor, rd::ResultData)
     bp.n_runs += 1
@@ -343,7 +310,7 @@ end
 """
     tick_unit(bp::BatchProcessor)
 
-Returns the tick unit string captured from the first accumulated run (e.g. `"d"` for days).
+Returns the tick unit of the simulation runs in this batch (e.g. `"d"` for days).
 """
 function tick_unit(bp::BatchProcessor)
     return bp.tick_unit
@@ -361,11 +328,20 @@ end
 """
     representative_run(bp::BatchProcessor)
 
-Returns the representative `ResultData` (the run whose `representative_by` criterion
-was closest to the running mean), or `nothing` if `representative_by` was not set.
+Returns the representative `ResultData` (the run whose criterion is closest to
+the median across all runs), or `nothing` if `representative_by` was not set.
 """
 function representative_run(bp::BatchProcessor)
     return bp.representative_run
+end
+
+"""
+    seed(bp::BatchProcessor)
+
+Returns the seed used for this batch run, or `0` if no seed was set.
+"""
+function seed(bp::BatchProcessor)
+    return bp.master_seed
 end
 
 """
@@ -501,5 +477,5 @@ end
 ###
 
 function Base.show(io::IO, bp::BatchProcessor)
-    write(io, "BatchProcessor ($(bp.n_runs) runs accumulated)")
+    write(io, "BatchProcessor ($(bp.n_runs) runs)")
 end

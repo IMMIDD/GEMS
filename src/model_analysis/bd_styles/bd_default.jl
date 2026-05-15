@@ -76,6 +76,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "representative_run" => () -> representative_run(bP),
                     "number_of_runs" => () -> n_runs(bP),
                     "tick_unit" => () -> tick_unit(bP),
+                    "seed" => () -> seed(bP),
                     "total_infections" => () -> total_infections(bP),
                     "attack_rate" => () -> attack_rate(bP),
                     "r0" => () -> r0(bP),
@@ -101,6 +102,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                         "cumulative_cases" => cumulative_cases(lbp),
                         "generation_times" => generation_times(lbp),
                         "tests" => tests(lbp),
+                        "representative_run" => representative_run(lbp),
                     ) for (lab, lbp) in bP.per_label),
                 )
         )

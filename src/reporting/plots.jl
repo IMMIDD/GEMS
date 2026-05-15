@@ -400,6 +400,19 @@ function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::
 end
 gemsplot(::Nothing; plotargs...) = error("runs(bd) returned nothing — re-run with keep_rundata=true to store individual ResultData objects.")
 
+function _per_label_representative_plots(plt, bd::BatchData; plotargs...)
+    pl = per_label(bd)
+    isempty(pl) && return nothing
+    label_plts = []
+    for (lab, label_data) in sort(collect(pl), by = first)
+        label_rep = get(label_data, "representative_run", nothing)
+        isnothing(label_rep) && continue
+        push!(label_plts, generate(plt, label_rep; plot_title = lab, plotargs...))
+    end
+    isempty(label_plts) && return nothing
+    return plot(label_plts..., layout = (1, length(label_plts)))
+end
+
 function gemsplot(bd::BatchData; type = :nothing, plotargs...)
     # Always dispatch to aggregated BatchData plotting (mean+CI ribbon style).
     # For individual-trace plots (one line per run), use gemsplot(runs(bd)) explicitly.

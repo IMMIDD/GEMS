@@ -4,11 +4,8 @@ export add!, simconfigs
 """
     Batch
 
-A batch is a container to run and analyze multiple simulations.
-It stores simulation configurations (keyword argument tuples) rather than
-instantiated `Simulation` objects, so that the pipeline can run, post-process,
-and discard one simulation at a time without holding all of them in memory
-simultaneously.
+A container for running and analyzing multiple simulations.
+Stores simulation configurations that are executed sequentially by `process!`.
 """
 mutable struct Batch
     simconfigs::Vector{NamedTuple}

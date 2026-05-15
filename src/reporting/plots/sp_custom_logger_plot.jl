@@ -148,7 +148,11 @@ function generate(plt::CustomLoggerPlot, rds::Vector{ResultData}; plotargs...)
 end
 
 function generate(plt::CustomLoggerPlot, bd::BatchData; plotargs...)
+    rep = representative_run(bd)
+    !isnothing(rep) && return generate(plt, rep; plotargs...)
+    label_plts = _per_label_representative_plots(plt, bd; plotargs...)
+    !isnothing(label_plts) && return label_plts
     r = runs(bd)
-    isnothing(r) && error("CustomLoggerPlot batch plots require per-run data. Re-run with keep_rundata=true and use gemsplot(runs(bd)).")
+    isnothing(r) && error("CustomLoggerPlot batch plots require per-run data. Re-run with representative_by = pp -> nrow(infectionsDF(pp)) (the default) to plot the representative run, or with keep_rundata = true to plot all runs.")
     generate(plt, r; plotargs...)
 end
