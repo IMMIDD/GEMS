@@ -140,9 +140,12 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     _update_multicol!(bp.compartments, cumulative_disease_progressions(pp), :tick)
     _update_multicol!(bp.quarantines, cumulative_quarantines(pp), :tick)
     for (testtype, df) in tick_tests(pp)
+        # exclude derived rate columns — they are 0 for no-test ticks (not undefined),
+        # which would bias the Welford mean; counts are accumulated instead
         _update_multicol!(
             get!(bp.tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
-            df, :tick
+            select(df, Not(intersect(["positive_rate", "rolling_positive_rate"], names(df)))),
+            :tick
         )
     end
 
