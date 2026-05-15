@@ -158,9 +158,42 @@
         end
 
         @testset "RepresentativeRun" begin
-            bp_rep = process!(Batch(n_runs = 5))
-            @test !isnothing(representative_run(bp_rep))
-            @test typeof(representative_run(bp_rep)) == ResultData
+            criterion = pp -> nrow(infectionsDF(pp))
+            fixed_seed = 1234
+
+            bp = process!(Batch(n_runs = 5); seed = fixed_seed, representative_by = criterion)
+            @test !isnothing(representative_run(bp))
+            @test typeof(representative_run(bp)) == ResultData
+
+            # Re-derive per-simulation seeds the same way process! does
+            sim_seeds = let rng = Xoshiro(Int64(fixed_seed))
+                [gems_rand(rng, 0:typemax(Int64)) for _ in 1:5]
+            end
+
+            # Collect criterion values by replaying each simulation (bit-identical via seed)
+            criteria = [Float64(criterion(PostProcessor(run!(Simulation(seed = s))))) for s in sim_seeds]
+
+            final_median = median(criteria)
+            best_idx = argmin(abs(v - final_median) for v in criteria)
+
+            # The representative run is the bit-identical replay of the median-closest simulation,
+            # so its total infections must equal that simulation's criterion value
+            @test total_infections(representative_run(bp)) == Int(criteria[best_idx])
+        end
+
+        @testset "RepresentativeRunMultiLabel" begin
+            baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
+            masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
+            bp = process!(merge(baseline, masks))
+
+            # no global representative for multi-label batches
+            @test isnothing(representative_run(bp))
+
+            # each label has its own representative
+            @test !isnothing(bp.per_label["Baseline"].representative_run)
+            @test !isnothing(bp.per_label["Mask Wearing"].representative_run)
+            @test typeof(bp.per_label["Baseline"].representative_run) == ResultData
+            @test typeof(bp.per_label["Mask Wearing"].representative_run) == ResultData
         end
 
         @testset "Seed" begin
