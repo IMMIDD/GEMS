@@ -147,9 +147,8 @@
         @test isa(rd, Vector{ResultData})
         rd = ResultData([sim], style="", print_infos=true)
         @test isa(rd, Vector{ResultData})
-        batch = Batch()
-        rd = ResultData(batch, style="", print_infos=true)
-        @test isa(rd, Vector{ResultData})
+        bd = BatchData(Batch(n_runs = 1))
+        @test isa(bd, BatchData)
     end
 
     @testset "config_file_val Test" begin

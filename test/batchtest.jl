@@ -61,8 +61,8 @@
 
         @testset "BatchDataMerge" begin
             # merge requires keep_rundata=true on both BatchData objects
-            bd_a = BatchData(run!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
-            bd_b = BatchData(run!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
+            bd_a = BatchData(process!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
+            bd_b = BatchData(process!(Batch(n_runs = 3); keep_rundata = true); style = "DefaultBatchData")
             bd_merged = merge(bd_a, bd_b)
             @test length(runs(bd_merged)) == 6
         end
@@ -158,7 +158,7 @@
         end
 
         @testset "RepresentativeRun" begin
-            bp_rep = run!(Batch(n_runs = 5); representative_by = pp -> nrow(infectionsDF(pp)))
+            bp_rep = process!(Batch(n_runs = 5); representative_by = pp -> nrow(infectionsDF(pp)))
             @test !isnothing(representative_run(bp_rep))
             @test typeof(representative_run(bp_rep)) == ResultData
         end

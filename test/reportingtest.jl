@@ -11,14 +11,7 @@
     run!(sim)
     rd = sim |> PostProcessor |> ResultData
 
-    sims = Simulation[]
-    for i in 1:5
-        sim = Simulation(pop_size = 1000, label="My Experiment")
-        push!(sims, sim)
-    end
-
-    b = Batch(sims...)
-    process!(b)
+    b = Batch(n_runs = 5, pop_size = 1000, label = "My Experiment")
     bd = BatchData(b)
 
     @testset "Markdown Conversion" begin
