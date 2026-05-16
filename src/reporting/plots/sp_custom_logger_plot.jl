@@ -102,20 +102,20 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 function generate(plt::CustomLoggerPlot, rds::Vector{ResultData}; plotargs...)
 
     # throw exception if rds-Vector is empty
-    isempty(rds) ? throw("The passed ResultData vector is empty.") : nothing
+    isempty(rds) ? throw(ArgumentError("The passed ResultData vector is empty.")) : nothing
 
     # check that all rds have same custom loggers
     cols = try
          map(rd -> rd |> customlogger |>
             x -> select(x, Not(:tick)) |> names, rds)
     catch
-        throw("Not all passed ResultData objects have custom logger data")
+        throw(ArgumentError("Not all passed ResultData objects have custom logger data"))
     end
 
     # check if all cols have the same names
     ref = Set(cols[1])
     for c in cols
-        Set(c) != ref ? throw("All ResultData objects need to have customloggers with the exact same column names (mismatch in $c and $(cols[1]))") : nothing
+        Set(c) != ref ? throw(ArgumentError("All ResultData objects need to have customloggers with the exact same column names (mismatch in $c and $(cols[1]))")) : nothing
     end
 
     cols = cols[1]

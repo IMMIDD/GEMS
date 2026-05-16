@@ -159,7 +159,7 @@
         @test negative_followup(test_measure4) === i_strategy
 
         #test with no input
-        @test_throws "Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'" begin
+        @test_throws ArgumentError begin
             test_measure5 = GEMS.Test()
         end
 
@@ -218,7 +218,7 @@
         @test negative_followup(s_test_measure4) === i_strategy
 
         #test with no input
-        @test_throws "Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'" begin
+        @test_throws ArgumentError begin
             s_test_measure5 = GEMS.Test()
         end
 
@@ -356,13 +356,13 @@
         @test all(name in strategy_names for name in expected_strategies)
 
         #test errors thrown
-        @test_throws "The sample_size for the FindMembers()-measure must be a positive integer." begin
+        @test_throws ArgumentError begin
             find_members_false_sample_size = FindMembers(i_strategy, sample_size=-2)
         end
-        @test_throws "The sample_fraction for the FindMembers()-measure must be between 0 and 1." begin
+        @test_throws ArgumentError begin
             find_members_false_sample_fraction = FindMembers(i_strategy, sample_fraction=2.0)
         end
-        @test_throws "Please provide either a sample_size or a sample_fraction. Both don't go together." begin
+        @test_throws ArgumentError begin
             find_members_sample_size_and_sample_fraction = FindMembers(i_strategy, sample_size=1, sample_fraction=0.5)
         end
     end
@@ -456,7 +456,7 @@
         @test negative_followup(pool_test4) === s_strategy
 
         #test with no input
-        @test_throws "Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'" begin
+        @test_throws ArgumentError begin
             pool_test5 = PoolTest()
         end
 
@@ -503,7 +503,7 @@
         @test GEMS.reportable(test_all4) === false
 
         #test with no input
-        @test_throws "Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'" begin
+        @test_throws ArgumentError begin
             test_all5 = TestAll()
         end
 
@@ -568,12 +568,12 @@
         @test interval(s_tick_trigger2) == 7
 
         #test errors
-        @test_throws "The switch_tick must either be a positive integer or -1" ITickTrigger(i_strategy, switch_tick=Int16(-2))
-        @test_throws "The interval must either be a positive integer or -1" ITickTrigger(i_strategy, interval=Int16(-2))
+        @test_throws ArgumentError ITickTrigger(i_strategy, switch_tick=Int16(-2))
+        @test_throws ArgumentError ITickTrigger(i_strategy, interval=Int16(-2))
 
-        @test_throws "The first argument must be a DataType inheriting from 'Setting'" STickTrigger(DataType, s_strategy)
-        @test_throws "The switch_tick must either be a positive integer or -1" STickTrigger(Office, s_strategy, switch_tick=Int16(-2))
-        @test_throws "The interval must either be a positive integer or -1" STickTrigger(Office, s_strategy, interval=Int16(-2))
+        @test_throws ArgumentError STickTrigger(DataType, s_strategy)
+        @test_throws ArgumentError STickTrigger(Office, s_strategy, switch_tick=Int16(-2))
+        @test_throws ArgumentError STickTrigger(Office, s_strategy, interval=Int16(-2))
 
         #test trigger function
         sim = Simulation()
@@ -671,7 +671,7 @@
         add_measure!(custom_i_strategy, custom_i_measure)
         symptom_trigger = SymptomTrigger(custom_i_strategy)
         add_symptom_trigger!(sim, symptom_trigger)
-        @test_throws "The condition that you passed to IStrategy 'custom i strategy' does not return a boolean value." GEMS.trigger(symptom_trigger, i, sim)
+        @test_throws ErrorException GEMS.trigger(symptom_trigger, i, sim)
 
         s_measure_function = (s, simobj) -> (size(s) > 5 ? close!(s) : nothing)
         custom_s_measure = CustomSMeasure(s_measure_function)
@@ -679,7 +679,7 @@
         add_measure!(custom_s_strategy, custom_s_measure)
         s_tick_trigger = STickTrigger(Office, custom_s_strategy)
         add_tick_trigger!(sim, s_tick_trigger)
-        @test_throws "The condition that you passed to SStrategy 'custom s strategy' does not return a boolean value." GEMS.trigger(s_tick_trigger, sim)
+        @test_throws ErrorException GEMS.trigger(s_tick_trigger, sim)
 
         #test should_fire function
         @testset "Testing should_fire" begin

@@ -77,15 +77,15 @@ struct FindMembers <: SMeasure
         sample_size::Int64 = -1, sample_fraction::Float64 = 1.0, selectionfilter::Function = x -> true)
 
         if sample_size < -1
-            throw("The sample_size for the FindMembers()-measure must be a positive integer.")
+            throw(ArgumentError("The sample_size for the FindMembers()-measure must be a positive integer."))
         end
 
         if !(0 <= sample_fraction <= 1)
-            throw("The sample_fraction for the FindMembers()-measure must be between 0 and 1.")
+            throw(ArgumentError("The sample_fraction for the FindMembers()-measure must be between 0 and 1."))
         end
 
         if sample_size != -1 && sample_fraction != 1.0
-            throw("Please provide either a sample_size or a sample_fraction. Both don't go together.")
+            throw(ArgumentError("Please provide either a sample_size or a sample_fraction. Both don't go together."))
         end
 
         return(

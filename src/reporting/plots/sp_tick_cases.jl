@@ -53,7 +53,7 @@ function generate(plt::TickCases, rd::ResultData; series::Union{Symbol, Vector{S
 
     # throw error if empty array is passed
     if isempty(sers)
-        throw("Provide at least one series (:exposed, :infectious, :removed, :deaths) to plot.")
+        throw(ArgumentError("Provide at least one series (:exposed, :infectious, :removed, :deaths) to plot."))
     end
 
     cases = rd |> tick_cases

@@ -94,11 +94,11 @@ struct ITickTrigger <: TickTrigger
 
     function ITickTrigger(strategy::IStrategy; switch_tick::Int16 = Int16(-1), interval::Int16 = Int16(-1))
         if switch_tick <= 0 && switch_tick != -1
-            throw("The switch_tick must either be a positive integer or -1")
+            throw(ArgumentError("The switch_tick must either be a positive integer or -1"))
         end
         
         if interval <= 0 && interval != -1
-            throw("The interval must either be a positive integer or -1")
+            throw(ArgumentError("The interval must either be a positive integer or -1"))
         end
 
         new(strategy, switch_tick, interval)
@@ -147,15 +147,15 @@ struct STickTrigger <: TickTrigger
 
     function STickTrigger(settingtype::DataType, strategy::SStrategy; switch_tick::Int16 = Int16(-1), interval::Int16 = Int16(-1))
         if !(settingtype <: Setting)
-            throw("The first argument must be a DataType inheriting from 'Setting'")
+            throw(ArgumentError("The first argument must be a DataType inheriting from 'Setting'"))
         end
 
         if switch_tick <= 0 && switch_tick != -1
-            throw("The switch_tick must either be a positive integer or -1")
+            throw(ArgumentError("The switch_tick must either be a positive integer or -1"))
         end
 
         if interval <= 0 && interval != -1
-            throw("The interval must either be a positive integer or -1")
+            throw(ArgumentError("The interval must either be a positive integer or -1"))
         end
 
         new(settingtype, strategy, switch_tick, interval)
@@ -312,7 +312,7 @@ function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
         Bool(str.condition(i))
     catch
         # throw error if user provided a function that doesn't return a boolean value
-        throw("The condition that you passed to IStrategy '$(str.name)' does not return a boolean value.")
+        throw(ErrorException("The condition that you passed to IStrategy '$(str.name)' does not return a boolean value."))
     end
 
     if !cond
@@ -348,7 +348,7 @@ function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
         Bool(str.condition(s))
     catch
         # throw error if user provided a function that doesn't return a boolean value
-        throw("The condition that you passed to SStrategy '$(str.name)' does not return a boolean value.")
+        throw(ErrorException("The condition that you passed to SStrategy '$(str.name)' does not return a boolean value."))
     end
 
     if !cond

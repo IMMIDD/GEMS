@@ -462,7 +462,7 @@
         @test GEMS.office(inds[1], sim) === offices(sim)[2]
         @test GEMS.office(inds[2], sim) === offices(sim)[2]
         @test GEMS.office(inds[3], sim) === offices(sim)[1]
-        @test_throws "Individual $(id(inds[1])) is not assigned to a School Class" GEMS.schoolclass(inds[1], sim)
+        @test_throws ArgumentError GEMS.schoolclass(inds[1], sim)
 
         my_pop = DataFrame(
             id=[1, 2, 3],
@@ -477,7 +477,7 @@
         @test GEMS.schoolclass(inds[1], sim) === schoolclasses(sim)[2]
         @test GEMS.schoolclass(inds[2], sim) === schoolclasses(sim)[2]
         @test GEMS.schoolclass(inds[3], sim) === schoolclasses(sim)[1]
-        @test_throws "Individual $(id(inds[1])) is not assigned to an Office" GEMS.office(inds[1], sim)
+        @test_throws ArgumentError GEMS.office(inds[1], sim)
 
         for ind in inds
             @test GEMS.municipality(ind, sim) === municipalities(sim)[1]

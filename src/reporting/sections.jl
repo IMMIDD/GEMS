@@ -207,7 +207,7 @@ end
 
 # unifying usage with gemsplot typing
 function PlotSection(type::Symbol)
-    !is_subtype(type, SimulationPlot) ? throw("There's no plot type that matches $type") : nothing
+    !is_subtype(type, SimulationPlot) ? throw(ArgumentError("There's no plot type that matches $type")) : nothing
 
     plt = try 
         # instantiate plot
@@ -217,7 +217,7 @@ function PlotSection(type::Symbol)
         get_subtype(type, SimulationPlot)()
     catch
         # throws exception if the plot type doesn't have a 0-argument constructor
-        throw("$type cannot be used via PlotSection(:$type), please intantiate the object with its required arguments instead, like: PlotSection($type(args...))")
+        throw(ArgumentError("$type cannot be used via PlotSection(:$type), please intantiate the object with its required arguments instead, like: PlotSection($type(args...))"))
     end
 
     return PlotSection(plt)
@@ -402,7 +402,7 @@ function Section(data::Union{ResultData, BatchData}, type::Symbol)
     dtype = try
          eval(Symbol("sec_$type"))
     catch
-        throw("There is no default report section called $type.")
+        throw(ArgumentError("There is no default report section called $type."))
     end
 
     return Section(data, dtype)

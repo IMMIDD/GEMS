@@ -52,8 +52,8 @@ struct TestAll <: SMeasure
     reportable::Bool # whether a positive test from this event shall lead to a "detected case"
 
     function TestAll(name::String, type, positive_followup, negative_followup; reportable = true)
-        length(name) <= 0 ? throw("Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'") : nothing
-        isnothing(type) ? throw("You need to specify a TestType, i.e. by supplying a keyworded argument type = MyTestType") : nothing
+        length(name) <= 0 ? throw(ArgumentError("Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'")) : nothing
+        isnothing(type) ? throw(ArgumentError("You need to specify a TestType, i.e. by supplying a keyworded argument type = MyTestType")) : nothing
         return new(name, type, positive_followup, negative_followup, reportable)
     end
 
