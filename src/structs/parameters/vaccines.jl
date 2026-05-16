@@ -2,7 +2,7 @@
 ### VACCINES (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export Vaccine
-export id, name, waning
+export id, name, waning, logger
 export parameters
 
 """

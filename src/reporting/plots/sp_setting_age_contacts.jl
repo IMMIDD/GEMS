@@ -70,7 +70,17 @@ function generate(plt::SettingAgeContacts, rd::ResultData; plotargs...)
     st = settingtype(plt)
     co_age = setting_age_contacts(rd, st)
 
-    contact_sampling_method = meta_data(rd)["config_file_val"]["Settings"]["$st"]["contact_sampling_method"]["type"]
+    if !(co_age isa AbstractMatrix)
+        ep = emptyplot("There's no $st contact data available in this ResultData object.")
+        plot!(ep; plotargs...)
+        return ep
+    end
+
+    contact_sampling_method = try
+        meta_data(rd)["config_file_val"]["Settings"]["$st"]["contact_sampling_method"]["type"]
+    catch
+        "RandomSampling"
+    end
 
     # add description
     # TODO this is now somewhat inconsistent as the generate function

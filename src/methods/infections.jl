@@ -5,42 +5,6 @@ is contained here.
 =#
 export infect!, spread_infection!, try_to_infect!, update_individual!, sample_contacts, get_containers!
 
-export settings
-
-
-
-"""
-    settings(individual::Individual, sim::Simulation)
-
-Return a dictionary with the assigned setting types as keys and the assigned IDs as values.
-"""
-function settings(individual::Individual, sim::Simulation)::Dict{DataType, Int32}
-    d::Dict{DataType, Int32} = Dict()
-    if household_id(individual)>=0
-        d[Household] = household_id(individual)
-        get_containers!(settings(sim, Household)[d[Household]], d, sim)
-    end
-    if office_id(individual)>=0
-        d[Office] = office_id(individual)
-        get_containers!(settings(sim, Office)[d[Office]], d, sim)
-    end
-    if class_id(individual)>=0
-        d[SchoolClass] = class_id(individual)
-        get_containers!(settings(sim, SchoolClass)[d[SchoolClass]], d, sim)
-    end
-    if municipality_id(individual)>=0
-        d[Municipality] = municipality_id(individual)
-        get_containers!(settings(sim, Municipality)[d[Municipality]], d, sim)
-    end
-
-    # delete later
-    if GlobalSetting in keys(sim.settings.settings)
-        d[GlobalSetting] = GLOBAL_SETTING_ID
-    end
-
-    return d
-end
-
 
 
 """
