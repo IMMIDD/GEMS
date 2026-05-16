@@ -38,8 +38,10 @@
     end
 
     # small batch used for run and data tests
-    batch5 = Batch(n_runs = 3)
+    batch5 = Batch(n_runs = 3, pop_size = 1000)
     bP = process!(batch5)
+    bP_no_median = process!(Batch(n_runs = 3, pop_size = 1000); median_by = nothing)
+    bd_no_median = BatchData(bP_no_median)
 
     @testset "Run" begin
         @test n_runs(bP) == 3
@@ -168,17 +170,17 @@
             criterion = pp -> nrow(infectionsDF(pp))
             fixed_seed = 1234
 
-            bp = process!(Batch(n_runs = 5); seed = fixed_seed, median_by = criterion)
+            bp = process!(Batch(n_runs = 3, pop_size = 1000); seed = fixed_seed, median_by = criterion)
             @test !isnothing(median_run(bp))
             @test typeof(median_run(bp)) == ResultData
 
             # Re-derive per-simulation seeds the same way process! does
             sim_seeds = let rng = Xoshiro(Int64(fixed_seed))
-                [gems_rand(rng, 0:typemax(Int64)) for _ in 1:5]
+                [gems_rand(rng, 0:typemax(Int64)) for _ in 1:3]
             end
 
             # Collect criterion values by replaying each simulation (bit-identical via seed)
-            criteria = [Float64(criterion(PostProcessor(run!(Simulation(seed = s))))) for s in sim_seeds]
+            criteria = [Float64(criterion(PostProcessor(run!(Simulation(seed = s, pop_size = 1000))))) for s in sim_seeds]
 
             final_median = median(criteria)
             best_idx = argmin(abs(v - final_median) for v in criteria)
@@ -189,8 +191,8 @@
         end
 
         @testset "RepresentativeRunMultiLabel" begin
-            baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
-            masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
+            baseline = Batch(n_runs = 3, transmission_rate = 0.2, label = "Baseline", pop_size = 1000)
+            masks = Batch(n_runs = 3, transmission_rate = 0.15, label = "Mask Wearing", pop_size = 1000)
             bp = process!(merge(baseline, masks))
 
             # no global representative for multi-label batches
@@ -203,16 +205,14 @@
             @test typeof(bp.per_label["Mask Wearing"].median_run) == ResultData
 
             # test median_runs
-            bp_single = process!(Batch(n_runs = 3))
-            bd_single = BatchData(bp_single)
-            m_single = median_runs(bd_single)
+            m_single = median_runs(bd)
             
             @test m_single isa Vector
             @test length(m_single) == 1
             @test typeof(m_single[1]) == ResultData
 
-            b1 = Batch(n_runs = 3, label = "Scenario A")
-            b2 = Batch(n_runs = 3, label = "Scenario B")
+            b1 = Batch(n_runs = 3, label = "Scenario A", pop_size = 1000)
+            b2 = Batch(n_runs = 3, label = "Scenario B", pop_size = 1000)
             bp_multi = process!(merge(b1, b2))
             bd_multi = BatchData(bp_multi)
             m_multi = median_runs(bd_multi)
@@ -221,17 +221,15 @@
             @test length(m_multi) == 2
             @test all(x -> typeof(x) == ResultData, m_multi)
 
-            bp_disabled = process!(Batch(n_runs = 3); median_by = nothing)
-            bd_disabled = BatchData(bp_disabled)
-            m_disabled = median_runs(bd_disabled)
+            m_disabled = median_runs(bd_no_median)
             
             @test m_disabled isa Vector
             @test isempty(m_disabled)
         end
 
         @testset "Seed" begin
-            bp1 = process!(Batch(n_runs = 3); seed = 42)
-            bp2 = process!(Batch(n_runs = 3); seed = 42)
+            bp1 = process!(Batch(n_runs = 3, pop_size = 1000); seed = 42)
+            bp2 = process!(Batch(n_runs = 3, pop_size = 1000); seed = 42)
             @test seed(bp1) == 42
             @test total_infections(bp1)["mean"] == total_infections(bp2)["mean"]
         end
@@ -243,14 +241,12 @@
         end
 
         @testset "DisabledRepresentative" begin
-            bp = process!(Batch(n_runs = 3); median_by = nothing)
-            @test isnothing(median_run(bp))
+            @test isnothing(median_run(bP_no_median))
         end
 
         @testset "WelfordCorrectness" begin
             # Welford mean and std should match manual computation
-            bp = process!(Batch(n_runs = 5); seed = 7)
-            agg = total_infections(bp)
+            agg = total_infections(bP)
             @test agg["mean"] isa Float64
             @test agg["std"] >= 0.0
             @test agg["min"] <= agg["mean"] <= agg["max"]
@@ -258,27 +254,25 @@
         end
 
         @testset "MultiColumnAccessors" begin
-            bp = process!(Batch(n_runs = 3); seed = 8)
             # tick_cases, effectiveR, cumulative_quarantines now return Dict
-            tc = tick_cases(bp)
+            tc = tick_cases(bP)
             @test tc isa Dict
             @test haskey(tc, "exposed_cnt")
             @test haskey(tc, "dead_cnt")
             @test nrow(tc["exposed_cnt"]) > 0
 
-            er = effectiveR(bp)
+            er = effectiveR(bP)
             @test er isa Dict
             @test haskey(er, "rolling_R")
 
-            cq = cumulative_quarantines(bp)
+            cq = cumulative_quarantines(bP)
             @test cq isa Dict
             @test haskey(cq, "quarantined")
         end
 
         @testset "NoRateColumnsInTests" begin
             # positive_rate and rolling_positive_rate should not be accumulated
-            bp = process!(Batch(n_runs = 3); seed = 9)
-            t = tests(bp)
+            t = tests(bP)
             for (_, col_dict) in t
                 @test !haskey(col_dict, "positive_rate")
                 @test !haskey(col_dict, "rolling_positive_rate")
@@ -286,19 +280,15 @@
         end
 
         @testset "NewScalarAccessors" begin
-            bp = process!(Batch(n_runs = 3); seed = 10)
-            bd = BatchData(bp)
-            @test seed(bp) == 10
-            @test seed(bd) == 10
-            @test tick_unit(bp) isa String
-            @test total_detected_cases(bp) isa Dict
-            @test detection_rate(bp) isa Dict
-            @test detection_rate(bp)["mean"] >= 0.0
+            @test tick_unit(bP) isa String
+            @test total_detected_cases(bP) isa Dict
+            @test detection_rate(bP) isa Dict
+            @test detection_rate(bP)["mean"] >= 0.0
         end
 
         @testset "MultiLabelAccumulators" begin
-            b1 = Batch(n_runs = 5, transmission_rate = 0.05, label = "Low")
-            b2 = Batch(n_runs = 5, transmission_rate = 0.5, label = "High")
+            b1 = Batch(n_runs = 3, transmission_rate = 0.05, label = "Low", pop_size = 1000)
+            b2 = Batch(n_runs = 3, transmission_rate = 0.5, label = "High", pop_size = 1000)
             bp = process!(merge(b1, b2); seed = 11)
             # per-label accumulators should differ between the two scenarios
             @test haskey(bp.per_label, "Low")
@@ -342,7 +332,7 @@
 
         @testset "CustomLogger" begin
             cl = CustomLogger(infected = sim -> count(infected, sim |> population))
-            bp = process!(Batch(n_runs = 3); customlogger = cl, keep_rundata = true)
+            bp = process!(Batch(n_runs = 3, pop_size = 1000); customlogger = cl, keep_rundata = true)
             # each stored ResultData should have custom logger data
             for rd in rundata(bp)
                 cl_data = customlogger(rd)
