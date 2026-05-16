@@ -86,7 +86,7 @@ mutable struct BatchData <: AbstractResultData
 
     @doc """
 
-        BatchData(batch::Batch; style="DefaultBatchData", rd_style="LightRD", median_by=nothing, keep_rundata=false)
+        BatchData(batch::Batch; style="DefaultBatchData", rd_style="LightRD", median_by=nothing, keep_rundata=false, customlogger=nothing)
 
     Create a `BatchData` object by running all simulation configurations in `batch`
     one at a time (streaming). Peak memory is ~1× a single simulation regardless
@@ -96,10 +96,12 @@ mutable struct BatchData <: AbstractResultData
     - `median_by`: a function `pp -> scalar` to select the median run
       (e.g. `pp -> nrow(infectionsDF(pp))`). Default: `nothing`.
     - `keep_rundata`: store all individual `ResultData` objects. Default: `false`.
+    - `customlogger`: a `CustomLogger` to attach to each simulation run. Default: `nothing`.
     """
     BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style::String = "LightRD",
-              median_by = nothing, keep_rundata::Bool = false) =
-        BatchData(process!(batch; rd_style, median_by, keep_rundata), style = style)
+              median_by = nothing, keep_rundata::Bool = false,
+              customlogger::Union{Nothing, CustomLogger} = nothing) =
+        BatchData(process!(batch; rd_style, median_by, keep_rundata, customlogger), style = style)
 
 end
 

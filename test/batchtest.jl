@@ -285,5 +285,17 @@
             @test !isnothing(pl["Low"]["median_run"])
             @test !isnothing(pl["High"]["median_run"])
         end
+
+        @testset "CustomLogger" begin
+            cl = CustomLogger(infected = sim -> count(infected, sim |> population))
+            bp = process!(Batch(n_runs = 3); customlogger = cl, keep_rundata = true)
+            # each stored ResultData should have custom logger data
+            for rd in rundata(bp)
+                @test !isnothing(customlogger(rd))
+                @test nrow(dataframe(customlogger(rd))) > 0
+            end
+            # the logger passed to process! must not be mutated (data isolated per run)
+            @test nrow(dataframe(cl)) == 0
+        end
     end
 end

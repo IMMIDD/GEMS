@@ -1,7 +1,7 @@
 export process!
 
 """
-    process!(batch::Batch; seed=nothing, median_by=pp->nrow(infectionsDF(pp)), keep_rundata=false, rd_style="LightRD")
+    process!(batch::Batch; seed=nothing, median_by=pp->nrow(infectionsDF(pp)), keep_rundata=false, rd_style="LightRD", customlogger=nothing)
 
 Processes all simulation configurations in `batch` sequentially, accumulating
 results into a `BatchProcessor`.
@@ -17,12 +17,15 @@ results into a `BatchProcessor`.
 - `keep_rundata`: if `true`, every run's `ResultData` is stored in `bp.rundata`.
   Default: `false`.
 - `rd_style`: the `ResultData` style for individual and median runs. Default: `"LightRD"`.
+- `customlogger`: a `CustomLogger` to attach to each simulation. An independent copy
+  is created per run so data is not mixed across runs. Default: `nothing`.
 """
 function process!(batch::Batch;
     seed::Union{Nothing, Integer} = nothing,
     median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
     keep_rundata::Bool = false,
-    rd_style::String = "LightRD"
+    rd_style::String = "LightRD",
+    customlogger::Union{Nothing, CustomLogger} = nothing
 )
     configs = simconfigs(batch)
     n = length(configs)
@@ -44,6 +47,7 @@ function process!(batch::Batch;
     for (i, (cfg, sim_label)) in enumerate(zip(configs, cfg_labels))
         printinfo("Processing Simulation $i/$n in Batch")
         sim = Simulation(; cfg..., seed = sim_seeds[i])
+        customlogger !== nothing && customlogger!(sim, duplicate(customlogger))
         run!(sim)
         pp = PostProcessor(sim)
         accumulate!(bp, pp; rd_style)
