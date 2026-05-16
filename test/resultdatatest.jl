@@ -417,7 +417,7 @@
         seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
         testing = IStrategy("Testing", seroprevalence_testing)
         add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
-        trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(1))
+        trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(120))
         add_tick_trigger!(seroprevalence_testing, trigger)
         run!(seroprevalence_testing)
         rd = ResultData(seroprevalence_testing)
