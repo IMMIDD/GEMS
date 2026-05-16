@@ -149,6 +149,37 @@
 
     end
 
+    @testset "Section Generation" begin
+        s = Section(title = "Test Section", content = "Test content")
+
+        # generate_title: depth controls the number of leading '#'
+        @test GEMS.generate_title(s, 1) == "# Test Section\n\n"
+        @test GEMS.generate_title(s, 3) == "### Test Section\n\n"
+
+        ps = PlotSection(TickCases())
+        @test GEMS.generate_title(ps, 1) == "# $(title(TickCases()))\n\n"
+
+        # generate_content for a plain Section returns content + newlines
+        @test GEMS.generate_content(s, rd, "dummy_dir") == "Test content\n\n"
+
+        # generate(Section, depth, rd, dir) returns heading + content as markdown
+        mktempdir() do dir
+            md = generate(s, 1, rd, dir)
+            @test occursin("# Test Section", md)
+            @test occursin("Test content", md)
+
+            # convenience wrapper defaults to depth 1
+            @test generate(s, rd, dir) == generate(s, 1, rd, dir)
+
+            # generate(PlotSection, depth, rd, dir): markdown contains image reference on success
+            mkpath(joinpath(dir, "img"))
+            md_plot = generate(ps, 1, rd, dir)
+            @test !isempty(md_plot)
+            @test occursin("# ", md_plot)
+            @test occursin("./img/", md_plot)
+        end
+    end
+
 
     @testset "Reports" begin
 

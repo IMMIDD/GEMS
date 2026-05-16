@@ -225,6 +225,11 @@
     @testset "show" begin
         inds = [Individual(id=j, age=20, sex=0) for j in 1:3]
         @test !isempty(@capture_out show(inds))
+
+        inds_large = [Individual(id=j, age=20, sex=0) for j in 1:51]
+        output = @capture_out show(inds_large)
+        @test !isempty(output)
+        @test occursin("⋮", output)
     end
 
     @testset "Settings Tuple" begin
