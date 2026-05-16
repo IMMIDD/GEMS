@@ -31,7 +31,7 @@ struct TraceInfectiousContacts <: IMeasure
 
     function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Real = 1.0)
         if !(0 <= success_rate <= 1)
-            throw("success_rate parameter must be between 0 and 1")
+            throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
         
         return(new(success_rate, follow_up))

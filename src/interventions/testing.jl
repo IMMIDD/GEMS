@@ -269,7 +269,7 @@ take all individuals assigned to the specified setting.
 function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual},Nothing}=nothing)
     # if a subset is provided, check whether subset is ACTUALLY a subset of the setting
     if subset !== nothing && !issubset(subset, setting |> individuals)
-        throw("Not all individuals of the provided 'subset' are found to be members of the specified settting.")
+        throw(ArgumentError("Not all individuals of the provided 'subset' are found to be members of the specified settting."))
     end
 
     # no of individuals. If  no subset provided, use all individuals from setting

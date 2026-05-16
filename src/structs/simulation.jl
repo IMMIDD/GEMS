@@ -977,7 +977,7 @@ function create_progression(params::Dict, category::String)
     return try
         GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
     catch e
-        throw("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -995,7 +995,7 @@ function create_progression_assignment(params::Dict)
     return try
         pa_type(;kw_args...)
     catch e
-        throw("ProgressionAssignmentFunction of type '$pa_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("ProgressionAssignmentFunction of type '$pa_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1012,7 +1012,7 @@ function create_transmission_function(params::Dict)
     return try
         tf_type(;kw_args...)
     catch e
-        throw("TransmissionFunction of type '$tf_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("TransmissionFunction of type '$tf_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1087,7 +1087,7 @@ function create_start_condition(params::Dict)
     return try
         sc_type(;kw_args...)
     catch e
-        throw("StartCondition of type '$sc_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("StartCondition of type '$sc_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1104,7 +1104,7 @@ function create_stop_criterion(params::Dict)
     return try
         sc_type(;kw_args...)
     catch e
-        throw("StopCriterion of type '$sc_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("StopCriterion of type '$sc_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
