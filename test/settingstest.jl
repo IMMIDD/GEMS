@@ -462,7 +462,7 @@
         @test GEMS.office(inds[1], sim) === offices(sim)[2]
         @test GEMS.office(inds[2], sim) === offices(sim)[2]
         @test GEMS.office(inds[3], sim) === offices(sim)[1]
-        @test_throws "Individual $(id(inds[1])) is not assigned to a School Class" GEMS.schoolclass(inds[1], sim)
+        @test_throws ArgumentError GEMS.schoolclass(inds[1], sim)
 
         my_pop = DataFrame(
             id=[1, 2, 3],
@@ -477,7 +477,7 @@
         @test GEMS.schoolclass(inds[1], sim) === schoolclasses(sim)[2]
         @test GEMS.schoolclass(inds[2], sim) === schoolclasses(sim)[2]
         @test GEMS.schoolclass(inds[3], sim) === schoolclasses(sim)[1]
-        @test_throws "Individual $(id(inds[1])) is not assigned to an Office" GEMS.office(inds[1], sim)
+        @test_throws ArgumentError GEMS.office(inds[1], sim)
 
         for ind in inds
             @test GEMS.municipality(ind, sim) === municipalities(sim)[1]
@@ -574,8 +574,20 @@
 
         d1 = Department(id=1, contains=[1])
 
-        #TODO test function geolocation(stng::ContainerSetting, sim::Simulation)
-        #a (small) settingsfile is needed, where you have geolocated settings, e.g. offices
+        # geolocation(ContainerSetting, sim) delegates to the first contained setting
+        o_geo = Office(id=1, lat=40.5f0, lon=-74.0f0, contact_sampling_method=RandomSampling())
+        d_geo = Department(id=1, contains=[1], contact_sampling_method=RandomSampling())
+        sc_geo = SettingsContainer()
+        add_types!(sc_geo, [Office, Department])
+        add!(sc_geo, o_geo)
+        add!(sc_geo, d_geo)
+        sim_geo = Simulation()
+        sim_geo.settings = sc_geo
+        loc = geolocation(d_geo, sim_geo)
+        @test loc isa Vector{Float32}
+        @test length(loc) == 2
+        @test loc[1] ≈ -74.0f0
+        @test loc[2] ≈ 40.5f0
 
     end
 
@@ -636,6 +648,37 @@
             @test getsetting(ind, sim, Workplace) == wp
             @test getsetting(ind, sim, WorkplaceSite) == wps
         end
+    end
+
+    @testset "get_containers!" begin
+        rs = RandomSampling()
+        inds = [Individual(id=i, sex=1, age=10, schoolclass=i) for i in 1:2]
+        scs = [SchoolClass(id=i, individuals=[inds[i]], contained=1, contact_sampling_method=rs) for i in 1:2]
+        sy = SchoolYear(id=1, contains=[1, 2], contained=1, contact_sampling_method=rs)
+        s = School(id=1, contains=[1], contained=1, contact_sampling_method=rs)
+        scx = SchoolComplex(id=1, contains=[1], contact_sampling_method=rs)
+
+        sc = SettingsContainer()
+        add_types!(sc, [SchoolClass, SchoolYear, School, SchoolComplex])
+        foreach(x -> add!(sc, x), scs)
+        add!(sc, sy)
+        add!(sc, s)
+        add!(sc, scx)
+        sim = Simulation()
+        sim.settings = sc
+
+        # SchoolClass walks up: SchoolYear → School → SchoolComplex
+        dct = Dict{DataType, Int32}()
+        GEMS.get_containers!(scs[1], dct, sim)
+        @test dct[SchoolYear] == 1
+        @test dct[School] == 1
+        @test dct[SchoolComplex] == 1
+
+        # Setting with no contained parent (Household) leaves dict empty
+        hh = Household(id=1, individuals=inds, contact_sampling_method=rs)
+        dct2 = Dict{DataType, Int32}()
+        GEMS.get_containers!(hh, dct2, sim)
+        @test isempty(dct2)
     end
 
     @testset "Recursive Activation" begin
