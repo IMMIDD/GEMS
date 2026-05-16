@@ -1166,27 +1166,6 @@ end
 
 
 """
-    validate_file_paths(population_path::String, settings_path::String)
-
-Checks if the paths to the settings and popualtion files differ to throw a warning if there is a mismatch indicating an error
-"""
-function validate_file_paths(population_path::String, settings_path::String)
-    # Extract the directories from the file paths
-    population_dir = dirname(population_path)
-    settings_dir = dirname(settings_path)
-    
-    # Check if the directories are different
-    if population_dir != settings_dir
-        @warn "The population file and settings file are in different directories." *
-              "\nPopulation file directory: $population_dir" *
-              "\nSettings file directory: $settings_dir" *
-              "\nEnsure that the settings file corresponds to the population file to avoid mismatches."
-    end
-end
-
-
-
-"""
     obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
 Interface to remotely access a setting and population file
