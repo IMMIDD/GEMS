@@ -459,6 +459,6 @@
 
     @testset "Test obtain_fields" begin
         rd = ResultData(pp)
-        @test_throws "Reconstruction failed. Essential dataframes missing!" GEMS.obtain_fields(rd, "DefaultResultData")
+        @test_throws ErrorException GEMS.obtain_fields(rd, "DefaultResultData")
     end
 end

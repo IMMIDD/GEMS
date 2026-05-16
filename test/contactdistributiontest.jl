@@ -154,6 +154,13 @@
                 false
             end
 
+        @test try
+                plot_age_contact_distribution(age_contact_distribution, style=:abs_histogram)
+                true
+            catch
+                false
+            end
+
         @test_throws ArgumentError plot_age_contact_distribution(age_contact_distribution, style=:invalid)
 
         @test try
@@ -318,6 +325,13 @@ end
         # test if the function can be called without throwing any error
         @test try
                 plot_ageGroup_contact_distribution(age_group_contact_distribution)
+                true
+            catch
+                false
+            end
+
+        @test try
+                plot_ageGroup_contact_distribution(age_group_contact_distribution, style=:abs_histogram)
                 true
             catch
                 false

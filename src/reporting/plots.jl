@@ -342,7 +342,7 @@ function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :a
         get_subtype(type, SimulationPlot)()
     catch
         # throws exception if the plot type doesn't have a 0-argument constructor
-        throw("$type plots cannot be create using the gemsplot-function as they require additional arguments in their constructor. Please use generate($type(args...), rd) instead to generate this plot.")
+        throw(ArgumentError("$type plots cannot be create using the gemsplot-function as they require additional arguments in their constructor. Please use generate($type(args...), rd) instead to generate this plot."))
     end
 
     # actually generate plot

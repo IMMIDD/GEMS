@@ -52,7 +52,7 @@ function generate(plt::TickTests, rd::ResultData; series::Union{Symbol,Vector{Sy
 
     # throw error if empty array is passed
     if isempty(sers)
-        throw("Provide at least one series (:exposed, :infectious, :removed, :deaths) to plot.")
+        throw(ArgumentError("Provide at least one series (:exposed, :infectious, :removed, :deaths) to plot."))
     end
 
     # return empty plot with message, if result data does not contain tests

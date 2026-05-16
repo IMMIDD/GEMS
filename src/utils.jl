@@ -116,13 +116,13 @@ function get_subtype(type::String, parent::Type)
     # of the same name. This can happen if GEMS is used as a dependency in
     # another module
     doubles = duplicates(structname.(stypes))
-    !isempty(doubles) ? throw("There are multiple $(structname(parent)) structs of the same name: $(join(doubles, ", ")). Did you (re-)define them in a custom module?") : nothing
+    !isempty(doubles) ? throw(ErrorException("There are multiple $(structname(parent)) structs of the same name: $(join(doubles, ", ")). Did you (re-)define them in a custom module?")) : nothing
 
     # find right struct's index
     i = findfirst(x -> x == structname(type), structname.(stypes))
 
     # if type is not subtype of parent, throw exception
-    isnothing(i) ? throw("'$(structname(type))' is not a known subtype of $(structname(parent)); try any of these: $(join(structname.(stypes), ", "))") : nothing
+    isnothing(i) ? throw(ArgumentError("'$(structname(type))' is not a known subtype of $(structname(parent)); try any of these: $(join(structname.(stypes), ", "))")) : nothing
 
     # return index
     return stypes[i]
@@ -969,7 +969,7 @@ county- (`level = 2`) or municipality- (`level = 3`) shapes are returned.
 """
 function germanshapes(level::Int64)
     # check if level is between 1 and 3
-    !(1 <= level <= 3) ? throw("The level must be either 1 (States), 2 (Counties), or 3 (Municipalities)") : nothing
+    !(1 <= level <= 3) ? throw(ArgumentError("The level must be either 1 (States), 2 (Counties), or 3 (Municipalities)")) : nothing
     
     lookups = Dict(1 => "LAN", 2 => "KRS", 3 => "GEM")
     filename = GERMAN_SHAPEFILE(lookups[level])

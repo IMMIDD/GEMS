@@ -45,7 +45,7 @@ struct IsOpen <: SMeasure
         positive_followup::Union{SStrategy, Nothing} = nothing,
         negative_followup::Union{SStrategy, Nothing} = nothing)
 
-        isnothing(positive_followup) && isnothing(negative_followup) ? throw("At least one follow-up strategy is required to instantiate the 'IsOpen' measure") : nothing
+        isnothing(positive_followup) && isnothing(negative_followup) ? throw(ArgumentError("At least one follow-up strategy is required to instantiate the 'IsOpen' measure")) : nothing
         return new(positive_followup, negative_followup)
     end
 end

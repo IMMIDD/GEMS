@@ -142,6 +142,37 @@
 
     end
 
+    @testset "Section Generation" begin
+        s = Section(title = "Test Section", content = "Test content")
+
+        # generate_title: depth controls the number of leading '#'
+        @test GEMS.generate_title(s, 1) == "# Test Section\n\n"
+        @test GEMS.generate_title(s, 3) == "### Test Section\n\n"
+
+        ps = PlotSection(TickCases())
+        @test GEMS.generate_title(ps, 1) == "# $(title(TickCases()))\n\n"
+
+        # generate_content for a plain Section returns content + newlines
+        @test GEMS.generate_content(s, rd, "dummy_dir") == "Test content\n\n"
+
+        # generate(Section, depth, rd, dir) returns heading + content as markdown
+        mktempdir() do dir
+            md = generate(s, 1, rd, dir)
+            @test occursin("# Test Section", md)
+            @test occursin("Test content", md)
+
+            # convenience wrapper defaults to depth 1
+            @test generate(s, rd, dir) == generate(s, 1, rd, dir)
+
+            # generate(PlotSection, depth, rd, dir): markdown contains image reference on success
+            mkpath(joinpath(dir, "img"))
+            md_plot = generate(ps, 1, rd, dir)
+            @test !isempty(md_plot)
+            @test occursin("# ", md_plot)
+            @test occursin("./img/", md_plot)
+        end
+    end
+
 
     @testset "Reports" begin
 
@@ -631,19 +662,19 @@
 
             # Test: wrong columns in the DataFrame → Should throw an error
             df_wrong = DataFrame(id=ags_states, values=[10, 20, 30])
-            @test_throws "The first column of the input dataframe must be named 'ags'." agsmap(df_wrong)
+            @test_throws ArgumentError agsmap(df_wrong)
 
             # Test: First column is not AGS → Should throw an error
             df_wrong_type = DataFrame(ags=["01000000", "02000000", "03000000"], values=[10, 20, 30])
-            @test_throws "The first column of the input dataframe must contain a Vector of AGS structs" agsmap(df_wrong_type)
+            @test_throws ArgumentError agsmap(df_wrong_type)
 
             # Test: Second column does not contain numeric values → Should throw an error
             df_wrong_values = DataFrame(ags=ags_states, values=["low", "medium", "high"])
-            @test_throws "The second column of the input dataframe must contain a Vector of numeric values" agsmap(df_wrong_values)
+            @test_throws ArgumentError agsmap(df_wrong_values)
 
             # Test: double AGS-values → Should throw an error
             df_duplicate = DataFrame(ags=[AGS("01000000"), AGS("01000000"), AGS("02000000")], values=[10, 20, 30])
-            @test_throws "All AGS values need to be unique!" agsmap(df_duplicate)
+            @test_throws ArgumentError agsmap(df_duplicate)
 
         end
         @testset "agsmap wrapper tests" begin
@@ -734,11 +765,11 @@
 
             # Test: error for wrong column name
             df_wrong = DataFrame(id=ags_municipalities, values=[10, 20, 30])
-            @test_throws "The first column of the input dataframe must be named 'ags'." prepare_map_df!(df_wrong, level=1)
+            @test_throws ArgumentError prepare_map_df!(df_wrong, level=1)
 
             # Test: error for wrong datatype
             df_wrong_type = DataFrame(ags=["01000000", "02000000", "03000000"], values=[10, 20, 30])
-            @test_throws "The first column of the input dataframe must contain a Vector of AGS structs" prepare_map_df!(df_wrong_type, level=1)
+            @test_throws ArgumentError prepare_map_df!(df_wrong_type, level=1)
         end
         @testset "MapPlot Abstract Type Tests" begin
             # Test, if MapPlot ein Subtype of ReportPlot
@@ -797,7 +828,7 @@
             @test result isa Plots.Plot
 
             # Test: unknown plot types throws an error
-            @test_throws "There's no plot type that matches :UnknownMap" gemsmap(sim, type=:UnknownMap)
+            @test_throws ArgumentError gemsmap(sim, type=:UnknownMap)
 
             # Test: Plot with additional arguments
             result = gemsmap(sim, type=:AgeMap, title="Test Map", clims=(0, 100))
@@ -891,7 +922,7 @@
             rd = sim |> PostProcessor |> ResultData
 
             dummy_plot = DummyPlot()
-            @test_throws "generate(...) is not defined for concrete report plot type DummyPlot" generate(dummy_plot, rd)
+            @test_throws ErrorException generate(dummy_plot, rd)
         end
 
         @testset "Plot Formatting Functions" begin

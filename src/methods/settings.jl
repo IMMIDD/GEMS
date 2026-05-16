@@ -33,7 +33,7 @@ end
 Returns the `Office` instance referenced in an individual. 
 """
 function office(i::Individual, sim::Simulation)::Office
-    !is_working(i) ? throw("Individual $(id(i)) is not assigned to an Office") :
+    !is_working(i) ? throw(ArgumentError("Individual $(id(i)) is not assigned to an Office")) :
 
     return sim |> settings |>
         x -> x[Office] |>
@@ -91,7 +91,7 @@ end
 Returns the `SchoolClass` instance referenced in an individual. 
 """
 function schoolclass(i::Individual, sim::Simulation)::SchoolClass
-    !is_student(i) ? throw("Individual $(id(i)) is not assigned to a School Class") :
+    !is_student(i) ? throw(ArgumentError("Individual $(id(i)) is not assigned to a School Class")) :
 
     return sim |> settings |>
         x -> x[SchoolClass] |>
