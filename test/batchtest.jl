@@ -201,6 +201,32 @@
             @test !isnothing(bp.per_label["Mask Wearing"].median_run)
             @test typeof(bp.per_label["Baseline"].median_run) == ResultData
             @test typeof(bp.per_label["Mask Wearing"].median_run) == ResultData
+
+            # test median_runs
+            bp_single = process!(Batch(n_runs = 3))
+            bd_single = BatchData(bp_single)
+            m_single = median_runs(bd_single)
+            
+            @test m_single isa Vector
+            @test length(m_single) == 1
+            @test typeof(m_single[1]) == ResultData
+
+            b1 = Batch(n_runs = 3, label = "Scenario A")
+            b2 = Batch(n_runs = 3, label = "Scenario B")
+            bp_multi = process!(merge(b1, b2))
+            bd_multi = BatchData(bp_multi)
+            m_multi = median_runs(bd_multi)
+            
+            @test m_multi isa Vector
+            @test length(m_multi) == 2
+            @test all(x -> typeof(x) == ResultData, m_multi)
+
+            bp_disabled = process!(Batch(n_runs = 3); median_by = nothing)
+            bd_disabled = BatchData(bp_disabled)
+            m_disabled = median_runs(bd_disabled)
+            
+            @test m_disabled isa Vector
+            @test isempty(m_disabled)
         end
 
         @testset "Seed" begin
