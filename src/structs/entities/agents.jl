@@ -56,6 +56,7 @@ export last_reported_at
 export record_test!
 export isdetected
 # vaccination
+export vaccinate!
 export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 #quarantine
 export quarantine_release_tick, quarantine_release_tick!

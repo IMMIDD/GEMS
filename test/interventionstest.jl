@@ -471,8 +471,8 @@
     end
 
     @testset "Vaccinate Measure" begin
-        sim = Simulation()
-        i_strategy = IStrategy("i_strategy", sim)
+        vacc_sim = Simulation()
+        fu_strategy = IStrategy("i_strategy", vacc_sim)
 
         my_vaccine = Vaccine(id = Int8(1), name = "TestVax")
  
@@ -483,13 +483,13 @@
         @test skip_vaccinated(vacc_measure) == true
  
         # keyword overrides
-        vacc_with_followup  = Vaccinate(my_vaccine, follow_up = i_strategy)
+        vacc_with_followup  = Vaccinate(my_vaccine, follow_up = fu_strategy)
         vacc_booster = Vaccinate(my_vaccine, skip_vaccinated = false)
-        vacc_booster_followup = Vaccinate(my_vaccine, follow_up = i_strategy, skip_vaccinated = false)
+        vacc_booster_followup = Vaccinate(my_vaccine, follow_up = fu_strategy, skip_vaccinated = false)
  
-        @test follow_up(vacc_with_followup) === i_strategy
+        @test follow_up(vacc_with_followup) === fu_strategy
         @test skip_vaccinated(vacc_booster) == false
-        @test follow_up(vacc_booster_followup) === i_strategy
+        @test follow_up(vacc_booster_followup) === fu_strategy
         @test skip_vaccinated(vacc_booster_followup) == false
  
  
@@ -498,12 +498,12 @@
         # precondition
         @test isvaccinated(ind_a) == false
  
-        result = process_measure(sim, ind_a, vacc_measure)
+        result = process_measure(vacc_sim, ind_a, vacc_measure)
  
         # individual state was updated by vaccinate!
         @test isvaccinated(ind_a) == true
         @test vaccine_id(ind_a) == id(my_vaccine)
-        @test vaccination_tick(ind_a) == tick(sim)
+        @test vaccination_tick(ind_a) == tick(vacc_sim)
         @test number_of_vaccinations(ind_a) == 1
  
         # handover carries the right focal object and no follow-up
@@ -513,16 +513,16 @@
         # process_measure: follow_up strategy is forwarded
  
         ind_b = Individual(id = 11, sex = 1, age = 25)
-        result_b = process_measure(sim, ind_b, vacc_with_followup)
+        result_b = process_measure(vacc_sim, ind_b, vacc_with_followup)
  
         @test isvaccinated(ind_b) == true
         @test result_b.focal_objects[1] === ind_b
-        @test result_b.follow_up === i_strategy
+        @test result_b.follow_up === fu_strategy
  
         # process_measure: skip_vaccinated
         # ind_a is already vaccinated from the block above.
  
-        result_skip = process_measure(sim, ind_a, vacc_with_followup)
+        result_skip = process_measure(vacc_sim, ind_a, vacc_with_followup)
  
         # not vaccinated again
         @test number_of_vaccinations(ind_a) == 1
@@ -535,24 +535,24 @@
  
         ind_c = Individual(id = 12, sex = 0, age = 50)
  
-        process_measure(sim, ind_c, vacc_booster)
+        process_measure(vacc_sim, ind_c, vacc_booster)
         @test isvaccinated(ind_c) == true
         @test number_of_vaccinations(ind_c) == 1
  
         # second call must proceed regardless of vaccination status
-        result_booster = process_measure(sim, ind_c, vacc_booster)
+        result_booster = process_measure(vacc_sim, ind_c, vacc_booster)
         @test number_of_vaccinations(ind_c) == 2
         @test result_booster.focal_objects[1] === ind_c
         @test result_booster.follow_up === nothing
  
         # booster with follow_up
-        result_booster_fu = process_measure(sim, ind_c, vacc_booster_followup)
+        result_booster_fu = process_measure(vacc_sim, ind_c, vacc_booster_followup)
         @test number_of_vaccinations(ind_c) == 3
-        @test result_booster_fu.follow_up === i_strategy
+        @test result_booster_fu.follow_up === fu_strategy
  
         # measure round-trips through add_measure! and i_strategy
  
-        vacc_strategy = IStrategy("vaccinate", sim)
+        vacc_strategy = IStrategy("vaccinate", vacc_sim)
         add_measure!(vacc_strategy, Vaccinate(my_vaccine))
  
         @test length(vacc_strategy.measures) == 1
