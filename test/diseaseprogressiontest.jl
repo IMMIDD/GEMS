@@ -308,6 +308,11 @@
         
     end
 
+    @testset "show" begin
+        dp = DiseaseProgression(exposure = 1, infectiousness_onset = 2, symptom_onset = 3, recovery = 10)
+        @test !isempty(@capture_out show(dp))
+    end
+
     @testset "Getter & Setter" begin
         dp = DiseaseProgression(
             exposure = 23,

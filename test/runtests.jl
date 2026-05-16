@@ -39,6 +39,7 @@ using Suppressor
         "contactmatrixtest.jl",
         "contactdistributiontest.jl",
         "interventionstest.jl",
+        "vaccinetest.jl",
         "codevalidationtest.jl"
     ]
 
