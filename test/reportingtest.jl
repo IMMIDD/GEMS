@@ -496,6 +496,29 @@
             @test generate(SettingAgeContacts(Household), rd_conf) isa Plots.Plot
         end
 
+        @testset "TotalTests with BatchData" begin
+            # helper: WelfordState seeded with a few values
+            function make_tick_accum(ticks)
+                Dict(t => (s = WelfordState(); welford_update!(s, Float64(t)); s) for t in ticks)
+            end
+
+            # path 1: isempty(t) → emptyplot (bd has no test data)
+            @test generate(TotalTests(), bd) isa Plots.Plot
+
+            # path 2: single-label (elseif) branch — per_label is empty, top-level tests populated
+            bp_single = BatchProcessor()
+            bp_single.tests["PCR"] = Dict("total_tests" => make_tick_accum(1:5),
+                                          "positive_tests" => make_tick_accum(1:5))
+            @test generate(TotalTests(), BatchData(bp_single)) isa Plots.Plot
+
+            # path 3: multi-label branch — per_label has 2 entries
+            bp_multi = BatchProcessor()
+            bp_multi.tests["PCR"] = Dict("total_tests" => make_tick_accum(1:5))
+            bp_multi.per_label["A"] = BatchProcessor()
+            bp_multi.per_label["B"] = BatchProcessor()
+            @test generate(TotalTests(), BatchData(bp_multi)) isa Plots.Plot
+        end
+
         @testset "TotalTests with test data (Vector{ResultData})" begin
             function make_rd_with_tests()
                 s = Simulation()
