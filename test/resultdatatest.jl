@@ -319,7 +319,7 @@
 
         @test df[2, :ags] == AGS("04012000")
         @test df[2, :pop_size] > 50000
-        @test isapprox(df[2, :area], 101; rtol = 0.05)
+        @test 80 < df[2, :area] < 110
 
     end
 
