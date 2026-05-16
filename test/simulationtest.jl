@@ -375,14 +375,45 @@
             infs -> (i -> household(i, sim)).(infs) |>
             hhlds -> ags.(hhlds) |>
             h_ags -> Set(h_ags) == Set(AGS.(test_ags))
+
+        # REGIONAL SEEDS
+        # failing
+        @test_throws ArgumentError RegionalSeeds(seeds = Dict{Int64,Int64}())
+        @test_throws ArgumentError RegionalSeeds(seeds = Dict(123 => 1))
+
+        # passing: constructor and accessors
+        rs = RegionalSeeds(seeds = Dict(04011000 => 3, 04012000 => 2))
+        @test seeds(rs) == Dict(04011000 => 3, 04012000 => 2)
+        @test pathogen(rs) == ""
+        @test pathogen(RegionalSeeds(pathogen = "flu", seeds = Dict(04011000 => 1))) == "flu"
+
+        # passing: initialize! infects the correct total count
+        hb_seeds = Dict(04011000 => 3, 04012000 => 2)
+        sim = Simulation(population = "HB", start_condition = RegionalSeeds(seeds = hb_seeds))
+        @test count(infected, population(sim)) == 5
+
+        # passing: all infected individuals come from the seeded regions
+        @test individuals(sim) |>
+            inds -> inds[infected.(inds)] |>
+            infs -> (i -> ags(household(i, sim))).(infs) |>
+            h_ags -> all(a -> a in AGS.(keys(hb_seeds)), h_ags)
+
+        # passing: seed_sample gives reproducible results
+        cond = RegionalSeeds(seeds = Dict(04011000 => 3))
+        seed_sim = Simulation(population = "HB")
+        initialize!(seed_sim, cond, seed_sample = 42)
+        infs_first = copy(individuals(seed_sim)[infected.(individuals(seed_sim))])
+        reinitialize!(seed_sim)
+        initialize!(seed_sim, cond, seed_sample = 42)
+        @test individuals(seed_sim)[infected.(individuals(seed_sim))] == infs_first
     end
 
     @testset "Parameter Tests" begin
 
         @testset "AGS Test" begin
-            @test_throws "The state (first two digits) must be between 1 and 16" AGS(Int(123))
-            @test_throws "The state (first two digits) must be between 1 and 16" AGS(Int32(123))
-            @test_throws "The AGS (Amtlicher Gemeindeschlüssel, eng: Community Identification Number) must consist of exactly 8 digits" AGS("123")
+            @test_throws ArgumentError AGS(Int(123))
+            @test_throws ArgumentError AGS(Int32(123))
+            @test_throws ArgumentError AGS("123")
 
             münster = AGS("05515000")
             @test state(münster) == AGS("05000000")
