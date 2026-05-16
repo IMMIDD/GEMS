@@ -104,8 +104,8 @@ Adds a `Simulation` to a `Batch`.
 """
 function add!(sim::Simulation, batch::Batch)
     # verify that the added simulation is not identical with any of the previously added
-    objectid(sim) in map(objectid, batch.simulations) ? throw("This simulation is already in the batch!") : nothing
-    objectid(sim |> population) in map(s -> objectid(population(s)), batch.simulations) ? throw("This simulation uses the same population as another simulation in the batch!") : nothing
+    objectid(sim) in map(objectid, batch.simulations) ? throw(ArgumentError("This simulation is already in the batch!")) : nothing
+    objectid(sim |> population) in map(s -> objectid(population(s)), batch.simulations) ? throw(ArgumentError("This simulation uses the same population as another simulation in the batch!")) : nothing
 
     push!(batch.simulations, sim)
 end

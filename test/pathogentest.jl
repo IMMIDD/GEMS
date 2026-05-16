@@ -285,7 +285,7 @@
             stratification_matrix = stratification_matrix
         )
         # non-existing progression category
-        @test_throws String AgeBasedProgressionAssignment(
+        @test_throws ArgumentError AgeBasedProgressionAssignment(
             age_groups = age_groups,
             progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "NonExistingProgression"],
             stratification_matrix = stratification_matrix

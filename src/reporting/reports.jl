@@ -450,28 +450,24 @@ function generate(report::Report, directory::AbstractString)
         write(file, res)
     end
 
-    # generate PDF
-    @suppress begin
-        weave(mdfilepath; out_path = directory * "/report.pdf", doctype = "pandoc2pdf", 
-        pandoc_options = 
-            [
-            "--toc", 
-            "-f", "markdown-implicit_figures"
-            ]
-        )
+    # generate PDF (requires pandoc + LaTeX; silently skipped if unavailable)
+    try
+        @suppress weave(mdfilepath; out_path = directory * "/report.pdf", doctype = "pandoc2pdf",
+            pandoc_options = ["--toc", "-f", "markdown-implicit_figures"])
+    catch
     end
-        # generate HTML
-    @suppress begin
+
+    # generate HTML (requires pandoc; silently skipped if unavailable)
+    try
         BASE_FOLDER = dirname(dirname(pathof(GEMS)))
-        weave(mdfilepath; out_path = directory * "/report.pdf", doctype = "pandoc2html",
-            pandoc_options = 
-            [
+        @suppress weave(mdfilepath; out_path = directory * "/report.html", doctype = "pandoc2html",
+            pandoc_options = [
                 "--toc",
                 "--css", BASE_FOLDER * "/src/reporting/css/report_styles.css",
                 "-V", "mainfont=Open Sans",
                 "-f", "markdown-implicit_figures"
-            ]
-        )
+            ])
+    catch
     end
 end
 

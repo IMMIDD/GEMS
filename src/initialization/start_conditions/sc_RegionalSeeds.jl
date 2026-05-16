@@ -35,7 +35,7 @@ struct RegionalSeeds <: StartCondition
                 sds[typeof(k) <: Int ? k : parse(Int64, k)] = typeof(v) <: Int ? v : parse(Int64, v)
             catch e
                 println(e)
-                throw("You need to pass values that can be parsed to integers to the RegionalSeeds start condition.")
+                throw(ArgumentError("You need to pass values that can be parsed to integers to the RegionalSeeds start condition."))
             end
         end
 
@@ -117,7 +117,7 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_samp
                 inds -> gems_sample(rng_sample, inds, cnt, replace=false) |>
                 inds -> append!(to_infect, inds)
         catch
-            throw("Getting the seeding infections crashed. You might have provided a region in the configs that is not available in the population model or asked to infect a number of people that exceeds the population size of the region.")
+            throw(ErrorException("Getting the seeding infections crashed. You might have provided a region in the configs that is not available in the population model or asked to infect a number of people that exceeds the population size of the region."))
         end
     end
 

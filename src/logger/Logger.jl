@@ -698,9 +698,9 @@ mutable struct CustomLogger <: TickLogger
     function CustomLogger(;kwargs...)
         funcs = Dict{Symbol, Function}(:tick => tick)
         for (key, val) in kwargs
-            key == :tick ? throw("'tick' is a protected name and cannot be a custom column for the Logger") : nothing
-            !(typeof(val) <: Function) ? throw("The arguments passed to the CustomLogger must be a one-argument (Sim-object) function.") : nothing
-            first(methods(val)).nargs != 2 ? throw("The arumgment functions must have exactly one argument (the Sim-object)") : nothing
+            key == :tick ? throw(ArgumentError("'tick' is a protected name and cannot be a custom column for the Logger")) : nothing
+            !(typeof(val) <: Function) ? throw(ArgumentError("The arguments passed to the CustomLogger must be a one-argument (Sim-object) function.")) : nothing
+            first(methods(val)).nargs != 2 ? throw(ArgumentError("The arumgment functions must have exactly one argument (the Sim-object)")) : nothing
             
             funcs[key] = val
         end

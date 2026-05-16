@@ -1035,7 +1035,7 @@ function create_progression(params::Dict, category::String)
     return try
         GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
     catch e
-        throw("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1053,7 +1053,7 @@ function create_progression_assignment(params::Dict)
     return try
         pa_type(;kw_args...)
     catch e
-        throw("ProgressionAssignmentFunction of type '$pa_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("ProgressionAssignmentFunction of type '$pa_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1070,7 +1070,7 @@ function create_transmission_function(params::Dict)
     return try
         tf_type(;kw_args...)
     catch e
-        throw("TransmissionFunction of type '$tf_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("TransmissionFunction of type '$tf_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1166,7 +1166,7 @@ function create_start_condition(params::Dict)
     return try
         sc_type(;kw_args...)
     catch e
-        throw("StartCondition of type '$sc_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("StartCondition of type '$sc_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1183,7 +1183,7 @@ function create_stop_criterion(params::Dict)
     return try
         sc_type(;kw_args...)
     catch e
-        throw("StopCriterion of type '$sc_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("StopCriterion of type '$sc_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1242,27 +1242,6 @@ Function to check if the file ends with one of the endings identifying it as a p
 function is_pop_file(filename::String)
     return endswith(filename, ".csv") || endswith(filename, ".jld2")
 end
-
-
-"""
-    validate_file_paths(population_path::String, settings_path::String)
-
-Checks if the paths to the settings and popualtion files differ to throw a warning if there is a mismatch indicating an error
-"""
-function validate_file_paths(population_path::String, settings_path::String)
-    # Extract the directories from the file paths
-    population_dir = dirname(population_path)
-    settings_dir = dirname(settings_path)
-    
-    # Check if the directories are different
-    if population_dir != settings_dir
-        @warn "The population file and settings file are in different directories." *
-              "\nPopulation file directory: $population_dir" *
-              "\nSettings file directory: $settings_dir" *
-              "\nEnsure that the settings file corresponds to the population file to avoid mismatches."
-    end
-end
-
 
 
 """

@@ -11,7 +11,7 @@ window (`start_tick` and `end_tick`)
 function county_infections_between(postProcessor::PostProcessor, start_tick::Int64, end_tick::Int64)
 
     if start_tick > end_tick
-        throw("Start tick cannot be larger than end tick.")
+        throw(ArgumentError("Start tick cannot be larger than end tick."))
     end
 
     return infectionsDF(postProcessor) |>

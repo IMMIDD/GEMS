@@ -30,7 +30,7 @@ in `constants.jl`
 """
 function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
     # exception handling
-    hh_samples <= 100 ? throw("Sample too low. You need at least 100 households to proceed with the calculation") : nothing
+    hh_samples <= 100 ? throw(ArgumentError("Sample too low. You need at least 100 households to proceed with the calculation")) : nothing
 
     # randomly sample the required number of households from the infections dataframe
     hh_selection = (postProcessor |> infectionsDF).household_b |> unique |>

@@ -145,7 +145,7 @@ function Base.merge(bds::BatchData...; style::String = "DefaultBatchData")
 
     rds = ResultData[]
     for bd in bds
-        isempty(runs(bd)) ? throw("Not all passed BatchData objects have the individual simulation runs stored (ResultData). Merging BatchData objects effectively generates a new BatchData object from the internal ResultData objects (therefore they must be passed).") : nothing
+        isempty(runs(bd)) ? throw(ArgumentError("Not all passed BatchData objects have the individual simulation runs stored (ResultData). Merging BatchData objects effectively generates a new BatchData object from the internal ResultData objects (therefore they must be passed).")) : nothing
         append!(rds, runs(bd))
     end
 
