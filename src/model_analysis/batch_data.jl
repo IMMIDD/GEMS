@@ -5,7 +5,7 @@ export BatchDataStyle
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export sim_data, runs, median_run, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
+export sim_data, runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
 export total_detected_cases, detection_rate
 export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
 export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_label
@@ -301,11 +301,34 @@ end
 """
     median_run(bd::BatchData)
 
-Returns the `ResultData` of the simulation whose criterion is closest to the
+Returns the `ResultData` of the simulation whose criterion is the
 median across all runs, or `nothing` if `median_by` was not set.
 """
 function median_run(bd::BatchData)
     get(bd |> sim_data, "median_run", nothing)
+end
+
+"""
+    median_runs(bd::BatchData)
+
+Returns a dictionary mapping each simulation label to its median `ResultData` object.
+If the batch was run without labels, it returns a dictionary with a single `"overall"` key.
+"""
+function median_runs(bd::BatchData)
+    pl_data = per_label(bd)
+    
+    # multi-label batch
+    if !isempty(pl_data)
+        return [inner_data["median_run"] for (lab, inner_data) in pl_data if haskey(inner_data, "median_run")]
+    end
+    
+    #single-label / no-label batch
+    single_median = median_run(bd)
+    if !isnothing(single_median)
+        return [single_median]
+    end
+    
+    return []
 end
 
 """

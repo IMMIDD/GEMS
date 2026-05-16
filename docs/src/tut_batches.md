@@ -328,3 +328,25 @@ bp = process!(b; median_by = pp -> nrow(deathsDF(pp)))
 # Disable median run selection
 bp = process!(b; median_by = nothing)
 ```
+
+## Multi-Label Median Runs
+
+If your batch contains multiple labels, you can extract the median run for each label simultaneously using the median_runs() function. Because this function returns a vector of representative ResultData objects, you can pass it directly to `gemsplot()`.
+
+```julia
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
+masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
+
+b = merge(baseline, masks)
+bd = BatchData(b)
+
+gemsplot(median_runs(bd))
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_median_runs.png" width="80%"/>
+</p>
+``` 
