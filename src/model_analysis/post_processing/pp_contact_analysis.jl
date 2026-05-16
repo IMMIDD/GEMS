@@ -354,7 +354,7 @@ To calculate the weighted sum, "weighted arithmetic mean" is used.
 function weighted_error_sum(post_processor::PostProcessor, setting::DataType, reference_matrix::ContactMatrix{T}; fit_to_reference_matrix::Bool)::T where T <: Number
 
     # calculate contact matrix for the given setting for the simulation based on the structure of the `reference_matrix`
-    simulation_contact_matrix_data::Matrix{T} = mean_contacts_per_age_group(post_processor, setting, reference_matrix.interval_steps, reference_matrix.aggregation_bound)
+    simulation_contact_matrix_data::Matrix{T} = mean_contacts_per_age_group(post_processor, setting, reference_matrix.interval_steps, reference_matrix.aggregation_bound).data
 
     # find alpha - a factor that defines the difference between both matrices
     alpha::T = GEMS.find_alpha(reference_matrix.data, simulation_contact_matrix_data)

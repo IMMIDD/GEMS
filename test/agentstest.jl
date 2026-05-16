@@ -205,6 +205,28 @@
         end
     end
     
+    @testset "Dict Constructor" begin
+        # minimum required keys
+        i = Individual(Dict("id" => 1, "sex" => 0, "age" => 25))
+        @test id(i) == 1
+        @test sex(i) == 0
+        @test age(i) == 25
+
+        # optional fields are applied when present
+        i2 = Individual(Dict("id" => 2, "sex" => 1, "age" => 40, "education" => Int8(3), "occupation" => Int8(2)))
+        @test education(i2) == 3
+        @test occupation(i2) == 2
+
+        # fields absent from dict keep their defaults
+        @test education(i) == -1
+        @test occupation(i) == -1
+    end
+
+    @testset "show" begin
+        inds = [Individual(id=j, age=20, sex=0) for j in 1:3]
+        @test !isempty(@capture_out show(inds))
+    end
+
     @testset "Settings Tuple" begin
     # Test individual with specific setting assignments
     i = Individual(id = 1, sex = 0, age = 1, household=10, office=20, schoolclass=30, municipality=40)

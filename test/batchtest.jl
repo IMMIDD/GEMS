@@ -22,6 +22,14 @@
         @test sims2 == simulations(batch2)
         @test sims3 == simulations(batch3)
         @test sims4 == simulations(batch4)
+
+        # keyword constructor: verify n_runs simulations are actually created
+        kw_batch = Batch(n_runs = 3)
+        @test length(simulations(kw_batch)) == 3
+
+        # keyword constructor with simargs forwarded to Simulation
+        kw_batch2 = Batch(n_runs = 2, label = "kw_test")
+        @test all(s -> label(s) == "kw_test", simulations(kw_batch2))
     end
 
 
@@ -196,5 +204,13 @@
             @test bP |> x -> setting_age_contacts(x, GlobalSetting) |> length != 0
             @test bP |> population_pyramid |> length != 0
         end
+    end
+
+    @testset "Printing" begin
+        @test !isempty(@capture_out show(batch5))
+
+        bd = BatchData(BatchProcessor(batch5))
+        @test !isempty(@capture_out info(bd))
+        @test !isempty(@capture_out show(bd))
     end
 end

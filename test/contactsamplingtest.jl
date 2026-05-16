@@ -125,6 +125,23 @@
         # Sampling from a setting where no individual is present should result in an error
         @test_throws ArgumentError sample_contacts(abcs1, empty_h, i_index, individuals(empty_h), GEMS.DEFAULT_TICK, rng = Xoshiro())
 
+        # replace=false avoids self-sampling and produces unique contacts
+        for _ in 1:10
+            contacts = sample_contacts(abcs3, h3, i_index, individuals(h3), GEMS.DEFAULT_TICK, replace = false, rng = Xoshiro())
+            @test all(c -> c.id != i.id, contacts)
+            @test length(unique(c.id for c in contacts)) == length(contacts)
+        end
+
+    end
+
+@testset "sample_contacts positional wrapper" begin
+        rs = RandomSampling()
+        indivs = [Individual(id = j, age = 18, sex = 1, household = 1) for j in 0:10]
+        h = Household(id = 1, individuals = indivs, contact_sampling_method = rs)
+
+        result = sample_contacts(rs, h, 1, indivs, GEMS.DEFAULT_TICK, true, Xoshiro(42))
+        @test result isa Vector{Individual}
+        @test length(result) == 1
     end
 
     @testset "Buffer-aware Sampling" begin

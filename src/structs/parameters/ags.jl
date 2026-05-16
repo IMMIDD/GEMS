@@ -55,7 +55,7 @@ struct AGS
 
     function AGS(ags_int::Int)
         if !(0 < ags_int ÷ 10^6 <= 16)
-            throw("The state (first two digits) must be between 1 and 16")
+            throw(ArgumentError("The state (first two digits) must be between 1 and 16"))
         else
             return new(Int32(ags_int))
         end
@@ -63,7 +63,7 @@ struct AGS
 
     function AGS(ags_int::Int32)
         if !(0 < ags_int ÷ 10^6 <= 16)
-            throw("The state (first two digits) must be between 1 and 16")
+            throw(ArgumentError("The state (first two digits) must be between 1 and 16"))
         else
             return new(ags_int)
         end
@@ -71,7 +71,7 @@ struct AGS
 
     function AGS(ags_string::String)
         if !occursin(r"^\d{8}$", ags_string)
-            throw("The AGS (Amtlicher Gemeindeschlüssel, eng: Community Identification Number) must consist of exactly 8 digits")
+            throw(ArgumentError("The AGS (Amtlicher Gemeindeschlüssel, eng: Community Identification Number) must consist of exactly 8 digits"))
         else
             return AGS(parse(Int, ags_string))
         end
