@@ -243,12 +243,7 @@
 
         @test process_measure(sim, i, trace_infectious) === nothing
 
-        try
-            TraceInfectiousContacts(i_strategy, success_rate=2.0)
-            @test false
-        catch e
-            @test e == "success_rate parameter must be between 0 and 1"
-        end
+        @test_throws ArgumentError TraceInfectiousContacts(i_strategy, success_rate=2.0)
 
         pop = Population(n=2, avg_household_size=2, avg_school_size=2, avg_office_size=2, rng = Xoshiro())
         sim3 = Simulation(population=pop, transmission_rate=1.0, household_contacts=1.0)
