@@ -33,10 +33,13 @@ using Suppressor
         "postprocessortest.jl",
         "resultdatatest.jl",
         "batchtest.jl",
+        "rngtest.jl",
         "utilstest.jl",
         "contactsamplingtest.jl",
         "contactmatrixtest.jl",
+        "contactdistributiontest.jl",
         "interventionstest.jl",
+        "vaccinetest.jl",
         "codevalidationtest.jl"
     ]
 

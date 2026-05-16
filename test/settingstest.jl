@@ -519,8 +519,26 @@
         @test sample_individuals(inds, 200) == inds
 
         @test avg_individuals(Setting[], sim) === nothing
+        @test min_individuals(Setting[], sim) === nothing
+        @test max_individuals(Setting[], sim) === nothing
 
         @test min_max_avg_individuals(Setting[], sim) === (nothing, nothing, nothing)
+
+        # build three households with 1, 3, and 5 members to get known min/max/avg
+        h_inds = [Individual(id = j, age = 1, sex = 1) for j in 1:9]
+        hh1 = Household(id = 1, individuals = h_inds[1:1])
+        hh2 = Household(id = 2, individuals = h_inds[2:4])
+        hh3 = Household(id = 3, individuals = h_inds[5:9])
+        stngs = Setting[hh1, hh2, hh3]
+
+        @test min_individuals(stngs, sim) == 1
+        @test max_individuals(stngs, sim) == 5
+        @test avg_individuals(stngs, sim) ≈ 3.0
+
+        # single-element vector: min == max == avg
+        @test min_individuals(Setting[hh2], sim) == 3
+        @test max_individuals(Setting[hh2], sim) == 3
+        @test avg_individuals(Setting[hh2], sim) ≈ 3.0
 
         # test size function for containersettings
         sc = SettingsContainer()

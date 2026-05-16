@@ -70,12 +70,12 @@ function generate_map(coords::DataFrame, dest::AbstractString; region = [], plot
     
     # catch empty dataframes
     if coords |> isempty && !plotempty
-        throw("You passed an empty dataframe")
+        throw(ArgumentError("You passed an empty dataframe"))
     end
 
     # catch empty region when force plotting
     if region |> isempty && plotempty
-        throw("If you force an empty plot, you must specify a region")
+        throw(ArgumentError("If you force an empty plot, you must specify a region"))
     end
 
     # set up region framing based on passed data points

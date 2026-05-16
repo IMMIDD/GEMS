@@ -57,7 +57,7 @@
         end
     end
     @testset "basefolder test" begin
-        path = basefolder()
+        path = GEMS.basefolder()
         @test isdir(path)  # Es sollte ein existierendes Verzeichnis sein
     end
     @testset "identical tests" begin
@@ -94,10 +94,47 @@
         @test v[1] == Thing(1)
         @test v[2] == Thing(2)
 =#
-        # Länge 1
+        # length 1: returns immediately, vector unchanged
         v = [42]
         bad_unique(v)
         @test v == [42]
+
+        # length > 1: duplicate removed, unique values preserved
+        v = [1, 1, 2]
+        bad_unique(v)
+        @test length(v) == 2
+        @test 1 in v
+        @test 2 in v
+
+        # length > 1: no duplicates, vector unchanged
+        v = [1, 2, 3]
+        bad_unique(v)
+        @test v == [1, 2, 3]
+    end
+
+    @testset "find_subtype" begin
+        @test GEMS.find_subtype("Household", Setting) == Household
+        @test_throws ArgumentError GEMS.find_subtype("NonExistentType", Setting)
+    end
+
+    @testset "county_data" begin
+        df = county_data()
+        @test df isa DataFrame
+        @test :ags in propertynames(df)
+        @test :gen in propertynames(df)
+        @test nrow(df) > 0
+        @test eltype(df.ags) == AGS
+        @test eltype(df.gen) == String
+    end
+
+    @testset "municipality_data" begin
+        df = municipality_data()
+        @test df isa DataFrame
+        @test :ags in propertynames(df)
+        @test :gen in propertynames(df)
+        @test nrow(df) > 0
+        @test eltype(df.ags) == AGS
+        @test eltype(df.gen) == String
     end
     @testset "get_missing_docs test" begin
         missing = get_missing_docs()
