@@ -95,7 +95,7 @@ function find_subtype(subtype::String, type::Type)::Type
     subtypes = concrete_subtypes(type)
     idx = findfirst(item -> item[end] == subtype, split.(string.(subtypes),"."))
     if idx === nothing
-        throw("$subtype is not a subtype of "*string(type))
+        throw(ArgumentError("$subtype is not a subtype of "*string(type)))
     else
         return subtypes[idx]
     end
@@ -699,11 +699,12 @@ function bad_unique(vec)
         return
     end
     for (i, entry) in enumerate(vec)
-        for j in (i+1):length(vec)
-            if entry == vec[j]
+        j = i + 1
+        while j <= length(vec)
+            if entry == vec[j] || identical(entry, vec[j])
                 deleteat!(vec, j)
-            elseif identical(entry, vec[j])
-                deleteat!(vec, j)
+            else
+                j += 1
             end
         end
     end
