@@ -305,7 +305,7 @@ also pass to the `gemsplot()` function and might find helpful:
 function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :all, plotargs...)
 
     # handle empty inputs
-    isempty(rd) ? throw("The ResultData vector cannot be empty") : nothing
+    isempty(rd) ? throw(ArgumentError("The ResultData vector cannot be empty")) : nothing
 
     ### RECURSIVE CALLS
     # if no type was passed, print the default plot (R, cases, and SEIR)
@@ -332,7 +332,7 @@ function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :a
 
     # SINGLE PLOTTING
     # throw exception if type unknown
-    !is_subtype(type, SimulationPlot) ? throw("There's no plot type that matches $type") : nothing
+    !is_subtype(type, SimulationPlot) ? throw(ArgumentError("There's no plot type that matches $type")) : nothing
 
     plt = try 
         # instantiate plot

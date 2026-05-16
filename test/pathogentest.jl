@@ -473,6 +473,8 @@
             age_groups = ["0-19", "20-39", "40-59", "60-"],
             transmission_rates = [0.1, 1.2, 0.3, 0.4]
         )
+
+        @test !isempty(@capture_out show(abtr))
     end
 
     @testset "Custom Transmission Function" begin

@@ -17,7 +17,7 @@ function r0_cgrad(outvals)
 
     # if all values are below 0
     if (maximum(outvals) <= 1)
-        return cgrad([:white, yellow], [0.0, 1.0])
+        return cgrad([:white, :yellow], [0.0, 1.0])
     end
 
     # if values cross, R0 = 1
@@ -132,13 +132,16 @@ function gemsheatmap(xvals::Vector{<:Any}, yvals::Vector{<:Any}, outvals::Vector
     xy_matrix = fill(NaN, length(ylabs), length(xlabs))
     for x in 1:length(xlabs)
         for y in 1:length(ylabs)
-            xy_matrix[y,x] = df.outvals[df.xvals .== xlabs[x] .&& df.yvals .== ylabs[y]] |> first
+            vals = df.outvals[df.xvals .== xlabs[x] .&& df.yvals .== ylabs[y]]
+            if !isempty(vals)
+                xy_matrix[y, x] = first(vals)
+            end
         end
     end
 
     # check if all values are available
     if any(isnan, xy_matrix)
-        throw("There are missing value combinations in the heatmap input data. Make sure all x and y values have an outcome value.")
+        throw(ArgumentError("There are missing value combinations in the heatmap input data. Make sure all x and y values have an outcome value."))
     end
 
     # convert color scheme

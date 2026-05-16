@@ -294,6 +294,52 @@
             end
         end
 
+        @testset "gemsplot Vector paths" begin
+            sim_a = Simulation(pop_size = 100, label = "A")
+            run!(sim_a)
+            rd_a = sim_a |> PostProcessor |> ResultData
+
+            sim_b = Simulation(pop_size = 100, label = "B")
+            run!(sim_b)
+            rd_b = sim_b |> PostProcessor |> ResultData
+
+            rds = [rd_a, rd_b]
+
+            # combined = :all — exercises the generate(plt, rds) path
+            @test gemsplot(rds, type = :TickCases) isa Plots.Plot
+
+            # combined = :single — exercises splitplot
+            @test gemsplot(rds, type = :TickCases, combined = :single) isa Plots.Plot
+
+            # combined = :bylabel — exercises splitlabel
+            @test gemsplot(rds, type = :TickCases, combined = :bylabel) isa Plots.Plot
+
+            # empty vector throws
+            @test_throws ArgumentError gemsplot(ResultData[])
+
+            # unknown type throws
+            @test_throws ArgumentError gemsplot(rds, type = :NonExistentPlotType)
+        end
+
+        @testset "splitlabel" begin
+            sim_a = Simulation(pop_size = 100, label = "ScenarioA")
+            run!(sim_a)
+            rd_a = sim_a |> PostProcessor |> ResultData
+
+            sim_b = Simulation(pop_size = 100, label = "ScenarioB")
+            run!(sim_b)
+            rd_b = sim_b |> PostProcessor |> ResultData
+
+            # two distinct labels — two side-by-side group plots
+            @test splitlabel(TickCases(), [rd_a, rd_b]) isa Plots.Plot
+
+            # same label — all runs folded into one group
+            sim_c = Simulation(pop_size = 100, label = "ScenarioA")
+            run!(sim_c)
+            rd_c = sim_c |> PostProcessor |> ResultData
+            @test splitlabel(TickCases(), [rd_a, rd_c]) isa Plots.Plot
+        end
+
         @testset "Scenario Simulation Plots" begin
             p = AggregatedSettingAgeContacts(Household)
             @test settingtype(p) == Household
@@ -354,6 +400,52 @@
             @test p2 isa Plots.Plot
             @test p3 isa Plots.Plot
         end
+
+        @testset "AggregatedSettingAgeContacts" begin
+            sim_c = Simulation(pop_size = 1000)
+            run!(sim_c)
+            rd_c = sim_c |> PostProcessor |> ResultData
+
+            @test generate(AggregatedSettingAgeContacts(Household), rd_c) isa Plots.Plot
+            @test generate(AggregatedSettingAgeContacts(), rd_c) isa Plots.Plot
+        end
+
+        @testset "SettingAgeContacts" begin
+            mutable struct SettingAgeContactsResultData <: ResultDataStyle
+                data::Dict{Any,Any}
+                function SettingAgeContactsResultData(pP::PostProcessor)
+                    return new(Dict(
+                        "setting_age_contacts" => Dict(
+                            "Household" => setting_age_contacts(pP, Household)
+                        ),
+                        "sim_data" => Dict(
+                            "final_tick" => tick(pP |> simulation)
+                        )
+                    ))
+                end
+            end
+            sim_conf = Simulation(
+                configfile = joinpath(basefolder, "test/testdata/TestConf.toml"),
+                population = joinpath(basefolder, "test/testdata/TestPop.csv")
+            )
+            run!(sim_conf)
+            rd_conf = ResultData(sim_conf |> PostProcessor, style = "SettingAgeContactsResultData")
+            @test generate(SettingAgeContacts(Household), rd_conf) isa Plots.Plot
+        end
+
+        @testset "TotalTests with test data (Vector{ResultData})" begin
+            function make_rd_with_tests()
+                s = Simulation()
+                test = TestType("PCR", pathogen(s), s)
+                strat = IStrategy("Testing", s)
+                add_measure!(strat, GEMS.Test("Test", test))
+                add_symptom_trigger!(s, SymptomTrigger(strat))
+                run!(s)
+                return s |> PostProcessor |> ResultData
+            end
+            @test generate(TotalTests(), [make_rd_with_tests(), make_rd_with_tests()]) isa Plots.Plot
+        end
+
     end
 
     @testset "Custom Report" begin
@@ -461,35 +553,26 @@
             @test bounds ≈ expected_bounds
         end
 
-        #= @testset "generate_map tests" begin
-              dest = basefolder * "/test_map.png"
+        @testset "generate_map error paths" begin
+            df_empty = DataFrame(lat=Float64[], lon=Float64[])
 
-              # Test with normal coordinates
+            @test_throws ArgumentError generate_map(df_empty, "dummy.png")
+            @test_throws ArgumentError generate_map(df_empty, "dummy.png"; plotempty=true)
+        end
+
+        #= @testset "generate_map GMT tests" begin
+              # These tests require a system GMT installation and are disabled in CI.
+              dest = basefolder * "/test_map.png"
               df = DataFrame(lat=[50, 51, 52], lon=[8, 9, 10])
               result = generate_map(df, dest)
               @test result isa GMTWrapper
-              @test isfile(dest)  # file should be generated
+              @test isfile(dest)
 
-              # Test: empty DataFrame -> should throw an error
-              df_empty = DataFrame(lat=[], lon=[])
-              @test_throws "You passed an empty dataframe" generate_map(df_empty, dest)
-
-              # Test: plotempty =True without region -> should throw an error
-              @test_throws "If you force an empty plot, you must specify a region" generate_map(df_empty, dest; plotempty=true)
-
-              # Test: plotempty=True with a defined region -> should generate an empty map
-              region = [7, 11, 49, 53]  # Bounding Box for the Test-coordinates
+              region = [7, 11, 49, 53]
               result = generate_map(df_empty, dest; region=region, plotempty=true)
               @test result isa GMTWrapper
               @test isfile(dest)
 
-              # Test with a specific region
-              custom_region = [7, 11, 49, 53]
-              result = generate_map(df, dest; region=custom_region)
-              @test result isa GMTWrapper
-              @test isfile(dest)
-
-              # Cleanup after Tests
               rm(dest; force=true)
           end =#
 
@@ -728,6 +811,34 @@
                 plts -> @test all(p -> p isa Plots.Plot, plts)
         end
 
+    end
+
+    @testset "gemsheatmap" begin
+        x = [1.0, 1.0, 2.0, 2.0]
+        y = [1.0, 2.0, 1.0, 2.0]
+        z = [1.0, 2.0, 3.0, 4.0]
+
+        @test gemsheatmap(x, y, z) isa Plots.Plot
+        @test gemsheatmap(x, y, z, xrev = true, yrev = true) isa Plots.Plot
+        @test gemsheatmap(x, y, z,
+            xformatter = v -> "x=$v",
+            yformatter = v -> "y=$v") isa Plots.Plot
+
+        # aggregation: duplicate (x,y) pairs are reduced by the aggregate function
+        x2 = [1.0, 1.0, 2.0, 2.0, 1.0, 2.0]
+        y2 = [1.0, 2.0, 1.0, 2.0, 1.0, 2.0]
+        z2 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        @test gemsheatmap(x2, y2, z2, aggregate = mean) isa Plots.Plot
+
+        # missing combination throws
+        @test_throws ArgumentError gemsheatmap([1.0, 1.0, 2.0], [1.0, 2.0, 1.0], [1.0, 2.0, 3.0])
+
+        # r0 color scheme: all above 1
+        @test gemsheatmap(x, y, [1.0, 1.5, 2.0, 2.5], color = :r0) isa Plots.Plot
+        # r0 color scheme: all below 1
+        @test gemsheatmap(x, y, [0.1, 0.3, 0.5, 0.8], color = :r0) isa Plots.Plot
+        # r0 color scheme: values crossing 1
+        @test gemsheatmap(x, y, [0.5, 0.8, 1.2, 1.5], color = :r0) isa Plots.Plot
     end
 
     @testset "Plots Test" begin

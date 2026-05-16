@@ -205,4 +205,12 @@
             @test bP |> population_pyramid |> length != 0
         end
     end
+
+    @testset "Printing" begin
+        @test !isempty(@capture_out show(batch5))
+
+        bd = BatchData(BatchProcessor(batch5))
+        @test !isempty(@capture_out info(bd))
+        @test !isempty(@capture_out show(bd))
+    end
 end
