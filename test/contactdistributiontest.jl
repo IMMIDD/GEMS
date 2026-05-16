@@ -60,7 +60,7 @@
         @test typeof(get_age_contact_distribution(test_contact_data; ego_age=5, contact_age=4, ego_id_column=1, ego_age_column=2, contact_age_column=3)) == AgeContactDistribution
 
         # the test contact data has no entries of "egos" who doesn't have any contacts
-        @test isempty(GEMS.get_zero_contact_distribution(contactdata=test_contact_data, ego_age=5, ego_id_column=1, ego_age_column=2, contact_age_column=3))
+        @test isempty(GEMS.calculate_zero_contact_distribution(test_contact_data; ego_age=5, ego_id_column=1, ego_age_column=2, contact_age_column=3))
 
         #=
         12×3 DataFrame
@@ -116,7 +116,7 @@
         =#
         test_contact_data_with_zero_contacts = DataFrame(ego_id = [1,1,1,2,2,3,3,3,3,4,5,5,6], ego_age = [18,18,18,10,10,4,4,4,4,18,22,22,18], contact_age = [1,11,11,22,6,5,2,13,13,-1,18,17,-1])
 
-        distribution_with_zero_contacts = GEMS.get_zero_contact_distribution(test_contact_data_with_zero_contacts; ego_age=18, ego_id_column=1, ego_age_column=2, contact_age_column=3)
+        distribution_with_zero_contacts = GEMS.calculate_zero_contact_distribution(test_contact_data_with_zero_contacts; ego_age=18, ego_id_column=1, ego_age_column=2, contact_age_column=3)
 
         # only 2 "egos" of age "18" don't have contacts
         @test length(distribution_with_zero_contacts) == 2
@@ -147,13 +147,51 @@
         age_contact_distribution = get_age_contact_distribution(test_contact_data; ego_age=5, contact_age=4, ego_id_column=1, ego_age_column=2, contact_age_column=3)
 
         # test if the function can be called without throwing any error
-        @test try 
+        @test try
                 plot_age_contact_distribution(age_contact_distribution)
                 true
             catch
                 false
             end
 
+        @test_throws ArgumentError plot_age_contact_distribution(age_contact_distribution, style=:invalid)
+
+        @test try
+                plot_multiple_age_contact_distributions([age_contact_distribution])
+                true
+            catch
+                false
+            end
+
+        @test_throws ArgumentError plot_multiple_age_contact_distributions([age_contact_distribution], style=:invalid)
+
+        dist_matrix = [AgeContactDistribution(Int64[1], Int8(i-1), Int8(j-1)) for i in 1:3, j in 1:3]
+
+        @test try
+                plot_all_age_contact_distributions(dist_matrix)
+                true
+            catch
+                false
+            end
+
+        @test_throws ArgumentError plot_all_age_contact_distributions(dist_matrix, style=:invalid)
+
+    end
+
+    @testset "get_age_contact_distribution_matrix" begin
+        # source hardcodes ego_id=col1, ego_age=col2, contact_age=col5; a_age and b_age must be column names
+        test_data = DataFrame(
+            ego_id = [1, 1, 2, 2],
+            a_age = [5, 5, 10, 10],
+            c3 = [0, 0, 0, 0],
+            c4 = [0, 0, 0, 0],
+            b_age = [10, 10, 5, 5]
+        )
+
+        matrix = get_age_contact_distribution_matrix(test_data)
+        @test matrix isa Matrix{AgeContactDistribution}
+        @test size(matrix, 1) == size(matrix, 2)
+        @test size(matrix, 1) == 11  # maxage=10 → (10+1)×(10+1)
     end
 
 end
@@ -231,6 +269,26 @@ end
         @test typeof(age_group_contact_distribution) == Vector{Int}
     end
 
+    @testset "calculate_ageGroup_contact_distribution" begin
+        test_contact_data = DataFrame(ego_id = [1,1,2,2,3,3,4,5,5,6,7,8,9,10], ego_age = [2,2,2,2,4,4,8,9,9,1,7,2,4,3], contact_age = [0,2,2,4,3,5,5,1,1,2,3,2,2,1]) |> x -> sort!(x, [:ego_age])
+
+        result = GEMS.calculate_ageGroup_contact_distribution(test_contact_data; ego_age_group=(0,5), contact_age_group=(0,5), ego_id_column=1, ego_age_column=2, contact_age_column=3)
+
+        @test result == [2,2,1,1,1,1,1]
+        @test length(result) == 7
+        @test typeof(result) == Vector{Int}
+    end
+
+    @testset "get_ageGroup_contact_distribution from matrix" begin
+        dist_matrix = [AgeContactDistribution(Int64[1], Int8(i-1), Int8(j-1)) for i in 1:5, j in 1:5]
+
+        result = get_ageGroup_contact_distribution(dist_matrix; ego_age_group=(0,3), contact_age_group=(0,3))
+        @test result isa AgeGroupContactDistribution
+        @test result.ego_age_group == (Int8(0), Int8(3))
+        @test result.contact_age_group == (Int8(0), Int8(3))
+        @test length(result.distribution_data) == 9  # 3×3 submatrix, each cell has 1 element
+    end
+
     @testset "Plotting" begin
 
         #=
@@ -258,12 +316,23 @@ end
         age_group_contact_distribution = get_ageGroup_contact_distribution(test_contact_data; ego_age_group=(0,5), contact_age_group=(0,5), ego_id_column=1, ego_age_column=2, contact_age_column=3)
 
         # test if the function can be called without throwing any error
-        @test try 
+        @test try
                 plot_ageGroup_contact_distribution(age_group_contact_distribution)
                 true
             catch
                 false
             end
+
+        @test_throws ArgumentError plot_ageGroup_contact_distribution(age_group_contact_distribution, style=:invalid)
+
+        @test try
+                plot_multiple_ageGroup_contact_distributions([age_group_contact_distribution])
+                true
+            catch
+                false
+            end
+
+        @test_throws ArgumentError plot_multiple_ageGroup_contact_distributions([age_group_contact_distribution], style=:invalid)
 
     end
 end
