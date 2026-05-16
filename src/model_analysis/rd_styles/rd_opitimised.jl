@@ -36,8 +36,8 @@ mutable struct OptimisedResultData <: ResultDataStyle
                 ),
             "setting_age_contacts" =>
             Dict(
-                "Household" => () -> setting_age_contacts(pP, Household),
-                "GlobalSetting" => () -> setting_age_contacts(pP, GlobalSetting),
+                #"Household" => () -> setting_age_contacts(pP, Household),
+                #"GlobalSetting" => () -> setting_age_contacts(pP, GlobalSetting),
             ),
 
             "aggregated_setting_age_contacts" =>
