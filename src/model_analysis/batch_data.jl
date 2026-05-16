@@ -93,13 +93,14 @@ mutable struct BatchData <: AbstractResultData
     of batch size.
 
     - `rd_style`: the `ResultData` style used when storing representative/individual runs.
-    - `median_by`: a function `pp -> scalar` to select the median run
-      (e.g. `pp -> nrow(infectionsDF(pp))`). Default: `nothing`.
+    - `median_by`: a function `pp -> scalar` to select the median run.
+      Default: total infections (same default as `process!`). Pass `nothing` to disable.
     - `keep_rundata`: store all individual `ResultData` objects. Default: `false`.
     - `customlogger`: a `CustomLogger` to attach to each simulation run. Default: `nothing`.
     """
     BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style::String = "LightRD",
-              median_by = nothing, keep_rundata::Bool = false,
+              median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
+              keep_rundata::Bool = false,
               customlogger::Union{Nothing, CustomLogger} = nothing) =
         BatchData(process!(batch; rd_style, median_by, keep_rundata, customlogger), style = style)
 

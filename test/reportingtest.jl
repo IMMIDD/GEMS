@@ -312,6 +312,7 @@
             @test gemsplot(bd, type = (:TickCases, :CumulativeCases)) isa Plots.Plot
 
             # multi-label batch
+            # distribution plots that fall back to per-label median runs
             b_ml = merge(
                 Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.2, label = "Baseline"),
                 Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.15, label = "Masks")
@@ -319,6 +320,10 @@
             bd_ml = BatchData(b_ml)
             @test gemsplot(bd_ml) isa Plots.Plot
             @test gemsplot(bd_ml, type = :TickCases) isa Plots.Plot
+            # HouseholdAttackRate and InfectionDuration route through
+            # _per_label_representative_plots when global median_run is nothing
+            @test generate(HouseholdAttackRate(), bd_ml) isa Plots.Plot
+            @test generate(InfectionDuration(), bd_ml) isa Plots.Plot
         end
 
         @testset "Scenario Simulation Plots" begin

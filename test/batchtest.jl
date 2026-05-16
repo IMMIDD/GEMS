@@ -128,13 +128,20 @@
             @test bd |> git_commit |> length != 0
 
             @test bd |> dataframes |> length != 0
-            # multi-column accessors now return Dict
+            # multi-column accessors return Dict
             @test bd |> tick_cases |> length != 0
             @test bd |> effectiveR |> length != 0
             @test bd |> tests |> length >= 0
             @test bd |> cumulative_quarantines |> length != 0
             @test bd |> cumulative_disease_progressions |> length != 0
-            # new fields
+            # 6 new dataframe getters (may be empty when model features unused)
+            @test bd |> dark_figure isa DataFrame
+            @test bd |> generation_times isa DataFrame
+            @test bd |> hospitalizations isa Dict
+            @test bd |> observed_R isa Dict
+            @test bd |> pool_tests isa Dict
+            @test bd |> sero_tests isa Dict
+            # scalar fields
             @test bd |> total_detected_cases |> length != 0
             @test bd |> detection_rate |> length != 0
             @test seed(bd) == seed(bP)
@@ -286,13 +293,35 @@
             @test !isnothing(pl["High"]["median_run"])
         end
 
+        @testset "TotalTestsMultiType" begin
+            # directly insert fake per-type test data to exercise the multi-type branch of generate(TotalTests(), bd::BatchData)
+            bp_tests = BatchProcessor()
+            for testtype in ["PCR", "Antigen"]
+                bp_tests.tests[testtype] = Dict{String, Dict{Int, WelfordState}}()
+                for col in ["total_tests", "positive_tests", "negative_tests"]
+                    col_accum = Dict{Int, WelfordState}()
+                    for tick in 1:5
+                        s = WelfordState()
+                        welford_update!(s, Float64(tick))
+                        col_accum[tick] = s
+                    end
+                    bp_tests.tests[testtype][col] = col_accum
+                end
+            end
+            bd_tests = BatchData(bp_tests)
+            @test tests(bd_tests) isa Dict
+            @test haskey(tests(bd_tests), "PCR")
+            @test haskey(tests(bd_tests), "Antigen")
+        end
+
         @testset "CustomLogger" begin
             cl = CustomLogger(infected = sim -> count(infected, sim |> population))
             bp = process!(Batch(n_runs = 3); customlogger = cl, keep_rundata = true)
             # each stored ResultData should have custom logger data
             for rd in rundata(bp)
-                @test !isnothing(customlogger(rd))
-                @test nrow(dataframe(customlogger(rd))) > 0
+                cl_data = customlogger(rd)
+                @test cl_data isa DataFrame
+                @test nrow(cl_data) > 0
             end
             # the logger passed to process! must not be mutated (data isolated per run)
             @test nrow(dataframe(cl)) == 0
