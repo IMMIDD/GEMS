@@ -23,7 +23,7 @@
 
         # add! appends a config
         @test length(simconfigs(b1)) == 2
-        add!((label = "extra",), b1)
+        add!(b1, (label = "extra",))
         @test length(simconfigs(b1)) == 3
 
         # merge combines configs from multiple batches

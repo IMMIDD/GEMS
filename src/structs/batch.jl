@@ -62,15 +62,15 @@ function simconfigs(batch::Batch)
 end
 
 """
-    add!(cfg::NamedTuple, batch::Batch)
+    add!(batch::Batch, cfgs::NamedTuple...)
 
-Append a simulation configuration to a `Batch`.
+Append one or more simulation configurations to a `Batch`.
 """
-function add!(cfg::NamedTuple, batch::Batch)
-    push!(batch.simconfigs, cfg)
+function add!(batch::Batch, cfgs::NamedTuple...)
+    append!(batch.simconfigs, cfgs)
 end
 
-add!(batch::Batch, cfg::NamedTuple) = add!(cfg, batch)
+add!(cfg::NamedTuple, batch::Batch) = add!(batch, cfg)
 
 """
     Base.append!(batch1::Batch, batch2::Batch)
