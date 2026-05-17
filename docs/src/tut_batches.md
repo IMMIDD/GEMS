@@ -26,15 +26,34 @@ gemsplot(bd)
 </p>
 ``` 
 
+By default, `gemsplot(bd)` shows a mean line with a 95% confidence interval ribbon.
+To see the individual simulation traces, process with `keep_rundata = true` and pass
+`runs(bd)` to `gemsplot`:
 
-Passing a `label` keyword groups all runs under that name:
+```julia
+using GEMS
+
+b = Batch(n_runs = 5)
+bd = BatchData(b; keep_rundata = true)
+gemsplot(runs(bd)) 
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_single_runs.png" width="80%"/>
+</p>
+``` 
+
+If you want to group them, you can pass a `label` keyword:
 
 ```julia
 using GEMS
 
 b = Batch(n_runs = 5, label = "My Experiment")
-bd = BatchData(b)
-gemsplot(bd)
+bd = BatchData(b; keep_rundata = true)
+gemsplot(runs(bd)) 
 ```
 
 **Plot**
@@ -46,9 +65,144 @@ gemsplot(bd)
 ``` 
 
 
+!!! warning "Running Batches with `keep_rundata = true` requires lots of available RAM"
+    By default, `runs(bd)` returns `nothing` to keep memory usage low.
+    Use `keep_rundata = true` only when you need the individual `ResultData` objects.
+
+
+## *BatchData* Objects
+
+While `ResultData` objects are the processed output of single simulation runs, `BatchData` objects are processed output of batches.
+They contain aggregated data on the simulations, e.g., the average number of total infections including standard deviation, confidence intervals and ranges.
+Here's an example:
+
+```julia
+using GEMS
+
+b = Batch(n_runs = 5, label = "My Experiment")
+bd = BatchData(b)
+total_infections(bd)
+```
+
+**Output**
+
+```
+Dict{String, Real} with 6 entries:
+  "upper_95" => 76052.5
+  "max"      => 76088
+  "min"      => 75363
+  "lower_95" => 75415.1
+  "mean"     => 75733.8
+  "std"      => 256.672
+```
+
+Run the `info(...)` function to get an overview of values that you can retrieve from a `BatchData` object by calling a function of the same name (e.g., `total_infections(...)`) on the `BatchData` object:
+
+```julia
+info(bd)
+```
+
+**Output**
+
+```
+BatchData Entries
+└ meta_data
+  └ GEMS_version
+  └ id
+  └ execution_date
+└ dataframes
+  └ hospitalizations
+  └ dark_figure
+  └ generation_times
+  └ tick_cases
+  └ cumulative_disease_progressions
+  └ per_label
+  └ sero_tests
+  └ cumulative_cases
+  └ pool_tests
+  └ effectiveR
+  └ observed_R
+  └ cumulative_quarantines
+  └ tests
+└ sim_data
+  └ median_run
+  └ total_detected_cases
+  └ number_of_runs
+  └ tick_unit
+  └ attack_rate
+  └ detection_rate
+  └ total_infections
+  └ total_quarantines
+  └ total_tests
+  └ r0
+  └ runs
+  └ seed
+└ system_data
+  └ cpu_data
+  └ git_commit
+  └ julia_version
+  └ total_mem_size
+  └ threads
+  └ kernel
+  └ free_mem_size
+  └ git_branch
+  └ word_size
+  └ git_repo
+```
+
+## Custom *BatchDataStyles*
+
+t.b.d.
+
+## Running Scenarios
+
+GEMS' batch functionalities offer easy options to compare different scenarios and run multiple simulations for each of them.
+The example below compares a baseline scenario with a scenario with a lower `transmission_rate` and we assume that this is due to mask-wearing mandates.
+It spawns five simulations for each of the scenarios (grouped by label), merges them into one batch, and visualizes the results:
+
+```julia
+using GEMS
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
+masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
+bd = BatchData(merge(baseline, masks))
+gemsplot(bd)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_scenarios.png" width="80%"/>
+</p>
+``` 
+
+To see the individual simulation traces, process with `keep_rundata = true` and pass
+`runs(bd)` to `gemsplot`:
+
+```julia
+using GEMS
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
+masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
+bd = BatchData(merge(baseline, masks); keep_rundata = true)
+gemsplot(runs(bd)) 
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_scenarios_single_runs.png" width="80%"/>
+</p>
+``` 
+
+Of course, all of this can also be done with much more complex intervention strategies.
+Please look up the interventions tutorial for examples.
+
 ## Sweeping Parameter Spaces
 
-To scan parameter spaces, create one single-run batch per configuration and merge them:
+To scan parameter spaces, create one batch per configuration and merge them:
 
 ```julia
 using GEMS
@@ -112,177 +266,6 @@ gemsheatmap(xvals, yvals, outvals,
 !!! info "How can I run more than one repetition per combination?"
     You can enclose the experiment in another loop, running each combination as many times as you want. The `gemsheatmap()` function can take multiple entries of the same (`xvals`, `yvals`) combinations. It automatically generates the mean value across observations. You can also change the aggregation function. Please lookup the `gemsheatmap()` documentation.
 
-## Running Scenarios
-
-GEMS' batch functionalities offer easy options to compare different scenarios and run multiple simulations for each of them.
-The example below compares a baseline scenario with a scenario with a lower `transmission_rate` and we assume that this is due to mask-wearing mandates.
-It spawns five simulations for each of the scenarios, merges them into one batch, and visualizes the results:
-
-```julia
-using GEMS
-
-baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
-masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
-bd = BatchData(merge(baseline, masks))
-gemsplot(bd)
-```
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_batches_scenarios.png" width="80%"/>
-</p>
-``` 
-
-
-When a `BatchData` object contains multiple labels, `gemsplot` automatically shows
-one mean±CI ribbon per label, coloured differently:
-
-```julia
-gemsplot(bd, type = :TickCases)
-```
-
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_batches_combined.png" width="60%"/>
-</p>
-``` 
-
-
-Of course, all of this can also be done with much more complex intervention strategies.
-Please look up the interventions tutorial for examples.
-
-
-## Merging Batches
-
-Sometimes it's easier to build up batches individually and then merge them into one for execution.
-Here's an example of how that can be done based on the scenario of the previous chapter:
-
-```julia
-using GEMS
-
-b1 = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
-b2 = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
-bd = BatchData(merge(b1, b2))
-gemsplot(bd, type = :TickCases)
-```
-
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_batches_2.png" width="60%"/>
-</p>
-``` 
-
-
-
-## *BatchData* Objects
-
-While `ResultData` objects are the processed output of single simulation runs, `BatchData` objects are processed output of batches.
-They contain aggregated data on the simulations, e.g., the average number of total infections including standard deviation, confidence intervals and ranges.
-Here's an example:
-
-```julia
-using GEMS
-
-b = Batch(n_runs = 5, label = "My Experiment")
-bd = BatchData(b)
-total_infections(bd)
-```
-
-**Output**
-
-```
-Dict{String, Real} with 6 entries:
-  "upper_95" => 76052.5
-  "max"      => 76088
-  "min"      => 75363
-  "lower_95" => 75415.1
-  "mean"     => 75733.8
-  "std"      => 256.672
-```
-
-Run the `info(...)` function to get an overview of values that you can retrieve from a `BatchData` object by calling a function of the same name (e.g., `total_infections(...)`) on the `BatchData` object:
-
-```julia
-info(bd)
-```
-
-**Output**
-
-```
-BatchData Entries
-└ meta_data
-  └ GEMS_version
-  └ id
-  └ execution_date
-  └ seed
-└ dataframes
-  └ tick_cases
-  └ effectiveR
-  └ cumulative_disease_progressions
-  └ cumulative_quarantines
-  └ tests
-  └ dark_figure
-  └ cumulative_cases
-  └ generation_times
-  └ per_label
-└ sim_data
-  └ total_tests
-  └ number_of_runs
-  └ attack_rate
-  └ total_infections
-  └ total_quarantines
-  └ median_run
-  └ tick_unit
-└ system_data
-...
-```
-
-It's also possible to directly pass `BatchData` objects to the `gemsplot()` function:
-
-```julia
-gemsplot(bd)
-```
-
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_batches_batchdata.png" width="80%"/>
-</p>
-``` 
-
-By default, `gemsplot(bd)` shows a mean line with a 95% confidence interval ribbon.
-To see the individual simulation traces, process with `keep_rundata = true` and pass
-`runs(bd)` to `gemsplot`:
-
-```julia
-bd = BatchData(b; keep_rundata = true)
-gemsplot(runs(bd))  # one faded line per run, coloured by label
-```
-
-By default, `runs(bd)` returns `nothing` to keep memory usage low.
-Use `keep_rundata = true` only when you need the individual `ResultData` objects, for
-example to access per-run raw data:
-
-```julia
-bd = BatchData(b, rd_style = "DefaultResultData", keep_rundata = true)
-rns = runs(bd)
-infections(rns[1])
-```
-
-
-## Custom *BatchDataStyles*
-
-t.b.d.
 
 
 ## Reproducibility
