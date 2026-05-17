@@ -83,7 +83,7 @@ gemsplot(runs(bd), type = :TickCases)
 `process!` accepts the following keyword arguments:
 
 | Keyword | Default | Description |
-|---|---|---|
+|:---|:---|:---|
 | `seed` | `nothing` | Integer seed for the RNG. Pass a fixed value for reproducible runs (see [Reproducibility](@ref)). Randomised if omitted. |
 | `median_by` | `pp -> nrow(infectionsDF(pp))` | Criterion function used to select the representative run (see [Median Run](@ref)). Set to `nothing` to disable. |
 | `keep_rundata` | `false` | When `true`, stores all individual `ResultData` objects so `runs(bd)` returns them instead of `nothing`. Requires significantly more RAM. |
