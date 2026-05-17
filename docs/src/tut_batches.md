@@ -8,13 +8,15 @@ This tutorial teaches you how to work with so-called batches of simulations.
 
 Use `Batch(n_runs = N, ...)` to create a batch of N identical simulation runs.
 Any keyword argument accepted by `Simulation()` can be passed here.
-Call `BatchData(b)` to run all simulations and collect the results:
+Call `process!(b)` to run all simulations and return a `BatchProcessor` with the
+aggregated results. Wrap it in `BatchData()` to access the data:
 
 ```julia
 using GEMS
 
 b = Batch(n_runs = 5)
-bd = BatchData(b)
+bp = process!(b)
+bd = BatchData(bp)
 gemsplot(bd)
 ```
 
@@ -26,9 +28,15 @@ gemsplot(bd)
 </p>
 ``` 
 
+`BatchData(b)` is a convenient shorthand for the two-step pipeline above:
+
+```julia
+bd = BatchData(b)  # equivalent to BatchData(process!(b))
+```
+
 By default, `gemsplot(bd)` shows a mean line with a 95% confidence interval ribbon.
-To see the individual simulation traces, process with `keep_rundata = true` and pass
-`runs(bd)` to `gemsplot`:
+To see the individual simulation traces, pass `keep_rundata = true` and call
+`runs(bd)`:
 
 ```julia
 using GEMS
@@ -53,7 +61,7 @@ using GEMS
 
 b = Batch(n_runs = 5, label = "My Experiment")
 bd = BatchData(b; keep_rundata = true)
-gemsplot(runs(bd)) 
+gemsplot(runs(bd), type = :TickCases) 
 ```
 
 **Plot**
@@ -65,9 +73,23 @@ gemsplot(runs(bd))
 ``` 
 
 
-!!! warning "Running Batches with `keep_rundata = true` requires lots of available RAM"
-    By default, `runs(bd)` returns `nothing` to keep memory usage low.
-    Use `keep_rundata = true` only when you need the individual `ResultData` objects.
+!!! warning "RAM usage grows with batch size"
+    `runs(bd)` returns `nothing` by default. Use `keep_rundata = true` only when you need the individual `ResultData` objects.
+
+
+## `process!` Arguments
+
+`process!` accepts the following keyword arguments:
+
+| Keyword | Default | Description |
+|---|---|---|
+| `seed` | `nothing` | Integer seed for the RNG. Pass a fixed value for reproducible runs (see [Reproducibility](@ref)). Randomised if omitted. |
+| `median_by` | `pp -> nrow(infectionsDF(pp))` | Criterion function used to select the representative run (see [Median Run](@ref)). Set to `nothing` to disable. |
+| `keep_rundata` | `false` | When `true`, stores all individual `ResultData` objects so `runs(bd)` returns them instead of `nothing`. Requires significantly more RAM. |
+| `rd_style` | `"LightRD"` | `ResultData` style for each run. |
+| `customlogger` | `nothing` | A `CustomLogger` attached to every simulation run. |
+
+All of these can also be passed directly to the `BatchData(b; ...)` shorthand, which forwards them to `process!` internally.
 
 
 ## *BatchData* Objects
@@ -268,22 +290,6 @@ gemsheatmap(xvals, yvals, outvals,
 
 
 
-## Reproducibility
-
-Every batch run uses a randomly generated seed internally so that individual simulation
-runs are reproducible. Pass `seed` to get the same sequence of results every time:
-
-```julia
-using GEMS
-
-b = Batch(n_runs = 5)
-bd1 = BatchData(b; seed = 42)
-bd2 = BatchData(b; seed = 42)
-total_infections(bd1) == total_infections(bd2)  # true
-seed(bd1)  # → 42
-```
-
-
 ## Median Run
 
 By default, GEMS identifies the simulation whose total infections are closest to the
@@ -314,9 +320,11 @@ bp = process!(b; median_by = nothing)
 
 ## Multi-Label Median Runs
 
-If your batch contains multiple labels, you can extract the median run for each label simultaneously using the median_runs() function. Because this function returns a vector of representative ResultData objects, you can pass it directly to `gemsplot()`.
+If your batch contains multiple labels, you can extract the median run for each label simultaneously using `median_runs()`. Because this function returns a vector of  `ResultData` objects, you can pass it directly to `gemsplot()`.
 
 ```julia
+using GEMS
+
 baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
 masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
 
@@ -333,3 +341,18 @@ gemsplot(median_runs(bd))
     <img src="../assets/tutorials/tut_batches_median_runs.png" width="80%"/>
 </p>
 ``` 
+
+## Reproducibility
+
+Each call to `process!` internally assigns a unique seed per run. Pass `seed` to fix
+the top-level RNG and get identical results every time:
+
+```julia
+using GEMS
+
+b = Batch(n_runs = 5)
+bd1 = BatchData(b; seed = 42)
+bd2 = BatchData(b; seed = 42)
+total_infections(bd1) == total_infections(bd2)  # true
+seed(bd1)  # 42
+```

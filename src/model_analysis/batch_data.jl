@@ -86,23 +86,26 @@ mutable struct BatchData <: AbstractResultData
 
     @doc """
 
-        BatchData(batch::Batch; style="DefaultBatchData", rd_style="LightRD", median_by=nothing, keep_rundata=false, customlogger=nothing)
+        BatchData(batch::Batch; style="DefaultBatchData", seed=nothing, rd_style="LightRD", median_by=nothing, keep_rundata=false, customlogger=nothing)
 
     Create a `BatchData` object by running all simulation configurations in `batch`
     one at a time (streaming). Peak memory is ~1× a single simulation regardless
     of batch size.
 
+    - `seed`: integer seed for the RNG. Randomised if omitted.
     - `rd_style`: the `ResultData` style used when storing representative/individual runs.
     - `median_by`: a function `pp -> scalar` to select the median run.
       Default: total infections (same default as `process!`). Pass `nothing` to disable.
     - `keep_rundata`: store all individual `ResultData` objects. Default: `false`.
     - `customlogger`: a `CustomLogger` to attach to each simulation run. Default: `nothing`.
     """
-    BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style::String = "LightRD",
+    BatchData(batch::Batch; style::String = "DefaultBatchData",
+              seed::Union{Nothing, Integer} = nothing,
+              rd_style::String = "LightRD",
               median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
               keep_rundata::Bool = false,
               customlogger::Union{Nothing, CustomLogger} = nothing) =
-        BatchData(process!(batch; rd_style, median_by, keep_rundata, customlogger), style = style)
+        BatchData(process!(batch; seed, rd_style, median_by, keep_rundata, customlogger), style = style)
 
 end
 
