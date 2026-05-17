@@ -256,6 +256,7 @@ outvals = []
 
 # vary transmission rate
 for tr in 0.05:0.01:0.15
+    # vary household contacts
     for con in 0:0.5:5
         bd = BatchData(Batch(n_runs = 3, transmission_rate = tr, household_contacts = con))
         push!(xvals, tr)
