@@ -72,9 +72,10 @@ gemsplot(runs(bd), type = :TickCases)
 </p>
 ``` 
 
+`runs(bd)` returns `nothing` by default.
 
-!!! warning "RAM usage grows with batch size"
-    `runs(bd)` returns `nothing` by default. Use `keep_rundata = true` only when you need the individual `ResultData` objects.
+!!! warning "RAM usage with `keep_rundata = true` grows with batch size"
+    Use `keep_rundata = true` only when you need the individual `ResultData` objects.
 
 
 ## `process!` Arguments
