@@ -256,16 +256,11 @@ outvals = []
 
 # vary transmission rate
 for tr in 0.05:0.01:0.15
-    # vary household contacts
     for con in 0:0.5:5
-        sim = Simulation(transmission_rate = tr, household_contacts = con)
-        run!(sim)
-        rd = ResultData(sim, style = "LightRD")
-
-        # extract data for heatmap
+        bd = BatchData(Batch(n_runs = 3, transmission_rate = tr, household_contacts = con))
         push!(xvals, tr)
         push!(yvals, con)
-        push!(outvals, r0(rd))
+        push!(outvals, r0(bd)["mean"])
     end
 end
 
@@ -282,11 +277,7 @@ gemsheatmap(xvals, yvals, outvals,
 <p align="center">
     <img src="../assets/tutorials/tut_batches_sweep_heatmap.png" width="80%"/>
 </p>
-``` 
-
-
-!!! info "How can I run more than one repetition per combination?"
-    You can enclose the experiment in another loop, running each combination as many times as you want. The `gemsheatmap()` function can take multiple entries of the same (`xvals`, `yvals`) combinations. It automatically generates the mean value across observations. You can also change the aggregation function. Please lookup the `gemsheatmap()` documentation.
+```
 
 
 
