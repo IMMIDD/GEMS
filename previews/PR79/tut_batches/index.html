@@ -99,16 +99,11 @@ outvals = []
 
 # vary transmission rate
 for tr in 0.05:0.01:0.15
-    # vary household contacts
     for con in 0:0.5:5
-        sim = Simulation(transmission_rate = tr, household_contacts = con)
-        run!(sim)
-        rd = ResultData(sim, style = &quot;LightRD&quot;)
-
-        # extract data for heatmap
+        bd = BatchData(Batch(n_runs = 3, transmission_rate = tr, household_contacts = con))
         push!(xvals, tr)
         push!(yvals, con)
-        push!(outvals, r0(rd))
+        push!(outvals, r0(bd)[&quot;mean&quot;])
     end
 end
 
@@ -118,7 +113,7 @@ gemsheatmap(xvals, yvals, outvals,
     colorbar_title = &quot;Basic Reproduction Number&quot;,
     color = :r0) </code></pre><p><strong>Plot</strong></p><p align="center">
     <img src="../assets/tutorials/tut_batches_sweep_heatmap.png" width="80%"/>
-</p><div class="admonition is-info" id="How-can-I-run-more-than-one-repetition-per-combination?-9e34998c52a9636c"><header class="admonition-header">How can I run more than one repetition per combination?<a class="admonition-anchor" href="#How-can-I-run-more-than-one-repetition-per-combination?-9e34998c52a9636c" title="Permalink"></a></header><div class="admonition-body"><p>You can enclose the experiment in another loop, running each combination as many times as you want. The <code>gemsheatmap()</code> function can take multiple entries of the same (<code>xvals</code>, <code>yvals</code>) combinations. It automatically generates the mean value across observations. You can also change the aggregation function. Please lookup the <code>gemsheatmap()</code> documentation.</p></div></div><h2 id="Median-Run"><a class="docs-heading-anchor" href="#Median-Run">Median Run</a><a id="Median-Run-1"></a><a class="docs-heading-anchor-permalink" href="#Median-Run" title="Permalink"></a></h2><p>By default, GEMS identifies the simulation whose total infections are closest to the median across all runs, re-runs it with the same seed (producing the exact same result), and stores it as the <em>median run</em>. This is a single <code>ResultData</code> object that can be used as a stand-in for a typical run:</p><pre><code class="language-julia hljs">using GEMS
+</p><h2 id="Median-Run"><a class="docs-heading-anchor" href="#Median-Run">Median Run</a><a id="Median-Run-1"></a><a class="docs-heading-anchor-permalink" href="#Median-Run" title="Permalink"></a></h2><p>By default, GEMS identifies the simulation whose total infections are closest to the median across all runs, re-runs it with the same seed (producing the exact same result), and stores it as the <em>median run</em>. This is a single <code>ResultData</code> object that can be used as a stand-in for a typical run:</p><pre><code class="language-julia hljs">using GEMS
 
 b = Batch(n_runs = 10)
 bp = process!(b)
@@ -145,4 +140,4 @@ b = Batch(n_runs = 5)
 bd1 = BatchData(b; seed = 42)
 bd2 = BatchData(b; seed = 42)
 total_infections(bd1) == total_infections(bd2)  # true
-seed(bd1)  # 42</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_diseases/">« 4 - Configuring Diseases</a><a class="docs-footer-nextpage" href="../tut_pops/">6 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 17 May 2026 10:42">Sunday 17 May 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+seed(bd1)  # 42</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_diseases/">« 4 - Configuring Diseases</a><a class="docs-footer-nextpage" href="../tut_pops/">6 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 17 May 2026 11:42">Sunday 17 May 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
