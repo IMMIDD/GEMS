@@ -307,6 +307,14 @@ rep = median_run(bp)
 gemsplot(rep, type = :TickCases)
 ```
 
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_median.png" width="80%"/>
+</p>
+``` 
+
 You can customise the selection criterion by passing a different `median_by`
 function, or disable it entirely with `median_by = nothing`:
 
