@@ -99,13 +99,16 @@ mutable struct BatchData <: AbstractResultData
     - `keep_rundata`: store all individual `ResultData` objects. Default: `false`.
     - `customlogger`: a `CustomLogger` to attach to each simulation run. Default: `nothing`.
     """
-    BatchData(batch::Batch; style::String = "DefaultBatchData",
-              seed::Union{Nothing, Integer} = nothing,
-              rd_style::String = "LightRD",
-              median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
-              keep_rundata::Bool = false,
-              customlogger::Union{Nothing, CustomLogger} = nothing) =
+    function BatchData(batch::Batch;
+        style::String = "DefaultBatchData",
+        seed::Union{Nothing, Integer} = nothing,
+        rd_style::String = "LightRD",
+        median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
+        keep_rundata::Bool = false,
+        customlogger::Union{Nothing, CustomLogger} = nothing
+    )
         BatchData(process!(batch; seed, rd_style, median_by, keep_rundata, customlogger), style = style)
+    end
 
 end
 
