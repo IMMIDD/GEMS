@@ -13,7 +13,7 @@ export pathogen, pathogen!
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
-export increment!, reset!
+export increment!, reset!, reset_tick!
 export tickunit
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
 export statelogger, statelogger!, states
@@ -1686,11 +1686,11 @@ function increment!(simulation::Simulation)
 end
 
 """
-    reset!(simulation)
+    reset_tick!(simulation)
 
 Resets the current simulation's tick counter to 0.
 """
-function reset!(simulation::Simulation)
+function reset_tick!(simulation::Simulation)
     simulation.tick = 0
 end
 
@@ -1705,18 +1705,20 @@ function initialize!(simulation::Simulation)
 end
 
 """
-    reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
+    reset!(simulation::Simulation; reset_interventions::Bool = false)
 
-Reinitializes the simulation model according to its start condition.
-This resets the simulation tick and re-applies the start condition. 
-If `reset_interventions` is true, it also deletes all interventions.
+Resets the simulation model to its initial state according to its start condition.
+This resets all individuals, loggers, the event queue, tick, and RNGs, and
+re-applies the start condition.
+If `reset_interventions` is true (default), all intervention triggers and strategies
+are also cleared.
 """
-function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
+function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # reset individual to initial state
     reset!.(individuals(simulation))
-    reset!(simulation)
-    
-    # Reset all loggers 
+    reset_tick!(simulation)
+
+    # Reset all loggers
     simulation.infectionlogger = InfectionLogger()
     simulation.deathlogger = DeathLogger()
     simulation.testlogger = TestLogger()
@@ -1725,7 +1727,7 @@ function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
     simulation.quarantinelogger = QuarantineLogger()
     simulation.statelogger = StateLogger()
     simulation.customlogger = CustomLogger()
-    
+
     # Reset NPI triggers and strategies
     simulation.event_queue = EventQueue()
     if reset_interventions
@@ -1735,14 +1737,23 @@ function reinitialize!(simulation::Simulation; reset_interventions::Bool = true)
         simulation.strategies = []
         simulation.testtypes = []
     end
-    
+
     # Re-initialize RNGs
     if !isnothing(simulation.seed)
         simulation.rngs = [Xoshiro(gems_rand(Xoshiro(simulation.seed), UInt)) for _ in 1:Threads.maxthreadid()]
     end
-    
+
     # Initialize the simulation's start condition
     initialize!(simulation)
+end
+
+"""
+    reinitialize!(simulation::Simulation; reset_interventions::Bool = false)
+
+Alias for `reset!`. Kept for backwards compatibility.
+"""
+function reinitialize!(simulation::Simulation; reset_interventions::Bool = false)
+    reset!(simulation; reset_interventions = reset_interventions)
 end
 
 ###

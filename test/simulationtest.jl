@@ -311,7 +311,7 @@
             run!(sim)
             @test cntr == 5
         end
-        @testset "Reinitialize" begin
+        @testset "Reset" begin
             sim = Simulation(pop_size=100)
             
             # Simulate a few steps manually
@@ -333,13 +333,16 @@
             @test length(symptom_triggers(sim)) == 1
             @test length(strategies(sim)) == 1
             
-            # Reinitialize the simulation
-            reinitialize!(sim)
-            
-            # Assert simulation was reset properly
+            # Reset keeping interventions
+            reset!(sim, reset_interventions=false)
             @test tick(sim) == 0
             @test !isinfected(individuals(sim)[1])
             @test length(deathlogger(sim)) == 0
+            @test length(symptom_triggers(sim)) == 1
+            @test length(strategies(sim)) == 1
+
+            # Reset clearing interventions
+            reset!(sim, reset_interventions=true)
             @test length(symptom_triggers(sim)) == 0
             @test length(strategies(sim)) == 0
         end
@@ -497,7 +500,7 @@
         seed_sim = Simulation(population = "HB")
         initialize!(seed_sim, cond, seed_sample = 42)
         infs_first = copy(individuals(seed_sim)[infected.(individuals(seed_sim))])
-        reinitialize!(seed_sim)
+        reset!(seed_sim)
         initialize!(seed_sim, cond, seed_sample = 42)
         @test individuals(seed_sim)[infected.(individuals(seed_sim))] == infs_first
     end
