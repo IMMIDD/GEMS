@@ -3,7 +3,6 @@ export BatchProcessor
 
 export rundata, run_ids, config_files, population_files
 export tick_unit, start_conditions, stop_criteria, number_of_individuals, pathogens, pathogens_by_name
-export runtime, allocations
 export total_infections, total_tests, attack_rate, settingdata, strategies
 export setting_age_contacts
 export tick_cases, effectiveR
@@ -319,67 +318,6 @@ function total_quarantines(batchProcessor::BatchProcessor)
 
     return(rates)
 end
-
-###
-### system data
-###
-
-"""
-    runtime(batchProcessor::BatchProcessor)
-
-Returns dataframe of the runtimes of the associated simulation runs in this batch.
-The columns correspond to the names of the inner timers while each row corresponds to one run.
-(*Note*: This data is only available if the simulation runs were done via the `main()` function)
-"""
-function runtime(batchProcessor::BatchProcessor)
-    # read timer outputs
-    tos = map(timer_output, batchProcessor |> rundata)
-
-    # abort if no timer output found
-    if tos |> length <= 0
-        return
-    end
-
-    # read names of inner timers
-    nms = unique(vcat([t |> TimerOutputs.todict |> x -> x["inner_timers"]|> keys|>x->String.(x) for t in tos]...))
-
-    # create dict entry for each inner timer with aggregated values
-    #res = Dict()
-    res = DataFrame()
-    for n in nms
-        res[!, Symbol(n)] = map(x -> TimerOutputs.todict(x)["inner_timers"]|> x -> get(x, n, Dict("time_ns" => 0))["time_ns"], tos) 
-    end
-
-    return(res)
-end
-
-"""
-    allocations(batchProcessor::BatchProcessor)
-
-Returns a dataframe for the memory allocations of the associated simulation runs in this batch.
-The columns correspond to the names of the inner timers while each row corresponds to one run.
-(*Note*: This data is only available if the simulation runs were done via the `main()` function)
-"""
-function allocations(batchProcessor::BatchProcessor)
-        # read timer outputs
-        tos = map(timer_output, batchProcessor |> rundata)
-
-        # abort if no timer output found
-        if tos |> length <= 0
-            return
-        end
-    
-        # read names of inner timers
-        nms = unique(vcat([t |> TimerOutputs.todict |> x -> x["inner_timers"]|> keys|>x->String.(x) for t in tos]...))
-        # create dict entry for each inner timer with aggregated values
-        #res = Dict()
-        res = DataFrame()
-        for n in nms
-            res[!, Symbol(n)] = map(x -> TimerOutputs.todict(x)["inner_timers"]|> x -> get(x, n, Dict("allocated_bytes" => 0))["allocated_bytes"], tos) 
-        end
-        return(res)
-end
-
 
 ###
 ### setting age contacts

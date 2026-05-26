@@ -19,6 +19,40 @@
             @test class_id(i) == GEMS.DEFAULT_SETTING_ID
         end
 
+        @testset "Behaviour Setters" begin
+            i = Individual(id=1, sex=0, age=30)
+
+            social_factor!(i, Float32(0.5))
+            @test social_factor(i) == Float32(0.5)
+
+            social_factor!(i, 0.75)
+            @test social_factor(i) == Float32(0.75)
+
+            social_factor!(i, Float32(-0.3))
+            @test social_factor(i) == Float32(-0.3)
+
+            mandate_compliance!(i, Float32(0.3))
+            @test mandate_compliance(i) == Float32(0.3)
+
+            mandate_compliance!(i, 0.9)
+            @test mandate_compliance(i) == Float32(0.9)
+
+            mandate_compliance!(i, Float32(-1.0))
+            @test mandate_compliance(i) == Float32(-1.0)
+        end
+
+
+        @testset "Setting Membership Predicates" begin
+            i = Individual(id=1, sex=0, age=25)
+            @test !is_working(i)
+            @test !is_student(i)
+            @test !has_municipality(i)
+
+            @test is_working(Individual(id=2, sex=0, age=25, office=Int32(5)))
+            @test is_student(Individual(id=3, sex=0, age=10, schoolclass=Int32(7)))
+            @test has_municipality(Individual(id=4, sex=0, age=40, municipality=Int32(3)))
+        end
+
         @testset "Comorbidities" begin
             # Test default Individual (no comorbidities)
             i_default = Individual(id = 1, sex = 0, age = 31)
@@ -170,8 +204,226 @@
                 end
             end
             
-        end 
-        
+        end
+
+        @testset "Health Status Aliases (Current-State)" begin
+            i = Individual(id=1, sex=1, age=30)
+
+            @test !isinfected(i)
+            @test !infected(i)
+            @test !isinfectious(i)
+            @test !infectious(i)
+            @test !isexposed(i)
+            @test !exposed(i)
+            @test !issymptomatic(i)
+            @test !symptomatic(i)
+            @test !issevere(i)
+            @test !severe(i)
+            @test !ishospitalized(i)
+            @test !hospitalized(i)
+            @test !isicu(i)
+            @test !icu(i)
+            @test !isventilated(i)
+            @test !ventilated(i)
+            @test !isdead(i)
+            @test !dead(i)
+            @test !isdetected(i)
+            @test !detected(i)
+            @test !quarantined(i)
+
+            infected!(i, true)
+            @test isinfected(i)
+            @test infected(i)
+            @test isexposed(i)
+            @test exposed(i)
+
+            infectious!(i, true)
+            @test isinfectious(i)
+            @test infectious(i)
+            @test !isexposed(i)
+            @test !exposed(i)
+
+            symptomatic!(i, true)
+            @test issymptomatic(i)
+            @test symptomatic(i)
+
+            severe!(i, true)
+            @test issevere(i)
+            @test severe(i)
+
+            hospitalized!(i, true)
+            @test ishospitalized(i)
+            @test hospitalized(i)
+
+            icu!(i, true)
+            @test isicu(i)
+            @test icu(i)
+
+            ventilated!(i, true)
+            @test isventilated(i)
+            @test ventilated(i)
+
+            dead!(i, true)
+            @test isdead(i)
+            @test dead(i)
+
+            detected!(i, true)
+            @test isdetected(i)
+            @test detected(i)
+
+            home_quarantine!(i)
+            @test quarantined(i)
+
+            end_quarantine!(i)
+            @test !quarantined(i)
+
+            quarantined!(i, true)
+            @test is_quarantined(i)
+            quarantined!(i, false)
+            @test !is_quarantined(i)
+        end
+
+
+        @testset "Time-Parameterized Disease Status" begin
+            i = Individual(id=1, sex=1, age=30)
+            exposure!(i, Int16(5))
+            infectiousness_onset!(i, Int16(7))
+            symptom_onset!(i, Int16(10))
+            severeness_onset!(i, Int16(15))
+            severeness_offset!(i, Int16(20))
+            hospital_admission!(i, Int16(15))
+            hospital_discharge!(i, Int16(25))
+            icu_admission!(i, Int16(15))
+            icu_discharge!(i, Int16(18))
+            ventilation_admission!(i, Int16(15))
+            ventilation_discharge!(i, Int16(17))
+            recovery!(i, Int16(30))
+            last_reported_at!(i, Int16(12))
+
+            # is_infected / isinfected / infected
+            @test !is_infected(i, Int16(4))
+            @test is_infected(i, Int16(5))
+            @test is_infected(i, Int16(20))
+            @test !is_infected(i, Int16(30))
+            @test isinfected(i, Int16(10)) == is_infected(i, Int16(10))
+            @test infected(i, Int16(10)) == is_infected(i, Int16(10))
+
+            # is_exposed / isexposed / exposed
+            @test !is_exposed(i, Int16(4))
+            @test is_exposed(i, Int16(5))
+            @test is_exposed(i, Int16(6))
+            @test !is_exposed(i, Int16(7))
+            @test isexposed(i, Int16(5)) == is_exposed(i, Int16(5))
+            @test exposed(i, Int16(5)) == is_exposed(i, Int16(5))
+
+            # is_infectious / isinfectious / infectious
+            @test !is_infectious(i, Int16(6))
+            @test is_infectious(i, Int16(7))
+            @test is_infectious(i, Int16(15))
+            @test !is_infectious(i, Int16(30))
+            @test isinfectious(i, Int16(7)) == is_infectious(i, Int16(7))
+            @test infectious(i, Int16(7)) == is_infectious(i, Int16(7))
+
+            # is_presymptomatic / ispresymptomatic / presymptomatic
+            @test is_presymptomatic(i, Int16(7))
+            @test is_presymptomatic(i, Int16(9))
+            @test !is_presymptomatic(i, Int16(10))
+            @test !is_presymptomatic(i, Int16(4))
+            @test ispresymptomatic(i, Int16(7)) == is_presymptomatic(i, Int16(7))
+            @test presymptomatic(i, Int16(7)) == is_presymptomatic(i, Int16(7))
+
+            # is_symptomatic / issymptomatic / symptomatic
+            @test !is_symptomatic(i, Int16(9))
+            @test is_symptomatic(i, Int16(10))
+            @test is_symptomatic(i, Int16(25))
+            @test !is_symptomatic(i, Int16(30))
+            @test issymptomatic(i, Int16(10)) == is_symptomatic(i, Int16(10))
+            @test symptomatic(i, Int16(10)) == is_symptomatic(i, Int16(10))
+
+            # is_severe / issevere / severe
+            @test !is_severe(i, Int16(14))
+            @test is_severe(i, Int16(15))
+            @test is_severe(i, Int16(19))
+            @test !is_severe(i, Int16(20))
+            @test issevere(i, Int16(15)) == is_severe(i, Int16(15))
+            @test severe(i, Int16(15)) == is_severe(i, Int16(15))
+
+            # is_mild / ismild / mild
+            @test is_mild(i, Int16(12))
+            @test !is_mild(i, Int16(15))
+            @test ismild(i, Int16(12)) == is_mild(i, Int16(12))
+            @test mild(i, Int16(12)) == is_mild(i, Int16(12))
+
+            # is_hospitalized / ishospitalized / hospitalized
+            @test !is_hospitalized(i, Int16(14))
+            @test is_hospitalized(i, Int16(15))
+            @test is_hospitalized(i, Int16(24))
+            @test !is_hospitalized(i, Int16(25))
+            @test ishospitalized(i, Int16(15)) == is_hospitalized(i, Int16(15))
+            @test hospitalized(i, Int16(15)) == is_hospitalized(i, Int16(15))
+
+            # is_icu / isicu / icu
+            @test !is_icu(i, Int16(14))
+            @test is_icu(i, Int16(15))
+            @test is_icu(i, Int16(17))
+            @test !is_icu(i, Int16(18))
+            @test isicu(i, Int16(15)) == is_icu(i, Int16(15))
+            @test icu(i, Int16(15)) == is_icu(i, Int16(15))
+
+            # is_ventilated / isventilated / ventilated
+            @test !is_ventilated(i, Int16(14))
+            @test is_ventilated(i, Int16(15))
+            @test is_ventilated(i, Int16(16))
+            @test !is_ventilated(i, Int16(17))
+            @test isventilated(i, Int16(15)) == is_ventilated(i, Int16(15))
+            @test ventilated(i, Int16(15)) == is_ventilated(i, Int16(15))
+
+            # is_recovered / isrecovered / recovered
+            @test !is_recovered(i, Int16(29))
+            @test is_recovered(i, Int16(30))
+            @test is_recovered(i, Int16(50))
+            @test isrecovered(i, Int16(30)) == is_recovered(i, Int16(30))
+            @test recovered(i, Int16(30)) == is_recovered(i, Int16(30))
+
+            # is_detected / isdetected / detected
+            @test is_detected(i, Int16(12))
+            @test isdetected(i, Int16(12)) == is_detected(i, Int16(12))
+            @test detected(i, Int16(12)) == is_detected(i, Int16(12))
+            i_undetected = Individual(id=99, sex=0, age=20)
+            exposure!(i_undetected, Int16(5))
+            recovery!(i_undetected, Int16(20))
+            @test !is_detected(i_undetected, Int16(10))
+
+            # is_dead / isdead / dead
+            i_dead = Individual(id=2, sex=2, age=60)
+            exposure!(i_dead, Int16(5))
+            death!(i_dead, Int16(15))
+            @test !is_dead(i_dead, Int16(14))
+            @test is_dead(i_dead, Int16(15))
+            @test isdead(i_dead, Int16(15)) == is_dead(i_dead, Int16(15))
+            @test dead(i_dead, Int16(15)) == is_dead(i_dead, Int16(15))
+
+            # is_asymptomatic / isasymptomatic / asymptomatic
+            i_asymp = Individual(id=3, sex=0, age=25)
+            exposure!(i_asymp, Int16(5))
+            recovery!(i_asymp, Int16(20))
+            @test is_asymptomatic(i_asymp, Int16(10))
+            @test isasymptomatic(i_asymp, Int16(10)) == is_asymptomatic(i_asymp, Int16(10))
+            @test asymptomatic(i_asymp, Int16(10)) == is_asymptomatic(i_asymp, Int16(10))
+            @test !is_asymptomatic(i, Int16(15))
+
+            # is_quarantined / isquarantined / quarantined (with tick)
+            i_quar = Individual(id=4, sex=1, age=40)
+            quarantine_tick!(i_quar, Int16(5))
+            quarantine_release_tick!(i_quar, Int16(10))
+            @test !is_quarantined(i_quar, Int16(4))
+            @test is_quarantined(i_quar, Int16(5))
+            @test is_quarantined(i_quar, Int16(9))
+            @test !is_quarantined(i_quar, Int16(10))
+            @test isquarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
+            @test quarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
+        end
+
         @testset "Quarantine" begin
             i = Individual(id=0, sex=1, age=42)
 
@@ -224,6 +476,16 @@
         output = @capture_out show(inds_large)
         @test !isempty(output)
         @test occursin("⋮", output)
+
+        # single Individual show
+        i_show = Individual(id=42, sex=2, age=35)
+        output_single = @capture_out show(i_show)
+        @test occursin("Individual", output_single)
+        @test occursin("42", output_single)
+        @test occursin("female", @capture_out show(Individual(id=1, sex=1, age=25)))
+        @test occursin("male", @capture_out show(Individual(id=2, sex=2, age=30)))
+        @test occursin("diverse", @capture_out show(Individual(id=3, sex=3, age=20)))
+        @test occursin("n/a", @capture_out show(Individual(id=10, sex=0, age=18)))
     end
 
     @testset "Settings Tuple" begin

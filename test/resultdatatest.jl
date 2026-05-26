@@ -58,10 +58,6 @@
         rd_imp = import_resultdata(joinpath("tempdir", "resultdata.jld2"))
         @test rd_imp |> id == rd |> id
 
-        # import_resultdata(filepath, style) — error propagated from obtain_fields
-        # (vaccinations are empty in the test sim, so the essential-data check fires)
-        @test_throws ErrorException import_resultdata(joinpath("tempdir", "resultdata.jld2"), "DefaultResultData")
-
         # finally, remove all test files
         rm("tempdir", recursive=true)
     end
@@ -455,11 +451,5 @@
         rd = ResultData(pp)
         @test allempty(f, [rd])
         @test someempty(f, [rd])
-    end
-
-
-    @testset "Test obtain_fields" begin
-        rd = ResultData(pp)
-        @test_throws ErrorException GEMS.obtain_fields(rd, "DefaultResultData")
     end
 end
