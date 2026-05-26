@@ -1,5 +1,5 @@
 export Vaccinate
-export vaccine, follow_up, skip_vaccinated
+export vaccine, follow_up
 
 ###
 ### STRUCT
@@ -12,18 +12,14 @@ Intervention measure to vaccinate an individual with a given `Vaccine`.
 
 Wraps the low-level `vaccinate!` call so that vaccination can be composed
 with other intervention measures inside an `IStrategy`.  An optional
-`follow_up` strategy lets you chain subsequent actions (e.g. a booster reminder)
-directly through the event queue without a separate scheduler.
+`follow_up` strategy lets you chain subsequent actions (e.g. a second dose)
+directly through the event queue.
 
 # Fields
 
 - `vaccine::Vaccine`: The vaccine to administer.
 - `follow_up::Union{IStrategy, Nothing}`: Strategy to trigger for the individual
     after vaccination. Defaults to `nothing`.
-- `skip_vaccinated::Bool`: When `true` (default), individuals who have already
-    received any vaccine are silently skipped and the `follow_up` strategy is
-    **not** triggered for them.  Set to `false` to model booster doses, where
-    re-vaccination should always proceed.
 
 # Examples
 
@@ -38,26 +34,24 @@ add_measure!(vacc_strategy, Vaccinate(my_vaccine))
 
 ```julia
 second_dose = IStrategy("second-dose", sim)
-add_measure!(second_dose, Vaccinate(my_vaccine, skip_vaccinated = false))
+add_measure!(second_dose, Vaccinate(my_vaccine))
 
 first_dose = IStrategy("first-dose", sim)
 add_measure!(first_dose, Vaccinate(my_vaccine, follow_up = second_dose), delay = _ -> 21)
 ```
 
-## Booster campaign (always re-vaccinate)
+## Only vaccinate individuals who have not yet been vaccinated
 
 ```julia
-booster = IStrategy("booster", sim)
-add_measure!(booster, Vaccinate(my_vaccine, skip_vaccinated = false))
+vacc_strategy = IStrategy("vaccinate", sim, condition = ind -> !isvaccinated(ind))
+add_measure!(vacc_strategy, Vaccinate(my_vaccine))
 ```
 """
 struct Vaccinate <: IMeasure
     vaccine::Vaccine
     follow_up::Union{IStrategy, Nothing}
-    skip_vaccinated::Bool
 
-    Vaccinate(vaccine::Vaccine; follow_up::Union{IStrategy, Nothing} = nothing, skip_vaccinated::Bool = true) =
-        new(vaccine, follow_up, skip_vaccinated)
+    Vaccinate(vaccine::Vaccine; follow_up::Union{IStrategy, Nothing} = nothing) = new(vaccine, follow_up)
 end
 
 """
@@ -74,13 +68,6 @@ Returns the follow-up `IStrategy` triggered after vaccination, or `nothing`.
 """
 follow_up(m::Vaccinate) = m.follow_up
 
-"""
-    skip_vaccinated(m::Vaccinate)
-
-Returns `true` if individuals who have already been vaccinated are skipped by this measure.
-"""
-skip_vaccinated(m::Vaccinate) = m.skip_vaccinated
-
 
 ###
 ### PROCESS MEASURE
@@ -89,13 +76,8 @@ skip_vaccinated(m::Vaccinate) = m.skip_vaccinated
 """
     process_measure(sim::Simulation, ind::Individual, m::Vaccinate)
 
-Administers the vaccine carried by `m` to `ind`.
-
-When `skip_vaccinated(m)` is `true` and the individual has already been
-vaccinated, the measure is a no-op and a `Handover` with `nothing` is returned.
-Otherwise `vaccinate!` is called and a `Handover` containing the
-configured `follow_up` strategy (if any) is returned for the event queue to
-process.
+Administers the vaccine carried by `m` to `ind` and returns a `Handover`
+containing the configured `follow_up` strategy (or `nothing`).
 
 # Parameters
 
@@ -108,16 +90,9 @@ process.
 - `Handover`: The focus individual paired with the follow-up strategy (or `nothing`).
 """
 function process_measure(sim::Simulation, ind::Individual, m::Vaccinate)
-    vacc = vaccine(m)
+    vaccinate!(ind, vaccine(m), tick(sim))
 
-    if skip_vaccinated(m) && isvaccinated(ind)
-        @debug "Individual $(id(ind)) already vaccinated; skipping at tick $(tick(sim))"
-        return Handover(ind, nothing)
-    end
-
-    vaccinate!(ind, vacc, tick(sim))
-
-    @debug "Individual $(id(ind)) vaccinated with $(name(vacc)) at tick $(tick(sim))"
+    @debug "Individual $(id(ind)) vaccinated with $(name(vaccine(m))) at tick $(tick(sim))"
 
     return Handover(ind, follow_up(m))
 end
