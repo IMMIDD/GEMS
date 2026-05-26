@@ -1277,9 +1277,7 @@ was_reported(individual::Individual, pathogen_id::Int8, sim) = get_test_state(in
 
 
 """
-    record_test!(ind::Individual, tests::TestRegistry,
-                 pathogen_id::Int8, test_tick::Int16,
-                 test_result::Bool, reportable::Bool)
+    record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
 
 Records a test outcome into the `TestRegistry` for `(ind, pathogen_id)` and
 updates `ind.detected_mask` if the test is a positive reportable result.
@@ -1291,14 +1289,37 @@ updates `ind.detected_mask` if the test is a positive reportable result.
     return nothing
 end
 
+"""
+    record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
+
+Convenience wrapper that routes to the correct `TestRegistry` shard.
+"""
+function record_test!(individual::Individual, sim, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
+    record_test!(individual, test_registry(sim, individual), pathogen_id, test_tick, test_result, reportable)
+end
+
 
 
 ### VACCINATION STATUS ###
 
-function vaccinate!(individual::Individual, vaccine::Vaccine, tick::Int16, registry::ImmunityRegistry)
+"""
+    vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
+
+Vaccinates an individual against a pathogen.
+"""
+function vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
     log!(logger(vaccine), id(individual), target_pathogen_id(vaccine), tick)
     push_immunity!(registry, individual, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
     individual.needs_immunity_update = true
+end
+
+"""
+    vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
+
+Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
+"""
+function vaccinate!(individual::Individual, sim, vaccine::Vaccine, tick::Int16)
+    vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
 end
 
 """
@@ -1310,6 +1331,14 @@ function isvaccinated(individual::Individual, registry::ImmunityRegistry, pathog
     state = get_immunity_state(individual, registry, pathogen_id)
     return state.vaccine_id != DEFAULT_VACCINE_ID
 end
+
+"""
+    isvaccinated(individual::Individual, sim::Simulation, pathogen_id::Int8)
+
+Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
+"""
+isvaccinated(individual::Individual, sim, pathogen_id::Int8) = isvaccinated(individual, immunity_registry(sim, individual), pathogen_id)
+
 """
     vaccine_id(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)
 
@@ -1319,6 +1348,13 @@ function vaccine_id(individual::Individual, registry::ImmunityRegistry, pathogen
     state = get_immunity_state(individual, registry, pathogen_id)
     return state.vaccine_id
 end
+
+"""
+    vaccine_id(individual::Individual, sim::Simulation, pathogen_id::Int8)
+
+Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
+"""
+vaccine_id(individual::Individual, sim, pathogen_id::Int8) = vaccine_id(individual, immunity_registry(sim, individual), pathogen_id)
 
 """
     vaccination_tick(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)
@@ -1331,6 +1367,13 @@ function vaccination_tick(individual::Individual, registry::ImmunityRegistry, pa
 end
 
 """
+    vaccination_tick(individual::Individual, sim::Simulation, pathogen_id::Int8)
+
+Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
+"""
+vaccination_tick(individual::Individual, sim, pathogen_id::Int8) = vaccination_tick(individual, immunity_registry(sim, individual), pathogen_id)
+
+"""
     number_of_vaccinations(individual::Individual, registry::ImmunityRegistry, pathogen_id::Int8)
 
 Returns the number of vaccinations.
@@ -1339,6 +1382,13 @@ function number_of_vaccinations(individual::Individual, registry::ImmunityRegist
     state = get_immunity_state(individual, registry, pathogen_id)
     return state.dose_number
 end
+
+"""
+    number_of_vaccinations(individual::Individual, sim::Simulation, pathogen_id::Int8)
+
+Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
+"""
+number_of_vaccinations(individual::Individual, sim, pathogen_id::Int8) = number_of_vaccinations(individual, immunity_registry(sim, individual), pathogen_id)
 
 
 """

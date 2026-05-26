@@ -90,7 +90,7 @@ containing the configured `follow_up` strategy (or `nothing`).
 - `Handover`: The focus individual paired with the follow-up strategy (or `nothing`).
 """
 function process_measure(sim::Simulation, ind::Individual, m::Vaccinate)
-    vaccinate!(ind, vaccine(m), tick(sim), immunity_registry(sim, ind))
+    vaccinate!(ind, immunity_registry(sim, ind), vaccine(m), tick(sim))
 
     @debug "Individual $(id(ind)) vaccinated with $(name(vaccine(m))) at tick $(tick(sim))"
 
