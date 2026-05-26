@@ -16,7 +16,7 @@ export initialize!, reinitialize!
 export increment!, reset!, reset_tick!
 export tickunit
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
-export statelogger, statelogger!, states
+export statelogger, states
 export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
@@ -543,11 +543,7 @@ function determine_tick_unit(configfile_params::Dict, tickunit)
 
     tu = configfile_params["Simulation"]["tickunit"]
     !isa(only(tu), Char) && throw(ConfigfileError("'[Simulation] => tickunit' must be a single character!"))
-    return try
-        only(tu)
-    catch e
-        throw(ConfigfileError("'[Simulation] => tickunit' could not be read from config file.", e))
-    end
+    return only(tu)
 end
 
 
@@ -925,11 +921,7 @@ function determine_seed(configfile_params::Dict, seed)
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
     sd < 0 && throw(ArgumentError("Provided seed in config file must be a non-negative integer value."))
     printinfo("\u2514 Initializing RNG with seed $sd")
-    return try
-        sd
-    catch e
-        throw(ConfigfileError("'[Simulation] => seed' could not be read from config file.", e))
-    end
+    return sd
 end
 
 
@@ -1630,15 +1622,6 @@ Returns the `StateLogger` of the simulation.
 """
 function statelogger(simulation::Simulation)
     return simulation.statelogger
-end
-
-"""
-    statelogger!(simulation, statelogger)
-
-Sets the Simulation's `StateLogger`.
-"""
-function statelogger!(simulation::Simulation, statelogger::StateLogger)
-    simulation.statelogger = statelogger
 end
 
 """

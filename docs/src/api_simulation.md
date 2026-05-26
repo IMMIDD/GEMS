@@ -73,7 +73,6 @@ settingscontainer(::Simulation)
 should_fire
 start_condition
 statelogger(::Simulation)
-statelogger!(::Simulation, ::StateLogger)
 states(::Simulation)
 step!
 stepmod
