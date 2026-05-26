@@ -846,27 +846,20 @@ end
     clean_result!(dict::Dict)
 
 Helper function to clean data for JSON output.
-Also uses parameter function for the StartCondition, Vaccine and Pathogen.
 
 """
 function clean_result!(dict::Dict)
     for (key, val) in dict
         if isa(val, DataFrame) || isa(val, Matrix)
             delete!(dict, key)
-        elseif isa(val, StartCondition)
-            dict[key] = parameters(val)
-        elseif isa(val, StopCriterion)
-            dict[key] = parameters(val)
+        elseif isa(val, StartCondition) || isa(val, StopCriterion)
+            dict[key] = Dict("type" => string(typeof(val)))
         elseif isa(val, Vector{<:StartCondition})
-            dict[key] = [parameters(v) for v in val]
-        elseif isa(val, Pathogen)
-            dict[key] = parameters(val)
-        elseif isa(val, Vector{Pathogen})
-            dict[key] = [parameters(v) for v in val]
-        elseif isa(val, Vaccine)
-            dict[key] = parameters(val)
-        elseif isa(val, Vector{Vaccine})
-            dict[key] = [parameters(v) for v in val]
+            dict[key] = [Dict("type" => string(typeof(v))) for v in val]
+        elseif isa(val, Pathogen) || isa(val, Vaccine)
+            dict[key] = Dict("id" => id(val), "name" => name(val))
+        elseif isa(val, Vector{Pathogen}) || isa(val, Vector{Vaccine})
+            dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
         elseif isa(val, Dict)
             clean_result!(dict[key])
             if length(dict[key]) == 0

@@ -112,8 +112,7 @@ function main(configfile::String, population::String, outputdir::String;
     printinfo("Exporting processed ResultData")
     @timeit to "3 Data Export" exportJLD(rd, outputdir * "/output_processed")
 
-    # TODO: re-enable once parameters(::Pathogen) is implemented
-    # exportJSON(rd, outputdir * "/output_processed")
+    exportJSON(rd, outputdir * "/output_processed")
 
     if report
         printinfo("Generating report [parallel: $PARALLEL_REPORT_GENERATION]")

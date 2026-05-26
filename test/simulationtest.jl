@@ -311,7 +311,7 @@
             run!(sim)
             @test cntr == 5
         end
-        @testset "Reinitialize" begin
+        @testset "Reset" begin
             sim = Simulation(pop_size=100)
             
             # Simulate a few steps manually
@@ -333,13 +333,16 @@
             @test length(symptom_triggers(sim)) == 1
             @test length(strategies(sim)) == 1
             
-            # Reinitialize the simulation
-            reinitialize!(sim)
-            
-            # Assert simulation was reset properly
+            # Reset keeping interventions
+            reset!(sim, reset_interventions=false)
             @test tick(sim) == 0
             @test !isinfected(individuals(sim)[1])
             @test length(deathlogger(sim)) == 0
+            @test length(symptom_triggers(sim)) == 1
+            @test length(strategies(sim)) == 1
+
+            # Reset clearing interventions
+            reset!(sim, reset_interventions=true)
             @test length(symptom_triggers(sim)) == 0
             @test length(strategies(sim)) == 0
         end
@@ -432,6 +435,76 @@
 
             # determine_seed: config has negative seed
             @test_throws ArgumentError GEMS.determine_seed(Dict("Simulation" => Dict("seed" => -5)), nothing)
+
+            # create_pathogen: bad progressions
+            @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
+                Dict("progressions" => Dict("Symptomatic" => Dict())),
+                "test", Int8(1))
+
+            # create_pathogen: bad progression assignment
+            valid_prog = Dict("Symptomatic" => Dict(
+                "exposure_to_infectiousness_onset" => 3,
+                "infectiousness_onset_to_symptom_onset" => 2,
+                "symptom_onset_to_recovery" => 5))
+            @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
+                Dict(
+                    "progressions" => valid_prog,
+                    "progression_assignment" => Dict(
+                        "type" => "RandomProgressionAssignment",
+                        "parameters" => Dict("progression_categories" => []))),
+                "test", Int8(1))
+
+            # create_pathogen: bad transmission function
+            valid_pa = Dict(
+                "type" => "RandomProgressionAssignment",
+                "parameters" => Dict("progression_categories" => ["Symptomatic"]))
+            @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
+                Dict(
+                    "progressions" => valid_prog,
+                    "progression_assignment" => valid_pa,
+                    "transmission_function" => Dict(
+                        "type" => "ConstantTransmissionRate",
+                        "parameters" => Dict("transmission_rate" => 2.0))),
+                "test", Int8(1))
+
+            # determine_start_condition: invalid constructor params
+            @test_throws GEMS.ConfigfileError GEMS.determine_start_condition(
+                Dict("Simulation" => Dict("StartCondition" => Dict(
+                    "type" => "InfectedFraction",
+                    "parameters" => Dict("fraction" => 2.0)))),
+                nothing, nothing)
+
+            # determine_stop_criterion: invalid constructor params
+            @test_throws GEMS.ConfigfileError GEMS.determine_stop_criterion(
+                Dict("Simulation" => Dict("StopCriterion" => Dict(
+                    "type" => "TimesUp",
+                    "parameters" => Dict("limit" => 0)))),
+                nothing)
+        end
+
+        @testset "Throw Paths (ErrorException)" begin
+            # create_progression: missing required fields
+            @test_throws ErrorException GEMS.create_progression(Dict(), "Symptomatic")
+
+            # create_progression_assignment: empty categories
+            @test_throws ErrorException GEMS.create_progression_assignment(
+                Dict("type" => "RandomProgressionAssignment",
+                    "parameters" => Dict("progression_categories" => [])))
+
+            # create_transmission_function: rate out of range
+            @test_throws ErrorException GEMS.create_transmission_function(
+                Dict("type" => "ConstantTransmissionRate",
+                    "parameters" => Dict("transmission_rate" => 2.0)))
+
+            # create_start_condition: fraction out of range
+            @test_throws ErrorException GEMS.create_start_condition(
+                Dict("type" => "InfectedFraction",
+                    "parameters" => Dict("fraction" => 2.0)))
+
+            # create_stop_criterion: limit out of range
+            @test_throws ErrorException GEMS.create_stop_criterion(
+                Dict("type" => "TimesUp",
+                    "parameters" => Dict("limit" => 0)))
         end
 
         @testset "global_setting non-Bool throws" begin
@@ -497,7 +570,7 @@
         seed_sim = Simulation(population = "HB")
         initialize!(seed_sim, cond, seed_sample = 42)
         infs_first = copy(individuals(seed_sim)[infected.(individuals(seed_sim))])
-        reinitialize!(seed_sim)
+        reset!(seed_sim)
         initialize!(seed_sim, cond, seed_sample = 42)
         @test individuals(seed_sim)[infected.(individuals(seed_sim))] == infs_first
     end
@@ -610,11 +683,20 @@
 
     @testset "Helper Functions" begin
         sim = Simulation(pop_size = 100)
-        
-        output = @capture_out info(sim)
 
-        # test if someting is written to the console
+        output = @capture_out info(sim)
         @test !isempty(output)
+
+        # info: strategies branch (length > 0)
+        sim_with_strategy = Simulation(pop_size=100)
+        IStrategy("test_strategy", sim_with_strategy)
+        output_with_strategy = @capture_out info(sim_with_strategy)
+        @test occursin("test_strategy", output_with_strategy)
+
+        # pathogen! setter
+        new_pathogen = deepcopy(pathogen(sim))
+        pathogen!(sim, new_pathogen)
+        @test pathogen(sim) === new_pathogen
     end
 
     @testset "stepmod Getter" begin

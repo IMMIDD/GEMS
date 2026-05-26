@@ -11,7 +11,7 @@ module GEMS
     using DelimitedFiles
     using Distributions
     using FileIO
-    using Formatting
+    using Format
     import GMT # "import" GMT to prevent namespace conflicts with Plots package. (plot, scatter, etc...)
     using ImageIO
     using InteractiveUtils

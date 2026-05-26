@@ -23,47 +23,81 @@
 
     @testset "Markdown Conversion" begin
 
-        # escaping
+        # Escaping strings and paths
         @test escape_markdown("_*") == "\\_\\*"
         @test savepath("C:\\Test") == "C:/Test"
 
-        # Note: This only checks, if the markdown conversions are strings.
-        # In an ideal world, there'd be a package that has a checker,
-        # whether a String contains valid markdown syntax, but I didn't find any
+        # Note: This primarily checks if the markdown conversions yield strings.
+        # Ideally, there'd be a way to validate markdown syntax.
 
-        # start conditions
+        # Array Fallbacks & Printing
+        @test GEMS.print_arr([]) == ""
+        @test GEMS.print_arr([1, 2]) == "[1, 2]"
+        @test markdown([2.0, 3.0]) == "[2, 3]"
+        @test markdown(Any[1, "test", 3.0]) |> typeof == String
+
+        # Start Conditions
         @test InfectedFraction(fraction = 0.01) |> markdown |> typeof == String
+        
+        start_conds = StartCondition[InfectedFraction(fraction=0.01), InfectedFraction(fraction=0.05)]
+        @test markdown(start_conds) |> typeof == String
 
-        # stop criteria
+        # Stop Criteria
         @test TimesUp(limit = 10) |> markdown |> typeof == String
+        
+        stop_crits = StopCriterion[TimesUp(limit=10), TimesUp(limit=20)]
+        @test markdown(stop_crits) |> typeof == String
 
-        # pathogens
+        # Pathogens & Vaccines
         @test sim |> pathogen |> markdown |> typeof == String
+
+        v = Vaccine(id=1, name="Antitest")
+        md_vac = markdown(v)
+        @test md_vac |> typeof == String
+        @test occursin("Antitest", md_vac)
+        @test occursin("| Property | Value", md_vac)
 
         # Distributions
         @test Uniform(0, 1) |> markdown |> typeof == String
         @test Poisson(4) |> markdown |> typeof == String
 
-        # Settings SettingsContainer
-        @test sim |> settings |> markdown |> typeof == String
+        bin_dist = Binomial(10, 0.5)
+        md_bin = markdown(bin_dist)
+        @test md_bin |> typeof == String
+        @test occursin("Binomial distribution", md_bin)
+        @test occursin("n = 10", md_bin)
+        @test occursin("p = 0.5", md_bin)
 
-        @test GEMS.print_arr([]) == ""
-        @test GEMS.print_arr([1, 2]) == "[1, 2]"
-
-        @test markdown([2.0, 3.0]) == "[2, 3]"
-
-        # Test for markdown(Distribution)
         dist = Normal(0, 1)
         md_dist = markdown(dist)
         @test occursin("Normal", md_dist)
         @test occursin("σ", md_dist)  # Checks if parameters appear
 
-        # Test for markdown(SettingsContainer, Simulation)
-        sim = Simulation()
-        stngs = SettingsContainer()
-        md_settings = markdown(stngs, sim)
-        @test occursin("| Setting | Number", md_settings)
-        @test occursin("Table: Setting Summary", md_settings)
+        # Settings Container (Empty)
+        @test sim |> settings |> markdown |> typeof == String
+        
+        sim_empty = Simulation()
+        stngs_empty = SettingsContainer()
+        md_settings_empty = markdown(stngs_empty, sim_empty)
+        @test occursin("| Setting | Number", md_settings_empty)
+        @test occursin("Table: Setting Summary", md_settings_empty)
+
+        # Settings Container (Populated)
+        sim_pop = Simulation()
+        sc_pop = SettingsContainer()
+        add_types!(sc_pop, [Household])
+        
+        rs = RandomSampling()
+        inds = [Individual(id=j, age=18, sex=1) for j in 1:3]
+        hh = Household(id=1, individuals=inds, contact_sampling_method=rs)
+        
+        add!(sc_pop, hh)
+        sim_pop.settings = sc_pop
+        
+        md_stngs_pop = markdown(sc_pop, sim_pop)
+        @test md_stngs_pop |> typeof == String
+        @test occursin("Household", md_stngs_pop) # Verifies loop executed
+        @test occursin("Table: Setting Summary", md_stngs_pop)
 
     end
 

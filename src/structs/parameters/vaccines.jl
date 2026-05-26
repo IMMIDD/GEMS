@@ -3,7 +3,6 @@
 ###
 export Vaccine
 export id, name, waning, logger
-export parameters
 
 """
     Vaccine
@@ -62,14 +61,3 @@ function logger(vaccine::Vaccine)::VaccinationLogger
     return vaccine.logger
 end
 
-"""
-    parameters(v::Vaccine)::Dict
-
-Returns a dictionary containing the parameters of the vaccine.
-"""
-function parameters(v::Vaccine)::Dict
-    return Dict(
-        "id" => v |> id,
-        "name" => v |> name,
-    )
-end

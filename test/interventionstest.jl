@@ -249,11 +249,15 @@
         sim3 = Simulation(population=pop, transmission_rate=1.0, household_contacts=1.0)
         i_strategy3 = IStrategy("i_strategy3", sim3)
         trace_infectious2 = TraceInfectiousContacts(i_strategy3, success_rate=1.0)
-        infect!(first(individuals(sim3)), Int16(0), pathogen(sim3), rng = Xoshiro())
-        #step!(sim3)
-        contacts = process_measure(sim3, first(individuals(sim3)), trace_infectious2)
-        #println(contacts) #contacts always nothing TODO
-        #@test contacts.focal_objects === [individuals(sim3)[2]] #why doesnt that work?
+        ind1 = first(individuals(sim3))
+        ind2 = individuals(sim3)[2]
+        infect!(ind1, Int16(0), pathogen(sim3), rng = Xoshiro())
+        ind1.infectiousness_onset = Int16(0)
+        infect!(ind2, Int16(0), pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = Xoshiro())
+        contacts = process_measure(sim3, ind1, trace_infectious2)
+        @test contacts !== nothing
+        @test length(contacts.focal_objects) == 1
+        @test contacts.focal_objects[1] === ind2
     end
 
     @testset "Custom I Measure" begin
@@ -372,8 +376,10 @@
 
         @test sampling_method(change_contact_method) === contact_parameter_sampling
 
-        #possible bug in this function:
-        #process_measure(sim, gs, change_contact_method) TODO
+        @test contact_sampling_method(gs) === rs
+        process_measure(sim, gs, change_contact_method)
+        @test contact_sampling_method(gs) isa ContactparameterSampling
+        @test contact_sampling_method(gs).contactparameter == 5.0
     end
 
     @testset "Close and Open Setting Measure" begin
