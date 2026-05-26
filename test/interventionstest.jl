@@ -495,7 +495,7 @@
         @test result.follow_up === nothing
  
         # follow_up strategy is forwarded
-        ind_b    = Individual(id = 11, sex = 1, age = 25)
+        ind_b = Individual(id = 11, sex = 1, age = 25)
         result_b = process_measure(vacc_sim, ind_b, vacc_with_followup)
  
         @test isvaccinated(ind_b) == true
