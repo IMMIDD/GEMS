@@ -447,7 +447,7 @@
 
     @testset "Hashes" begin
         @test infections_hash(rd) isa Base.SHA1
-        #@test data_hash(rd) !== nothing # ContentHashes.jl bug: crashes on complex nested dicts in Julia 1.12 (write(::HashContext, ::Char) hits +(::Int64, ::Nothing))
+        @test data_hash(rd) isa Base.SHA1
         @test hashes(rd) == Dict()
     end
 

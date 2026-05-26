@@ -1184,10 +1184,13 @@ end
 """
     data_hash(rd::ResultData)
 
-Returns a `SHA1` hash value for the `ResultData` object.
+Returns a `SHA1` hash value for the metadata of the `ResultData` object.
+DataFrames are excluded from the hash (use `infections_hash` for infection data).
 """
 function data_hash(rd::ResultData)
-    return(rd |> ContentHashes.hash)
+    out = deepcopy(rd.data)
+    clean_result!(out)
+    return ContentHashes.hash(out)
 end
 
 """
