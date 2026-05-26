@@ -109,7 +109,7 @@ mutable struct Pathogen <: Parameter
         end
 
         # convert progression vector to dict for quick lookups
-        prg = Dict{DataType, ProgressionCategory}()
+        prg = OrderedDict{DataType, ProgressionCategory}()
         for dp in progressions
             prg[typeof(dp)] = dp
         end
