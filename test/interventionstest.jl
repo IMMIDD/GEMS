@@ -376,8 +376,10 @@
 
         @test sampling_method(change_contact_method) === contact_parameter_sampling
 
-        #possible bug in this function:
-        #process_measure(sim, gs, change_contact_method) TODO
+        @test contact_sampling_method(gs) === rs
+        process_measure(sim, gs, change_contact_method)
+        @test contact_sampling_method(gs) isa ContactparameterSampling
+        @test contact_sampling_method(gs).contactparameter == 5.0
     end
 
     @testset "Close and Open Setting Measure" begin
