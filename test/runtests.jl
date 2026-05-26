@@ -40,7 +40,8 @@ using Suppressor
         "contactdistributiontest.jl",
         "interventionstest.jl",
         "vaccinetest.jl",
-        "codevalidationtest.jl"
+        "codevalidationtest.jl",
+        "movietest.jl"
     ]
 
     println("Begin to run test cases.")
