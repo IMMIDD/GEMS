@@ -38,7 +38,7 @@ end
 ### TYPING AND SUBTYPES
 ###
 
-function concrete_subtypes(type::Type)::Vector{Type}
+function concrete_subtypes(type::Type)::Vector{DataType}
     if subtypes(type) == []
         if !isabstracttype(type)
             return [type]
