@@ -150,9 +150,16 @@ mutable struct Population
         avg_school_size <= 0 ? throw(ArgumentError("The average school size must be a positive number")) : nothing
         avg_school_size > n ? throw(ArgumentError("The average school size cannot be larger than the population (n)")) : nothing
 
+        # load raw contact matrix to determine the number of age groups dynamically
+        contacts_raw = DataFrame(CSV.File(dirname(dirname(pathof(GEMS))) * "/data/contact_matrix_data_home.csv"))
+        n_age_groups = Int(sqrt(nrow(contacts_raw)))
+
+        # reshape into the correct matrix size, explicitly casting to Float64 for type stability
+        contacts = reshape(Vector{Float64}(contacts_raw.contacts), (n_age_groups, n_age_groups))
+
         # helper functions
         group_to_age(g) = 5 * (g-1) + gems_rand(rng, 0:4)
-        age_to_group(a) = min(17, (a ÷ 5) + 1)
+        age_to_group(a) = min(n_age_groups, (a ÷ 5) + 1)
 
         # GENERATE ONE INDEX INDIVIDUAL FOR EACH HOUSEHOLD BASED ON DEMOGRAPHIC DATA
         # get age-weights from census population data
@@ -172,84 +179,89 @@ mutable struct Population
         # number of households
         n_households = Int64(ceil(n / avg_household_size))
 
-        # build the initial dataframe
-        df = DataFrame(
-            id = Int32.(collect(1:n)),
-            age = Int8.([gems_rand(rng, Categorical(weights), n_households); fill(-1, n - n_households)]),
-            sex = Int8.(gems_rand(rng, 1:2, n)),
-            household = Int32.([collect(1:n_households); fill(-1, n - n_households)]),
-            schoolclass = Int32.(fill(-1, n)),
-            office = Int32.(fill(-1, n))
-        )
+        # preallocate RAW ARRAYS to guarantee type stability in loops
+        id_col = Int32.(1:n)
+        sex_col = Int8.(gems_rand(rng, 1:2, n))
+        
+        age_col = fill(Int8(-1), n)
+        age_col[1:n_households] .= Int8.(gems_rand(rng, Categorical(weights), n_households))
+
+        hh_col = fill(Int32(-1), n)
+        hh_col[1:n_households] .= Int32.(1:n_households)
+        
+        sch_col = fill(Int32(-1), n)
+        off_col = fill(Int32(-1), n)
 
         # ASSIGN INDIVIDUALS TO HOUSEHOLDS BASED ON INDEX PERSON AND CONTACT STRUCTURES
-        # sample household members based on contact structure
-        contacts = DataFrame(CSV.File(dirname(dirname(pathof(GEMS))) * "/data/contact_matrix_data_home.csv")) |>
-            x -> reshape(x.contacts, (17, 17))
-
         # weight contact matrix by size of age groups
-        for i in 1:dim(contacts)
-            contacts[:,i] = contacts[:,i] .* weighted_groups.weight
+        for col in axes(contacts, 2)
+            contacts[:, col] = contacts[:, col] .* weighted_groups.weight
         end
 
         # normalize contacts column-wise
-        for i in 1:dim(contacts)
-            contacts[:,i] = contacts[:,i] ./ sum(contacts[:,i])
+        for col in axes(contacts, 2)
+            contacts[:, col] = contacts[:, col] ./ sum(contacts[:, col])
         end
 
-        for i in (n_households+1):nrow(df)
+        # pre-calculate categorical distributions for age groups
+        contact_dists = [Categorical(Vector(contacts[:, i])) for i in axes(contacts, 2)]
+
+        # iterate using the strongly-typed raw arrays instead of DataFrame columns
+        for i in (n_households+1):n
             # sample household to place individual into
             hh_id = gems_rand(rng, 1:n_households)
 
             # store household
-            df.household[i] = hh_id
+            hh_col[i] = hh_id
 
             # sample age for new individual based on index individual age
-            df.age[i] = df.age[hh_id] |> age_to_group |>
-                x -> contacts[:,x] |>
-                x -> gems_rand(rng, Categorical(x)) |> group_to_age
+            group_idx = age_to_group(age_col[hh_id])
+            age_col[i] = group_to_age(gems_rand(rng, contact_dists[group_idx]))
         end
 
         # number of people
         isstudent(age) = 6 <= age <= 16
         isworker(age) = 17 <= age <= 67
-        n_students = count(isstudent, df.age)
-        n_workers = count(isworker, df.age)
+        n_students = count(isstudent, age_col)
+        n_workers = count(isworker, age_col)
 
         # number of other settings
         n_schools = Int64(ceil(n_students / avg_school_size))
         n_offices = Int64(ceil(n_workers / avg_office_size))
 
-        # assign other settings
+        # assign other settings using raw arrays
         # create set of thread-safe RNGs, seeded from the main RNG
         thread_rngs = [Xoshiro(gems_rand(rng, UInt64)) for _ in 1:Threads.maxthreadid()]
-        Threads.@threads :static for i in 1:nrow(df)
+        Threads.@threads :static for i in 1:n
             local_rng = thread_rngs[Threads.threadid()]
-            isstudent(df.age[i]) ? df.schoolclass[i] = Int32(gems_rand(local_rng, 1:n_schools)) : nothing
-            isworker(df.age[i]) ? df.office[i] = Int32(gems_rand(local_rng, 1:n_offices)) : nothing
+            isstudent(age_col[i]) ? sch_col[i] = Int32(gems_rand(local_rng, 1:n_schools)) : nothing
+            isworker(age_col[i]) ? off_col[i] = Int32(gems_rand(local_rng, 1:n_offices)) : nothing
         end
 
         # make sure all IDs start at 1 and are consecutive
-        unique_off_ids = unique(df.office) |> x -> x[x .> 0] |> sort
-        unique_sch_ids = unique(df.schoolclass) |> x -> x[x .> 0] |> sort
+        unique_off_ids = unique(off_col) |> x -> x[x .> 0] |> sort
+        unique_sch_ids = unique(sch_col) |> x -> x[x .> 0] |> sort
 
-        off_join = DataFrame(
-            office = unique_off_ids,
-            new_office = 1:length(unique_off_ids))
+        # create dictionary maps
+        off_dict = Dict{Int32, Int32}(id => Int32(i) for (i, id) in enumerate(unique_off_ids))
+        off_dict[Int32(-1)] = Int32(-1)
         
-        sch_join = DataFrame(
-            schoolclass = unique_sch_ids,
-            new_schoolclass = 1:length(unique_sch_ids))
+        sch_dict = Dict{Int32, Int32}(id => Int32(i) for (i, id) in enumerate(unique_sch_ids))
+        sch_dict[Int32(-1)] = Int32(-1)
 
-        # make sure -1 is still mapped to -1
-        push!(off_join, (-1, -1))
-        push!(sch_join, (-1, -1))
+        # map IDs using dictionaries
+        off_col .= getindex.(Ref(off_dict), off_col)
+        sch_col .= getindex.(Ref(sch_dict), sch_col)
 
-        df = df |>
-            x -> leftjoin(x, off_join, on = :office) |>
-            x -> leftjoin(x, sch_join, on = :schoolclass) |>
-            x -> DataFrames.select(x, Not(:office, :schoolclass)) |>
-            x -> rename(x, :new_office => :office, :new_schoolclass => :schoolclass)
+        # construct the dataframe once all data operations are perfectly complete
+        df = DataFrame(
+            id = id_col,
+            age = age_col,
+            sex = sex_col,
+            household = hh_col,
+            schoolclass = sch_col,
+            office = off_col
+        )
 
         # build population from dataframe
         pop = Population(df)
