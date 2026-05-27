@@ -250,11 +250,11 @@ function aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
     columns = names(dfs[1])
 
     if ! all(names(df) == columns for df in dfs)
-        @error "The dataframes do not have identical columns!"
+        throw(ArgumentError("The dataframes do not have identical columns!"))
     elseif length(columns) == 0
-        @error "The Dataframes are empty!"
+        throw(ArgumentError("The Dataframes are empty!"))
     elseif ! (string(key) in columns)
-        @error "The Dataframes are empty!"
+        throw(ArgumentError("The Dataframes are empty!"))
     end
     # Remove key from columns to ignore it when calculating stats
     deleteat!(columns, findfirst(x -> x == string(key), columns))
