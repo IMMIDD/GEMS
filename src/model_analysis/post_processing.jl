@@ -122,18 +122,6 @@ mutable struct PostProcessor
 
     @doc """
 
-        PostProcessor(simulation::Simulation, population::DataFrame, infections::DataFrame, vaccinations::DataFrame, deaths::DataFrame, tests::DataFrame, quarantines::DataFrame)
-
-    Manual reconstruction of a `PostProcessor` if all internal dataframes are known.
-    This is not considered for _public_ use and only speeds up internal processes.
-    """
-    function PostProcessor(simulation::Simulation, population::DataFrame, infections::DataFrame, vaccinations::DataFrame, deaths::DataFrame, tests::DataFrame, quarantines::DataFrame)
-
-        new(simulation, infections, population, vaccinations, deaths, tests, quarantines)
-    end
-
-    @doc """
-
         PostProcessor(simulations::Vector{Simulation})
 
     Create a vector of `PostProcessor` objects for a vector of associated `Simulation` objects.

@@ -35,7 +35,8 @@
         @test typeof(i_strategy) === IStrategy
         @test name(i_strategy) === "i_strategy"
         @test measures(i_strategy) == MeasureEntry[]
-        @test condition(i_strategy) === true
+        @test GEMS.condition(i_strategy) isa Function
+        @test GEMS.condition(i_strategy)(nothing) == true
         add_strategy!(sim, i_strategy)
         @test strategies(sim)[1] === i_strategy
     end
@@ -44,9 +45,49 @@
         @test typeof(s_strategy) === SStrategy
         @test name(s_strategy) === "s_strategy"
         @test measures(s_strategy) == MeasureEntry[]
-        @test condition(s_strategy) === true
+        @test GEMS.condition(s_strategy) isa Function
+        @test GEMS.condition(s_strategy)(nothing) == true
         add_strategy!(sim, s_strategy)
         @test strategies(sim)[2] === s_strategy
+    end
+
+    @testset "Strategy Condition Getter and Base.show" begin
+        sim_show = Simulation()
+
+        # GEMS.condition(str::Strategy) is shadowed throughout this testset by the
+        # local variable `condition = (_) -> true` defined at the top — the qualified
+        # name must be used here to actually exercise the getter method.
+
+        # default condition is x -> true: the stored function returns true for any input
+        default_str = IStrategy("show_default", sim_show)
+        @test GEMS.condition(default_str) isa Function
+        @test GEMS.condition(default_str)(nothing) == true
+
+        # non-trivial condition: the stored function preserves the predicate's logic
+        age_str = IStrategy("show_age", sim_show, condition = i -> age(i) > 65)
+        young = Individual(id=1, age=30, sex=1)
+        elder = Individual(id=2, age=70, sex=1)
+        @test GEMS.condition(age_str)(young) == false
+        @test GEMS.condition(age_str)(elder) == true
+
+        # same for SStrategy
+        s_default_str = SStrategy("show_s_default", sim_show)
+        @test GEMS.condition(s_default_str) isa Function
+        @test GEMS.condition(s_default_str)(nothing) == true
+
+        # Base.show with no measures: output contains type name and strategy name
+        output_empty = @capture_out show(default_str)
+        @test occursin("IStrategy", output_empty)
+        @test occursin("show_default", output_empty)
+
+        # Base.show with measures: each measure appears with its offset
+        add_measure!(default_str, SelfIsolation(7))
+        add_measure!(default_str, SelfIsolation(14), offset = 2)
+        output_measures = @capture_out show(default_str)
+        @test occursin("IStrategy", output_measures)
+        @test occursin("SelfIsolation", output_measures)
+        @test occursin("0:", output_measures)
+        @test occursin("2:", output_measures)
     end
 
     @testset "SelfIsolation Measure" begin
