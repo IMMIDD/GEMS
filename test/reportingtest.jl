@@ -427,7 +427,7 @@
             # generate(CustomLoggerPlot, bd::BatchData) — four branches
             @test generate(CustomLoggerPlot(), bd) isa Plots.Plot
             @test generate(CustomLoggerPlot(), bd_ml) isa Plots.Plot
-            @test_throws ErrorException generate(CustomLoggerPlot(), BatchData(BatchProcessor()))
+            @test_throws ArgumentError generate(CustomLoggerPlot(), BatchData(BatchProcessor()))
             cl = CustomLogger(count_inf = sim -> count(infected, sim |> population))
             bp_cl = process!(Batch(n_runs = 2, pop_size = 100); median_by = nothing, keep_rundata = true, customlogger = cl)
             @test generate(CustomLoggerPlot(), BatchData(bp_cl)) isa Plots.Plot

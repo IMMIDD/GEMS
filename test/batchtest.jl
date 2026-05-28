@@ -39,7 +39,7 @@
 
     # small batch used for run and data tests
     batch5 = Batch(n_runs = 3, pop_size = 1000)
-    bP = process!(batch5)
+    bP = process!(batch5; median_by = pp -> nrow(infectionsDF(pp)))
     bP_no_median = process!(Batch(n_runs = 3, pop_size = 1000); median_by = nothing)
     bd_no_median = BatchData(bP_no_median)
 
@@ -106,8 +106,8 @@
             @test bd |> execution_date |> length != 0
             @test bd |> GEMS_version |> string |> length != 0
 
-            # runs is nothing by default (keep_rundata=false)
-            @test isnothing(runs(bd))
+            # runs(bd) returns stored ResultData objects (keep_rundata=true by default)
+            @test runs(bd) isa Vector{ResultData}
             @test bd |> number_of_runs != 0
 
             @test bd |> sim_data |> length != 0
@@ -147,7 +147,7 @@
             @test bd |> total_detected_cases |> length != 0
             @test bd |> detection_rate |> length != 0
             @test seed(bd) == seed(bP)
-            @test isnothing(runs(bd))
+            @test runs(bd) isa Vector{ResultData}
             @test !isnothing(median_run(bd))
             @test typeof(median_run(bd)) == ResultData
 
