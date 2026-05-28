@@ -85,29 +85,31 @@ mutable struct BatchData <: AbstractResultData
     end
 
     @doc """
-
-        BatchData(batch::Batch; style="DefaultBatchData", seed=nothing, rd_style="LightRD", median_by=nothing, keep_rundata=true, customlogger=nothing)
-
+    
+        BatchData(batch::Batch; style="DefaultBatchData", keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing)
+        
     Create a `BatchData` object by running all simulation configurations in `batch`
     one at a time (streaming). Peak memory is ~1× a single simulation regardless
     of batch size.
 
-    - `seed`: integer seed for the RNG. Randomised if omitted.
-    - `rd_style`: the `ResultData` style used when storing representative/individual runs.
-    - `median_by`: a function `pp -> scalar` to select the median run.
-      Default: total infections (same default as `process!`). Pass `nothing` to disable.
     - `keep_rundata`: store all individual `ResultData` objects. Default: `true`.
+    - `rd_style`: the `ResultData` style used when storing representative/individual runs.
+    - `median_by`: a function `pp -> scalar` to select the median run. Default: `nothing`.
+    - `group_by`: a `Symbol` naming a field in each simulation config `NamedTuple` to use
+      as the grouping key.
+    - `seed`: integer seed for the RNG. Randomised if omitted.
     - `customlogger`: a `CustomLogger` to attach to each simulation run. Default: `nothing`.
     """
     function BatchData(batch::Batch;
         style::String = "DefaultBatchData",
-        seed::Union{Nothing, Integer} = nothing,
-        rd_style::String = "LightRD",
-        median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
         keep_rundata::Bool = true,
+        rd_style::String = "LightRD",
+        median_by::Union{Nothing, Function} = nothing,
+        group_by::Union{Nothing, Symbol} = nothing,
+        seed::Union{Nothing, Integer} = nothing,
         customlogger::Union{Nothing, CustomLogger} = nothing
     )
-        BatchData(process!(batch; seed, rd_style, median_by, keep_rundata, customlogger), style = style)
+        BatchData(process!(batch; keep_rundata, rd_style, median_by, group_by, seed, customlogger), style = style)
     end
 
 end

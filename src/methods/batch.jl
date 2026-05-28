@@ -1,30 +1,33 @@
 export process!
 
 """
-    process!(batch::Batch; seed=nothing, median_by=nothing, keep_rundata=true, rd_style="LightRD", customlogger=nothing)
+    process!(batch::Batch; keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by = nothing, seed=nothing, customlogger=nothing)
 
 Processes all simulation configurations in `batch` sequentially, accumulating
 results into a `BatchProcessor`.
 
 # Keyword Arguments
 
-- `seed`: seed for reproducibility. Passing the same value produces the same results.
-  If `nothing`, a random seed is generated. Retrieve the used seed via `seed(bp)`.
+- `keep_rundata`: if `true`, every run's `ResultData` is stored in `bp.rundata`.
+  Default: `true`.
+- `rd_style`: the `ResultData` style for individual and median runs. Default: `"LightRD"`.
 - `median_by`: a function `pp::PostProcessor -> scalar` for selecting the median run.
   The simulation with criterion closest to the median across all runs is re-run and
   stored. For multi-label batches one median run per label is computed.
   Default: `nothing`
-- `keep_rundata`: if `true`, every run's `ResultData` is stored in `bp.rundata`.
-  Default: `true`.
-- `rd_style`: the `ResultData` style for individual and median runs. Default: `"LightRD"`.
+- `group_by`: a `Symbol` naming a field in each simulation config `NamedTuple` to use
+  as the grouping key.
+- `seed`: seed for reproducibility. Passing the same value produces the same results.
+  If `nothing`, a random seed is generated. Retrieve the used seed via `seed(bp)`.
 - `customlogger`: a `CustomLogger` to attach to each simulation. An independent copy
   is created per run so data is not mixed across runs. Default: `nothing`.
 """
 function process!(batch::Batch;
-    seed::Union{Nothing, Integer} = nothing,
-    median_by::Union{Nothing, Function} = nothing,
     keep_rundata::Bool = true,
     rd_style::String = "LightRD",
+    median_by::Union{Nothing, Function} = nothing,
+    group_by::Union{Nothing, Symbol} = nothing,
+    seed::Union{Nothing, Integer} = nothing,
     customlogger::Union{Nothing, CustomLogger} = nothing
 )
     configs = simconfigs(batch)
