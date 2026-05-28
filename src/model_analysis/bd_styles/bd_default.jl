@@ -100,11 +100,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "generation_times" => () -> generation_times(bP),
                     "hospitalizations" => () -> hospitalizations(bP),
                     "observed_R" => () -> observed_R(bP),
-                ),
-            "per_label" => () -> Dict(
-                lab => BatchData(lbp)
-                for (lab, lbp) in bP.per_label
-            )
+                )
         )
 
         return new(process_funcs(funcs))

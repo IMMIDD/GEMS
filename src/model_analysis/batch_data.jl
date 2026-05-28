@@ -81,6 +81,8 @@ mutable struct BatchData <: AbstractResultData
         
         bd.data["meta_data"]["id"] = uuid4() |> string
 
+        bd.data["per_label"] = Dict(lab => BatchData(lbp) for (lab, lbp) in batchProcessor.per_label)
+
         return(bd)
     end
 
