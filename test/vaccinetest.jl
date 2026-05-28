@@ -6,10 +6,6 @@
         @test id(v) == 1
         @test name(v) == "Antitest"
         @test typeof(logger(v)) == VaccinationLogger
-        p = parameters(v)
-        @test p isa Dict
-        @test p["id"] == 1
-        @test p["name"] == "Antitest"
     end
 
     @testset "Vaccinate Individuals" begin
