@@ -8,7 +8,7 @@ export system_data, kernel, julia_version, word_size, threads, cpu_data, total_m
 export sim_data, runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
 export total_detected_cases, detection_rate
 export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
-export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_label
+export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_group
 
 export exportJLD, exportJSON, import_batchdata, info
 
@@ -81,7 +81,7 @@ mutable struct BatchData <: AbstractResultData
         
         bd.data["meta_data"]["id"] = uuid4() |> string
 
-        bd.data["per_label"] = Dict(lab => BatchData(lbp) for (lab, lbp) in batchProcessor.per_label)
+        bd.data["per_group"] = Dict(grp => BatchData(gbp) for (grp, gbp) in batchProcessor.per_group)
 
         return(bd)
     end
@@ -321,15 +321,15 @@ end
 """
     median_runs(bd::BatchData)
 
-Returns a dictionary mapping each simulation label to its median `ResultData` object.
-If the batch was run without labels, it returns a dictionary with a single `"overall"` key.
+Returns a vector of median `ResultData` objects — one per group when `group_by` was set,
+or a single-element vector for ungrouped batches.
 """
 function median_runs(bd::BatchData)
-    pl_data = per_label(bd)
+    pl_data = per_group(bd)
     
-    # multi-label batch
+    # multi-group batch
     if !isempty(pl_data)
-        return [inner_data["median_run"] for (lab, inner_data) in pl_data if haskey(inner_data, "median_run")]
+        return [median_run(group_bd) for (_, group_bd) in pl_data if !isnothing(median_run(group_bd))]
     end
     
     #single-label / no-label batch
@@ -566,16 +566,15 @@ function detection_rate(bd::BatchData)
 end
 
 """
-    per_label(bd::BatchData)
+    per_group(bd::BatchData)
 
-Returns per-label batch results as a `Dict{String, BatchData}`.
-Keys are simulation labels; values are complete `BatchData` objects
-containing all accessors (`total_infections`, `attack_rate`, `tick_cases`, etc.)
-for that label's runs.
-Returns an empty `Dict` if the batch was processed with a single label.
+Returns per-group batch results as a `Dict{String, BatchData}`.
+Keys are group values (from the field named by `group_by`); values are complete
+`BatchData` objects containing all accessors for that group's runs.
+Returns an empty `Dict` if the batch was processed without `group_by`.
 """
-function per_label(bd::BatchData)
-    return get(bd.data, "per_label", Dict{String, BatchData}())
+function per_group(bd::BatchData)
+    return get(bd.data, "per_group", Dict{String, BatchData}())
 end
 
 

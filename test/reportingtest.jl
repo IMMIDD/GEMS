@@ -381,7 +381,7 @@
                 generate(p, [rd, rd2])
                 splitplot(p, [rd, rd2])
                 #if typeof(p) != CustomLoggerPlot
-                #   splitlabel(p, [rd])
+                #   splitgroup(p, [rd])
                 #end
             end
         end
@@ -420,7 +420,7 @@
             @test gemsplot(bd_ml) isa Plots.Plot
             @test gemsplot(bd_ml, type = :TickCases) isa Plots.Plot
             # HouseholdAttackRate and InfectionDuration route through
-            # _per_label_representative_plots when global median_run is nothing
+            # _per_group_representative_plots when global median_run is nothing
             @test generate(HouseholdAttackRate(), bd_ml) isa Plots.Plot
             @test generate(InfectionDuration(), bd_ml) isa Plots.Plot
 
@@ -450,8 +450,8 @@
             # combined = :single — exercises splitplot
             @test gemsplot(rds, type = :TickCases, combined = :single) isa Plots.Plot
 
-            # combined = :bylabel — exercises splitlabel
-            @test gemsplot(rds, type = :TickCases, combined = :bylabel) isa Plots.Plot
+            # combined = :bygroup — exercises splitgroup
+            @test gemsplot(rds, type = :TickCases, combined = :bygroup) isa Plots.Plot
 
             # empty vector throws
             @test_throws ArgumentError gemsplot(ResultData[])
@@ -460,7 +460,7 @@
             @test_throws ArgumentError gemsplot(rds, type = :NonExistentPlotType)
         end
 
-        @testset "splitlabel" begin
+        @testset "splitgroup" begin
             sim_a = Simulation(pop_size = 100, label = "ScenarioA")
             run!(sim_a)
             rd_a = sim_a |> PostProcessor |> ResultData
@@ -470,13 +470,13 @@
             rd_b = sim_b |> PostProcessor |> ResultData
 
             # two distinct labels — two side-by-side group plots
-            @test splitlabel(TickCases(), [rd_a, rd_b]) isa Plots.Plot
+            @test splitgroup(TickCases(), [rd_a, rd_b]) isa Plots.Plot
 
             # same label — all runs folded into one group
             sim_c = Simulation(pop_size = 100, label = "ScenarioA")
             run!(sim_c)
             rd_c = sim_c |> PostProcessor |> ResultData
-            @test splitlabel(TickCases(), [rd_a, rd_c]) isa Plots.Plot
+            @test splitgroup(TickCases(), [rd_a, rd_c]) isa Plots.Plot
         end
 
         @testset "Scenario Simulation Plots" begin
@@ -581,17 +581,17 @@
             # path 1: isempty(t) → emptyplot (bd has no test data)
             @test generate(TotalTests(), bd) isa Plots.Plot
 
-            # path 2: single-label (elseif) branch — per_label is empty, top-level tests populated
+            # path 2: single-group (elseif) branch — per_group is empty, top-level tests populated
             bp_single = BatchProcessor()
             bp_single.tests["PCR"] = Dict("total_tests" => make_tick_accum(1:5),
                                           "positive_tests" => make_tick_accum(1:5))
             @test generate(TotalTests(), BatchData(bp_single)) isa Plots.Plot
 
-            # path 3: multi-label branch — per_label has 2 entries
+            # path 3: multi-group branch — per_group has 2 entries
             bp_multi = BatchProcessor()
             bp_multi.tests["PCR"] = Dict("total_tests" => make_tick_accum(1:5))
-            bp_multi.per_label["A"] = BatchProcessor()
-            bp_multi.per_label["B"] = BatchProcessor()
+            bp_multi.per_group["A"] = BatchProcessor()
+            bp_multi.per_group["B"] = BatchProcessor()
             @test generate(TotalTests(), BatchData(bp_multi)) isa Plots.Plot
         end
 

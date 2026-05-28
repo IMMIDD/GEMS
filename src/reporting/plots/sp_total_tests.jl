@@ -155,7 +155,7 @@ end
 function generate(plt::TotalTests, bd::BatchData; plotargs...)
     t = tests(bd)
     uticks = get(sim_data(bd), "tick_unit", "tick")
-    pl = per_label(bd)
+    pl = per_group(bd)
 
     if isempty(t)
         p = emptyplot("No testing data available.")
@@ -169,7 +169,7 @@ function generate(plt::TotalTests, bd::BatchData; plotargs...)
         if length(pl) > 1
             colors = Dict(zip(sort(collect(keys(pl))), gemscolors(length(pl))))
             for lab in sort(collect(keys(pl)))
-                label_tests = get(pl[lab], "tests", Dict())
+                label_tests = tests(pl[lab])
                 label_col_dict = get(label_tests, test_name, Dict())
                 df = get(label_col_dict, "total_tests", DataFrame())
                 isempty(df) && continue

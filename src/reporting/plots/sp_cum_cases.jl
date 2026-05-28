@@ -107,11 +107,11 @@ end
 function generate(plt::CumulativeCases, bd::BatchData; plotargs...)
     uticks = get(sim_data(bd), "tick_unit", "tick")
     p = plot(xlabel = uppercasefirst(uticks), ylabel = "Individuals", dpi = 300, fontfamily = "Times Roman")
-    pl = per_label(bd)
+    pl = per_group(bd)
     if length(pl) > 1
         colors = Dict(zip(sort(collect(keys(pl))), gemscolors(length(pl))))
         for lab in sort(collect(keys(pl)))
-            cc = get(pl[lab], "cumulative_cases", Dict())
+            cc = cumulative_cases(pl[lab])
             df = get(cc, "exposed_cum", DataFrame())
             isempty(df) && continue
             plot!(p, df[!, "tick"], df[!, "mean"],

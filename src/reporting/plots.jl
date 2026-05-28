@@ -3,7 +3,7 @@ export ReportPlot, SimulationPlot, GMTWrapper
 export title, description, description!, filename, filename!, generate
 export fontfamily!, dpi!, title!, titlefontsize!, saveplot, emptyplot
 export gemsplot
-export plottypes, splitlabel, splitplot, plotseries!
+export plottypes, splitgroup, splitplot, plotseries!
 
 ###
 ### ABSTRACT HIERARCHY & TYPES
@@ -197,7 +197,7 @@ the respective plot with the data of all simulation runs inside. E.g., the
 
 The keyword `combined` (only applicable for `ResultData`-vectors or `BatchData`-objects)
 determines whether all data is combined in a single plot (`:all`), each simulation
-run gets its own subplot (`:single`), or the plots are separated by label (`:bylabel`).
+run gets its own subplot (`:single`), or the plots are separated by group (`:bygroup`).
 **Note:** There might be plots without a multi-plot implementation. They will
 always be printed as if `combined = :single` was passed. Check the table below
 to see which plots are available for single- and multiplots.
@@ -208,7 +208,7 @@ to see which plots are available for single- and multiplots.
 - `type = :nothing` *(optional)*: Plot type (instantiates a plot with the exact same struct name).
     You can pass a tuple of plots to generate one graph with multiple visualizations
 - `combined::Symbol = :all` *(optional)*: all data in one plot (`:all`), all individual plots (`:singe`),
-    plot separated by label (`:bylabel`).
+    plot separated by group (`:bygroup`).
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
@@ -244,7 +244,7 @@ Generate a multi-plot for a vector of `ResultData` objects and separate plots by
 # assuming you have a baseline, and a lockdown scenario with two simulation runs each.
 # the simulations of these ResultData objects must have the same label ("Baseline" and "Lockdown") to group them
 rds = [rd_baseline_1, rd_baseline_2, rd_lockdown_1, rd_lockdown_2]
-gemsplot(rds, type = :EffectiveReproduction, combined = :bylabel)
+gemsplot(rds, type = :EffectiveReproduction, combined = :bygroup)
 ```
 
 # Plot Types
@@ -360,9 +360,9 @@ function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :a
         # generate individual plots if :single is passed
         if combined == :single
             p = splitplot(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
-        # separate plots by label if :bylabel is passed
-        elseif combined == :bylabel
-            p = splitlabel(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
+        # separate plots by group if :bygroup is passed
+        elseif combined == :bygroup
+            p = splitgroup(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
         # default is a combined plot of everything
         else
             p = generate(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
@@ -386,11 +386,11 @@ function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::
         isnothing(v) && return DataFrame()
         isa(v, Dict) && !isnothing(col_key) ? get(v, col_key, DataFrame()) : v
     end
-    pl = per_label(bd)
+    pl = per_group(bd)
     if length(pl) > 1
         colors = Dict(zip(sort(collect(keys(pl))), gemscolors(length(pl))))
         for lab in sort(collect(keys(pl)))
-            df = _extract(pl[lab])
+            df = _extract(dataframes(pl[lab]))
             isempty(df) && continue
             plot!(p, df[!, "tick"], df[!, "mean"],
                 ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
@@ -406,17 +406,17 @@ function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::
 end
 gemsplot(::Nothing; plotargs...) = error("runs(bd) returned nothing — re-run with keep_rundata=true to store individual ResultData objects.")
 
-function _per_label_representative_plots(plt, bd::BatchData; plotargs...)
-    pl = per_label(bd)
-    isempty(pl) && return nothing
-    label_plts = []
-    for (lab, label_data) in sort(collect(pl), by = first)
-        label_rep = median_run(label_bd)
-        isnothing(label_rep) && continue
-        push!(label_plts, generate(plt, label_rep; plot_title = lab, plotargs...))
+function _per_group_representative_plots(plt, bd::BatchData; plotargs...)
+    pg = per_group(bd)
+    isempty(pg) && return nothing
+    group_plts = []
+    for (grp, group_data) in sort(collect(pg), by = first)
+        group_rep = median_run(group_data)
+        isnothing(group_rep) && continue
+        push!(group_plts, generate(plt, group_rep; plot_title = grp, plotargs...))
     end
-    isempty(label_plts) && return nothing
-    return plot(label_plts..., layout = (1, length(label_plts)))
+    isempty(group_plts) && return nothing
+    return plot(group_plts..., layout = (1, length(group_plts)))
 end
 
 function gemsplot(bd::BatchData; type = :nothing, plotargs...)
@@ -483,7 +483,7 @@ splitplot(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...) = plot((map
 
 
 """
-    splitlabel(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
+    splitgroup(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
 
 Returns a split side-by-side plot for multiple `ResultData` objects
 but groups simulation runs by label. If you have 2 scenarios with 10
@@ -499,7 +499,7 @@ simulation runs each, this function will generate two plots with
 
 - `Plots.Plot`: Plot using the `Plots.jl` package's struct.
 """
-function splitlabel(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
+function splitgroup(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
 
     labels = map(label, rds) |> unique
     colors = Dict(zip(labels, gemscolors(length(labels))))

@@ -49,8 +49,8 @@ mutable struct BatchProcessor
     # Individual ResultData objects — only stored when keep_rundata=true
     rundata::Union{Nothing, Vector{ResultData}}
 
-    # Per-label sub-accumulators, only populated for multi-label batches
-    per_label::Dict{String, BatchProcessor}
+    # Per-group sub-accumulators, only populated when group_by is set
+    per_group::Dict{String, BatchProcessor}
 
     @doc """
         BatchProcessor(; keep_rundata=true, master_seed=0)
@@ -84,7 +84,7 @@ mutable struct BatchProcessor
             nothing,
             master_seed,
             keep_rundata ? ResultData[] : nothing,
-            Dict{String, BatchProcessor}()
+            Dict{String, BatchProcessor}()  # per_group
         )
     end
 

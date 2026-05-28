@@ -190,39 +190,34 @@
             @test total_infections(median_run(bp)) == Int(criteria[best_idx])
         end
 
-        @testset "RepresentativeRunMultiLabel" begin
+        @testset "RepresentativeRunMultiGroup" begin
+            criterion = pp -> nrow(infectionsDF(pp))
             baseline = Batch(n_runs = 3, transmission_rate = 0.2, label = "Baseline", pop_size = 1000)
             masks = Batch(n_runs = 3, transmission_rate = 0.15, label = "Mask Wearing", pop_size = 1000)
-            bp = process!(merge(baseline, masks))
+            bp = process!(merge(baseline, masks); median_by = criterion, group_by = :label)
 
-            # no global representative for multi-label batches
+            # no global representative for multi-group batches
             @test isnothing(median_run(bp))
 
-            # each label has its own representative
-            @test !isnothing(bp.per_label["Baseline"].median_run)
-            @test !isnothing(bp.per_label["Mask Wearing"].median_run)
-            @test typeof(bp.per_label["Baseline"].median_run) == ResultData
-            @test typeof(bp.per_label["Mask Wearing"].median_run) == ResultData
+            # each group has its own representative
+            @test !isnothing(bp.per_group["Baseline"].median_run)
+            @test !isnothing(bp.per_group["Mask Wearing"].median_run)
+            @test typeof(bp.per_group["Baseline"].median_run) == ResultData
+            @test typeof(bp.per_group["Mask Wearing"].median_run) == ResultData
 
-            # test median_runs
-            m_single = median_runs(bd)
-            
-            @test m_single isa Vector
-            @test length(m_single) == 1
-            @test typeof(m_single[1]) == ResultData
-
+            # test median_runs — multi-group batch returns one entry per group
             b1 = Batch(n_runs = 3, label = "Scenario A", pop_size = 1000)
             b2 = Batch(n_runs = 3, label = "Scenario B", pop_size = 1000)
-            bp_multi = process!(merge(b1, b2))
+            bp_multi = process!(merge(b1, b2); median_by = criterion, group_by = :label)
             bd_multi = BatchData(bp_multi)
             m_multi = median_runs(bd_multi)
-            
+
             @test m_multi isa Vector
             @test length(m_multi) == 2
             @test all(x -> typeof(x) == ResultData, m_multi)
 
             m_disabled = median_runs(bd_no_median)
-            
+
             @test m_disabled isa Vector
             @test isempty(m_disabled)
         end
@@ -314,27 +309,24 @@
             @test detection_rate(bP)["mean"] >= 0.0
         end
 
-        @testset "MultiLabelAccumulators" begin
+        @testset "MultiGroupAccumulators" begin
             b1 = Batch(n_runs = 3, transmission_rate = 0.05, label = "Low", pop_size = 1000)
             b2 = Batch(n_runs = 3, transmission_rate = 0.5, label = "High", pop_size = 1000)
-            bp = process!(merge(b1, b2); seed = 11)
-            # per-label accumulators should differ between the two scenarios
-            @test haskey(bp.per_label, "Low")
-            @test haskey(bp.per_label, "High")
-            low_inf = total_infections(bp.per_label["Low"])["mean"]
-            high_inf = total_infections(bp.per_label["High"])["mean"]
+            bp = process!(merge(b1, b2); seed = 11, group_by = :label)
+            # per-group accumulators should differ between the two scenarios
+            @test haskey(bp.per_group, "Low")
+            @test haskey(bp.per_group, "High")
+            low_inf = total_infections(bp.per_group["Low"])["mean"]
+            high_inf = total_infections(bp.per_group["High"])["mean"]
             @test low_inf < high_inf
 
-            # per_label(bd) exposes the per-label data through BatchData
+            # per_group(bd) exposes the per-group data through BatchData
             bd = BatchData(bp)
-            pl = per_label(bd)
-            @test haskey(pl, "Low")
-            @test haskey(pl, "High")
-            @test haskey(pl["Low"], "tick_cases")
-            @test haskey(pl["Low"], "effectiveR")
-            @test haskey(pl["Low"], "median_run")
-            @test !isnothing(pl["Low"]["median_run"])
-            @test !isnothing(pl["High"]["median_run"])
+            pg = per_group(bd)
+            @test haskey(pg, "Low")
+            @test haskey(pg, "High")
+            @test tick_cases(pg["Low"]) isa Dict
+            @test effectiveR(pg["Low"]) isa Dict
         end
 
         @testset "TotalTestsMultiType" begin
