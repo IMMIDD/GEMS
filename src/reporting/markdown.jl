@@ -100,21 +100,15 @@ end
 
 # FALLBACK
 function markdown(arr::Vector{T}) where T<:Any
-    return(
-        map(markdown, arr) |> unique |> print_arr
-    )
+    return(map(markdown, arr) |> unique |> print_arr)
 end
 
 function markdown(arr::Vector{T}) where T<:StartCondition
-    return(
-        map(markdown, arr) |> unique |> print_arr
-    )
+    return(map(markdown, arr) |> unique |> print_arr)
 end
 
 function markdown(arr::Vector{T}) where T<:StopCriterion
-    return(
-        map(markdown, arr) |> unique |> print_arr
-    )
+    return(map(markdown, arr) |> unique |> print_arr)
 end
 
 
@@ -273,11 +267,6 @@ function markdown(vaccine::Vaccine)
     )
 end
 
-function markdown(scheduler::VaccinationScheduler)
-    return(
-        "To be implemented."
-    ) 
-end
 
 
 function markdown(strategy::Strategy)

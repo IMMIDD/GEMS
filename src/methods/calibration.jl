@@ -81,7 +81,7 @@ function compute_loss(x::AbstractArray, p::Vector)
     try
         for _ in 1:n
             sim.seed += 1
-            reinitialize!(sim)
+            reset!(sim)
             run!(sim)
             res = target(sim)
             score += loss(res, ts)
@@ -89,7 +89,7 @@ function compute_loss(x::AbstractArray, p::Vector)
         score /= n
     finally
         sim.seed = original_seed
-        reinitialize!(sim)
+        reset!(sim)
     end
     return score
 end
@@ -203,6 +203,6 @@ function calibrate!(
     sol = Optimization.solve(prob, alg; solve_kwargs...)
     println(sol.stats)
     assign_values_to_parameters!(sim, x=sol.u, arg=arg_x0)
-    reinitialize!(sim)
+    reset!(sim)
     return sol
 end

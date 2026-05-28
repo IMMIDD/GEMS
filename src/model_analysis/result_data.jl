@@ -1172,10 +1172,13 @@ end
 """
     data_hash(rd::ResultData)
 
-Returns a `SHA1` hash value for the `ResultData` object.
+Returns a `SHA1` hash value for the metadata of the `ResultData` object.
+DataFrames are excluded from the hash (use `infections_hash` for infection data).
 """
 function data_hash(rd::ResultData)
-    return(rd |> ContentHashes.hash)
+    out = deepcopy(rd.data)
+    clean_result!(out)
+    return ContentHashes.hash(out)
 end
 
 """
@@ -1263,44 +1266,6 @@ function exportJSON(rd::ResultData, directory::AbstractString)
     end
 end
 
-"""
-    obtain_fields(rd::ResultData, config::Dict)
-
-Obtains the additional fields defined in the config dictionary from the provided
-ResultData object. For this a simulation is created from the in rd contained config 
-and population file and the PostProcessor and then BatchData object is created.
-"""
-function obtain_fields(rd::ResultData, style::String)
-
-    # Check if essential data fields are present
-    if !(rd |> infections != Dict() && rd |> vaccinations != Dict() && rd |> deaths != Dict() && rd |> cumulative_quarantines != Dict()) 
-        error("Reconstruction failed. Essential dataframes missing!")
-    elseif !(rd |> config_file != Dict() && rd |> population_file != Dict())
-        error("Reconstruction failed. Config file and/or population file path not provided!")
-    end
-
-    # Extract the last tick
-    if isa(rd |> final_tick, Integer)
-        finalTick = rd |> final_tick
-    elseif rd |> tick_cases != Dict()
-        finalTick =  rd |> tick_cases |> nrow
-    elseif rd |> age_incidence != Dict()
-        finalTick =  rd |> tick_cases |> nrow
-    elseif rd |> effectiveR != Dict()
-        finalTick =  rd |> tick_cases |> nrow
-    else
-        error("Reconstruction failed. Essential final tick missing! ResultData must inlcude final_tick, tick_cases, age_incidence or effectiveR.")
-    end
-
-    # create simulation 
-    sim = create_simulation(rd |> config_file, rd |> population_file)
-    sim.tick = finalTick
-    # Create PostProcessor
-    postProcessor = PostProcessor(sim, sim |> population |> dataframe, rd |> infections, rd |> vaccinations, rd |> deaths, rd |> tests, rd |> cumulative_quarantines)
-    rd = ResultData(postProcessor, style)
-    return rd
-end
-
 
 """
     import_resultdata(filepath::String)
@@ -1316,24 +1281,6 @@ function import_resultdata(filepath::String)
     if !isa(rd, ResultData)
         error("The provided file is not a valid ResultData object!")
     end
-    return rd
-end
-
-"""
-    import_resultdata(filepath::String, config::Dict=Dict())
-
-Import the `ResultData` object from a jld2 file. Also accepts a config dictionary
-that includes the fields that should be obtained from the file. If there are fields
-in the config file that are not yet present in the `ResultData` object the creation of
-these fields is being attempted. If there are fields present in the `ResultData` object
-that are not in the config file, these fields are ommited. Providing an empty config
-dictionary will lead to the generation of all fields. 
-"""
-function import_resultdata(filepath::String, style::String)
-    # Load the file 
-    rd = import_resultdata(filepath)
-    # Try to create the new style from the imported one
-    rd = obtain_fields(rd, style) 
     return rd
 end
 

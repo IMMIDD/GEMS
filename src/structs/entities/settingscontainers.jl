@@ -32,17 +32,6 @@ function SettingsContainer()
     return SettingsContainer(Dict{DataType, Vector{Setting}}())
 end
 
-"""
-    add_type!(container::SettingsContainer, settingtype::Type)
-
-Add a settingtype to the container if it is not yet included. 
-Creates a new vector for the provided type in the settings dictionary.
-"""
-function add_type!(container::SettingsContainer, settingtype::Type)
-    if !haskey(container.settings, settingtype)
-        container.settings[settingtype] = Vector{Setting}()
-    end
-end
 
 """
     add_type!(container::SettingsContainer, settingtype::DataType)
@@ -57,18 +46,6 @@ function add_type!(container::SettingsContainer, settingtype::DataType)
 end
 
 """
-    add_types!(container::SettingsContainer, settingtypes::Vector{Type})
-
-Adds settingtypes to the container if they are not yet included. 
-Calls the `add_type!` function for each settingtype in the vector.
-"""
-function add_types!(container::SettingsContainer, settingtype::Vector{Type})
-    for st in settingtype
-        add_type!(container, st)
-    end
-end
-
-"""
     add_types!(container::SettingsContainer, settingtypes::Vector{DataType})
 
 Adds settingtypes to the container if they are not yet included. 
@@ -79,6 +56,7 @@ function add_types!(container::SettingsContainer, settingtype::Vector{DataType})
         add_type!(container, st)
     end
 end
+
 """
     add!(container::SettingsContainer, setting::Setting)
 

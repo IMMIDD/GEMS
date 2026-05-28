@@ -249,11 +249,15 @@
         sim3 = Simulation(population=pop, transmission_rate=1.0, household_contacts=1.0)
         i_strategy3 = IStrategy("i_strategy3", sim3)
         trace_infectious2 = TraceInfectiousContacts(i_strategy3, success_rate=1.0)
-        infect!(first(individuals(sim3)), Int16(0), pathogen(sim3), rng = Xoshiro())
-        #step!(sim3)
-        contacts = process_measure(sim3, first(individuals(sim3)), trace_infectious2)
-        #println(contacts) #contacts always nothing TODO
-        #@test contacts.focal_objects === [individuals(sim3)[2]] #why doesnt that work?
+        ind1 = first(individuals(sim3))
+        ind2 = individuals(sim3)[2]
+        infect!(ind1, Int16(0), pathogen(sim3), rng = Xoshiro())
+        ind1.infectiousness_onset = Int16(0)
+        infect!(ind2, Int16(0), pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = Xoshiro())
+        contacts = process_measure(sim3, ind1, trace_infectious2)
+        @test contacts !== nothing
+        @test length(contacts.focal_objects) == 1
+        @test contacts.focal_objects[1] === ind2
     end
 
     @testset "Custom I Measure" begin
@@ -372,8 +376,10 @@
 
         @test sampling_method(change_contact_method) === contact_parameter_sampling
 
-        #possible bug in this function:
-        #process_measure(sim, gs, change_contact_method) TODO
+        @test contact_sampling_method(gs) === rs
+        process_measure(sim, gs, change_contact_method)
+        @test contact_sampling_method(gs) isa ContactparameterSampling
+        @test contact_sampling_method(gs).contactparameter == 5.0
     end
 
     @testset "Close and Open Setting Measure" begin
@@ -469,6 +475,56 @@
 
         @test follow_up_strategy2 === s_strategy
     end
+
+    @testset "Vaccinate Measure" begin
+        vacc_sim = Simulation()
+        fu_strategy = IStrategy("i_strategy", vacc_sim)
+        my_vaccine = Vaccine(id = Int8(1), name = "TestVax")
+ 
+        # struct and accessors
+        vacc_measure = Vaccinate(my_vaccine)
+        vacc_with_followup = Vaccinate(my_vaccine, follow_up = fu_strategy)
+ 
+        @test vaccine(vacc_measure) === my_vaccine
+        @test follow_up(vacc_measure) === nothing
+        @test follow_up(vacc_with_followup) === fu_strategy
+ 
+        # vaccinate an individual
+        ind_a = Individual(id = 10, sex = 0, age = 30)
+        result = process_measure(vacc_sim, ind_a, vacc_measure)
+ 
+        @test isvaccinated(ind_a) == true
+        @test vaccine_id(ind_a) == id(my_vaccine)
+        @test vaccination_tick(ind_a) == tick(vacc_sim)
+        @test number_of_vaccinations(ind_a) == 1
+        @test result.focal_objects[1] === ind_a
+        @test result.follow_up === nothing
+ 
+        # follow_up strategy is forwarded
+        ind_b = Individual(id = 11, sex = 1, age = 25)
+        result_b = process_measure(vacc_sim, ind_b, vacc_with_followup)
+ 
+        @test isvaccinated(ind_b) == true
+        @test result_b.focal_objects[1] === ind_b
+        @test result_b.follow_up === fu_strategy
+ 
+        # re-vaccination increments dose count
+        result_booster = process_measure(vacc_sim, ind_a, vacc_measure)
+ 
+        @test number_of_vaccinations(ind_a) == 2
+        @test result_booster.focal_objects[1] === ind_a
+ 
+        # measure round-trips through add_measure!
+        vacc_strategy = IStrategy("vaccinate", vacc_sim)
+        add_measure!(vacc_strategy, Vaccinate(my_vaccine))
+ 
+        @test length(vacc_strategy.measures) == 1
+        @test vacc_strategy.measures[1].measure isa Vaccinate
+        @test vaccine(vacc_strategy.measures[1].measure) === my_vaccine
+    end
+
+
+
 
     @testset "Test All Measure" begin
         test = TestType("Test", pathogen(sim), sim)

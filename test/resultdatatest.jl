@@ -58,9 +58,18 @@
         rd_imp = import_resultdata(joinpath("tempdir", "resultdata.jld2"))
         @test rd_imp |> id == rd |> id
 
-        # import_resultdata(filepath, style) — error propagated from obtain_fields
-        # (vaccinations are empty in the test sim, so the essential-data check fires)
-        @test_throws ErrorException import_resultdata(joinpath("tempdir", "resultdata.jld2"), "DefaultResultData")
+        # non-existent path
+        @test_throws ErrorException import_resultdata("/nonexistent/path.jld2")
+
+        # existing file but wrong extension
+        @test_throws ErrorException import_resultdata(joinpath(basefolder, "test/testdata/TestPop.csv"))
+
+        # valid .jld2 but no ResultData object inside
+        mktempdir() do dir
+            bad_jld2 = joinpath(dir, "notrd.jld2")
+            JLD2.save(bad_jld2, Dict("something" => 42))
+            @test_throws ErrorException import_resultdata(bad_jld2)
+        end
 
         # finally, remove all test files
         rm("tempdir", recursive=true)
@@ -96,6 +105,8 @@
         @test rd |> total_mem_size > 0
         @test rd |> free_mem_size > 0
 
+        @test tick_vaccinations(rd) == Dict()
+
         # contact data
 
         matrix_data = aggregated_setting_age_contacts(rd, Household).data
@@ -119,12 +130,6 @@
 
     @testset "Utils & Exporting" begin
 
-        # JoPo TODO: JSON tests removed for now
-        # as some parameter functions were removed
-        # we need to find a way to circumvent necessary
-        # parameter functions for user-created
-        # types in order to re-enable JSON export tests 
-
         to = TimerOutput()
         timer_output!(rd, to)
 
@@ -139,8 +144,10 @@
         # check file existence
         @test isfile(directory * "/resultdata.jld2")
 
-        # JoPo TODO: exportJSON is untested because clean_result! calls parameters(::Pathogen)
-        # which has no method defined. Fix clean_result! or add parameters(::Pathogen) to re-enable.
+        exportJSON(rd, directory)
+        @test isfile(directory * "/runinfo.json")
+        @test filesize(directory * "/runinfo.json") > 0
+        @test startswith(strip(read(directory * "/runinfo.json", String)), "{")
 
         # finally, remove all test files
         rm(directory, recursive=true)
@@ -439,7 +446,7 @@
 
     @testset "Hashes" begin
         @test infections_hash(rd) isa Base.SHA1
-        #@test data_hash(rd) isa Base.SHA1 # this somehow fails. Bug in ContentHashes?
+        @test data_hash(rd) isa Base.SHA1
         @test hashes(rd) == Dict()
     end
 
@@ -454,11 +461,5 @@
         rd = ResultData(pp)
         @test allempty(f, [rd])
         @test someempty(f, [rd])
-    end
-
-
-    @testset "Test obtain_fields" begin
-        rd = ResultData(pp)
-        @test_throws ErrorException GEMS.obtain_fields(rd, "DefaultResultData")
     end
 end

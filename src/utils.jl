@@ -39,7 +39,7 @@ end
 ### TYPING AND SUBTYPES
 ###
 
-function concrete_subtypes(type::Type)::Vector{Type}
+function concrete_subtypes(type::Type)::Vector{DataType}
     if subtypes(type) == []
         if !isabstracttype(type)
             return [type]
@@ -251,11 +251,11 @@ function aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
     columns = names(dfs[1])
 
     if ! all(names(df) == columns for df in dfs)
-        @error "The dataframes do not have identical columns!"
+        throw(ArgumentError("The dataframes do not have identical columns!"))
     elseif length(columns) == 0
-        @error "The Dataframes are empty!"
+        throw(ArgumentError("The Dataframes are empty!"))
     elseif ! (string(key) in columns)
-        @error "The Dataframes are empty!"
+        throw(ArgumentError("The Dataframes are empty!"))
     end
     # Remove key from columns to ignore it when calculating stats
     deleteat!(columns, findfirst(x -> x == string(key), columns))
@@ -744,27 +744,20 @@ end
     clean_result!(dict::Dict)
 
 Helper function to clean data for JSON output.
-Also uses parameter function for the StartCondition, Vaccine and Pathogen.
 
 """
 function clean_result!(dict::Dict)
     for (key, val) in dict
         if isa(val, DataFrame) || isa(val, Matrix)
             delete!(dict, key)
-        elseif isa(val, StartCondition)
-            dict[key] = parameters(val)
-        elseif isa(val, StopCriterion)
-            dict[key] = parameters(val)
+        elseif isa(val, StartCondition) || isa(val, StopCriterion)
+            dict[key] = Dict("type" => string(typeof(val)))
         elseif isa(val, Vector{<:StartCondition})
-            dict[key] = [parameters(v) for v in val]
-        elseif isa(val, Pathogen)
-            dict[key] = parameters(val)
-        elseif isa(val, Vector{Pathogen})
-            dict[key] = [parameters(v) for v in val]
-        elseif isa(val, Vaccine)
-            dict[key] = parameters(val)
-        elseif isa(val, Vector{Vaccine})
-            dict[key] = [parameters(v) for v in val]
+            dict[key] = [Dict("type" => string(typeof(v))) for v in val]
+        elseif isa(val, Pathogen) || isa(val, Vaccine)
+            dict[key] = Dict("id" => id(val), "name" => name(val))
+        elseif isa(val, Vector{Pathogen}) || isa(val, Vector{Vaccine})
+            dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
         elseif isa(val, Dict)
             clean_result!(dict[key])
             if length(dict[key]) == 0
