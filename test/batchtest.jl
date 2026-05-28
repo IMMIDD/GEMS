@@ -350,6 +350,35 @@
             @test haskey(tests(bd_tests), "Antigen")
         end
 
+        @testset "Setup" begin
+            # setup on Batch is called once per run
+            call_count = Ref(0)
+            bp_setup = process!(Batch(n_runs = 3, pop_size = 500,
+                setup = sim -> (call_count[] += 1)))
+            @test call_count[] == 3
+
+            # setup via add! per-config
+            per_cfg_count = Ref(0)
+            b_cfg = Batch(n_runs = 0)
+            for _ in 1:4
+                add!(b_cfg, (pop_size = 500,); setup = sim -> (per_cfg_count[] += 1))
+            end
+            process!(b_cfg)
+            @test per_cfg_count[] == 4
+
+            # different setups per merged scenario
+            baseline = Batch(n_runs = 2, pop_size = 500, label = "Baseline")
+            with_iso = Batch(n_runs = 2, pop_size = 500, label = "Isolation",
+                setup = sim -> begin
+                    strat = IStrategy("iso", sim)
+                    add_measure!(strat, SelfIsolation(14))
+                    add_symptom_trigger!(sim, SymptomTrigger(strat))
+                end)
+            bp_merged = process!(merge(baseline, with_iso); group_by = :label)
+            @test haskey(bp_merged.per_group, "Baseline")
+            @test haskey(bp_merged.per_group, "Isolation")
+        end
+
         @testset "CustomLogger" begin
             cl = CustomLogger(infected = sim -> count(infected, sim |> population))
             bp = process!(Batch(n_runs = 3, pop_size = 1000); customlogger = cl, keep_rundata = true)

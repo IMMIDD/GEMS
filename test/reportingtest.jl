@@ -410,19 +410,22 @@
             @test gemsplot(bd, type = :EffectiveReproduction) isa Plots.Plot
             @test gemsplot(bd, type = (:TickCases, :CumulativeCases)) isa Plots.Plot
 
-            # multi-label batch
-            # distribution plots that fall back to per-label median runs
+            # multi-group batch — exercises _plot_labelled_ribbon! and grouped sp_cum_cases
             b_ml = merge(
                 Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.2, label = "Baseline"),
                 Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.15, label = "Masks")
             )
-            bd_ml = BatchData(b_ml)
+            bd_ml = BatchData(b_ml; group_by = :label)
             @test gemsplot(bd_ml) isa Plots.Plot
             @test gemsplot(bd_ml, type = :TickCases) isa Plots.Plot
-            # HouseholdAttackRate and InfectionDuration route through
-            # _per_group_representative_plots when global median_run is nothing
-            @test generate(HouseholdAttackRate(), bd_ml) isa Plots.Plot
-            @test generate(InfectionDuration(), bd_ml) isa Plots.Plot
+            @test generate(CumulativeCases(), bd_ml) isa Plots.Plot
+            @test generate(ActiveDarkFigure(), bd_ml) isa Plots.Plot
+            @test generate(CumulativeIsolations(), bd_ml) isa Plots.Plot
+
+            # with median runs per group — exercises _per_group_representative_plots
+            bd_ml_med = BatchData(b_ml; group_by = :label, median_by = pp -> nrow(infectionsDF(pp)))
+            @test generate(HouseholdAttackRate(), bd_ml_med) isa Plots.Plot
+            @test generate(InfectionDuration(), bd_ml_med) isa Plots.Plot
 
             # generate(CustomLoggerPlot, bd::BatchData) — four branches
             @test generate(CustomLoggerPlot(), bd) isa Plots.Plot

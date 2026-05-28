@@ -32,6 +32,7 @@ function process!(batch::Batch;
     customlogger::Union{Nothing, CustomLogger} = nothing
 )
     configs = simconfigs(batch)
+    setups = simsetups(batch)
     n = length(configs)
 
     master_seed = seed !== nothing ? Int64(seed) : gems_rand(Xoshiro(), 0:typemax(Int64))
@@ -48,9 +49,13 @@ function process!(batch::Batch;
     group_criteria = multi_group && collect_median ? Dict{String, Vector{Float64}}() : nothing
     group_indices = multi_group && collect_median ? Dict{String, Vector{Int}}() : nothing
 
-    for (i, (cfg, sim_group)) in enumerate(zip(configs, cfg_groups))
+    for (i, (cfg, sim_setup, sim_group)) in enumerate(zip(configs, setups, cfg_groups))
         printinfo("Processing Simulation $i/$n in Batch")
+
         sim = Simulation(; cfg..., seed = sim_seeds[i])
+
+        sim_setup !== nothing && sim_setup(sim)
+
         customlogger !== nothing && customlogger!(sim, duplicate(customlogger))
         run!(sim)
         pp = PostProcessor(sim)
@@ -72,25 +77,27 @@ function process!(batch::Batch;
     end
 
     if multi_group
-        _run_group_median_runs!(bp, configs, sim_seeds, group_criteria, group_indices, rd_style)
+        _run_group_median_runs!(bp, configs, setups, sim_seeds, group_criteria, group_indices, rd_style)
     else
-        _run_median_run!(bp, configs, sim_seeds, criterion_values, rd_style)
+        _run_median_run!(bp, configs, setups, sim_seeds, criterion_values, rd_style)
     end
 
     return bp
 end
 
-function _run_median_run!(bp, configs, sim_seeds, criterion_values, rd_style)
+function _run_median_run!(bp, configs, setups, sim_seeds, criterion_values, rd_style)
     (isnothing(criterion_values) || isempty(criterion_values)) && return
     final_median = median(criterion_values)
     best_idx = argmin(abs(v - final_median) for v in criterion_values)
     printinfo("Re-running median simulation (config $best_idx)")
-    rep_sim = Simulation(; configs[best_idx]..., seed = sim_seeds[best_idx])
+    cfg = configs[best_idx]
+    rep_sim = Simulation(; cfg..., seed = sim_seeds[best_idx])
+    setups[best_idx] !== nothing && setups[best_idx](rep_sim)
     run!(rep_sim)
     bp.median_run = ResultData(PostProcessor(rep_sim), style = rd_style)
 end
 
-function _run_group_median_runs!(bp, configs, sim_seeds, group_criteria, group_indices, rd_style)
+function _run_group_median_runs!(bp, configs, setups, sim_seeds, group_criteria, group_indices, rd_style)
     isnothing(group_criteria) && return
     for (grp, criteria) in group_criteria
         indices = group_indices[grp]
@@ -98,7 +105,9 @@ function _run_group_median_runs!(bp, configs, sim_seeds, group_criteria, group_i
         best_local = argmin(abs(v - final_median) for v in criteria)
         best_idx = indices[best_local]
         printinfo("Re-running median simulation for group \"$grp\" (config $best_idx)")
-        rep_sim = Simulation(; configs[best_idx]..., seed = sim_seeds[best_idx])
+        cfg = configs[best_idx]
+        rep_sim = Simulation(; cfg..., seed = sim_seeds[best_idx])
+        setups[best_idx] !== nothing && setups[best_idx](rep_sim)
         run!(rep_sim)
         bp.per_group[grp].median_run = ResultData(PostProcessor(rep_sim), style = rd_style)
     end

@@ -325,12 +325,12 @@ returns a vector of `ResultData` objects (one per group) that you can pass direc
 to `gemsplot()`:
 
 ```julia
-using GEMS
+using GEMS, DataFrames
 
 baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
-masks    = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
+masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
 
-b  = merge(baseline, masks)
+b = merge(baseline, masks)
 bd = BatchData(b; group_by = :label, median_by = pp -> nrow(infectionsDF(pp)))
 
 gemsplot(median_runs(bd))
@@ -343,6 +343,51 @@ gemsplot(median_runs(bd))
     <img src="../assets/tutorials/tut_batches_median_runs.png" width="80%"/>
 </p>
 ``` 
+
+## Attaching Interventions
+
+Pass a `setup` function to `Batch` to run custom code on each simulation after it is
+constructed but before it starts. The function receives the live `Simulation` object,
+so you can attach strategies, triggers, and interventions of any complexity:
+
+```julia
+using GEMS
+
+b = Batch(n_runs = 5,
+    setup = sim -> begin
+        strat = IStrategy("Isolation", sim)
+        add_measure!(strat, SelfIsolation(14))
+        add_symptom_trigger!(sim, SymptomTrigger(strat))
+    end)
+```
+
+For scenario comparisons where each scenario has a different intervention, each
+sub-batch carries its own `setup`. Combine them using `merge` as usual:
+
+```julia
+using GEMS
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
+
+measures = Batch(n_runs = 5, transmission_rate = 0.2, label = "Isolation",
+    setup = sim -> begin
+        strat = IStrategy("Isolation", sim)
+        add_measure!(strat, SelfIsolation(14))
+        add_symptom_trigger!(sim, SymptomTrigger(strat))
+    end)
+
+bd = BatchData(merge(baseline, measures); group_by = :label)
+gemsplot(bd)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_setup_scenarios.png" width="80%"/>
+</p>
+```
+
 
 ## Reproducibility
 

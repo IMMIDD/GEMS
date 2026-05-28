@@ -87,9 +87,9 @@ mutable struct BatchData <: AbstractResultData
     end
 
     @doc """
-    
+
         BatchData(batch::Batch; style="DefaultBatchData", keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing)
-        
+
     Create a `BatchData` object by running all simulation configurations in `batch`
     one at a time (streaming). Peak memory is ~1× a single simulation regardless
     of batch size.
@@ -647,7 +647,7 @@ function info(bd::BatchData)
     println("BatchData Entries")
     for (category, data) in bd.data
         println("\u2514 $category")
-        for (label, value) in data
+        for (label, _) in data
             println("  \u2514 $label")
         end
     end
