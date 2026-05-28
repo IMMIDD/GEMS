@@ -35,15 +35,15 @@ bd = BatchData(b)  # equivalent to BatchData(process!(b))
 ```
 
 By default, `gemsplot(bd)` shows a mean line with a 95% confidence interval ribbon.
-To see the individual simulation traces, pass `keep_rundata = true` and call
-`runs(bd)`:
+Individual run traces are stored automatically (in a lightweight `LightRD` format), so
+you can call `runs(bd)` directly:
 
 ```julia
 using GEMS
 
 b = Batch(n_runs = 5)
-bd = BatchData(b; keep_rundata = true)
-gemsplot(runs(bd)) 
+bd = BatchData(b)
+gemsplot(runs(bd))
 ```
 
 **Plot**
@@ -54,14 +54,14 @@ gemsplot(runs(bd))
 </p>
 ``` 
 
-If you want to group them, you can pass a `label` keyword:
+To give the runs a shared name in the legend, pass a `label`:
 
 ```julia
 using GEMS
 
 b = Batch(n_runs = 5, label = "My Experiment")
-bd = BatchData(b; keep_rundata = true)
-gemsplot(runs(bd), type = :TickCases) 
+bd = BatchData(b)
+gemsplot(runs(bd), type = :TickCases)
 ```
 
 **Plot**
@@ -72,10 +72,9 @@ gemsplot(runs(bd), type = :TickCases)
 </p>
 ``` 
 
-`runs(bd)` returns `nothing` by default.
-
-!!! warning "RAM usage with `keep_rundata = true` grows with batch size"
-    Use `keep_rundata = true` only when you need the individual `ResultData` objects.
+!!! tip "Disabling run storage to save memory"
+    `runs(bd)` returns individual `ResultData` objects by default. For large batches,
+    pass `keep_rundata = false` to disable storage and reduce RAM usage.
 
 
 ## `process!` Arguments
@@ -85,9 +84,10 @@ gemsplot(runs(bd), type = :TickCases)
 | Keyword | Default | Description |
 |:---|:---|:---|
 | `seed` | `nothing` | Integer seed for the RNG. Pass a fixed value for reproducible runs (see [Reproducibility](@ref)). Randomised if omitted. |
-| `median_by` | `pp -> nrow(infectionsDF(pp))` | Criterion function used to select the representative run (see [Median Run](@ref)). Set to `nothing` to disable. |
-| `keep_rundata` | `false` | When `true`, stores all individual `ResultData` objects so `runs(bd)` returns them instead of `nothing`. Requires significantly more RAM. |
-| `rd_style` | `"LightRD"` | `ResultData` style for each run. |
+| `median_by` | `nothing` | Criterion function `pp -> scalar` used to select the representative run (see [Median Run](@ref)). Disabled by default. |
+| `group_by` | `nothing` | A `Symbol` naming a field in each simulation config to use as the grouping key (e.g. `:label`). When set, enables per-group analysis via `per_group(bd)` and per-group median runs. |
+| `keep_rundata` | `true` | When `false`, individual `ResultData` objects are not stored, reducing RAM usage. |
+| `rd_style` | `"LightRD"` | `ResultData` style used when storing individual and median runs. |
 | `customlogger` | `nothing` | A `CustomLogger` attached to every simulation run. |
 
 All of these can also be passed directly to the `BatchData(b; ...)` shorthand, which forwards them to `process!` internally.
@@ -139,7 +139,6 @@ BatchData Entries
   └ generation_times
   └ tick_cases
   └ cumulative_disease_progressions
-  └ per_label
   └ sero_tests
   └ cumulative_cases
   └ pool_tests
@@ -160,6 +159,7 @@ BatchData Entries
   └ r0
   └ runs
   └ seed
+└ per_group
 └ system_data
   └ cpu_data
   └ git_commit
@@ -181,14 +181,18 @@ t.b.d.
 
 GEMS' batch functionalities offer easy options to compare different scenarios and run multiple simulations for each of them.
 The example below compares a baseline scenario with a scenario with a lower `transmission_rate` and we assume that this is due to mask-wearing mandates.
-It spawns five simulations for each of the scenarios (grouped by label), merges them into one batch, and visualizes the results:
+It spawns five simulations for each scenario, merges them into one batch, and visualises the results grouped by label.
+
+`group_by` tells GEMS which config field to use for splitting the batch into groups —
+statistics and plots are then computed per group instead of across all runs combined.
+Any config field works; `:label` is a natural choice for scenario comparisons:
 
 ```julia
 using GEMS
 
 baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
 masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
-bd = BatchData(merge(baseline, masks))
+bd = BatchData(merge(baseline, masks); group_by = :label)
 gemsplot(bd)
 ```
 
@@ -200,16 +204,15 @@ gemsplot(bd)
 </p>
 ``` 
 
-To see the individual simulation traces, process with `keep_rundata = true` and pass
-`runs(bd)` to `gemsplot`:
+To see the individual simulation traces, pass `runs(bd)` to `gemsplot`:
 
 ```julia
 using GEMS
 
 baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
 masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
-bd = BatchData(merge(baseline, masks); keep_rundata = true)
-gemsplot(runs(bd)) 
+bd = BatchData(merge(baseline, masks); group_by = :label)
+gemsplot(runs(bd))
 ```
 
 **Plot**
@@ -232,7 +235,7 @@ using GEMS
 
 b = merge([Batch(n_runs = 1, transmission_rate = tr, label = "Transmission Rate $tr")
            for tr in 0:0.1:0.5]...)
-bd = BatchData(b)
+bd = BatchData(b; group_by = :label)
 gemsplot(bd, legend = :topright)
 ```
 
@@ -285,17 +288,17 @@ gemsheatmap(xvals, yvals, outvals,
 
 ## Median Run
 
-By default, GEMS identifies the simulation whose total infections are closest to the
-median across all runs, re-runs it with the same seed (producing the exact same result),
-and stores it as the *median run*.
-This is a single `ResultData` object that can be used as a stand-in for
-a typical run:
+To identify a representative run, pass a `median_by` criterion function to `process!`.
+GEMS selects the simulation whose criterion value is closest to the median across all
+runs, re-runs it with the same seed (producing the exact same result), and stores it as
+the *median run* — a single `ResultData` object that can be used as a stand-in for a
+typical run:
 
 ```julia
 using GEMS
 
 b = Batch(n_runs = 10)
-bp = process!(b)
+bp = process!(b; median_by = pp -> nrow(infectionsDF(pp)))
 rep = median_run(bp)
 gemsplot(rep, type = :TickCases)
 ```
@@ -308,29 +311,27 @@ gemsplot(rep, type = :TickCases)
 </p>
 ``` 
 
-You can customise the selection criterion by passing a different `median_by`
-function, or disable it entirely with `median_by = nothing`:
+You can customise the selection criterion by passing any `pp -> scalar` function:
 
 ```julia
 # Select the run with median deaths instead
 bp = process!(b; median_by = pp -> nrow(deathsDF(pp)))
-
-# Disable median run selection
-bp = process!(b; median_by = nothing)
 ```
 
-## Multi-Label Median Runs
+## Multi-Group Median Runs
 
-If your batch contains multiple labels, you can extract the median run for each label simultaneously using `median_runs()`. Because this function returns a vector of  `ResultData` objects, you can pass it directly to `gemsplot()`.
+When `group_by` is set, GEMS computes one median run per group. `median_runs(bd)`
+returns a vector of `ResultData` objects (one per group) that you can pass directly
+to `gemsplot()`:
 
 ```julia
 using GEMS
 
 baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
-masks = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
+masks    = Batch(n_runs = 5, transmission_rate = 0.15, label = "Mask Wearing")
 
-b = merge(baseline, masks)
-bd = BatchData(b)
+b  = merge(baseline, masks)
+bd = BatchData(b; group_by = :label, median_by = pp -> nrow(infectionsDF(pp)))
 
 gemsplot(median_runs(bd))
 ```
