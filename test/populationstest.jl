@@ -17,6 +17,18 @@
         @test individuals(p) == Vector{Individual}([i2, i3])
         remove!(p, i1) # should work but not do anything
         @test individuals(p) == Vector{Individual}([i2, i3])
+
+        # issubset compares by individual id
+        @test issubset([i2], [i2, i3])
+        @test issubset([i2, i3], [i2, i3])
+        @test !issubset([i1, i2], [i2, i3])
+        @test issubset(Individual[], [i2, i3])  # empty set is subset of anything
+
+        # Base.show
+        pop_show = Population([i1, i2, i3])
+        output = @capture_out show(pop_show)
+        @test occursin("Population", output)
+        @test occursin("3", output)
     end
 
     @testset "Loading" begin

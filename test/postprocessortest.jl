@@ -19,6 +19,14 @@
         #check if processed infections dataframe is of same length as "flat" dataframe
         @test pp |> infectionsDF |> nrow == sim |> infectionlogger |> dataframe |> nrow
 
+        # infections is an alias for infectionsDF — both must return the same object
+        @test infections(pp) isa DataFrame
+        @test infections(pp) === infectionsDF(pp)
+
+        # compartmentsDF returns the state-logger compartment data
+        @test compartmentsDF(pp) isa DataFrame
+        @test nrow(compartmentsDF(pp)) > 0
+
     end
 
     @testset "Dataframes" begin

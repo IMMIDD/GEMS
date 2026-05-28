@@ -148,9 +148,43 @@
         # default generated sections for batches
 
         @test Section(bd, :BatchInfo) |> typeof == Section
-        @test Section(bd, :Runtime) |> typeof == Section
-        @test Section(bd, :Allocations) |> typeof == Section
         @test Section(bd, :Resources) |> typeof == Section
+        
+        @testset "sec_Runtime and sec_Allocations" begin
+            # empty branch: BatchData built from a normal Batch has no "runtime"/"allocations"
+            # in its meta_data, so the guard fires and produces the documented fallback content.
+            s_rt_empty = Section(bd, :Runtime)
+            @test s_rt_empty |> typeof == Section
+            @test occursin("No timer available", content(s_rt_empty))
+            @test occursin("main()", content(s_rt_empty))
+
+            s_al_empty = Section(bd, :Allocations)
+            @test s_al_empty |> typeof == Section
+            @test occursin("No timer available", content(s_al_empty))
+            @test occursin("main()", content(s_al_empty))
+
+            # populated branch: inject aggregated timer data directly rather than running main(),
+            # using the same aggregate_values() that a batch main() would use.
+            # Runtime values are nanoseconds; allocations values are bytes.
+            rt_agg = aggregate_values([1_000_000_000.0, 1_500_000_000.0, 2_000_000_000.0])
+            al_agg = aggregate_values([480_000_000.0, 500_000_000.0, 520_000_000.0])
+
+            bd_rt = BatchData(b)
+            bd_rt.data["meta_data"]["runtime"] = Dict("1 Initialization" => rt_agg, "2 Runtime" => rt_agg)
+            s_rt = Section(bd_rt, :Runtime)
+            @test s_rt |> typeof == Section
+            @test occursin("1 Initialization", content(s_rt))
+            @test occursin("2 Runtime", content(s_rt))
+            @test occursin("Table: Batch Runtimes", content(s_rt))
+
+            bd_al = BatchData(b)
+            bd_al.data["meta_data"]["allocations"] = Dict("1 Initialization" => al_agg, "2 Runtime" => al_agg)
+            s_al = Section(bd_al, :Allocations)
+            @test s_al |> typeof == Section
+            @test occursin("1 Initialization", content(s_al))
+            @test occursin("2 Runtime", content(s_al))
+            @test occursin("Table: Batch Runtimes", content(s_al))
+        end
 
         @testset "Flatten Sections Tests" begin
             # Create sections and subsections

@@ -10,6 +10,30 @@
             @test tick(sim) == 0
         end
 
+        @testset "Dict Constructor" begin
+            # Simulation(params::Dict) splats the dict as keyword arguments;
+            # this constructor is the Dict-based entry point tested here.
+
+            # basic: pop_size and seed are forwarded correctly
+            sim = Simulation(Dict(:pop_size => 100, :seed => 42))
+            @test population(sim) |> size == 100
+            @test sim.seed == 42
+
+            # label is forwarded
+            sim = Simulation(Dict(:pop_size => 100, :label => "dict_label"))
+            @test label(sim) == "dict_label"
+
+            # tickunit is forwarded
+            sim = Simulation(Dict(:pop_size => 100, :tickunit => 'd'))
+            @test tickunit(sim) == "day"
+
+            # validation still fires: invalid pop_size propagates ArgumentError
+            @test_throws ArgumentError Simulation(Dict(:pop_size => -1))
+
+            # validation still fires: invalid seed propagates ArgumentError
+            @test_throws ArgumentError Simulation(Dict(:pop_size => 100, :seed => -1))
+        end
+
         @testset "From Disk" begin
             # from CSV population file
             path = joinpath(BASE_FOLDER, "test/testdata/TestPop.csv")
@@ -277,6 +301,16 @@
             @test_throws ArgumentError Simulation(pop_size = 100, stop_criterion = "none")
         end
 
+        @testset "Interface Fallbacks" begin
+            sim = Simulation(pop_size = 100)
+
+            # Concrete types that DO override limit should return the correct value.
+            @test limit(TimesUp(limit = 7)) == 7
+
+            # StopCriterion without a fixed limit (e.g. NoneInfected) returns nothing.
+            @test isnothing(limit(NoneInfected()))
+        end
+
         @testset "Pathogen" begin
             # PATHOGEN
             # passing
@@ -345,6 +379,31 @@
             reset!(sim, reset_interventions=true)
             @test length(symptom_triggers(sim)) == 0
             @test length(strategies(sim)) == 0
+
+            # reinitialize! is an alias for reset! kept for backwards compatibility.
+            # It must behave identically to reset! in both modes.
+            sim2 = Simulation(pop_size=100)
+            increment!(sim2)
+            increment!(sim2)
+            @test tick(sim2) == 2
+
+            strat2 = IStrategy("reinit_strategy", sim2)
+            add_symptom_trigger!(sim2, SymptomTrigger(strat2))
+            @test length(symptom_triggers(sim2)) == 1
+
+            # reinitialize! without resetting interventions: tick resets, triggers survive
+            reinitialize!(sim2, reset_interventions=false)
+            @test tick(sim2) == 0
+            @test length(symptom_triggers(sim2)) == 1
+
+            # advance a tick again so we can verify reinitialize! resets it
+            increment!(sim2)
+            @test tick(sim2) == 1
+
+            # reinitialize! with reset_interventions=true: both tick and triggers reset
+            reinitialize!(sim2, reset_interventions=true)
+            @test tick(sim2) == 0
+            @test length(symptom_triggers(sim2)) == 0
         end
 
         @testset "Warn Paths" begin
@@ -828,5 +887,19 @@
         
         # Verify they are actual individual vectors
         @test present_buffers(sim)[1] isa Vector{Individual}
+
+        # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
+        rng_vec = rngs(sim)
+        @test rng_vec isa Vector{Xoshiro}
+        @test length(rng_vec) == num_threads
+
+        # Each simulation gets its own independent RNG vector.
+        sim2 = Simulation()
+        @test rngs(sim2) !== rngs(sim)
+
+        # A simulation constructed with a fixed seed produces a reproducible RNG state.
+        simA = Simulation(pop_size=100, seed=999)
+        simB = Simulation(pop_size=100, seed=999)
+        @test rand(rngs(simA)[1]) == rand(rngs(simB)[1])
     end
 end
