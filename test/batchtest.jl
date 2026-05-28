@@ -279,6 +279,34 @@
             end
         end
 
+        @testset "AccumulateTestLoops" begin
+            # test all three test-type loops in a single run
+            sim = Simulation(pop_size = 100, infected_fraction = 0.1)
+            pcr = TestType("PCR", pathogen(sim), sim)
+            sero = SeroprevalenceTestType("Sero", pathogen(sim), sim)
+
+            test_strat = IStrategy("Testing", sim)
+            add_measure!(test_strat, GEMS.Test("t", pcr))
+            add_symptom_trigger!(sim, SymptomTrigger(test_strat))
+
+            pool_strat = SStrategy("PoolTesting", sim)
+            add_measure!(pool_strat, PoolTest("pool", pcr))
+            add_tick_trigger!(sim, STickTrigger(Household, pool_strat, switch_tick = Int16(1), interval = Int16(60)))
+
+            sero_strat = IStrategy("SeroTesting", sim)
+            add_measure!(sero_strat, GEMS.Test("s", sero))
+            add_tick_trigger!(sim, ITickTrigger(sero_strat, switch_tick = Int16(1), interval = Int16(60)))
+
+            run!(sim)
+            bp = BatchProcessor()
+            GEMS.accumulate!(bp, PostProcessor(sim))
+
+            @test haskey(bp.tests, "PCR")
+            @test haskey(bp.total_tests, "PCR")
+            @test haskey(bp.pool_tests, "PCR")
+            @test haskey(bp.sero_tests, "Sero")
+        end
+
         @testset "NewScalarAccessors" begin
             @test tick_unit(bP) isa String
             @test total_detected_cases(bP) isa Dict

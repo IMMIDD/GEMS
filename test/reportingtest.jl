@@ -389,6 +389,14 @@
             # _per_label_representative_plots when global median_run is nothing
             @test generate(HouseholdAttackRate(), bd_ml) isa Plots.Plot
             @test generate(InfectionDuration(), bd_ml) isa Plots.Plot
+
+            # generate(CustomLoggerPlot, bd::BatchData) — four branches
+            @test generate(CustomLoggerPlot(), bd) isa Plots.Plot
+            @test generate(CustomLoggerPlot(), bd_ml) isa Plots.Plot
+            @test_throws ErrorException generate(CustomLoggerPlot(), BatchData(BatchProcessor()))
+            cl = CustomLogger(count_inf = sim -> count(infected, sim |> population))
+            bp_cl = process!(Batch(n_runs = 2, pop_size = 100); median_by = nothing, keep_rundata = true, customlogger = cl)
+            @test generate(CustomLoggerPlot(), BatchData(bp_cl)) isa Plots.Plot
         end
         
         @testset "gemsplot Vector paths" begin
