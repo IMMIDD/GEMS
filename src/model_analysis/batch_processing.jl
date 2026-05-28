@@ -53,17 +53,16 @@ mutable struct BatchProcessor
     per_label::Dict{String, BatchProcessor}
 
     @doc """
-        BatchProcessor(; keep_rundata=false, master_seed=0)
+        BatchProcessor(; keep_rundata=true, master_seed=0)
 
     Creates a `BatchProcessor` object.
 
     # Keyword Arguments
 
-    - `keep_rundata`: if `true`, store every run's `ResultData` in `rundata`.
-      Required for `merge(bds::BatchData...)`. Default: `false`.
+    - `keep_rundata`: if `true`, store every run's `ResultData` in `rundata`. Default: `true`.
     - `master_seed`: seed for this batch run. Default: `0`.
     """
-    function BatchProcessor(; keep_rundata::Bool = false, master_seed::Int64 = 0)
+    function BatchProcessor(; keep_rundata::Bool = true, master_seed::Int64 = 0)
         new(
             0,
             "tick",

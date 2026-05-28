@@ -411,7 +411,7 @@ function _per_label_representative_plots(plt, bd::BatchData; plotargs...)
     isempty(pl) && return nothing
     label_plts = []
     for (lab, label_data) in sort(collect(pl), by = first)
-        label_rep = get(label_data, "median_run", nothing)
+        label_rep = median_run(label_bd)
         isnothing(label_rep) && continue
         push!(label_plts, generate(plt, label_rep; plot_title = lab, plotargs...))
     end

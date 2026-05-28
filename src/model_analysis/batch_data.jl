@@ -86,7 +86,7 @@ mutable struct BatchData <: AbstractResultData
 
     @doc """
 
-        BatchData(batch::Batch; style="DefaultBatchData", seed=nothing, rd_style="LightRD", median_by=nothing, keep_rundata=false, customlogger=nothing)
+        BatchData(batch::Batch; style="DefaultBatchData", seed=nothing, rd_style="LightRD", median_by=nothing, keep_rundata=true, customlogger=nothing)
 
     Create a `BatchData` object by running all simulation configurations in `batch`
     one at a time (streaming). Peak memory is ~1× a single simulation regardless
@@ -96,7 +96,7 @@ mutable struct BatchData <: AbstractResultData
     - `rd_style`: the `ResultData` style used when storing representative/individual runs.
     - `median_by`: a function `pp -> scalar` to select the median run.
       Default: total infections (same default as `process!`). Pass `nothing` to disable.
-    - `keep_rundata`: store all individual `ResultData` objects. Default: `false`.
+    - `keep_rundata`: store all individual `ResultData` objects. Default: `true`.
     - `customlogger`: a `CustomLogger` to attach to each simulation run. Default: `nothing`.
     """
     function BatchData(batch::Batch;
@@ -104,7 +104,7 @@ mutable struct BatchData <: AbstractResultData
         seed::Union{Nothing, Integer} = nothing,
         rd_style::String = "LightRD",
         median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
-        keep_rundata::Bool = false,
+        keep_rundata::Bool = true,
         customlogger::Union{Nothing, CustomLogger} = nothing
     )
         BatchData(process!(batch; seed, rd_style, median_by, keep_rundata, customlogger), style = style)
@@ -564,13 +564,14 @@ end
 """
     per_label(bd::BatchData)
 
-Returns per-label aggregated dataframes as a `Dict{String, Dict{String, DataFrame}}`.
-Keys at the outer level are simulation labels; inner keys are dataframe names
-(`"tick_cases"`, `"effectiveR"`, `"cumulative_quarantines"`, etc.).
+Returns per-label batch results as a `Dict{String, BatchData}`.
+Keys are simulation labels; values are complete `BatchData` objects
+containing all accessors (`total_infections`, `attack_rate`, `tick_cases`, etc.)
+for that label's runs.
 Returns an empty `Dict` if the batch was processed with a single label.
 """
 function per_label(bd::BatchData)
-    return(get(bd |> dataframes, "per_label", Dict()))
+    return get(bd.data, "per_label", Dict{String, BatchData}())
 end
 
 

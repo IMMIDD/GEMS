@@ -1,7 +1,7 @@
 export process!
 
 """
-    process!(batch::Batch; seed=nothing, median_by=pp->nrow(infectionsDF(pp)), keep_rundata=false, rd_style="LightRD", customlogger=nothing)
+    process!(batch::Batch; seed=nothing, median_by=nothing, keep_rundata=true, rd_style="LightRD", customlogger=nothing)
 
 Processes all simulation configurations in `batch` sequentially, accumulating
 results into a `BatchProcessor`.
@@ -13,17 +13,17 @@ results into a `BatchProcessor`.
 - `median_by`: a function `pp::PostProcessor -> scalar` for selecting the median run.
   The simulation with criterion closest to the median across all runs is re-run and
   stored. For multi-label batches one median run per label is computed.
-  Default: total infections. Pass `nothing` to disable.
+  Default: `nothing`
 - `keep_rundata`: if `true`, every run's `ResultData` is stored in `bp.rundata`.
-  Default: `false`.
+  Default: `true`.
 - `rd_style`: the `ResultData` style for individual and median runs. Default: `"LightRD"`.
 - `customlogger`: a `CustomLogger` to attach to each simulation. An independent copy
   is created per run so data is not mixed across runs. Default: `nothing`.
 """
 function process!(batch::Batch;
     seed::Union{Nothing, Integer} = nothing,
-    median_by::Union{Nothing, Function} = pp -> nrow(infectionsDF(pp)),
-    keep_rundata::Bool = false,
+    median_by::Union{Nothing, Function} = nothing,
+    keep_rundata::Bool = true,
     rd_style::String = "LightRD",
     customlogger::Union{Nothing, CustomLogger} = nothing
 )
