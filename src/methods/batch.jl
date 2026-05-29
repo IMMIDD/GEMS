@@ -1,4 +1,4 @@
-export process!
+export process!, run!
 
 """
     process!(batch::Batch; keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing)
@@ -84,6 +84,14 @@ function process!(batch::Batch;
 
     return bp
 end
+
+"""
+    run!(batch::Batch; kwargs...)
+
+Alias for `process!(batch; kwargs...)`. Provided for compatibility with the single-simulation
+`run!(sim)` naming convention.
+"""
+run!(batch::Batch; kwargs...) = process!(batch; kwargs...)
 
 function _run_median_run!(bp, configs, setups, sim_seeds, criterion_values, rd_style)
     (isnothing(criterion_values) || isempty(criterion_values)) && return
