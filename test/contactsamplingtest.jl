@@ -140,7 +140,7 @@
         h = Household(id = 1, individuals = indivs, contact_sampling_method = rs)
 
         result = sample_contacts(rs, h, 1, indivs, GEMS.DEFAULT_TICK, true, Xoshiro(42))
-        @test result isa Vector{Individual}
+        @test result isa Vector{<:Individual}
         @test length(result) == 1
     end
 

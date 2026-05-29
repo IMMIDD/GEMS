@@ -160,7 +160,7 @@ sim = Simulation(params)
     - `rngs::Vector{Xoshiro}`: RNG instances for each thread
 
 """
-mutable struct Simulation 
+mutable struct Simulation{E}
 
     # data TODO check if config file needs to be adapted actually
     configfile::String
@@ -175,7 +175,7 @@ mutable struct Simulation
     label::String
 
     # model
-    population::Population
+    population::Population{E}
     settings::SettingsContainer
     pathogen::Pathogen
 
@@ -205,8 +205,8 @@ mutable struct Simulation
     rngs::Vector{Xoshiro} # rng for each thread
 
     # THREAD-LOCAL BUFFERS
-    present_buffers::Vector{Vector{Individual}}
-    contact_buffers::Vector{Vector{Individual}}
+    present_buffers::Vector{Vector{Individual{E}}}
+    contact_buffers::Vector{Vector{Individual{E}}}
 
     # inner default constructor
     function Simulation(
@@ -216,14 +216,14 @@ mutable struct Simulation
         enddate::Date,
         start_condition::StartCondition,
         stop_criterion::StopCriterion,
-        population::Population,
+        population::Population{E},
         settings::SettingsContainer,
         pathogen::Pathogen,
         stepmod::Function,
         seed::Int64,
         rngs::Vector{<:Xoshiro}
-    )
-        sim = new(
+    ) where {E}
+        sim = new{E}(
             # config
             configfile,
             Int16(0), # tick
@@ -265,8 +265,8 @@ mutable struct Simulation
             rngs,
             
             # INITIALIZE BUFFERS
-            [Vector{Individual}() for _ in 1:Threads.maxthreadid()], # present_buffers
-            [Vector{Individual}() for _ in 1:Threads.maxthreadid()]  # contact_buffers
+            [Vector{Individual{E}}() for _ in 1:Threads.maxthreadid()], # present_buffers
+            [Vector{Individual{E}}() for _ in 1:Threads.maxthreadid()]  # contact_buffers
         )
 
         # increase simulation counter
@@ -1348,7 +1348,7 @@ end
 
 Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
 """
-function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+function present_buffers(simulation::Simulation{E}) where {E}
     return simulation.present_buffers
 end
 
@@ -1357,7 +1357,7 @@ end
 
 Returns the thread-local buffers for storing sampled contacts, used to eliminate array allocations.
 """
-function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+function contact_buffers(simulation::Simulation{E}) where {E}
     return simulation.contact_buffers
 end
 

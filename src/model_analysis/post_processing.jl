@@ -127,7 +127,7 @@ mutable struct PostProcessor
     Create a vector of `PostProcessor` objects for a vector of associated `Simulation` objects.
     Post Processing requires all simulations to be done.
     """
-    function PostProcessor(simulations::Vector{Simulation})
+    function PostProcessor(simulations::Vector{<:Simulation})
         return map(PostProcessor, simulations)
     end
 

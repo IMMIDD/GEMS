@@ -756,7 +756,7 @@ end
 
 Returns the individuals associated with the given setting.
 """
-function individuals(setting::IndividualSetting)::Vector{Individual}
+function individuals(setting::IndividualSetting)
     return setting.individuals
 end
 
@@ -772,13 +772,13 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 Helper function to construct settings from a sorted list of ID-Individual pairs without dynamic dispatch.
 """
 function construct_and_add_settings!(
-    container_vec::Vector{Setting}, 
-    pairs::Vector{Tuple{Int32, Individual}}, 
-    settingtype::Type{T}, 
+    container_vec::Vector{Setting},
+    pairs::Vector{Tuple{Int32, I}},
+    settingtype::Type{T},
     default_sampling
-) where {T <: Setting}
+) where {T <: Setting, I <: Individual}
     n = length(pairs)
-    
+
     # Pre-calculate the number of unique settings to avoid push! reallocations
     if n > 0
         num_unique = 1
@@ -795,16 +795,16 @@ function construct_and_add_settings!(
     # Iterate through the sorted pairs
     while i <= n
         current_id = pairs[i][1]
-        
+
         # Find the block of individuals sharing this ID
         j = i
         while j <= n && pairs[j][1] == current_id
             j += 1
         end
-        
+
         # Exact pre-allocation for the members array
         count = j - i
-        members = Vector{Individual}(undef, count)
+        members = Vector{I}(undef, count)
         for k in 0:(count-1)
             members[k+1] = pairs[i+k][2]
         end
@@ -837,10 +837,11 @@ function settings_from_population(population::Population, global_setting::Bool =
 
     inds = individuals(population)
     max_inds = length(inds)
+    IndType = eltype(inds)
 
-    pairs_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+    pairs_buffer = Vector{Tuple{Int32, IndType}}(undef, max_inds)
     # Pre-allocate another buffer for Counting Sort
-    sorted_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+    sorted_buffer = Vector{Tuple{Int32, IndType}}(undef, max_inds)
 
     # Iterate over all settingtypes in parallel
     for stngType in stngtypes

@@ -18,8 +18,8 @@ A Type for a simple population. Acts as a container for a collection of individu
 - `maxage`: Age of the oldest individual
 - `minid`: smallest id of any individual
 """
-mutable struct Population
-    individuals::Vector{Individual}
+mutable struct Population{E}
+    individuals::Vector{Individual{E}}
     params::Dict{String, Any}
     maxage::Int8 # maximum age of any individual. Is updated upon first call of maxage function (for caching)
     minid::Int32 # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
@@ -45,9 +45,9 @@ mutable struct Population
 
     Creates a `Population` object from a vector of `Individual`s.
     """
-    function Population(individuals::Vector{Individual})
+    function Population(individuals::Vector{Individual{E}}) where {E}
         # Create the Population object
-        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
+        pop = new{E}(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
         make_id_map!(pop)
@@ -64,15 +64,15 @@ mutable struct Population
     """
     function Population(df::DataFrame)
         
-        # Intersect using Symbols  
-        valid_cols = intersect(fieldnames(Individual), propertynames(df))
+        # Intersect using Symbols
+        valid_cols = intersect(individual_base_fieldnames(), propertynames(df))
         valid_cols_tuple = Tuple(valid_cols)
-        
-        # Extract into a NamedTuple 
+
+        # Extract into a NamedTuple
         col_table = NamedTuple{valid_cols_tuple}(Tuple(df[!, c] for c in valid_cols_tuple))
 
-        # Pre-allocate array 
-        individuals = Vector{Individual}(undef, nrow(df))
+        # Pre-allocate array
+        individuals = Vector{Individual{Nothing}}(undef, nrow(df))
 
         # Create individuals in parallel
         Threads.@threads for i in eachindex(individuals)
@@ -138,7 +138,7 @@ mutable struct Population
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
-            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, Int32[])
+            return new{Nothing}(Individual{Nothing}[], Dict("populationfile" => "Not available."), -1, -1, Int32[])
         end
 
         # exception handling
@@ -275,6 +275,15 @@ mutable struct Population
     end
 end
 
+# Backward-compat outer constructor: accepts Vector{<:Individual} where the element type
+# may be the abstract UnionAll Individual (e.g., from Individual[] in tests or user code).
+# Infers the concrete extension type from the first element; defaults to Nothing for empty vectors.
+function Population(individuals::Vector{<:Individual})
+    isempty(individuals) && return Population(Individual{Nothing}[])
+    T = typeof(first(individuals))
+    return Population(Vector{T}(individuals))
+end
+
 """
     count(f, population::Population)
 
@@ -330,7 +339,7 @@ end
 
 Return the individuals associated with the population.
 """
-function individuals(population::Population)::Vector{Individual}
+function individuals(population::Population{E}) where {E}
     population.individuals
 end
 
@@ -380,7 +389,7 @@ end
 
 Takes a vector of individuals and returns the number of infected individuals.
 """
-function num_of_infected(individuals::Vector{Individual})
+function num_of_infected(individuals::Vector{<:Individual})
     return(map(x -> infected(x), individuals) |> sum)
 end
 
@@ -400,7 +409,7 @@ end
 Checks whether a vector of individuals A is a subset of individuals B based on the individual's IDs.
 Does only work if all individuals have unique IDs.
 """
-function Base.issubset(individuals_a::Vector{Individual}, individuals_b::Vector{Individual})
+function Base.issubset(individuals_a::Vector{<:Individual}, individuals_b::Vector{<:Individual})
     return(
         Base.issubset(
             map(x -> id(x), individuals_a) |> sort,

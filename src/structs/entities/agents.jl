@@ -140,7 +140,7 @@ A type to represent individuals, that act as agents inside the simulation.
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
 """
-@with_kw_noshow mutable struct Individual <: Agent
+@with_kw_noshow mutable struct Individual{E} <: Agent
     # GENERAL
     id::Int32  # 4 bytes
     sex::Int8  # 1 byte
@@ -212,6 +212,68 @@ A type to represent individuals, that act as agents inside the simulation.
     quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # 1 bytes
     quarantine_tick::Int16 = DEFAULT_TICK
     quarantine_release_tick::Int16 = DEFAULT_TICK
+
+    # EXTENSIONS (E=Nothing by default)
+    # for a concrete extension E, callers must supply extensions=E() explicitly.
+    extensions::E = nothing
+end
+
+"""
+    individual_base_fieldnames()
+
+Return the field names of `Individual` excluding `:extensions`.
+Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
+they don't accidentally try to populate the extension slot from a column that doesn't exist.
+"""
+individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual{Nothing}))
+
+"""
+    Base.getproperty(ind::Individual{E}, name::Symbol)
+
+Transparent read access for both core and extension fields.
+
+`@generated` inspects `fieldnames(E)` once per `(E, name)` specialisation at compile time and
+emits a direct `getfield` call. For `E = Nothing` (the baseline) the generated body is
+`getfield(ind, name)` — identical to the default. For call sites with a literal field name
+the if-else chain is constant-folded by the compiler to a single `getfield`.
+"""
+@generated function Base.getproperty(ind::Individual{E}, name::Symbol) where {E}
+    ext_fields = E === Nothing ? () : fieldnames(E)
+    if isempty(ext_fields)
+        return :(getfield(ind, name))
+    end
+    checks = [:(name === $(QuoteNode(f))) for f in ext_fields]
+    cond = length(checks) == 1 ? checks[1] : Expr(:||, checks...)
+    return quote
+        if $cond
+            getfield(getfield(ind, :extensions), name)
+        else
+            getfield(ind, name)
+        end
+    end
+end
+
+"""
+    Base.setproperty!(ind::Individual{E}, name::Symbol, val)
+
+Transparent write access for both core and extension fields, with the same type-coercion
+behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
+`setfield!`). For `E = Nothing` the generated body is equivalent to the default.
+"""
+@generated function Base.setproperty!(ind::Individual{E}, name::Symbol, val) where {E}
+    ext_fields = E === Nothing ? () : fieldnames(E)
+    if isempty(ext_fields)
+        return :(setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val)))
+    end
+    checks = [:(name === $(QuoteNode(f))) for f in ext_fields]
+    cond = length(checks) == 1 ? checks[1] : Expr(:||, checks...)
+    return quote
+        if $cond
+            setfield!(getfield(ind, :extensions), name, convert(fieldtype($E, name), val))
+        else
+            setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val))
+        end
+    end
 end
 
 # CONSTRUCTOR
@@ -221,11 +283,10 @@ end
 Create an individual with the provided properties. Properties must *have at least* keys
 `id`, `sex`, `age`.
 """
-function Individual(properties::Dict)::Individual
-    ind = Individual(id=properties["id"], sex=properties["sex"], age=properties["age"])
+function Individual(properties::Dict)::Individual{Nothing}
+    ind = Individual{Nothing}(id=properties["id"], sex=properties["sex"], age=properties["age"])
 
-    # set every field that is provided by properties
-    for field in fieldnames(Individual)
+    for field in individual_base_fieldnames()
         if haskey(properties, String(field))
             setproperty!(ind, field, properties[String(field)])
         end
@@ -241,8 +302,8 @@ end
 Create an individual with the provided properties. Properties must *have at least* keys
 `id`, `sex`, `age`.
 """
-function Individual(properties::DataFrameRow)::Individual
-    return Individual(; (Symbol(k) => v for (k, v) in pairs(properties))...)
+function Individual(properties::DataFrameRow)::Individual{Nothing}
+    return Individual{Nothing}(; (Symbol(k) => v for (k, v) in pairs(properties))...)
 end
 
 
@@ -1478,7 +1539,7 @@ function Base.show(io::IO, individual::Individual)
     end
 end
 
-function Base.show(io::IO, #=::MIME"text/plain",=# individuals::Vector{Individual})
+function Base.show(io::IO, #=::MIME"text/plain",=# individuals::Vector{<:Individual})
     n = length(individuals)
     println(io, "$(n)-element Vector{Individual}:")
     

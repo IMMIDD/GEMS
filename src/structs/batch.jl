@@ -25,7 +25,7 @@ mutable struct Batch
     """
     function Batch(;n_runs::Integer = 0, print_infos::Bool = false, simargs...)
         prev_print_state = GEMS.PRINT_INFOS
-        sims = Vector{Simulation}()
+        sims = Simulation[]
         for i in 1:n_runs
             printinfo("Instantiating Simulation $i/$n_runs in Batch")
             GEMS.PRINT_INFOS = print_infos
@@ -57,7 +57,7 @@ mutable struct Batch
     **Note**: All `Simulation` objects must be unique.
     You cannot pass the same simulation twice.
     """
-    Batch(simulations::Vector{Simulation}) = Batch(simulations...)
+    Batch(simulations::Vector{<:Simulation}) = Batch(simulations...)
 
 
     @doc """

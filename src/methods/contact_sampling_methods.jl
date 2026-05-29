@@ -2,26 +2,26 @@ export sample_contacts!, sample_contacts
 export create_contact_sampling_method
 
 """
-    sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{<:Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{<:Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
     Fallback: determine which keyword-based method  a user defined (mutating or non-mutating) and routes the internal positional call accordingly.
 """
 function sample_contacts!(
-    indivs::Vector{Individual},
+    indivs::Vector{<:Individual},
     csm::ContactSamplingMethod,
     setting::Setting,
     individual_index::Int,
-    present_inds::Vector{Individual},
+    present_inds::Vector{<:Individual},
     tick::Int16,
     replace::Bool,
     rng::Xoshiro
 )
     # mutating keyword method
-    if hasmethod(sample_contacts!, Tuple{Vector{Individual}, typeof(csm), Setting, Int, Vector{Individual}, Int16})
+    if hasmethod(sample_contacts!, Tuple{Vector{<:Individual}, typeof(csm), Setting, Int, Vector{<:Individual}, Int16})
         return sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
-    
+
     # non-mutating keyword method
-    elseif hasmethod(sample_contacts, Tuple{typeof(csm), Setting, Int, Vector{Individual}, Int16})
+    elseif hasmethod(sample_contacts, Tuple{typeof(csm), Setting, Int, Vector{<:Individual}, Int16})
         new_contacts = sample_contacts(csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
         append!(indivs, new_contacts)
         return indivs
@@ -33,12 +33,12 @@ function sample_contacts!(
 end
 
 """
-    sample_contacts!(indivs::Vector{Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{<:Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{<:Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Sample exactly 1 random contact from the individuals in `setting`. 
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+function sample_contacts!(indivs::Vector{<:Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::Vector{<:Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
@@ -50,13 +50,13 @@ end
 
 
 """
-    sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{<:Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{<:Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`.
 The `replace` parameter determines whether contacts are sampled with replacement (`true`) or without replacement (`false`).
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+function sample_contacts!(indivs::Vector{<:Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::Vector{<:Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
@@ -91,12 +91,12 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
 end
 
 """
-    sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{<:Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{<:Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Sample random contacts based on a spread around `contactparameter_sampling.contactparameter` with weighted sampling based on age distance.
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+function sample_contacts!(indivs::Vector{<:Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::Vector{<:Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
@@ -222,7 +222,7 @@ end
         csm::ContactSamplingMethod, 
         setting::Setting, 
         individual_index::Int, 
-        present_inds::Vector{Individual}, 
+        present_inds::Vector{<:Individual}, 
         tick::Int16,
         replace::Bool, 
         rng::Xoshiro
@@ -234,12 +234,12 @@ function sample_contacts(
     csm::ContactSamplingMethod, 
     setting::Setting, 
     individual_index::Int, 
-    present_inds::Vector{Individual}, 
+    present_inds::Vector{<:Individual}, 
     tick::Int16,
     replace::Bool, 
     rng::Xoshiro
 )
-    indivs = Vector{Individual}()
+    indivs = similar(present_inds, 0)
     sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
     return indivs
 end
@@ -250,7 +250,7 @@ end
         csm::ContactSamplingMethod, 
         setting::Setting, 
         individual_index::Int, 
-        present_inds::Vector{Individual}, 
+        present_inds::Vector{<:Individual}, 
         tick::Int16; 
         replace::Bool = true, 
         rng::Xoshiro = default_gems_rng()
@@ -262,12 +262,12 @@ function sample_contacts(
     csm::ContactSamplingMethod, 
     setting::Setting, 
     individual_index::Int, 
-    present_inds::Vector{Individual}, 
+    present_inds::Vector{<:Individual}, 
     tick::Int16; 
     replace::Bool = true, 
     rng::Xoshiro = default_gems_rng()
 )
-    indivs = Vector{Individual}()
+    indivs = similar(present_inds, 0)
     sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
     return indivs
 end
