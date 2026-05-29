@@ -440,7 +440,8 @@ As expected, the right plot shows that the vaccinated population experiences ent
 
 ## Custom Individual Extensions
 
-Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default — a risk perception score, an immunity history, a behavioural parameter. GEMS lets you add these without changing the core model: any extra column in the population DataFrame is automatically attached to each individual and accessible via ordinary dot-syntax.
+Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default. GEMS lets 
+you add these without changing the core model: any extra column in the population DataFrame is automatically attached to each individual and accessible via ordinary dot-syntax.
 
 ```julia
 using GEMS
@@ -476,7 +477,7 @@ ind.my_custom_attribute        # e.g. 0.07483196
 ind.my_custom_attribute = 0.9
 ```
 
-When extension values need to be computed from individual attributes rather than loaded from a table — for example, assigning a parameter based on age — pass an `ind_extension` factory function to the constructor. It receives each base individual and returns an extension struct:
+When extension values need to be computed from individual attributes rather than loaded from a table (for example, assigning a parameter based on age) pass an `ind_extension` factory function to the constructor. It receives each base individual and returns an extension struct:
 
 ```julia
 mutable struct MyParams
