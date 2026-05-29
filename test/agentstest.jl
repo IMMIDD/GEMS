@@ -474,6 +474,26 @@
         @test occupation(i) == -1
     end
 
+    @testset "DataFrameRow Constructor" begin
+        df = DataFrame(id = Int32[1, 2], age = Int8[25, 40], sex = Int8[0, 1],
+                       education = Int8[3, -1], occupation = Int8[-1, 2])
+
+        # minimum required fields
+        i = Individual(df[1, :])
+        @test typeof(i) == Individual{Nothing}
+        @test id(i) == Int32(1)
+        @test age(i) == Int8(25)
+        @test sex(i) == Int8(0)
+
+        # optional fields are set from the row when present
+        @test education(i) == Int8(3)
+
+        # second row
+        i2 = Individual(df[2, :])
+        @test id(i2) == Int32(2)
+        @test occupation(i2) == Int8(2)
+    end
+
     @testset "show" begin
         inds = [Individual(id=j, age=20, sex=0) for j in 1:3]
         @test !isempty(@capture_out show(inds))
