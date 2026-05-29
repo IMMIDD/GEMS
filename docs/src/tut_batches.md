@@ -73,8 +73,9 @@ gemsplot(runs(bd), type = :TickCases)
 ``` 
 
 !!! tip "Disabling run storage to save memory"
-    `runs(bd)` returns individual `ResultData` objects by default. For large batches,
-    pass `keep_rundata = false` to disable storage and reduce RAM usage.
+    By default, GEMS stores the `ResultData` of each individual run so you can access
+    them via `runs(bd)`. For large batches, pass `keep_rundata = false` to disable this
+    and reduce RAM usage — in that case `runs(bd)` returns `nothing`.
 
 
 ## `process!` Arguments
@@ -223,8 +224,50 @@ gemsplot(runs(bd))
 </p>
 ``` 
 
-Of course, all of this can also be done with much more complex intervention strategies.
-Please look up the interventions tutorial for examples.
+## Attaching Interventions
+
+Pass a `setup` function to `Batch` to run custom code on each simulation after it is
+constructed but before it starts. The function receives the live `Simulation` object,
+so you can attach strategies, triggers, and interventions of any complexity:
+
+```julia
+using GEMS
+
+b = Batch(n_runs = 5,
+    setup = sim -> begin
+        strat = IStrategy("Isolation", sim)
+        add_measure!(strat, SelfIsolation(14))
+        add_symptom_trigger!(sim, SymptomTrigger(strat))
+    end)
+```
+
+For scenario comparisons where each scenario has a different intervention, each
+sub-batch carries its own `setup`. Combine them using `merge` as usual:
+
+```julia
+using GEMS
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
+
+measures = Batch(n_runs = 5, transmission_rate = 0.2, label = "Isolation",
+    setup = sim -> begin
+        strat = IStrategy("Isolation", sim)
+        add_measure!(strat, SelfIsolation(14))
+        add_symptom_trigger!(sim, SymptomTrigger(strat))
+    end)
+
+bd = BatchData(merge(baseline, measures); group_by = :label)
+gemsplot(bd)
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_batches_setup_scenarios.png" width="80%"/>
+</p>
+```
+
 
 ## Sweeping Parameter Spaces
 
@@ -343,51 +386,6 @@ gemsplot(median_runs(bd))
     <img src="../assets/tutorials/tut_batches_median_runs.png" width="80%"/>
 </p>
 ``` 
-
-## Attaching Interventions
-
-Pass a `setup` function to `Batch` to run custom code on each simulation after it is
-constructed but before it starts. The function receives the live `Simulation` object,
-so you can attach strategies, triggers, and interventions of any complexity:
-
-```julia
-using GEMS
-
-b = Batch(n_runs = 5,
-    setup = sim -> begin
-        strat = IStrategy("Isolation", sim)
-        add_measure!(strat, SelfIsolation(14))
-        add_symptom_trigger!(sim, SymptomTrigger(strat))
-    end)
-```
-
-For scenario comparisons where each scenario has a different intervention, each
-sub-batch carries its own `setup`. Combine them using `merge` as usual:
-
-```julia
-using GEMS
-
-baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = "Baseline")
-
-measures = Batch(n_runs = 5, transmission_rate = 0.2, label = "Isolation",
-    setup = sim -> begin
-        strat = IStrategy("Isolation", sim)
-        add_measure!(strat, SelfIsolation(14))
-        add_symptom_trigger!(sim, SymptomTrigger(strat))
-    end)
-
-bd = BatchData(merge(baseline, measures); group_by = :label)
-gemsplot(bd)
-```
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_batches_setup_scenarios.png" width="80%"/>
-</p>
-```
-
 
 ## Reproducibility
 
