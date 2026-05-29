@@ -512,11 +512,17 @@
         @test occursin("male", @capture_out show(Individual(id=2, sex=2, age=30)))
         @test occursin("diverse", @capture_out show(Individual(id=3, sex=3, age=20)))
         @test occursin("n/a", @capture_out show(Individual(id=10, sex=0, age=18)))
+
+        # extension fields appear in show output
+        ae = AutoExtension((; my_score = 0.7f0))
+        ind_ext = Individual{typeof(ae)}(id=Int32(1), sex=Int8(0), age=Int8(30), extensions=ae)
+        output_ext = @capture_out show(ind_ext)
+        @test occursin("my_score", output_ext)
+        @test occursin("0.7", output_ext)
     end
 
     @testset "Individual Extensions" begin
 
-        # Helper extension struct used across sub-tests
         mutable struct TestExt
             score::Float32
             label::Int8
