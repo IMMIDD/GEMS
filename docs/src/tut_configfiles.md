@@ -438,6 +438,58 @@ gemsplot([rd_baseline, rd_vaxxed], type = :ProgressionCategories, xticks = [1, 1
 
 As expected, the right plot shows that the vaccinated population experiences entirely symptomatic tracks and is completely protected from the `Severe` progression category!
 
+## Custom Individual Extensions
+
+Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default — a risk perception score, an immunity history, a behavioural parameter. GEMS lets you add these without changing the core model: any extra column in the population DataFrame is automatically attached to each individual and accessible via ordinary dot-syntax.
+
+```julia
+using GEMS
+using DataFrames
+
+pop = Population(DataFrame(
+    id = Int32.(1:100),
+    age = Int8.(rand(20:60, 100)),
+    sex = Int8.(rand(0:1, 100)),
+    my_custom_attribute = rand(Float32, 100)
+))
+sim = Simulation(population = pop)
+
+ind = individuals(population(sim))[1]
+show(ind)
+```
+
+**Output**
+
+```
+Individual
+  ID:                          1
+  Age:                         40
+  Sex:                         female
+  ...
+  my_custom_attribute:         0.07483196
+```
+
+Extension fields are also accessible and mutable directly:
+
+```julia
+ind.my_custom_attribute        # e.g. 0.07483196
+ind.my_custom_attribute = 0.9
+```
+
+When extension values need to be computed from individual attributes rather than loaded from a table — for example, assigning a parameter based on age — pass an `ind_extension` factory function to the constructor. It receives each base individual and returns an extension struct:
+
+```julia
+mutable struct MyParams
+    my_custom_attribute::Float32
+end
+
+sim = Simulation(ind_extension = ind ->
+    MyParams(age(ind) > 60 ? 0.8 : 0.3))
+```
+
+!!! info "Transparency"
+    Extension fields behave exactly like built-in fields regardless of how they were created. All existing GEMS functions that accept `::Individual` continue to work on extended individuals unchanged.
+
 ## Custom Start Conditions
 
 coming soon ...

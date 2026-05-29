@@ -70,6 +70,19 @@ export progress_disease!
 "Supertype for simulation agents"
 abstract type Agent <: Entity end
 
+export AutoExtension
+
+"""
+    AutoExtension{NT <: NamedTuple}
+
+Mutable wrapper around a NamedTuple used for auto-detected extension fields
+from CSV/DataFrame extra columns. Allows transparent field access and mutation
+on `Individual{AutoExtension{NT}}` without requiring a user-defined struct.
+"""
+mutable struct AutoExtension{NT <: NamedTuple}
+    data::NT
+end
+
 ###
 ### INDIVIDUALS
 ###
@@ -238,15 +251,24 @@ emits a direct `getfield` call. For `E = Nothing` (the baseline) the generated b
 the if-else chain is constant-folded by the compiler to a single `getfield`.
 """
 @generated function Base.getproperty(ind::Individual{E}, name::Symbol) where {E}
-    ext_fields = E === Nothing ? () : fieldnames(E)
+    ext_fields = if E === Nothing
+        ()
+    elseif E <: AutoExtension
+        fieldnames(fieldtype(E, :data))
+    else
+        fieldnames(E)
+    end
     if isempty(ext_fields)
         return :(getfield(ind, name))
     end
     checks = [:(name === $(QuoteNode(f))) for f in ext_fields]
     cond = length(checks) == 1 ? checks[1] : Expr(:||, checks...)
+    access = E <: AutoExtension ?
+        :(getfield(getfield(getfield(ind, :extensions), :data), name)) :
+        :(getfield(getfield(ind, :extensions), name))
     return quote
         if $cond
-            getfield(getfield(ind, :extensions), name)
+            $access
         else
             getfield(ind, name)
         end
@@ -259,19 +281,39 @@ end
 Transparent write access for both core and extension fields, with the same type-coercion
 behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
 `setfield!`). For `E = Nothing` the generated body is equivalent to the default.
+For `AutoExtension` extensions the inner NamedTuple is replaced via `merge`.
 """
 @generated function Base.setproperty!(ind::Individual{E}, name::Symbol, val) where {E}
-    ext_fields = E === Nothing ? () : fieldnames(E)
+    ext_fields = if E === Nothing
+        ()
+    elseif E <: AutoExtension
+        fieldnames(fieldtype(E, :data))
+    else
+        fieldnames(E)
+    end
     if isempty(ext_fields)
         return :(setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val)))
     end
     checks = [:(name === $(QuoteNode(f))) for f in ext_fields]
     cond = length(checks) == 1 ? checks[1] : Expr(:||, checks...)
-    return quote
-        if $cond
-            setfield!(getfield(ind, :extensions), name, convert(fieldtype($E, name), val))
-        else
-            setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val))
+    if E <: AutoExtension
+        NT = fieldtype(E, :data)
+        return quote
+            if $cond
+                setfield!(getfield(ind, :extensions), :data,
+                    merge(getfield(getfield(ind, :extensions), :data),
+                          NamedTuple{(name,)}((convert(fieldtype($NT, name), val),))))
+            else
+                setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val))
+            end
+        end
+    else
+        return quote
+            if $cond
+                setfield!(getfield(ind, :extensions), name, convert(fieldtype($E, name), val))
+            else
+                setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val))
+            end
         end
     end
 end
@@ -1476,7 +1518,7 @@ end
 
 ### printing
 
-function Base.show(io::IO, individual::Individual)
+function Base.show(io::IO, individual::Individual{E}) where {E}
     sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
 
     attributes = [
@@ -1530,6 +1572,14 @@ function Base.show(io::IO, individual::Individual)
         "Quarantine Tick" => individual.quarantine_tick != DEFAULT_TICK ? individual.quarantine_tick : "n/a",
         "Quarantine Release Tick" => individual.quarantine_release_tick != DEFAULT_TICK ? individual.quarantine_release_tick : "n/a"
     ]
+
+    # Append any extension fields
+    if E !== Nothing
+        ext_fields = E <: AutoExtension ? fieldnames(fieldtype(E, :data)) : fieldnames(E)
+        for f in ext_fields
+            push!(attributes, string(f) => getproperty(individual, f))
+        end
+    end
 
     max_label_length = maximum(length ∘ first, attributes)
 

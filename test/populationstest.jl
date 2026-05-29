@@ -84,6 +84,77 @@
     end
     
 
+    @testset "Individual Extensions" begin
+
+        mutable struct PopTestExt
+            score::Float32
+            category::Int8
+        end
+
+        @testset "Auto-detection from DataFrame extra columns" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5),
+                score = Float32.(0.1:0.1:0.5),
+                category = Int8.(1:5)
+            )
+            pop = Population(df)
+
+            # Population type carries the AutoExtension parameter
+            @test eltype(individuals(pop)) <: Individual{<:AutoExtension}
+
+            # Transparent read access
+            ind = individuals(pop)[1]
+            @test ind.score ≈ 0.1f0
+            @test ind.category == Int8(1)
+
+            # Base fields preserved
+            @test age(ind) == Int8(20)
+
+            # Transparent write (via AutoExtension merge)
+            ind.score = 0.9f0
+            @test ind.score ≈ 0.9f0
+
+            # Other extension field unchanged after targeted write
+            @test ind.category == Int8(1)
+        end
+
+        @testset "Explicit ind_extension factory" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5)
+            )
+            pop = Population(df; ind_extension = ind -> PopTestExt(Float32(age(ind)) / 100f0, Int8(1)))
+
+            @test eltype(individuals(pop)) == Individual{PopTestExt}
+
+            ind = individuals(pop)[1]
+            @test ind.score ≈ 0.20f0   # age 20 / 100
+            @test ind.category == Int8(1)
+
+            # in-place mutation via setfield!
+            ind.score = 0.5f0
+            @test ind.score ≈ 0.5f0
+        end
+
+        @testset "No extra columns → Population{Nothing}" begin
+            df = DataFrame(id = Int32.(1:3), age = Int8.(20:22), sex = Int8.(ones(3)), household = Int32.(1:3))
+            pop = Population(df)
+            @test eltype(individuals(pop)) == Individual{Nothing}
+        end
+
+        @testset "Simulation with ind_extension" begin
+            sim = Simulation(ind_extension = ind -> PopTestExt(0.5f0, Int8(1)))
+            ind = individuals(population(sim))[1]
+            @test ind.score == 0.5f0
+            @test ind.category == Int8(1)
+        end
+    end
+
     @testset "get_individual_by_id" begin
 
         pop = Population([Individual(id=100, age=0, sex=0), Individual(id=101, age=0, sex=0), Individual(id=102, age=0, sex=0)])

@@ -62,27 +62,26 @@ mutable struct Population{E}
     The dataframe column names must correspond to the fieldnames of the `Individual` struct.
     `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
     """
-    function Population(df::DataFrame)
-        
-        # Intersect using Symbols
-        valid_cols = intersect(individual_base_fieldnames(), propertynames(df))
-        valid_cols_tuple = Tuple(valid_cols)
+    function Population(df::DataFrame; ind_extension = nothing)
 
-        # Extract into a NamedTuple
-        col_table = NamedTuple{valid_cols_tuple}(Tuple(df[!, c] for c in valid_cols_tuple))
+        # Intersect DataFrame columns with base Individual field names
+        base_cols = Tuple(intersect(individual_base_fieldnames(), propertynames(df)))
+        base_data = NamedTuple{base_cols}(Tuple(df[!, c] for c in base_cols))
+        # Check for extra columns not belonging to the base Individual fields
+        extra_cols = Tuple(c for c in propertynames(df) if c ∉ Set(individual_base_fieldnames()))
 
-        # Pre-allocate array
-        individuals = Vector{Individual{Nothing}}(undef, nrow(df))
-
-        # Create individuals in parallel
-        Threads.@threads for i in eachindex(individuals)
-            row_kwargs = map(col -> col[i], col_table)
-            @inbounds individuals[i] = Individual(; row_kwargs...)
+        # Dispatch to the appropriate builder based on the extension mode
+        inds = if !isnothing(ind_extension)
+            _build_individuals_with_factory(base_data, nrow(df), ind_extension)
+        elseif !isempty(extra_cols)
+            _build_individuals_auto_extension(base_data, df, extra_cols, nrow(df))
+        else
+            _build_individuals(base_data, nrow(df))
         end
 
-        pop = Population(individuals)
+        pop = Population(inds)
         pop.params["populationfile"] = "Not available."
-        return pop
+        return(pop)
     end
 
 
@@ -91,18 +90,18 @@ mutable struct Population{E}
 
     Creates a `Population` object from a CSV- or JLD2 file (path).
     """
-    function Population(path::String)
+    function Population(path::String; ind_extension = nothing)
         file_ext = split(path, ".")[end]
 
         if file_ext == "csv"
             printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from CSV and pass it to df constructor
-            pop = CSV.File(path) |> DataFrame |> Population
-            
+            pop = Population(CSV.File(path) |> DataFrame; ind_extension = ind_extension)
+
         elseif file_ext == "jld2"
             printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
-            pop = load(path, "data") |> Population
+            pop = Population(load(path, "data"); ind_extension = ind_extension)
 
         else
             error("File Extension .$file_ext is not supported")
@@ -134,7 +133,8 @@ mutable struct Population{E}
         avg_office_size::Real = 5.0,
         avg_school_size::Real = 100.0,
         rng::Xoshiro = default_gems_rng(),
-        empty::Bool = false)
+        empty::Bool = false,
+        ind_extension = nothing)
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
@@ -264,7 +264,7 @@ mutable struct Population{E}
         )
 
         # build population from dataframe
-        pop = Population(df)
+        pop = Population(df; ind_extension = ind_extension)
         pop.params["n"] = n
         pop.params["avg_household_size"] = avg_household_size
         pop.params["avg_office_size"] = avg_office_size
@@ -282,6 +282,58 @@ function Population(individuals::Vector{<:Individual})
     isempty(individuals) && return Population(Individual{Nothing}[])
     T = typeof(first(individuals))
     return Population(Vector{T}(individuals))
+end
+
+###
+### INDIVIDUAL BUILDER HELPERS
+###
+
+"""
+    _build_individuals(base_data, n)
+
+Creates `n` baseline `Individual{Nothing}` instances in parallel from the provided column data.
+"""
+function _build_individuals(base_data, n)
+    inds = Vector{Individual{Nothing}}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        @inbounds inds[i] = Individual(; map(col -> col[i], base_data)...)
+    end
+    return(inds)
+end
+
+"""
+    _build_individuals_auto_extension(base_data, df, extra_cols, n)
+
+Creates `n` `Individual{AutoExtension{NT}}` instances in parallel, where `NT` is a NamedTuple
+inferred from the extra DataFrame columns not present in the base `Individual` field set.
+"""
+function _build_individuals_auto_extension(base_data, df, extra_cols, n)
+    ext_data = NamedTuple{extra_cols}(Tuple(df[!, c] for c in extra_cols))
+    # Infer E from the first row to pre-allocate the typed vector
+    E = AutoExtension{typeof(NamedTuple{extra_cols}(map(col -> col[1], ext_data)))}
+    inds = Vector{Individual{E}}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        ext = E(NamedTuple{extra_cols}(map(col -> col[i], ext_data)))
+        @inbounds inds[i] = Individual{E}(; map(col -> col[i], base_data)..., extensions = ext)
+    end
+    return(inds)
+end
+
+"""
+    _build_individuals_with_factory(base_data, n, extension)
+
+Creates `n` `Individual{E}` instances in parallel using `extension(ind)` to produce each
+individual's extension value. `E` is inferred from the first factory call.
+"""
+function _build_individuals_with_factory(base_data, n, extension::F) where {F}
+    # Determine E by applying the factory to a temporary baseline individual
+    E = typeof(extension(Individual(; map(col -> col[1], base_data)...)))
+    inds = Vector{Individual{E}}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        kw = map(col -> col[i], base_data)
+        @inbounds inds[i] = Individual{E}(; kw..., extensions = extension(Individual(; kw...)))
+    end
+    return(inds)
 end
 
 """

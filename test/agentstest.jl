@@ -494,6 +494,66 @@
         @test occursin("n/a", @capture_out show(Individual(id=10, sex=0, age=18)))
     end
 
+    @testset "Individual Extensions" begin
+
+        # Helper extension struct used across sub-tests
+        mutable struct TestExt
+            score::Float32
+            label::Int8
+        end
+
+        @testset "Explicit mutable struct extension" begin
+            ind = Individual{TestExt}(id=Int32(1), sex=Int8(0), age=Int8(30),
+                                      extensions=TestExt(0.8f0, Int8(2)))
+
+            # transparent read access
+            @test ind.score == 0.8f0
+            @test ind.label == Int8(2)
+
+            # base fields still work
+            @test age(ind) == 30
+            @test id(ind) == Int32(1)
+
+            # transparent write access (in-place setfield!)
+            ind.score = 0.5f0
+            @test ind.score == 0.5f0
+
+            ind.label = Int8(9)
+            @test ind.label == Int8(9)
+
+            # base field mutation still works
+            ind.age = Int8(40)
+            @test age(ind) == 40
+        end
+
+        @testset "AutoExtension from NamedTuple" begin
+            nt = (score = 0.7f0, label = Int8(3))
+            ae = AutoExtension(NamedTuple(nt))
+            ind = Individual{typeof(ae)}(id=Int32(2), sex=Int8(1), age=Int8(25),
+                                          extensions=ae)
+
+            # transparent read
+            @test ind.score == 0.7f0
+            @test ind.label == Int8(3)
+
+            # transparent write (replaces inner NT via merge)
+            ind.score = 0.2f0
+            @test ind.score == 0.2f0
+
+            # other extension field unchanged after write
+            @test ind.label == Int8(3)
+
+            # base fields unaffected
+            @test age(ind) == 25
+        end
+
+        @testset "Individual{Nothing} unaffected" begin
+            ind = Individual(id=Int32(1), sex=Int8(0), age=Int8(20))
+            @test typeof(ind) == Individual{Nothing}
+            @test ind.extensions === nothing
+        end
+    end
+
     @testset "Settings Tuple" begin
     # Test individual with specific setting assignments
     i = Individual(id = 1, sex = 0, age = 1, household=10, office=20, schoolclass=30, municipality=40)

@@ -350,7 +350,10 @@ function _BUILD_Simulation(;
         stepmod::Function = x -> x,
 
         # seed
-        seed = nothing
+        seed = nothing,
+
+        # individual extensions
+        ind_extension = nothing
     )
 
         # parse the config file (or default to default.toml)
@@ -374,7 +377,8 @@ function _BUILD_Simulation(;
             avg_office_size,
             avg_school_size,
             settingsfile,
-            rngs[1]
+            rngs[1],
+            ind_extension
         )
 
         # everything after this is just generating, not loading from disk
@@ -679,15 +683,15 @@ If a `population` string is provided, it will be used to load the population fro
 If a `settingsfile` is provided, it will be used to load the settings from a file.
 If neither is provided, an error will be thrown.
 """
-function determine_population(population::String, settingsfile, global_setting)
+function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing)
     # if a path was provided, load the population from the file, otherwise assume it's a population identifier
     (pop_path, settings_path) = try
         is_pop_file(population) ? (population, settingsfile) : obtain_remote_files(population)
     catch
         throw(ArgumentError("Provided population must be a valid population file path or a population model identifier (e.g., 'DE')!"))
     end
-    
-    pop = Population(pop_path)
+
+    pop = Population(pop_path; ind_extension = ind_extension)
     settings, renaming = settings_from_population(pop, global_setting)
 
     # if settingsfile is provided, load the settings from the file
@@ -707,13 +711,14 @@ Determines the population and settings for the simulation based on the provided 
 If a `population` is provided, it will be used to load the population from a file or obtain remote files.
 If not, it will create a new population based on the provided parameters or config file parameters.
 """
-function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng)
-    # if population is provided, use it    
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension)
+    # if population is provided, use it
     if !isnothing(population)
         # if a Population object is provided, use it
         if isa(population, Population)
             # throw warning if any other parameters were provided
             !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, and settingsfile will be ignored."
+            !isnothing(ind_extension) && @warn "A population object was provided, therefore the ind_extension argument will be ignored."
             settings, renaming = settings_from_population(population, global_setting)
             return population, settings
         end
@@ -722,9 +727,9 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         !isa(population, String) && throw(ArgumentError("Provided population must be a String path to a population file, a population identifier (e.g., 'DE') or Population object!"))
         # throw warning if any other parameters were provided
         !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
-            
+
         # if a population file path is provided, load the population from the file
-        return determine_population(population, settingsfile, global_setting)
+        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension)
     end
 
     # if no population is provided, use the provided parameters
@@ -739,7 +744,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     !isnothing(avg_school_size) && (params[:avg_school_size] = avg_school_size)
 
     # create population object
-    pop = Population(; rng = rng, params...)
+    pop = Population(; rng = rng, ind_extension = ind_extension, params...)
     settings, renaming = settings_from_population(pop, global_setting)
     return pop, settings
 end
@@ -1360,7 +1365,6 @@ Returns the thread-local buffers for storing sampled contacts, used to eliminate
 function contact_buffers(simulation::Simulation{E}) where {E}
     return simulation.contact_buffers
 end
-
 
 """
     start_condition(simulation)
