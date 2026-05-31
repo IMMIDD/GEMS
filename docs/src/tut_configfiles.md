@@ -440,8 +440,7 @@ As expected, the right plot shows that the vaccinated population experiences ent
 
 ## Custom Individual Extensions
 
-Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default. GEMS lets 
-you add these without changing the core model: any extra column in the population DataFrame is automatically attached to each individual and accessible via ordinary dot-syntax.
+Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default. GEMS lets you add these without changing the core model by passing `ind_extension` to the `Population` or `Simulation` constructor. Pass a vector of column names to promote from your population DataFrame:
 
 ```julia
 using GEMS
@@ -452,7 +451,7 @@ pop = Population(DataFrame(
     age = Int8.(rand(20:60, 100)),
     sex = Int8.(rand(0:1, 100)),
     my_custom_attribute = rand(Float32, 100)
-))
+); ind_extension = [:my_custom_attribute])
 sim = Simulation(population = pop)
 
 ind = individuals(population(sim))[1]
@@ -477,15 +476,18 @@ ind.my_custom_attribute        # e.g. 0.07483196
 ind.my_custom_attribute = 0.9
 ```
 
-When extension data lives in a separate table pass it directly as `ind_extension`. Individuals whose ID is not present receive a 
-zero-filled value with a warning:
+When extension data lives in a separate table, pass it directly as `ind_extension`. Individuals whose ID is not present receive a zero-filled value with a warning:
 
 ```julia
 using GEMS
 using DataFrames
 
-pop = Population(DataFrame(id = Int32.(1:100), age = Int8.(rand(20:60, 100)),
-                        sex = Int8.(rand(0:1, 100))))
+pop = Population(DataFrame(
+    id = Int32.(1:100), 
+    age = Int8.(rand(20:60, 100)),
+    sex = Int8.(rand(0:1, 100))
+))
+
 ext_df = DataFrame(id = Int32.(1:100), my_custom_attribute = rand(Float32, 100))
 
 sim = Simulation(population = pop, ind_extension = ext_df)

@@ -91,7 +91,7 @@
             category::Int8
         end
 
-        @testset "Auto-detection from DataFrame extra columns" begin
+        @testset "Extra columns ignored by default" begin
             df = DataFrame(
                 id = Int32.(1:5),
                 age = Int8.(20:24),
@@ -100,25 +100,36 @@
                 score = Float32.(0.1:0.1:0.5),
                 category = Int8.(1:5)
             )
+            # Extra columns are ignored — no extensions without explicit ind_extension
             pop = Population(df)
+            @test eltype(individuals(pop)) == Individual{Nothing}
+        end
 
-            # Population type carries the AutoExtension parameter
+        @testset "Explicit Symbol-vector ind_extension" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5),
+                score = Float32.(0.1:0.1:0.5),
+                category = Int8.(1:5)
+            )
+            # Only requested columns become extensions
+            pop = Population(df; ind_extension = [:score, :category])
             @test eltype(individuals(pop)) <: Individual{<:AutoExtension}
 
-            # Transparent read access
             ind = individuals(pop)[1]
             @test ind.score ≈ 0.1f0
             @test ind.category == Int8(1)
-
-            # Base fields preserved
             @test age(ind) == Int8(20)
 
             # Transparent write (via AutoExtension merge)
             ind.score = 0.9f0
             @test ind.score ≈ 0.9f0
+            @test ind.category == Int8(1)   # other field unchanged
 
-            # Other extension field unchanged after targeted write
-            @test ind.category == Int8(1)
+            # Missing column names warn gracefully
+            @test_logs (:warn, r"not found") Population(df; ind_extension = [:nonexistent])
         end
 
         @testset "Explicit ind_extension factory" begin

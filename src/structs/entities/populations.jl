@@ -67,18 +67,24 @@ mutable struct Population{E}
         # Intersect DataFrame columns with base Individual field names
         base_cols = Tuple(intersect(individual_base_fieldnames(), propertynames(df)))
         base_data = NamedTuple{base_cols}(Tuple(df[!, c] for c in base_cols))
-        # Check for extra columns not belonging to the base Individual fields
-        extra_cols = Tuple(c for c in propertynames(df) if c ∉ Set(individual_base_fieldnames()))
 
         # Dispatch to the appropriate builder based on the extension mode
         inds = if ind_extension isa DataFrame
+            # Separate extension DataFrame joined by individual ID
             pop_ids = [Int32(df[i, :id]) for i in 1:nrow(df)]
             _build_individuals_from_ext_df(base_data, pop_ids, ind_extension, nrow(df))
-        elseif !isnothing(ind_extension)
+        elseif ind_extension isa AbstractVector{Symbol} && !isempty(ind_extension)
+            # Explicit column names from the population DataFrame
+            cols = Tuple(c for c in ind_extension if c ∈ propertynames(df))
+            missing_cols = filter(c -> c ∉ propertynames(df), ind_extension)
+            isempty(missing_cols) || @warn "ind_extension columns not found in population data: $missing_cols"
+            isempty(cols) ? _build_individuals(base_data, nrow(df)) :
+                            _build_individuals_auto_extension(base_data, df, cols, nrow(df))
+        elseif !isnothing(ind_extension) && !(ind_extension isa AbstractVector)
+            # Factory function
             _build_individuals_with_factory(base_data, nrow(df), ind_extension)
-        elseif !isempty(extra_cols)
-            _build_individuals_auto_extension(base_data, df, extra_cols, nrow(df))
         else
+            # No extensions — extra columns in the DataFrame are ignored
             _build_individuals(base_data, nrow(df))
         end
 
