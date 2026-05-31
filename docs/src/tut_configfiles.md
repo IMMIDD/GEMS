@@ -477,7 +477,21 @@ ind.my_custom_attribute        # e.g. 0.07483196
 ind.my_custom_attribute = 0.9
 ```
 
-When extension values need to be computed from individual attributes rather than loaded from a table (for example, assigning a parameter based on age) pass an `ind_extension` factory function to the constructor. It receives each base individual and returns an extension struct:
+When extension data lives in a separate table pass it directly as `ind_extension`. Individuals whose ID is not present receive a 
+zero-filled value with a warning:
+
+```julia
+using GEMS
+using DataFrames
+
+pop = Population(DataFrame(id = Int32.(1:100), age = Int8.(rand(20:60, 100)),
+                        sex = Int8.(rand(0:1, 100))))
+ext_df = DataFrame(id = Int32.(1:100), my_custom_attribute = rand(Float32, 100))
+
+sim = Simulation(population = pop, ind_extension = ext_df)
+```
+
+When extension values need to be computed from individual attributes (for example, assigning a parameter based on age) pass an `ind_extension` factory function to the constructor. It receives each base individual and returns an extension struct:
 
 ```julia
 mutable struct MyParams

@@ -153,6 +153,41 @@
             @test ind.score == 0.5f0
             @test ind.category == Int8(1)
         end
+
+        @testset "DataFrame ind_extension" begin
+            base_df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5)
+            )
+            ext_df = DataFrame(
+                id = Int32.(1:5),
+                score = Float32.([0.1, 0.2, 0.3, 0.4, 0.5])
+            )
+
+            # full match: all IDs present
+            pop = Population(base_df; ind_extension = ext_df)
+            @test eltype(individuals(pop)) <: Individual{<:AutoExtension}
+            @test individuals(pop)[1].score ≈ 0.1f0
+            @test individuals(pop)[3].score ≈ 0.3f0
+
+            # transparent mutation
+            individuals(pop)[1].score = 0.9f0
+            @test individuals(pop)[1].score ≈ 0.9f0
+
+            # missing IDs: warn and fill with zero
+            ext_partial = DataFrame(id = Int32.(1:3), score = Float32.([0.1, 0.2, 0.3]))
+            pop_partial = @test_warn r"individual" Population(base_df; ind_extension = ext_partial)
+            @test individuals(pop_partial)[4].score == 0.0f0   # missing → zero
+            @test individuals(pop_partial)[1].score ≈ 0.1f0   # present → correct
+
+            # extra rows in ext_df are silently ignored
+            ext_extra = DataFrame(id = Int32.(1:10), score = Float32.(0.1:0.1:1.0))
+            pop_extra = Population(base_df; ind_extension = ext_extra)
+            @test length(individuals(pop_extra)) == 5
+            @test individuals(pop_extra)[5].score ≈ 0.5f0
+        end
     end
 
     @testset "get_individual_by_id" begin

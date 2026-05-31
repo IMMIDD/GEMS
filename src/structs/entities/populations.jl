@@ -71,7 +71,10 @@ mutable struct Population{E}
         extra_cols = Tuple(c for c in propertynames(df) if c ∉ Set(individual_base_fieldnames()))
 
         # Dispatch to the appropriate builder based on the extension mode
-        inds = if !isnothing(ind_extension)
+        inds = if ind_extension isa DataFrame
+            pop_ids = [Int32(df[i, :id]) for i in 1:nrow(df)]
+            _build_individuals_from_ext_df(base_data, pop_ids, ind_extension, nrow(df))
+        elseif !isnothing(ind_extension)
             _build_individuals_with_factory(base_data, nrow(df), ind_extension)
         elseif !isempty(extra_cols)
             _build_individuals_auto_extension(base_data, df, extra_cols, nrow(df))
@@ -332,6 +335,42 @@ function _build_individuals_with_factory(base_data, n, extension::F) where {F}
     Threads.@threads for i in eachindex(inds)
         kw = map(col -> col[i], base_data)
         @inbounds inds[i] = Individual{E}(; kw..., extensions = extension(Individual(; kw...)))
+    end
+    return(inds)
+end
+
+"""
+    _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
+
+Creates `n` `Individual{AutoExtension{NT}}` instances by joining `ext_df` to the
+population by `id`. Missing individuals receive zero-filled extension values; a
+warning is issued if any IDs are absent from the extension DataFrame.
+"""
+function _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
+    ext_cols = Tuple(c for c in propertynames(ext_df) if c !== :id)
+    id_to_row = Dict{Int32, Int}(Int32(ext_df[i, :id]) => i for i in 1:nrow(ext_df))
+
+    # Infer E from first matched row (fall back to zeros if the first ID is missing)
+    first_idx = get(id_to_row, pop_ids[1], nothing)
+    first_nt = isnothing(first_idx) ?
+        NamedTuple{ext_cols}(map(c -> zero(eltype(ext_df[!, c])), ext_cols)) :
+        NamedTuple{ext_cols}(map(c -> ext_df[first_idx, c], ext_cols))
+    E = AutoExtension{typeof(first_nt)}
+
+    # Warn once if any population IDs are absent from the extension DataFrame
+    missing_ids = [id for id in pop_ids if !haskey(id_to_row, id)]
+    if !isempty(missing_ids)
+        @warn "$(length(missing_ids)) individual(s) not found in ind_extension DataFrame; extension fields filled with zero."
+    end
+
+    inds = Vector{Individual{E}}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        row_idx = get(id_to_row, pop_ids[i], nothing)
+        nt = isnothing(row_idx) ?
+            NamedTuple{ext_cols}(map(c -> zero(eltype(ext_df[!, c])), ext_cols)) :
+            NamedTuple{ext_cols}(map(c -> ext_df[row_idx, c], ext_cols))
+        base_kw = map(col -> col[i], base_data)
+        @inbounds inds[i] = Individual{E}(; base_kw..., extensions = E(nt))
     end
     return(inds)
 end

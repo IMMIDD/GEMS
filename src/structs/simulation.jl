@@ -718,7 +718,10 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         if isa(population, Population)
             # throw warning if any other parameters were provided
             !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, and settingsfile will be ignored."
-            !isnothing(ind_extension) && @warn "A population object was provided, therefore the ind_extension argument will be ignored."
+            # apply ind_extension to the population if provided
+            if !isnothing(ind_extension)
+                population = Population(dataframe(population); ind_extension = ind_extension)
+            end
             settings, renaming = settings_from_population(population, global_setting)
             return population, settings
         end
