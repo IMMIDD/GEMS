@@ -178,7 +178,7 @@
 
             # missing IDs: warn and fill with zero
             ext_partial = DataFrame(id = Int32.(1:3), score = Float32.([0.1, 0.2, 0.3]))
-            pop_partial = @test_warn r"individual" Population(base_df; ind_extension = ext_partial)
+            pop_partial = @test_logs (:warn, r"individual") Population(base_df; ind_extension = ext_partial)
             @test individuals(pop_partial)[4].score == 0.0f0   # missing → zero
             @test individuals(pop_partial)[1].score ≈ 0.1f0   # present → correct
 
