@@ -440,19 +440,23 @@ As expected, the right plot shows that the vaccinated population experiences ent
 
 ## Custom Individual Extensions
 
-Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default. GEMS lets you add these without changing the core model by passing `ind_extension` to the `Population` or `Simulation` constructor. Pass a vector of column names to promote from your population DataFrame:
+Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default. GEMS lets you add these without changing the core model by passing `ind_extension` to the `Population` or `Simulation` constructor.
+
+When extension data lives in a separate table, pass it directly as `ind_extension`. Individuals whose ID is not present receive a zero-filled value with a warning:
 
 ```julia
 using GEMS
 using DataFrames
 
 pop = Population(DataFrame(
-    id = Int32.(1:100),
+    id = Int32.(1:100), 
     age = Int8.(rand(20:60, 100)),
-    sex = Int8.(rand(0:1, 100)),
-    my_custom_attribute = rand(Float32, 100)
-); ind_extension = [:my_custom_attribute])
-sim = Simulation(population = pop)
+    sex = Int8.(rand(0:1, 100))
+))
+
+ext_df = DataFrame(id = Int32.(1:100), my_custom_attribute = rand(Float32, 100))
+
+sim = Simulation(population = pop, ind_extension = ext_df)
 
 ind = individuals(population(sim))[1]
 show(ind)
@@ -476,32 +480,32 @@ ind.my_custom_attribute        # e.g. 0.07483196
 ind.my_custom_attribute = 0.9
 ```
 
-When extension data lives in a separate table, pass it directly as `ind_extension`. Individuals whose ID is not present receive a zero-filled value with a warning:
+If the extension data is already part of your population DataFrame, you can name the columns directly instead:
 
 ```julia
 using GEMS
 using DataFrames
 
 pop = Population(DataFrame(
-    id = Int32.(1:100), 
+    id = Int32.(1:100),
     age = Int8.(rand(20:60, 100)),
-    sex = Int8.(rand(0:1, 100))
-))
+    sex = Int8.(rand(0:1, 100)),
+    my_custom_attribute = rand(Float32, 100)
+); ind_extension = [:my_custom_attribute])
 
-ext_df = DataFrame(id = Int32.(1:100), my_custom_attribute = rand(Float32, 100))
-
-sim = Simulation(population = pop, ind_extension = ext_df)
+sim = Simulation(population = pop)
 ```
 
 When extension values need to be computed from individual attributes (for example, assigning a parameter based on age) pass an `ind_extension` factory function to the constructor. It receives each base individual and returns an extension struct:
 
 ```julia
+using GEMS
+
 mutable struct MyParams
     my_custom_attribute::Float32
 end
 
-sim = Simulation(ind_extension = ind ->
-    MyParams(age(ind) > 60 ? 0.8 : 0.3))
+sim = Simulation(ind_extension = ind -> MyParams(age(ind) > 60 ? 0.8 : 0.3))
 ```
 
 !!! info "Transparency"
