@@ -199,6 +199,55 @@
             @test length(individuals(pop_extra)) == 5
             @test individuals(pop_extra)[5].score ≈ 0.5f0
         end
+
+        @testset "dataframe base field values" begin
+            df = DataFrame(
+                id = Int32.(1:3),
+                age = Int8.(20:22),
+                sex = Int8.([0, 1, 0]),
+                household = Int32.(1:3)
+            )
+            pop = Population(df)
+            result = dataframe(pop)
+
+            @test result.id == Int32.(1:3)
+            @test result.age == Int8.(20:22)
+            @test result.sex == Int8.([0, 1, 0])
+        end
+
+        @testset "dataframe includes extension fields" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5),
+                score = Float32.(0.1:0.1:0.5),
+                category = Int8.(1:5)
+            )
+            pop = Population(df; ind_extension = [:score, :category])
+            result = dataframe(pop)
+
+            # extension columns are present and correct
+            @test :score in propertynames(result)
+            @test :category in propertynames(result)
+            @test result.score ≈ Float32.(0.1:0.1:0.5)
+            @test result.category == Int8.(1:5)
+
+            # base columns are still present
+            @test :id in propertynames(result)
+            @test :age in propertynames(result)
+        end
+
+        @testset "dataframe Population{Nothing} has no extension columns" begin
+            df = DataFrame(id = Int32.(1:3), age = Int8.(20:22), sex = Int8.(ones(3)), household = Int32.(1:3))
+            pop = Population(df)
+            result = dataframe(pop)
+
+            # only base fields (no leftover columns from the source DataFrame)
+            base_names = Set([:id, :sex, :age, :number_of_vaccinations, :vaccination_tick,
+                              :education, :occupation, :household, :office, :schoolclass])
+            @test Set(propertynames(result)) == base_names
+        end
     end
 
     @testset "get_individual_by_id" begin

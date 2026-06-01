@@ -130,10 +130,32 @@
 
         @testset "Population & Settings" begin
             # POPULATION
-            # passing
+            # passing Population object
             sim = Simulation(population = Population(n = 500, rng = Xoshiro()))
             @test population(sim) |> size == 500
             # other population initializations are testesd in "From Disk" above
+
+            # passing DataFrame
+            pop_df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5)
+            )
+            sim = Simulation(population = pop_df)
+            @test population(sim) |> size == 5
+
+            # passing DataFrame with ind_extension
+            pop_df_ext = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5),
+                score = Float32.(0.1:0.1:0.5)
+            )
+            sim = Simulation(population = pop_df_ext, ind_extension = [:score])
+            @test eltype(individuals(population(sim))) <: Individual{<:AutoExtension}
+            @test individuals(population(sim))[1].score ≈ 0.1f0
 
             # failing
             @test_throws ArgumentError Simulation(population = 123)
@@ -462,6 +484,15 @@
             pop_obj = Population(n=200, rng=Xoshiro())
             sim_pop = Simulation(population=pop_obj, pop_size=100)
             @test population(sim_pop) |> size == 200
+
+            # Population object + Vector{Symbol} ind_extension: warns, population used as-is
+            pop_obj2 = Population(n=100, rng=Xoshiro())
+            sim_warn = @test_logs (:warn, r"not retained") min_level=Warn Simulation(population=pop_obj2, ind_extension=[:score])
+            @test population(sim_warn) |> size == 100
+
+            # DataFrame + pop_size: DataFrame wins, pop_size ignored
+            small_df = DataFrame(id=Int32.(1:5), age=Int8.(20:24), sex=Int8.(ones(5)), household=Int32.(1:5))
+            @test_logs (:warn, r"DataFrame was provided") min_level=Warn Simulation(population=small_df, pop_size=999)
         end
 
         @testset "Throw Paths (ConfigfileError)" begin

@@ -527,41 +527,52 @@ end
 
 
 """
-    dataframe(population::Population)
+    dataframe(population::Population{E}) where {E}
 
-Returns a DataFrame representing the given population.
+Returns a `DataFrame` representing the given population. If the population carries
+individual extensions (i.e. `E !== Nothing`), the extension fields are appended as
+additional columns after the base columns.
 
 # Returns
 
 - `DataFrame` with the following columns:
 
-| Name         | Type    | Description                       |
-| :----------- | :------ | :-------------------------------- |
-| `id`         | `Int32` | Individual id                     |
-| `sex`        | `Int8`  | Individual sex                    |
-| `age`        | `Int8`  | Individual age                    |
-| `education`  | `Int8`  | Individual education level        |
-| `occupation` | `Int16` | Individual occupation group       |
-| `household`  | `Int32` | Individual associated household   |
-| `office`     | `Int32` | Individual associated office      |
-| `school`     | `Int32` | Individual associated school      |
+| Name                    | Type    | Description                              |
+| :---------------------- | :------ | :--------------------------------------- |
+| `id`                    | `Int32` | Individual id                            |
+| `sex`                   | `Int8`  | Individual sex                           |
+| `age`                   | `Int8`  | Individual age                           |
+| `number_of_vaccinations`| `Int16` | Number of vaccinations received          |
+| `vaccination_tick`      | `Int32` | Tick of last vaccination                 |
+| `education`             | `Int8`  | Individual education level               |
+| `occupation`            | `Int16` | Individual occupation group              |
+| `household`             | `Int32` | Individual associated household          |
+| `office`                | `Int32` | Individual associated office             |
+| `schoolclass`           | `Int32` | Individual associated school class       |
+| `<extension fields>`    | (varies)| Any fields stored in `Individual.extensions`, appended dynamically |
 """
-function dataframe(population::Population)
-
-    return(
-        DataFrame(
-            id = map(id, population |> individuals),
-            sex = map(sex, population |> individuals),
-            age = map(age, population |> individuals),
-            number_of_vaccinations = map(number_of_vaccinations, population |> individuals),
-            vaccination_tick = map(vaccination_tick, population |> individuals),
-            education = map(education, population |> individuals),
-            occupation = map(occupation, population |> individuals),
-            household = map(household_id, population |> individuals),
-            office = map(office_id, population |> individuals),
-            schoolclass = map(class_id, population |> individuals)
-        )
+function dataframe(population::Population{E}) where {E}
+    df = DataFrame(
+        id = map(id, population |> individuals),
+        sex = map(sex, population |> individuals),
+        age = map(age, population |> individuals),
+        number_of_vaccinations = map(number_of_vaccinations, population |> individuals),
+        vaccination_tick = map(vaccination_tick, population |> individuals),
+        education = map(education, population |> individuals),
+        occupation = map(occupation, population |> individuals),
+        household = map(household_id, population |> individuals),
+        office = map(office_id, population |> individuals),
+        schoolclass = map(class_id, population |> individuals)
     )
+
+    if E !== Nothing
+        ext_fields = E <: AutoExtension ? fieldnames(fieldtype(E, :data)) : fieldnames(E)
+        for f in ext_fields
+            df[!, f] = map(ind -> getproperty(ind, f), individuals(population))
+        end
+    end
+
+    return df
 end
 
 """
