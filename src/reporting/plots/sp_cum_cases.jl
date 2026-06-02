@@ -103,3 +103,32 @@ function generate(plt::CumulativeCases, rds::Vector{ResultData}; plotargs...)
 
     return(p)
 end
+
+function generate(plt::CumulativeCases, bd::BatchData; plotargs...)
+    uticks = get(sim_data(bd), "tick_unit", "tick")
+    p = plot(xlabel = uppercasefirst(uticks), ylabel = "Individuals", dpi = 300, fontfamily = "Times Roman")
+    pl = per_group(bd)
+    if length(pl) > 1
+        colors = Dict(zip(sort(collect(keys(pl))), gemscolors(length(pl))))
+        for lab in sort(collect(keys(pl)))
+            cc = cumulative_cases(pl[lab])
+            df = get(cc, "exposed_cum", DataFrame())
+            isempty(df) && continue
+            plot!(p, df[!, "tick"], df[!, "mean"],
+                ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
+                fillalpha = 0.3, linewidth = 2, label = lab, color = colors[lab])
+        end
+    else
+        cc = cumulative_cases(bd)
+        if isa(cc, Dict) && haskey(cc, "exposed_cum")
+            df = cc["exposed_cum"]
+            if !isempty(df)
+                plot!(p, df[!, "tick"], df[!, "mean"],
+                    ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
+                    fillalpha = 0.3, linewidth = 2, label = "Cumulative Exposed (mean ± 95% CI)")
+            end
+        end
+    end
+    plot!(p; plotargs...)
+    return p
+end

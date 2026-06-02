@@ -306,4 +306,56 @@
         @test all(x -> isa(x, DataType) && x <: TransmissionFunction, tfs)
 
     end
+
+    @testset "WelfordState" begin
+        # initial state
+        s = WelfordState()
+        @test s.n == 0
+        @test s.min == Inf
+        @test s.max == -Inf
+
+        # accumulate known values and verify against Statistics
+        vals = [3.0, 7.0, 1.0, 9.0, 5.0]
+        for v in vals
+            welford_update!(s, v)
+        end
+        @test s.n == 5
+        @test s.mean ≈ mean(vals)
+        @test s.min == 1.0
+        @test s.max == 9.0
+
+        # welford_to_aggregate keys and correctness
+        agg = welford_to_aggregate(s)
+        @test Set(keys(agg)) == Set(["mean", "std", "min", "max", "lower_95", "upper_95"])
+        @test agg["mean"] ≈ mean(vals)
+        @test agg["std"] ≈ std(vals) atol = 1e-10
+        @test agg["min"] == 1.0
+        @test agg["max"] == 9.0
+        @test agg["lower_95"] < agg["mean"] < agg["upper_95"]
+
+        # welford_df_to_stats_df schema and values
+        accum = Dict{Int, WelfordState}()
+        for (tick, v) in [(1, 10.0), (1, 20.0), (2, 5.0), (2, 15.0)]
+            welford_update!(get!(accum, tick, WelfordState()), v)
+        end
+        df = welford_df_to_stats_df(accum, :tick)
+        @test "tick" in names(df)
+        @test "mean" in names(df)
+        @test "minimum" in names(df)
+        @test "lower_95" in names(df)
+        @test nrow(df) == 2
+        @test df[df.tick .== 1, "mean"][1] ≈ 15.0
+        @test df[df.tick .== 2, "mean"][1] ≈ 10.0
+
+        # welford_df_to_stats_df_multicol returns one df per column
+        accum_multi = Dict{String, Dict{Int, WelfordState}}()
+        for col in ["a", "b"]
+            accum_multi[col] = Dict{Int, WelfordState}()
+            welford_update!(get!(accum_multi[col], 1, WelfordState()), col == "a" ? 2.0 : 8.0)
+        end
+        dfs = welford_df_to_stats_df_multicol(accum_multi, :tick)
+        @test Set(keys(dfs)) == Set(["a", "b"])
+        @test dfs["a"][1, "mean"] ≈ 2.0
+        @test dfs["b"][1, "mean"] ≈ 8.0
+    end
 end

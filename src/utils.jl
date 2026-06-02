@@ -4,6 +4,7 @@ export duplicates
 export concrete_subtypes, is_existing_subtype, find_subtype
 export isdate
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
+export WelfordState, welford_update!, welford_to_aggregate, welford_df_to_stats_df, welford_df_to_stats_df_multicol
 export read_git_repo, read_git_branch, read_git_commit
 export aggregate_matrix
 export basefolder, identical, bad_unique
@@ -1221,4 +1222,120 @@ function gemscolors(l::Int64)
     end
 
     return [gemscolors(9)..., palette(:darktest, l-9)...]
+end
+
+
+###
+### WELFORD ONLINE STATISTICS
+###
+
+"""
+    WelfordState
+
+Mutable accumulator for online computation of mean, variance, min, and max
+using Welford's algorithm. One tick at a time, with O(1) memory.
+"""
+mutable struct WelfordState
+    n::Int
+    mean::Float64
+    M2::Float64
+    min::Float64
+    max::Float64
+end
+
+WelfordState() = WelfordState(0, 0.0, 0.0, Inf, -Inf)
+
+"""
+    welford_update!(s::WelfordState, x::Real)
+
+Update the accumulator `s` with a new observation `x`.
+"""
+function welford_update!(s::WelfordState, x::Real)
+    s.n += 1
+    delta = x - s.mean
+    s.mean += delta / s.n
+    s.M2 += delta * (x - s.mean)
+    s.min = min(s.min, x)
+    s.max = max(s.max, x)
+end
+
+"""
+    welford_to_aggregate(s::WelfordState) -> Dict{String, Real}
+
+Convert a `WelfordState` to an aggregate statistics dict with the same schema
+as `aggregate_values`: keys `"min"`, `"max"`, `"mean"`, `"std"`, `"lower_95"`, `"upper_95"`.
+"""
+function welford_to_aggregate(s::WelfordState)::Dict{String, Real}
+    std_val = s.n > 1 ? sqrt(s.M2 / (s.n - 1)) : 0.0
+    critical_value = quantile(TDist(max(s.n - 1, 1 + 1e-8)), 0.975)
+    se = s.n > 0 ? std_val / sqrt(s.n) : 0.0
+    Dict(
+        "min" => s.min,
+        "max" => s.max,
+        "mean" => s.mean,
+        "std" => std_val,
+        "lower_95" => s.mean - critical_value * se,
+        "upper_95" => s.mean + critical_value * se
+    )
+end
+
+"""
+    welford_df_to_stats_df(accum::Dict{Int, WelfordState}, key::Symbol) -> DataFrame
+
+Convert per-tick Welford accumulators to an aggregated DataFrame with the same schema
+as `aggregate_dfs`: columns `key`, `"minimum"`, `"maximum"`, `"mean"`, `"std"`,
+`"lower_95"`, `"upper_95"`. Rows are sorted by `key`.
+"""
+function welford_df_to_stats_df(accum::Dict{Int, WelfordState}, key::Symbol)::DataFrame
+    ticks = sort(collect(keys(accum)))
+    if isempty(ticks)
+        return DataFrame(
+            string(key) => Int[],
+            "minimum" => Float64[],
+            "maximum" => Float64[],
+            "mean" => Float64[],
+            "std" => Float64[],
+            "lower_95" => Float64[],
+            "upper_95" => Float64[]
+        )
+    end
+    tick_col = Int[]
+    min_col = Float64[]
+    max_col = Float64[]
+    mean_col = Float64[]
+    std_col = Float64[]
+    lower_col = Float64[]
+    upper_col = Float64[]
+    for t in ticks
+        s = accum[t]
+        std_val = s.n > 1 ? sqrt(s.M2 / (s.n - 1)) : 0.0
+        critical_value = quantile(TDist(max(s.n - 1, 1 + 1e-8)), 0.975)
+        se = s.n > 0 ? std_val / sqrt(s.n) : 0.0
+        push!(tick_col, t)
+        push!(min_col, s.min)
+        push!(max_col, s.max)
+        push!(mean_col, s.mean)
+        push!(std_col, std_val)
+        push!(lower_col, s.mean - critical_value * se)
+        push!(upper_col, s.mean + critical_value * se)
+    end
+    DataFrame(
+        string(key) => tick_col,
+        "minimum" => min_col,
+        "maximum" => max_col,
+        "mean" => mean_col,
+        "std" => std_col,
+        "lower_95" => lower_col,
+        "upper_95" => upper_col
+    )
+end
+
+"""
+    welford_df_to_stats_df_multicol(accum::Dict{String, Dict{Int, WelfordState}}, key::Symbol) -> Dict{String, DataFrame}
+
+Convert multi-column per-tick Welford accumulators to a dict of aggregated DataFrames,
+one per accumulated column. Matches the output schema of `aggregate_dfs_multcol`.
+"""
+function welford_df_to_stats_df_multicol(accum::Dict{String, Dict{Int, WelfordState}}, key::Symbol)::Dict{String, DataFrame}
+    Dict(col => welford_df_to_stats_df(tick_accum, key) for (col, tick_accum) in accum)
 end

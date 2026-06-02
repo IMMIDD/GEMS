@@ -518,6 +518,58 @@
         inds = individuals(workplace1, sim)
         @test sample_individuals(inds, 200) == inds
 
+        # get_open_contained! closed branch: closed settings are silently skipped
+        dct_closed = Dict{DataType, Vector{Int32}}()
+        closed_wp = Workplace(id=2, isopen=false)
+        get_open_contained!(closed_wp, dct_closed, sim)
+        @test !haskey(dct_closed, Workplace)
+
+        closed_dept = Department(id=99, isopen=false)
+        get_open_contained!(closed_dept, dct_closed, sim)
+        @test !haskey(dct_closed, Department)
+
+        # get_open_contained! IndividualSetting closed branch
+        closed_hh = Household(id=99, isopen=false, contact_sampling_method=rs)
+        get_open_contained!(closed_hh, dct_closed, sim)
+        @test !haskey(dct_closed, Household)
+
+        # get_open_contained! push! branch (else of !haskey): second setting of same type
+        # appends to the existing vector rather than creating a new one
+        dct_multi = Dict{DataType, Vector{Int32}}()
+        hh_a = Household(id=1, isopen=true, contact_sampling_method=rs)
+        hh_b = Household(id=2, isopen=true, contact_sampling_method=rs)
+        get_open_contained!(hh_a, dct_multi, sim)
+        get_open_contained!(hh_b, dct_multi, sim)
+        @test dct_multi[Household] == Int32[1, 2]
+
+        # same for ContainerSetting
+        dct_multi2 = Dict{DataType, Vector{Int32}}()
+        sc_a = SettingsContainer()
+        add_types!(sc_a, [SchoolYear, SchoolClass])
+        sc1a = SchoolClass(id=1, individuals=[Individual(id=1, age=1, sex=1)], contact_sampling_method=rs, isopen=true)
+        sc2a = SchoolClass(id=2, individuals=[Individual(id=2, age=1, sex=1)], contact_sampling_method=rs, isopen=true)
+        sy_a = SchoolYear(id=1, contains=[1, 2], contact_sampling_method=rs, isopen=true)
+        sy_b = SchoolYear(id=2, contains=Int32[], contact_sampling_method=rs, isopen=true)
+        add!(sc_a, sc1a); add!(sc_a, sc2a)
+        add!(sc_a, sy_a); add!(sc_a, sy_b)
+        sim_a = Simulation(); sim_a.settings = sc_a
+        get_open_contained!(sy_a, dct_multi2, sim_a)
+        get_open_contained!(sy_b, dct_multi2, sim_a)
+        @test dct_multi2[SchoolYear] == Int32[1, 2]
+
+        # sample_individuals: gems_sample path (n < length)
+        many_inds = [Individual(id=j, age=1, sex=1) for j in 1:20]
+        sampled = sample_individuals(many_inds, 5, rng=Xoshiro(42))
+        @test length(sampled) == 5
+        @test allunique(id.(sampled))
+        @test all(ind -> ind in many_inds, sampled)
+
+        # sample_individuals(IndividualSetting, n) wrapper
+        hh_sample = Household(id=10, individuals=many_inds, contact_sampling_method=rs)
+        sampled_from_setting = sample_individuals(hh_sample, 5, rng=Xoshiro(42))
+        @test length(sampled_from_setting) == 5
+        @test all(ind -> ind in many_inds, sampled_from_setting)
+
         @test avg_individuals(Setting[], sim) === nothing
         @test min_individuals(Setting[], sim) === nothing
         @test max_individuals(Setting[], sim) === nothing
@@ -589,6 +641,15 @@
         @test loc[1] ≈ -74.0f0
         @test loc[2] ≈ 40.5f0
 
+        # geolocation NaN32 fallbacks for non-Geolocated IndividualSettings.
+        gs_nogeo = GlobalSetting(contact_sampling_method=rs)
+        @test all(isnan, geolocation(gs_nogeo))
+        @test all(isnan, geolocation(gs_nogeo, Simulation()))
+
+        m_nogeo = Municipality(id=1)
+        @test all(isnan, geolocation(m_nogeo))
+        @test all(isnan, geolocation(m_nogeo, Simulation()))
+
     end
 
     @testset "getsetting" begin
@@ -648,6 +709,11 @@
             @test getsetting(ind, sim, Workplace) == wp
             @test getsetting(ind, sim, WorkplaceSite) == wps
         end
+
+        # GlobalSetting: always returns the first (and only) GlobalSetting in the sim
+        sim_gs = Simulation(pop_size=100, global_setting=true)
+        ind_gs = individuals(sim_gs)[1]
+        @test getsetting(ind_gs, sim_gs, GlobalSetting) === settings(sim_gs, GlobalSetting)[1]
     end
 
     @testset "get_containers!" begin

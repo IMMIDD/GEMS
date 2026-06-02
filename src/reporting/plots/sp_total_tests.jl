@@ -151,3 +151,44 @@ function generate(plt::TotalTests, rds::Vector{ResultData}; plotargs...)
 
     return(p)
 end
+
+function generate(plt::TotalTests, bd::BatchData; plotargs...)
+    t = tests(bd)
+    uticks = get(sim_data(bd), "tick_unit", "tick")
+    pl = per_group(bd)
+
+    if isempty(t)
+        p = emptyplot("No testing data available.")
+        plot!(p; plotargs...)
+        return p
+    end
+
+    plts = []
+    for (test_name, col_dict) in t
+        p = plot(xlabel = uppercasefirst(uticks), ylabel = test_name, dpi = 300, fontfamily = "Times Roman")
+        if length(pl) > 1
+            colors = Dict(zip(sort(collect(keys(pl))), gemscolors(length(pl))))
+            for lab in sort(collect(keys(pl)))
+                label_tests = tests(pl[lab])
+                label_col_dict = get(label_tests, test_name, Dict())
+                df = get(label_col_dict, "total_tests", DataFrame())
+                isempty(df) && continue
+                plot!(p, df[!, "tick"], df[!, "mean"],
+                    ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
+                    fillalpha = 0.3, linewidth = 2, label = lab, color = colors[lab])
+            end
+        elseif haskey(col_dict, "total_tests")
+            df = col_dict["total_tests"]
+            if !isempty(df)
+                plot!(p, df[!, "tick"], df[!, "mean"],
+                    ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
+                    fillalpha = 0.3, linewidth = 2, label = "$test_name (mean ± 95% CI)")
+            end
+        end
+        push!(plts, p)
+    end
+
+    p = plot(plts..., layout = (1, length(plts)))
+    plot!(p; plotargs...)
+    return p
+end

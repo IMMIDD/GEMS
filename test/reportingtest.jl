@@ -11,15 +11,8 @@
     run!(sim)
     rd = sim |> PostProcessor |> ResultData
 
-    sims = Simulation[]
-    for i in 1:5
-        sim = Simulation(pop_size = 1000, label="My Experiment")
-        push!(sims, sim)
-    end
-
-    b = Batch(sims...)
-    run!(b)
-    bd = BatchData(b)
+    b = Batch(n_runs = 5, pop_size = 1000, label = "My Experiment")
+    bd = BatchData(b; keep_rundata = true)
 
     @testset "Markdown Conversion" begin
 
@@ -155,9 +148,43 @@
         # default generated sections for batches
 
         @test Section(bd, :BatchInfo) |> typeof == Section
-        @test Section(bd, :Runtime) |> typeof == Section
-        @test Section(bd, :Allocations) |> typeof == Section
         @test Section(bd, :Resources) |> typeof == Section
+        
+        @testset "sec_Runtime and sec_Allocations" begin
+            # empty branch: BatchData built from a normal Batch has no "runtime"/"allocations"
+            # in its meta_data, so the guard fires and produces the documented fallback content.
+            s_rt_empty = Section(bd, :Runtime)
+            @test s_rt_empty |> typeof == Section
+            @test occursin("No timer available", content(s_rt_empty))
+            @test occursin("main()", content(s_rt_empty))
+
+            s_al_empty = Section(bd, :Allocations)
+            @test s_al_empty |> typeof == Section
+            @test occursin("No timer available", content(s_al_empty))
+            @test occursin("main()", content(s_al_empty))
+
+            # populated branch: inject aggregated timer data directly rather than running main(),
+            # using the same aggregate_values() that a batch main() would use.
+            # Runtime values are nanoseconds; allocations values are bytes.
+            rt_agg = aggregate_values([1_000_000_000.0, 1_500_000_000.0, 2_000_000_000.0])
+            al_agg = aggregate_values([480_000_000.0, 500_000_000.0, 520_000_000.0])
+
+            bd_rt = BatchData(b)
+            bd_rt.data["meta_data"]["runtime"] = Dict("1 Initialization" => rt_agg, "2 Runtime" => rt_agg)
+            s_rt = Section(bd_rt, :Runtime)
+            @test s_rt |> typeof == Section
+            @test occursin("1 Initialization", content(s_rt))
+            @test occursin("2 Runtime", content(s_rt))
+            @test occursin("Table: Batch Runtimes", content(s_rt))
+
+            bd_al = BatchData(b)
+            bd_al.data["meta_data"]["allocations"] = Dict("1 Initialization" => al_agg, "2 Runtime" => al_agg)
+            s_al = Section(bd_al, :Allocations)
+            @test s_al |> typeof == Section
+            @test occursin("1 Initialization", content(s_al))
+            @test occursin("2 Runtime", content(s_al))
+            @test occursin("Table: Batch Runtimes", content(s_al))
+        end
 
         @testset "Flatten Sections Tests" begin
             # Create sections and subsections
@@ -354,11 +381,61 @@
                 generate(p, [rd, rd2])
                 splitplot(p, [rd, rd2])
                 #if typeof(p) != CustomLoggerPlot
-                #   splitlabel(p, [rd])
+                #   splitgroup(p, [rd])
                 #end
             end
         end
 
+        @testset "Plots with BatchData" begin
+            # bd is defined at the top of the Reporting testset (n_runs=5, pop_size=1000)
+            # Tests that each generate(plt, bd::BatchData) dispatch returns a plot
+            batch_plts = [
+                TickCases()
+                EffectiveReproduction()
+                CumulativeIsolations()
+                ActiveDarkFigure()
+                CumulativeCases()
+                GenerationTime()
+                TotalTests()
+                HouseholdAttackRate()
+                InfectionDuration()
+            ]
+            for p in batch_plts
+                @test generate(p, bd) isa Plots.Plot
+            end
+
+            # default gemsplot(bd) and type-specific
+            @test gemsplot(bd) isa Plots.Plot
+            @test gemsplot(bd, type = :TickCases) isa Plots.Plot
+            @test gemsplot(bd, type = :EffectiveReproduction) isa Plots.Plot
+            @test gemsplot(bd, type = (:TickCases, :CumulativeCases)) isa Plots.Plot
+
+            # multi-group batch — exercises _plot_labelled_ribbon! and grouped sp_cum_cases
+            b_ml = merge(
+                Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.2, label = "Baseline"),
+                Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.15, label = "Masks")
+            )
+            bd_ml = BatchData(b_ml; group_by = :label)
+            @test gemsplot(bd_ml) isa Plots.Plot
+            @test gemsplot(bd_ml, type = :TickCases) isa Plots.Plot
+            @test generate(CumulativeCases(), bd_ml) isa Plots.Plot
+            @test generate(ActiveDarkFigure(), bd_ml) isa Plots.Plot
+            @test generate(CumulativeIsolations(), bd_ml) isa Plots.Plot
+
+            # with median runs per group — exercises _per_group_representative_plots
+            bd_ml_med = BatchData(b_ml; group_by = :label, median_by = pp -> nrow(infectionsDF(pp)))
+            @test generate(HouseholdAttackRate(), bd_ml_med) isa Plots.Plot
+            @test generate(InfectionDuration(), bd_ml_med) isa Plots.Plot
+
+            # generate(CustomLoggerPlot, bd::BatchData) — four branches
+            @test generate(CustomLoggerPlot(), bd) isa Plots.Plot
+            @test generate(CustomLoggerPlot(), bd_ml) isa Plots.Plot
+            @test_throws ArgumentError generate(CustomLoggerPlot(), BatchData(BatchProcessor()))
+            cl = CustomLogger(count_inf = sim -> count(infected, sim |> population))
+            bp_cl = process!(Batch(n_runs = 2, pop_size = 100); median_by = nothing, keep_rundata = true, customlogger = cl)
+            @test generate(CustomLoggerPlot(), BatchData(bp_cl)) isa Plots.Plot
+        end
+        
         @testset "gemsplot Vector paths" begin
             sim_a = Simulation(pop_size = 100, label = "A")
             run!(sim_a)
@@ -376,8 +453,8 @@
             # combined = :single — exercises splitplot
             @test gemsplot(rds, type = :TickCases, combined = :single) isa Plots.Plot
 
-            # combined = :bylabel — exercises splitlabel
-            @test gemsplot(rds, type = :TickCases, combined = :bylabel) isa Plots.Plot
+            # combined = :bygroup — exercises splitgroup
+            @test gemsplot(rds, type = :TickCases, combined = :bygroup) isa Plots.Plot
 
             # empty vector throws
             @test_throws ArgumentError gemsplot(ResultData[])
@@ -386,7 +463,7 @@
             @test_throws ArgumentError gemsplot(rds, type = :NonExistentPlotType)
         end
 
-        @testset "splitlabel" begin
+        @testset "splitgroup" begin
             sim_a = Simulation(pop_size = 100, label = "ScenarioA")
             run!(sim_a)
             rd_a = sim_a |> PostProcessor |> ResultData
@@ -396,13 +473,13 @@
             rd_b = sim_b |> PostProcessor |> ResultData
 
             # two distinct labels — two side-by-side group plots
-            @test splitlabel(TickCases(), [rd_a, rd_b]) isa Plots.Plot
+            @test splitgroup(TickCases(), [rd_a, rd_b]) isa Plots.Plot
 
             # same label — all runs folded into one group
             sim_c = Simulation(pop_size = 100, label = "ScenarioA")
             run!(sim_c)
             rd_c = sim_c |> PostProcessor |> ResultData
-            @test splitlabel(TickCases(), [rd_a, rd_c]) isa Plots.Plot
+            @test splitgroup(TickCases(), [rd_a, rd_c]) isa Plots.Plot
         end
 
         @testset "Scenario Simulation Plots" begin
@@ -496,6 +573,29 @@
             run!(sim_conf)
             rd_conf = ResultData(sim_conf |> PostProcessor, style = "SettingAgeContactsResultData")
             @test generate(SettingAgeContacts(Household), rd_conf) isa Plots.Plot
+        end
+
+        @testset "TotalTests with BatchData" begin
+            # helper: WelfordState seeded with a few values
+            function make_tick_accum(ticks)
+                Dict(t => (s = WelfordState(); welford_update!(s, Float64(t)); s) for t in ticks)
+            end
+
+            # path 1: isempty(t) → emptyplot (bd has no test data)
+            @test generate(TotalTests(), bd) isa Plots.Plot
+
+            # path 2: single-group (elseif) branch — per_group is empty, top-level tests populated
+            bp_single = BatchProcessor()
+            bp_single.tests["PCR"] = Dict("total_tests" => make_tick_accum(1:5),
+                                          "positive_tests" => make_tick_accum(1:5))
+            @test generate(TotalTests(), BatchData(bp_single)) isa Plots.Plot
+
+            # path 3: multi-group branch — per_group has 2 entries
+            bp_multi = BatchProcessor()
+            bp_multi.tests["PCR"] = Dict("total_tests" => make_tick_accum(1:5))
+            bp_multi.per_group["A"] = BatchProcessor()
+            bp_multi.per_group["B"] = BatchProcessor()
+            @test generate(TotalTests(), BatchData(bp_multi)) isa Plots.Plot
         end
 
         @testset "TotalTests with test data (Vector{ResultData})" begin
