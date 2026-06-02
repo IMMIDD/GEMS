@@ -23,7 +23,7 @@ function reported_tick_cases(postProcessor::PostProcessor)
 
     base = crossjoin(
         DataFrame(tick = collect(Int16, 1:sim_tick)),
-        DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor)))))
+        DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
     counts = if isempty(tests)
         DataFrame(tick = Int16[], pathogen_id = Int8[], reported_cnt = Int64[])

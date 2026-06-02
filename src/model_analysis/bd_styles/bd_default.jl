@@ -84,6 +84,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "total_tests" => () -> total_tests(bP),
                     "total_detected_cases" => () -> total_detected_cases(bP),
                     "detection_rate" => () -> detection_rate(bP),
+                    "pathogen_names" => () -> pathogen_names(bP),
                 ),
 
             "dataframes" =>

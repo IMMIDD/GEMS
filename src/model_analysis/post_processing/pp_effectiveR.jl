@@ -77,7 +77,7 @@ function effectiveR(postProcessor::PostProcessor)
     # join with scaffold of all ticks × pathogens to also get ticks with 0 infections
     full_ticks = crossjoin(
         DataFrame(tick = collect(Int16, 1:tick(sim))),
-        DataFrame(pathogen_id = map(id, pathogens(sim))))
+        DataFrame(pathogen_id = collect(map(id, pathogens(sim)))))
     leftjoin!(full_ticks, eff_r, on = [:tick, :pathogen_id])
     eff_r = full_ticks
 

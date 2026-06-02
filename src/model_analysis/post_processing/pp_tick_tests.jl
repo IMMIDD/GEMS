@@ -49,7 +49,7 @@ function tick_tests(postProcessor::PostProcessor)::Dict
             x -> leftjoin(
                 crossjoin(
                     DataFrame(tick = 1:tick(postProcessor |> simulation)),
-                    DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor))))),
+                    DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor)))))),
                 x, on = [:tick => :test_tick, :pathogen_id]) |>
             x -> coalesce.(x, 0) |>
             x -> sort!(x, [:pathogen_id, :tick]) for (key, group) in pairs(x))

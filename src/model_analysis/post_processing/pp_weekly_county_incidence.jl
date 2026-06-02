@@ -53,7 +53,7 @@ function weekly_county_incidence(postProcessor::PostProcessor)
         df -> combine(df, :size => sum => :size)
 
     # cross with all pathogens so every (ags, pathogen_id) gets an entry
-    cnts = crossjoin(cnts, DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor)))))
+    cnts = crossjoin(cnts, DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
     week = 0
     while (week + 1) * 7 <= ft

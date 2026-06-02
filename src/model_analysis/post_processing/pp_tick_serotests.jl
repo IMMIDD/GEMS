@@ -61,7 +61,7 @@ function tick_serotests(postProcessor::PostProcessor)::Dict
         df = select(df, Not(:test_type))
         df = rename(df, :test_tick => :tick)
         full_df = leftjoin(
-            crossjoin(DataFrame(tick = tickrange), DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor))))),
+            crossjoin(DataFrame(tick = tickrange), DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor)))))),
             df, on = [:tick, :pathogen_id])
         full_df = coalesce.(full_df, 0)
         full_df = sort!(full_df, [:pathogen_id, :tick])

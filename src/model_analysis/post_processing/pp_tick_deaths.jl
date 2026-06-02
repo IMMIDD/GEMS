@@ -30,7 +30,7 @@ function tick_deaths(postProcessor::PostProcessor)::DataFrame
 
     base = crossjoin(
         DataFrame(tick = collect(Int16, 0:tick(simulation(postProcessor)))),
-        DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor)))))
+        DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
     res = leftjoin!(base, deaths, on = [:tick, :pathogen_id]) |>
         x -> transform!(x, :death_cnt => ByRow(x -> coalesce(x, 0)) => :death_cnt) |>

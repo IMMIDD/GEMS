@@ -54,7 +54,12 @@ function generate(plt::InfectionMap, rd::ResultData; plotargs...)
     length(plotargs) > 0 ? @warn("The InfectionMap plot does currently not accept any additional keyworded arguments. Your keyword arguments will be ignored") : nothing
 
     # filter for all infections with geolocations
-    coords = rd |> infections |>
+    infs_raw = infections(rd)
+    if !isa(infs_raw, DataFrame)
+        description!(plt, "Infections data not available in this ResultData object.")
+        return emptyplot("Infections data not available in this ResultData object.")
+    end
+    coords = infs_raw |>
         x -> DataFrames.select(x, :lat, :lon) |>
         x -> filter(row -> (!any(isnan, row)), x)
 

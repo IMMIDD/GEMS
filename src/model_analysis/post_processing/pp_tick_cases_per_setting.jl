@@ -30,7 +30,7 @@ function tick_cases_per_setting(postProcessor::PostProcessor)
 
     # Create a DataFrame with all possible combinations of ticks, settings and pathogens
     full_combinations = crossjoin(all_ticks,
-        crossjoin(DataFrame(setting_type=unique_settings), DataFrame(pathogen_id=map(id, pathogens(simulation(postProcessor))))))
+        crossjoin(DataFrame(setting_type=unique_settings), DataFrame(pathogen_id=collect(map(id, pathogens(simulation(postProcessor)))))))
 
     # Merge with the counted infections and fill missing values with 0
     merged_data = leftjoin(full_combinations, tick_cases, on = [:tick, :setting_type, :pathogen_id]) |>

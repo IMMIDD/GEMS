@@ -5,7 +5,7 @@ export ResultData
 export ResultDataFunction, ResultDataStyle
 
 export meta_data, execution_date, execution_date_formatted, GEMS_version, config_file, config_file_val, population_file, population_params, final_tick
-export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data
+export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data, pathogen_names
 export setting_sizes, globalsetting_flag, pathogens, vaccine, vaccination_strategy, total_quarantines, total_tests
 export tick_unit, start_condition, stop_criterion, strategies, kernel, julia_version
 export system_data, word_size, threads, cpu_data, total_mem_size, free_mem_size, model_size
@@ -492,6 +492,15 @@ Returns an empty dictionary if the data is not available in the input `ResultDat
 """
 function pathogens(rd::ResultData)
     return(get(rd |> sim_data, "pathogens", Dict()))
+end
+
+"""
+    pathogen_names(rd::ResultData)
+
+Returns a `Dict{Int8, String}` mapping pathogen id to pathogen name.
+"""
+function pathogen_names(rd::ResultData)
+    return Dict(id(p) => name(p) for p in pathogens(rd))
 end
 
 """

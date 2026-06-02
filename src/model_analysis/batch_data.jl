@@ -5,7 +5,7 @@ export BatchDataStyle
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export sim_data, runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
+export sim_data, runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines, pathogen_names
 export total_detected_cases, detection_rate
 export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
 export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_group
@@ -472,7 +472,7 @@ Returns aggregated values for cumulative_disease_progressions per tick accross t
 It returns mean, standard deviation, range, and confidence intervals.
 """
 function cumulative_disease_progressions(bd::BatchData)
-    return(get(bd |> dataframes, "cumulative_disease_progressions", DataFrame()))
+    return(get(bd |> dataframes, "cumulative_disease_progressions", Dict()))
 end
 
 """
@@ -502,7 +502,7 @@ Returns aggregated mean generation times per tick across simulation runs as a `D
 Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
 """
 function generation_times(bd::BatchData)
-    return(get(bd |> dataframes, "generation_times", DataFrame()))
+    return(get(bd |> dataframes, "generation_times", Dict()))
 end
 
 """
@@ -563,6 +563,15 @@ Returns aggregated values for the detection rate across simulation runs.
 """
 function detection_rate(bd::BatchData)
     return(get(bd |> sim_data, "detection_rate", ""))
+end
+
+"""
+    pathogen_names(bd::BatchData)
+
+Returns a `Dict{Int8, String}` mapping pathogen id to pathogen name.
+"""
+function pathogen_names(bd::BatchData)
+    return get(bd |> sim_data, "pathogen_names", Dict{Int8, String}())
 end
 
 """
@@ -665,8 +674,8 @@ function Base.show(io::IO, bd::BatchData)
         () -> "\u2514 Dataframes inside: $(bd.data["dataframes"] |> length)"
         () -> "\u2514 Simulation:"
         () -> "  \u2514 Total infections: $(round(infs["mean"], digits = 2)) ($(round(infs["lower_95"], digits = 2)) - $(round(infs["upper_95"], digits = 2)) 95% CI)"
-        () -> "  \u2514 Attack rate: $(round(attr["mean"], digits = 2)) ($(round(attr["lower_95"], digits = 2)) - $(round(attr["upper_95"], digits = 2)) 95% CI)"
-        () -> "  \u2514 Basic reproduction number (R0): $(round(r0vals["mean"], digits = 2)) ($(round(r0vals["lower_95"], digits = 2)) - $(round(r0vals["upper_95"], digits = 2)) 95% CI)"
+        () -> "  \u2514 Attack rate: $(isa(attr, Dict) ? join(["$(get(v,"mean",0.0) |> x -> round(x, digits=2))" for v in values(attr)], ", ") : round(attr["mean"], digits=2))"
+        () -> "  \u2514 Basic reproduction number (R0): $(isa(r0vals, Dict) ? join(["$(get(v,"mean",0.0) |> x -> round(x, digits=2))" for v in values(r0vals)], ", ") : round(r0vals["mean"], digits=2))"
         () -> "  \u2514 Total quarantine days: $(round(quar["mean"], digits = 2)) ($(round(quar["lower_95"], digits = 2)) - $(round(quar["upper_95"], digits = 2)) 95% CI)"
     ]
 

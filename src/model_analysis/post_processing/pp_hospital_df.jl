@@ -28,7 +28,7 @@ function hospital_df(postProcessor::PostProcessor)
     infs = infectionsDF(postProcessor)
     base = crossjoin(
         DataFrame(tick = collect(Int16, 0:tick(simulation(postProcessor)))),
-        DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor)))))
+        DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
     hospital_admissions = infs |>
         df -> DataFrames.select(df, :tick, :pathogen_id, :hospital_admission) |>

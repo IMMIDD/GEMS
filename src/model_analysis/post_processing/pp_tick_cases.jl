@@ -29,7 +29,7 @@ function tick_cases(postProcessor::PostProcessor)::DataFrame
     infs = infectionsDF(postProcessor)
     base = crossjoin(
         DataFrame(tick = collect(Int16, 0:tick(simulation(postProcessor)))),
-        DataFrame(pathogen_id = map(id, pathogens(simulation(postProcessor)))))
+        DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
     exposed = groupby(infs, [:tick, :pathogen_id]) |>
         x -> combine(x, nrow => :exposed_cnt)
