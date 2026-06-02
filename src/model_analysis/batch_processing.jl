@@ -172,11 +172,14 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     end
 
     # Dark figure fraction per tick (non-linear — accumulate the fraction, not raw columns)
+    # Only accumulate ticks where there are active infections: active == 0 means the
+    # epidemic hasn't started or has ended, not that all cases are detected.
     cf = compartment_fill(pp)
     if !isempty(cf) && hasproperty(cf, :exposed_cnt) && hasproperty(cf, :infectious_cnt) && hasproperty(cf, :detected_cnt)
         for row in eachrow(cf)
             active = row[:exposed_cnt] + row[:infectious_cnt]
-            frac = active > 0 ? 1.0 - row[:detected_cnt] / active : 0.0
+            active > 0 || continue
+            frac = 1.0 - row[:detected_cnt] / active
             welford_update!(get!(bp.dark_figure, Int(row[:tick]), WelfordState()), frac)
         end
     end
