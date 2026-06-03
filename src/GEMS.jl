@@ -83,6 +83,7 @@ module GEMS
     include("simulation/batch_methods.jl")
     include("simulation/calibration.jl")
     include("registries/registry_methods.jl")
+    include("population/individual_methods.jl")
 
     # PATHOGEN IMPLEMENTATIONS
     include("pathogen/pathogen_components.jl")
