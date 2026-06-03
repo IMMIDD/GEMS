@@ -4,14 +4,14 @@ export start_conditions
 ### INCLUD STOP CRITERIA
 ###
 
-# The src/termination/stop_criteria folder contains a dedicated file
+# The src/simulation/termination/stop_criteria folder contains a dedicated file
 # for each stopping criterion. Files starting with "sc_" are
 # StopCriteria structs.
 # If you want to set up a new stop criterion, simply add a file to the folder and
 # make sure to define the new struct and the required evaluate()-function.
 
 # include all Julia files from the "stop_criteria"-folder
-dir = basefolder() * "/src/termination/stop_criteria"
+dir = basefolder() * "/src/simulation/termination/stop_criteria"
 
 include.(
     filter(

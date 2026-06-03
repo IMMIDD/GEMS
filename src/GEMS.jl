@@ -48,7 +48,7 @@ module GEMS
     include("globals.jl")
     include("utils.jl")
     include("exceptions.jl")
-    include("logger/Logger.jl")
+    include("logging/Logger.jl")
 
     # INTERVENTION ABSTRACTS
     include("interventions/abstract_structs.jl")
@@ -89,10 +89,10 @@ module GEMS
     include("pathogen/pathogen_components.jl")
 
     # INITALIZATION
-    include("initialization/startconditions.jl")
+    include("simulation/initialization/startconditions.jl")
 
     # TERMINATION
-    include("termination/stopcriteria.jl")
+    include("simulation/termination/stopcriteria.jl")
 
     # INTERVENTIONS
     include("interventions/interventions.jl")

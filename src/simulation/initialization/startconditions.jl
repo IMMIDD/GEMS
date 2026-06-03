@@ -29,14 +29,14 @@ Base.show(io::IO, c::MultiStartCondition) = write(io, "MultiStartCondition($(joi
 ### INCLUDE START CONDITIONS
 ###
 
-# The src/initialization/start_conditions folder contains a dedicated file
+# The src/simulation/initialization/start_conditions folder contains a dedicated file
 # for each start condition. Files starting with "sc_" are
 # StartCondition structs.
 # If you want to set up a new start condition, simply add a file to the folder and
 # make sure to define the new struct and the required initialize!()-function.
 
 # include all Julia files from the "start_conditions"-folder
-dir = basefolder() * "/src/initialization/start_conditions"
+dir = basefolder() * "/src/simulation/initialization/start_conditions"
 
 include.(
     filter(
