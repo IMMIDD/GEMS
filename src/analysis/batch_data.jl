@@ -19,13 +19,13 @@ abstract type BatchDataStyle end
 ### INCLUDE BATCH DATA STYLES
 ###
 
-# The src/model_analysis/bd_styles folder contains a dedicated file
+# The src/analysis/bd_styles folder contains a dedicated file
 # for each BatchDataStyle.
 # If you want to set up a new style, simply add a file to the folder and 
 # make sure to define the respective struct there and export it (using the export statement).
 
 # include all Julia files from the "rd_styles"-folder
-dir = basefolder() * "/src/model_analysis/bd_styles"
+dir = basefolder() * "/src/analysis/bd_styles"
 
 include.(
     filter(

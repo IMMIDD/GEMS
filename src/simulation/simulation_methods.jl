@@ -1,6 +1,6 @@
 #=
 THIS FILE HANDLES THE FUNCTIONALITY TO RUN THE SIMULATION
-Basic functionality is included in structs/simulation.jl. This file
+Basic functionality is included in simulation/simulation.jl. This file
 is mostly comprised of the step! and run! function as well as functionality
 that is dependent on other structs, so it has to be loaded later.
 =#

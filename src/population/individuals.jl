@@ -4,7 +4,6 @@
 
 # EXPORTS
 # types
-export Agent
 export Individual
 # basic attributes
 export age, id, education, occupation, sex
@@ -69,17 +68,12 @@ export progress_disease!
 
 
 
-###
-### ABSTRACT TYPES
-###
-"Supertype for simulation agents"
-abstract type Agent <: Entity end
 
 ###
 ### INDIVIDUALS
 ###
 """
-    Individual <: Agent
+    Individual
 
 A type to represent individuals that act as agents inside the simulation.
 
@@ -130,7 +124,7 @@ A type to represent individuals that act as agents inside the simulation.
     - `quarantine_release_tick::Int16`: End tick of quarantine
     - `quarantine_status::Int8`: Status indicator (none, household, etc.)
 """
-@with_kw_noshow mutable struct Individual <: Agent
+@with_kw_noshow mutable struct Individual
     # GENERAL
     id::Int32                               # 4 bytes
     sex::Int8                               # 1 byte

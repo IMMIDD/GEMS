@@ -128,13 +128,13 @@ end
 ### INCLUDE RESULT DATA STYLES
 ###
 
-# The src/model_analysis/rd_styles folder contains a dedicated file
+# The src/analysis/rd_styles folder contains a dedicated file
 # for each ResultDataStyle.
 # If you want to set up a new style, simply add a file to the folder and 
 # make sure to define the respective struct there and export it (using the export statement).
 
 # include all Julia files from the "rd_styles"-folder
-dir = basefolder() * "/src/model_analysis/rd_styles"
+dir = basefolder() * "/src/analysis/rd_styles"
 
 include.(
     filter(

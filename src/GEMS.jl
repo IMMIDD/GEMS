@@ -42,37 +42,77 @@ module GEMS
     using ZipFile
 
     ### INCLUDES
+
+    # INFRASTRUCTURE
     include("constants.jl")
     include("globals.jl")
     include("utils.jl")
     include("exceptions.jl")
     include("logger/Logger.jl")
+
+    # INTERVENTION ABSTRACTS
     include("interventions/abstract_structs.jl")
     include("interventions/event_queue.jl")
 
-    include("structs.jl") # CORE SIMULATION
-    include("methods.jl") # CORE SIMULATION
+    # CORE SIMULATION - TYPE DEFINITIONS 
+    include("pathogen/disease_progression.jl")
+    include("registries/infection_registry.jl") 
+    include("registries/immunity_registry.jl") 
+    include("registries/test_registry.jl")
+    include("pathogen/pathogens.jl") 
+    include("pathogen/vaccines.jl")
+    include("population/age_groups.jl")
+    include("settings/ags.jl")
+    include("contacts/contact_matrix.jl")
+    include("contacts/contact_sampling.jl")
+    include("population/individuals.jl")
+    include("population/populations.jl")
+    include("settings/settings.jl") 
+    include("settings/settingscontainers.jl")
+    include("simulation/simulation.jl")
+    include("registries/registry_iterators.jl")
+    include("simulation/batch.jl")
 
+    # CORE SIMULATION - METHODS
+    include("rng.jl")
+    include("infections/infections.jl")
+    include("simulation/simulation_methods.jl")
+    include("settings/setting_methods.jl")
+    include("contacts/contact_sampling_methods.jl")
+    include("contacts/contact_matrix_methods.jl")
+    include("simulation/batch_methods.jl")
+    include("simulation/calibration.jl")
+    include("registries/registry_methods.jl")
+
+    # PATHOGEN IMPLEMENTATIONS
     include("pathogen/pathogen_components.jl")
-    include("initialization/startconditions.jl")
-    include("termination/stopcriteria.jl")
-    include("interventions/interventions.jl")
-    
-    include("model_analysis/post_processing.jl")
-    include("model_analysis/result_data.jl")
-    include("model_analysis/batch_processing.jl")
-    include("model_analysis/batch_data.jl")
-    include("model_analysis/contact_structure_analysis/contact_survey.jl")
-    include("model_analysis/contact_structure_analysis/contact_distributions.jl")
-    include("model_analysis/contact_structure_analysis/contact_distribution_plots.jl")
-    include("reporting/reports.jl")
-    include("movie/movie_renderer.jl")
 
+    # INITALIZATION
+    include("initialization/startconditions.jl")
+
+    # TERMINATION
+    include("termination/stopcriteria.jl")
+
+    # INTERVENTIONS
+    include("interventions/interventions.jl")
+
+    # ANALYSIS
+    include("analysis/post_processing.jl")
+    include("analysis/result_data.jl")
+    include("analysis/batch_processing.jl")
+    include("analysis/batch_data.jl")
+    include("analysis/contact_structure_analysis/contact_survey.jl")
+    include("analysis/contact_structure_analysis/contact_distributions.jl")
+    include("analysis/contact_structure_analysis/contact_distribution_plots.jl")
+
+    # REPORTING
+    include("reporting/reports.jl")
+    include("reporting/movie/movie_renderer.jl")
+
+    # etc
     include("init.jl")
     include("main.jl")
-
     include("devTools.jl")
-
     include("runinfo.jl")
 
     function __init__()

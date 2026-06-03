@@ -22,7 +22,7 @@ export contained, contained_type, contains_type
 """
 Supertype for all simulation settings
 """
-abstract type Setting <: Entity end
+abstract type Setting end
 
 #TODO decide whether we need geolocations in settings during the simulation
 

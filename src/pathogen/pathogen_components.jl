@@ -6,7 +6,7 @@ export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
 
-# the main defintion of pathogens is in src/structs/parameters/pathogens.jl
+# the main defintion of pathogens is in src/pathogen/pathogens.jl
 
 
 ###

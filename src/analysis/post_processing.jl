@@ -472,13 +472,13 @@ end
 ### INCLUDE POST PROCESSOR FUNCTIONS
 ###
 
-# The src/model_analysis/post_processor folder contains a dedicated file
+# The src/analysis/post_processor folder contains a dedicated file
 # for each post processor function.
 # If you want to set up a new function, simply add a file to the folder and 
 # make sure to define the respective function there and export it (using the export statement).
 
 # include all Julia files from the "plots"-folder
-dir = basefolder() * "/src/model_analysis/post_processing"
+dir = basefolder() * "/src/analysis/post_processing"
 
 include.(
     filter(

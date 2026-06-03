@@ -1,7 +1,5 @@
 # this file defines constant global variables used throughout the GEMS package
 
-# !!! for the LookUp Table of Terminal states, see structs/parameters/age_strat.jl !!! #
-
 ##################
 # DEFAULT VALUES #
 ##################
