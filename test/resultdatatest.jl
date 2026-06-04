@@ -87,10 +87,10 @@
         @test rd |> population_file |> isfile
         @test rd |> final_tick == sim |> tick
         @test rd |> number_of_individuals == sim |> population |> size
-        @test rd |> total_infections > 0
+        @test sum((rd |> total_infections).total_infections) > 0
         # check if settting type names match
         @test (rd|>setting_data)[!, "setting_type"] |> sort == string.(sim |> settingscontainer |> settingtypes |> collect) |> sort
-        @test rd |> pathogens == [sim |> pathogen]
+        @test rd |> pathogens == collect(sim |> GEMS.pathogens)
         @test rd |> tick_unit == sim |> tickunit
         @test rd |> start_condition == sim |> start_condition
         @test rd |> stop_criterion == sim |> stop_criterion
@@ -331,7 +331,7 @@
 
     @testset "tests(rd) and time_to_detection" begin
         sim = Simulation()
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         add_testtype!(sim, test)
         i_strategy = IStrategy("i_strategy", sim)
         test_measure = GEMS.Test("test", test)
@@ -397,7 +397,7 @@
 
     @testset "tick_pooltests" begin
         sim = Simulation()
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         s_strategy = SStrategy("s_strategy", sim)
         pool_test = PoolTest("Pool Test", test)
         add_measure!(s_strategy, pool_test)
@@ -421,7 +421,7 @@
     @testset "tick_serotests" begin
         # Scenario Setup
         seroprevalence_testing = Simulation()
-        seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+        seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", id(first_pathogen(seroprevalence_testing)), seroprevalence_testing)
         testing = IStrategy("Testing", seroprevalence_testing)
         add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
         trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(120))

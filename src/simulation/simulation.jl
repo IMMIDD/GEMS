@@ -290,6 +290,12 @@ mutable struct Simulation{P<:Tuple}
     # outer constructor with keyword arguments
     # wrapper to _BUILD_Simulation
     function Simulation(; params...)
+        # backward-compat: pathogen (singular) → pathogens (plural)
+        if haskey(params, :pathogen) && !haskey(params, :pathogens)
+            params = merge(NamedTuple(params), (pathogens = params[:pathogen],))
+            params = Base.structdiff(params, NamedTuple{(:pathogen,)}((nothing,)))
+        end
+
         # check if all parameters are known to _BUILD_Simulation
         validkeys = methods(GEMS._BUILD_Simulation) |> first |> Base.kwarg_decl
         errs = setdiff(keys(params), validkeys)
@@ -572,6 +578,7 @@ If neither is provided, it will return the default start condition from the conf
 function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
     # return configfile start condition if nothing else provided
     if isnothing(start_condition) && isnothing(infected_fraction)
+        !haskey(configfile_params, "Simulation") && throw(ConfigfileError("No start condition found in config file!"))
         sim_params = configfile_params["Simulation"]
 
         # array-of-tables form [[Simulation.StartConditions]]
@@ -1706,7 +1713,6 @@ Useful as a convenience function when running single-disease models.
 function first_pathogen(sim::Simulation)
     return first(pathogens(sim))
 end
-
 
 """
     infectionlogger(simulation)

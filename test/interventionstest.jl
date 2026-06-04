@@ -161,18 +161,18 @@
 
     @testset "Testing" begin
 
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         test_measure = GEMS.Test("test", test)
         add_measure!(i_strategy, test_measure)
         add_testtype!(sim, test)
         @test testtypes(sim)[1] === test
 
-        @test_throws ArgumentError TestType("Test", pathogen(sim), sim, sensitivity=2.0)
-        @test_throws ArgumentError TestType("Test", pathogen(sim), sim, specificity=2.0)
+        @test_throws ArgumentError TestType("Test", id(first_pathogen(sim)), sim, sensitivity=2.0)
+        @test_throws ArgumentError TestType("Test", id(first_pathogen(sim)), sim, specificity=2.0)
 
         #Testtype Tests
         @test name(test) === "Test"
-        @test pathogen(test) === pathogen(sim)
+        @test pathogen_id(test) == id(first_pathogen(sim))
         @test sensitivity(test) == 1.0
         @test GEMS.specificity(test) == 1.0
 
@@ -210,7 +210,7 @@
 
         @test follow_up_strategy === i_strategy
 
-        infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
+        infect!(i, Int16(0), first_pathogen(sim), rng = Xoshiro())
         result2 = process_measure(sim, i, test_measure2)
         follow_up_strategy2 = result2.follow_up
 
@@ -219,19 +219,19 @@
 
     @testset "Seroprevalence Testing" begin
 
-        s_test = SeroprevalenceTestType("Sero Test", pathogen(sim), sim)
+        s_test = SeroprevalenceTestType("Sero Test", id(first_pathogen(sim)), sim)
         s_test_measure = GEMS.Test("test", s_test)
         add_measure!(i_strategy, s_test_measure)
         add_testtype!(sim, s_test)
         @test testtypes(sim)[3] == s_test
         println(testtypes(sim))
 
-        @test_throws ArgumentError SeroprevalenceTestType("Test", pathogen(sim), sim, sensitivity=2.0)
-        @test_throws ArgumentError SeroprevalenceTestType("Test", pathogen(sim), sim, specificity=2.0)
+        @test_throws ArgumentError SeroprevalenceTestType("Test", id(first_pathogen(sim)), sim, sensitivity=2.0)
+        @test_throws ArgumentError SeroprevalenceTestType("Test", id(first_pathogen(sim)), sim, specificity=2.0)
 
         #Testtype Tests
         @test name(s_test) == "Sero Test"
-        @test pathogen(s_test) == pathogen(sim)
+        @test pathogen_id(s_test) == id(first_pathogen(sim))
         @test sensitivity(s_test) == 1.0
         @test GEMS.specificity(s_test) == 1.0
 
@@ -263,12 +263,12 @@
             s_test_measure5 = GEMS.Test()
         end
 
-        #test processing measure
-        infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
+        #test processing measure — seroprevalence test: no antibodies → negative result → negative_followup = nothing
+        infect!(i, Int16(0), first_pathogen(sim), rng = Xoshiro())
         result = process_measure(sim, i, s_test_measure2)
         follow_up_strategy = result.follow_up
 
-        @test follow_up_strategy === i_strategy
+        @test follow_up_strategy === nothing
 
     end
 
@@ -292,9 +292,11 @@
         trace_infectious2 = TraceInfectiousContacts(i_strategy3, success_rate=1.0)
         ind1 = first(individuals(sim3))
         ind2 = individuals(sim3)[2]
-        infect!(ind1, Int16(0), pathogen(sim3), rng = Xoshiro())
-        ind1.infectiousness_onset = Int16(0)
-        infect!(ind2, Int16(0), pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = Xoshiro())
+        pid3 = id(first_pathogen(sim3))
+        # seed a blank InfectionState (infectiousness_onset=-1) so earliest_infectiousness_onset returns -1
+        # then infect ind2 at tick=0; get_infections_between finds it in range [-1..0]
+        set_progression!(ind1, pid3)
+        infect!(ind2, Int16(0), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
         contacts = process_measure(sim3, ind1, trace_infectious2)
         @test contacts !== nothing
         @test length(contacts.focal_objects) == 1
@@ -473,7 +475,7 @@
     end
 
     @testset "Pool Test Measure" begin
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         pool_test = PoolTest("Pool Test", test)
         add_measure!(s_strategy, pool_test)
 
@@ -509,7 +511,7 @@
         @test follow_up_strategy === s_strategy
 
         for ind in indis
-            infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
+            infect!(ind, Int16(0), first_pathogen(sim), rng = Xoshiro())
         end
         result2 = process_measure(sim, gs, pool_test2)
         follow_up_strategy2 = result2.follow_up
@@ -520,39 +522,41 @@
     @testset "Vaccinate Measure" begin
         vacc_sim = Simulation()
         fu_strategy = IStrategy("i_strategy", vacc_sim)
-        my_vaccine = Vaccine(id = Int8(1), name = "TestVax")
- 
+        my_vaccine = Vaccine(id = Int8(1), name = "TestVax", target_pathogen_id = Int8(1))
+        vacc_pid = target_pathogen_id(my_vaccine)
+
         # struct and accessors
         vacc_measure = Vaccinate(my_vaccine)
         vacc_with_followup = Vaccinate(my_vaccine, follow_up = fu_strategy)
- 
+
         @test vaccine(vacc_measure) === my_vaccine
         @test follow_up(vacc_measure) === nothing
         @test follow_up(vacc_with_followup) === fu_strategy
- 
+
         # vaccinate an individual
         ind_a = Individual(id = 10, sex = 0, age = 30)
         result = process_measure(vacc_sim, ind_a, vacc_measure)
- 
-        @test isvaccinated(ind_a) == true
-        @test vaccine_id(ind_a) == id(my_vaccine)
-        @test vaccination_tick(ind_a) == tick(vacc_sim)
-        @test number_of_vaccinations(ind_a) == 1
+        vacc_reg_a = immunity_registry(vacc_sim, ind_a)
+
+        @test isvaccinated(ind_a, vacc_reg_a, vacc_pid) == true
+        @test vaccine_id(ind_a, vacc_reg_a, vacc_pid) == id(my_vaccine)
+        @test vaccination_tick(ind_a, vacc_reg_a, vacc_pid) == tick(vacc_sim)
+        @test number_of_vaccinations(ind_a, vacc_reg_a, vacc_pid) == 1
         @test result.focal_objects[1] === ind_a
         @test result.follow_up === nothing
- 
+
         # follow_up strategy is forwarded
         ind_b = Individual(id = 11, sex = 1, age = 25)
         result_b = process_measure(vacc_sim, ind_b, vacc_with_followup)
- 
-        @test isvaccinated(ind_b) == true
+
+        @test isvaccinated(ind_b, immunity_registry(vacc_sim, ind_b), vacc_pid) == true
         @test result_b.focal_objects[1] === ind_b
         @test result_b.follow_up === fu_strategy
  
         # re-vaccination increments dose count
         result_booster = process_measure(vacc_sim, ind_a, vacc_measure)
  
-        @test number_of_vaccinations(ind_a) == 2
+        @test number_of_vaccinations(ind_a, immunity_registry(vacc_sim, ind_a), vacc_pid) == 2
         @test result_booster.focal_objects[1] === ind_a
  
         # measure round-trips through add_measure!
@@ -568,7 +572,7 @@
 
 
     @testset "Test All Measure" begin
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         test_all = TestAll("Test All", test)
         add_measure!(s_strategy, test_all)
 
@@ -606,7 +610,7 @@
         @test follow_up_strategy === s_strategy
 
         for ind in indis2
-            infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
+            infect!(ind, Int16(0), first_pathogen(sim), rng = Xoshiro())
         end
         result2 = process_measure(sim, gs2, test_all2)
         follow_up_strategy2 = result2.follow_up
@@ -818,7 +822,7 @@
         custom_s_strategy = SStrategy("custom s strategy", sim)
         add_measure!(custom_s_strategy, custom_s_measure)
 
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         test_measure = GEMS.Test("test", test, negative_followup=custom_i_strategy)
         test_all_measure = TestAll("test", test, negative_followup=custom_s_strategy)
 

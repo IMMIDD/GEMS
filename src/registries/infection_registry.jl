@@ -101,6 +101,8 @@ struct InfectionRegistry
         sizehint!(free_slots, capacity)
         return new(states, free_slots)
     end
+
+    InfectionRegistry() = new(InfectionState[], Int32[])
 end
 
 

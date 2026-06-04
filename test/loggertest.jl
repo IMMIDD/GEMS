@@ -7,6 +7,7 @@
             "infection_id",
             "id_a",
             "id_b",
+            "pathogen_id",
             "progression_category",
             "infectiousness_onset",
             "symptom_onset",
@@ -44,6 +45,7 @@
                 logger = il,
                 a = Int32(0),
                 b = Int32(0),
+                pathogen_id = Int8(0),
                 progression_category = Symbol(Asymptomatic),
                 tick = Int16(0),
                 infectiousness_onset = Int16(0),
@@ -104,7 +106,7 @@
             h = household(infectee, sim)
 
             # infect one agent
-            infect!(infecter, t, pathogen(sim), sim = sim, rng = rng(sim))
+            infect!(infecter, t, first_pathogen(sim), sim = sim, rng = rng(sim))
             
             # flatten logger internal arrays to a dataframe to check values
             df1 = dataframe(il)
@@ -133,7 +135,7 @@
 
             # infect another agent in a household setting
             t = df1.infectiousness_onset[end]
-            infect!(infectee, t, pathogen(sim);
+            infect!(infectee, t, first_pathogen(sim);
                 sim=sim,
                 rng=rng(sim),
                 infecter_id=id(infecter),
@@ -170,7 +172,7 @@
     end
 
     @testset "VaccinationLogger" begin
-        attributes = ["id", "tick"]
+        attributes = ["id", "pathogen_id", "tick"]
 
         @testset "Creation and Basic Functionality" begin
             vl = VaccinationLogger()
@@ -181,7 +183,7 @@
                 @test sum(length, getproperty(vl, Symbol(attr))) == 0
             end
 
-            log!(vl, Int32(0), Int16(0))
+            log!(vl, Int32(0), Int8(0), Int16(0))
 
             # test that last_modified_tick was updated by the log! function
             @test vl.last_modified_tick[] == Int16(0)
@@ -207,7 +209,7 @@
     end
 
     @testset "DeathLogger" begin
-        attributes = ["id", "tick"]
+        attributes = ["id", "pathogen_id", "tick"]
 
         @testset "Creation and Basic Functionality" begin
             dl = DeathLogger()
@@ -218,7 +220,7 @@
                 @test sum(length, getproperty(dl, Symbol(attr))) == 0
             end
 
-            log!(dl, Int32(0), Int16(0))
+            log!(dl, Int32(0), Int8(0), Int16(0))
 
             # test that last_modified_tick was updated by the log! function
             @test dl.last_modified_tick[] == Int16(0)

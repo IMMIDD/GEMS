@@ -15,7 +15,7 @@ export is_working, is_student, has_municipality
 # health status
 export comorbidities, has_comorbidity
 export is_infected, isinfected, infected, infected!
-export is_infectious, isinfectious, infectious
+export is_infectious, isinfectious, infectious, infectious!
 export is_exposed, isexposed, exposed
 export is_presymptomatic, ispresymptomatic, presymptomatic
 export is_symptomatic, issymptomatic, symptomatic, symptomatic!
@@ -558,14 +558,13 @@ is_dead(individual::Individual) = individual.dead
 isdead(individual::Individual) = is_dead(individual)
 dead(individual::Individual) = is_dead(individual)
 
+
 """
-    dead!(individual::Individual, pathogen_id::Int8, dead::Bool)
+    dead!(individual::Individual, dead::Bool)
 
 Set the `dead` flag of the individual.
 """
-function dead!(individual::Individual, pathogen_id::Int8, dead::Bool)
-    individual.dead = dead
-end
+dead!(individual::Individual, dead::Bool) = (individual.dead = dead)
 
 """
     is_detected(individual::Individual)
@@ -595,6 +594,15 @@ function detected!(individual::Individual, pathogen_id::Int8, val::Bool)
     else
         individual.detected_mask &= ~(UInt32(1) << (pathogen_id - 1))
     end
+end
+
+"""
+    detected!(individual::Individual, val::Bool)
+
+Set or clear the detected flag for all pathogens (sets all bits of `detected_mask`).
+"""
+function detected!(individual::Individual, val::Bool)
+    individual.detected_mask = val ? ~UInt32(0) : UInt32(0)
 end
 
 

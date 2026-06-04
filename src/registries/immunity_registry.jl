@@ -67,5 +67,7 @@ struct ImmunityRegistry
         sizehint!(free_slots, capacity)
         return new(states, free_slots)
     end
+
+    ImmunityRegistry() = new(ImmunityState[], Int32[])
 end
 

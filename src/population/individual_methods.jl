@@ -27,6 +27,7 @@ export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 # disease progression engine
 export update_immunity!
 export progress_disease!
+export set_progression!
 
 
 # --- Registry GETTERS ---
@@ -643,6 +644,44 @@ number_of_vaccinations(individual::Individual, sim::Simulation, pathogen_id::Int
 
 
 """
+    set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
+
+Applies `dp` directly to `ind` by writing an active `InfectionState` into the individual's
+infection cache, bypassing the normal simulation buffer and flush cycle.
+The individual is immediately visible as infected for `pathogen_id` without needing a running
+`Simulation` or a call to `step!`.
+"""
+function set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
+    push_infection!(InfectionRegistry(), ind, pathogen_id, DEFAULT_INFECTION_ID, dp)
+    infected!(ind, true)
+    ind.active_pathogens_mask |= (UInt32(1) << (pathogen_id - 1))
+    return nothing
+end
+
+"""
+    set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
+
+Seeds an active `InfectionState` with all fields set to `DEFAULT_TICK` (i.e. -1).
+Useful when you need an active infection slot for a specific pathogen without
+constraining any timeline values.
+"""
+function set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
+    blank = InfectionState(
+        DEFAULT_INFECTION_ID, Int32(0),
+        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
+        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
+        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
+        Int8(0), pathogen_id, true
+    )
+    ind.infection_cache = Base.setindex(ind.infection_cache, blank, 1)
+    infected!(ind, true)
+    ind.active_pathogens_mask |= (UInt32(1) << (pathogen_id - 1))
+    return nothing
+end
+
+
+
+"""
     _immunity_level_and_stable(pathogen, state, individual, tick, rng)
 
 Function barrier that extracts the `ImmunityProfile` from `pathogen` and calls `calculate_immunity` and `immunity_is_stable`.
@@ -730,7 +769,7 @@ end
 Handles the health flags and memory-management when an individual dies.
 """
 @inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{Tuple{Int32,Int32}})
-    dead!(individual, pathogen_id, true)
+    individual.dead = true
 
     individual.killing_pathogen_id = pathogen_id
     individual.active_pathogens_mask = 0

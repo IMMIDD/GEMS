@@ -59,7 +59,7 @@ function generate(plt::CumulativeIsolations, rd::ResultData; plotargs...)
     # add description
     desc = "This stracked graph shows the number of individuals who are currently "
     desc *= "in household isolation at any given time during the simuation. "
-    desc *= "A total of $(format(rd |> total_quarantines, commas=true)) person-$(uticks)s were spent in isolation "
+    desc *= "A total of $(format(Int(rd |> total_quarantines), commas=true)) person-$(uticks)s were spent in isolation "
     desc *= "(area below the curve(s)). $(format((rd |> cumulative_quarantines).students |> sum, commas = true)) "
     desc *= "school-$(uticks)s were lost as well as $(format((rd |> cumulative_quarantines).workers |> sum, commas = true)) "
     desc *= "work-$(uticks)s"

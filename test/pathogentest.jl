@@ -76,11 +76,11 @@
         @test name(p) == "TestPathogen"
         @test id(p) == 5
         @test length(progressions(p)) == 5
-        @test progressions(p)[Asymptomatic] === pr_asymp
-        @test progressions(p)[Symptomatic] === pr_sympt
-        @test progressions(p)[Severe] === pr_sev
-        @test progressions(p)[Hospitalized] === pr_hosp
-        @test progressions(p)[Critical] === pr_crit
+        @test get_progression(p, Asymptomatic) === pr_asymp
+        @test get_progression(p, Symptomatic) === pr_sympt
+        @test get_progression(p, Severe) === pr_sev
+        @test get_progression(p, Hospitalized) === pr_hosp
+        @test get_progression(p, Critical) === pr_crit
         @test progression_assignment(p) === paf
         @test transmission_function(p) === ctf
 
@@ -180,7 +180,7 @@
         )
 
         @test length(progressions(p_custom)) == 1
-        @test progressions(p_custom)[TestProgression] === tp
+        @test get_progression(p_custom, TestProgression) === tp
         @test tp.custom_parameter == 0.75
 
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
@@ -388,24 +388,25 @@
         test_ctr = ConstantTransmissionRate(transmission_rate = 0.3)
         @test test_ctr.transmission_rate == 0.3
 
-        sim = Simulation(pop_size = 1000)
+        # single-pathogen sim with explicit setup to ensure infecter is infectious
+        p_ctr = Pathogen(id=1, name="TestCTR",
+            progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=7)],
+            transmission_function=test_ctr)
+        sim = Simulation(pop_size=1000, pathogens=(p_ctr,), infected_fraction=0.0)
+        infecter = individuals(sim)[1]
+        suscpt_ind = individuals(sim)[2]
+        # infect and advance disease to make infectious
+        infect!(infecter, Int16(0), first_pathogen(sim), rng=Xoshiro())
+        GEMS.update_individual!(infecter, Int16(1), sim)
 
-        # infected individuals
-        infctd = individuals(sim) |>
-            i -> i[infected.(i)]
-
-        # susceptible individuals
-        suscpt = individuals(sim) |>
-            i -> i[.!infected.(i)]
-
-        @test transmission_probability(test_ctr, infctd[1], suscpt[1], households(sim)[1], Int16(1)) == 0.3
+        @test transmission_probability(test_ctr, id(first_pathogen(sim)), infecter, suscpt_ind, households(sim)[1], Int16(1), sim) == 0.3
 
         # THINGS THAT SHOULD NOT WORK
         @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = -0.1)
         @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = 1.5)
 
         # call with uninfected infecter
-        @test_throws ArgumentError transmission_probability(test_ctr, suscpt[1], suscpt[2], households(sim)[1], Int16(1))
+        @test_throws ArgumentError transmission_probability(test_ctr, id(first_pathogen(sim)), suscpt_ind, individuals(sim)[3], households(sim)[1], Int16(1), sim)
 
         # AGE BASED TRANSMISSION RATE
         # THINGS THAT SHOULD WORK
@@ -486,12 +487,14 @@
 
         function GEMS.transmission_probability(
                 transFunc::KidsOnlyTransmission,
+                pathogen_id::Int8,
                 infecter::Individual,
                 infectee::Individual,
                 setting::Setting,
-                tick::Int16
+                tick::Int16,
+                sim::GEMS.Simulation
             )::Float64
-            
+
             if age(infecter) < 15 && age(infectee) < 15
                 return transFunc.base_rate
             else

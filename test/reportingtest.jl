@@ -42,9 +42,9 @@
         @test markdown(stop_crits) |> typeof == String
 
         # Pathogens & Vaccines
-        @test sim |> pathogen |> markdown |> typeof == String
+        @test sim |> first_pathogen |> markdown |> typeof == String
 
-        v = Vaccine(id=1, name="Antitest")
+        v = Vaccine(id=1, name="Antitest", target_pathogen_id=Int8(1))
         md_vac = markdown(v)
         @test md_vac |> typeof == String
         @test occursin("Antitest", md_vac)
@@ -490,7 +490,7 @@
 
             #Isolation and Test Scenario
             scenario = Simulation(label="Scenario")
-            PCR_Test = TestType("PCR Test", pathogen(scenario), scenario)
+            PCR_Test = TestType("PCR Test", id(first_pathogen(scenario)), scenario)
             self_isolation = IStrategy("Self Isolation", scenario)
             add_measure!(self_isolation, SelfIsolation(14))
             testing = IStrategy("Testing", scenario)
@@ -525,7 +525,7 @@
         end
         @testset "Seroprevalence-Testing-Plot" begin
             seroprevalence_testing = Simulation()
-            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", id(first_pathogen(seroprevalence_testing)), seroprevalence_testing)
             testing = IStrategy("Testing", seroprevalence_testing)
             add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
             trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(120))
@@ -601,7 +601,7 @@
         @testset "TotalTests with test data (Vector{ResultData})" begin
             function make_rd_with_tests()
                 s = Simulation()
-                test = TestType("PCR", pathogen(s), s)
+                test = TestType("PCR", id(first_pathogen(s)), s)
                 strat = IStrategy("Testing", s)
                 add_measure!(strat, GEMS.Test("Test", test))
                 add_symptom_trigger!(s, SymptomTrigger(strat))

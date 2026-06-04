@@ -138,7 +138,7 @@
             @test bd |> cumulative_disease_progressions |> length != 0
             # 6 new dataframe getters (may be empty when model features unused)
             @test bd |> dark_figure isa DataFrame
-            @test bd |> generation_times isa DataFrame
+            @test bd |> generation_times isa Dict  # per-pathogen in multipathogen
             @test bd |> hospitalizations isa Dict
             @test bd |> observed_R isa Dict
             @test bd |> pool_tests isa Dict
@@ -187,7 +187,7 @@
 
             # The representative run is the bit-identical replay of the median-closest simulation,
             # so its total infections must equal that simulation's criterion value
-            @test total_infections(median_run(bp)) == Int(criteria[best_idx])
+            @test sum(total_infections(median_run(bp)).total_infections) == Int(criteria[best_idx])
         end
 
         @testset "RepresentativeRunMultiGroup" begin
@@ -249,16 +249,16 @@
         end
 
         @testset "MultiColumnAccessors" begin
-            # tick_cases, effectiveR, cumulative_quarantines now return Dict
+            # tick_cases and effectiveR now return Dict{Int8, Dict{String, DataFrame}} (per-pathogen)
             tc = tick_cases(bP)
             @test tc isa Dict
-            @test haskey(tc, "exposed_cnt")
-            @test haskey(tc, "dead_cnt")
-            @test nrow(tc["exposed_cnt"]) > 0
+            @test haskey(first(values(tc)), "exposed_cnt")
+            @test haskey(first(values(tc)), "dead_cnt")
+            @test nrow(first(values(tc))["exposed_cnt"]) > 0
 
             er = effectiveR(bP)
             @test er isa Dict
-            @test haskey(er, "rolling_R")
+            @test haskey(first(values(er)), "rolling_R")
 
             cq = cumulative_quarantines(bP)
             @test cq isa Dict
@@ -277,8 +277,8 @@
         @testset "AccumulateTestLoops" begin
             # test all three test-type loops in a single run
             sim = Simulation(pop_size = 100, infected_fraction = 0.1)
-            pcr = TestType("PCR", pathogen(sim), sim)
-            sero = SeroprevalenceTestType("Sero", pathogen(sim), sim)
+            pcr = TestType("PCR", id(first_pathogen(sim)), sim)
+            sero = SeroprevalenceTestType("Sero", id(first_pathogen(sim)), sim)
 
             test_strat = IStrategy("Testing", sim)
             add_measure!(test_strat, GEMS.Test("t", pcr))

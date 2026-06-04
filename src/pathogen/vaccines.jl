@@ -2,7 +2,7 @@
 ### VACCINES (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export Vaccine
-export id, name, waning, logger
+export id, name, waning, logger, target_pathogen_id
 
 """
     Vaccine
@@ -29,7 +29,7 @@ end
 
 Returns the unique identifier of the vaccine.
 """
-function id(vaccine::Vaccine)::Int16
+function id(vaccine::Vaccine)::Int8
     return vaccine.id
 end
 

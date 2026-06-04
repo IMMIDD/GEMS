@@ -67,7 +67,7 @@
         @testset "serotestsDF" begin
             # Scenario Setup
             seroprevalence_testing = Simulation()
-            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", id(first_pathogen(seroprevalence_testing)), seroprevalence_testing)
             testing = IStrategy("Testing", seroprevalence_testing)
             add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
             trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(120))

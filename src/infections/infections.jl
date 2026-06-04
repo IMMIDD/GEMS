@@ -67,37 +67,42 @@ function infect!(infectee::Individual,
     prog = get_progression(pathogen.progressions, pc)
     dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
 
-    # log infection
-    new_infection_id = log!(
-        infectionlogger(sim),
-        infecter_id,
-        id(infectee),
-        id(pathogen),
-        nameof(pc),
-        tick,
-        infectiousness_onset(dp),
-        symptom_onset(dp),
-        severeness_onset(dp),
-        hospital_admission(dp),
-        hospital_discharge(dp),
-        icu_admission(dp),
-        icu_discharge(dp),
-        ventilation_admission(dp),
-        ventilation_discharge(dp),
-        severeness_offset(dp),
-        recovery(dp),
-        death(dp),
-        setting_id,
-        setting_type,
-        lat,
-        lon,
-        ags,
-        source_infection_id
-    )
-
-    # stage for serial flush after the threaded phase
-    shard_id = owner_shard(id(infectee))
-    push!(sim.infection_buffers[Threads.threadid(), shard_id], PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
+    if isnothing(sim)
+        # no simulation context — store InfectionState directly in the individual's cache
+        new_infection_id = DEFAULT_INFECTION_ID
+        push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp)
+    else
+        # log infection
+        new_infection_id = log!(
+            infectionlogger(sim),
+            infecter_id,
+            id(infectee),
+            id(pathogen),
+            nameof(pc),
+            tick,
+            infectiousness_onset(dp),
+            symptom_onset(dp),
+            severeness_onset(dp),
+            hospital_admission(dp),
+            hospital_discharge(dp),
+            icu_admission(dp),
+            icu_discharge(dp),
+            ventilation_admission(dp),
+            ventilation_discharge(dp),
+            severeness_offset(dp),
+            recovery(dp),
+            death(dp),
+            setting_id,
+            setting_type,
+            lat,
+            lon,
+            ags,
+            source_infection_id
+        )
+        # stage for serial flush after the threaded phase
+        shard_id = owner_shard(id(infectee))
+        push!(sim.infection_buffers[Threads.threadid(), shard_id], PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
+    end
 
     # increase lifetime number of infections
     inc_number_of_infections!(infectee)
