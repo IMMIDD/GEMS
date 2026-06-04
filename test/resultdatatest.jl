@@ -342,13 +342,13 @@
         run!(sim)
         rd = sim |> PostProcessor |> ResultData
         df = tests(rd)
-        @test all(row -> row.test_tick == 1, eachrow(df))
+        @test all(row -> row.tick == 1, eachrow(df))
 
         @test isa(df, DataFrame)
         @test nrow(df) > 0
 
         expected_cols = [
-            "test_id", "test_tick", "id", "test_result", "infected", "infection_id",
+            "test_id", "tick", "id", "test_result", "infected", "infection_id",
             "test_type", "reportable", "sex", "age", "number_of_vaccinations",
             "vaccination_tick", "education", "occupation", "household", "office", "schoolclass"
         ]

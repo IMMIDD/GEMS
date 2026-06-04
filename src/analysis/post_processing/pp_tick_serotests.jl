@@ -38,7 +38,7 @@ function tick_serotests(postProcessor::PostProcessor)::Dict
     ]...)
 
     # Step 2: Aggregate by test_type, pathogen and tick
-    agg = combine(groupby(sero, [:test_type, :pathogen_id, :test_tick]),
+    agg = combine(groupby(sero, [:test_type, :pathogen_id, :tick]),
         :true_positive => sum => :true_positives,
         :false_positive => sum => :false_positives,
         :true_negative => sum => :true_negatives,
@@ -59,7 +59,6 @@ function tick_serotests(postProcessor::PostProcessor)::Dict
 
     for (test_type, df) in pairs(groupby(agg, :test_type))
         df = select(df, Not(:test_type))
-        df = rename(df, :test_tick => :tick)
         full_df = leftjoin(
             crossjoin(DataFrame(tick = tickrange), DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor)))))),
             df, on = [:tick, :pathogen_id])

@@ -28,7 +28,7 @@ function tick_pooltests(postProcessor::PostProcessor)::Dict
     end
 
     tick_tests = postProcessor |> pooltestsDF |>
-        x -> groupby(x, [:test_type, :pathogen_id, :test_tick]) |>
+        x -> groupby(x, [:test_type, :pathogen_id, :tick]) |>
         x -> combine(x, [:test_result] => (x -> (positive_tests=count(x .== true), negative_tests=count(x .==false))) => AsTable) |>
         x -> transform(x, [:positive_tests, :negative_tests] => (+) => :total_tests) |>
         x -> groupby(x, :test_type) |>
@@ -38,7 +38,7 @@ function tick_pooltests(postProcessor::PostProcessor)::Dict
                 crossjoin(
                     DataFrame(tick = 1:tick(postProcessor |> simulation)),
                     DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor)))))),
-                x, on = [:tick => :test_tick, :pathogen_id]) |>
+                x, on = [:tick, :pathogen_id]) |>
             x -> coalesce.(x, 0) |>
             x -> sort!(x, [:pathogen_id, :tick]) for (key, group) in pairs(x))
 

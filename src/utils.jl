@@ -859,7 +859,9 @@ function clean_result!(dict::Dict)
             dict[key] = [Dict("type" => string(typeof(v))) for v in val]
         elseif isa(val, Pathogen) || isa(val, Vaccine)
             dict[key] = Dict("id" => id(val), "name" => name(val))
-        elseif isa(val, Vector{<:Pathogen}) || isa(val, Vector{<:Vaccine})
+        elseif isa(val, AbstractVector) && !isempty(val) && isa(first(val), Pathogen)
+            dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
+        elseif isa(val, AbstractVector) && !isempty(val) && isa(first(val), Vaccine)
             dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
         elseif isa(val, Dict)
             clean_result!(dict[key])

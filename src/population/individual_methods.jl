@@ -529,25 +529,25 @@ was_reported(individual::Individual, pathogen_id::Int8, sim::Simulation) = get_t
 
 
 """
-    record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
+    record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
 
 Records a test outcome into the `TestRegistry` for `(ind, pathogen_id)` and
 updates `ind.detected_mask` if the test is a positive reportable result.
 """
-@inline function record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
+@inline function record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
     detected = test_result && reportable
-    set_test_state!(tests, id(ind), pathogen_id, test_tick, test_result, detected)
+    set_test_state!(tests, id(ind), pathogen_id, tick, test_result, detected)
     detected && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
     return nothing
 end
 
 """
-    record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
+    record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
 
 Convenience wrapper that routes to the correct `TestRegistry` shard.
 """
-function record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, test_tick::Int16, test_result::Bool, reportable::Bool)
-    record_test!(individual, test_registry(sim, individual), pathogen_id, test_tick, test_result, reportable)
+function record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
+    record_test!(individual, test_registry(sim, individual), pathogen_id, tick, test_result, reportable)
 end
 
 

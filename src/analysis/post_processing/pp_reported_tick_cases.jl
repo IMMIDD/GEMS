@@ -28,7 +28,6 @@ function reported_tick_cases(postProcessor::PostProcessor)
     counts = if isempty(tests)
         DataFrame(tick = Int16[], pathogen_id = Int8[], reported_cnt = Int64[])
     else
-        rename!(tests, :test_tick => :tick) |>
         x -> groupby(x, [:tick, :pathogen_id]) |>
         x -> combine(x, nrow => :reported_cnt)
     end

@@ -52,7 +52,7 @@ end
     generate(plt::DetectedCases, rd::ResultData; plotargs...)
 
 Generates and returns a new-DETECTED-cases-per-tick plot for a provided simulation object.
-Sorts infections dataframe by `test_tick` and filters for tested individuals.
+Sorts infections dataframe by `tick` and filters for tested individuals.
 You can pass any additional keyword arguments using `plotargs...` that are available in the `Plots.jl` package.
 
 # Parameters

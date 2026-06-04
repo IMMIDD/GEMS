@@ -32,28 +32,27 @@ function detected_tick_cases(postProcessor::PostProcessor)
     end
 
     return postProcessor |> testsDF |>
-        x -> DataFrames.select(x, :test_id, :test_tick, :test_result, :infection_id, :infected, :reportable, :pathogen_id) |>
+        x -> DataFrames.select(x, :test_id, :tick, :test_result, :infection_id, :infected, :reportable, :pathogen_id) |>
         x -> x[x.reportable, :] |>
         x -> leftjoin(x,
             x[x.infection_id .> 0, :] |>
                 (y -> isempty(y) ? DataFrame(infection_id = [], detection_test_id = [], first_detected_at = []) :
                     groupby(y, :infection_id) |>
                     z-> combine(z,
-                        [:test_tick, :test_id] => ((tick, id) -> id[argmin(tick)]) => :detection_test_id,
-                        :test_tick => minimum => :first_detected_at)),
+                        [:tick, :test_id] => ((tick, id) -> id[argmin(tick)]) => :detection_test_id,
+                        :tick => minimum => :first_detected_at)),
             on = :infection_id) |>
         x -> transform(x,
             [:test_id, :detection_test_id, :infected] => ByRow((id, first_id, inf) -> (inf && id == first_id)) => :detecting_test) |>
         x -> transform(x,
             [:infected, :detecting_test] => ByRow((i, d) -> i && !d) => :double_report,
             :infected => ByRow(i -> !i) => :false_positive) |>
-        x -> groupby(x, [:test_tick, :pathogen_id]) |>
+        x -> groupby(x, [:tick, :pathogen_id]) |>
         x -> combine(x,
             nrow => :total_reported_cases,
             :detecting_test => sum => :new_detections,
             :double_report => sum => :double_reports,
             :false_positive => sum => :false_positives) |>
-        x -> rename(x, :test_tick => :tick) |>
         x -> rightjoin(x, postProcessor |> tick_cases, on = [:tick, :pathogen_id]) |>
         x -> DataFrames.select(x,
             :tick,

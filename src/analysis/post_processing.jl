@@ -192,8 +192,8 @@ reportable test.
 function detection_ticks(testDF::DataFrame)
     return testDF |>
         x -> subset(x, :test_result => ByRow(identity), :infected => ByRow(identity), :reportable => ByRow(identity), view=true) |>
-        x -> DataFrames.select(x, :infection_id, :test_tick, :test_type) |>
-        x -> rename!(x, :test_tick => :first_detected_tick) |>
+        x -> DataFrames.select(x, :infection_id, :tick, :test_type) |>
+        x -> rename!(x, :tick => :first_detected_tick) |>
         x -> (isempty(x) ? x : groupby(x, :infection_id)) |>
         x -> isempty(x) ? x : combine(x,
             [:first_detected_tick, :test_type] => ((tick, type) -> type[argmin(tick)]) => :test_type,
@@ -333,7 +333,7 @@ obtain personal characteristics about the testees.
 
 | Name                     | Type     | Description                                        |
 | :----------------------- | :------- | :------------------------------------------------- |
-| `test_tick`              | `Int16`  | Tick of the test event                             |
+| `tick`              | `Int16`  | Tick of the test event                             |
 | `id`                     | `Int32`  | Individual's id                                    |
 | `test_result`            | `Bool`   | Test result                                        |
 | `infected`               | `Bool`   | Individual's current infection state               |
@@ -365,7 +365,7 @@ Returns the internal flat pool tests `DataFrame`.
 
 | Name                | Type     | Description                                    |
 | :------------------ | :------- | :--------------------------------------------- |
-| `test_tick`         | `Int16`  | Tick of the test event                         |
+| `tick`         | `Int16`  | Tick of the test event                         |
 | `setting_id`        | `Int32`  | Setting id of the tested pool                  |
 | `setting_type`      | `Int32`  | Setting type                                   |
 | `test_result`       | `Bool`   | Test result (pos./neg.)                        |
@@ -394,7 +394,7 @@ It is based on the data logged by the `SeroprevalenceLogger`.
 | Name           | Type     | Description                                                    |
 | :------------- | :------- | :------------------------------------------------------------- |
 | `test_id`      | `Int32`  | Unique test ID within the logger                               |
-| `test_tick`    | `Int16`  | Tick at which the test was performed                           |
+| `tick`    | `Int16`  | Tick at which the test was performed                           |
 | `id`           | `Int32`  | ID of the individual tested                                    |
 | `test_result`  | `Bool`   | Result of the test (`true` = positive, `false` = negative)     |
 | `infected`     | `Bool`   | Whether the individual was infected at the time of the test    |

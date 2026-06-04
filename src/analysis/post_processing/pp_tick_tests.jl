@@ -38,11 +38,11 @@ function tick_tests(postProcessor::PostProcessor)::Dict
         x -> combine(x, nrow => :reported_cases)
 
     tick_tests = postProcessor |> testsDF |>
-        x -> groupby(x, [:test_type, :pathogen_id, :test_tick]) |>
+        x -> groupby(x, [:test_type, :pathogen_id, :tick]) |>
         x -> combine(x, [:test_result] => (x -> (positive_tests=count(x .== true), negative_tests=count(x .==false))) => AsTable) |>
         x -> transform(x, [:positive_tests, :negative_tests] => (+) => :total_tests, copycols = false) |>
         x -> transform(x, [:positive_tests, :total_tests] => ByRow((p, t) -> p / t) => :positive_rate, copycols = false) |>
-        x -> leftjoin(x, detected_cases, on = [:test_type, :pathogen_id, :test_tick => :first_detected_tick]) |>
+        x -> leftjoin(x, detected_cases, on = [:test_type, :pathogen_id, :tick => :first_detected_tick]) |>
         x -> groupby(x, :test_type) |>
         x -> Dict(key.test_type => DataFrame(group) |>
             x -> DataFrames.select(x, Not(:test_type)) |>
@@ -50,7 +50,7 @@ function tick_tests(postProcessor::PostProcessor)::Dict
                 crossjoin(
                     DataFrame(tick = 1:tick(postProcessor |> simulation)),
                     DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor)))))),
-                x, on = [:tick => :test_tick, :pathogen_id]) |>
+                x, on = [:tick, :pathogen_id]) |>
             x -> coalesce.(x, 0) |>
             x -> sort!(x, [:pathogen_id, :tick]) for (key, group) in pairs(x))
 

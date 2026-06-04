@@ -80,7 +80,7 @@
 
             # Expected column names
             expected_cols = [
-                "test_id", "test_tick", "id", "test_result", "infected",
+                "test_id", "tick", "id", "test_result", "infected",
                 "was_infected", "infection_id", "test_type"
             ]
             @test all(col -> col in names(df), expected_cols)
@@ -89,7 +89,7 @@
             @test nrow(df) > 0
 
             @test isa(df.test_id, Vector{Int32})
-            @test isa(df.test_tick, Vector{Int16})
+            @test isa(df.tick, Vector{Int16})
             @test isa(df.id, Vector{Int32})
             @test isa(df.test_result, Vector{Bool})
             @test isa(df.infected, Vector{Bool})
@@ -98,7 +98,7 @@
             @test isa(df.test_type, Vector{String})
 
             @test all(df.infection_id .>= -1)
-            @test all(df.test_tick .>= 0)
+            @test all(df.tick .>= 0)
 
             result = tick_serotests(pp)
 
