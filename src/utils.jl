@@ -474,14 +474,22 @@ end
 
 Pretty-prints the outcomes of an `aggregate_values()` function call.
 """
+function print_aggregates(agg::Dict{<:Integer, <:Dict}; unit::String = "", multiplier = 1, digits::Int = 2)
+    parts = [
+        "Pathogen $pid: " * print_aggregates(inner; unit, multiplier, digits)
+        for (pid, inner) in sort(collect(agg), by = first)
+    ]
+    return join(parts, "; ")
+end
+
 function print_aggregates(agg::Dict; unit::String = "", multiplier = 1, digits::Int = 2)
 
     u = unit |> length <= 1 ? unit : " " * unit
 
     return(
-        "$(round(multiplier*agg["mean"], digits = digits))$(u), " * 
-        "std: $(round(multiplier*agg["std"], digits = digits))$(u), " *  
-        "95-CI: " *  
+        "$(round(multiplier*agg["mean"], digits = digits))$(u), " *
+        "std: $(round(multiplier*agg["std"], digits = digits))$(u), " *
+        "95-CI: " *
         "[" *
             "$(round(multiplier*agg["lower_95"], digits = digits))" *
             "-" *
@@ -863,10 +871,18 @@ function clean_result!(dict::Dict)
             dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
         elseif isa(val, AbstractVector) && !isempty(val) && isa(first(val), Vaccine)
             dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
+        elseif isa(val, Tuple) && !isempty(val) && isa(first(val), Pathogen)
+            dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
         elseif isa(val, Dict)
             clean_result!(dict[key])
             if length(dict[key]) == 0
                 delete!(dict, key)
+            end
+        elseif !isa(val, Number) && !isa(val, AbstractString) && !isa(val, Bool) && !isnothing(val)
+            try
+                JSON.json(val)  # test if serializable
+            catch
+                dict[key] = string(typeof(val))  # fall back to type name
             end
         end
     end

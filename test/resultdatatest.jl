@@ -349,8 +349,9 @@
 
         expected_cols = [
             "test_id", "tick", "id", "test_result", "infected", "infection_id",
-            "test_type", "reportable", "sex", "age", "number_of_vaccinations",
-            "vaccination_tick", "education", "occupation", "household", "office", "schoolclass"
+            "test_type", "reportable", "sex", "age",
+            "education", "occupation", "household", "office", "schoolclass",
+            "pathogen_id"
         ]
         @test all(col -> col in names(df), expected_cols)
 

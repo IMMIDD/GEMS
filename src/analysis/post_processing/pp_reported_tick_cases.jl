@@ -18,18 +18,18 @@ This analysis is based on the `testDF` dataframe.
 """
 function reported_tick_cases(postProcessor::PostProcessor)
     sim_tick = tick(postProcessor |> simulation)
-    tests = postProcessor |> testsDF |>
-        x -> subset(x, :test_result => ByRow(identity), :reportable => ByRow(identity), view=true)
 
     base = crossjoin(
         DataFrame(tick = collect(Int16, 1:sim_tick)),
         DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
+    tests = postProcessor |> testsDF |>
+        x -> subset(x, :test_result => ByRow(identity), :reportable => ByRow(identity), view=true)
+
     counts = if isempty(tests)
         DataFrame(tick = Int16[], pathogen_id = Int8[], reported_cnt = Int64[])
     else
-        x -> groupby(x, [:tick, :pathogen_id]) |>
-        x -> combine(x, nrow => :reported_cnt)
+        combine(groupby(tests, [:tick, :pathogen_id]), nrow => :reported_cnt)
     end
 
     return leftjoin!(base, counts, on = [:tick, :pathogen_id]) |>

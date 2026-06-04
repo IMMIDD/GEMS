@@ -264,7 +264,6 @@
         end
 
         #test processing measure — seroprevalence test: no antibodies → negative result → negative_followup = nothing
-        infect!(i, Int16(0), first_pathogen(sim), rng = Xoshiro())
         result = process_measure(sim, i, s_test_measure2)
         follow_up_strategy = result.follow_up
 
