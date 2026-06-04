@@ -470,9 +470,12 @@ function aggregate_df(df::DataFrame, key::Symbol)
 end
 
 """
-    print_aggregates(agg; unit, multiplier, digits)
+    print_aggregates(agg::Dict{<:Integer, <:Dict}; unit, multiplier, digits)
 
-Pretty-prints the outcomes of an `aggregate_values()` function call.
+Pretty-prints per-pathogen aggregate statistics returned by `attack_rate` or `r0`
+on a `BatchProcessor`. Each entry in `agg` maps a pathogen id to a `Dict{String, Real}`
+with keys `"mean"`, `"std"`, `"min"`, `"max"`, `"lower_95"`, `"upper_95"`.
+Pathogens are printed in ascending id order, separated by `"; "`.
 """
 function print_aggregates(agg::Dict{<:Integer, <:Dict}; unit::String = "", multiplier = 1, digits::Int = 2)
     parts = [
@@ -482,6 +485,12 @@ function print_aggregates(agg::Dict{<:Integer, <:Dict}; unit::String = "", multi
     return join(parts, "; ")
 end
 
+"""
+    print_aggregates(agg::Dict; unit, multiplier, digits)
+
+Pretty-prints the outcomes of an `aggregate_values()` function call.
+`agg` must have keys `"mean"`, `"std"`, `"min"`, `"max"`, `"lower_95"`, `"upper_95"`.
+"""
 function print_aggregates(agg::Dict; unit::String = "", multiplier = 1, digits::Int = 2)
 
     u = unit |> length <= 1 ? unit : " " * unit
