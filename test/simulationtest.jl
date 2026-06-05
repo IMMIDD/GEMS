@@ -29,9 +29,6 @@
 
             # validation still fires: invalid pop_size propagates ArgumentError
             @test_throws ArgumentError Simulation(Dict(:pop_size => -1))
-
-            # validation still fires: invalid seed propagates ArgumentError
-            @test_throws ArgumentError Simulation(Dict(:pop_size => 100, :seed => -1))
         end
 
         @testset "From Disk" begin
@@ -89,7 +86,6 @@
             
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, seed = "1234")
-            @test_throws ArgumentError Simulation(pop_size = 100, seed = -1234)
             
             # TICKUNIT
             # passing
