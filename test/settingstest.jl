@@ -773,4 +773,42 @@
         @test isactive(s1) == true
     end
 
+    @testset "SettingsContainer ID Management" begin
+        rs = RandomSampling()
+
+        # settings_from_jld2! with missing file raises an error
+        @test_throws ErrorException GEMS.settings_from_jld2!("/nonexistent/path.jld2", SettingsContainer())
+
+        # new_setting_ids!: non-sequential IDs get renumbered starting from 1
+        cntnr_renum = SettingsContainer()
+        add_types!(cntnr_renum, [Household])
+        h1 = Household(id=1, contact_sampling_method=rs)
+        h5 = Household(id=5, contact_sampling_method=rs)
+        push!(settings(cntnr_renum)[Household], h1)
+        push!(settings(cntnr_renum)[Household], h5)
+        GEMS.new_setting_ids!(cntnr_renum, Dict())
+        @test h1.id == 1
+        @test h5.id == 2
+
+        # delete_dangling_ids!: contained ID out of bounds gets reset to DEFAULT_SETTING_ID
+        cntnr_dang = SettingsContainer()
+        add_types!(cntnr_dang, [SchoolYear, SchoolClass])
+        sc_bad = SchoolClass(id=1, contained=999, contact_sampling_method=rs)
+        push!(settings(cntnr_dang)[SchoolClass], sc_bad)
+        GEMS.delete_dangling_ids!(cntnr_dang)
+        @test sc_bad.contained == GEMS.DEFAULT_SETTING_ID
+
+        # delete_dangling_ids!: out-of-bounds entry in contains is removed
+        cntnr_contains = SettingsContainer()
+        add_types!(cntnr_contains, [School, SchoolYear, SchoolClass])
+        sy_bad = SchoolYear(id=1, contains=Int32[1, 999], contained=GEMS.DEFAULT_SETTING_ID,
+            contact_sampling_method=rs)
+        sc_ok = SchoolClass(id=1, contained=1, contact_sampling_method=rs)
+        push!(settings(cntnr_contains)[SchoolYear], sy_bad)
+        push!(settings(cntnr_contains)[SchoolClass], sc_ok)
+        GEMS.delete_dangling_ids!(cntnr_contains)
+        @test !(Int32(999) in sy_bad.contains)
+        @test Int32(1) in sy_bad.contains
+    end
+
 end

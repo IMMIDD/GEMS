@@ -51,6 +51,23 @@
             @test is_working(Individual(id=2, sex=0, age=25, office=Int32(5)))
             @test is_student(Individual(id=3, sex=0, age=10, schoolclass=Int32(7)))
             @test has_municipality(Individual(id=4, sex=0, age=40, municipality=Int32(3)))
+
+            # setting_id! covers Office and Municipality branches
+            i_set = Individual(id=5, sex=0, age=30)
+            setting_id!(i_set, Office, Int32(7))
+            @test i_set.office == Int32(7)
+            setting_id!(i_set, Municipality, Int32(3))
+            @test i_set.municipality == Int32(3)
+
+            # setting_id for unknown type returns DEFAULT_SETTING_ID
+            @test setting_id(Individual(id=6, sex=0, age=20), WorkplaceSite) == GEMS.DEFAULT_SETTING_ID
+
+            # detected!(ind, pathogen_id, false) clears the per-pathogen bit
+            i_det = Individual(id=7, sex=0, age=30)
+            detected!(i_det, Int8(1), true)
+            @test isdetected(i_det, Int8(1))
+            detected!(i_det, Int8(1), false)
+            @test !isdetected(i_det, Int8(1))
         end
 
         @testset "Comorbidities" begin

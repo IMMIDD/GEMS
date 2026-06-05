@@ -647,6 +647,19 @@
             infs -> (i -> ags(household(i, sim))).(infs) |>
             h_ags -> all(a -> a in AGS.(keys(hb_seeds)), h_ags)
 
+        # non-parseable seed value raises ArgumentError
+        @test_throws ArgumentError RegionalSeeds(seeds = Dict(04011000 => "notanumber"))
+
+        # state-level AGS: filter_by_ags uses in_state for state codes
+        sim_hb_state = Simulation(population = "HB",
+            start_condition = RegionalSeeds(seeds = Dict(04000000 => 2)))
+        @test count(infected, population(sim_hb_state)) == 2
+
+        # overlapping regions produce a duplicate-sample warning (state contains county)
+        sim_hb_overlap = Simulation(population = "HB",
+            start_condition = RegionalSeeds(seeds = Dict(04000000 => 1, 04011000 => 1)))
+        @test count(infected, population(sim_hb_overlap)) >= 1
+
         # passing: seed_sample gives reproducible results
         cond = RegionalSeeds(seeds = Dict(04011000 => 3))
         seed_sim = Simulation(population = "HB")
@@ -732,6 +745,12 @@
             # basic assign_values_to_parameters! test using an integer parameter
             GEMS.assign_values_to_parameters!(sim, x=[99], arg=["seed"])
             @test sim.seed == 99
+
+            # "sim." and "simulation." prefixes route to the sim object
+            GEMS.assign_values_to_parameters!(sim, x=[111], arg=["sim.seed"])
+            @test sim.seed == 111
+            GEMS.assign_values_to_parameters!(sim, x=[222], arg=["simulation.seed"])
+            @test sim.seed == 222
         end
         
         using Random # for setting the seed
@@ -762,6 +781,18 @@
 
         # pathogen accessor (first pathogen in single-pathogen sim)
         @test first_pathogen(sim) === first(pathogens(sim))
+
+        # _make_pathogen_tuple(v::AbstractVector) — called when pathogens is passed as a Vector
+        p_vec = Pathogen(id=1, name="VecPathogen")
+        sim_vec = Simulation(pathogens=[p_vec], infected_fraction=0.0)
+        @test length(GEMS.pathogens(sim_vec)) == 1
+
+        # incidence: rolling infection count per base_size population
+        sim_inc = Simulation(pop_size=1000, stop_criterion=TimesUp(limit=10), seed=1)
+        run!(sim_inc)
+        @test incidence(sim_inc, first_pathogen(sim_inc)) >= 0.0
+        @test incidence(sim_inc, id(first_pathogen(sim_inc))) >= 0.0
+        @test incidence(sim_inc, name(first_pathogen(sim_inc))) >= 0.0
 
         # get_pathogen throw paths
         @test_throws ArgumentError get_pathogen(sim, Int8(-1))

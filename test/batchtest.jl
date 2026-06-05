@@ -59,6 +59,11 @@
             @test haskey(bd.data, "sim_data")
             @test haskey(bd.data, "dataframes")
             @test !haskey(bd.data, "custom")
+
+            # unknown style falls back to DefaultBatchData with a warning
+            bd_unknown = BatchData(bP, style="NonExistentStyle_XYZ")
+            @test bd_unknown isa BatchData
+            @test haskey(bd_unknown.data, "meta_data")
         end
 
 @testset "BatchDataCustom" begin
@@ -98,6 +103,14 @@
             bd_file = import_batchdata(joinpath(batch_dir, "batchdata.jld2"))
             @test typeof(bd_file) == BatchData
             @test_throws Any import_batchdata(joinpath(batch_dir, "test.txt"))
+
+            # valid JLD2 but no BatchData inside
+            mktempdir() do dir2
+                bad_jld2 = joinpath(dir2, "notbd.jld2")
+                JLD2.save(bad_jld2, Dict("something" => 42))
+                @test_throws ErrorException import_batchdata(bad_jld2)
+            end
+
             rm(directory, recursive=true)
         end
 
@@ -188,6 +201,12 @@
             # The representative run is the bit-identical replay of the median-closest simulation,
             # so its total infections must equal that simulation's criterion value
             @test sum(total_infections(median_run(bp)).total_infections) == Int(criteria[best_idx])
+
+            # median_runs returns [single_median] for an ungrouped batch with a median
+            bd_with_median = BatchData(bp)
+            all_medians = median_runs(bd_with_median)
+            @test length(all_medians) == 1
+            @test all_medians[1] isa ResultData
         end
 
         @testset "RepresentativeRunMultiGroup" begin

@@ -20,6 +20,11 @@
         end
         # Use style
         @testset "ResultDataStyle" begin
+            # unknown style falls back to DefaultResultData with a warning
+            key_rd_unknown = ResultData(pp, style="NonExistentStyle_XYZ")
+            @test key_rd_unknown isa ResultData
+            @test key_rd_unknown |> dataframes != Dict()
+
             key_rd = ResultData(pp, style="DefaultResultData")
             @test key_rd |> dataframes != Dict()
             @test key_rd |> infections != Dict()

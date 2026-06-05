@@ -207,35 +207,6 @@ index of the newly allocated slot.
 end
 
 """
-    _unlink_overflow!(reg::ImmunityRegistry, ind::Individual, node_idx::Int32)
-
-Unlinks and frees the specific overflow node at `node_idx` from the individual's
-immunity linked list. Safely updates either the previous node's `next` pointer
-or the individual's `immunity_head` (if it was the first node), and returns the
-index back to the registry's `free_slots` pool for reuse.
-"""
-@inline function _unlink_overflow!(reg::ImmunityRegistry, ind::Individual, node_idx::Int32)
-    prev = Int32(0)
-    cur  = ind.immunity_head
-    while cur != 0
-        @inbounds state = reg.states[cur]
-        if cur == node_idx
-            if prev == 0
-                ind.immunity_head = state.next
-            else
-                @inbounds reg.states[prev] = _setstate(reg.states[prev], Val(:next), state.next)
-            end
-            push!(reg.free_slots, node_idx)
-            return nothing
-        end
-        prev = cur
-        cur  = state.next
-    end
-end
-
-
-
-"""
     _push_immunity_overflow!(reg::ImmunityRegistry, ind::Individual, pathogen_id::Int8, source::Int8, acquired_tick::Int16, vaccine_id::Int8)
 
 Insert or update an overflow immunity record for `(ind, pathogen_id)`.
