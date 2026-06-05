@@ -63,6 +63,22 @@
             @test !isempty(reg.free_slots)  # slot returned to pool
         end
 
+        @testset "remove_infection! non-head overflow removal" begin
+            # three infections: cache=pid1, head is pid3(node2) which points to pid2(node1)
+            # removing node1 (pid2, non-head) exercises the prev!=0 branch
+            reg = InfectionRegistry()
+            i = Individual(id=1, sex=0, age=30)
+            dp = DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(10))
+
+            push_infection!(reg, i, Int8(1), Int32(1), dp)  # cache
+            push_infection!(reg, i, Int8(2), Int32(2), dp)  # overflow node 1
+            push_infection!(reg, i, Int8(3), Int32(3), dp)  # overflow node 2 (new head)
+
+            remove_infection!(reg, i, Int32(1))  # remove non-head node (pid2)
+            @test i.infection_head == Int32(2)   # head still points to pid3's node
+            @test length(reg.free_slots) == 1
+        end
+
         @testset "free slot reuse" begin
             reg = InfectionRegistry()
             i = Individual(id=1, sex=0, age=30)
@@ -141,6 +157,32 @@
 
             @test length(reg.states) == 1  # no second node allocated
             @test reg.states[1].natural_acquired_tick == Int16(9)
+        end
+
+        @testset "ImmunityRegistry free slot reuse" begin
+            reg = ImmunityRegistry()
+            i = Individual(id=1, sex=0, age=30)
+
+            push_immunity!(reg, i, Int8(1), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(5), Int8(0))
+            push_immunity!(reg, i, Int8(2), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(6), Int8(0))
+            remove_immunities!(reg, i)  # frees overflow slot 1
+            push_immunity!(reg, i, Int8(2), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(7), Int8(0))  # reuses slot 1
+
+            @test length(reg.states) == 1   # no new allocation
+            @test reg.free_slots |> isempty
+        end
+
+        @testset "push_immunity! overflow traversal (advance past non-matching node)" begin
+            # with two overflow nodes, searching for a third pathogen traverses node = s.next
+            reg = ImmunityRegistry()
+            i = Individual(id=1, sex=0, age=30)
+
+            push_immunity!(reg, i, Int8(1), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(5), Int8(0))  # cache
+            push_immunity!(reg, i, Int8(2), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(6), Int8(0))  # overflow node 1
+            push_immunity!(reg, i, Int8(3), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(7), Int8(0))  # must traverse past pid2
+
+            @test length(reg.states) == 2  # both pid2 and pid3 have overflow nodes
+            @test reg.states[2].pathogen_id == Int8(3)
         end
 
         @testset "remove_immunities! clears all overflow" begin

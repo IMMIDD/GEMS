@@ -492,7 +492,7 @@
                 households(sim_ci)[1], Int16(1), sim_ci)
             @test prob_none ≈ 0.5 * (inf_level / 100.0)
 
-            # full self-immunity: remaining_susceptibility → 0
+            # full self-immunity: remaining_susceptibility becomes 0
             push_immunity!(immunity_registry(sim_ci, infectee_ci), infectee_ci, pid,
                 GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
             update_immunity!(infectee_ci, immunity_registry(sim_ci, infectee_ci),
@@ -501,7 +501,29 @@
                 households(sim_ci)[1], Int16(5), sim_ci)
             @test prob_immune ≈ 0.0
 
-            # uninfected infecter → error
+            # Vector{Vector} constructor: TOML-parsed form is converted to Matrix
+            tf_ci_vv = CrossImmunityTransmissionRate(
+                transmission_rate = 0.5,
+                pathogen_ids = [1, 2],
+                cross_immunity_matrix = [[1.0, 0.6], [0.6, 1.0]])
+            @test tf_ci_vv.cross_immunity_matrix isa Matrix{Float64}
+            @test size(tf_ci_vv.cross_immunity_matrix) == (2, 2)
+
+            # infectee has immunity to pid_other (NOT in pathogen_ids), uses default_cross_factor
+            infectee3_ci = individuals(sim_ci)[4]
+            push_immunity!(immunity_registry(sim_ci, infectee3_ci), infectee3_ci, Int8(3),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+            # set level to 100 directly (update_immunity! requires the pathogen in the sim's tuple)
+            let s = infectee3_ci.immunity_cache[1]
+                infectee3_ci.immunity_cache = Base.setindex(infectee3_ci.immunity_cache,
+                    ImmunityState(s.next, s.natural_acquired_tick, s.vaccine_acquired_tick,
+                        Int8(100), s.pathogen_id, s.vaccine_id, s.dose_number), 1)
+            end
+            prob_cross = transmission_probability(tf_ci, pid, infecter_ci, infectee3_ci,
+                households(sim_ci)[1], Int16(1), sim_ci)
+            @test prob_cross ≈ 0.5 * (inf_level / 100.0) * (1.0 - 100/100.0 * 0.3)
+
+            # uninfected infecter raises ArgumentError
             @test_throws ArgumentError transmission_probability(tf_ci, pid, infectee_ci,
                 individuals(sim_ci)[3], households(sim_ci)[1], Int16(1), sim_ci)
         end
@@ -553,7 +575,15 @@
                 households(sim_vi)[1], Int16(1), sim_vi)
             @test prob_with_interference ≈ prob_no_interference * 0.4
 
-            # uninfected infecter → error
+            # Vector{Vector} constructor: TOML-parsed form is converted to Matrix
+            tf_vi_vv = ViralInterferenceTransmissionRate(
+                transmission_rate = 0.5,
+                pathogen_ids = [1, 2],
+                interference_matrix = [[1.0, 0.4], [0.6, 1.0]])
+            @test tf_vi_vv.interference_matrix isa Matrix{Float64}
+            @test size(tf_vi_vv.interference_matrix) == (2, 2)
+
+            # uninfected infecter raises ArgumentError
             @test_throws ArgumentError transmission_probability(tf_vi, pid1, infectee_vi,
                 individuals(sim_vi)[3], households(sim_vi)[1], Int16(1), sim_vi)
         end
@@ -615,19 +645,19 @@
         @testset "FullImmunity" begin
             p = FullImmunity()
 
-            # no acquisition → level 0, not stable
+            # no acquisition: level 0, not stable
             @test calculate_immunity(p, empty_state, ind, Int16(10), rng) == Int8(0)
             @test !immunity_is_stable(p, empty_state, ind, Int16(10))
 
-            # natural acquired in the past → level 100, stable
+            # natural acquired in the past: level 100, stable
             @test calculate_immunity(p, nat_state(5), ind, Int16(5), rng) == Int8(100)
             @test calculate_immunity(p, nat_state(5), ind, Int16(10), rng) == Int8(100)
             @test immunity_is_stable(p, nat_state(5), ind, Int16(10))
 
-            # vaccine acquired → level 100
+            # vaccine acquired: level 100
             @test calculate_immunity(p, vac_state(3), ind, Int16(3), rng) == Int8(100)
 
-            # not yet acquired (future tick) → level 0
+            # not yet acquired (future tick): level 0
             @test calculate_immunity(p, nat_state(10), ind, Int16(5), rng) == Int8(0)
         end
 
@@ -653,10 +683,10 @@
 
             p = ExponentialWaning(halflife=180.0)
 
-            # at acquisition tick → full immunity
+            # at acquisition tick: full immunity
             @test calculate_immunity(p, nat_state(0), ind, Int16(0), rng) == Int8(100)
 
-            # after one halflife → ~50
+            # after one halflife: ~50
             @test calculate_immunity(p, nat_state(0), ind, Int16(180), rng) == Int8(50)
 
             # floor clamping
@@ -673,6 +703,10 @@
             nat_only = calculate_immunity(p, nat_state(0), ind, Int16(180), rng)
             both = calculate_immunity(p, both_state(0, 0), ind, Int16(180), rng)
             @test both > nat_only
+
+            # stability: once waned to floor (level <= floor) the profile is stable
+            p_stable = ExponentialWaning(halflife=0.5, floor=Int8(0))
+            @test immunity_is_stable(p_stable, nat_state(0), ind, Int16(100))
         end
 
         @testset "SigmoidalWaning" begin
@@ -684,10 +718,10 @@
 
             p = SigmoidalWaning(halflife=180.0, hill=3.0)
 
-            # at acquisition → full immunity
+            # at acquisition: full immunity
             @test calculate_immunity(p, nat_state(0), ind, Int16(0), rng) == Int8(100)
 
-            # at halflife → ~50
+            # at halflife: ~50
             @test calculate_immunity(p, nat_state(0), ind, Int16(180), rng) == Int8(50)
 
             # floor clamping
@@ -698,6 +732,12 @@
             single = calculate_immunity(p, nat_state(0), ind, Int16(180), rng)
             combined = calculate_immunity(p, both_state(0, 0), ind, Int16(180), rng)
             @test combined > single
+
+            # vaccine buildup ramp for SigmoidalWaning
+            p_sig_buildup = SigmoidalWaning(halflife=180.0, vaccine_buildup_duration=Int16(10))
+            mid_buildup_sig = calculate_immunity(p_sig_buildup, vac_state(0), ind, Int16(5), rng)
+            @test 0 < mid_buildup_sig < 100
+            @test !immunity_is_stable(p_sig_buildup, vac_state(0), ind, Int16(5))
         end
 
     end
@@ -724,14 +764,14 @@
             state = mk_state(DiseaseProgression(
                 exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
 
-            # before onset → 0
+            # before onset: 0
             @test calculate_infectiousness(p, state, ind, Int16(2), rng) == Int8(0)
 
-            # inside window → level
+            # inside window: returns level
             @test calculate_infectiousness(p, state, ind, Int16(5), rng) == Int8(100)
             @test calculate_infectiousness(p50, state, ind, Int16(5), rng) == Int8(50)
 
-            # at or after recovery → 0
+            # at or after recovery: 0
             @test calculate_infectiousness(p, state, ind, Int16(20), rng) == Int8(0)
         end
 
@@ -742,7 +782,7 @@
             p = StagedInfectiousness(asymptomatic=Int8(10), presymptomatic=Int8(30),
                                      symptomatic=Int8(70), severe=Int8(90), critical=Int8(100))
 
-            # outside window → 0
+            # outside window: 0
             state_out = mk_state(DiseaseProgression(
                 exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
             @test calculate_infectiousness(p, state_out, ind, Int16(2), rng) == Int8(0)

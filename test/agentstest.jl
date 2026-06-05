@@ -177,12 +177,31 @@
                 @test infected(i, pid2, reg)
                 @test !infected(i, Int8(3), reg)
 
-                # immunity overflow (IMMUNITY_CACHE_SIZE = 1 → second pathogen overflows)
+                # multi-node overflow: traverse past a non-matching head node (covers node = s.next)
+                pid3 = Int8(3)
+                push_infection!(reg, i, pid3, Int32(3),
+                    DiseaseProgression(exposure=Int16(3), infectiousness_onset=Int16(5), recovery=Int16(30)))
+                # list after 3 pushes: cache=pid1, head points to pid3 which points to pid2
+                @test get_infection_state(i, reg, pid2).pathogen_id == pid2  # traverses past pid3
+                @test infection_id(i, pid2, reg) == Int32(2)
+                @test infectiousness(i, pid2, reg) == Int8(0)
+                # pathogen not in list at all returns defaults
+                @test infectiousness(i, Int8(4), reg) == Int8(0)
+                @test infection_id(i, Int8(4), reg) == GEMS.DEFAULT_INFECTION_ID
+
+                # immunity overflow (IMMUNITY_CACHE_SIZE = 1, second pathogen overflows)
                 ireg = ImmunityRegistry()
                 push_immunity!(ireg, i, pid1, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 push_immunity!(ireg, i, pid2, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2
                 @test immunity_level(i, pid2, ireg) == Int8(0)
+
+                # multi-node immunity overflow: traverse past head to find second node
+                push_immunity!(ireg, i, pid3, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                # head points to pid3 which points to pid2
+                @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2  # traverses past pid3
+                @test immunity_level(i, pid2, ireg) == Int8(0)
+                @test immunity_level(i, Int8(4), ireg) == Int8(0)  # not found returns 0
             end
 
             @testset "Sim Wrappers" begin
