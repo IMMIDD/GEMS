@@ -738,6 +738,10 @@
             mid_buildup_sig = calculate_immunity(p_sig_buildup, vac_state(0), ind, Int16(5), rng)
             @test 0 < mid_buildup_sig < 100
             @test !immunity_is_stable(p_sig_buildup, vac_state(0), ind, Int16(5))
+
+            # stability: once waned to floor the profile is stable
+            p_sig_stable = SigmoidalWaning(halflife=0.5, floor=Int8(0))
+            @test immunity_is_stable(p_sig_stable, nat_state(0), ind, Int16(100))
         end
 
     end
