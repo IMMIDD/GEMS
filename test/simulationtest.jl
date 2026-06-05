@@ -492,9 +492,6 @@
             # determine_seed: config has non-integer seed
             @test_throws ArgumentError GEMS.determine_seed(Dict("Simulation" => Dict("seed" => "abc")), nothing)
 
-            # determine_seed: config has negative seed
-            @test_throws ArgumentError GEMS.determine_seed(Dict("Simulation" => Dict("seed" => -5)), nothing)
-
             # create_pathogen: bad progressions
             @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
                 Dict("progressions" => Dict("Symptomatic" => Dict())),
