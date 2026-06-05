@@ -739,29 +739,49 @@
             GEMS.assign_values_to_parameters!(sim, x=[42], arg=["seed"])
             @test sim.seed == 42
             
-            # basic assign_values_to_parameters! test using an integer parameter
-            GEMS.assign_values_to_parameters!(sim, x=[99], arg=["seed"])
-            @test sim.seed == 99
-
-            # "sim." and "simulation." prefixes route to the sim object
-            GEMS.assign_values_to_parameters!(sim, x=[111], arg=["sim.seed"])
-            @test sim.seed == 111
-            GEMS.assign_values_to_parameters!(sim, x=[222], arg=["simulation.seed"])
-            @test sim.seed == 222
+            GEMS.assign_values_to_parameters!(sim, x=[0.75], arg=["sim.pathogen.transmission_function.transmission_rate"])
+            @test sim.pathogen.transmission_function.transmission_rate == 0.75
         end
         
         using Random # for setting the seed
 
         @testset "calibrate!" begin
-            # basic test that calibrate! is callable and returns a result
-            # Note: using a scalar arg directly to avoid Int64/Float64 conversion issues
-            Random.seed!(42)
+            # Make the stochastic optimizer deterministic for this test
+            Random.seed!(42) 
+            
             sim = Simulation(pop_size=100)
+            
+            # dummy reference data
             ref_data = [50.0]
-            p_args = ["seed"]
-            @test GEMS.assign_values_to_parameters! isa Function
-            @test GEMS.calibrate! isa Function
-        end
+            
+            # Use a continuous parameter that exists in your model, like a modifier or rate
+            p_args = ["sim.pathogen.transmission_function.transmission_rate"]
+            initial_x = [10.0]
+            
+            # dummy target function: just returns the current value of the parameter
+            dummy_target_fn(s) = [s.pathogen.transmission_function.transmission_rate] 
+            
+            # Call calibrate! 
+            res = GEMS.calibrate!(
+                sim;
+                target = dummy_target_fn,
+                loss = GEMS.rmse,
+                ref_ts = ref_data,
+                arg_x0 = p_args,
+                x0 = initial_x,
+                lower_limit = [0.0],
+                upper_limit = [100.0],
+                n = 1,
+                maxiters = 5,
+                plot_training = false
+            )
+            
+            # Verify that the Optimization returned a valid result object
+            @test res !== nothing
+            
+            # Verify that the optimizer moved `x` towards our target of 50.0
+            @test res.u[1] > 10.0 
+        end     
     end
 
     @testset "Helper Functions" begin
