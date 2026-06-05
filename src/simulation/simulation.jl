@@ -979,7 +979,6 @@ function determine_seed(configfile_params::Dict, seed)
     # if seed is provided, use it
     if !isnothing(seed)
         !isa(seed, Integer) && throw(ArgumentError("Provided seed must be an integer value."))
-        seed < 0 && throw(ArgumentError("Provided seed must be a non-negative integer value."))
         printinfo("\u2514 Initializing RNG with seed $seed")
         return seed
     end
@@ -992,7 +991,6 @@ function determine_seed(configfile_params::Dict, seed)
 
     sd = configfile_params["Simulation"]["seed"]
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
-    sd < 0 && throw(ArgumentError("Provided seed in config file must be a non-negative integer value."))
     printinfo("\u2514 Initializing RNG with seed $sd")
     return sd
 end
