@@ -28,6 +28,7 @@ using Suppressor
         "settingstest.jl",
         "simulationtest.jl",
         "infectionstest.jl",
+        "registriestest.jl",
         "reportingtest.jl",
         "loggertest.jl",
         "postprocessortest.jl",
@@ -41,7 +42,7 @@ using Suppressor
         "interventionstest.jl",
         "vaccinetest.jl",
         "codevalidationtest.jl",
-        "movietest.jl"
+        "movietest.jl",
     ]
 
     println("Begin to run test cases.")

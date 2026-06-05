@@ -134,8 +134,69 @@
             @test !asymptomatic(k, reg, pid, Int16(0)) # before
             @test asymptomatic(k, reg, pid, Int16(3)) # during
             @test !asymptomatic(k, reg, pid, Int16(8)) # after
+
+            @testset "progress_disease! Overflow" begin
+                # With INFECTIONS_CACHE_SIZE = 1, a second simultaneous infection goes into the
+                # registry linked list.  progress_disease! must process those overflow nodes too.
+                p1 = Pathogen(id=1, name="P1")
+                p2 = Pathogen(id=2, name="P2")
+                pths = (p1, p2)
+
+                # active path: both infections active in the overflow window
+                reg_a = InfectionRegistry()
+                i_a = Individual(id=10, sex=0, age=30)
+                push_infection!(reg_a, i_a, Int8(1), Int32(1),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(20)))
+                push_infection!(reg_a, i_a, Int8(2), Int32(2),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(20)))
+                buf_a = Tuple{Int32,Int32}[]
+                progress_disease!(i_a, reg_a, pths, buf_a, Int16(5), test_rng)
+                @test isinfected(i_a)
+                @test isinfectious(i_a)
+
+                # recovery path: overflow infection reaches its recovery tick
+                reg_r = InfectionRegistry()
+                i_r = Individual(id=11, sex=0, age=30)
+                push_infection!(reg_r, i_r, Int8(1), Int32(3),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(5)))
+                push_infection!(reg_r, i_r, Int8(2), Int32(4),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(5)))
+                buf_r = Tuple{Int32,Int32}[]
+                progress_disease!(i_r, reg_r, pths, buf_r, Int16(10), test_rng)
+                @test !isinfected(i_r)
+                @test !isempty(buf_r) # overflow node staged for removal
+
+                # death path: overflow infection triggers death (covers _process_death! overflow)
+                reg_d = InfectionRegistry()
+                i_d = Individual(id=12, sex=0, age=30)
+                push_infection!(reg_d, i_d, Int8(1), Int32(5),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(30)))
+                push_infection!(reg_d, i_d, Int8(2), Int32(6),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), symptom_onset=Int16(3), death=Int16(5)))
+                buf_d = Tuple{Int32,Int32}[]
+                progress_disease!(i_d, reg_d, pths, buf_d, Int16(10), test_rng)
+                @test isdead(i_d)
+                @test !isempty(buf_d) # both cache and overflow nodes staged for removal
+            end
+
+            @testset "update_immunity! Overflow" begin
+                # With IMMUNITY_CACHE_SIZE = 1, a second immunity state spills into the registry.
+                p1 = Pathogen(id=1, name="P1")
+                p2 = Pathogen(id=2, name="P2")
+                pths = (p1, p2)
+
+                ireg = ImmunityRegistry()
+                i_imm = Individual(id=20, sex=0, age=30)
+                push_immunity!(ireg, i_imm, Int8(1), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                push_immunity!(ireg, i_imm, Int8(2), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+
+                # overflow node must be reachable; update_immunity! should not error
+                i_imm.needs_immunity_update = true
+                update_immunity!(i_imm, ireg, pths, Int16(10), test_rng)
+                @test !i_imm.needs_immunity_update # FullImmunity is stable → flag cleared
+            end
         end
-        
+
         @testset "Basic Infection" begin
             reg = InfectionRegistry()
 

@@ -141,6 +141,12 @@
         @test_throws ArgumentError GEMS.find_subtype("NonExistentType", Setting)
     end
 
+    @testset "concrete_subtypes" begin
+        # abstract type with no subtypes returns empty vector
+        abstract type _EmptyAbstract end
+        @test concrete_subtypes(_EmptyAbstract) == DataType[]
+    end
+
     @testset "is_existing_subtype" begin
         @test GEMS.is_existing_subtype("Household", Setting) == true
         @test GEMS.is_existing_subtype("NonExistentType", Setting) == false
@@ -219,6 +225,59 @@
         df3 = DataFrame(a = [1.0], b = [2.0])
         df4 = DataFrame(a = [3.0], b = [4.0])
         @test_throws ArgumentError aggregate_dfs_multcol([df3, df4], :id)
+
+        # happy path: two runs with identical columns, single key
+        run1 = DataFrame(id = [1, 2], val = [10.0, 20.0])
+        run2 = DataFrame(id = [1, 2], val = [20.0, 40.0])
+        result = aggregate_dfs_multcol([run1, run2], :id)
+        @test haskey(result, "val")
+        @test result["val"][result["val"].id .== 1, "mean"][1] == 15.0
+        @test result["val"][result["val"].id .== 1, "minimum"][1] == 10.0
+        @test result["val"][result["val"].id .== 1, "maximum"][1] == 20.0
+    end
+
+    @testset "aggregate_dfs (multi-key)" begin
+        # each run has a compound key (group, tick) plus one value column
+        run1 = DataFrame(group = [1, 1], tick = [1, 2], val = [1.0, 2.0])
+        run2 = DataFrame(group = [1, 1], tick = [1, 2], val = [3.0, 4.0])
+        run3 = DataFrame(group = [1, 1], tick = [1, 2], val = [5.0, 6.0])
+        result = aggregate_dfs([run1, run2, run3], [:group, :tick])
+        @test result isa DataFrame
+        @test "mean" in names(result)
+        @test "minimum" in names(result)
+        @test "maximum" in names(result)
+        # row for (group=1, tick=1): values are 1, 3, 5 → mean 3
+        r = result[result.group .== 1 .&& result.tick .== 1, :]
+        @test r[1, :mean] ≈ 3.0
+        @test r[1, :minimum] ≈ 1.0
+        @test r[1, :maximum] ≈ 5.0
+    end
+
+    @testset "aggregate_dfs_multcol (multi-key)" begin
+        run1 = DataFrame(pid = [1, 2], tick = [1, 1], val = [10.0, 20.0])
+        run2 = DataFrame(pid = [1, 2], tick = [1, 1], val = [30.0, 40.0])
+        result = aggregate_dfs_multcol([run1, run2], [:pid, :tick])
+        @test haskey(result, "val")
+        @test result["val"] isa DataFrame
+        @test "mean" in names(result["val"])
+        r1 = result["val"][result["val"].pid .== 1, :]
+        @test r1[1, :mean] ≈ 20.0
+    end
+
+    @testset "aggregate_by_pathogen" begin
+        # empty input returns empty dict
+        @test aggregate_by_pathogen(DataFrame[], :attack_rate) == Dict{Int8, Dict{String, Real}}()
+
+        # two runs with two pathogens each
+        run1 = DataFrame(pathogen_id = Int8[1, 2], attack_rate = [0.2, 0.4])
+        run2 = DataFrame(pathogen_id = Int8[1, 2], attack_rate = [0.4, 0.6])
+        result = aggregate_by_pathogen([run1, run2], :attack_rate)
+        @test haskey(result, Int8(1))
+        @test haskey(result, Int8(2))
+        @test result[Int8(1)]["mean"] ≈ 0.3
+        @test result[Int8(1)]["min"]  ≈ 0.2
+        @test result[Int8(1)]["max"]  ≈ 0.4
+        @test result[Int8(2)]["mean"] ≈ 0.5
     end
 
     @testset "parameters" begin

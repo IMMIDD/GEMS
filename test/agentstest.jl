@@ -150,7 +150,57 @@
                 @test hospital_admission(i, reg, pid) == GEMS.DEFAULT_TICK
                 @test death(i, reg, pid) == GEMS.DEFAULT_TICK
             end
-            
+
+            @testset "Registry Overflow" begin
+                # With INFECTIONS_CACHE_SIZE = 1, a second simultaneous infection spills into
+                # the registry linked list. All per-pathogen accessors must traverse that list.
+                reg = InfectionRegistry()
+                i = Individual(id=1, sex=0, age=30)
+                pid1 = Int8(1)
+                pid2 = Int8(2)
+                push_infection!(reg, i, pid1, Int32(1),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+                push_infection!(reg, i, pid2, Int32(2),
+                    DiseaseProgression(exposure=Int16(2), infectiousness_onset=Int16(4), recovery=Int16(25)))
+
+                # overflow node is accessible via get_infection_state
+                @test get_infection_state(i, reg, pid2).pathogen_id == pid2
+
+                # infection_id looks up the overflow node
+                @test infection_id(i, pid2, reg) == Int32(2)
+
+                # infectiousness returns 0 before infectiousness_onset
+                @test infectiousness(i, pid2, reg) == Int8(0)
+
+                # infected(ind, pid, reg) — current-tick variant
+                @test infected(i, pid1, reg)
+                @test infected(i, pid2, reg)
+                @test !infected(i, Int8(3), reg)
+
+                # immunity overflow (IMMUNITY_CACHE_SIZE = 1 → second pathogen overflows)
+                ireg = ImmunityRegistry()
+                push_immunity!(ireg, i, pid1, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                push_immunity!(ireg, i, pid2, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2
+                @test immunity_level(i, pid2, ireg) == Int8(0)
+            end
+
+            @testset "Sim Wrappers" begin
+                # one-liner wrappers that route to the correct registry shard via the sim
+                sim_sw = Simulation()
+                pid_sw = id(first_pathogen(sim_sw))
+                i_sw = Individual(id=1, sex=0, age=30)
+                push_infection!(infection_registry(sim_sw, i_sw), i_sw, pid_sw, Int32(1),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+
+                @test infected(i_sw, pid_sw, sim_sw)
+                @test infectiousness(i_sw, pid_sw, sim_sw) == Int8(0)
+                @test earliest_infectiousness_onset(i_sw, sim_sw) == Int16(3)
+
+                push_immunity!(immunity_registry(sim_sw, i_sw), i_sw, pid_sw, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                @test immunity_level(i_sw, pid_sw, sim_sw) == Int8(0)
+            end
+
         end
 
         @testset "Health Status Aliases (Current-State)" begin
@@ -371,6 +421,32 @@
             @test !is_quarantined(i_quar, Int16(10))
             @test isquarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
             @test quarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
+        end
+
+        @testset "Testing Registry" begin
+            treg = TestRegistry()
+            i_tr = Individual(id=1, sex=0, age=30)
+            pid_tr = Int8(1)
+
+            # defaults before any test
+            @test last_test(i_tr, treg, pid_tr) == GEMS.DEFAULT_TICK
+            @test last_test_result(i_tr, treg, pid_tr) == false
+            @test !GEMS.was_reported(i_tr, treg, pid_tr)
+
+            # positive reportable test sets last_test, last_test_result, was_reported and detected_mask
+            record_test!(i_tr, treg, pid_tr, Int16(5), true, true)
+            @test last_test(i_tr, treg, pid_tr) == Int16(5)
+            @test last_test_result(i_tr, treg, pid_tr) == true
+            @test was_reported(i_tr, treg, pid_tr)
+            @test isdetected(i_tr, pid_tr)
+
+            # sim wrappers route to the correct TestRegistry shard
+            sim_tr = Simulation()
+            i_tr2 = Individual(id=2, sex=0, age=30)
+            record_test!(i_tr2, sim_tr, pid_tr, Int16(7), false, false)
+            @test last_test(i_tr2, pid_tr, sim_tr) == Int16(7)
+            @test last_test_result(i_tr2, pid_tr, sim_tr) == false
+            @test !was_reported(i_tr2, pid_tr, sim_tr)
         end
 
         @testset "Quarantine" begin

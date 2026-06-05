@@ -20,6 +20,15 @@
         @test vaccine_id(i, reg, pid) == 1
         @test vaccination_tick(i, reg, pid) == Int16(42)
         @test number_of_vaccinations(i, reg, pid) == 1
+
+        # sim wrappers route to the correct ImmunityRegistry shard
+        sim_v = Simulation()
+        i_v = Individual(id=1, sex=0, age=30)
+        vaccinate!(i_v, sim_v, v, Int16(10))
+        @test isvaccinated(i_v, sim_v, pid)
+        @test vaccine_id(i_v, sim_v, pid) == 1
+        @test vaccination_tick(i_v, sim_v, pid) == Int16(10)
+        @test number_of_vaccinations(i_v, sim_v, pid) == 1
     end
 
 end

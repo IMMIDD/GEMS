@@ -3,7 +3,7 @@
 export duplicates
 export concrete_subtypes, is_existing_subtype, find_subtype
 export isdate
-export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
+export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_by_pathogen, aggregate_values, aggregate_dicts, print_aggregates
 export WelfordState, welford_update!, welford_to_aggregate, welford_df_to_stats_df, welford_df_to_stats_df_multicol
 export read_git_repo, read_git_branch, read_git_commit
 export aggregate_matrix

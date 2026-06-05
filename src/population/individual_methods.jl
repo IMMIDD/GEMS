@@ -19,6 +19,7 @@ export ventilation_discharge, hospital_discharge, recovery, death
 export get_test_state
 export last_test
 export last_test_result
+export was_reported
 export last_reported_at
 export record_test!
 # vaccination

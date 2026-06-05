@@ -99,6 +99,17 @@
             @test tickunit(sim) == "day"
             sim = Simulation(pop_size = 100, tickunit = 'w')
             @test tickunit(sim) == "week"
+            # remaining branches only reachable via direct field mutation (config-loaded sims)
+            sim_y = Simulation(pop_size = 100, tickunit = 'h'); sim_y.tickunit = 'y'
+            @test tickunit(sim_y) == "year"
+            sim_mo = Simulation(pop_size = 100, tickunit = 'h'); sim_mo.tickunit = 'm'
+            @test tickunit(sim_mo) == "month"
+            sim_mi = Simulation(pop_size = 100, tickunit = 'h'); sim_mi.tickunit = 'M'
+            @test tickunit(sim_mi) == "minute"
+            sim_s = Simulation(pop_size = 100, tickunit = 'h'); sim_s.tickunit = 'S'
+            @test tickunit(sim_s) == "second"
+            sim_def = Simulation(pop_size = 100, tickunit = 'h'); sim_def.tickunit = 'x'
+            @test tickunit(sim_def) == "tick"
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, tickunit = 'g')
             @test_throws ArgumentError Simulation(pop_size = 100, tickunit = "abc")
@@ -297,6 +308,18 @@
             sim = Simulation(pop_size = 100, stop_criterion = TimesUp(limit = 11))
             run!(sim)
             @test tick(sim) == 11
+            # infected_fraction with multiple pathogens auto-expands to MultiStartCondition
+            p_a = Pathogen(id=1, name="PA"); p_b = Pathogen(id=2, name="PB")
+            sim_2p = Simulation(pathogens=(p_a, p_b), pop_size=100, infected_fraction=0.3, seed=1)
+            @test count(i -> infected(i, Int8(1), infection_registry(sim_2p, i)), individuals(sim_2p)) > 0
+            @test count(i -> infected(i, Int8(2), infection_registry(sim_2p, i)), individuals(sim_2p)) > 0
+
+            # NoneInfected: no time limit → uses Iterators.countfrom + break when epidemic clears
+            sim_ni = Simulation(pop_size = 100, start_condition = PatientZero(),
+                stop_criterion = NoneInfected(), seed = 42)
+            run!(sim_ni)
+            @test tick(sim_ni) > 0
+            @test count(infected, population(sim_ni)) == 0
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, stop_criterion = "none")
         end
@@ -632,6 +655,17 @@
         reset!(seed_sim)
         initialize!(seed_sim, cond, seed_sample = 42)
         @test individuals(seed_sim)[infected.(individuals(seed_sim))] == infs_first
+
+        # MULTI START CONDITION
+        @test_throws ArgumentError MultiStartCondition(StartCondition[])
+
+        mc = MultiStartCondition([PatientZero(), InfectedFraction(fraction=0.05)])
+        @test length(mc.conditions) == 2
+        @test !isempty(@capture_out show(mc))
+
+        sim_mc = Simulation(pop_size=100, start_condition=mc, seed=1)
+        # PatientZero seeds 1 + InfectedFraction(0.05) seeds 5 → at least 5 infected
+        @test count(infected, population(sim_mc)) >= 5
     end
 
     @testset "Parameter Tests" begin
@@ -728,6 +762,11 @@
 
         # pathogen accessor (first pathogen in single-pathogen sim)
         @test first_pathogen(sim) === first(pathogens(sim))
+
+        # get_pathogen throw paths
+        @test_throws ArgumentError get_pathogen(sim, Int8(-1))
+        @test_throws ArgumentError get_pathogen(GEMS.pathogens(sim), Int8(-1))
+        @test_throws ArgumentError get_pathogen(sim, "NonExistentPathogen")
     end
 
     @testset "stepmod Getter" begin
@@ -848,6 +887,38 @@
             @test df.infectious[end] == 0
             @test df.quarantined[end] == 0
         end
+    end
+
+    @testset "Multipathogen run!" begin
+        # infected_fraction only seeds the first pathogen — use MultiStartCondition
+        # to seed both so ~9% of individuals start with both pathogens simultaneously
+        # (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow block
+        # in _process_infections!
+        p1 = Pathogen(id=1, name="PathA")
+        p2 = Pathogen(id=2, name="PathB")
+        mc = MultiStartCondition([
+            InfectedFraction(fraction=0.3, pathogen="PathA"),
+            InfectedFraction(fraction=0.3, pathogen="PathB")
+        ])
+        sim_mp = Simulation(pathogens=(p1, p2), pop_size=500,
+            start_condition=mc, seed=42)
+        run!(sim_mp)
+
+        @test tick(sim_mp) > 0
+        inf_df = infections(sim_mp)
+        @test Int8(1) in inf_df.pathogen_id
+        @test Int8(2) in inf_df.pathogen_id
+    end
+
+    @testset "Closed Setting in Step" begin
+        # _compute_non_locatable! adds all individuals in a closed setting to the
+        # unable-to-locate counter (simulation_methods.jl line 106)
+        sim_cl = Simulation(pop_size=100, stop_criterion=TimesUp(limit=3), seed=1)
+        s_cl = SStrategy("close_schools", sim_cl)
+        add_measure!(s_cl, CloseSetting())
+        add_tick_trigger!(sim_cl, STickTrigger(SchoolClass, s_cl, switch_tick=Int16(1)))
+        run!(sim_cl)
+        @test tick(sim_cl) == 3
     end
 
     @testset "Simulation Buffers" begin

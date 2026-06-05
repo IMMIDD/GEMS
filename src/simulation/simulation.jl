@@ -424,12 +424,6 @@ function _BUILD_Simulation(;
             municipality_contacts = municipality_contacts,
             global_setting_contacts = global_setting_contacts)
 
-        # START CONDITION
-        start_condition = determine_start_condition(
-            config,
-            start_condition,
-            infected_fraction)
-
         # STOP CRITERION
         stop_criterion = determine_stop_criterion(
             config,
@@ -442,6 +436,13 @@ function _BUILD_Simulation(;
             transmission_function,
             transmission_rate
         )
+
+        # START CONDITION
+        start_condition = determine_start_condition(
+            config,
+            start_condition,
+            infected_fraction,
+            pathogen_tuple)
 
 
 
@@ -567,15 +568,17 @@ end
 
 
 """
-    determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
+    determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
 
 Determines the start condition for the simulation based on the provided parameters.
 If a `start_condition` is provided, it will be used.
 If not, it will check for an `infected_fraction`.
-If `infected_fraction` is provided, it will create an `InfectedFraction` start condition with the specified fraction and pathogen.
+If `infected_fraction` is provided and `pathogens_tuple` contains more than one pathogen,
+a `MultiStartCondition` is returned with one `InfectedFraction` per pathogen (each seeded
+at `infected_fraction`). For a single pathogen, a plain `InfectedFraction` is returned.
 If neither is provided, it will return the default start condition from the config file.
 """
-function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
+function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
     # return configfile start condition if nothing else provided
     if isnothing(start_condition) && isnothing(infected_fraction)
         !haskey(configfile_params, "Simulation") && throw(ConfigfileError("No start condition found in config file!"))
@@ -608,6 +611,11 @@ function determine_start_condition(configfile_params::Dict, start_condition, inf
     end
 
     # if infected_fraction is provided, use it
+    if length(pathogens_tuple) > 1
+        conditions = [InfectedFraction(fraction = infected_fraction, pathogen = p.name)
+                      for p in pathogens_tuple]
+        return MultiStartCondition(conditions)
+    end
     return InfectedFraction(
         fraction = infected_fraction,
         pathogen = ""
