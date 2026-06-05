@@ -9,7 +9,7 @@ export Simulation
 export tick, label, start_condition, stop_criterion, settingscontainer, settings, population
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
-export pathogens, get_pathogen, first_pathogen
+export pathogens, get_pathogen, first_pathogen, pathogen
 export infection_registry, immunity_registry, test_registry, owner_shard
 export configfile, populationfile
 export evaluate
@@ -1718,6 +1718,19 @@ Useful as a convenience function when running single-disease models.
 """
 function first_pathogen(sim::Simulation)
     return first(pathogens(sim))
+end
+
+"""
+    pathogen(sim::Simulation)
+
+Returns the single pathogen in the simulation.
+Throws an `ArgumentError` if the simulation contains more than one pathogen;
+use `pathogens(sim)` or `get_pathogen(sim, id)` in that case.
+"""
+function pathogen(sim::Simulation)
+    length(sim.pathogens) > 1 && throw(ArgumentError(
+        "Simulation has $(length(sim.pathogens)) pathogens; use pathogens(sim), get_pathogen(sim, id), or get_pathogen(sim, name)."))
+    return first(sim.pathogens)
 end
 
 """

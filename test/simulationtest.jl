@@ -800,6 +800,13 @@
 
         # pathogen accessor (first pathogen in single-pathogen sim)
         @test first_pathogen(sim) === first(pathogens(sim))
+        @test pathogen(sim) === first_pathogen(sim)
+
+        # pathogen throws on multipathogen sim
+        p2 = Pathogen(id=2, name="P2")
+        sim_mp = Simulation(pathogens=(first_pathogen(sim), p2), infected_fraction=0.0)
+        @test_throws ArgumentError pathogen(sim_mp)
+
 
         # _make_pathogen_tuple(v::AbstractVector) — called when pathogens is passed as a Vector
         p_vec = Pathogen(id=1, name="VecPathogen")
