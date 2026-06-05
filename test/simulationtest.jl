@@ -735,8 +735,14 @@
             GEMS.assign_values_to_parameters!(sim, x=[42], arg=["seed"])
             @test sim.seed == 42
             
-            GEMS.assign_values_to_parameters!(sim, x=[0.75], arg=["sim.pathogen.transmission_function.transmission_rate"])
-            @test sim.pathogen.transmission_function.transmission_rate == 0.75
+            GEMS.assign_values_to_parameters!(sim, x=[0.75], arg=["sim.pathogens[1].transmission_function.transmission_rate"])
+            @test first_pathogen(sim).transmission_function.transmission_rate == 0.75
+
+            GEMS.assign_values_to_parameters!(sim, x=[0.6], arg=["sim.pathogens.1.transmission_function.transmission_rate"])
+            @test first_pathogen(sim).transmission_function.transmission_rate == 0.6
+
+            GEMS.assign_values_to_parameters!(sim, x=[0.5], arg=["sim.pathogen.transmission_function.transmission_rate"])
+            @test first_pathogen(sim).transmission_function.transmission_rate == 0.5
         end
         
         using Random # for setting the seed
@@ -755,7 +761,7 @@
             initial_x = [10.0]
             
             # dummy target function: just returns the current value of the parameter
-            dummy_target_fn(s) = [s.pathogen.transmission_function.transmission_rate] 
+            dummy_target_fn(s) = [first_pathogen(s).transmission_function.transmission_rate]
             
             # Call calibrate! 
             res = GEMS.calibrate!(

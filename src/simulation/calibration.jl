@@ -11,7 +11,17 @@ end
 function assign_values_to_parameters!(sim; x, arg)
     # iterate over parameters (k) and values (v)
     for (path, value) in zip(arg, x)
-        parts     = split(path, '.')
+        raw_parts = split(path, '.')
+        parts = String[]
+        for p in raw_parts
+            m = match(r"^(\w+)\[(\d+)\]$", p)
+            if m !== nothing
+                push!(parts, m.captures[1])
+                push!(parts, m.captures[2])
+            else
+                push!(parts, p)
+            end
+        end
         param_key = Symbol(parts[end])
 
         # if parameter involves settings names
@@ -43,7 +53,14 @@ function assign_values_to_parameters!(sim; x, arg)
             end
             
             for part in parts[2:end-1]
-                obj = getproperty(obj, Symbol(part))
+                idx = tryparse(Int, part)
+                if idx !== nothing
+                    obj = obj[idx]
+                elseif part == "pathogen" && obj isa Simulation
+                    obj = first(obj.pathogens)
+                else
+                    obj = getproperty(obj, Symbol(part))
+                end
             end
             field = Symbol(parts[end])
         end
