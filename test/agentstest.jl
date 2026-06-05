@@ -108,6 +108,7 @@
             inc_number_of_infections!(i)
             inc_number_of_infections!(i)
             @test i.number_of_infections == 2
+            @test number_of_infections(i) == 2
 
             # Modify interventions
             home_quarantine!(i)
@@ -193,6 +194,10 @@
                 @test infected(i, pid1, reg)
                 @test infected(i, pid2, reg)
                 @test !infected(i, Int8(3), reg)
+
+                # get_active_pathogens returns cache-slot pathogen IDs (0 for inactive slots)
+                active = get_active_pathogens(i)
+                @test pid1 in active
 
                 # multi-node overflow: traverse past a non-matching head node (covers node = s.next)
                 pid3 = Int8(3)
