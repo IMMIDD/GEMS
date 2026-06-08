@@ -56,6 +56,16 @@ A type to represent individuals that act as agents inside the simulation.
     - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
     - `education::Int8`: Education class (i.e. highest degree)
 
+- Behaviour
+    - `social_factor::Float32`: Parameter for risk-willingness (-1 to 1)
+    - `mandate_compliance::Float32`: Probability of complying to mandates (-1 to 1)
+
+- Associated Settings
+    - `household::Int32`: Reference to household id
+    - `office::Int32`: Reference to office id
+    - `schoolclass::Int32`: Reference to schoolclass id
+    - `municipality::Int32`: Reference to municipality id
+
 - Health Status
     - `killing_pathogen_id::Int8`: Pathogen that killed the agent
     - `infected::Bool`: Flag indicating individual's infection status
@@ -68,32 +78,22 @@ A type to represent individuals that act as agents inside the simulation.
     - `dead::Bool`: Flag indicating individual's decease
     - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
 
-- Behaviour
-    - `social_factor::Float32`: Parameter for risk-willingness (-1 to 1)
-    - `mandate_compliance::Float32`: Probability of complying to mandates (-1 to 1)
+- Interventions
+    - `quarantine_tick::Int16`: Start tick of quarantine
+    - `quarantine_release_tick::Int16`: End tick of quarantine
+    - `quarantine_status::Int8`: Status indicator (none, household, etc.)
 
-- Associated Settings
-    - `household::Int32`: Reference to household id
-    - `office::Int32`: Reference to office id
-    - `schoolclass::Int32`: Reference to schoolclass id
-    - `municipality::Int32`: Reference to municipality id
-
-- Pathogen Memory
+- Pathogen
     - `infection_cache::NTuple{N, InfectionState}`: Fixed-size cache of current infections
     - `infection_head::Int32`: Pointer to the first overflow node in the InfectionRegistry
     - `active_pathogens_mask::UInt32`: Bitmask of currently active pathogen types
     - `detected_mask::UInt32`: Bitmask of pathogens for which an infection is detected
     - `number_of_infections::Int8`: Lifetime infection count
 
-- Immunity Memory
+- Immunity
     - `immunity_cache::NTuple{N, ImmunityState}`: Fixed-size cache of pathogen immunities
     - `immunity_head::Int32`: Pointer to the first overflow node in the ImmunityRegistry
     - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
-
-- Interventions
-    - `quarantine_tick::Int16`: Start tick of quarantine
-    - `quarantine_release_tick::Int16`: End tick of quarantine
-    - `quarantine_status::Int8`: Status indicator (none, household, etc.)
 """
 @with_kw_noshow mutable struct Individual
     # GENERAL
@@ -102,18 +102,6 @@ A type to represent individuals that act as agents inside the simulation.
     age::Int8                               # 1 byte
     occupation::Int16 = DEFAULT_SETTING_ID  # 2 bytes
     education::Int8 = DEFAULT_SETTING_ID    # 1 byte
-
-    # HEALTH STATUS
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # 1 byte
-    infected::Bool = false                  # 1 byte
-    infectious::Bool = false                  # 1 byte
-    symptomatic::Bool = false               # 1 byte
-    severe::Bool = false                    # 1 byte
-    hospitalized::Bool = false              # 1 byte
-    icu::Bool = false                       # 1 byte
-    ventilated::Bool = false                # 1 byte
-    dead::Bool = false                      # 1 byte
-    comorbidities::UInt16 = 0               # 2 bytes
 
     # BEHAVIOR
     social_factor::Float32 = 0              # 4 bytes
@@ -125,22 +113,34 @@ A type to represent individuals that act as agents inside the simulation.
     schoolclass::Int32 = DEFAULT_SETTING_ID # 4 bytes
     municipality::Int32 = DEFAULT_SETTING_ID # 4 bytes
 
-    # PATHOGEN MEMORY
+    # HEALTH STATUS
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # 1 byte
+    infected::Bool = false                  # 1 byte
+    infectious::Bool = false                # 1 byte
+    symptomatic::Bool = false               # 1 byte
+    severe::Bool = false                    # 1 byte
+    hospitalized::Bool = false              # 1 byte
+    icu::Bool = false                       # 1 byte
+    ventilated::Bool = false                # 1 byte
+    dead::Bool = false                      # 1 byte
+    comorbidities::UInt16 = 0               # 2 bytes
+
+    # INTERVENTIONS
+    quarantine_tick::Int16 = DEFAULT_TICK           # 2 bytes
+    quarantine_release_tick::Int16 = DEFAULT_TICK   # 2 bytes
+    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # 1 byte
+
+    # PATHOGEN
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE) # INFECTIONS_CACHE_SIZE * sizeof(InfectionState)
     infection_head::Int32 = 0               # 4 byte
     active_pathogens_mask::UInt32 = 0       # 4 bytes
     detected_mask::UInt32 = 0               # 4 bytes
     number_of_infections::Int8 = 0          # 1 byte
 
-    # IMMUNITY MEMORY
+    # IMMUNITY
     immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE) # IMMUNITY_CACHE_SIZE * sizeof(ImmunityState)
     immunity_head::Int32 = 0                # 4 byte
     needs_immunity_update::Bool = false     # 1 byte
-
-    # INTERVENTIONS
-    quarantine_tick::Int16 = DEFAULT_TICK           # 2 bytes
-    quarantine_release_tick::Int16 = DEFAULT_TICK   # 2 bytes
-    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # 1 byte
 end
 
 # CONSTRUCTOR
