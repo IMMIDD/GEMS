@@ -94,9 +94,10 @@ Base.show(io::IO, tf::ViralInterferenceTransmissionRate) = print(io,
 """
     transmission_probability(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)
 
-Calculates the transmission probability using a constant base rate modulated by
-the infecter's current shedding level and a susceptibility reduction derived from
-the infectee's currently active concurrent infections.
+Calculates the base transmission rate using a constant base rate modulated by a
+susceptibility reduction derived from the infectee's currently active concurrent
+infections. Infectiousness and immunity scaling are applied automatically by the
+framework via `effective_transmission_probability`.
 
 For each active infection of the infectee with a pathogen other than `pathogen_id`,
 the remaining susceptibility is multiplied by the corresponding entry in
@@ -129,8 +130,6 @@ function transmission_probability(
         sim::Simulation,
         rng::Xoshiro)::Float64
 
-    infectiousness(infecter, pathogen_id, sim) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
-
     exposed_idx = findfirst(==(pathogen_id), transFunc.pathogen_ids)
     remaining_susceptibility = 1.0
 
@@ -145,7 +144,7 @@ function transmission_probability(
         remaining_susceptibility *= factor
     end
 
-    return transFunc.transmission_rate * (infectiousness(infecter, pathogen_id, sim) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id, sim) / 100.0) * remaining_susceptibility
+    return transFunc.transmission_rate * remaining_susceptibility
 end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default

@@ -11,6 +11,7 @@ export ImmunityProfile
 export id, name
 export progressions, progression_assignment, transmission_function
 export transmission_function!
+export effective_transmission_probability
 export infectiousness_profile, infectiousness_profile!
 
 export get_progression

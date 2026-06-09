@@ -8,7 +8,7 @@ The age group corresponds to the infectee, i.e., the individual who may become i
 
 # Fields
 - `age_groups::Vector{AgeGroup}`: A vector of age groups.
-- `age_transmission_rates::Vector{Real}`: A vector of transmission rates corresponding to each age group.
+- `age_transmission_rates::Vector{Float64}`: A vector of transmission rates corresponding to each age group.
 
 # Example
 The code below instantiates an `AgeDependentTransmissionRate` with specific age groups and transmission rates.
@@ -21,7 +21,7 @@ adtr = AgeDependentTransmissionRate(
 """
 mutable struct AgeDependentTransmissionRate <: TransmissionFunction
     age_groups::Vector{AgeGroup}
-    age_transmission_rates::Vector{Real}
+    age_transmission_rates::Vector{Float64}
 
     function AgeDependentTransmissionRate(;age_groups::Vector{String}, transmission_rates::Vector{<:Real})
         # both vectors must be of same length
@@ -38,7 +38,7 @@ mutable struct AgeDependentTransmissionRate <: TransmissionFunction
 
         return new(
             gprs,
-            transmission_rates
+            Float64.(transmission_rates)
         )
     end
 end
@@ -54,8 +54,9 @@ end
 """
     transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
 
-Calculates the transmission probability based on the age of the infected using age-dependent transmission rates.
-
+Calculates the base transmission rate based on the age of the infectee using
+age-dependent transmission rates. Infectiousness and immunity scaling are applied
+automatically by the framework via `effective_transmission_probability`.
 
 # Parameters
 
@@ -65,7 +66,7 @@ Calculates the transmission probability based on the age of the infected using a
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
-- `sim::Simulation': Simulation object
+- `sim::Simulation'`: Simulation object
 - `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
 
 # Returns
@@ -82,12 +83,9 @@ function transmission_probability(
         sim::Simulation,
         rng::Xoshiro)::Float64
 
-    # error handling
-    infectiousness(infecter, pathogen_id, sim) == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
-
     for (i, ag) in enumerate(transFunc.age_groups)
         if in_group(infectee.age, ag)
-            return transFunc.age_transmission_rates[i] * (infectiousness(infecter, pathogen_id, sim) / 100.0) * (1.0 - immunity_level(infectee, pathogen_id, sim) / 100.0)
+            return transFunc.age_transmission_rates[i]
         end
     end
 
@@ -95,5 +93,5 @@ function transmission_probability(
 end
 
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) = 
+transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())

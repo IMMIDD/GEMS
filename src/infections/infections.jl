@@ -223,11 +223,11 @@ function try_to_infect!(infctr::Individual,
 
 
     # calculate infection probability
-    infection_probability = transmission_probability(
-        pathogen |> transmission_function, 
+    infection_probability = effective_transmission_probability(
+        pathogen |> transmission_function,
         pathogen |> id,
-        infctr, infctd, 
-        setting, sim |> tick, 
+        infctr, infctd,
+        setting, sim |> tick,
         sim,
         rng(sim)
     )

@@ -1070,6 +1070,10 @@ The `params` dictionary must contain a `type` key with the name of the transmiss
 and a `parameters` key with a list of parameters for the transmission function constructor.
 """
 function create_transmission_function(params::Dict)
+    if params["type"] == "CompositeTransmissionRate"
+        sub_fns = map(f -> create_transmission_function(f), params["functions"])
+        return CompositeTransmissionRate(sub_fns...)
+    end
     tf_type = GEMS.get_subtype(params["type"], TransmissionFunction)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
     return try

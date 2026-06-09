@@ -362,7 +362,7 @@
               
         # transmission functions
         tfs = transmission_functions()
-        @test all(x -> isa(x, DataType) && x <: TransmissionFunction, tfs)
+        @test all(x -> (isa(x, DataType) || isa(x, UnionAll)) && x <: TransmissionFunction, tfs)
 
     end
 
