@@ -48,7 +48,7 @@ module GEMS
     include("globals.jl")
     include("utils.jl")
     include("exceptions.jl")
-    include("logging/Logger.jl")
+    include("logging/logger.jl")
 
     # INTERVENTION ABSTRACTS
     include("interventions/abstract_structs.jl")
@@ -75,7 +75,7 @@ module GEMS
 
     # CORE SIMULATION - METHODS
     include("rng.jl")
-    include("infections/infections.jl")
+    include("simulation/infections.jl")
     include("simulation/simulation_methods.jl")
     include("settings/setting_methods.jl")
     include("contacts/contact_sampling_methods.jl")

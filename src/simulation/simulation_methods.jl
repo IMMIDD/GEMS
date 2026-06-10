@@ -7,6 +7,7 @@ that is dependent on other structs, so it has to be loaded later.
 ### EXPORTS
 export step!, run!
 export fire_custom_loggers!
+export update_individual!
 
 ###
 ### RUN SIMULATION
@@ -439,6 +440,46 @@ end
 
 
 
+
+
+"""
+    update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
+
+Update the individual disease progression, handle its recovery and log its possible death.
+If the individual is not infected, this function will just return.
+"""
+function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
+    was_dead = dead(indiv)
+    was_symptomatic = symptomatic(indiv)
+    was_hospitalized = is_hospitalized(indiv)
+
+    shard_id = owner_shard(id(indiv))
+
+    # update immunity levels
+    if indiv.needs_immunity_update
+        update_immunity!(indiv, immunity_registry(sim, id(indiv)), sim.pathogens, tick, rng(sim))
+    end
+
+    # progress disease for currently infected individuals
+    if infected(indiv)
+        progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, rng(sim))
+
+        if !was_dead && dead(indiv)
+            log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
+        end
+    end
+
+    if !was_symptomatic && symptomatic(indiv)
+        for st in sim |> symptom_triggers
+            trigger(st, indiv, sim)
+        end
+    end
+    if !was_hospitalized && is_hospitalized(indiv)
+        for ht in sim |> hospitalization_triggers
+            trigger(ht, indiv, sim)
+        end
+    end
+end
 
 
 # MAIN LOOP
