@@ -738,6 +738,54 @@
             @test f_vi ≈ 0.4
         end
 
+        @testset "SinusoidalSeasonalModifier" begin
+            mod = SinusoidalSeasonalModifier(amplitude=0.5, peak_day=1)
+            @test mod.amplitude == 0.5
+            @test mod.peak_day == 1
+            @test !isempty(@capture_out show(mod))
+
+            # constructor validation
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=-0.1, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=1.5, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=0)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=366)
+
+            # minimal simulation with controlled start_date (Jan 1 = day 1)
+            start = Date(2024, 1, 1)
+            p_ssm = Pathogen(id=1, name="TestSSM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.5), mod))
+            sim_ssm = Simulation(pop_size=100, pathogens=(p_ssm,), infected_fraction=0.0, start_date=start)
+            ind1 = individuals(sim_ssm)[1]
+            ind2 = individuals(sim_ssm)[2]
+            hh   = households(sim_ssm)[1]
+            pid  = Int8(1)
+
+            # tick=0, peak_day=1 → doy=1 → cos(0)=1 → factor = 1.0 + 0.5 = 1.5
+            @test transmission_factor(mod, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 1.5
+
+            # tick=182 → Date(2024,1,1)+Day(182) = July 1, doy=183 → near trough
+            expected_trough = 1.0 + 0.5 * cos(2π * (183 - 1) / 365.0)
+            @test transmission_factor(mod, pid, ind1, ind2, hh, Int16(182), sim_ssm) ≈ expected_trough
+
+            # amplitude=0 → flat factor of 1.0 for any tick
+            mod_flat = SinusoidalSeasonalModifier(amplitude=0.0, peak_day=180)
+            @test transmission_factor(mod_flat, pid, ind1, ind2, hh, Int16(0),   sim_ssm) ≈ 1.0
+            @test transmission_factor(mod_flat, pid, ind1, ind2, hh, Int16(182), sim_ssm) ≈ 1.0
+
+            # SinusoidalSeasonalTransmissionRate struct
+            tf_ssm = SinusoidalSeasonalTransmissionRate(transmission_rate=0.4, amplitude=0.5, peak_day=1)
+            @test tf_ssm.transmission_rate == 0.4
+            @test !isempty(@capture_out show(tf_ssm))
+
+            # constructor validation
+            @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=-0.1, amplitude=0.3, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=1.5, amplitude=0.3, peak_day=1)
+
+            # transmission_probability = base_rate × seasonal_factor
+            @test transmission_probability(tf_ssm, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 0.4 * 1.5
+        end
+
     end
 
     @testset "Custom Transmission Function" begin
