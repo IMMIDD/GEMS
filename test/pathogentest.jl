@@ -505,7 +505,7 @@
             pid = Int8(1)
             tf_ci = CrossImmunityTransmissionRate(
                 transmission_rate = 0.5,
-                pathogen_ids = [1, 2],
+                pathogen_names = ["TestCITR", "PathogenB"],
                 cross_immunity_matrix = [1.0 0.6; 0.6 1.0],
                 default_cross_factor = 0.3
             )
@@ -518,10 +518,10 @@
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = -0.1)
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = 1.5)
             @test_throws ArgumentError CrossImmunityTransmissionRate(
-                pathogen_ids = [1, 2],
+                pathogen_names = ["A", "B"],
                 cross_immunity_matrix = [1.0 0.5; 0.5 1.0; 0.3 0.3])
             @test_throws ArgumentError CrossImmunityTransmissionRate(
-                pathogen_ids = [1, 2],
+                pathogen_names = ["A", "B"],
                 cross_immunity_matrix = [1.0 1.5; 0.5 1.0])
 
             p_ci = Pathogen(id=1, name="TestCITR",
@@ -554,7 +554,7 @@
             # Vector{Vector} constructor: TOML-parsed form is converted to Matrix
             tf_ci_vv = CrossImmunityTransmissionRate(
                 transmission_rate = 0.5,
-                pathogen_ids = [1, 2],
+                pathogen_names = ["TestCITR", "PathogenB"],
                 cross_immunity_matrix = [[1.0, 0.6], [0.6, 1.0]])
             @test tf_ci_vv.modifier.cross_immunity_matrix isa Matrix{Float64}
             @test size(tf_ci_vv.modifier.cross_immunity_matrix) == (2, 2)
@@ -583,7 +583,7 @@
             pid2 = Int8(2)
             tf_vi = ViralInterferenceTransmissionRate(
                 transmission_rate = 0.5,
-                pathogen_ids = [1, 2],
+                pathogen_names = ["TestVITR", "PathogenB"],
                 interference_matrix = [1.0 0.4; 0.6 1.0],
                 default_interference_factor = 1.0
             )
@@ -596,16 +596,18 @@
             @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = -0.1)
             @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = 1.5)
             @test_throws ArgumentError ViralInterferenceTransmissionRate(
-                pathogen_ids = [1, 2],
+                pathogen_names = ["A", "B"],
                 interference_matrix = [1.0 0.4; 0.6 1.0; 0.3 0.3])
             @test_throws ArgumentError ViralInterferenceTransmissionRate(
-                pathogen_ids = [1, 2],
+                pathogen_names = ["A", "B"],
                 interference_matrix = [1.0 1.5; 0.6 1.0])
 
             p_vi = Pathogen(id=1, name="TestVITR",
                 progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
                 transmission_function=tf_vi)
-            sim_vi = Simulation(pop_size=100, pathogens=(p_vi,), infected_fraction=0.0)
+            p_vi2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_vi = Simulation(pop_size=100, pathogens=(p_vi, p_vi2), infected_fraction=0.0)
             infecter_vi = individuals(sim_vi)[1]
             infectee_vi = individuals(sim_vi)[2]
 
@@ -630,7 +632,7 @@
             # Vector{Vector} constructor: TOML-parsed form is converted to Matrix
             tf_vi_vv = ViralInterferenceTransmissionRate(
                 transmission_rate = 0.5,
-                pathogen_ids = [1, 2],
+                pathogen_names = ["TestVITR", "PathogenB"],
                 interference_matrix = [[1.0, 0.4], [0.6, 1.0]])
             @test tf_vi_vv.modifier.interference_matrix isa Matrix{Float64}
             @test size(tf_vi_vv.modifier.interference_matrix) == (2, 2)
@@ -643,7 +645,7 @@
         @testset "CompositeTransmissionRate" begin
             tf_ctr_c = ConstantTransmissionRate(transmission_rate=0.4)
             tf_int_c = ViralInterferenceModifier(
-                pathogen_ids=[1, 2],
+                pathogen_names=["TestCombined", "PathogenB"],
                 interference_matrix=[1.0 0.5; 0.5 1.0],
                 default_interference_factor=1.0
             )
@@ -654,7 +656,9 @@
             p_c = Pathogen(id=1, name="TestCombined",
                 progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
                 transmission_function=combined_tf)
-            sim_c = Simulation(pop_size=100, pathogens=(p_c,), infected_fraction=0.0)
+            p_c2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_c = Simulation(pop_size=100, pathogens=(p_c, p_c2), infected_fraction=0.0)
             infecter_c = individuals(sim_c)[1]
             infectee_c = individuals(sim_c)[2]
             infect!(infecter_c, Int16(0), first_pathogen(sim_c), rng=Xoshiro())
@@ -683,11 +687,11 @@
 
         @testset "CrossImmunityModifier" begin
             m_ci = CrossImmunityModifier(
-                pathogen_ids = [1, 2],
+                pathogen_names = ["A", "B"],
                 cross_immunity_matrix = [1.0 0.6; 0.6 1.0],
                 default_cross_factor = 0.3
             )
-            @test m_ci.pathogen_ids == Int8[1, 2]
+            @test m_ci.pathogen_names == ["A", "B"]
             @test !isempty(@capture_out show(m_ci))
 
             # transmission_factor returns a pure factor, not rate-scaled
@@ -708,11 +712,11 @@
 
         @testset "ViralInterferenceModifier" begin
             m_vi = ViralInterferenceModifier(
-                pathogen_ids = [1, 2],
+                pathogen_names = ["TestVIM", "PathogenB"],
                 interference_matrix = [1.0 0.4; 0.6 1.0],
                 default_interference_factor = 1.0
             )
-            @test m_vi.pathogen_ids == Int8[1, 2]
+            @test m_vi.pathogen_names == ["TestVIM", "PathogenB"]
             @test !isempty(@capture_out show(m_vi))
 
             # transmission_factor returns a pure factor, not rate-scaled
@@ -721,7 +725,9 @@
             p_vim = Pathogen(id=1, name="TestVIM",
                 progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
                 transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.5), m_vi))
-            sim_vim = Simulation(pop_size=100, pathogens=(p_vim,), infected_fraction=0.0)
+            p_vim2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_vim = Simulation(pop_size=100, pathogens=(p_vim, p_vim2), infected_fraction=0.0)
             infecter_vim = individuals(sim_vim)[1]
             infectee_vim = individuals(sim_vim)[2]
             infect!(infecter_vim, Int16(0), first_pathogen(sim_vim), rng=Xoshiro())

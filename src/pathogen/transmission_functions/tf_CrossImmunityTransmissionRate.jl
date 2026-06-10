@@ -21,25 +21,27 @@ reduces the remaining susceptibility, so the combined protection is
 1 − ∏(1 − scale_i × immunity_i).
 
 Cross-immunity factors are looked up from `cross_immunity_matrix`, indexed by
-`[exposed_pathogen, prior_pathogen]` using the ordering defined in `pathogen_ids`.
+`[exposed_pathogen, prior_pathogen]` using the ordering defined in `pathogen_names`.
 For any pathogen pair not covered by the matrix, `default_cross_factor` is used
 as the fallback scale (default: 0.0, i.e. no cross-protection).
 
 # Fields
-- `pathogen_ids::Vector{Int8}`: Ordered list of pathogen IDs whose pairwise
+- `pathogen_names::Vector{String}`: Ordered list of pathogen names whose pairwise
   cross-immunity factors are defined in `cross_immunity_matrix`.
+- `name_to_idx::Dict{String,Int}`: Maps each pathogen name to its row/column index in
+  `cross_immunity_matrix`. Derived from `pathogen_names` at construction; not set directly.
 - `cross_immunity_matrix::Matrix{Float64}`: Square matrix of size n×n (where
-  n = `length(pathogen_ids)`). Entry `[i, j]` is the scale applied to immunity
-  from pathogen `pathogen_ids[j]` when the infectee is exposed to pathogen
-  `pathogen_ids[i]`. Diagonal entries should be 1.0 (full self-immunity).
+  n = `length(pathogen_names)`). Entry `[i, j]` is the scale applied to immunity
+  from pathogen `pathogen_names[j]` when the infectee is exposed to pathogen
+  `pathogen_names[i]`. Diagonal entries should be 1.0 (full self-immunity).
 - `default_cross_factor::Float64`: Fallback scale used when either the exposed
-  pathogen or the prior-immunity pathogen is not found in `pathogen_ids` (0–1).
+  pathogen or the prior-immunity pathogen is not found in `pathogen_names` (0–1).
 
 # Example
 
 ```julia
 modifier = CrossImmunityModifier(
-    pathogen_ids = [1, 2, 3],
+    pathogen_names = ["Covid19", "Influenza", "RSV"],
     cross_immunity_matrix = [1.0 0.5 0.3;
                              0.5 1.0 0.4;
                              0.3 0.4 1.0],
@@ -49,12 +51,13 @@ tf = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.3)
 ```
 """
 struct CrossImmunityModifier <: TransmissionModifier
-    pathogen_ids::Vector{Int8}
+    pathogen_names::Vector{String}
+    name_to_idx::Dict{String, Int}
     cross_immunity_matrix::Matrix{Float64}
     default_cross_factor::Float64
 
     function CrossImmunityModifier(;
-            pathogen_ids::Vector = Int8[],
+            pathogen_names::Vector{String} = String[],
             cross_immunity_matrix = Matrix{Float64}(undef, 0, 0),
             default_cross_factor::Float64 = 0.0)
 
@@ -65,22 +68,23 @@ struct CrossImmunityModifier <: TransmissionModifier
             cross_immunity_matrix = Float64.(hcat(cross_immunity_matrix...)')
         end
 
-        n = length(pathogen_ids)
+        n = length(pathogen_names)
+        name_to_idx = Dict(name => i for (i, name) in enumerate(pathogen_names))
 
         size(cross_immunity_matrix) != (n, n) &&
-            throw(ArgumentError("cross_immunity_matrix must be a square matrix of size n×n where n = length(pathogen_ids) = $n (got $(size(cross_immunity_matrix)))."))
+            throw(ArgumentError("cross_immunity_matrix must be a square matrix of size n×n where n = length(pathogen_names) = $n (got $(size(cross_immunity_matrix)))."))
         any(x -> x < 0.0 || x > 1.0, cross_immunity_matrix) &&
             throw(ArgumentError("All entries in cross_immunity_matrix must be between 0 and 1."))
         any(i -> cross_immunity_matrix[i, i] != 1.0, 1:n) &&
             @warn "Diagonal entries of cross_immunity_matrix are expected to be 1.0 but some are not. Note that diagonal entries are ignored; direct self-immunity always applies at full weight."
 
-        return new(Int8.(pathogen_ids), cross_immunity_matrix, default_cross_factor)
+        return new(pathogen_names, name_to_idx, cross_immunity_matrix, default_cross_factor)
     end
 end
 
 Base.show(io::IO, m::CrossImmunityModifier) = print(io,
     "CrossImmunityModifier(" *
-    "pathogen_ids=$(m.pathogen_ids), " *
+    "pathogen_names=$(m.pathogen_names), " *
     "cross_immunity_matrix=$(m.cross_immunity_matrix), " *
     "default_cross_factor=$(m.default_cross_factor))")
 
@@ -119,13 +123,13 @@ function transmission_factor(
         sim::Simulation,
         rng::Xoshiro)::Float64
 
-    exposed_idx = findfirst(==(pathogen_id), modifier.pathogen_ids)
+    exposed_idx = get(modifier.name_to_idx, get_pathogen(sim, pathogen_id).name, nothing)
     remaining_susceptibility = 1.0
 
     for s in each_immunity(infectee, sim)
         s.pathogen_id == pathogen_id && continue
         scale = if exposed_idx !== nothing
-            prior_idx = findfirst(==(s.pathogen_id), modifier.pathogen_ids)
+            prior_idx = try get(modifier.name_to_idx, get_pathogen(sim, s.pathogen_id).name, nothing) catch; nothing end
             prior_idx !== nothing ? modifier.cross_immunity_matrix[exposed_idx, prior_idx] : modifier.default_cross_factor
         else
             modifier.default_cross_factor
@@ -161,7 +165,7 @@ accessible via `.modifier.*`.
 ```julia
 tf = CrossImmunityTransmissionRate(
     transmission_rate = 0.3,
-    pathogen_ids = [1, 2, 3],
+    pathogen_names = ["Covid19", "Influenza", "RSV"],
     cross_immunity_matrix = [1.0 0.5 0.3;
                              0.5 1.0 0.4;
                              0.3 0.4 1.0],
@@ -175,7 +179,7 @@ mutable struct CrossImmunityTransmissionRate <: TransmissionFunction
 
     function CrossImmunityTransmissionRate(;
             transmission_rate::Float64 = 0.5,
-            pathogen_ids::Vector = Int8[],
+            pathogen_names::Vector{String} = String[],
             cross_immunity_matrix = Matrix{Float64}(undef, 0, 0),
             default_cross_factor::Float64 = 0.0)
 
@@ -183,7 +187,7 @@ mutable struct CrossImmunityTransmissionRate <: TransmissionFunction
             throw(ArgumentError("transmission_rate must be between 0 and 1."))
 
         modifier = CrossImmunityModifier(
-            pathogen_ids = pathogen_ids,
+            pathogen_names = pathogen_names,
             cross_immunity_matrix = cross_immunity_matrix,
             default_cross_factor = default_cross_factor
         )
@@ -194,7 +198,7 @@ end
 
 Base.show(io::IO, tf::CrossImmunityTransmissionRate) = print(io,
     "CrossImmunityTransmissionRate(β=$(tf.transmission_rate), " *
-    "pathogen_ids=$(tf.modifier.pathogen_ids), " *
+    "pathogen_names=$(tf.modifier.pathogen_names), " *
     "cross_immunity_matrix=$(tf.modifier.cross_immunity_matrix), " *
     "default_cross_factor=$(tf.modifier.default_cross_factor))")
 

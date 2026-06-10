@@ -1174,7 +1174,7 @@ Creates a tuple of pathogens based on the provided parameters.
 The `params` dictionary must contain the parameters for each pathogen constructor.
 """
 function create_pathogens(params::Dict)
-    items = collect(params)
+    items = sort(collect(params), by = first)
     length(items) == 0 && throw(ConfigfileError("No pathogens were found..."))
     pathogens = [create_pathogen(pars, name, i) for (i, (name, pars)) in enumerate(items)]
     return Tuple(pathogens)
