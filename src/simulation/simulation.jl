@@ -1071,8 +1071,9 @@ and a `parameters` key with a list of parameters for the transmission function c
 """
 function create_transmission_function(params::Dict)
     if params["type"] == "CompositeTransmissionRate"
-        sub_fns = map(f -> create_transmission_function(f), params["functions"])
-        return CompositeTransmissionRate(sub_fns...)
+        base_fn = create_transmission_function(params["base"])
+        modifier_fns = map(f -> create_transmission_modifier(f), get(params, "modifiers", []))
+        return CompositeTransmissionRate(base_fn, modifier_fns...)
     end
     tf_type = GEMS.get_subtype(params["type"], TransmissionFunction)
     kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
@@ -1080,6 +1081,23 @@ function create_transmission_function(params::Dict)
         tf_type(;kw_args...)
     catch e
         throw(ErrorException("TransmissionFunction of type '$tf_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_transmission_modifier(params::Dict)
+
+Creates a `TransmissionModifier` based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the modifier
+and a `parameters` key with a list of parameters for the modifier constructor.
+"""
+function create_transmission_modifier(params::Dict)
+    mod_type = GEMS.get_subtype(params["type"], TransmissionModifier)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return try
+        mod_type(;kw_args...)
+    catch e
+        throw(ErrorException("TransmissionModifier of type '$mod_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 

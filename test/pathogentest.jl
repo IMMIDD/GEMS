@@ -90,15 +90,15 @@
             for tf_ts in [
                 ConstantTransmissionRate(transmission_rate=0.2),
                 AgeDependentTransmissionRate(age_groups=["0-59", "60-"], transmission_rates=[0.2, 0.4]),
-                CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), ConstantTransmissionRate(transmission_rate=0.5))
+                CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), ViralInterferenceModifier())
             ]
                 p_ts = Pathogen(id=1, name="TypeTest", progressions=base_prgs, transmission_function=tf_ts)
                 @test isconcretetype(fieldtype(typeof(p_ts), :transmission_function))
             end
 
-            tf_comb_ts = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), ConstantTransmissionRate(transmission_rate=0.5))
-            T_ts = fieldtype(typeof(tf_comb_ts), :functions)
-            @test all(isconcretetype, T_ts.parameters)
+            tf_comb_ts = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), ViralInterferenceModifier())
+            @test isconcretetype(fieldtype(typeof(tf_comb_ts), :base))
+            @test all(isconcretetype, fieldtype(typeof(tf_comb_ts), :modifiers).parameters)
 
             for ip_ts in [ConstantInfectiousness(), StagedInfectiousness()]
                 p_ts = Pathogen(id=1, name="TypeTest", progressions=base_prgs, infectiousness_profile=ip_ts)
@@ -556,8 +556,8 @@
                 transmission_rate = 0.5,
                 pathogen_ids = [1, 2],
                 cross_immunity_matrix = [[1.0, 0.6], [0.6, 1.0]])
-            @test tf_ci_vv.cross_immunity_matrix isa Matrix{Float64}
-            @test size(tf_ci_vv.cross_immunity_matrix) == (2, 2)
+            @test tf_ci_vv.modifier.cross_immunity_matrix isa Matrix{Float64}
+            @test size(tf_ci_vv.modifier.cross_immunity_matrix) == (2, 2)
 
             # infectee has immunity to pid_other (NOT in pathogen_ids), uses default_cross_factor
             infectee3_ci = individuals(sim_ci)[4]
@@ -632,8 +632,8 @@
                 transmission_rate = 0.5,
                 pathogen_ids = [1, 2],
                 interference_matrix = [[1.0, 0.4], [0.6, 1.0]])
-            @test tf_vi_vv.interference_matrix isa Matrix{Float64}
-            @test size(tf_vi_vv.interference_matrix) == (2, 2)
+            @test tf_vi_vv.modifier.interference_matrix isa Matrix{Float64}
+            @test size(tf_vi_vv.modifier.interference_matrix) == (2, 2)
 
             # uninfected infecter raises ArgumentError
             @test_throws ArgumentError effective_transmission_probability(tf_vi, pid1, infectee_vi,
@@ -642,14 +642,14 @@
 
         @testset "CompositeTransmissionRate" begin
             tf_ctr_c = ConstantTransmissionRate(transmission_rate=0.4)
-            tf_int_c = ViralInterferenceTransmissionRate(
-                transmission_rate=1.0,
+            tf_int_c = ViralInterferenceModifier(
                 pathogen_ids=[1, 2],
                 interference_matrix=[1.0 0.5; 0.5 1.0],
                 default_interference_factor=1.0
             )
             combined_tf = CompositeTransmissionRate(tf_ctr_c, tf_int_c)
-            @test combined_tf.functions == (tf_ctr_c, tf_int_c)
+            @test combined_tf.base === tf_ctr_c
+            @test combined_tf.modifiers === (tf_int_c,)
 
             p_c = Pathogen(id=1, name="TestCombined",
                 progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
@@ -676,6 +676,66 @@
 
             # type stability
             @test @inferred(transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c)) isa Float64
+
+            # modifier-as-base is rejected by dispatch
+            @test_throws MethodError CompositeTransmissionRate(ViralInterferenceModifier())
+        end
+
+        @testset "CrossImmunityModifier" begin
+            m_ci = CrossImmunityModifier(
+                pathogen_ids = [1, 2],
+                cross_immunity_matrix = [1.0 0.6; 0.6 1.0],
+                default_cross_factor = 0.3
+            )
+            @test m_ci.pathogen_ids == Int8[1, 2]
+            @test !isempty(@capture_out show(m_ci))
+
+            # transmission_factor returns a pure factor, not rate-scaled
+            pid = Int8(1)
+            p_cim = Pathogen(id=1, name="TestCIM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.5), m_ci))
+            sim_cim = Simulation(pop_size=100, pathogens=(p_cim,), infected_fraction=0.0)
+            infecter_cim = individuals(sim_cim)[1]
+            infectee_cim = individuals(sim_cim)[2]
+            infect!(infecter_cim, Int16(0), first_pathogen(sim_cim), rng=Xoshiro())
+            GEMS.update_individual!(infecter_cim, Int16(1), sim_cim)
+
+            f_none = transmission_factor(m_ci, pid, infecter_cim, infectee_cim,
+                households(sim_cim)[1], Int16(1), sim_cim)
+            @test f_none ≈ 1.0
+        end
+
+        @testset "ViralInterferenceModifier" begin
+            m_vi = ViralInterferenceModifier(
+                pathogen_ids = [1, 2],
+                interference_matrix = [1.0 0.4; 0.6 1.0],
+                default_interference_factor = 1.0
+            )
+            @test m_vi.pathogen_ids == Int8[1, 2]
+            @test !isempty(@capture_out show(m_vi))
+
+            # transmission_factor returns a pure factor, not rate-scaled
+            pid1 = Int8(1)
+            pid2 = Int8(2)
+            p_vim = Pathogen(id=1, name="TestVIM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.5), m_vi))
+            sim_vim = Simulation(pop_size=100, pathogens=(p_vim,), infected_fraction=0.0)
+            infecter_vim = individuals(sim_vim)[1]
+            infectee_vim = individuals(sim_vim)[2]
+            infect!(infecter_vim, Int16(0), first_pathogen(sim_vim), rng=Xoshiro())
+            GEMS.update_individual!(infecter_vim, Int16(1), sim_vim)
+
+            f_none = transmission_factor(m_vi, pid1, infecter_vim, infectee_vim,
+                households(sim_vim)[1], Int16(1), sim_vim)
+            @test f_none ≈ 1.0
+
+            push_infection!(infection_registry(sim_vim, infectee_vim), infectee_vim, pid2, Int32(99),
+                DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)))
+            f_vi = transmission_factor(m_vi, pid1, infecter_vim, infectee_vim,
+                households(sim_vim)[1], Int16(1), sim_vim)
+            @test f_vi ≈ 0.4
         end
 
     end

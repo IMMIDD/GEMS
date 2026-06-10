@@ -5,6 +5,7 @@ export Pathogen
 export ProgressionCategory
 export ProgressionAssignmentFunction
 export TransmissionFunction
+export TransmissionModifier
 export InfectiousnessProfile
 export ImmunityProfile
 
@@ -20,6 +21,7 @@ export get_progression
 abstract type ProgressionCategory end
 abstract type ProgressionAssignmentFunction end
 abstract type TransmissionFunction end
+abstract type TransmissionModifier end
 abstract type InfectiousnessProfile end
 abstract type ImmunityProfile end
 

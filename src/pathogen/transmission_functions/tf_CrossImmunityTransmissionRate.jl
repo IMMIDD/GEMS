@@ -1,15 +1,24 @@
+export CrossImmunityModifier
 export CrossImmunityTransmissionRate
 
-"""
-    CrossImmunityTransmissionRate <: TransmissionFunction
+###
+### CrossImmunityModifier
+###
 
-A `TransmissionFunction` type that uses a constant base transmission rate and
-models cross-immunity between pathogens. The effective susceptibility of the infectee
-is computed multiplicatively over all pathogens for which the individual has a
-cached immunity level: the current pathogen's immunity is taken at full weight
-(scale 1.0), while immunity from any other pathogen is scaled by a cross-immunity
-factor (0 ≤ factor ≤ 1). Each prior immunity independently reduces the remaining
-susceptibility, so the combined protection is 1 − ∏(1 − scale_i × immunity_i).
+"""
+    CrossImmunityModifier <: TransmissionModifier
+
+A `TransmissionModifier` that models cross-immunity between pathogens. Returns a
+dimensionless susceptibility factor via `transmission_factor`; does not encode a base
+transmission rate. Use inside a `CompositeTransmissionRate` together with a base-rate
+function such as `ConstantTransmissionRate`.
+
+The effective susceptibility of the infectee is computed multiplicatively over all
+pathogens for which the individual has a cached immunity level: the current pathogen's
+immunity is taken at full weight (scale 1.0), while immunity from any other pathogen is
+scaled by a cross-immunity factor (0 ≤ factor ≤ 1). Each prior immunity independently
+reduces the remaining susceptibility, so the combined protection is
+1 − ∏(1 − scale_i × immunity_i).
 
 Cross-immunity factors are looked up from `cross_immunity_matrix`, indexed by
 `[exposed_pathogen, prior_pathogen]` using the ordering defined in `pathogen_ids`.
@@ -17,7 +26,6 @@ For any pathogen pair not covered by the matrix, `default_cross_factor` is used
 as the fallback scale (default: 0.0, i.e. no cross-protection).
 
 # Fields
-- `transmission_rate::Float64`: Base per-contact transmission probability (0–1).
 - `pathogen_ids::Vector{Int8}`: Ordered list of pathogen IDs whose pairwise
   cross-immunity factors are defined in `cross_immunity_matrix`.
 - `cross_immunity_matrix::Matrix{Float64}`: Square matrix of size n×n (where
@@ -30,37 +38,29 @@ as the fallback scale (default: 0.0, i.e. no cross-protection).
 # Example
 
 ```julia
-# 30% base transmission rate; pathogen IDs 1, 2, and 3 with explicit pairwise
-# cross-immunity factors. Prior immunity to a pathogen outside the matrix
-# counts at 10% of its face value toward cross-protection.
-tf = CrossImmunityTransmissionRate(
-    transmission_rate = 0.3,
+modifier = CrossImmunityModifier(
     pathogen_ids = [1, 2, 3],
     cross_immunity_matrix = [1.0 0.5 0.3;
                              0.5 1.0 0.4;
                              0.3 0.4 1.0],
     default_cross_factor = 0.1
 )
+tf = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.3), modifier)
 ```
 """
-mutable struct CrossImmunityTransmissionRate <: TransmissionFunction
-    transmission_rate::Float64
+struct CrossImmunityModifier <: TransmissionModifier
     pathogen_ids::Vector{Int8}
     cross_immunity_matrix::Matrix{Float64}
     default_cross_factor::Float64
 
-    function CrossImmunityTransmissionRate(;
-            transmission_rate::Float64 = 0.5,
+    function CrossImmunityModifier(;
             pathogen_ids::Vector = Int8[],
             cross_immunity_matrix = Matrix{Float64}(undef, 0, 0),
             default_cross_factor::Float64 = 0.0)
 
-        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
-            throw(ArgumentError("transmission_rate must be between 0 and 1."))
         (default_cross_factor < 0.0 || default_cross_factor > 1.0) &&
             throw(ArgumentError("default_cross_factor must be between 0 and 1."))
 
-        # convert TOML-parsed Vector{Vector} to Matrix{Float64} if necessary
         if cross_immunity_matrix isa AbstractVector
             cross_immunity_matrix = Float64.(hcat(cross_immunity_matrix...)')
         end
@@ -74,15 +74,129 @@ mutable struct CrossImmunityTransmissionRate <: TransmissionFunction
         any(i -> cross_immunity_matrix[i, i] != 1.0, 1:n) &&
             @warn "Diagonal entries of cross_immunity_matrix are expected to be 1.0 but some are not. Note that diagonal entries are ignored; direct self-immunity always applies at full weight."
 
-        return new(transmission_rate, Int8.(pathogen_ids), cross_immunity_matrix, default_cross_factor)
+        return new(Int8.(pathogen_ids), cross_immunity_matrix, default_cross_factor)
+    end
+end
+
+Base.show(io::IO, m::CrossImmunityModifier) = print(io,
+    "CrossImmunityModifier(" *
+    "pathogen_ids=$(m.pathogen_ids), " *
+    "cross_immunity_matrix=$(m.cross_immunity_matrix), " *
+    "default_cross_factor=$(m.default_cross_factor))")
+
+
+"""
+    transmission_factor(modifier::CrossImmunityModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
+
+Returns the cross-immunity susceptibility factor for the infectee. Values are in [0, 1]:
+1.0 means no cross-immunity reduction, 0.0 means complete protection.
+
+The infectee's own immunity to `pathogen_id` is excluded here; it is applied automatically
+by the framework via `effective_transmission_probability`.
+
+# Parameters
+
+- `modifier::CrossImmunityModifier`: Modifier struct
+- `pathogen_id::Int8`: ID of the current pathogen
+- `infecter::Individual`: Infecting individual
+- `infectee::Individual`: Individual to infect
+- `setting::Setting`: Setting in which the infection happens
+- `tick::Int16`: Current tick
+- `sim::Simulation`: Simulation object
+- `rng::Xoshiro`: RNG used for probability
+
+# Returns
+
+- `Float64`: Susceptibility factor (`0 <= f <= 1`)
+"""
+function transmission_factor(
+        modifier::CrossImmunityModifier,
+        pathogen_id::Int8,
+        infecter::Individual,
+        infectee::Individual,
+        setting::Setting,
+        tick::Int16,
+        sim::Simulation,
+        rng::Xoshiro)::Float64
+
+    exposed_idx = findfirst(==(pathogen_id), modifier.pathogen_ids)
+    remaining_susceptibility = 1.0
+
+    for s in each_immunity(infectee, sim)
+        s.pathogen_id == pathogen_id && continue
+        scale = if exposed_idx !== nothing
+            prior_idx = findfirst(==(s.pathogen_id), modifier.pathogen_ids)
+            prior_idx !== nothing ? modifier.cross_immunity_matrix[exposed_idx, prior_idx] : modifier.default_cross_factor
+        else
+            modifier.default_cross_factor
+        end
+        remaining_susceptibility *= (1.0 - s.immunity_level / 100.0 * scale)
+    end
+
+    return remaining_susceptibility
+end
+
+transmission_factor(modifier::CrossImmunityModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
+    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+
+###
+### CrossImmunityTransmissionRate
+###
+
+"""
+    CrossImmunityTransmissionRate <: TransmissionFunction
+
+Convenience wrapper combining a constant base transmission rate with a
+`CrossImmunityModifier`. Accepts the same keyword arguments as
+`CrossImmunityModifier` plus `transmission_rate`. The modifier fields are
+accessible via `.modifier.*`.
+
+# Fields
+- `transmission_rate::Float64`: Base per-contact transmission probability (0–1).
+- `modifier::CrossImmunityModifier`: The cross-immunity modifier.
+
+# Example
+
+```julia
+tf = CrossImmunityTransmissionRate(
+    transmission_rate = 0.3,
+    pathogen_ids = [1, 2, 3],
+    cross_immunity_matrix = [1.0 0.5 0.3;
+                             0.5 1.0 0.4;
+                             0.3 0.4 1.0],
+    default_cross_factor = 0.1
+)
+```
+"""
+mutable struct CrossImmunityTransmissionRate <: TransmissionFunction
+    transmission_rate::Float64
+    modifier::CrossImmunityModifier
+
+    function CrossImmunityTransmissionRate(;
+            transmission_rate::Float64 = 0.5,
+            pathogen_ids::Vector = Int8[],
+            cross_immunity_matrix = Matrix{Float64}(undef, 0, 0),
+            default_cross_factor::Float64 = 0.0)
+
+        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
+            throw(ArgumentError("transmission_rate must be between 0 and 1."))
+
+        modifier = CrossImmunityModifier(
+            pathogen_ids = pathogen_ids,
+            cross_immunity_matrix = cross_immunity_matrix,
+            default_cross_factor = default_cross_factor
+        )
+
+        return new(transmission_rate, modifier)
     end
 end
 
 Base.show(io::IO, tf::CrossImmunityTransmissionRate) = print(io,
     "CrossImmunityTransmissionRate(β=$(tf.transmission_rate), " *
-    "pathogen_ids=$(tf.pathogen_ids), " *
-    "cross_immunity_matrix=$(tf.cross_immunity_matrix), " *
-    "default_cross_factor=$(tf.default_cross_factor))")
+    "pathogen_ids=$(tf.modifier.pathogen_ids), " *
+    "cross_immunity_matrix=$(tf.modifier.cross_immunity_matrix), " *
+    "default_cross_factor=$(tf.modifier.default_cross_factor))")
 
 
 """
@@ -92,12 +206,6 @@ Calculates the base transmission rate using a constant base rate modulated by an
 effective cross-immunity of the infectee that accounts for cross-immunity across
 pathogens. The infectee's own immunity to `pathogen_id` is excluded here; it is
 applied automatically by the framework via `effective_transmission_probability`.
-
-Each cached immunity level is scaled and combined multiplicatively: the remaining
-susceptibility is the product of (1 − scale_i × immunity_i) over all prior immunities
-from other pathogens, where immunity from another pathogen is scaled by the corresponding
-entry in `cross_immunity_matrix` if both pathogens are covered by the matrix, or by
-`default_cross_factor` otherwise.
 
 # Parameters
 
@@ -123,22 +231,8 @@ function transmission_probability(
         tick::Int16,
         sim::Simulation,
         rng::Xoshiro)::Float64
-
-    exposed_idx = findfirst(==(pathogen_id), transFunc.pathogen_ids)
-    remaining_susceptibility = 1.0
-
-    for s in each_immunity(infectee, sim)
-        s.pathogen_id == pathogen_id && continue  # own immunity applied by effective_transmission_probability
-        scale = if exposed_idx !== nothing
-            prior_idx = findfirst(==(s.pathogen_id), transFunc.pathogen_ids)
-            prior_idx !== nothing ? transFunc.cross_immunity_matrix[exposed_idx, prior_idx] : transFunc.default_cross_factor
-        else
-            transFunc.default_cross_factor
-        end
-        remaining_susceptibility *= (1.0 - s.immunity_level / 100.0 * scale)
-    end
-
-    return transFunc.transmission_rate * remaining_susceptibility
+    return transFunc.transmission_rate *
+           transmission_factor(transFunc.modifier, pathogen_id, infecter, infectee, setting, tick, sim, rng)
 end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default

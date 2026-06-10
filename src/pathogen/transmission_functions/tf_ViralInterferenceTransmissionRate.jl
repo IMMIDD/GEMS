@@ -1,17 +1,26 @@
+export ViralInterferenceModifier
 export ViralInterferenceTransmissionRate
 
-"""
-    ViralInterferenceTransmissionRate <: TransmissionFunction
+###
+### ViralInterferenceModifier
+###
 
-A `TransmissionFunction` type that uses a constant base transmission rate and
-models viral interference between pathogens. The effective susceptibility of the
-infectee is reduced multiplicatively for each pathogen the individual is *currently
-actively infected* with: each concurrent infection independently scales the
-remaining susceptibility by the corresponding entry in `interference_matrix`.
+"""
+    ViralInterferenceModifier <: TransmissionModifier
+
+A `TransmissionModifier` that models viral interference between pathogens. Returns a
+dimensionless susceptibility factor via `transmission_factor`; does not encode a base
+transmission rate. Use inside a `CompositeTransmissionRate` together with a base-rate
+function such as `ConstantTransmissionRate`.
+
+The effective susceptibility of the infectee is reduced multiplicatively for each
+pathogen the individual is *currently actively infected* with: each concurrent infection
+independently scales the remaining susceptibility by the corresponding entry in
+`interference_matrix`.
 
 This models innate immune activation — e.g. interferon responses triggered by an
 active infection — that non-specifically suppresses susceptibility to a second
-pathogen. It is distinct from `CrossImmunityTransmissionRate`, which acts on
+pathogen. It is distinct from `CrossImmunityModifier`, which acts on
 *past-infection or vaccine-derived* immunity, not on concurrently active infections.
 
 Interference factors are looked up from `interference_matrix`, indexed by
@@ -20,7 +29,6 @@ For any pathogen pair not covered by the matrix, `default_interference_factor` i
 used as the fallback (default: 1.0, i.e. no interference).
 
 # Fields
-- `transmission_rate::Float64`: Base per-contact transmission probability (0–1).
 - `pathogen_ids::Vector{Int8}`: Ordered list of pathogen IDs whose pairwise
   interference factors are defined in `interference_matrix`.
 - `interference_matrix::Matrix{Float64}`: Square matrix of size n×n (where
@@ -37,36 +45,31 @@ used as the fallback (default: 1.0, i.e. no interference).
 # Example
 
 ```julia
-# 30% base transmission rate; pathogen IDs 1 and 2.
+# Pathogen IDs 1 and 2.
 # An active infection with pathogen 2 reduces susceptibility to pathogen 1 by 60%.
 # An active infection with pathogen 1 reduces susceptibility to pathogen 2 by 40%.
-tf = ViralInterferenceTransmissionRate(
-    transmission_rate = 0.3,
+modifier = ViralInterferenceModifier(
     pathogen_ids = [1, 2],
     interference_matrix = [1.0 0.4;
                            0.6 1.0],
     default_interference_factor = 1.0
 )
+tf = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.3), modifier)
 ```
 """
-mutable struct ViralInterferenceTransmissionRate <: TransmissionFunction
-    transmission_rate::Float64
+struct ViralInterferenceModifier <: TransmissionModifier
     pathogen_ids::Vector{Int8}
     interference_matrix::Matrix{Float64}
     default_interference_factor::Float64
 
-    function ViralInterferenceTransmissionRate(;
-            transmission_rate::Float64 = 0.5,
+    function ViralInterferenceModifier(;
             pathogen_ids::Vector = Int8[],
             interference_matrix = Matrix{Float64}(undef, 0, 0),
             default_interference_factor::Float64 = 1.0)
 
-        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
-            throw(ArgumentError("transmission_rate must be between 0 and 1."))
         (default_interference_factor < 0.0 || default_interference_factor > 1.0) &&
             throw(ArgumentError("default_interference_factor must be between 0 and 1."))
 
-        # convert TOML-parsed Vector{Vector} to Matrix{Float64} if necessary
         if interference_matrix isa AbstractVector
             interference_matrix = Float64.(hcat(interference_matrix...)')
         end
@@ -80,15 +83,125 @@ mutable struct ViralInterferenceTransmissionRate <: TransmissionFunction
         any(i -> interference_matrix[i, i] != 1.0, 1:n) &&
             @warn "Diagonal entries of interference_matrix are expected to be 1.0 but some are not. Note that diagonal entries are ignored; the same-pathogen case is handled at the active-infection level."
 
-        return new(transmission_rate, Int8.(pathogen_ids), interference_matrix, default_interference_factor)
+        return new(Int8.(pathogen_ids), interference_matrix, default_interference_factor)
+    end
+end
+
+Base.show(io::IO, m::ViralInterferenceModifier) = print(io,
+    "ViralInterferenceModifier(" *
+    "pathogen_ids=$(m.pathogen_ids), " *
+    "interference_matrix=$(m.interference_matrix), " *
+    "default_interference_factor=$(m.default_interference_factor))")
+
+
+"""
+    transmission_factor(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
+
+Returns the viral interference susceptibility factor for the infectee. Values are in [0, 1]:
+1.0 means no interference, 0.0 means complete suppression.
+
+# Parameters
+
+- `modifier::ViralInterferenceModifier`: Modifier struct
+- `pathogen_id::Int8`: ID of the current pathogen
+- `infecter::Individual`: Infecting individual
+- `infectee::Individual`: Individual to infect
+- `setting::Setting`: Setting in which the infection happens
+- `tick::Int16`: Current tick
+- `sim::Simulation`: Simulation object
+- `rng::Xoshiro`: RNG used for probability
+
+# Returns
+
+- `Float64`: Susceptibility factor (`0 <= f <= 1`)
+"""
+function transmission_factor(
+        modifier::ViralInterferenceModifier,
+        pathogen_id::Int8,
+        infecter::Individual,
+        infectee::Individual,
+        setting::Setting,
+        tick::Int16,
+        sim::Simulation,
+        rng::Xoshiro)::Float64
+
+    exposed_idx = findfirst(==(pathogen_id), modifier.pathogen_ids)
+    remaining_susceptibility = 1.0
+
+    for s in each_infection(infectee, sim)
+        s.pathogen_id == pathogen_id && continue
+        factor = if exposed_idx !== nothing
+            active_idx = findfirst(==(s.pathogen_id), modifier.pathogen_ids)
+            active_idx !== nothing ? modifier.interference_matrix[exposed_idx, active_idx] : modifier.default_interference_factor
+        else
+            modifier.default_interference_factor
+        end
+        remaining_susceptibility *= factor
+    end
+
+    return remaining_susceptibility
+end
+
+transmission_factor(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
+    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+
+###
+### ViralInterferenceTransmissionRate
+###
+
+"""
+    ViralInterferenceTransmissionRate <: TransmissionFunction
+
+Convenience wrapper combining a constant base transmission rate with a
+`ViralInterferenceModifier`. Accepts the same keyword arguments as
+`ViralInterferenceModifier` plus `transmission_rate`. The modifier fields are
+accessible via `.modifier.*`.
+
+# Fields
+- `transmission_rate::Float64`: Base per-contact transmission probability (0–1).
+- `modifier::ViralInterferenceModifier`: The viral interference modifier.
+
+# Example
+
+```julia
+tf = ViralInterferenceTransmissionRate(
+    transmission_rate = 0.3,
+    pathogen_ids = [1, 2],
+    interference_matrix = [1.0 0.4;
+                           0.6 1.0],
+    default_interference_factor = 1.0
+)
+```
+"""
+mutable struct ViralInterferenceTransmissionRate <: TransmissionFunction
+    transmission_rate::Float64
+    modifier::ViralInterferenceModifier
+
+    function ViralInterferenceTransmissionRate(;
+            transmission_rate::Float64 = 0.5,
+            pathogen_ids::Vector = Int8[],
+            interference_matrix = Matrix{Float64}(undef, 0, 0),
+            default_interference_factor::Float64 = 1.0)
+
+        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
+            throw(ArgumentError("transmission_rate must be between 0 and 1."))
+
+        modifier = ViralInterferenceModifier(
+            pathogen_ids = pathogen_ids,
+            interference_matrix = interference_matrix,
+            default_interference_factor = default_interference_factor
+        )
+
+        return new(transmission_rate, modifier)
     end
 end
 
 Base.show(io::IO, tf::ViralInterferenceTransmissionRate) = print(io,
     "ViralInterferenceTransmissionRate(β=$(tf.transmission_rate), " *
-    "pathogen_ids=$(tf.pathogen_ids), " *
-    "interference_matrix=$(tf.interference_matrix), " *
-    "default_interference_factor=$(tf.default_interference_factor))")
+    "pathogen_ids=$(tf.modifier.pathogen_ids), " *
+    "interference_matrix=$(tf.modifier.interference_matrix), " *
+    "default_interference_factor=$(tf.modifier.default_interference_factor))")
 
 
 """
@@ -98,12 +211,6 @@ Calculates the base transmission rate using a constant base rate modulated by a
 susceptibility reduction derived from the infectee's currently active concurrent
 infections. Infectiousness and immunity scaling are applied automatically by the
 framework via `effective_transmission_probability`.
-
-For each active infection of the infectee with a pathogen other than `pathogen_id`,
-the remaining susceptibility is multiplied by the corresponding entry in
-`interference_matrix`. Entries are looked up by `[exposed_pathogen, active_pathogen]`
-using the index order in `pathogen_ids`; `default_interference_factor` is used for
-any pair not covered by the matrix.
 
 # Parameters
 
@@ -129,22 +236,8 @@ function transmission_probability(
         tick::Int16,
         sim::Simulation,
         rng::Xoshiro)::Float64
-
-    exposed_idx = findfirst(==(pathogen_id), transFunc.pathogen_ids)
-    remaining_susceptibility = 1.0
-
-    for s in each_infection(infectee, sim)
-        s.pathogen_id == pathogen_id && continue
-        factor = if exposed_idx !== nothing
-            active_idx = findfirst(==(s.pathogen_id), transFunc.pathogen_ids)
-            active_idx !== nothing ? transFunc.interference_matrix[exposed_idx, active_idx] : transFunc.default_interference_factor
-        else
-            transFunc.default_interference_factor
-        end
-        remaining_susceptibility *= factor
-    end
-
-    return transFunc.transmission_rate * remaining_susceptibility
+    return transFunc.transmission_rate *
+           transmission_factor(transFunc.modifier, pathogen_id, infecter, infectee, setting, tick, sim, rng)
 end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default

@@ -1,4 +1,5 @@
 export transmission_probability
+export transmission_factor
 export effective_transmission_probability
 export transmission_functions
 export progression_categories

@@ -1,28 +1,27 @@
 export CompositeTransmissionRate
 
 """
-    CompositeTransmissionRate{T<:Tuple} <: TransmissionFunction
+    CompositeTransmissionRate{B<:TransmissionFunction, M<:Tuple{Vararg{TransmissionModifier}}} <: TransmissionFunction
 
-A `TransmissionFunction` that composes multiple transmission functions multiplicatively.
-Each sub-function contributes a base rate via `transmission_probability`; infectiousness
-and standard immunity are applied exactly once by the framework via
-`effective_transmission_probability`, avoiding double-counting.
+A `TransmissionFunction` that combines one base `TransmissionFunction` with zero or more
+`TransmissionModifier`s multiplicatively. The base function provides the absolute per-contact
+transmission probability; each modifier returns a dimensionless factor (via `transmission_factor`)
+that scales that probability.
 
-The sub-functions are stored as a typed tuple so that Julia can fully specialise and inline
-the dispatch chain with no heap allocation.
+The base and modifiers are stored as concrete typed fields so that Julia can fully specialise
+and inline the entire dispatch chain with no heap allocation.
 
 # Fields
-- `functions::T`: Tuple of `TransmissionFunction` instances to combine.
+- `base::B`: A `TransmissionFunction` that returns an absolute probability.
+- `modifiers::M`: Tuple of `TransmissionModifier` instances, each contributing a factor.
 
 # Example
 
 ```julia
 # Age-dependent base rate, scaled down by viral interference from concurrent infections.
-# Set transmission_rate = 1.0 on the interference function so it acts as a pure modifier.
 tf = CompositeTransmissionRate(
     AgeDependentTransmissionRate(age_groups = ["0-", "60-"], transmission_rates = [0.2, 0.4]),
-    ViralInterferenceTransmissionRate(
-        transmission_rate = 1.0,
+    ViralInterferenceModifier(
         pathogen_ids = [1, 2],
         interference_matrix = [1.0 0.4; 0.6 1.0]
     )
@@ -30,36 +29,39 @@ tf = CompositeTransmissionRate(
 pathogen = Pathogen(name = "Flu", progressions = [...], transmission_function = tf)
 ```
 """
-struct CompositeTransmissionRate{T<:Tuple} <: TransmissionFunction
-    functions::T
+struct CompositeTransmissionRate{B<:TransmissionFunction, M<:Tuple{Vararg{TransmissionModifier}}} <: TransmissionFunction
+    base::B
+    modifiers::M
 end
 
 """
-    CompositeTransmissionRate(fns::TransmissionFunction...) -> CompositeTransmissionRate
+    CompositeTransmissionRate(base::TransmissionFunction, modifiers::TransmissionModifier...) -> CompositeTransmissionRate
 
-Varargs constructor. Passing concrete-typed arguments preserves their types in the tuple,
-giving a fully type-stable `CompositeTransmissionRate{Tuple{T1, T2, ...}}`.
+Varargs constructor. `base` must be a concrete `TransmissionFunction` (not a `TransmissionModifier`);
+the remaining arguments must all be `TransmissionModifier` instances. Preserving concrete types
+in the tuple gives a fully type-stable `CompositeTransmissionRate{B, Tuple{M1, M2, ...}}`.
 """
-CompositeTransmissionRate(fns::TransmissionFunction...) = CompositeTransmissionRate(fns)
+CompositeTransmissionRate(base::TransmissionFunction, modifiers::TransmissionModifier...) = CompositeTransmissionRate(base, modifiers)
 
-Base.show(io::IO, tf::CompositeTransmissionRate) = print(io, "CompositeTransmissionRate(", join(tf.functions, ", "), ")")
+Base.show(io::IO, tf::CompositeTransmissionRate) =
+    print(io, "CompositeTransmissionRate(base=", tf.base, ", modifiers=(", join(tf.modifiers, ", "), "))")
 
 
 # recursive helpers
-@inline _product_rates(::Tuple{}, pathogen_id, infecter, infectee, setting, tick, sim, rng) = 1.0
+@inline _apply_modifiers(::Tuple{}, pathogen_id, infecter, infectee, setting, tick, sim, rng) = 1.0
 
-@inline function _product_rates(fns::Tuple, pathogen_id, infecter, infectee, setting, tick, sim, rng)
-    return transmission_probability(fns[1], pathogen_id, infecter, infectee, setting, tick, sim, rng) *
-           _product_rates(Base.tail(fns), pathogen_id, infecter, infectee, setting, tick, sim, rng)
+@inline function _apply_modifiers(mods::Tuple, pathogen_id, infecter, infectee, setting, tick, sim, rng)
+    return transmission_factor(mods[1], pathogen_id, infecter, infectee, setting, tick, sim, rng) *
+           _apply_modifiers(Base.tail(mods), pathogen_id, infecter, infectee, setting, tick, sim, rng)
 end
 
 
 """
     transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
 
-Returns the product of `transmission_probability` values from all composed sub-functions.
-Infectiousness and standard immunity are applied exactly once by the framework via
-`effective_transmission_probability`, avoiding double-counting across sub-functions.
+Returns the product of the base function's `transmission_probability` and the `transmission_factor`
+of each modifier. Infectiousness and standard immunity are applied exactly once by the framework
+via `effective_transmission_probability`, avoiding double-counting across sub-functions.
 
 # Parameters
 
@@ -74,7 +76,7 @@ Infectiousness and standard immunity are applied exactly once by the framework v
 
 # Returns
 
-- `Float64`: Product of all sub-function base rates (`0 <= p <= 1`)
+- `Float64`: Base probability scaled by all modifier factors (`0 <= p <= 1`)
 """
 function transmission_probability(
         transFunc::CompositeTransmissionRate,
@@ -85,7 +87,8 @@ function transmission_probability(
         tick::Int16,
         sim::Simulation,
         rng::Xoshiro)::Float64
-    return _product_rates(transFunc.functions, pathogen_id, infecter, infectee, setting, tick, sim, rng)
+    return transmission_probability(transFunc.base, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
+           _apply_modifiers(transFunc.modifiers, pathogen_id, infecter, infectee, setting, tick, sim, rng)
 end
 
 transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
