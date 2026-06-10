@@ -494,12 +494,12 @@ function gemsplot(bd::BatchData; type = :nothing, plotargs...)
         return p
     end
 
-    !is_subtype(type, SimulationPlot) && throw("There's no plot type that matches $type")
+    !is_subtype(type, SimulationPlot) && throw(ErrorException("There's no plot type that matches $type"))
 
     plt = try
         get_subtype(type, SimulationPlot)()
     catch
-        throw("$type plots cannot be created via gemsplot — use generate($type(args...), bd) instead.")
+        throw(ErrorException("$type plots cannot be created via gemsplot — use generate($type(args...), bd) instead."))
     end
 
     hasmethod(generate, (typeof(plt), BatchData)) || error(

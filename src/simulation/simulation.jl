@@ -1114,7 +1114,7 @@ function create_infectiousness_profile(params::Dict)
     return try
         ip_type(;kw_args...)
     catch e
-        throw("InfectiousnessProfile of type '$ip_type' could not be created. $(sprint(showerror, e))")
+        throw(ErrorException("InfectiousnessProfile of type '$ip_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 

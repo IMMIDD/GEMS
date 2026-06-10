@@ -52,7 +52,7 @@ function prepare_frame_data(infections::DataFrame, max_points::Int)
         x -> DataFrames.select(x, :infection_id)
 
     if isempty(selection)
-        throw("The infections dataframe does not have any geolocated entries.")
+        throw(ErrorException("The infections dataframe does not have any geolocated entries."))
     end
 
     totalpoints = nrow(selection)
@@ -201,7 +201,7 @@ function generate_frame(coords::DataFrame,
     if isfile(dest)
         return GMTWrapper(dest)
     else
-        throw("Error while trying to generate GMT Map. File was not successfully created at $dest. Are you missing the '*.png?'")
+        throw(ErrorException("Error while trying to generate GMT Map. File was not successfully created at $dest. Are you missing the '*.png?'"))
     end
 end
 
@@ -230,7 +230,7 @@ function generate_movie(rd::ResultData; seconds::Int64 = 60, fps::Int64 = 24, sa
 
     ft = rd |> final_tick
     if ft <= 0
-        throw("You need to run the simulation before attempting to render a movie.")
+        throw(ErrorException("You need to run the simulation before attempting to render a movie."))
     end
 
     data = prepare_frame_data(infections(rd), GEMS.MAX_MAP_POINTS_VIDEO)

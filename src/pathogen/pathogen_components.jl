@@ -83,7 +83,7 @@ include(basefolder() * "/src/pathogen/immunity_profile.jl")
 
 # fallback for assign functions
 function assign(individual::Individual, pa_func::ProgressionAssignmentFunction, rng::Xoshiro)
-    @error "The assign function is not defined for the provided ProgressionAssignmentFunction struct $(typeof(pa_func))."
+    error("The assign function is not defined for the provided ProgressionAssignmentFunction struct $(typeof(pa_func)).")
 end
 
 
@@ -144,8 +144,7 @@ effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id:
 This fallback raises an error; any concrete subtype must provide its own method.
 """
 function calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    @error "calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile))."
-    return Int8(0)
+    error("calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile)).")
 end
 
 """
@@ -154,8 +153,7 @@ end
 This fallback raises an error; any concrete subtype must provide its own method.
 """
 function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    @error "calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile))."
-    return Int8(0)
+    error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)).")
 end
 
 """

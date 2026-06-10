@@ -557,6 +557,24 @@
                 nothing)
         end
 
+        @testset "Factory Functions" begin
+            # create_transmission_function: CompositeTransmissionRate branch
+            tf = GEMS.create_transmission_function(Dict(
+                "type" => "CompositeTransmissionRate",
+                "base" => Dict("type" => "ConstantTransmissionRate",
+                               "parameters" => Dict("transmission_rate" => 0.3)),
+                "modifiers" => [Dict("type" => "SinusoidalSeasonalModifier",
+                                     "parameters" => Dict("amplitude" => 0.3, "peak_day" => 15))]))
+            @test tf isa CompositeTransmissionRate
+            @test tf.base isa ConstantTransmissionRate
+
+            # create_transmission_modifier: happy path
+            mod = GEMS.create_transmission_modifier(Dict(
+                "type" => "SinusoidalSeasonalModifier",
+                "parameters" => Dict("amplitude" => 0.3, "peak_day" => 15)))
+            @test mod isa SinusoidalSeasonalModifier
+        end
+
         @testset "Throw Paths (ErrorException)" begin
             # create_progression: missing required fields
             @test_throws ErrorException GEMS.create_progression(Dict(), "Symptomatic")
@@ -570,6 +588,11 @@
             @test_throws ErrorException GEMS.create_transmission_function(
                 Dict("type" => "ConstantTransmissionRate",
                     "parameters" => Dict("transmission_rate" => 2.0)))
+
+            # create_transmission_modifier: invalid params
+            @test_throws ErrorException GEMS.create_transmission_modifier(Dict(
+                "type" => "SinusoidalSeasonalModifier",
+                "parameters" => Dict("amplitude" => -1.0, "peak_day" => 15)))
 
             # create_start_condition: fraction out of range
             @test_throws ErrorException GEMS.create_start_condition(

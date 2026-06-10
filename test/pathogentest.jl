@@ -410,6 +410,10 @@
             end
         end
 
+        # assign fallback: unimplemented ProgressionAssignmentFunction throws
+        struct UnimplementedPA <: GEMS.ProgressionAssignmentFunction end
+        @test_throws ErrorException GEMS.assign(individuals(sim)[1], UnimplementedPA(), Xoshiro())
+
     end
 
 
@@ -830,6 +834,25 @@
         @test infections(rd) |>
             df -> df[df.tick .>= 1 .&& (df.age_a .>= 15 .|| df.age_b .>= 15), :] |> nrow == 0
 
+        @testset "Abstract TransmissionFunction fallbacks" begin
+            sim_k = Simulation(pop_size=100, transmission_function=KidsOnlyTransmission(0.5),
+                               infected_fraction=0.0)
+            infecter_k = individuals(sim_k)[1]
+            infectee_k = individuals(sim_k)[2]
+            infect!(infecter_k, Int16(0), first_pathogen(sim_k), rng=Xoshiro())
+            GEMS.update_individual!(infecter_k, Int16(1), sim_k)
+
+            # no-rng wrapper: KidsOnlyTransmission only defines the rng overload, so calling
+            # without rng goes through the abstract convenience wrapper in pathogen_components.jl
+            @test transmission_probability(KidsOnlyTransmission(0.5), Int8(1), infecter_k,
+                infectee_k, households(sim_k)[1], Int16(1), sim_k) isa Float64
+
+            # fallback for a type with no implementation throws
+            struct UnimplementedTF <: GEMS.TransmissionFunction end
+            @test_throws ErrorException transmission_probability(UnimplementedTF(), Int8(1),
+                infecter_k, infectee_k, households(sim_k)[1], Int16(1), sim_k, Xoshiro())
+        end
+
     end
 
     ###
@@ -949,6 +972,20 @@
             @test immunity_is_stable(p_sig_stable, nat_state(0), ind, Int16(100))
         end
 
+        @testset "Abstract ImmunityProfile fallbacks" begin
+            struct UnimplementedImmunityProfile <: GEMS.ImmunityProfile end
+            p = UnimplementedImmunityProfile()
+            state = ImmunityState(Int32(0), Int16(0), GEMS.DEFAULT_TICK, Int8(0), Int8(1),
+                                  GEMS.DEFAULT_VACCINE_ID, Int8(0))
+
+            # calculate_immunity with rng throws
+            @test_throws ErrorException calculate_immunity(p, state, ind, Int16(1), rng)
+            # calculate_immunity without rng delegates through the wrapper, also throws
+            @test_throws ErrorException calculate_immunity(p, state, ind, Int16(1))
+            # immunity_is_stable returns false as a safe default
+            @test !immunity_is_stable(p, state, ind, Int16(1))
+        end
+
     end
 
 
@@ -1024,6 +1061,14 @@
                 hospital_admission=Int16(9), icu_admission=Int16(10), icu_discharge=Int16(20),
                 hospital_discharge=Int16(25), recovery=Int16(30)))
             @test calculate_infectiousness(p, state_crit, ind, Int16(12), rng) == Int8(100)
+        end
+
+        @testset "Abstract InfectiousnessProfile fallback" begin
+            struct UnimplementedInfectiousnessProfile <: GEMS.InfectiousnessProfile end
+            p = UnimplementedInfectiousnessProfile()
+            state = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+            @test_throws ErrorException calculate_infectiousness(p, state, ind, Int16(5), rng)
         end
 
     end
