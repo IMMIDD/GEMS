@@ -244,7 +244,7 @@ mutable struct ResultData <: AbstractResultData
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
     """
-    ResultData(sim::Vector{<:Simulation}; style::String = "DefaultResultData", print_infos::Bool = false) = ResultData(PostProcessor(sim), style = style, print_infos = print_infos)
+    ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false) = ResultData(PostProcessor(sim), style = style, print_infos = print_infos)
 
     @doc """
 

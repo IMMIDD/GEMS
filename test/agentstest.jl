@@ -480,7 +480,7 @@
 
         # minimum required fields
         i = Individual(df[1, :])
-        @test typeof(i) == Individual{Nothing}
+        @test typeof(i) == Individual
         @test id(i) == Int32(1)
         @test age(i) == Int8(25)
         @test sex(i) == Int8(0)
@@ -515,7 +515,7 @@
 
         # extension fields appear in show output
         ae = AutoExtension((; my_score = 0.7f0))
-        ind_ext = Individual{typeof(ae)}(id=Int32(1), sex=Int8(0), age=Int8(30), extensions=ae)
+        ind_ext = Individual(id=Int32(1), sex=Int8(0), age=Int8(30), extensions=ae)
         output_ext = @capture_out show(ind_ext)
         @test occursin("my_score", output_ext)
         @test occursin("0.7", output_ext)
@@ -529,8 +529,8 @@
         end
 
         @testset "Explicit mutable struct extension" begin
-            ind = Individual{TestExt}(id=Int32(1), sex=Int8(0), age=Int8(30),
-                                      extensions=TestExt(0.8f0, Int8(2)))
+            ind = Individual(id=Int32(1), sex=Int8(0), age=Int8(30),
+                             extensions=TestExt(0.8f0, Int8(2)))
 
             # transparent read access
             @test ind.score == 0.8f0
@@ -555,8 +555,8 @@
         @testset "AutoExtension from NamedTuple" begin
             nt = (score = 0.7f0, label = Int8(3))
             ae = AutoExtension(NamedTuple(nt))
-            ind = Individual{typeof(ae)}(id=Int32(2), sex=Int8(1), age=Int8(25),
-                                          extensions=ae)
+            ind = Individual(id=Int32(2), sex=Int8(1), age=Int8(25),
+                             extensions=ae)
 
             # transparent read
             @test ind.score == 0.7f0
@@ -573,9 +573,9 @@
             @test age(ind) == 25
         end
 
-        @testset "Individual{Nothing} unaffected" begin
+        @testset "Individual without extensions unaffected" begin
             ind = Individual(id=Int32(1), sex=Int8(0), age=Int8(20))
-            @test typeof(ind) == Individual{Nothing}
+            @test typeof(ind) == Individual
             @test ind.extensions === nothing
         end
     end

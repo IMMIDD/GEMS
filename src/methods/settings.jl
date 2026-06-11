@@ -294,7 +294,7 @@ Appends the individuals associated with a given IndividualSetting to the provide
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function individuals!(indivs::Vector{<:Individual}, setting::IndividualSetting, simulation::Simulation)
+function individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     append!(indivs, setting |> individuals)
 end
 
@@ -310,7 +310,7 @@ recursively calling the `individuals!` function.
 - `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
 - `simulation::Simulation`: Simulation object
 """
-function individuals!(indivs::Vector{<:Individual}, setting::ContainerSetting, simulation::Simulation)
+function individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     for s in setting.contains
         individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
     end
@@ -345,7 +345,7 @@ end
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{<:Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
     if n >= length(individuals)
         return individuals
     else
@@ -373,7 +373,7 @@ Pushes the individuals present in a given IndividualSetting, i.e., only those in
 - `setting::IndividualSetting`: Setting to get the individuals from
 - `simulation::Simulation`: Simulation object
 """
-function present_individuals!(indivs::Vector{<:Individual}, setting::IndividualSetting, simulation::Simulation)
+function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     if is_open(setting)
         append!(indivs, setting |> individuals)
     end
@@ -390,7 +390,7 @@ Pushes the individuals present in a given ContainerSetting, i.e., only those in 
 - `setting::ContainerSetting`: Setting to get the individuals from
 - `simulation::Simulation`: Simulation object
 """
-function present_individuals!(indivs::Vector{<:Individual}, setting::ContainerSetting, simulation::Simulation)
+function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     # Check that setting and all containers are open
     if setting |> is_open
         for s in setting |> contains

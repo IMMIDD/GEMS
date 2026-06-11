@@ -154,7 +154,7 @@
                 score = Float32.(0.1:0.1:0.5)
             )
             sim = Simulation(population = pop_df_ext, ind_extension = [:score])
-            @test eltype(individuals(population(sim))) <: Individual{<:AutoExtension}
+            @test individuals(population(sim))[1].extensions isa AutoExtension
             @test individuals(population(sim))[1].score ≈ 0.1f0
 
             # failing
@@ -917,7 +917,7 @@
         @test length(contact_buffers(sim)) == num_threads
         
         # Verify they are actual individual vectors
-        @test present_buffers(sim)[1] isa Vector{<:Individual}
+        @test present_buffers(sim)[1] isa Vector{Individual}
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)

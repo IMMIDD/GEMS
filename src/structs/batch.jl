@@ -57,7 +57,7 @@ mutable struct Batch
     **Note**: All `Simulation` objects must be unique.
     You cannot pass the same simulation twice.
     """
-    Batch(simulations::Vector{<:Simulation}) = Batch(simulations...)
+    Batch(simulations::Vector{Simulation}) = Batch(simulations...)
 
 
     @doc """

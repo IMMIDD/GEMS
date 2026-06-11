@@ -18,8 +18,8 @@ A Type for a simple population. Acts as a container for a collection of individu
 - `maxage`: Age of the oldest individual
 - `minid`: smallest id of any individual
 """
-mutable struct Population{E}
-    individuals::Vector{Individual{E}}
+mutable struct Population
+    individuals::Vector{Individual}
     params::Dict{String, Any}
     maxage::Int8 # maximum age of any individual. Is updated upon first call of maxage function (for caching)
     minid::Int32 # smallest id of any individual. Corresponds to the offset compared to the dataset for all of germany
@@ -45,9 +45,9 @@ mutable struct Population{E}
 
     Creates a `Population` object from a vector of `Individual`s.
     """
-    function Population(individuals::Vector{Individual{E}}) where {E}
+    function Population(individuals::Vector{Individual})
         # Create the Population object
-        pop = new{E}(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
+        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, Int32[])
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
         make_id_map!(pop)
@@ -147,7 +147,7 @@ mutable struct Population{E}
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
-            return new{Nothing}(Individual{Nothing}[], Dict("populationfile" => "Not available."), -1, -1, Int32[])
+            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, Int32[])
         end
 
         # exception handling
@@ -284,15 +284,6 @@ mutable struct Population{E}
     end
 end
 
-# Backward-compat outer constructor: accepts Vector{<:Individual} where the element type
-# may be the abstract UnionAll Individual (e.g., from Individual[] in tests or user code).
-# Infers the concrete extension type from the first element; defaults to Nothing for empty vectors.
-function Population(individuals::Vector{<:Individual})
-    isempty(individuals) && return Population(Individual{Nothing}[])
-    T = typeof(first(individuals))
-    return Population(Vector{T}(individuals))
-end
-
 ###
 ### INDIVIDUAL BUILDER HELPERS
 ###
@@ -300,10 +291,10 @@ end
 """
     _build_individuals(base_data, n)
 
-Creates `n` baseline `Individual{Nothing}` instances in parallel from the provided column data.
+Creates `n` baseline `Individual` instances (no extensions) in parallel from the provided column data.
 """
 function _build_individuals(base_data, n)
-    inds = Vector{Individual{Nothing}}(undef, n)
+    inds = Vector{Individual}(undef, n)
     Threads.@threads for i in eachindex(inds)
         @inbounds inds[i] = Individual(; map(col -> col[i], base_data)...)
     end
@@ -313,17 +304,16 @@ end
 """
     _build_individuals_auto_extension(base_data, df, extra_cols, n)
 
-Creates `n` `Individual{AutoExtension{NT}}` instances in parallel, where `NT` is a NamedTuple
-inferred from the extra DataFrame columns not present in the base `Individual` field set.
+Creates `n` `Individual` instances in parallel whose boxed `extensions` hold an
+`AutoExtension` wrapping a NamedTuple of the extra DataFrame columns not present in the base
+`Individual` field set.
 """
 function _build_individuals_auto_extension(base_data, df, extra_cols, n)
     ext_data = NamedTuple{extra_cols}(Tuple(df[!, c] for c in extra_cols))
-    # Infer E from the first row to pre-allocate the typed vector
-    E = AutoExtension{typeof(NamedTuple{extra_cols}(map(col -> col[1], ext_data)))}
-    inds = Vector{Individual{E}}(undef, n)
+    inds = Vector{Individual}(undef, n)
     Threads.@threads for i in eachindex(inds)
-        ext = E(NamedTuple{extra_cols}(map(col -> col[i], ext_data)))
-        @inbounds inds[i] = Individual{E}(; map(col -> col[i], base_data)..., extensions = ext)
+        ext = AutoExtension(NamedTuple{extra_cols}(map(col -> col[i], ext_data)))
+        @inbounds inds[i] = Individual(; map(col -> col[i], base_data)..., extensions = ext)
     end
     return(inds)
 end
@@ -331,16 +321,14 @@ end
 """
     _build_individuals_with_factory(base_data, n, extension)
 
-Creates `n` `Individual{E}` instances in parallel using `extension(ind)` to produce each
-individual's extension value. `E` is inferred from the first factory call.
+Creates `n` `Individual` instances in parallel using `extension(ind)` to produce each
+individual's boxed extension value.
 """
 function _build_individuals_with_factory(base_data, n, extension::F) where {F}
-    # Determine E by applying the factory to a temporary baseline individual
-    E = typeof(extension(Individual(; map(col -> col[1], base_data)...)))
-    inds = Vector{Individual{E}}(undef, n)
+    inds = Vector{Individual}(undef, n)
     Threads.@threads for i in eachindex(inds)
         kw = map(col -> col[i], base_data)
-        @inbounds inds[i] = Individual{E}(; kw..., extensions = extension(Individual(; kw...)))
+        @inbounds inds[i] = Individual(; kw..., extensions = extension(Individual(; kw...)))
     end
     return(inds)
 end
@@ -348,20 +336,13 @@ end
 """
     _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
 
-Creates `n` `Individual{AutoExtension{NT}}` instances by joining `ext_df` to the
-population by `id`. Missing individuals receive zero-filled extension values; a
-warning is issued if any IDs are absent from the extension DataFrame.
+Creates `n` `Individual` instances whose boxed `extensions` hold an `AutoExtension` built by
+joining `ext_df` to the population by `id`. Missing individuals receive zero-filled extension
+values; a warning is issued if any IDs are absent from the extension DataFrame.
 """
 function _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
     ext_cols = Tuple(c for c in propertynames(ext_df) if c !== :id)
     id_to_row = Dict{Int32, Int}(Int32(ext_df[i, :id]) => i for i in 1:nrow(ext_df))
-
-    # Infer E from first matched row (fall back to zeros if the first ID is missing)
-    first_idx = get(id_to_row, pop_ids[1], nothing)
-    first_nt = isnothing(first_idx) ?
-        NamedTuple{ext_cols}(map(c -> zero(eltype(ext_df[!, c])), ext_cols)) :
-        NamedTuple{ext_cols}(map(c -> ext_df[first_idx, c], ext_cols))
-    E = AutoExtension{typeof(first_nt)}
 
     # Warn once if any population IDs are absent from the extension DataFrame
     missing_ids = [id for id in pop_ids if !haskey(id_to_row, id)]
@@ -369,14 +350,14 @@ function _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
         @warn "$(length(missing_ids)) individual(s) not found in ind_extension DataFrame; extension fields filled with zero."
     end
 
-    inds = Vector{Individual{E}}(undef, n)
+    inds = Vector{Individual}(undef, n)
     Threads.@threads for i in eachindex(inds)
         row_idx = get(id_to_row, pop_ids[i], nothing)
         nt = isnothing(row_idx) ?
             NamedTuple{ext_cols}(map(c -> zero(eltype(ext_df[!, c])), ext_cols)) :
             NamedTuple{ext_cols}(map(c -> ext_df[row_idx, c], ext_cols))
         base_kw = map(col -> col[i], base_data)
-        @inbounds inds[i] = Individual{E}(; base_kw..., extensions = E(nt))
+        @inbounds inds[i] = Individual(; base_kw..., extensions = AutoExtension(nt))
     end
     return(inds)
 end
@@ -436,7 +417,7 @@ end
 
 Return the individuals associated with the population.
 """
-function individuals(population::Population{E}) where {E}
+function individuals(population::Population)::Vector{Individual}
     population.individuals
 end
 
@@ -486,7 +467,7 @@ end
 
 Takes a vector of individuals and returns the number of infected individuals.
 """
-function num_of_infected(individuals::Vector{<:Individual})
+function num_of_infected(individuals::Vector{Individual})
     return(map(x -> infected(x), individuals) |> sum)
 end
 
@@ -506,7 +487,7 @@ end
 Checks whether a vector of individuals A is a subset of individuals B based on the individual's IDs.
 Does only work if all individuals have unique IDs.
 """
-function Base.issubset(individuals_a::Vector{<:Individual}, individuals_b::Vector{<:Individual})
+function Base.issubset(individuals_a::Vector{Individual}, individuals_b::Vector{Individual})
     return(
         Base.issubset(
             map(x -> id(x), individuals_a) |> sort,
@@ -527,11 +508,13 @@ end
 
 
 """
-    dataframe(population::Population{E}) where {E}
+    dataframe(population::Population)
 
 Returns a `DataFrame` representing the given population. If the population carries
-individual extensions (i.e. `E !== Nothing`), the extension fields are appended as
-additional columns after the base columns.
+individual extensions (i.e. the individuals' boxed `extensions` are not `nothing`), the
+extension fields are appended as additional columns after the base columns. The extension
+schema is taken from the first individual that has extensions (populations are assumed
+homogeneous).
 
 # Returns
 
@@ -551,7 +534,7 @@ additional columns after the base columns.
 | `schoolclass`           | `Int32` | Individual associated school class       |
 | `<extension fields>`    | (varies)| Any fields stored in `Individual.extensions`, appended dynamically |
 """
-function dataframe(population::Population{E}) where {E}
+function dataframe(population::Population)
     df = DataFrame(
         id = map(id, population |> individuals),
         sex = map(sex, population |> individuals),
@@ -565,10 +548,13 @@ function dataframe(population::Population{E}) where {E}
         schoolclass = map(class_id, population |> individuals)
     )
 
-    if E !== Nothing
-        ext_fields = E <: AutoExtension ? fieldnames(fieldtype(E, :data)) : fieldnames(E)
+    inds = individuals(population)
+    ext_idx = findfirst(ind -> ind.extensions !== nothing, inds)
+    if ext_idx !== nothing
+        ext = inds[ext_idx].extensions
+        ext_fields = ext isa AutoExtension ? fieldnames(fieldtype(typeof(ext), :data)) : fieldnames(typeof(ext))
         for f in ext_fields
-            df[!, f] = map(ind -> getproperty(ind, f), individuals(population))
+            df[!, f] = map(ind -> getproperty(ind, f), inds)
         end
     end
 

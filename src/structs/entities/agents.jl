@@ -76,8 +76,9 @@ export AutoExtension
     AutoExtension{NT <: NamedTuple}
 
 Mutable wrapper around a NamedTuple used for auto-detected extension fields
-from CSV/DataFrame extra columns. Allows transparent field access and mutation
-on `Individual{AutoExtension{NT}}` without requiring a user-defined struct.
+from CSV/DataFrame extra columns. Stored in an `Individual`'s boxed `extensions`
+field, it allows transparent field access and mutation without requiring a
+user-defined struct.
 """
 mutable struct AutoExtension{NT <: NamedTuple}
     data::NT
@@ -153,7 +154,7 @@ A type to represent individuals, that act as agents inside the simulation.
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
 """
-@with_kw_noshow mutable struct Individual{E} <: Agent
+@with_kw_noshow mutable struct Individual <: Agent
     # GENERAL
     id::Int32  # 4 bytes
     sex::Int8  # 1 byte
@@ -226,9 +227,8 @@ A type to represent individuals, that act as agents inside the simulation.
     quarantine_tick::Int16 = DEFAULT_TICK
     quarantine_release_tick::Int16 = DEFAULT_TICK
 
-    # EXTENSIONS (E=Nothing by default)
-    # for a concrete extension E, callers must supply extensions=E() explicitly.
-    extensions::E = nothing
+    # EXTENSIONS
+    extensions::Any = nothing
 end
 
 """
@@ -238,83 +238,45 @@ Return the field names of `Individual` excluding `:extensions`.
 Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
 they don't accidentally try to populate the extension slot from a column that doesn't exist.
 """
-individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual{Nothing}))
+individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual))
 
 """
-    Base.getproperty(ind::Individual{E}, name::Symbol)
+    Base.getproperty(ind::Individual, name::Symbol)
 
-Transparent read access for both core and extension fields.
+Transparent read access for both core and extension fields. Core fields are read directly;
+any other name is forwarded to the boxed `extensions` value (its fields, or — for an
+`AutoExtension` — the wrapped NamedTuple's fields).
 
-`@generated` inspects `fieldnames(E)` once per `(E, name)` specialisation at compile time and
-emits a direct `getfield` call. For `E = Nothing` (the baseline) the generated body is
-`getfield(ind, name)` — identical to the default. For call sites with a literal field name
-the if-else chain is constant-folded by the compiler to a single `getfield`.
+For a literal field name (e.g. `ind.infected`) the `hasfield` check is constant-folded and the
+call inlines to a single `getfield`, so core-field access keeps the same performance as the
+default. Only dynamic names (e.g. the `Dict`/`DataFrame` constructor loop) pay the runtime branch.
+Extension-field reads are intentionally type-unstable (the `extensions` slot is `Any`).
 """
-@generated function Base.getproperty(ind::Individual{E}, name::Symbol) where {E}
-    ext_fields = if E === Nothing
-        ()
-    elseif E <: AutoExtension
-        fieldnames(fieldtype(E, :data))
-    else
-        fieldnames(E)
-    end
-    if isempty(ext_fields)
-        return :(getfield(ind, name))
-    end
-    checks = [:(name === $(QuoteNode(f))) for f in ext_fields]
-    cond = length(checks) == 1 ? checks[1] : Expr(:||, checks...)
-    access = E <: AutoExtension ?
-        :(getfield(getfield(getfield(ind, :extensions), :data), name)) :
-        :(getfield(getfield(ind, :extensions), name))
-    return quote
-        if $cond
-            $access
-        else
-            getfield(ind, name)
-        end
-    end
+@inline function Base.getproperty(ind::Individual, name::Symbol)
+    hasfield(Individual, name) && return getfield(ind, name)
+    ext = getfield(ind, :extensions)
+    return ext isa AutoExtension ? getfield(getfield(ext, :data), name) : getfield(ext, name)
 end
 
 """
-    Base.setproperty!(ind::Individual{E}, name::Symbol, val)
+    Base.setproperty!(ind::Individual, name::Symbol, val)
 
 Transparent write access for both core and extension fields, with the same type-coercion
 behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
-`setfield!`). For `E = Nothing` the generated body is equivalent to the default.
-For `AutoExtension` extensions the inner NamedTuple is replaced via `merge`.
+`setfield!`). Non-core names are forwarded to the boxed `extensions` value; for an
+`AutoExtension` the wrapped NamedTuple is replaced via `merge`.
 """
-@generated function Base.setproperty!(ind::Individual{E}, name::Symbol, val) where {E}
-    ext_fields = if E === Nothing
-        ()
-    elseif E <: AutoExtension
-        fieldnames(fieldtype(E, :data))
-    else
-        fieldnames(E)
+@inline function Base.setproperty!(ind::Individual, name::Symbol, val)
+    if hasfield(Individual, name)
+        return setfield!(ind, name, convert(fieldtype(Individual, name), val))
     end
-    if isempty(ext_fields)
-        return :(setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val)))
-    end
-    checks = [:(name === $(QuoteNode(f))) for f in ext_fields]
-    cond = length(checks) == 1 ? checks[1] : Expr(:||, checks...)
-    if E <: AutoExtension
-        NT = fieldtype(E, :data)
-        return quote
-            if $cond
-                setfield!(getfield(ind, :extensions), :data,
-                    merge(getfield(getfield(ind, :extensions), :data),
-                          NamedTuple{(name,)}((convert(fieldtype($NT, name), val),))))
-            else
-                setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val))
-            end
-        end
+    ext = getfield(ind, :extensions)
+    if ext isa AutoExtension
+        nt = getfield(ext, :data)
+        return setfield!(ext, :data,
+            merge(nt, NamedTuple{(name,)}((convert(fieldtype(typeof(nt), name), val),))))
     else
-        return quote
-            if $cond
-                setfield!(getfield(ind, :extensions), name, convert(fieldtype($E, name), val))
-            else
-                setfield!(ind, name, convert(fieldtype(Individual{$E}, name), val))
-            end
-        end
+        return setfield!(ext, name, convert(fieldtype(typeof(ext), name), val))
     end
 end
 
@@ -325,8 +287,8 @@ end
 Create an individual with the provided properties. Properties must *have at least* keys
 `id`, `sex`, `age`.
 """
-function Individual(properties::Dict)::Individual{Nothing}
-    ind = Individual{Nothing}(id=properties["id"], sex=properties["sex"], age=properties["age"])
+function Individual(properties::Dict)::Individual
+    ind = Individual(id=properties["id"], sex=properties["sex"], age=properties["age"])
 
     for field in individual_base_fieldnames()
         if haskey(properties, String(field))
@@ -344,8 +306,8 @@ end
 Create an individual with the provided properties. Properties must *have at least* keys
 `id`, `sex`, `age`.
 """
-function Individual(properties::DataFrameRow)::Individual{Nothing}
-    return Individual{Nothing}(; (Symbol(k) => v for (k, v) in pairs(properties))...)
+function Individual(properties::DataFrameRow)::Individual
+    return Individual(; (Symbol(k) => v for (k, v) in pairs(properties))...)
 end
 
 
@@ -1518,7 +1480,7 @@ end
 
 ### printing
 
-function Base.show(io::IO, individual::Individual{E}) where {E}
+function Base.show(io::IO, individual::Individual)
     sex_str = individual.sex == 1 ? "female" : individual.sex == 2 ? "male" : "diverse"
 
     attributes = [
@@ -1574,8 +1536,9 @@ function Base.show(io::IO, individual::Individual{E}) where {E}
     ]
 
     # Append any extension fields
-    if E !== Nothing
-        ext_fields = E <: AutoExtension ? fieldnames(fieldtype(E, :data)) : fieldnames(E)
+    ext = individual.extensions
+    if ext !== nothing
+        ext_fields = ext isa AutoExtension ? fieldnames(fieldtype(typeof(ext), :data)) : fieldnames(typeof(ext))
         for f in ext_fields
             push!(attributes, string(f) => getproperty(individual, f))
         end
@@ -1589,7 +1552,7 @@ function Base.show(io::IO, individual::Individual{E}) where {E}
     end
 end
 
-function Base.show(io::IO, #=::MIME"text/plain",=# individuals::Vector{<:Individual})
+function Base.show(io::IO, #=::MIME"text/plain",=# individuals::Vector{Individual})
     n = length(individuals)
     println(io, "$(n)-element Vector{Individual}:")
     

@@ -511,6 +511,27 @@ sim = Simulation(ind_extension = ind -> MyParams(age(ind) > 60 ? 0.8 : 0.3))
 !!! info "Transparency"
     Extension fields behave exactly like built-in fields regardless of how they were created. All existing GEMS functions that accept `::Individual` continue to work on extended individuals unchanged.
 
+!!! warning "Type stability of extension fields"
+    Extension data is stored in a boxed `extensions` field (typed `Any`), so reading a custom
+    field — e.g. `ind.my_custom_attribute` — is **type-unstable**. This is harmless in most code,
+    and in particular in custom `transmission_probability` / `sample_contacts!` methods: those are
+    already reached through dynamic dispatch, so a single boxed read adds negligible cost.
+
+    If you do heavy per-contact computation on custom fields and want full type stability, recover
+    it with a *function barrier* — read the extension once and dispatch on its concrete type:
+
+    ```julia
+    import GEMS.transmission_probability
+
+    # thin outer method: hands the concrete extension to a specialized inner function
+    GEMS.transmission_probability(tf::MyTransFunc, pathogen_id, infecter::Individual,
+            infectee::Individual, setting, tick, sim, rng) =
+        _tp(tf, infecter.extensions, infectee.extensions, pathogen_id, setting, tick, sim, rng)
+
+    # inner method specializes on MyExt, so ea/eb field access is fully type-stable
+    _tp(tf::MyTransFunc, ea::MyExt, eb::MyExt, pathogen_id, setting, tick, sim, rng) = # ...
+    ```
+
 ## Custom Start Conditions
 
 coming soon ...

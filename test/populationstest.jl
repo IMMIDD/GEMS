@@ -102,7 +102,8 @@
             )
             # Extra columns are ignored — no extensions without explicit ind_extension
             pop = Population(df)
-            @test eltype(individuals(pop)) == Individual{Nothing}
+            @test eltype(individuals(pop)) == Individual
+            @test individuals(pop)[1].extensions === nothing
         end
 
         @testset "Explicit Symbol-vector ind_extension" begin
@@ -116,7 +117,7 @@
             )
             # Only requested columns become extensions
             pop = Population(df; ind_extension = [:score, :category])
-            @test eltype(individuals(pop)) <: Individual{<:AutoExtension}
+            @test individuals(pop)[1].extensions isa AutoExtension
 
             ind = individuals(pop)[1]
             @test ind.score ≈ 0.1f0
@@ -141,7 +142,7 @@
             )
             pop = Population(df; ind_extension = ind -> PopTestExt(Float32(age(ind)) / 100f0, Int8(1)))
 
-            @test eltype(individuals(pop)) == Individual{PopTestExt}
+            @test individuals(pop)[1].extensions isa PopTestExt
 
             ind = individuals(pop)[1]
             @test ind.score ≈ 0.20f0   # age 20 / 100
@@ -152,10 +153,11 @@
             @test ind.score ≈ 0.5f0
         end
 
-        @testset "No extra columns → Population{Nothing}" begin
+        @testset "No extra columns → no extensions" begin
             df = DataFrame(id = Int32.(1:3), age = Int8.(20:22), sex = Int8.(ones(3)), household = Int32.(1:3))
             pop = Population(df)
-            @test eltype(individuals(pop)) == Individual{Nothing}
+            @test eltype(individuals(pop)) == Individual
+            @test individuals(pop)[1].extensions === nothing
         end
 
         @testset "Simulation with ind_extension" begin
@@ -179,7 +181,7 @@
 
             # full match: all IDs present
             pop = Population(base_df; ind_extension = ext_df)
-            @test eltype(individuals(pop)) <: Individual{<:AutoExtension}
+            @test individuals(pop)[1].extensions isa AutoExtension
             @test individuals(pop)[1].score ≈ 0.1f0
             @test individuals(pop)[3].score ≈ 0.3f0
 
@@ -238,7 +240,7 @@
             @test :age in propertynames(result)
         end
 
-        @testset "dataframe Population{Nothing} has no extension columns" begin
+        @testset "dataframe without extensions has no extension columns" begin
             df = DataFrame(id = Int32.(1:3), age = Int8.(20:22), sex = Int8.(ones(3)), household = Int32.(1:3))
             pop = Population(df)
             result = dataframe(pop)
