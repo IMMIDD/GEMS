@@ -65,16 +65,19 @@ This measure will apply the 'my\\_follow\\_up\\_str' only
 to individuals of the setting who are 65 years or older. The filter
 is always applied before the `sample_size` or `sample_fraction`.
 """
+_select_all(::Individual) = true
+
 struct FindMembers <: SMeasure
     follow_up::IStrategy
 
     sample_size::Int64
     sample_fraction::Float64
     selectionfilter::IPredicate
+    has_filter::Bool
 
 
     function FindMembers(follow_up::IStrategy;
-        sample_size::Int64 = -1, sample_fraction::Float64 = 1.0, selectionfilter::Function = x -> true)
+        sample_size::Int64 = -1, sample_fraction::Float64 = 1.0, selectionfilter::Function = _select_all)
 
         if sample_size < -1
             throw(ArgumentError("The sample_size for the FindMembers()-measure must be a positive integer."))
@@ -89,7 +92,7 @@ struct FindMembers <: SMeasure
         end
 
         return(
-            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter))
+            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all)
         )
     end
 
@@ -120,6 +123,15 @@ Returns the `selectionfilter` attribute of a `FindMembers` measure struct.
 """
 function selectionfilter(fs::FindMembers)
     return(fs.selectionfilter)
+end
+
+"""
+    has_filter(fs::FindMembers)
+
+Returns whether a custom `selectionfilter` was provided to the `FindMembers` measure.
+"""
+function has_filter(fs::FindMembers)
+    return(fs.has_filter)
 end
 
 """
@@ -161,22 +173,21 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
 
     INTERVENTION_DEBUG && @debug "Identifying members of setting $(string(typeof(s)))[$(id(s))] at tick $(sim |> tick)"
 
+    members = individuals(s)
+    if has_filter(measure)
+        members = filter(selectionfilter(measure), members)
+    end
+
     # return a sample of size "sample_size"
     if sample_size(measure) >= 0
-        return s |> individuals |>
-            x -> filter(selectionfilter(measure), x) |>
-            x -> sample_individuals(x, sample_size(measure), rng=rng(sim)) |>
-            x -> Handover(x, measure |> follow_up)
+        return Handover(sample_individuals(members, sample_size(measure), rng=rng(sim)), measure |> follow_up)
     end
-        
+
     # return a sample of size "sample_fraction * length"
     if sample_fraction(measure) < 1
-        return s |> individuals |>
-            x -> filter(selectionfilter(measure), x) |>
-            x -> sample_individuals(x, Int64(ceil((length(x) * sample_fraction(measure)))), rng=rng(sim)) |>
-            x -> Handover(x, measure |> follow_up)
+        return Handover(sample_individuals(members, Int64(ceil((length(members) * sample_fraction(measure)))), rng=rng(sim)), measure |> follow_up)
     end
 
     # return all individuals
-    return Handover(filter(selectionfilter(measure), individuals(s)), measure |> follow_up)
+    return Handover(members, measure |> follow_up)
 end
