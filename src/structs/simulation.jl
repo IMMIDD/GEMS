@@ -746,11 +746,13 @@ end
 
 
 """
-    _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
+    _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
 
-Internal function barrier to calculate the number of individuals in setting `x`. Mutates the pre-allocated `indivs` buffer to ensure type stability and avoid memory allocations during iteration.
+Internal function barrier to set the contact sampling method on every setting in
+`setting_list` without dynamic dispatch. The concrete `settingtype` assertion inside
+the loop ensures type-stable field access.
 """
-function _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
+function _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
     for s_abs in setting_list
         s = s_abs::settingtype
         s.contact_sampling_method = method
@@ -1422,10 +1424,18 @@ end
 
 Returns all settings of `settingtype` of the simulation.
 """
-function settings(simulation::Simulation, settingtype::DataType)::Union{Vector{Setting}, Nothing}
-    # TODO: The function return is not type safe. Should be replaced with 
-    # commented function above (but needs to fix tests then)
+function settings(simulation::Simulation, settingtype::DataType)
     return get(settingscontainer(simulation), settingtype)
+end
+
+"""
+    settings(simulation::Simulation, ::Type{T}) where {T<:Setting}
+
+Type-stable accessor: returns `Vector{T}` for the given concrete setting type `T`.
+Returns an empty `Vector{T}` when the type is not present.
+"""
+function settings(simulation::Simulation, ::Type{T}) where {T<:Setting}
+    return settings(settingscontainer(simulation), T)
 end
 
 

@@ -665,8 +665,9 @@ function open!(setting::Setting, simulation::Simulation)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
-        for s in settings(simulation, k)[v]
-            open!(s)
+        stngs = settings(simulation, k)
+        for idx in v
+            open!(stngs[idx]::Setting)
         end
     end
 end
@@ -690,8 +691,9 @@ function close!(setting::Setting, simulation::Simulation)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
-        for s in settings(simulation, k)[v]
-            close!(s)
+        stngs = settings(simulation, k)
+        for idx in v
+            close!(stngs[idx]::Setting)
         end
     end
 end

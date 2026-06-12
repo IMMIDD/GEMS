@@ -285,11 +285,10 @@ function step!(simulation::Simulation)
 
     # infect individuals in settings
     if !dormant
-        for type in settingtypes_sorted(settingscontainer(simulation))
-            Threads.@threads :static for stng in settings(simulation, type)
-                if isactive(stng)
-                    spread_infection!(stng, simulation, pathogen(simulation))
-                end
+        p = pathogen(simulation)
+        foreach_setting_vector(settingscontainer(simulation)) do stngs
+            Threads.@threads :static for stng in stngs
+                isactive(stng) && spread_infection!(stng, simulation, p)
             end
         end
     end
