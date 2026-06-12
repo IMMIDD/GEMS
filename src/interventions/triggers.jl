@@ -289,8 +289,24 @@ Triggers the execution of the `SStrategy` for all settings of the specified `set
 associated with an `STickTrigger`.
 """
 function trigger(stt::STickTrigger, sim::Simulation)
-    for s in settings(sim, stt |> settingtype)
-        trigger_strategy(stt |> strategy, s, sim)
+    _trigger_settings!(stt |> strategy, settings(sim, stt |> settingtype), sim)
+end
+
+"""
+    _trigger_settings!(str::SStrategy, stngs::Vector, sim::Simulation)
+
+Function barrier for `trigger(::STickTrigger, ::Simulation)`.
+
+`settings(sim, type::DataType)` returns `Vector` (abstract element type) because the
+`SettingsContainer` dict has value type `Vector` 
+
+Passing the vector to this function causes Julia to dispatch on its runtime type
+(e.g. `Vector{Office}`) and compile a specialization in which `s` is concretely typed,
+so the `trigger_strategy` call inside the loop is statically resolved.
+"""
+function _trigger_settings!(str::SStrategy, stngs::Vector, sim::Simulation)
+    for s in stngs
+        trigger_strategy(str, s, sim)
     end
 end
 
