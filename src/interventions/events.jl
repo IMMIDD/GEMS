@@ -11,7 +11,7 @@ export SMeasureEvent
 Struct associate a specific `Individual` with a specific `IMeasure`
 which is stored in the intervention event queue.
 """
-mutable struct IMeasureEvent <: Event
+struct IMeasureEvent <: Event
     individual::Individual
     measure::IMeasure
     condition::IPredicate
@@ -23,7 +23,7 @@ end
 Struct associate a specific `Setting` with a specific `SMeasure`
 which is stored in the intervention event queue.
 """
-mutable struct SMeasureEvent <: Event
+struct SMeasureEvent <: Event
     setting::Setting
     measure::SMeasure
     condition::SPredicate
