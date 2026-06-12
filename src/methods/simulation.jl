@@ -19,12 +19,10 @@ Executes the `process_measure` function for all measures in the
 simulation's `EventQueue` for the current tick.
 """
 function process_events!(simulation::Simulation)
-
-    while !isempty(simulation |> event_queue) &&
-        first(simulation |> event_queue)[2] <= simulation |> tick
-
-        simulation |> event_queue |> dequeue! |>
-            x -> process_event(x, simulation)
+    eq = event_queue(simulation)
+    while !isempty(eq) && first(eq)[2] <= tick(simulation)
+        event = dequeue!(eq)::Union{IMeasureEvent, SMeasureEvent}
+        process_event(event, simulation)
     end
 end
 
