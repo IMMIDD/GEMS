@@ -50,7 +50,7 @@ Closes the passed setting `s` indefinitely, effectively preventing all contacts.
 function process_measure(sim::Simulation, s::Setting, close::CloseSetting)
     
     #println("Close Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)")
-    @debug "Close Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Close Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
 
     close!(s, sim)    
 end

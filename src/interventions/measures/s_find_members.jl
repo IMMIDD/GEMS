@@ -70,7 +70,7 @@ struct FindMembers <: SMeasure
 
     sample_size::Int64
     sample_fraction::Float64
-    selectionfilter::Function
+    selectionfilter::IPredicate
 
 
     function FindMembers(follow_up::IStrategy;
@@ -89,7 +89,7 @@ struct FindMembers <: SMeasure
         end
 
         return(
-            new(follow_up, sample_size, sample_fraction, Base._bool(selectionfilter))
+            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter))
         )
     end
 
@@ -159,7 +159,7 @@ can be used to condition or limit the results.
 """
 function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
 
-    @debug "Identifying members of setting $(string(typeof(s)))[$(id(s))] at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Identifying members of setting $(string(typeof(s)))[$(id(s))] at tick $(sim |> tick)"
 
     # return a sample of size "sample_size"
     if sample_size(measure) >= 0

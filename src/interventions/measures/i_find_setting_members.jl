@@ -112,7 +112,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSettingM
     s = sim |> settingscontainer |>
         x -> setting(x, st, sid)
 
-    @debug "Individual $(ind |> id) identiying $(settingchar(s)) contacts $(map(x -> GEMS.id(x), [i for i in individuals(s) if i != ind])) at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identiying $(settingchar(s)) contacts $(map(x -> GEMS.id(x), [i for i in individuals(s) if i != ind])) at tick $(sim |> tick)"
 
     # return all individuals and filter out focal individual if nonself flag is set
     return Handover(nonself(measure) ? filter(x -> x != ind, individuals(s, sim)) : individuals(s, sim), measure |> follow_up)

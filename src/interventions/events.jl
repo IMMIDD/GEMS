@@ -14,7 +14,7 @@ which is stored in the intervention event queue.
 mutable struct IMeasureEvent <: Event
     individual::Individual
     measure::IMeasure
-    condition::Function
+    condition::IPredicate
 end
 
 """
@@ -26,7 +26,7 @@ which is stored in the intervention event queue.
 mutable struct SMeasureEvent <: Event
     setting::Setting
     measure::SMeasure
-    condition::Function
+    condition::SPredicate
 end
 
 

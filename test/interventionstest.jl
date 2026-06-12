@@ -35,8 +35,8 @@
         @test typeof(i_strategy) === IStrategy
         @test name(i_strategy) === "i_strategy"
         @test measures(i_strategy) == MeasureEntry[]
-        @test GEMS.condition(i_strategy) isa Function
-        @test GEMS.condition(i_strategy)(nothing) == true
+        @test GEMS.condition(i_strategy) isa GEMS.IPredicate
+        @test GEMS.condition(i_strategy)(i) == true
         add_strategy!(sim, i_strategy)
         @test strategies(sim)[1] === i_strategy
     end
@@ -45,8 +45,8 @@
         @test typeof(s_strategy) === SStrategy
         @test name(s_strategy) === "s_strategy"
         @test measures(s_strategy) == MeasureEntry[]
-        @test GEMS.condition(s_strategy) isa Function
-        @test GEMS.condition(s_strategy)(nothing) == true
+        @test GEMS.condition(s_strategy) isa GEMS.SPredicate
+        @test GEMS.condition(s_strategy)(gs) == true
         add_strategy!(sim, s_strategy)
         @test strategies(sim)[2] === s_strategy
     end
@@ -60,8 +60,8 @@
 
         # default condition is x -> true: the stored function returns true for any input
         default_str = IStrategy("show_default", sim_show)
-        @test GEMS.condition(default_str) isa Function
-        @test GEMS.condition(default_str)(nothing) == true
+        @test GEMS.condition(default_str) isa GEMS.IPredicate
+        @test GEMS.condition(default_str)(i) == true
 
         # non-trivial condition: the stored function preserves the predicate's logic
         age_str = IStrategy("show_age", sim_show, condition = i -> age(i) > 65)
@@ -72,8 +72,8 @@
 
         # same for SStrategy
         s_default_str = SStrategy("show_s_default", sim_show)
-        @test GEMS.condition(s_default_str) isa Function
-        @test GEMS.condition(s_default_str)(nothing) == true
+        @test GEMS.condition(s_default_str) isa GEMS.SPredicate
+        @test GEMS.condition(s_default_str)(gs) == true
 
         # Base.show with no measures: output contains type name and strategy name
         output_empty = @capture_out show(default_str)
@@ -829,11 +829,13 @@
 
         @test i_measure_event.individual === i
         @test i_measure_event.measure === test_measure
-        @test i_measure_event.condition === condition
+        @test i_measure_event.condition isa GEMS.IPredicate
+        @test i_measure_event.condition(i) == true
 
         @test s_measure_event.setting === gs
         @test s_measure_event.measure === test_all_measure
-        @test s_measure_event.condition === condition
+        @test s_measure_event.condition isa GEMS.SPredicate
+        @test s_measure_event.condition(gs) == true
 
         #test process_event
         GEMS.process_event(i_measure_event, sim)

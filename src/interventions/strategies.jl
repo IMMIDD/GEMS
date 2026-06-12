@@ -4,18 +4,32 @@ export offset, measure, delay, condition
 export IStrategy, SStrategy
 export name, condition, measures, add_measure!
 
+# Concrete function-wrapper types for the per-strategy callbacks. Wrapping the user closures in
+# these keeps the callback fields (and the measure vector) concretely typed, so calling them on
+# the intervention hot path is type-stable instead of a dynamic dispatch. The focal object is an
+# Individual for IStrategies/IMeasures and a Setting for SStrategies/SMeasures.
+const IPredicate = FunctionWrapper{Bool, Tuple{Individual}}
+const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
+const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
+const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
+
 """
-    MeasureEntry{T <: Measure}
+    MeasureEntry{O}
 
 This struct represents a tuple of an intervention-`measure`,
 an integer-`offset`, a `delay`-function and a `condition`.
 It is the internal data structure for `Strategies`.
+The type parameter `O` is the focal object type the `delay` and
+`condition` callbacks operate on (`Individual` or `Setting`); it is
+uniform across a strategy's measures, which keeps the measure vector
+concretely typed. The `measure` field is intentionally abstract and is
+resolved through the `process_measure` dispatch (a function barrier).
 """
-struct MeasureEntry{T <: Measure}
+struct MeasureEntry{O}
     offset::Int
-    measure::T
-    delay::Function
-    condition::Function
+    measure::Measure
+    delay::FunctionWrapper{Int, Tuple{O}}
+    condition::FunctionWrapper{Bool, Tuple{O}}
 end
 
 
@@ -64,11 +78,11 @@ condition its execution. The argument is the respective individual.
 struct IStrategy <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
-    measures::Vector{MeasureEntry{<:IMeasure}}
+    measures::Vector{MeasureEntry{Individual}}
 
     # One-Argument boolean function used to condition the execution of
     # this strategy. The argument will be the focal individual
-    condition::Function
+    condition::IPredicate
 
     # this inner constructor requires the simulation object
     # to register the new strategy with it. Otherwise it will
@@ -119,7 +133,7 @@ struct IStrategy <: Strategy
 
     """
     function IStrategy(name::String, sim::Simulation; condition::Function = x -> true)
-        str = new(name, MeasureEntry{<:IMeasure}[], Base._bool(condition))
+        str = new(name, MeasureEntry{Individual}[], IPredicate(condition))
         add_strategy!(sim, str)
         return(str)
     end
@@ -141,11 +155,11 @@ condition its execution. The argument is the respective individual.
 struct SStrategy <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
-    measures::Vector{MeasureEntry{<:SMeasure}}
+    measures::Vector{MeasureEntry{Setting}}
 
     # One-Argument boolean function used to condition the execution of
     # this strategy. The argument will be the focal setting
-    condition::Function
+    condition::SPredicate
 
     # this inner constructor requires the simulation object
     # to register the new strategy with it. Otherwise it will
@@ -197,7 +211,7 @@ struct SStrategy <: Strategy
 
     """
     function SStrategy(name::String, sim::Simulation; condition::Function = x -> true)
-        str = new(name, MeasureEntry{<:SMeasure}[], Base._bool(condition))
+        str = new(name, MeasureEntry{Setting}[], SPredicate(condition))
         add_strategy!(sim, str)
         return(str)
     end
@@ -274,8 +288,13 @@ This example only lets individuals go into self-isolation who are 65 and above.
 All these optional arguments and predicate functions can be combined. The
 calculated `delay` is added to the `offset` (if specified).
 """
-function add_measure!(str::Strategy, measure::Measure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
-    push!(str.measures, MeasureEntry(offset, measure, _int(delay), Base._bool(condition)))
+function add_measure!(str::IStrategy, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
+    push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition)))
+    return str
+end
+
+function add_measure!(str::SStrategy, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
+    push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition)))
     return str
 end
 

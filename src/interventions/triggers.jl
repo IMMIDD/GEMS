@@ -309,7 +309,7 @@ of the provided `IStrategy` and the specified `Individual`.
 function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
     # if condition is not met, return without executing measures
     cond = try
-        Bool(str.condition(i))
+        str.condition(i)
     catch
         # throw error if user provided a function that doesn't return a boolean value
         throw(ErrorException("The condition that you passed to IStrategy '$(str.name)' does not return a boolean value."))
@@ -345,7 +345,7 @@ of the provided `SStrategy` and the specified `Setting`.
 function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
     # if condition is not met, return without executing measures
     cond = try
-        Bool(str.condition(s))
+        str.condition(s)
     catch
         # throw error if user provided a function that doesn't return a boolean value
         throw(ErrorException("The condition that you passed to SStrategy '$(str.name)' does not return a boolean value."))
