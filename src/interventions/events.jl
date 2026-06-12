@@ -36,6 +36,22 @@ end
 ###
 
 """
+    trigger_handover!(objs::Vector, fu::Strategy, sim::Simulation)
+
+Triggers the follow-up strategy `fu` for every focal object in `objs`. Acts as a
+function barrier: `focal_objects(::Handover)` is abstractly typed
+(`Union{Vector{<:Individual}, Vector{<:Setting}}`), so resolving the concrete types once
+here lets the per-object loop run type-stable instead of dynamically dispatching
+`trigger_strategy` for each focal object.
+"""
+function trigger_handover!(objs::Vector, fu::Strategy, sim::Simulation)
+    for o in objs
+        trigger_strategy(fu, o, sim)
+    end
+end
+
+
+"""
     process_event(e::IMeasureEvent, sim::Simulation)
 
 Executes a specific `IMeasure` for a secific `Individual` (as stored in the `IMeasureEvent`)
@@ -59,14 +75,18 @@ function process_event(e::IMeasureEvent, sim::Simulation)
     # HANDLE NEXT EVENTS
 
     # if nothing was handed over, end function
-    if typeof(res) != Handover
+    if !(res isa Handover)
         return
     end
 
-    # if something was handed over, trigger handover strategy for each focal object
-    for fo in focal_objects(res)
-        !isnothing(follow_up(res)) ? trigger_strategy(follow_up(res), fo, sim) : nothing
+    # if no follow-up strategy was handed over, end function
+    fu = follow_up(res)
+    if isnothing(fu)
+        return
     end
+
+    # trigger the handover strategy for each focal object (function barrier for type stability)
+    trigger_handover!(focal_objects(res), fu, sim)
 end
 
 
@@ -94,12 +114,16 @@ function process_event(e::SMeasureEvent, sim::Simulation)
     # HANDLE NEXT EVENTS
 
     # if nothing was handed over, end function
-    if typeof(res) != Handover
+    if !(res isa Handover)
         return
     end
 
-    # if something was handed over, trigger handover strategy for each focal object
-    for fo in focal_objects(res)
-        !isnothing(follow_up(res)) ? trigger_strategy(follow_up(res), fo, sim) : nothing
+    # if no follow-up strategy was handed over, end function
+    fu = follow_up(res)
+    if isnothing(fu)
+        return
     end
+
+    # trigger the handover strategy for each focal object (function barrier for type stability)
+    trigger_handover!(focal_objects(res), fu, sim)
 end
