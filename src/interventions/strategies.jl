@@ -1,5 +1,5 @@
 export MeasureEntry
-export offset, measure, delay, condition
+export offset, measure, delay, condition, process_fn
 
 export IStrategy, SStrategy
 export name, condition, measures, add_measure!
@@ -12,6 +12,13 @@ const IPredicate = FunctionWrapper{Bool, Tuple{Individual}}
 const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
 const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
+
+# Per-measure process callbacks. Built once at `add_measure!` time, where the concrete measure
+# type is statically known, so the wrapped closure resolves `process_measure` statically. The
+# wrapper type-erases the closure to a single concrete type, turning the intervention-hot-path
+# call into a fixed indirect call instead of a dynamic `process_measure` dispatch.
+const IProcessFn = FunctionWrapper{Any, Tuple{Simulation, Individual}}
+const SProcessFn = FunctionWrapper{Any, Tuple{Simulation, Setting}}
 
 """
     MeasureEntry{O}
@@ -30,6 +37,8 @@ struct MeasureEntry{O}
     measure::Measure
     delay::FunctionWrapper{Int, Tuple{O}}
     condition::FunctionWrapper{Bool, Tuple{O}}
+    # type-erased `process_measure` callback for this measure (see IProcessFn/SProcessFn above)
+    process_fn::FunctionWrapper{Any, Tuple{Simulation, O}}
 end
 
 
@@ -61,6 +70,13 @@ delay(me::MeasureEntry) = me.delay
 Returns the condition function associated with a `MeasureEntry`.
 """
 condition(me::MeasureEntry) = me.condition
+
+"""
+    process_fn(me::MeasureEntry)
+
+Returns the type-erased `process_measure` callback associated with a `MeasureEntry`.
+"""
+process_fn(me::MeasureEntry) = me.process_fn
 
 """
     IStrategy <: Strategy
@@ -289,12 +305,14 @@ All these optional arguments and predicate functions can be combined. The
 calculated `delay` is added to the `offset` (if specified).
 """
 function add_measure!(str::IStrategy, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
-    push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition)))
+    fn = IProcessFn((sim, ind) -> process_measure(sim, ind, measure))
+    push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
     return str
 end
 
 function add_measure!(str::SStrategy, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
-    push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition)))
+    fn = SProcessFn((sim, s) -> process_measure(sim, s, measure))
+    push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
     return str
 end
 

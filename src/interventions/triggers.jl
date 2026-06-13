@@ -340,7 +340,7 @@ function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
         # enqueue measure events with the current tick and the added delay
         sim |> event_queue |>
             x -> enqueue!(x,
-                IMeasureEvent(i, measure(me)::IMeasure, condition(me)),
+                IMeasureEvent(i, measure(me)::IMeasure, condition(me), process_fn(me)),
                 Int16(tick(sim) + offset(me) + delay(me)(i))
             )
     end
@@ -376,7 +376,7 @@ function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
         # enqueue measure events with the current tick and the added delay
         sim |> event_queue |>
             x -> enqueue!(x,
-                SMeasureEvent(s, measure(me)::SMeasure, condition(me)),
+                SMeasureEvent(s, measure(me)::SMeasure, condition(me), process_fn(me)),
                 Int16(tick(sim) + offset(me) + delay(me)(s))
             )
     end

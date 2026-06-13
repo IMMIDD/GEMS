@@ -15,7 +15,14 @@ struct IMeasureEvent <: Event
     individual::Individual
     measure::IMeasure
     condition::IPredicate
+    # type-erased `process_measure` callback for `measure` (see IProcessFn in strategies.jl)
+    process_fn::IProcessFn
 end
+
+# convenience constructor that builds the process callback from the measure; used in tests.
+# The intervention hot path passes a prebuilt wrapper from the MeasureEntry instead.
+IMeasureEvent(individual::Individual, measure::IMeasure, condition) =
+    IMeasureEvent(individual, measure, condition, IProcessFn((sim, ind) -> process_measure(sim, ind, measure)))
 
 """
     SMeasureEvent <: Event
@@ -27,7 +34,13 @@ struct SMeasureEvent <: Event
     setting::Setting
     measure::SMeasure
     condition::SPredicate
+    # type-erased `process_measure` callback for `measure` (see SProcessFn in strategies.jl)
+    process_fn::SProcessFn
 end
+
+# convenience constructor that builds the process callback from the measure; used in tests.
+SMeasureEvent(setting::Setting, measure::SMeasure, condition) =
+    SMeasureEvent(setting, measure, condition, SProcessFn((sim, s) -> process_measure(sim, s, measure)))
 
 
 
@@ -60,7 +73,6 @@ the `process_measure()` functions return.
 """
 function process_event(e::IMeasureEvent, sim::Simulation)
     ind = e.individual
-    msr = e.measure
     cnd = e.condition
 
     # PROCESS EVENT
@@ -70,7 +82,8 @@ function process_event(e::IMeasureEvent, sim::Simulation)
         return
     end
 
-    res = process_measure(sim, ind, msr)
+    # call the prebuilt, type-erased process callback
+    res = e.process_fn(sim, ind)
 
     # HANDLE NEXT EVENTS
 
@@ -99,7 +112,6 @@ the `process_measure()` functions return.
 """
 function process_event(e::SMeasureEvent, sim::Simulation)
     stng = e.setting
-    msr = e.measure
     cnd = e.condition
 
     # PROCESS EVENT
@@ -109,7 +121,8 @@ function process_event(e::SMeasureEvent, sim::Simulation)
         return
     end
 
-    res = process_measure(sim, stng, msr)
+    # call the prebuilt, type-erased process callback
+    res = e.process_fn(sim, stng)
 
     # HANDLE NEXT EVENTS
 
