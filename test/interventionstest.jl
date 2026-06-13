@@ -872,9 +872,41 @@
         @test gs.isopen === false
 
         #test event queue
-        eq = EventQueue()
-        @test length(eq) == 0
-        @test isempty(eq) === true
+        @testset "Event Queue" begin
+            eq = EventQueue()
+            @test length(eq) == 0
+            @test isempty(eq) === true
+
+            # enqueue events at different ticks
+            enqueue!(eq, s_measure_event, Int16(3))
+            enqueue!(eq, i_measure_event, Int16(5))
+            @test length(eq) == 2
+            @test isempty(eq) === false
+
+            # peek returns the next (earliest-tick) event without removing it
+            @test peektick(eq) == Int16(3)
+            @test peek(eq) === s_measure_event
+            @test length(eq) == 2
+            # peek is non-destructive and points at whatever dequeue! removes next
+            @test peek(eq) === dequeue!(eq)
+            @test length(eq) == 1
+
+            # within a single tick bucket, peek matches the next dequeue! (LIFO order)
+            enqueue!(eq, s_measure_event, Int16(5))
+            @test peektick(eq) == Int16(5)
+            @test peek(eq) === dequeue!(eq)
+
+            # empty! removes all remaining events but keeps the queue reusable
+            empty!(eq)
+            @test length(eq) == 0
+            @test isempty(eq) === true
+
+            # queue still works after empty!: head resets and new events enqueue normally
+            enqueue!(eq, i_measure_event, Int16(7))
+            @test length(eq) == 1
+            @test peektick(eq) == Int16(7)
+            @test peek(eq) === i_measure_event
+        end
     end
 
     @testset "Scenarios" begin
