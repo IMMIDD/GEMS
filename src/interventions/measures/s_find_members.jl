@@ -74,6 +74,7 @@ struct FindMembers <: SMeasure
     sample_fraction::Float64
     selectionfilter::IPredicate
     has_filter::Bool
+    _buffer::Vector{Individual}   # reusable filter buffer; serial-only
 
 
     function FindMembers(follow_up::IStrategy;
@@ -92,7 +93,8 @@ struct FindMembers <: SMeasure
         end
 
         return(
-            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all)
+            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter),
+                selectionfilter !== _select_all, Vector{Individual}())
         )
     end
 
@@ -175,7 +177,14 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
 
     members = individuals(s)
     if has_filter(measure)
-        members = filter(selectionfilter(measure), members)
+        # Filter into the measure's reusable buffer to avoid a fresh Vector per call.
+        buf = measure._buffer
+        empty!(buf)
+        pred = selectionfilter(measure)
+        for m in members
+            pred(m) && push!(buf, m)
+        end
+        members = buf
     end
 
     # return a sample of size "sample_size"

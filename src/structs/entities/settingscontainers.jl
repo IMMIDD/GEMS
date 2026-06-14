@@ -60,9 +60,9 @@ leaf-to-root within each hierarchy:
 - **Workplace hierarchy** (leaf → root): `Office`, `Department`, `Workplace`,
   `WorkplaceSite`
 
-Used by [`foreach_setting_vector`](@ref) to call a function with a concretely-typed
+Used by `foreach_setting_vector` to call a function with a concretely-typed
 `Vector{T}` for each type, enabling type-stable iteration without dynamic dispatch.
-User-defined types registered via [`add_type!`](@ref) are not listed here; they are
+User-defined types registered via `add_type!` are not listed here; they are
 handled by the dynamic fallback in `foreach_setting_vector`.
 """
 const BUILTIN_SETTING_TYPES = (
@@ -75,8 +75,8 @@ const BUILTIN_SETTING_TYPES = (
 """
     BUILTIN_SETTING_TYPES_SET
 
-`Set{DataType}` of every type listed in [`BUILTIN_SETTING_TYPES`](@ref).  Used for O(1)
-membership testing in the extras loop of [`foreach_setting_vector`](@ref) to skip types
+`Set{DataType}` of every type listed in `BUILTIN_SETTING_TYPES`.  Used for O(1)
+membership testing in the extras loop of `foreach_setting_vector` to skip types
 that have already been visited.
 """
 const BUILTIN_SETTING_TYPES_SET = Set{DataType}(BUILTIN_SETTING_TYPES)
@@ -92,13 +92,13 @@ end
 
 Call `f(vec)` for every setting vector in `container`.
 
-For each type listed in [`BUILTIN_SETTING_TYPES`](@ref) that is present in `container`,
+For each type listed in `BUILTIN_SETTING_TYPES` that is present in `container`,
 `f` receives a concretely-typed `Vector{T}` — the call is fully type-stable with no
 dynamic dispatch.  Built-in types are visited in the order defined by
 `BUILTIN_SETTING_TYPES` (domain-grouped, leaf-to-root within each hierarchy).
 
 For any user-added types not in `BUILTIN_SETTING_TYPES` (registered via
-[`add_type!`](@ref)), `f` receives a plain `Vector`; those callers remain on the dynamic
+`add_type!`), `f` receives a plain `Vector`; those callers remain on the dynamic
 path, which is acceptable for extension types.
 """
 @inline function foreach_setting_vector(f::F, c::SettingsContainer) where {F}
