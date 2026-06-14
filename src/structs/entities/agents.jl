@@ -241,6 +241,18 @@ they don't accidentally try to populate the extension slot from a column that do
 individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual))
 
 """
+    assert_no_core_collision(names)
+
+Throw an error if any of `names` of extension fields collides with a core `Individual` field name.
+"""
+function assert_no_core_collision(names)
+    clash = intersect(Symbol.(collect(names)), individual_base_fieldnames())
+    isempty(clash) || error(
+        "ind_extension field(s) $(collect(clash)) collide with core Individual fields. " *
+        "Extension fields must use distinct names. Rename the offending column(s).")
+end
+
+"""
     Base.getproperty(ind::Individual, name::Symbol)
 
 Transparent read access for both core and extension fields. Core fields are read directly;

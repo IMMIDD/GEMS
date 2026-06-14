@@ -71,18 +71,26 @@ mutable struct Population
         # Dispatch to the appropriate builder based on the extension mode
         inds = if ind_extension isa DataFrame
             # Separate extension DataFrame joined by individual ID
+            assert_no_core_collision(c for c in propertynames(ind_extension) if c !== :id)
             pop_ids = [Int32(df[i, :id]) for i in 1:nrow(df)]
             _build_individuals_from_ext_df(base_data, pop_ids, ind_extension, nrow(df))
         elseif ind_extension isa AbstractVector{Symbol} && !isempty(ind_extension)
             # Explicit column names from the population DataFrame
+            assert_no_core_collision(ind_extension)
             cols = Tuple(c for c in ind_extension if c ∈ propertynames(df))
             missing_cols = filter(c -> c ∉ propertynames(df), ind_extension)
             isempty(missing_cols) || @warn "ind_extension columns not found in population data: $missing_cols"
             isempty(cols) ? _build_individuals(base_data, nrow(df)) :
                             _build_individuals_auto_extension(base_data, df, cols, nrow(df))
         elseif !isnothing(ind_extension) && !(ind_extension isa AbstractVector)
-            # Factory function
-            _build_individuals_with_factory(base_data, nrow(df), ind_extension)
+            # validate the produced extension's field names against core fields
+            inds = _build_individuals_with_factory(base_data, nrow(df), ind_extension)
+            if !isempty(inds) && inds[1].extensions !== nothing
+                ext = inds[1].extensions
+                ext_fields = ext isa AutoExtension ? fieldnames(fieldtype(typeof(ext), :data)) : fieldnames(typeof(ext))
+                assert_no_core_collision(ext_fields)
+            end
+            inds
         else
             # No extensions — extra columns in the DataFrame are ignored
             _build_individuals(base_data, nrow(df))

@@ -202,6 +202,35 @@
             @test individuals(pop_extra)[5].score ≈ 0.5f0
         end
 
+        @testset "ind_extension core-field collision is rejected" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5)
+            )
+
+            # Symbol-vector naming a core field
+            @test_throws ErrorException Population(df; ind_extension = [:household])
+
+            # separate extension DataFrame with a core-field column
+            ext_df = DataFrame(id = Int32.(1:5), household = Int32.(11:15))
+            @test_throws ErrorException Population(df; ind_extension = ext_df)
+
+            # factory producing a struct whose field shadows a core field
+            @test_throws ErrorException Population(df; ind_extension = ind -> AutoExtension((; sex = 1.0f0)))
+
+            # a non-colliding name still works
+            df_ok = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                risk = Float32.(0.1:0.1:0.5)
+            )
+            pop_ok = Population(df_ok; ind_extension = [:risk])
+            @test individuals(pop_ok)[1].risk ≈ 0.1f0
+        end
+
         @testset "dataframe base field values" begin
             df = DataFrame(
                 id = Int32.(1:3),

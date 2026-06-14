@@ -508,6 +508,31 @@ end
 sim = Simulation(ind_extension = ind -> MyParams(age(ind) > 60 ? 0.8 : 0.3))
 ```
 
+Or, if you define the extension as a keyword struct (`@kwdef`), the factory can construct it with keyword arguments. This keeps the call readable when the struct has many fields:
+
+```julia
+using GEMS
+
+@kwdef mutable struct MyParams
+    my_custom_attribute_a::Float32
+    my_custom_attribute_b::Float32 
+end
+
+sim = Simulation(ind_extension = ind -> 
+    MyParams(
+        my_custom_attribute_a = age(ind) > 60 ? 0.8 : 0.3, 
+        my_custom_attribute_b = rand(Float32)
+    )
+)
+```
+
+!!! warning "Extension names must not collide with core fields"
+    Extension fields share the `Individual` property namespace, so their names must differ from
+    the built-in fields (e.g. `sex`, `age`, `household`, `office`, `number_of_vaccinations`, …).
+    Reusing a core name is rejected at load time with an explicit error (otherwise `ind.sex`
+    would silently return the built-in attribute instead of your value, and the population could
+    not be exported back to a `DataFrame`). Rename the offending column or struct field.
+
 !!! info "Transparency"
     Extension fields behave exactly like built-in fields regardless of how they were created. All existing GEMS functions that accept `::Individual` continue to work on extended individuals unchanged.
 
