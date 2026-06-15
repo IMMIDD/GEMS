@@ -246,18 +246,6 @@ mutable struct ResultData <: AbstractResultData
     """
     ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false) = ResultData(PostProcessor(sim), style = style, print_infos = print_infos)
 
-    @doc """
-
-        ResultData(batch::Batch; style::String = "DefaultResultData", print_infos::Bool = false)
-
-    Create a vector `ResultData` objects using a `Batch` object and the name of a `ResultDataStyle`, that describes the level of detail 
-    for the fields to be calculated. If you want to manually configure the `PostProcessor`s,
-    you need to instantiate them first and pass the `PostProcessor`s to the `ResultData` constructor instead.
-    Post Processing requires a simulation to be done.
-    It supresses the usual info outputs that are being made during the `ResultData`
-    generation. If you want to enable them, pass `print_infos = true`.
-    """
-    ResultData(batch::Batch; style::String = "DefaultResultData", print_infos::Bool = false) = ResultData(simulations(batch), style = style, print_infos = print_infos)
 end
 
 ###

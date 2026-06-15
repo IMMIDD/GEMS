@@ -131,14 +131,6 @@ mutable struct PostProcessor
         return map(PostProcessor, simulations)
     end
 
-    @doc """
-
-        PostProcessor(batch::Batch)
-
-    Create a vector of `PostProcessor` objects for all `Simulation`s in a `Batch`.
-    Post Processing requires all simulations to be done.
-    """
-    PostProcessor(batch::Batch) = PostProcessor(batch.simulations)
 end
 
 ###

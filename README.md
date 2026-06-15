@@ -134,16 +134,9 @@ Here's how to do that using GEMS' `Batch(...)` construct:
 ```julia
 using GEMS
 
-sims = Simulation[]
-for i in 1:5
-    sim = Simulation(label = "My Experiment")
-    push!(sims, sim)
-end
-
-b = Batch(sims...)
-run!(b)
-rd = ResultData(b)
-gemsplot(rd, type = :TickCases, xlims = (0, 200), size = (600, 200))
+b = Batch(n_runs = 5, label = "My Experiment")
+bd = BatchData(b)
+gemsplot(runs(bd), type = :TickCases, xlims = (0, 200), size = (600, 200))
 ```
 
 <p align="center">
@@ -156,16 +149,10 @@ Using batches, you can also sweep parameter spaces, e.g., for the transmission r
 ```julia
 using GEMS
 
-sims = Simulation[]
-for i in 0:0.1:0.5
-    sim = Simulation(transmission_rate = i, label = "Transmission Rate $i")
-    push!(sims, sim)
-end
-
-b = Batch(sims...)
-run!(b)
-rd = ResultData(b)
-gemsplot(rd, type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size = (600, 600))
+b = merge([Batch(n_runs = 1, transmission_rate = i, label = "Transmission Rate $i")
+           for i in 0:0.1:0.5]...)
+bd = BatchData(b; group_by = :label)
+gemsplot(runs(bd), type = (:TickCases, :EffectiveReproduction), xlims = (0, 200), size = (600, 600))
 ```
 
 <p align="center">
