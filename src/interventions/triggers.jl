@@ -289,8 +289,24 @@ Triggers the execution of the `SStrategy` for all settings of the specified `set
 associated with an `STickTrigger`.
 """
 function trigger(stt::STickTrigger, sim::Simulation)
-    for s in settings(sim, stt |> settingtype)
-        trigger_strategy(stt |> strategy, s, sim)
+    _trigger_settings!(stt |> strategy, settings(sim, stt |> settingtype), sim)
+end
+
+"""
+    _trigger_settings!(str::SStrategy, stngs::Vector, sim::Simulation)
+
+Function barrier for `trigger(::STickTrigger, ::Simulation)`.
+
+`settings(sim, type::DataType)` returns `Vector` (abstract element type) because the
+`SettingsContainer` dict has value type `Vector` 
+
+Passing the vector to this function causes Julia to dispatch on its runtime type
+(e.g. `Vector{Office}`) and compile a specialization in which `s` is concretely typed,
+so the `trigger_strategy` call inside the loop is statically resolved.
+"""
+function _trigger_settings!(str::SStrategy, stngs::Vector, sim::Simulation)
+    for s in stngs
+        trigger_strategy(str, s, sim)
     end
 end
 
@@ -309,7 +325,7 @@ of the provided `IStrategy` and the specified `Individual`.
 function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
     # if condition is not met, return without executing measures
     cond = try
-        Bool(str.condition(i))
+        str.condition(i)
     catch
         # throw error if user provided a function that doesn't return a boolean value
         throw(ErrorException("The condition that you passed to IStrategy '$(str.name)' does not return a boolean value."))
@@ -323,8 +339,8 @@ function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
     for me in str |> measures
         # enqueue measure events with the current tick and the added delay
         sim |> event_queue |>
-            x -> enqueue!(x, 
-                IMeasureEvent(i, measure(me), condition(me)),
+            x -> enqueue!(x,
+                IMeasureEvent(i, measure(me)::IMeasure, condition(me), process_fn(me)),
                 Int16(tick(sim) + offset(me) + delay(me)(i))
             )
     end
@@ -345,7 +361,7 @@ of the provided `SStrategy` and the specified `Setting`.
 function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
     # if condition is not met, return without executing measures
     cond = try
-        Bool(str.condition(s))
+        str.condition(s)
     catch
         # throw error if user provided a function that doesn't return a boolean value
         throw(ErrorException("The condition that you passed to SStrategy '$(str.name)' does not return a boolean value."))
@@ -359,8 +375,8 @@ function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
     for me in str |> measures
         # enqueue measure events with the current tick and the added delay
         sim |> event_queue |>
-            x -> enqueue!(x, 
-                SMeasureEvent(s, measure(me), condition(me)),
+            x -> enqueue!(x,
+                SMeasureEvent(s, measure(me)::SMeasure, condition(me), process_fn(me)),
                 Int16(tick(sim) + offset(me) + delay(me)(s))
             )
     end

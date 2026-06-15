@@ -49,7 +49,7 @@ struct OpenSetting <: SMeasure end
 function process_measure(sim::Simulation, s::Setting, close::OpenSetting)
     
     #println("Open Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)")
-    @debug "Open Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Open Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
 
     open!(s, sim)    
 end

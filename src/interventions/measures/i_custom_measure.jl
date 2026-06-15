@@ -58,7 +58,7 @@ function process_measure(sim::Simulation, ind::Individual, custom::CustomIMeasur
     
     t = sim |> tick
 
-    @debug "Individual $(ind |> id) subjected to custom measure at tick $t"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) subjected to custom measure at tick $t"
 
     # execute custom logic
     measure_logic(custom)(ind, sim)

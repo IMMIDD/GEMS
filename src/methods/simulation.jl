@@ -19,12 +19,10 @@ Executes the `process_measure` function for all measures in the
 simulation's `EventQueue` for the current tick.
 """
 function process_events!(simulation::Simulation)
-
-    while !isempty(simulation |> event_queue) &&
-        first(simulation |> event_queue)[2] <= simulation |> tick
-
-        simulation |> event_queue |> dequeue! |>
-            x -> process_event(x, simulation)
+    eq = event_queue(simulation)
+    while !isempty(eq) && peektick(eq) <= tick(simulation)
+        event = dequeue!(eq)::Union{IMeasureEvent, SMeasureEvent}
+        process_event(event, simulation)
     end
 end
 
@@ -285,11 +283,10 @@ function step!(simulation::Simulation)
 
     # infect individuals in settings
     if !dormant
-        for type in settingtypes_sorted(settingscontainer(simulation))
-            Threads.@threads :static for stng in settings(simulation, type)
-                if isactive(stng)
-                    spread_infection!(stng, simulation, pathogen(simulation))
-                end
+        p = pathogen(simulation)
+        foreach_setting_vector(settingscontainer(simulation)) do stngs
+            Threads.@threads :static for stng in stngs
+                isactive(stng) && spread_infection!(stng, simulation, p)
             end
         end
     end
@@ -335,7 +332,7 @@ function is_dormant(simulation::Simulation)
     current_t = tick(simulation)
 
     # wake up if an event is scheduled for today (or was missed)
-    if !isempty(simulation.event_queue) && first(simulation.event_queue)[2] <= current_t
+    if !isempty(simulation.event_queue) && peektick(simulation.event_queue) <= current_t
         return false 
     end
 

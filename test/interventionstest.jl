@@ -35,8 +35,8 @@
         @test typeof(i_strategy) === IStrategy
         @test name(i_strategy) === "i_strategy"
         @test measures(i_strategy) == MeasureEntry[]
-        @test GEMS.condition(i_strategy) isa Function
-        @test GEMS.condition(i_strategy)(nothing) == true
+        @test GEMS.condition(i_strategy) isa GEMS.IPredicate
+        @test GEMS.condition(i_strategy)(i) == true
         add_strategy!(sim, i_strategy)
         @test strategies(sim)[1] === i_strategy
     end
@@ -45,8 +45,8 @@
         @test typeof(s_strategy) === SStrategy
         @test name(s_strategy) === "s_strategy"
         @test measures(s_strategy) == MeasureEntry[]
-        @test GEMS.condition(s_strategy) isa Function
-        @test GEMS.condition(s_strategy)(nothing) == true
+        @test GEMS.condition(s_strategy) isa GEMS.SPredicate
+        @test GEMS.condition(s_strategy)(gs) == true
         add_strategy!(sim, s_strategy)
         @test strategies(sim)[2] === s_strategy
     end
@@ -60,8 +60,8 @@
 
         # default condition is x -> true: the stored function returns true for any input
         default_str = IStrategy("show_default", sim_show)
-        @test GEMS.condition(default_str) isa Function
-        @test GEMS.condition(default_str)(nothing) == true
+        @test GEMS.condition(default_str) isa GEMS.IPredicate
+        @test GEMS.condition(default_str)(i) == true
 
         # non-trivial condition: the stored function preserves the predicate's logic
         age_str = IStrategy("show_age", sim_show, condition = i -> age(i) > 65)
@@ -72,8 +72,8 @@
 
         # same for SStrategy
         s_default_str = SStrategy("show_s_default", sim_show)
-        @test GEMS.condition(s_default_str) isa Function
-        @test GEMS.condition(s_default_str)(nothing) == true
+        @test GEMS.condition(s_default_str) isa GEMS.SPredicate
+        @test GEMS.condition(s_default_str)(gs) == true
 
         # Base.show with no measures: output contains type name and strategy name
         output_empty = @capture_out show(default_str)
@@ -829,11 +829,13 @@
 
         @test i_measure_event.individual === i
         @test i_measure_event.measure === test_measure
-        @test i_measure_event.condition === condition
+        @test i_measure_event.condition isa GEMS.IPredicate
+        @test i_measure_event.condition(i) == true
 
         @test s_measure_event.setting === gs
         @test s_measure_event.measure === test_all_measure
-        @test s_measure_event.condition === condition
+        @test s_measure_event.condition isa GEMS.SPredicate
+        @test s_measure_event.condition(gs) == true
 
         #test process_event
         GEMS.process_event(i_measure_event, sim)
@@ -870,9 +872,41 @@
         @test gs.isopen === false
 
         #test event queue
-        eq = EventQueue()
-        @test length(eq) == 0
-        @test isempty(eq) === true
+        @testset "Event Queue" begin
+            eq = EventQueue()
+            @test length(eq) == 0
+            @test isempty(eq) === true
+
+            # enqueue events at different ticks
+            enqueue!(eq, s_measure_event, Int16(3))
+            enqueue!(eq, i_measure_event, Int16(5))
+            @test length(eq) == 2
+            @test isempty(eq) === false
+
+            # peek returns the next (earliest-tick) event without removing it
+            @test peektick(eq) == Int16(3)
+            @test peek(eq) === s_measure_event
+            @test length(eq) == 2
+            # peek is non-destructive and points at whatever dequeue! removes next
+            @test peek(eq) === dequeue!(eq)
+            @test length(eq) == 1
+
+            # within a single tick bucket, peek matches the next dequeue! (LIFO order)
+            enqueue!(eq, s_measure_event, Int16(5))
+            @test peektick(eq) == Int16(5)
+            @test peek(eq) === dequeue!(eq)
+
+            # empty! removes all remaining events but keeps the queue reusable
+            empty!(eq)
+            @test length(eq) == 0
+            @test isempty(eq) === true
+
+            # queue still works after empty!: head resets and new events enqueue normally
+            enqueue!(eq, i_measure_event, Int16(7))
+            @test length(eq) == 1
+            @test peektick(eq) == Int16(7)
+            @test peek(eq) === i_measure_event
+        end
     end
 
     @testset "Scenarios" begin

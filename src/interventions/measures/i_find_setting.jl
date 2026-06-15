@@ -87,7 +87,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
     # setting object
     s = getsetting(ind, sim, st)
 
-        @debug "Individual $(ind |> id) identifying $(string(st))[$sid] at tick $(sim |> tick)"
+        INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$sid] at tick $(sim |> tick)"
 
     # return setting
     return Handover(s, measure |> follow_up)
