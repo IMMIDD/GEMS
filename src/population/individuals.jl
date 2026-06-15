@@ -148,79 +148,6 @@ end
 
 export AutoExtension
 
-"""
-    AutoExtension{NT <: NamedTuple}
-
-Mutable wrapper around a NamedTuple used for auto-detected extension fields
-from CSV/DataFrame extra columns. Stored in an `Individual`'s boxed `extensions`
-field, it allows transparent field access and mutation without requiring a
-user-defined struct.
-"""
-mutable struct AutoExtension{NT <: NamedTuple}
-    data::NT
-end
-
-"""
-    individual_base_fieldnames()
-
-Return the field names of `Individual` excluding `:extensions`.
-Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
-they don't accidentally try to populate the extension slot from a column that doesn't exist.
-"""
-individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual))
-
-"""
-    assert_no_core_collision(names)
-
-Throw an error if any of `names` of extension fields collides with a core `Individual` field name.
-"""
-function assert_no_core_collision(names)
-    clash = intersect(Symbol.(collect(names)), individual_base_fieldnames())
-    isempty(clash) || error(
-        "ind_extension field(s) $(collect(clash)) collide with core Individual fields. " *
-        "Extension fields must use distinct names. Rename the offending column(s).")
-end
-
-"""
-    Base.getproperty(ind::Individual, name::Symbol)
-
-Transparent read access for both core and extension fields. Core fields are read directly;
-any other name is forwarded to the boxed `extensions` value (its fields, or — for an
-`AutoExtension` — the wrapped NamedTuple's fields).
-
-For a literal field name (e.g. `ind.infected`) the `hasfield` check is constant-folded and the
-call inlines to a single `getfield`, so core-field access keeps the same performance as the
-default. Only dynamic names (e.g. the `Dict`/`DataFrame` constructor loop) pay the runtime branch.
-Extension-field reads are intentionally type-unstable (the `extensions` slot is `Any`).
-"""
-@inline function Base.getproperty(ind::Individual, name::Symbol)
-    hasfield(Individual, name) && return getfield(ind, name)
-    ext = getfield(ind, :extensions)
-    return ext isa AutoExtension ? getfield(getfield(ext, :data), name) : getfield(ext, name)
-end
-
-"""
-    Base.setproperty!(ind::Individual, name::Symbol, val)
-
-Transparent write access for both core and extension fields, with the same type-coercion
-behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
-`setfield!`). Non-core names are forwarded to the boxed `extensions` value; for an
-`AutoExtension` the wrapped NamedTuple is replaced via `merge`.
-"""
-@inline function Base.setproperty!(ind::Individual, name::Symbol, val)
-    if hasfield(Individual, name)
-        return setfield!(ind, name, convert(fieldtype(Individual, name), val))
-    end
-    ext = getfield(ind, :extensions)
-    if ext isa AutoExtension
-        nt = getfield(ext, :data)
-        return setfield!(ext, :data,
-            merge(nt, NamedTuple{(name,)}((convert(fieldtype(typeof(nt), name), val),))))
-    else
-        return setfield!(ext, name, convert(fieldtype(typeof(ext), name), val))
-    end
-end
-
 # CONSTRUCTOR
 """
     Individual(properties::Dict)
@@ -830,6 +757,82 @@ Ends an individuals quarantine.
 function end_quarantine!(individual::Individual)
     @debug "Individual $(id(individual)) ending quarantine"
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
+end
+
+
+### EXTENSIONS ###
+
+"""
+    AutoExtension{NT <: NamedTuple}
+
+Mutable wrapper around a NamedTuple used for auto-detected extension fields
+from CSV/DataFrame extra columns. Stored in an `Individual`'s boxed `extensions`
+field, it allows transparent field access and mutation without requiring a
+user-defined struct.
+"""
+mutable struct AutoExtension{NT <: NamedTuple}
+    data::NT
+end
+
+"""
+    individual_base_fieldnames()
+
+Return the field names of `Individual` excluding `:extensions`.
+Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
+they don't accidentally try to populate the extension slot from a column that doesn't exist.
+"""
+individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual))
+
+"""
+    assert_no_core_collision(names)
+
+Throw an error if any of `names` of extension fields collides with a core `Individual` field name.
+"""
+function assert_no_core_collision(names)
+    clash = intersect(Symbol.(collect(names)), individual_base_fieldnames())
+    isempty(clash) || error(
+        "ind_extension field(s) $(collect(clash)) collide with core Individual fields. " *
+        "Extension fields must use distinct names. Rename the offending column(s).")
+end
+
+"""
+    Base.getproperty(ind::Individual, name::Symbol)
+
+Transparent read access for both core and extension fields. Core fields are read directly;
+any other name is forwarded to the boxed `extensions` value (its fields, or — for an
+`AutoExtension` — the wrapped NamedTuple's fields).
+
+For a literal field name (e.g. `ind.infected`) the `hasfield` check is constant-folded and the
+call inlines to a single `getfield`, so core-field access keeps the same performance as the
+default. Only dynamic names (e.g. the `Dict`/`DataFrame` constructor loop) pay the runtime branch.
+Extension-field reads are intentionally type-unstable (the `extensions` slot is `Any`).
+"""
+@inline function Base.getproperty(ind::Individual, name::Symbol)
+    hasfield(Individual, name) && return getfield(ind, name)
+    ext = getfield(ind, :extensions)
+    return ext isa AutoExtension ? getfield(getfield(ext, :data), name) : getfield(ext, name)
+end
+
+"""
+    Base.setproperty!(ind::Individual, name::Symbol, val)
+
+Transparent write access for both core and extension fields, with the same type-coercion
+behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
+`setfield!`). Non-core names are forwarded to the boxed `extensions` value; for an
+`AutoExtension` the wrapped NamedTuple is replaced via `merge`.
+"""
+@inline function Base.setproperty!(ind::Individual, name::Symbol, val)
+    if hasfield(Individual, name)
+        return setfield!(ind, name, convert(fieldtype(Individual, name), val))
+    end
+    ext = getfield(ind, :extensions)
+    if ext isa AutoExtension
+        nt = getfield(ext, :data)
+        return setfield!(ext, :data,
+            merge(nt, NamedTuple{(name,)}((convert(fieldtype(typeof(nt), name), val),))))
+    else
+        return setfield!(ext, name, convert(fieldtype(typeof(ext), name), val))
+    end
 end
 
 
