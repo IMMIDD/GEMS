@@ -189,19 +189,19 @@ struct DiseaseProgression
     end
 
     @inline function DiseaseProgression(;
-        exposure = -1,
-        infectiousness_onset = -1,
-        symptom_onset = -1,
-        severeness_onset = -1,
-        hospital_admission = -1,
-        icu_admission = -1,
-        icu_discharge = -1,
-        ventilation_admission = -1,
-        ventilation_discharge = -1,
-        hospital_discharge = -1,
-        severeness_offset = -1,
-        recovery = -1,
-        death = -1
+        exposure = Int16(-1),
+        infectiousness_onset = Int16(-1),
+        symptom_onset = Int16(-1),
+        severeness_onset = Int16(-1),
+        hospital_admission = Int16(-1),
+        icu_admission = Int16(-1),
+        icu_discharge = Int16(-1),
+        ventilation_admission = Int16(-1),
+        ventilation_discharge = Int16(-1),
+        hospital_discharge = Int16(-1),
+        severeness_offset = Int16(-1),
+        recovery = Int16(-1),
+        death = Int16(-1)
     )
         return DiseaseProgression(
             Int16(exposure),
