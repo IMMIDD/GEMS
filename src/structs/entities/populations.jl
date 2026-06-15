@@ -62,27 +62,43 @@ mutable struct Population
     The dataframe column names must correspond to the fieldnames of the `Individual` struct.
     `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
     """
-    function Population(df::DataFrame)
-        
-        # Intersect using Symbols  
-        valid_cols = intersect(fieldnames(Individual), propertynames(df))
-        valid_cols_tuple = Tuple(valid_cols)
-        
-        # Extract into a NamedTuple 
-        col_table = NamedTuple{valid_cols_tuple}(Tuple(df[!, c] for c in valid_cols_tuple))
+    function Population(df::DataFrame; ind_extension = nothing)
 
-        # Pre-allocate array 
-        individuals = Vector{Individual}(undef, nrow(df))
+        # Intersect DataFrame columns with base Individual field names
+        base_cols = Tuple(intersect(individual_base_fieldnames(), propertynames(df)))
+        base_data = NamedTuple{base_cols}(Tuple(df[!, c] for c in base_cols))
 
-        # Create individuals in parallel
-        Threads.@threads for i in eachindex(individuals)
-            row_kwargs = map(col -> col[i], col_table)
-            @inbounds individuals[i] = Individual(; row_kwargs...)
+        # Dispatch to the appropriate builder based on the extension mode
+        inds = if ind_extension isa DataFrame
+            # Separate extension DataFrame joined by individual ID
+            assert_no_core_collision(c for c in propertynames(ind_extension) if c !== :id)
+            pop_ids = [Int32(df[i, :id]) for i in 1:nrow(df)]
+            _build_individuals_from_ext_df(base_data, pop_ids, ind_extension, nrow(df))
+        elseif ind_extension isa AbstractVector{Symbol} && !isempty(ind_extension)
+            # Explicit column names from the population DataFrame
+            assert_no_core_collision(ind_extension)
+            cols = Tuple(c for c in ind_extension if c ∈ propertynames(df))
+            missing_cols = filter(c -> c ∉ propertynames(df), ind_extension)
+            isempty(missing_cols) || @warn "ind_extension columns not found in population data: $missing_cols"
+            isempty(cols) ? _build_individuals(base_data, nrow(df)) :
+                            _build_individuals_auto_extension(base_data, df, cols, nrow(df))
+        elseif !isnothing(ind_extension) && !(ind_extension isa AbstractVector)
+            # validate the produced extension's field names against core fields
+            inds = _build_individuals_with_factory(base_data, nrow(df), ind_extension)
+            if !isempty(inds) && inds[1].extensions !== nothing
+                ext = inds[1].extensions
+                ext_fields = ext isa AutoExtension ? fieldnames(fieldtype(typeof(ext), :data)) : fieldnames(typeof(ext))
+                assert_no_core_collision(ext_fields)
+            end
+            inds
+        else
+            # No extensions — extra columns in the DataFrame are ignored
+            _build_individuals(base_data, nrow(df))
         end
 
-        pop = Population(individuals)
+        pop = Population(inds)
         pop.params["populationfile"] = "Not available."
-        return pop
+        return(pop)
     end
 
 
@@ -91,18 +107,18 @@ mutable struct Population
 
     Creates a `Population` object from a CSV- or JLD2 file (path).
     """
-    function Population(path::String)
+    function Population(path::String; ind_extension = nothing)
         file_ext = split(path, ".")[end]
 
         if file_ext == "csv"
             printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from CSV and pass it to df constructor
-            pop = CSV.File(path) |> DataFrame |> Population
-            
+            pop = Population(CSV.File(path) |> DataFrame; ind_extension = ind_extension)
+
         elseif file_ext == "jld2"
             printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
-            pop = load(path, "data") |> Population
+            pop = Population(load(path, "data"); ind_extension = ind_extension)
 
         else
             error("File Extension .$file_ext is not supported")
@@ -134,7 +150,8 @@ mutable struct Population
         avg_office_size::Real = 5.0,
         avg_school_size::Real = 100.0,
         rng::Xoshiro = default_gems_rng(),
-        empty::Bool = false)
+        empty::Bool = false,
+        ind_extension = nothing)
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
@@ -264,7 +281,7 @@ mutable struct Population
         )
 
         # build population from dataframe
-        pop = Population(df)
+        pop = Population(df; ind_extension = ind_extension)
         pop.params["n"] = n
         pop.params["avg_household_size"] = avg_household_size
         pop.params["avg_office_size"] = avg_office_size
@@ -273,6 +290,84 @@ mutable struct Population
         make_id_map!(pop)
         return pop
     end
+end
+
+###
+### INDIVIDUAL BUILDER HELPERS
+###
+
+"""
+    _build_individuals(base_data, n)
+
+Creates `n` baseline `Individual` instances (no extensions) in parallel from the provided column data.
+"""
+function _build_individuals(base_data, n)
+    inds = Vector{Individual}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        @inbounds inds[i] = Individual(; map(col -> col[i], base_data)...)
+    end
+    return(inds)
+end
+
+"""
+    _build_individuals_auto_extension(base_data, df, extra_cols, n)
+
+Creates `n` `Individual` instances in parallel whose boxed `extensions` hold an
+`AutoExtension` wrapping a NamedTuple of the extra DataFrame columns not present in the base
+`Individual` field set.
+"""
+function _build_individuals_auto_extension(base_data, df, extra_cols, n)
+    ext_data = NamedTuple{extra_cols}(Tuple(df[!, c] for c in extra_cols))
+    inds = Vector{Individual}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        ext = AutoExtension(NamedTuple{extra_cols}(map(col -> col[i], ext_data)))
+        @inbounds inds[i] = Individual(; map(col -> col[i], base_data)..., extensions = ext)
+    end
+    return(inds)
+end
+
+"""
+    _build_individuals_with_factory(base_data, n, extension)
+
+Creates `n` `Individual` instances in parallel using `extension(ind)` to produce each
+individual's boxed extension value.
+"""
+function _build_individuals_with_factory(base_data, n, extension::F) where {F}
+    inds = Vector{Individual}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        kw = map(col -> col[i], base_data)
+        @inbounds inds[i] = Individual(; kw..., extensions = extension(Individual(; kw...)))
+    end
+    return(inds)
+end
+
+"""
+    _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
+
+Creates `n` `Individual` instances whose boxed `extensions` hold an `AutoExtension` built by
+joining `ext_df` to the population by `id`. Missing individuals receive zero-filled extension
+values; a warning is issued if any IDs are absent from the extension DataFrame.
+"""
+function _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
+    ext_cols = Tuple(c for c in propertynames(ext_df) if c !== :id)
+    id_to_row = Dict{Int32, Int}(Int32(ext_df[i, :id]) => i for i in 1:nrow(ext_df))
+
+    # Warn once if any population IDs are absent from the extension DataFrame
+    missing_ids = [id for id in pop_ids if !haskey(id_to_row, id)]
+    if !isempty(missing_ids)
+        @warn "$(length(missing_ids)) individual(s) not found in ind_extension DataFrame; extension fields filled with zero."
+    end
+
+    inds = Vector{Individual}(undef, n)
+    Threads.@threads for i in eachindex(inds)
+        row_idx = get(id_to_row, pop_ids[i], nothing)
+        nt = isnothing(row_idx) ?
+            NamedTuple{ext_cols}(map(c -> zero(eltype(ext_df[!, c])), ext_cols)) :
+            NamedTuple{ext_cols}(map(c -> ext_df[row_idx, c], ext_cols))
+        base_kw = map(col -> col[i], base_data)
+        @inbounds inds[i] = Individual(; base_kw..., extensions = AutoExtension(nt))
+    end
+    return(inds)
 end
 
 """
@@ -423,39 +518,55 @@ end
 """
     dataframe(population::Population)
 
-Returns a DataFrame representing the given population.
+Returns a `DataFrame` representing the given population. If the population carries
+individual extensions (i.e. the individuals' boxed `extensions` are not `nothing`), the
+extension fields are appended as additional columns after the base columns. The extension
+schema is taken from the first individual that has extensions (populations are assumed
+homogeneous).
 
 # Returns
 
 - `DataFrame` with the following columns:
 
-| Name         | Type    | Description                       |
-| :----------- | :------ | :-------------------------------- |
-| `id`         | `Int32` | Individual id                     |
-| `sex`        | `Int8`  | Individual sex                    |
-| `age`        | `Int8`  | Individual age                    |
-| `education`  | `Int8`  | Individual education level        |
-| `occupation` | `Int16` | Individual occupation group       |
-| `household`  | `Int32` | Individual associated household   |
-| `office`     | `Int32` | Individual associated office      |
-| `school`     | `Int32` | Individual associated school      |
+| Name                    | Type    | Description                              |
+| :---------------------- | :------ | :--------------------------------------- |
+| `id`                    | `Int32` | Individual id                            |
+| `sex`                   | `Int8`  | Individual sex                           |
+| `age`                   | `Int8`  | Individual age                           |
+| `number_of_vaccinations`| `Int16` | Number of vaccinations received          |
+| `vaccination_tick`      | `Int32` | Tick of last vaccination                 |
+| `education`             | `Int8`  | Individual education level               |
+| `occupation`            | `Int16` | Individual occupation group              |
+| `household`             | `Int32` | Individual associated household          |
+| `office`                | `Int32` | Individual associated office             |
+| `schoolclass`           | `Int32` | Individual associated school class       |
+| `<extension fields>`    | (varies)| Any fields stored in `Individual.extensions`, appended dynamically |
 """
 function dataframe(population::Population)
-
-    return(
-        DataFrame(
-            id = map(id, population |> individuals),
-            sex = map(sex, population |> individuals),
-            age = map(age, population |> individuals),
-            number_of_vaccinations = map(number_of_vaccinations, population |> individuals),
-            vaccination_tick = map(vaccination_tick, population |> individuals),
-            education = map(education, population |> individuals),
-            occupation = map(occupation, population |> individuals),
-            household = map(household_id, population |> individuals),
-            office = map(office_id, population |> individuals),
-            schoolclass = map(class_id, population |> individuals)
-        )
+    df = DataFrame(
+        id = map(id, population |> individuals),
+        sex = map(sex, population |> individuals),
+        age = map(age, population |> individuals),
+        number_of_vaccinations = map(number_of_vaccinations, population |> individuals),
+        vaccination_tick = map(vaccination_tick, population |> individuals),
+        education = map(education, population |> individuals),
+        occupation = map(occupation, population |> individuals),
+        household = map(household_id, population |> individuals),
+        office = map(office_id, population |> individuals),
+        schoolclass = map(class_id, population |> individuals)
     )
+
+    inds = individuals(population)
+    ext_idx = findfirst(ind -> ind.extensions !== nothing, inds)
+    if ext_idx !== nothing
+        ext = inds[ext_idx].extensions
+        ext_fields = ext isa AutoExtension ? fieldnames(fieldtype(typeof(ext), :data)) : fieldnames(typeof(ext))
+        for f in ext_fields
+            df[!, f] = map(ind -> getproperty(ind, f), inds)
+        end
+    end
+
+    return df
 end
 
 """

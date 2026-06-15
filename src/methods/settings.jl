@@ -321,17 +321,17 @@ end
 
 Returns the individuals associated with a given IndividualSetting.
 """
-function individuals(setting::IndividualSetting, simulation::Simulation)::Vector{Individual}
+function individuals(setting::IndividualSetting, simulation::Simulation)
     return setting |> individuals
 end
 
 """
-    individuals(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)::Vector{Individual}
+    individuals(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
 
-Returns the individuals associated with a given ContainerSetting by recursively getting the individuals of 
+Returns the individuals associated with a given ContainerSetting by recursively getting the individuals of
 all contained settings using the `individuals!` function.
 """
-function individuals(setting::ContainerSetting, simulation::Simulation)::Vector{Individual}
+function individuals(setting::ContainerSetting, simulation::Simulation)
     indivs = Vector{Individual}()
     for s in setting.contains
         individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)

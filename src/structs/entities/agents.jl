@@ -70,6 +70,20 @@ export progress_disease!
 "Supertype for simulation agents"
 abstract type Agent <: Entity end
 
+export AutoExtension
+
+"""
+    AutoExtension{NT <: NamedTuple}
+
+Mutable wrapper around a NamedTuple used for auto-detected extension fields
+from CSV/DataFrame extra columns. Stored in an `Individual`'s boxed `extensions`
+field, it allows transparent field access and mutation without requiring a
+user-defined struct.
+"""
+mutable struct AutoExtension{NT <: NamedTuple}
+    data::NT
+end
+
 ###
 ### INDIVIDUALS
 ###
@@ -212,6 +226,70 @@ A type to represent individuals, that act as agents inside the simulation.
     quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # 1 bytes
     quarantine_tick::Int16 = DEFAULT_TICK
     quarantine_release_tick::Int16 = DEFAULT_TICK
+
+    # EXTENSIONS
+    extensions::Any = nothing
+end
+
+"""
+    individual_base_fieldnames()
+
+Return the field names of `Individual` excluding `:extensions`.
+Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
+they don't accidentally try to populate the extension slot from a column that doesn't exist.
+"""
+individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual))
+
+"""
+    assert_no_core_collision(names)
+
+Throw an error if any of `names` of extension fields collides with a core `Individual` field name.
+"""
+function assert_no_core_collision(names)
+    clash = intersect(Symbol.(collect(names)), individual_base_fieldnames())
+    isempty(clash) || error(
+        "ind_extension field(s) $(collect(clash)) collide with core Individual fields. " *
+        "Extension fields must use distinct names. Rename the offending column(s).")
+end
+
+"""
+    Base.getproperty(ind::Individual, name::Symbol)
+
+Transparent read access for both core and extension fields. Core fields are read directly;
+any other name is forwarded to the boxed `extensions` value (its fields, or — for an
+`AutoExtension` — the wrapped NamedTuple's fields).
+
+For a literal field name (e.g. `ind.infected`) the `hasfield` check is constant-folded and the
+call inlines to a single `getfield`, so core-field access keeps the same performance as the
+default. Only dynamic names (e.g. the `Dict`/`DataFrame` constructor loop) pay the runtime branch.
+Extension-field reads are intentionally type-unstable (the `extensions` slot is `Any`).
+"""
+@inline function Base.getproperty(ind::Individual, name::Symbol)
+    hasfield(Individual, name) && return getfield(ind, name)
+    ext = getfield(ind, :extensions)
+    return ext isa AutoExtension ? getfield(getfield(ext, :data), name) : getfield(ext, name)
+end
+
+"""
+    Base.setproperty!(ind::Individual, name::Symbol, val)
+
+Transparent write access for both core and extension fields, with the same type-coercion
+behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
+`setfield!`). Non-core names are forwarded to the boxed `extensions` value; for an
+`AutoExtension` the wrapped NamedTuple is replaced via `merge`.
+"""
+@inline function Base.setproperty!(ind::Individual, name::Symbol, val)
+    if hasfield(Individual, name)
+        return setfield!(ind, name, convert(fieldtype(Individual, name), val))
+    end
+    ext = getfield(ind, :extensions)
+    if ext isa AutoExtension
+        nt = getfield(ext, :data)
+        return setfield!(ext, :data,
+            merge(nt, NamedTuple{(name,)}((convert(fieldtype(typeof(nt), name), val),))))
+    else
+        return setfield!(ext, name, convert(fieldtype(typeof(ext), name), val))
+    end
 end
 
 # CONSTRUCTOR
@@ -224,8 +302,7 @@ Create an individual with the provided properties. Properties must *have at leas
 function Individual(properties::Dict)::Individual
     ind = Individual(id=properties["id"], sex=properties["sex"], age=properties["age"])
 
-    # set every field that is provided by properties
-    for field in fieldnames(Individual)
+    for field in individual_base_fieldnames()
         if haskey(properties, String(field))
             setproperty!(ind, field, properties[String(field)])
         end
@@ -1469,6 +1546,15 @@ function Base.show(io::IO, individual::Individual)
         "Quarantine Tick" => individual.quarantine_tick != DEFAULT_TICK ? individual.quarantine_tick : "n/a",
         "Quarantine Release Tick" => individual.quarantine_release_tick != DEFAULT_TICK ? individual.quarantine_release_tick : "n/a"
     ]
+
+    # Append any extension fields
+    ext = individual.extensions
+    if ext !== nothing
+        ext_fields = ext isa AutoExtension ? fieldnames(fieldtype(typeof(ext), :data)) : fieldnames(typeof(ext))
+        for f in ext_fields
+            push!(attributes, string(f) => getproperty(individual, f))
+        end
+    end
 
     max_label_length = maximum(length ∘ first, attributes)
 
