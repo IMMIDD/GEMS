@@ -534,6 +534,26 @@
         @test occupation(i) == -1
     end
 
+    @testset "DataFrameRow Constructor" begin
+        df = DataFrame(id = Int32[1, 2], age = Int8[25, 40], sex = Int8[0, 1],
+                       education = Int8[3, -1], occupation = Int8[-1, 2])
+
+        # minimum required fields
+        i = Individual(df[1, :])
+        @test typeof(i) == Individual
+        @test id(i) == Int32(1)
+        @test age(i) == Int8(25)
+        @test sex(i) == Int8(0)
+
+        # optional fields are set from the row when present
+        @test education(i) == Int8(3)
+
+        # second row
+        i2 = Individual(df[2, :])
+        @test id(i2) == Int32(2)
+        @test occupation(i2) == Int8(2)
+    end
+
     @testset "show" begin
         inds = [Individual(id=j, age=20, sex=0) for j in 1:3]
         @test !isempty(@capture_out show(inds))
@@ -552,6 +572,72 @@
         @test occursin("male", @capture_out show(Individual(id=2, sex=2, age=30)))
         @test occursin("diverse", @capture_out show(Individual(id=3, sex=3, age=20)))
         @test occursin("n/a", @capture_out show(Individual(id=10, sex=0, age=18)))
+
+        # extension fields appear in show output
+        ae = AutoExtension((; my_score = 0.7f0))
+        ind_ext = Individual(id=Int32(1), sex=Int8(0), age=Int8(30), extensions=ae)
+        output_ext = @capture_out show(ind_ext)
+        @test occursin("my_score", output_ext)
+        @test occursin("0.7", output_ext)
+    end
+
+    @testset "Individual Extensions" begin
+
+        mutable struct TestExt
+            score::Float32
+            label::Int8
+        end
+
+        @testset "Explicit mutable struct extension" begin
+            ind = Individual(id=Int32(1), sex=Int8(0), age=Int8(30),
+                             extensions=TestExt(0.8f0, Int8(2)))
+
+            # transparent read access
+            @test ind.score == 0.8f0
+            @test ind.label == Int8(2)
+
+            # base fields still work
+            @test age(ind) == 30
+            @test id(ind) == Int32(1)
+
+            # transparent write access (in-place setfield!)
+            ind.score = 0.5f0
+            @test ind.score == 0.5f0
+
+            ind.label = Int8(9)
+            @test ind.label == Int8(9)
+
+            # base field mutation still works
+            ind.age = Int8(40)
+            @test age(ind) == 40
+        end
+
+        @testset "AutoExtension from NamedTuple" begin
+            nt = (score = 0.7f0, label = Int8(3))
+            ae = AutoExtension(NamedTuple(nt))
+            ind = Individual(id=Int32(2), sex=Int8(1), age=Int8(25),
+                             extensions=ae)
+
+            # transparent read
+            @test ind.score == 0.7f0
+            @test ind.label == Int8(3)
+
+            # transparent write (replaces inner NT via merge)
+            ind.score = 0.2f0
+            @test ind.score == 0.2f0
+
+            # other extension field unchanged after write
+            @test ind.label == Int8(3)
+
+            # base fields unaffected
+            @test age(ind) == 25
+        end
+
+        @testset "Individual without extensions unaffected" begin
+            ind = Individual(id=Int32(1), sex=Int8(0), age=Int8(20))
+            @test typeof(ind) == Individual
+            @test ind.extensions === nothing
+        end
     end
 
     @testset "Settings Tuple" begin

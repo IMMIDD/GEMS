@@ -57,7 +57,7 @@ function process_measure(sim::Simulation, ind::Individual, isolation::SelfIsolat
     t = sim |> tick
     d = isolation |> duration
 
-    @debug "Individual $(ind |> id) going into isolation for $d ticks at tick $t"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) going into isolation for $d ticks at tick $t"
 
     # set start and end of isolation
     quarantine_tick!(ind, t)

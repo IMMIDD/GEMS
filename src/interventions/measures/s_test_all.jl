@@ -139,7 +139,7 @@ function process_measure(sim::Simulation, s::Setting, measure::TestAll)
     # testing each individual and return number of positive tests
     numpos = sum(apply_test(i, measure |> type, sim, measure |> reportable) for i in individuals(s, sim))
 
-    @debug "Testing all members in $(string(typeof(s)))[$(id(s))]: $numpos positives at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Testing all members in $(string(typeof(s)))[$(id(s))]: $numpos positives at tick $(sim |> tick)"
 
     return Handover(s, numpos > 0 ? measure |> positive_followup : measure |> negative_followup)
 end

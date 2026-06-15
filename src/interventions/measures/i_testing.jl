@@ -136,7 +136,7 @@ function process_measure(sim::Simulation, ind::Individual, test::Test)
 
     test_pos = apply_test(ind, test |> type, sim, test |> reportable)
     
-    @debug "Individual $(ind |> id) $(ind |> infected ? "(inf)" : "") tested $(test_pos ? "positive" : "negative") at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) $(ind |> infected ? "(inf)" : "") tested $(test_pos ? "positive" : "negative") at tick $(sim |> tick)"
 
     # if test is positive, return strategy for handling positive results for this individual
     return Handover(ind, test_pos ? test |> positive_followup : test |> negative_followup)

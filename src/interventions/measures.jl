@@ -17,7 +17,7 @@ of `process_measure()` functions.
 
 # Fields
 
-- `focal_objects::Union{Vector{<:Individual},Vector{<:Setting}}`:
+- `focal_objects::Union{Vector{Individual},Vector{<:Setting}}`:
     List of focal objects (either all `Individual`s or all `Setting`s)
 - `follow_up::Union{<:Strategy, Nothing}`: Strategy that shall be
     triggered for all focus objects in the `focal_objects` list
@@ -63,13 +63,13 @@ h4 = Handover([s], sstr)
 """
 struct Handover
 
-    focal_objects::Union{Vector{<:Individual},Vector{<:Setting}}
+    focal_objects::Union{Vector{Individual},Vector{<:Setting}}
     follow_up::Union{<:Strategy, Nothing}
 
     Handover(s::Setting, follow_up::Union{SStrategy, Nothing}) = new([s], follow_up)
     Handover(s::Vector{<:Setting}, follow_up::Union{SStrategy, Nothing}) = new(s, follow_up)
     Handover(i::Individual, follow_up::Union{IStrategy, Nothing}) = new([i], follow_up)
-    Handover(i::Vector{<:Individual}, follow_up::Union{IStrategy, Nothing}) = new(i, follow_up)
+    Handover(i::Vector{Individual}, follow_up::Union{IStrategy, Nothing}) = new(i, follow_up)
 end
 
 """

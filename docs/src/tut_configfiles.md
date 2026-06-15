@@ -438,6 +438,125 @@ gemsplot([rd_baseline, rd_vaxxed], type = :ProgressionCategories, xticks = [1, 1
 
 As expected, the right plot shows that the vaccinated population experiences entirely symptomatic tracks and is completely protected from the `Severe` progression category!
 
+## Custom Individual Extensions
+
+Sometimes a study needs per-agent attributes that go beyond what `Individual` provides by default. GEMS lets you add these without changing the core model by passing `ind_extension` to the `Population` or `Simulation` constructor.
+
+When extension data lives in a separate table, pass it directly as `ind_extension`. Individuals whose ID is not present receive a zero-filled value with a warning:
+
+```julia
+using GEMS
+using DataFrames
+
+pop = Population(DataFrame(
+    id = Int32.(1:100), 
+    age = Int8.(rand(20:60, 100)),
+    sex = Int8.(rand(0:1, 100))
+))
+
+ext_df = DataFrame(id = Int32.(1:100), my_custom_attribute = rand(Float32, 100))
+
+sim = Simulation(population = pop, ind_extension = ext_df)
+
+ind = individuals(population(sim))[1]
+show(ind)
+```
+
+**Output**
+
+```
+Individual
+  ID:                          1
+  Age:                         40
+  Sex:                         female
+  ...
+  my_custom_attribute:         0.07483196
+```
+
+Extension fields are also accessible and mutable directly:
+
+```julia
+ind.my_custom_attribute        # e.g. 0.07483196
+ind.my_custom_attribute = 0.9
+```
+
+If the extension data is already part of your population DataFrame, you can name the columns directly instead:
+
+```julia
+using GEMS
+using DataFrames
+
+pop = Population(DataFrame(
+    id = Int32.(1:100),
+    age = Int8.(rand(20:60, 100)),
+    sex = Int8.(rand(0:1, 100)),
+    my_custom_attribute = rand(Float32, 100)
+); ind_extension = [:my_custom_attribute])
+
+sim = Simulation(population = pop)
+```
+
+When extension values need to be computed from individual attributes (for example, assigning a parameter based on age) pass an `ind_extension` factory function to the constructor. It receives each base individual and returns an extension struct:
+
+```julia
+using GEMS
+
+mutable struct MyParams
+    my_custom_attribute::Float32
+end
+
+sim = Simulation(ind_extension = ind -> MyParams(age(ind) > 60 ? 0.8 : 0.3))
+```
+
+Or, if you define the extension as a keyword struct (`@kwdef`), the factory can construct it with keyword arguments. This keeps the call readable when the struct has many fields:
+
+```julia
+using GEMS
+
+@kwdef mutable struct MyParams
+    my_custom_attribute_a::Float32
+    my_custom_attribute_b::Float32 
+end
+
+sim = Simulation(ind_extension = ind -> 
+    MyParams(
+        my_custom_attribute_a = age(ind) > 60 ? 0.8 : 0.3, 
+        my_custom_attribute_b = rand(Float32)
+    )
+)
+```
+
+Extension fields behave exactly like built-in fields regardless of how they were created. All existing GEMS functions that accept `::Individual` continue to work on extended individuals unchanged.
+
+!!! warning "Extension names must not collide with core fields"
+    Extension fields share the `Individual` property namespace, so their names must differ from
+    the built-in fields (e.g. `sex`, `age`, `household`, `office`, `number_of_vaccinations`, …).
+    Reusing a core name is rejected at load time with an explicit error (otherwise `ind.sex`
+    would silently return the built-in attribute instead of your value, and the population could
+    not be exported back to a `DataFrame`). Rename the offending column or struct field.
+
+!!! warning "Custom field reads are type-unstable"
+    Extension data is stored in a boxed `extensions` field (typed `Any`), so reading a custom field
+    such as `ind.my_custom_attribute` is **type-unstable**. This is harmless in most code, but if you
+    read custom fields in a hot loop it can noticeably slow a simulation. See below for how to recover
+    full type stability.
+
+In practice the boxed read is cheap in custom `transmission_probability` / `sample_contacts!` methods, which are already reached through dynamic dispatch, so a single boxed read adds negligible cost there.
+
+If you do heavy per-contact computation on custom fields and want full type stability, recover it with a *function barrier*: read the extension once and dispatch on its concrete type.
+
+```julia
+import GEMS.transmission_probability
+
+# thin outer method: hands the concrete extension to a specialized inner function
+GEMS.transmission_probability(tf::MyTransFunc, pathogen_id, infecter::Individual,
+        infectee::Individual, setting, tick, sim, rng) =
+    _tp(tf, infecter.extensions, infectee.extensions, pathogen_id, setting, tick, sim, rng)
+
+# inner method specializes on MyExt, so ea/eb field access is fully type-stable
+_tp(tf::MyTransFunc, ea::MyExt, eb::MyExt, pathogen_id, setting, tick, sim, rng) = # ...
+```
+
 ## Custom Start Conditions
 
 coming soon ...

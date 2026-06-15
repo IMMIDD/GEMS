@@ -19,7 +19,7 @@ function sample_contacts!(
     # mutating keyword method
     if hasmethod(sample_contacts!, Tuple{Vector{Individual}, typeof(csm), Setting, Int, Vector{Individual}, Int16})
         return sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
-    
+
     # non-mutating keyword method
     elseif hasmethod(sample_contacts, Tuple{typeof(csm), Setting, Int, Vector{Individual}, Int16})
         new_contacts = sample_contacts(csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)

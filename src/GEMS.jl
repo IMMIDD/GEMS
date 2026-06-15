@@ -12,6 +12,7 @@ module GEMS
     using Distributions
     using FileIO
     using Format
+    using FunctionWrappers: FunctionWrapper
     import GMT # "import" GMT to prevent namespace conflicts with Plots package. (plot, scatter, etc...)
     using ImageIO
     using InteractiveUtils

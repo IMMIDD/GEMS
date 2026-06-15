@@ -42,7 +42,7 @@ function process_measure(sim::Simulation, ind::Individual, cancel::CancelSelfIso
     
     t = sim |> tick
 
-    @debug "Individual $(ind |> id) $(ind |> infected ? "(inf)" : "") leaving isolation at tick $t"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) $(ind |> infected ? "(inf)" : "") leaving isolation at tick $t"
 
     # set release tick to now; remove quarantine starting tick to prevent triggering another indefinite quarantine
     quarantine_release_tick!(ind, t)

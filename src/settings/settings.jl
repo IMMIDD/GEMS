@@ -767,18 +767,18 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 ### CREATION OF SETTINGS
 
 """
-    construct_and_add_settings!(container_vec::Vector{Setting}, pairs::Vector{Tuple{Int32, Individual}}, settingtype::Type{T}, default_sampling) where {T <: Setting}
+    construct_and_add_settings!(container_vec::Vector, pairs::Vector{Tuple{Int32, Individual}}, settingtype::Type{T}, default_sampling) where {T <: Setting}
 
 Helper function to construct settings from a sorted list of ID-Individual pairs without dynamic dispatch.
 """
 function construct_and_add_settings!(
-    container_vec::Vector{Setting}, 
-    pairs::Vector{Tuple{Int32, Individual}}, 
-    settingtype::Type{T}, 
+    container_vec::Vector,
+    pairs::Vector{Tuple{Int32, Individual}},
+    settingtype::Type{T},
     default_sampling
 ) where {T <: Setting}
     n = length(pairs)
-    
+
     # Pre-calculate the number of unique settings to avoid push! reallocations
     if n > 0
         num_unique = 1
@@ -795,13 +795,13 @@ function construct_and_add_settings!(
     # Iterate through the sorted pairs
     while i <= n
         current_id = pairs[i][1]
-        
+
         # Find the block of individuals sharing this ID
         j = i
         while j <= n && pairs[j][1] == current_id
             j += 1
         end
-        
+
         # Exact pre-allocation for the members array
         count = j - i
         members = Vector{Individual}(undef, count)

@@ -93,7 +93,7 @@ the respective follow-up strategies as specified in the `IsOpen` measure.
 """
 function process_measure(sim::Simulation, s::Setting, measure::IsOpen)
 
-    @debug "Testing if Setting $(s |> typeof) $(s |> id) is open ($(is_open(s)) at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Testing if Setting $(s |> typeof) $(s |> id) is open ($(is_open(s)) at tick $(sim |> tick)"
 
     return Handover(s, is_open(s) ?  measure |> positive_followup : measure |> negative_followup)
 end

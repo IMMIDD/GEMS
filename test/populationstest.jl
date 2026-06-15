@@ -84,6 +84,203 @@
     end
     
 
+    @testset "Individual Extensions" begin
+
+        mutable struct PopTestExt
+            score::Float32
+            category::Int8
+        end
+
+        @testset "Extra columns ignored by default" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5),
+                score = Float32.(0.1:0.1:0.5),
+                category = Int8.(1:5)
+            )
+            # Extra columns are ignored — no extensions without explicit ind_extension
+            pop = Population(df)
+            @test eltype(individuals(pop)) == Individual
+            @test individuals(pop)[1].extensions === nothing
+        end
+
+        @testset "Explicit Symbol-vector ind_extension" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5),
+                score = Float32.(0.1:0.1:0.5),
+                category = Int8.(1:5)
+            )
+            # Only requested columns become extensions
+            pop = Population(df; ind_extension = [:score, :category])
+            @test individuals(pop)[1].extensions isa AutoExtension
+
+            ind = individuals(pop)[1]
+            @test ind.score ≈ 0.1f0
+            @test ind.category == Int8(1)
+            @test age(ind) == Int8(20)
+
+            # Transparent write (via AutoExtension merge)
+            ind.score = 0.9f0
+            @test ind.score ≈ 0.9f0
+            @test ind.category == Int8(1)   # other field unchanged
+
+            # Missing column names warn gracefully
+            @test_logs (:warn, r"not found") Population(df; ind_extension = [:nonexistent])
+        end
+
+        @testset "Explicit ind_extension factory" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5)
+            )
+            pop = Population(df; ind_extension = ind -> PopTestExt(Float32(age(ind)) / 100f0, Int8(1)))
+
+            @test individuals(pop)[1].extensions isa PopTestExt
+
+            ind = individuals(pop)[1]
+            @test ind.score ≈ 0.20f0   # age 20 / 100
+            @test ind.category == Int8(1)
+
+            # in-place mutation via setfield!
+            ind.score = 0.5f0
+            @test ind.score ≈ 0.5f0
+        end
+
+        @testset "No extra columns → no extensions" begin
+            df = DataFrame(id = Int32.(1:3), age = Int8.(20:22), sex = Int8.(ones(3)), household = Int32.(1:3))
+            pop = Population(df)
+            @test eltype(individuals(pop)) == Individual
+            @test individuals(pop)[1].extensions === nothing
+        end
+
+        @testset "Simulation with ind_extension" begin
+            sim = Simulation(ind_extension = ind -> PopTestExt(0.5f0, Int8(1)))
+            ind = individuals(population(sim))[1]
+            @test ind.score == 0.5f0
+            @test ind.category == Int8(1)
+        end
+
+        @testset "DataFrame ind_extension" begin
+            base_df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5)
+            )
+            ext_df = DataFrame(
+                id = Int32.(1:5),
+                score = Float32.([0.1, 0.2, 0.3, 0.4, 0.5])
+            )
+
+            # full match: all IDs present
+            pop = Population(base_df; ind_extension = ext_df)
+            @test individuals(pop)[1].extensions isa AutoExtension
+            @test individuals(pop)[1].score ≈ 0.1f0
+            @test individuals(pop)[3].score ≈ 0.3f0
+
+            # transparent mutation
+            individuals(pop)[1].score = 0.9f0
+            @test individuals(pop)[1].score ≈ 0.9f0
+
+            # missing IDs: warn and fill with zero
+            ext_partial = DataFrame(id = Int32.(1:3), score = Float32.([0.1, 0.2, 0.3]))
+            pop_partial = @test_logs (:warn, r"individual") Population(base_df; ind_extension = ext_partial)
+            @test individuals(pop_partial)[4].score == 0.0f0   # missing → zero
+            @test individuals(pop_partial)[1].score ≈ 0.1f0   # present → correct
+
+            # extra rows in ext_df are silently ignored
+            ext_extra = DataFrame(id = Int32.(1:10), score = Float32.(0.1:0.1:1.0))
+            pop_extra = Population(base_df; ind_extension = ext_extra)
+            @test length(individuals(pop_extra)) == 5
+            @test individuals(pop_extra)[5].score ≈ 0.5f0
+        end
+
+        @testset "ind_extension core-field collision is rejected" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5)
+            )
+
+            # Symbol-vector naming a core field
+            @test_throws ErrorException Population(df; ind_extension = [:household])
+
+            # separate extension DataFrame with a core-field column
+            ext_df = DataFrame(id = Int32.(1:5), household = Int32.(11:15))
+            @test_throws ErrorException Population(df; ind_extension = ext_df)
+
+            # factory producing a struct whose field shadows a core field
+            @test_throws ErrorException Population(df; ind_extension = ind -> AutoExtension((; sex = 1.0f0)))
+
+            # a non-colliding name still works
+            df_ok = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                risk = Float32.(0.1:0.1:0.5)
+            )
+            pop_ok = Population(df_ok; ind_extension = [:risk])
+            @test individuals(pop_ok)[1].risk ≈ 0.1f0
+        end
+
+        @testset "dataframe base field values" begin
+            df = DataFrame(
+                id = Int32.(1:3),
+                age = Int8.(20:22),
+                sex = Int8.([0, 1, 0]),
+                household = Int32.(1:3)
+            )
+            pop = Population(df)
+            result = dataframe(pop)
+
+            @test result.id == Int32.(1:3)
+            @test result.age == Int8.(20:22)
+            @test result.sex == Int8.([0, 1, 0])
+        end
+
+        @testset "dataframe includes extension fields" begin
+            df = DataFrame(
+                id = Int32.(1:5),
+                age = Int8.(20:24),
+                sex = Int8.(ones(5)),
+                household = Int32.(1:5),
+                score = Float32.(0.1:0.1:0.5),
+                category = Int8.(1:5)
+            )
+            pop = Population(df; ind_extension = [:score, :category])
+            result = dataframe(pop)
+
+            # extension columns are present and correct
+            @test :score in propertynames(result)
+            @test :category in propertynames(result)
+            @test result.score ≈ Float32.(0.1:0.1:0.5)
+            @test result.category == Int8.(1:5)
+
+            # base columns are still present
+            @test :id in propertynames(result)
+            @test :age in propertynames(result)
+        end
+
+        @testset "dataframe without extensions has no extension columns" begin
+            df = DataFrame(id = Int32.(1:3), age = Int8.(20:22), sex = Int8.(ones(3)), household = Int32.(1:3))
+            pop = Population(df)
+            result = dataframe(pop)
+
+            # only base fields (no leftover columns from the source DataFrame)
+            base_names = Set([:id, :sex, :age, :number_of_vaccinations, :vaccination_tick,
+                              :education, :occupation, :household, :office, :schoolclass])
+            @test Set(propertynames(result)) == base_names
+        end
+    end
+
     @testset "get_individual_by_id" begin
 
         pop = Population([Individual(id=100, age=0, sex=0), Individual(id=101, age=0, sex=0), Individual(id=102, age=0, sex=0)])

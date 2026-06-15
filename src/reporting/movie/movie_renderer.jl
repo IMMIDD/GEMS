@@ -25,13 +25,13 @@ Prepares the infections dataframe for frame-by-frame rendering.
 Filters to geolocated infections, applies subsampling if the total exceeds
 `max_points`, and assigns a fractional `start_time` and `end_time` to each
 infection by spreading same-tick events evenly across the tick interval via
-[`steps`](@ref).
+`steps`.
 
 Throws if no geolocated infections are present.
 
 # Parameters
 
-- `infections::DataFrame`: Raw infections dataframe from [`ResultData`](@ref).
+- `infections::DataFrame`: Raw infections dataframe from `ResultData`.
     Must contain `:infection_id`, `:tick`, `:recovery`, `:death`, `:lat`, `:lon`.
 - `max_points::Int`: Maximum number of infections to render on the map.
     Excess points are randomly excluded via the `:show` flag.
@@ -93,14 +93,14 @@ end
         utick::String, seconds::Int64, fps::Int64)
 
 Iterates over all frames, filters the active infections per timestep, renders each
-frame to a temporary PNG via [`generate_frame`](@ref), crops and loads it into
+frame to a temporary PNG via `generate_frame`, crops and loads it into
 memory, then removes the temporary file.
 
 Returns a vector of cropped images ready for video encoding.
 
 # Parameters
 
-- `data::DataFrame`: Prepared frame data from [`prepare_frame_data`](@ref).
+- `data::DataFrame`: Prepared frame data from `prepare_frame_data`.
 - `reg::Vector{Float64}`: Map region bounds.
 - `ft::Int`: Final tick of the simulation.
 - `max_act_inf::Real`: Peak active infection count, used as the Y-axis limit.

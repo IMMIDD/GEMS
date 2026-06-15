@@ -126,7 +126,7 @@ function process_measure(sim::Simulation, s::Setting, measure::PoolTest)
     # apply pool test to setting
     test_pos = apply_pool_test(s, measure |> type, sim)
 
-    @debug "Pool testing setting $(string(typeof(s)))[$(id(s))]: $(test_pos ? "positive" : "negative") test result at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Pool testing setting $(string(typeof(s)))[$(id(s))]: $(test_pos ? "positive" : "negative") test result at tick $(sim |> tick)"
 
     return Handover(s, test_pos ?  measure |> positive_followup : measure |> negative_followup) 
 end
