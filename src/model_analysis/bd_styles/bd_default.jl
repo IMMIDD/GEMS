@@ -4,15 +4,14 @@ export DefaultBatchData
     DefaultBatchData <: BatchDataStyle
 
 The default style for `BatchData` objects. It contains all that can currently
-be calculated in the `BatchProcessor` and all `ResultData` objects of the 
-individual runs.
+be calculated from a `BatchProcessor`.
 
 # Fields
 
 - `data::Dict{String, Any}`
     - `meta_data::Dict{String, Any}`
         - `execution_date::String`: Time this BatchData object was generated
-        - `GEMS_version::VersionNumber`: GEMS version this BatchData object was generated with 
+        - `GEMS_version::VersionNumber`: GEMS version this BatchData object was generated with
 
     - `system_data::Dict{String, Any}`
         - `kernel::String`: System kernel
@@ -27,36 +26,36 @@ individual runs.
         - `git_commit::SubString{String}`: Current Git commit ID
 
     - `sim_data::Dict{String, Any}`
-        - `runs::Vector{ResultData}`: ResultData objects of individual simulation runs runs
+        - `runs::Union{Nothing, Vector{ResultData}}`: Individual ResultData objects, or
+          `nothing` if `keep_rundata` was `false` during the batch run
+        - `median_run::Union{Nothing, ResultData}`: The run whose criterion is closest to
+          the median across all runs, or `nothing` if `median_by` was not set
         - `number_of_runs::Int64`: Number of simulation runs
         - `total_infections::Dict{String, Real}`: Summary statistics on total infections across simulation runs
         - `attack_rate::Dict{String, Real}`: Summary statistics on attack rates across simulation runs
         - `r0::Dict{String, Real}`: Summary statistics on the basic reproduction number (R0)
         - `total_quarantines::Dict{String, Real}`: Summary statistics on total quarantines across simulation runs
-        - `total_tests::Dict{String, Real}`: Summary statistics on total tests across simulation runs
-        
+        - `total_tests::Dict{String, Dict{String, Real}}`: Summary statistics on total tests per TestType
+
     - `dataframes::Dict{String, Any}`
-        - `tick_cases::Dataframe`: Aggregated data on infections per tick across simulation runs
-        - `effectiveR::Dataframe`: Aggregated data on the effective reproduction number per tick across simulation runs
-        - `tests::Dataframe`: Aggregated data on tests per tick across simulation runs
-        - `cumulative_quarantines::Dataframe`: Aggregated data on cumulative quarantines per tick across simulation runs
-        - `cumulative_disease_progressions::Dataframe`: Aggregated data on cumulative disease progressions per tick across simulation runs
+        - `tick_cases::DataFrame`: Aggregated data on infections per tick across simulation runs
+        - `effectiveR::DataFrame`: Aggregated data on the effective reproduction number per tick across simulation runs
+        - `tests::Dict{String, Dict{String, DataFrame}}`: Aggregated data on tests per tick across simulation runs
+        - `cumulative_quarantines::DataFrame`: Aggregated data on cumulative quarantines per tick across simulation runs
+        - `cumulative_disease_progressions::Dict{String, DataFrame}`: Aggregated data on cumulative disease progressions per tick across simulation runs
 """
 mutable struct DefaultBatchData <: BatchDataStyle
 
-    # internal data container
     data::Dict{String, Any}
 
     function DefaultBatchData(bP::BatchProcessor)
         funcs = Dict(
-            # any non-simulation-related data
             "meta_data" =>
                 Dict(
                     "execution_date" => () -> Dates.format(now(), "U dd, yyyy - HH:MM"),
                     "GEMS_version" => () -> PkgVersion.Version(GEMS)
                 ),
 
-            # system data
             "system_data" =>
                 Dict(
                     "kernel" => () -> String(Base.Sys.KERNEL) * String(Base.Sys.MACHINE),
@@ -71,33 +70,39 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "git_commit" => () -> read_git_commit(),
                 ),
 
-            # aggregated data on simulations
             "sim_data" =>
                 Dict(
-                    "runs" => () -> bP |> rundata, # result data objects of individual runs
-                    "number_of_runs" => () -> bP |> rundata |> length,
-                    "total_infections" => () -> bP |> total_infections |> aggregate_values,
-                    "attack_rate" => () -> bP |> attack_rate |> aggregate_values,
-                    "r0" => () -> bP |> r0 |> aggregate_values,
-                    "total_quarantines" => () -> bP |> total_quarantines |> aggregate_values,
-                    "total_tests" => () -> bP |> total_tests |> aggregate_dicts,
+                    "runs" => () -> rundata(bP),
+                    "median_run" => () -> median_run(bP),
+                    "number_of_runs" => () -> n_runs(bP),
+                    "tick_unit" => () -> tick_unit(bP),
+                    "seed" => () -> seed(bP),
+                    "total_infections" => () -> total_infections(bP),
+                    "attack_rate" => () -> attack_rate(bP),
+                    "r0" => () -> r0(bP),
+                    "total_quarantines" => () -> total_quarantines(bP),
+                    "total_tests" => () -> total_tests(bP),
+                    "total_detected_cases" => () -> total_detected_cases(bP),
+                    "detection_rate" => () -> detection_rate(bP),
                 ),
 
-            # aggregated output data
             "dataframes" =>
                 Dict(
-                    "tick_cases" => () -> aggregate_dfs(tick_cases(bP), :tick),
-                    "effectiveR" => () -> aggregate_dfs(effectiveR(bP), :tick),
-                    "tests" => () -> Dict(k => aggregate_dfs_multcol(v, :tick) for (k, v) in tests(bP)),
-                    "cumulative_quarantines" => () -> aggregate_dfs(cumulative_quarantines(bP), :tick),
-                    "cumulative_disease_progressions" => () -> aggregate_dfs_multcol(cumulative_disease_progressions(bP), :tick),   
+                    "tick_cases" => () -> tick_cases(bP),
+                    "effectiveR" => () -> effectiveR(bP),
+                    "tests" => () -> tests(bP),
+                    "pool_tests" => () -> pool_tests(bP),
+                    "sero_tests" => () -> sero_tests(bP),
+                    "cumulative_quarantines" => () -> cumulative_quarantines(bP),
+                    "cumulative_disease_progressions" => () -> cumulative_disease_progressions(bP),
+                    "dark_figure" => () -> dark_figure(bP),
+                    "cumulative_cases" => () -> cumulative_cases(bP),
+                    "generation_times" => () -> generation_times(bP),
+                    "hospitalizations" => () -> hospitalizations(bP),
+                    "observed_R" => () -> observed_R(bP),
                 )
         )
 
-        # call all provided functions and replace
-        # the dicts with their return values
-        return(
-            new(process_funcs(funcs))
-        )
+        return new(process_funcs(funcs))
     end
 end

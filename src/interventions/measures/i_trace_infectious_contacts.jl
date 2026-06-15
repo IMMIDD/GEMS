@@ -91,7 +91,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
     # filter by success_rate
     infectee_ids = infectee_ids[gems_rand(sim, infectee_ids |> length) .< sr]
 
-    @debug "Individual $(ind |> id) identiying $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identiying $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
 
     # return "nothing" default, if list is empty
     if infectee_ids |> length == 0

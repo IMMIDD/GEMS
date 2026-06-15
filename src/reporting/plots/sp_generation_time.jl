@@ -100,3 +100,12 @@ function generate(plt::GenerationTime, rds::Vector{ResultData}; plotargs...)
 
     return(p)
 end
+
+function generate(plt::GenerationTime, bd::BatchData; plotargs...)
+    uticks = get(sim_data(bd), "tick_unit", "tick")
+    upper_ticks = uppercasefirst(uticks)
+    p = plot(xlabel = upper_ticks, ylabel = "Mean Gen. Time ($(upper_ticks)s)", dpi = 300, fontfamily = "Times Roman")
+    _plot_labelled_ribbon!(p, bd, "generation_times", "Mean Gen. Time (mean ± 95% CI)"; plotargs...)
+    plot!(p; plotargs...)
+    return p
+end

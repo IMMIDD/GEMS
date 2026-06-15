@@ -393,8 +393,9 @@ Pushes the individuals present in a given ContainerSetting, i.e., only those in 
 function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     # Check that setting and all containers are open
     if setting |> is_open
+        stngs = settings(simulation, setting.contains_type)
         for s in setting |> contains
-            present_individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
+            present_individuals!(indivs, stngs[s]::Setting, simulation)
         end
     end
 end
@@ -665,8 +666,9 @@ function open!(setting::Setting, simulation::Simulation)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
-        for s in settings(simulation, k)[v]
-            open!(s)
+        stngs = settings(simulation, k)
+        for idx in v
+            open!(stngs[idx]::Setting)
         end
     end
 end
@@ -690,8 +692,9 @@ function close!(setting::Setting, simulation::Simulation)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
-        for s in settings(simulation, k)[v]
-            close!(s)
+        stngs = settings(simulation, k)
+        for idx in v
+            close!(stngs[idx]::Setting)
         end
     end
 end
@@ -743,7 +746,7 @@ function activate!(setting::Setting, sim::Simulation)
     # Check if this setting is contained within a parent setting
     if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
         # Recursively activate the parent
-        parent_setting = settings(sim, setting.contained_type)[setting.contained]
+        parent_setting = settings(sim, setting.contained_type)[setting.contained]::Setting
         activate!(parent_setting, sim)
     end
 end

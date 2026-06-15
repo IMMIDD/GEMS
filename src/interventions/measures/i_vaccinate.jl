@@ -92,7 +92,7 @@ containing the configured `follow_up` strategy (or `nothing`).
 function process_measure(sim::Simulation, ind::Individual, m::Vaccinate)
     vaccinate!(ind, vaccine(m), tick(sim))
 
-    @debug "Individual $(id(ind)) vaccinated with $(name(vaccine(m))) at tick $(tick(sim))"
+    INTERVENTION_DEBUG && @debug "Individual $(id(ind)) vaccinated with $(name(vaccine(m))) at tick $(tick(sim))"
 
     return Handover(ind, follow_up(m))
 end

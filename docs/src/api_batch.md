@@ -22,13 +22,11 @@ Batch
 ### Functions
 
 ```@docs
-add!(::Simulation, ::Batch)
+add!(::NamedTuple, ::Batch)
 append!(::Batch, ::Batch)
-customlogger!(::Batch, ::CustomLogger)
 merge(::Batch...)
-remove!(::Simulation, ::Batch)
-run!(::Batch; ::Function)
-simulations(::Batch)
+process!(::Batch)
+simconfigs(::Batch)
 ```
 
 
@@ -43,35 +41,39 @@ BatchProcessor
 ### Functions
 
 ```@docs
-allocations(::BatchProcessor)
 attack_rate(::BatchProcessor)
-config_files(::BatchProcessor)
+cumulative_cases(::BatchProcessor)
 cumulative_disease_progressions(::BatchProcessor)
 cumulative_quarantines(::BatchProcessor)
+dark_figure(::BatchProcessor)
 effectiveR(::BatchProcessor)
-extract
-extract_unique
-number_of_individuals(::BatchProcessor)
-pathogens(::BatchProcessor)
-population_files(::BatchProcessor)
-population_pyramid(::BatchProcessor)
-run_ids(::BatchProcessor)
+generation_times(::BatchProcessor)
+n_runs(::BatchProcessor)
+median_run(::BatchProcessor)
+r0(::BatchProcessor)
 rundata(::BatchProcessor)
-runtime(::BatchProcessor)
-setting_age_contacts(::BatchProcessor, ::DataType)
-settingdata(::BatchProcessor)
-start_conditions(::BatchProcessor)
-stop_criteria(::BatchProcessor)
-strategies(::BatchProcessor)
-symptom_triggers(::BatchProcessor)
+seed(::BatchProcessor)
 tests(::BatchProcessor)
-testtypes(::BatchProcessor)
 tick_cases(::BatchProcessor)
 tick_unit(::BatchProcessor)
 total_infections(::BatchProcessor)
 total_quarantines(::BatchProcessor)
 total_tests(::BatchProcessor)
 ```
+
+!!! note "Removed functions"
+    Several functions available on `BatchProcessor` in earlier versions
+    (`config_files`, `pathogens`, `settingdata`, `population_pyramid`,
+    `setting_age_contacts`, `strategies`, etc.) are no longer available because
+    `BatchProcessor` no longer stores individual `ResultData` objects by default.
+
+    **Alternatives:**
+    - *Configuration metadata* (config files, pathogens, strategies, …):
+      use `simconfigs(batch)` — the simulation keyword arguments are stored in
+      the `Batch` object.
+    - *Post-simulation per-run data* (setting data, population pyramid, …):
+      process with `keep_rundata = true` and access via `rundata(bp)`.
+
 
 ## BatchData
 
@@ -87,13 +89,16 @@ BatchData
 allocations(::BatchData)
 attack_rate(::BatchData)
 cpu_data(::BatchData)
+cumulative_cases(::BatchData)
 cumulative_disease_progressions(::BatchData)
 cumulative_quarantines(::BatchData)
+dark_figure(::BatchData)
 dataframes(::BatchData)
 effectiveR(::BatchData)
 execution_date(::BatchData)
 exportJLD(::BatchData, ::AbstractString)
 free_mem_size(::BatchData)
+generation_times(::BatchData)
 GEMS_version(::BatchData)
 git_branch(::BatchData)
 git_commit(::BatchData)
@@ -106,8 +111,11 @@ kernel(::BatchData)
 merge(::BatchData...; ::String)
 meta_data(::BatchData)
 number_of_runs(::BatchData)
+per_label(::BatchData)
+median_run(::BatchData)
 runs(::BatchData)
 runtime(::BatchData)
+seed(::BatchData)
 sim_data(::BatchData)
 system_data(::BatchData)
 tests(::BatchData)

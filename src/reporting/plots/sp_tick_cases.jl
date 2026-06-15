@@ -126,7 +126,7 @@ function generate(plt::TickCases, rds::Vector{ResultData}; plotargs...)
 
     # generate a plot with data grouped by label
     p = plot(xlabel=upper_ticks, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
-    
+
     # generate a plot with data grouped by label
     p = plotseries!(p, rd -> tick_cases(rd)[!,"exposed_cnt"], rds; plotargs...)
 
@@ -134,4 +134,12 @@ function generate(plt::TickCases, rds::Vector{ResultData}; plotargs...)
     plot!(p; plotargs...)
 
     return(p)
+end
+
+function generate(plt::TickCases, bd::BatchData; plotargs...)
+    uticks = get(sim_data(bd), "tick_unit", "tick")
+    p = plot(xlabel = uppercasefirst(uticks), ylabel = "Individuals", dpi = 300, fontfamily = "Times Roman")
+    _plot_labelled_ribbon!(p, bd, "tick_cases", "Exposed (mean ± 95% CI)"; col_key = "exposed_cnt", plotargs...)
+    plot!(p; plotargs...)
+    return p
 end

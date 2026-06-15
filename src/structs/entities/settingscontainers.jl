@@ -2,7 +2,7 @@
 ### CONTAINER TYPE FOR ALL SETTINGS (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export SettingsContainer
-export add!, get, setting, settings, settingtypes, settingtypes_sorted, settings_from_jld2!, delete_dangling_ids!, new_setting_ids!, add_type!, add_types!
+export add!, get, setting, settings, settingtypes, settingtypes_sorted, settings_from_jld2!, delete_dangling_ids!, new_setting_ids!, add_type!, add_types!, foreach_setting_vector
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites 
 
 """
@@ -11,11 +11,12 @@ export municipalities, households, schoolclasses, schoolyears, schools, schoolco
 A container structure for all settings.
 
 # Fields
-- `settings::Dict{DataType, Vector{Setting}}`: A dictionary holding all known settings
-    structured by type
+- `settings::Dict{DataType, Vector}`: A dictionary holding all known settings
+    structured by type. Each value is a concretely-typed `Vector{T}` where `T` is the
+    corresponding setting type; the dict value type is widened to `Vector` to allow this.
 """
 mutable struct SettingsContainer
-    settings::Dict{DataType, Vector{Setting}}
+    settings::Dict{DataType, Vector}
 end
 
 
@@ -29,19 +30,82 @@ end
 Return a empty container object.
 """
 function SettingsContainer()
-    return SettingsContainer(Dict{DataType, Vector{Setting}}())
+    return SettingsContainer(Dict{DataType, Vector}())
 end
 
 
 """
     add_type!(container::SettingsContainer, settingtype::DataType)
 
-Add a settingtype to the container if it is not yet included. 
-Creates a new vector for the provided type in the settings dictionary.
+Add a settingtype to the container if it is not yet included.
+Creates a new concretely-typed vector for the provided type in the settings dictionary.
 """
 function add_type!(container::SettingsContainer, settingtype::DataType)
     if !haskey(container.settings, settingtype)
-        container.settings[settingtype] = Vector{Setting}()
+        container.settings[settingtype] = Vector{settingtype}()
+    end
+end
+
+
+"""
+    BUILTIN_SETTING_TYPES
+
+All built-in concrete setting types known to GEMS, grouped by social domain and ordered
+leaf-to-root within each hierarchy:
+
+- **General individual settings** (direct infection spread): `GlobalSetting`, `Household`,
+  `Municipality`
+- **School hierarchy** (leaf → root): `SchoolClass`, `SchoolYear`, `School`,
+  `SchoolComplex`
+- **Workplace hierarchy** (leaf → root): `Office`, `Department`, `Workplace`,
+  `WorkplaceSite`
+
+Used by `foreach_setting_vector` to call a function with a concretely-typed
+`Vector{T}` for each type, enabling type-stable iteration without dynamic dispatch.
+User-defined types registered via `add_type!` are not listed here; they are
+handled by the dynamic fallback in `foreach_setting_vector`.
+"""
+const BUILTIN_SETTING_TYPES = (
+    Household,
+    SchoolClass, SchoolYear, School, SchoolComplex,
+    Office, Department, Workplace, WorkplaceSite,
+    Municipality, GlobalSetting
+)
+
+"""
+    BUILTIN_SETTING_TYPES_SET
+
+`Set{DataType}` of every type listed in `BUILTIN_SETTING_TYPES`.  Used for O(1)
+membership testing in the extras loop of `foreach_setting_vector` to skip types
+that have already been visited.
+"""
+const BUILTIN_SETTING_TYPES_SET = Set{DataType}(BUILTIN_SETTING_TYPES)
+
+@inline _foreach_builtin(::F, ::SettingsContainer) where {F} = nothing
+@inline function _foreach_builtin(f::F, c::SettingsContainer, ::Type{T}, rest::Type...) where {F, T<:Setting}
+    haskey(c.settings, T) && f(c.settings[T]::Vector{T})
+    _foreach_builtin(f, c, rest...)
+end
+
+"""
+    foreach_setting_vector(f, container::SettingsContainer)
+
+Call `f(vec)` for every setting vector in `container`.
+
+For each type listed in `BUILTIN_SETTING_TYPES` that is present in `container`,
+`f` receives a concretely-typed `Vector{T}` — the call is fully type-stable with no
+dynamic dispatch.  Built-in types are visited in the order defined by
+`BUILTIN_SETTING_TYPES` (domain-grouped, leaf-to-root within each hierarchy).
+
+For any user-added types not in `BUILTIN_SETTING_TYPES` (registered via
+`add_type!`), `f` receives a plain `Vector`; those callers remain on the dynamic
+path, which is acceptable for extension types.
+"""
+@inline function foreach_setting_vector(f::F, c::SettingsContainer) where {F}
+    _foreach_builtin(f, c, BUILTIN_SETTING_TYPES...)
+    for (T, vec) in c.settings
+        T in BUILTIN_SETTING_TYPES_SET && continue
+        f(vec)
     end
 end
 
@@ -83,20 +147,31 @@ end
 """
     settings(container::SettingsContainer)
 
-Returns a dictionary with all concrete setting types as keys and vectors of all known 
-settings as values. 
+Returns a dictionary with all concrete setting types as keys and vectors of all known
+settings as values.
 """
-function settings(container::SettingsContainer)::Dict{DataType, Vector{Setting}}
+function settings(container::SettingsContainer)::Dict{DataType, Vector}
     return container.settings
 end
 
 """
     settings(container::SettingsContainer, type::DataType)
 
-Returns a vector of all known settings with provided type. 
+Returns the vector of settings for the given runtime type.
 """
-function settings(container::SettingsContainer, type::DataType)::Vector{Setting}
+function settings(container::SettingsContainer, type::DataType)
     return container.settings[type]
+end
+
+"""
+    settings(container::SettingsContainer, ::Type{T}) where {T<:Setting}
+
+Type-stable accessor: returns `Vector{T}` for the given concrete setting type `T`.
+Returns an empty `Vector{T}` when the type is not present in the container.
+"""
+function settings(container::SettingsContainer, ::Type{T}) where {T<:Setting}
+    haskey(container.settings, T) || return T[]
+    return container.settings[T]::Vector{T}
 end
 
 """
@@ -204,13 +279,13 @@ function new_setting_ids!(cntnr::SettingsContainer, renaming_dict::Dict = Dict()
 end
 
 """
-    _delete_dangling_for_type!(setting_list::Vector{Setting}, cntnr::SettingsContainer, settingtype::Type{T}) where {T <: Setting}
+    _delete_dangling_for_type!(setting_list::Vector, cntnr::SettingsContainer, settingtype::Type{T}) where {T <: Setting}
 
 Internal function barrier to clean up out-of-bounds IDs without dynamic dispatch. Asserting the concrete `settingtype` inside the loop ensures fast, type-stable access to the `:contained` and `:contains` fields of the abstract `Vector{Setting}`.
 """
 function _delete_dangling_for_type!(
-    setting_list::Vector{Setting}, 
-    cntnr::SettingsContainer, 
+    setting_list::Vector,
+    cntnr::SettingsContainer,
     settingtype::Type{T}
 ) where {T <: Setting}
     
@@ -265,16 +340,16 @@ end
 
 
 """
-    update_setting_column!(setting_vec::Vector{Setting}, col_data::AbstractVector, renaming_dict, id_data::AbstractVector, ::Type{T}, ::Val{F}) where {T, F}
+    update_setting_column!(setting_vec::Vector, col_data::AbstractVector, renaming_dict, id_data::AbstractVector, ::Type{T}, ::Val{F}) where {T, F}
 
 Internal function barrier to bulk-update setting columns without dynamic dispatch. Passing the concrete type `Type{T}` and field name `Val{F}` ensures the type assertion and `setfield!` operations remain fully type-stable when iterating over the abstract `Vector{Setting}`.
 """
 function update_setting_column!(
-    setting_vec::Vector{Setting}, 
-    col_data::AbstractVector, 
-    renaming_dict, 
-    id_data::AbstractVector, 
-    ::Type{T}, 
+    setting_vec::Vector,
+    col_data::AbstractVector,
+    renaming_dict,
+    id_data::AbstractVector,
+    ::Type{T},
     ::Val{F}
 ) where {T, F}
     has_renaming = renaming_dict !== nothing

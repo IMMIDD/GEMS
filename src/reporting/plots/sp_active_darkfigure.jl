@@ -112,3 +112,17 @@ function generate(plt::ActiveDarkFigure, rds::Vector{ResultData}; plotargs...)
 
     return(p)
 end
+
+function generate(plt::ActiveDarkFigure, bd::BatchData; plotargs...)
+    uticks = get(sim_data(bd), "tick_unit", "tick")
+    p = plot(
+        xlabel = uppercasefirst(uticks),
+        ylabel = "Dark Figure",
+        dpi = 300,
+        fontfamily = "Times Roman",
+        yticks = (0:.2:1, ["$(100 * i)%" for i in 0:.2:1]),
+        ylims = (0, 1))
+    _plot_labelled_ribbon!(p, bd, "dark_figure", "Dark Figure (mean ± 95% CI)"; plotargs...)
+    plot!(p; plotargs...)
+    return p
+end

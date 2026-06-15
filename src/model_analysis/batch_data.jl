@@ -2,12 +2,13 @@
 export BatchData
 export BatchDataStyle
 
-export merge
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export sim_data, runs, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
-export dataframes, tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
+export sim_data, runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
+export total_detected_cases, detection_rate
+export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
+export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_group
 
 export exportJLD, exportJSON, import_batchdata, info
 
@@ -80,79 +81,40 @@ mutable struct BatchData <: AbstractResultData
         
         bd.data["meta_data"]["id"] = uuid4() |> string
 
+        bd.data["per_group"] = Dict(grp => BatchData(gbp) for (grp, gbp) in batchProcessor.per_group)
+
         return(bd)
     end
 
     @doc """
 
-        BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style = "LightRD")
+        BatchData(batch::Batch; style="DefaultBatchData", keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing)
 
-    Create a `BatchData` object using a `Batch` and a `style`, that defines
-    which calculations should be done during batch processing. As the provided `batch`
-    has unprocessed simulation runs inside, this function also triggers post processing
-    for the individual simulation runs. The `rd_style` argument defines the calculations
-    that should be done during post processing of the individual runs.
-    Post processing requires a simulation to be done.
+    Create a `BatchData` object by running all simulation configurations in `batch`
+    one at a time (streaming). Peak memory is ~1× a single simulation regardless
+    of batch size.
+
+    - `keep_rundata`: store all individual `ResultData` objects. Default: `true`.
+    - `rd_style`: the `ResultData` style used when storing representative/individual runs.
+    - `median_by`: a function `pp -> scalar` to select the median run. Default: `nothing`.
+    - `group_by`: a `Symbol` naming a field in each simulation config `NamedTuple` to use
+      as the grouping key.
+    - `seed`: integer seed for the RNG. Randomised if omitted.
+    - `customlogger`: a `CustomLogger` to attach to each simulation run. Default: `nothing`.
     """
-    BatchData(batch::Batch; style::String = "DefaultBatchData", rd_style = "LightRD") =
-        BatchData(BatchProcessor(batch, rd_style = rd_style), style = style)
-
-    @doc """
-
-        BatchData(rds::Vector{ResultData}; style::String = "DefaultBatchData")
-
-    Create a `BatchData` object using a vector of `ResultData` objects and a `style`, that defines
-    which calculations should be done during batch processing.
-    """
-    BatchData(rds::Vector{ResultData}; style::String = "DefaultBatchData") = 
-        BatchData(BatchProcessor(rds), style = style)
-
-    @doc """
-
-        BatchData(bds::BatchData...; style::String = "DefaultBatchData")
-
-    Calls the `merge()` function for the input `BatchData` objects.
-    """ 
-    BatchData(bds::BatchData...; style::String = "DefaultBatchData") =
-        merge(bds..., style = style)
-
-    @doc """
-
-        BatchData(bds::Vector{BatchData}; style::String = "DefaultBatchData")
-
-    Calls the `merge()` function for the input vector of `BatchData` objects.
-    """ 
-    BatchData(bds::Vector{BatchData}; style::String = "DefaultBatchData") =
-        BatchData(bds...; style = style)
-end
-
-"""
-    merge(bds::BatchData...; style::String = "DefaultBatchData")
-    merge(bds::Vector{BatchData}; style::String = "DefaultBatchData")
-
-Generates a new `BatchData` object from the union of all `ResultData` objects
-out of all the passed `BatchData` objects. Naturally, this requires the
-input `BatchData` objects to have internal `ResultData` objects.
-This requirement is met if the default style (`DefaultBatchData`) was used
-during the creation of the input objects. Simply: If you didn't apply
-any custom style, this should work.
-
-# Returns
-
-- `BatchData`: (New) combined `BatchData` object with all internal `ResultData` objects
-"""
-function Base.merge(bds::BatchData...; style::String = "DefaultBatchData")
-
-    rds = ResultData[]
-    for bd in bds
-        isempty(runs(bd)) ? throw(ArgumentError("Not all passed BatchData objects have the individual simulation runs stored (ResultData). Merging BatchData objects effectively generates a new BatchData object from the internal ResultData objects (therefore they must be passed).")) : nothing
-        append!(rds, runs(bd))
+    function BatchData(batch::Batch;
+        style::String = "DefaultBatchData",
+        keep_rundata::Bool = true,
+        rd_style::String = "LightRD",
+        median_by::Union{Nothing, Function} = nothing,
+        group_by::Union{Nothing, Symbol} = nothing,
+        seed::Union{Nothing, Integer} = nothing,
+        customlogger::Union{Nothing, CustomLogger} = nothing
+    )
+        BatchData(process!(batch; keep_rundata, rd_style, median_by, group_by, seed, customlogger), style = style)
     end
 
-    return BatchData(rds, style = style)
 end
-
-Base.merge(bds::Vector{BatchData}; style::String = "DefaultBatchData") = merge(bds...; style = style)
 
 
 ###
@@ -343,7 +305,50 @@ end
 Returns the `ResultData` objects of each of the runs in the the batch data object.
 """
 function runs(bd::BatchData)
-    get(bd |> sim_data, "runs", Dict())
+    get(bd |> sim_data, "runs", nothing)
+end
+
+"""
+    median_run(bd::BatchData)
+
+Returns the `ResultData` of the simulation whose criterion is the
+median across all runs, or `nothing` if `median_by` was not set.
+"""
+function median_run(bd::BatchData)
+    get(bd |> sim_data, "median_run", nothing)
+end
+
+"""
+    median_runs(bd::BatchData)
+
+Returns a vector of median `ResultData` objects — one per group when `group_by` was set,
+or a single-element vector for ungrouped batches.
+"""
+function median_runs(bd::BatchData)
+    pl_data = per_group(bd)
+    
+    # multi-group batch
+    if !isempty(pl_data)
+        return [median_run(group_bd) for (_, group_bd) in pl_data if !isnothing(median_run(group_bd))]
+    end
+    
+    #single-label / no-label batch
+    single_median = median_run(bd)
+    if !isnothing(single_median)
+        return [single_median]
+    end
+    
+    return []
+end
+
+"""
+    seed(bd::BatchData)
+
+Returns the master seed used to derive per-simulation seeds for this batch,
+or `0` if the batch was processed without explicit seeding.
+"""
+function seed(bd::BatchData)
+    get(bd |> sim_data, "seed", 0)
 end
 
 """
@@ -427,7 +432,7 @@ Returns aggregated values for newly exposed inviduals per tick accross the simul
 It returns mean, standard deviation, range, and confidence intervals.
 """
 function tick_cases(bd::BatchData)
-    return(get(bd |> dataframes, "tick_cases", DataFrame()))
+    return(get(bd |> dataframes, "tick_cases", Dict()))
 end
 
 """
@@ -437,7 +442,7 @@ Returns aggregated values for the effective R value for each tick accross the si
 It returns mean, standard deviation, range, and confidence intervals.
 """
 function effectiveR(bd::BatchData)
-    return(get(bd |> dataframes, "effectiveR", DataFrame()))
+    return(get(bd |> dataframes, "effectiveR", Dict()))
 end
 
 """
@@ -457,7 +462,7 @@ Returns aggregated values cumulative_quarantines per tick accross the simulation
 It returns mean, standard deviation, range, and confidence intervals.
 """
 function cumulative_quarantines(bd::BatchData)
-    return(get(bd |> dataframes, "cumulative_quarantines", DataFrame()))
+    return(get(bd |> dataframes, "cumulative_quarantines", Dict()))
 end
 
 """
@@ -468,6 +473,108 @@ It returns mean, standard deviation, range, and confidence intervals.
 """
 function cumulative_disease_progressions(bd::BatchData)
     return(get(bd |> dataframes, "cumulative_disease_progressions", DataFrame()))
+end
+
+"""
+    dark_figure(bd::BatchData)
+
+Returns aggregated dark figure fractions per tick across simulation runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function dark_figure(bd::BatchData)
+    return(get(bd |> dataframes, "dark_figure", DataFrame()))
+end
+
+"""
+    cumulative_cases(bd::BatchData)
+
+Returns aggregated cumulative case counts per tick across simulation runs.
+Returns a `Dict{String, DataFrame}` keyed by column name (e.g. `exposed_cum`, `recovered_cum`, `deaths_cum`).
+"""
+function cumulative_cases(bd::BatchData)
+    return(get(bd |> dataframes, "cumulative_cases", Dict()))
+end
+
+"""
+    generation_times(bd::BatchData)
+
+Returns aggregated mean generation times per tick across simulation runs as a `DataFrame`.
+Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
+"""
+function generation_times(bd::BatchData)
+    return(get(bd |> dataframes, "generation_times", DataFrame()))
+end
+
+"""
+    hospitalizations(bd::BatchData)
+
+Returns aggregated hospitalization metrics per tick across simulation runs.
+Returns a `Dict{String, DataFrame}` keyed by column name
+(e.g. `current_hospitalized`, `current_icu`, `hospital_admissions`).
+"""
+function hospitalizations(bd::BatchData)
+    return(get(bd |> dataframes, "hospitalizations", Dict()))
+end
+
+"""
+    observed_R(bd::BatchData)
+
+Returns aggregated observed reproduction number estimates per tick across simulation runs.
+Returns a `Dict{String, DataFrame}` keyed by column name
+(`mean_est_R`, `lower_est_R`, `upper_est_R`).
+"""
+function observed_R(bd::BatchData)
+    return(get(bd |> dataframes, "observed_R", Dict()))
+end
+
+"""
+    pool_tests(bd::BatchData)
+
+Returns aggregated pool test statistics per tick for each test type.
+Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
+"""
+function pool_tests(bd::BatchData)
+    return(get(bd |> dataframes, "pool_tests", Dict()))
+end
+
+"""
+    sero_tests(bd::BatchData)
+
+Returns aggregated serology test statistics per tick for each test type.
+Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
+"""
+function sero_tests(bd::BatchData)
+    return(get(bd |> dataframes, "sero_tests", Dict()))
+end
+
+"""
+    total_detected_cases(bd::BatchData)
+
+Returns aggregated values for total detected cases across simulation runs.
+"""
+function total_detected_cases(bd::BatchData)
+    return(get(bd |> sim_data, "total_detected_cases", ""))
+end
+
+"""
+    detection_rate(bd::BatchData)
+
+Returns aggregated values for the detection rate across simulation runs.
+"""
+function detection_rate(bd::BatchData)
+    return(get(bd |> sim_data, "detection_rate", ""))
+end
+
+"""
+    per_group(bd::BatchData)
+
+Returns per-group batch results as a `Dict{String, BatchData}`.
+Keys are group values (from the field named by `group_by`); values are complete
+`BatchData` objects containing all accessors for that group's runs.
+Returns an empty `Dict` if the batch was processed without `group_by`.
+"""
+function per_group(bd::BatchData)
+    return get(bd.data, "per_group", Dict{String, BatchData}())
 end
 
 
@@ -540,7 +647,7 @@ function info(bd::BatchData)
     println("BatchData Entries")
     for (category, data) in bd.data
         println("\u2514 $category")
-        for (label, value) in data
+        for (label, _) in data
             println("  \u2514 $label")
         end
     end

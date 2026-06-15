@@ -59,7 +59,7 @@ Applies a custom logic to the setting as specified in the `CustomSMeasure`'s `me
 """
 function process_measure(sim::Simulation, s::Setting, custom::CustomSMeasure)
 
-    @debug "Custom measure applied to setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Custom measure applied to setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
 
     # execute custom logic
     measure_logic(custom)(s, sim)
