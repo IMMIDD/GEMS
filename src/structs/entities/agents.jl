@@ -377,61 +377,9 @@ function municipality_id(individual::Individual)::Int32
     return individual.municipality
 end
 
-"""
-    settings_tuple(individual::Individual)
-
-Returns all individual's associated setting IDs as a Tuple.
-"""
-function settings_tuple(individual::Individual)
-    return (
-        (Household, individual.household),
-        (Office, individual.office),
-        (SchoolClass, individual.schoolclass),
-        (Municipality, individual.municipality)
-    )
-end
-
-"""
-    setting_id(individual::Individual, type::DataType)
-
-Returns the id of the setting of `type` associated with the individual. If the settingtype
-is unknown or the agent isn't part of a setting of that type, -1 will be returned.
-"""
-function setting_id(individual::Individual, type::DataType)::Int32
-    if type==Household
-        return individual.household
-    elseif type==Office
-        return individual.office
-    elseif type == SchoolClass
-        return individual.schoolclass
-    elseif type == Municipality
-        return individual.municipality
-    elseif type==GlobalSetting
-        return GLOBAL_SETTING_ID # there is only one GlobalSetting
-    else
-        # in any other case it defaults to -1 as this means no ID
-        return DEFAULT_SETTING_ID
-    end
-end
-
-"""
-    setting_id!(individual::Individual, type::DataType, id::Int32)
-
-Changes the assigned setting id of the individual for the given type of setting to `id`.
-"""
-function setting_id!(individual::Individual, type::DataType, id::Int32)
-    if type==Household
-        individual.household = id
-    elseif type==Office
-        individual.office = id
-    elseif type==SchoolClass
-        individual.schoolclass = id
-    elseif type==Municipality
-        individual.municipality = id
-    end
-
-    return nothing
-end
+# NOTE: `setting_id`, `setting_id!` and `settings_tuple` are defined in
+# `src/methods/settings.jl`, where the setting types they dispatch on already exist.
+# They derive from the single source `membership_setting_types(::Type{Individual})`.
 
 """
     is_working(individual::Individual)

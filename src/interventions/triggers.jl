@@ -289,7 +289,7 @@ Triggers the execution of the `SStrategy` for all settings of the specified `set
 associated with an `STickTrigger`.
 """
 function trigger(stt::STickTrigger, sim::Simulation)
-    _trigger_settings!(stt |> strategy, settings(sim, stt |> settingtype), sim)
+    _trigger_settings!(stt |> strategy, get(settingscontainer(sim), stt |> settingtype), sim)
 end
 
 """
@@ -297,8 +297,8 @@ end
 
 Function barrier for `trigger(::STickTrigger, ::Simulation)`.
 
-`settings(sim, type::DataType)` returns `Vector` (abstract element type) because the
-`SettingsContainer` dict has value type `Vector` 
+`get(settingscontainer(sim), type)` returns `Vector` (abstract element type) because the
+`SettingsContainer` dict has value type `Vector`
 
 Passing the vector to this function causes Julia to dispatch on its runtime type
 (e.g. `Vector{Office}`) and compile a specialization in which `s` is concretely typed,

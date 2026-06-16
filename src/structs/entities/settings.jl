@@ -188,8 +188,7 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 - `id::Int32`: Unique identifier of the school class
 - `individuals::Vector{Individual} = []` *(optional)*: List of associated individuals
 - `type::Int32 = -1` *(optional)*: Type of school class (e.g. grade)
-- `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`SchoolYear`) 
-- `contained_type::DataType = SchoolYear` *(optional)*: Parent setting tye (`SchoolYear`)
+- `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`SchoolYear`)
 - `last_infectious::Int16 = -1` *(optional)*: Tick indicating the last presence of an infected individual
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
@@ -204,7 +203,6 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     individuals::Vector{Individual} = [] # 40 + n*8 bytes
     type::Int32 = -1 # 1 byte
     contained::Int32 = DEFAULT_SETTING_ID # 4 bytes
-    contained_type::DataType = SchoolYear
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
@@ -241,9 +239,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 
 - `id::Int32`: Unique identifier of the schoolyear
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `SchoolClass`es
-- `contains_type::DataType = SchoolClass` *(optional)*: Type of contained settings (`SchoolClass`)
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`School`)
-- `contained_type::DataType = School` *(optional)*: Parent setting tye (`School`)
 - `type::Int32 = -1` *(optional)*: Type of school year (e.g. grade)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
@@ -252,9 +248,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 @with_kw mutable struct SchoolYear <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
-    contains_type::DataType = SchoolClass
     contained::Int32 = DEFAULT_SETTING_ID
-    contained_type::DataType = School
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
@@ -288,9 +282,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 
 - `id::Int32`: Unique identifier of the school
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `SchoolYears`s
-- `contains_type::DataType = SchoolYear` *(optional)*: Type of contained settings (`SchoolYear`)
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`SchoolComplex`)
-- `contained_type::DataType = School` *(optional)*: Parent setting tye (`SchoolComplex`)
 - `type::Int32 = -1` *(optional)*: Type of school (e.g. primary, highschool, ...)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
@@ -299,9 +291,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 @with_kw mutable struct School <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
-    contains_type::DataType = SchoolYear
     contained::Int32 = DEFAULT_SETTING_ID
-    contained_type::DataType = SchoolComplex
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
@@ -334,7 +324,6 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 
 - `id::Int32`: Unique identifier of the school complex
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `School`s
-- `contains_type::DataType = SchoolYear` *(optional)*: Type of contained settings (`School`)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
@@ -342,7 +331,6 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 @with_kw mutable struct SchoolComplex <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
-    contains_type::DataType = School
      type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
@@ -377,7 +365,6 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 
 - `id::Int32`: Unique identifier of the workplace.
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Workplace`s
-- `contains_type::DataType = Workplace` *(optional)*: Type of contained settings (`Workplace`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace site.
 - `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
@@ -387,7 +374,6 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 @with_kw mutable struct WorkplaceSite <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
-    contains_type::DataType = Workplace
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
@@ -419,9 +405,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 
 - `id::Int32`: Unique identifier of the workplace.
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Department`s
-- `contains_type::DataType = Department` *(optional)*: Type of contained settings (`Department`)
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`WorkplaceSite`)
-- `contained_type::DataType = WorkplaceSite` *(optional)*: Parent setting type (`WorkplaceSite`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace (e.g., farm, office).
 - `last_infectious::Int16 -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
@@ -432,9 +416,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 @with_kw mutable struct Workplace <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
-    contains_type::DataType = Department
     contained::Int32 = DEFAULT_SETTING_ID
-    contained_type::DataType = WorkplaceSite
     type::Int32 = -1 # 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
@@ -465,9 +447,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 
 - `id::Int32`: Unique identifier of the department.
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Office`s
-- `contains_type::DataType = Office` *(optional)*: Type of contained settings (`Office`)
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`Workplace`)
-- `contained_type::DataType = Workplace` *(optional)*: Parent setting type (`Workplace`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of department.
 - `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
@@ -478,9 +458,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 @with_kw mutable struct Department <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
-    contains_type::DataType = Office
     contained::Int32 = DEFAULT_SETTING_ID
-    contained_type::DataType = Workplace
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
@@ -533,7 +511,6 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     id::Int32 # 4 bytes
     individuals::Vector{Individual} = Vector{Individual}() # 40 + n*8 bytes
     contained::Int32 = DEFAULT_SETTING_ID
-    contained_type::DataType = Department
     type::Int32 = -1# 1 byte
     last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
@@ -722,14 +699,26 @@ function contains(setting::ContainerSetting)
 end
 
 """
-    contains_type(setting::ContainerSetting)
+    contains_type(::Type{T}) where {T<:ContainerSetting}
 
-Returns the `contains_type` value of the given `ContainerSetting`.
+Returns the concrete setting type contained by a `ContainerSetting` of type `T`.
+Encoded in the type domain (not stored as a field) so it is recovered by dispatch as a
+compile-time constant, enabling type-stable recursion into the contained settings.
+"""
+contains_type(::Type{SchoolYear}) = SchoolClass
+contains_type(::Type{School}) = SchoolYear
+contains_type(::Type{SchoolComplex}) = School
+contains_type(::Type{Department}) = Office
+contains_type(::Type{Workplace}) = Department
+contains_type(::Type{WorkplaceSite}) = Workplace
 
 """
-function contains_type(setting::ContainerSetting)
-    return setting.contains_type
-end
+    contains_type(setting::ContainerSetting)
+
+Returns the `contains_type` of the given `ContainerSetting` instance. Forwards to the
+type-based trait on `typeof(setting)`.
+"""
+contains_type(setting::ContainerSetting) = contains_type(typeof(setting))
 
 """
     contained(setting::Setting)
@@ -742,14 +731,26 @@ function contained(setting::Setting)
 end
 
 """
-    contained_type(setting::Setting)
+    contained_type(::Type{T}) where {T<:Setting}
 
-Returns the `contained_type` value of the given `Setting`.
+Returns the concrete setting type that contains a setting of type `T` (its parent in the
+hierarchy). Encoded in the type domain (not stored as a field). Defined only for non-root
+types; the root containers (`SchoolComplex`, `WorkplaceSite`) have no parent and no method.
+"""
+contained_type(::Type{SchoolClass}) = SchoolYear
+contained_type(::Type{SchoolYear}) = School
+contained_type(::Type{School}) = SchoolComplex
+contained_type(::Type{Office}) = Department
+contained_type(::Type{Department}) = Workplace
+contained_type(::Type{Workplace}) = WorkplaceSite
 
 """
-function contained_type(setting::Setting)
-    return setting.contained_type
-end
+    contained_type(setting::Setting)
+
+Returns the `contained_type` of the given `Setting` instance. Forwards to the type-based
+trait on `typeof(setting)`.
+"""
+contained_type(setting::Setting) = contained_type(typeof(setting))
 
 """
     individuals(setting::IndividualSetting)

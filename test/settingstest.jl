@@ -411,12 +411,12 @@
             for stng in list
                 # Test if linked contained settings exist
                 if hasproperty(stng, :contained)
-                    contained_stngs_exist = contained_stngs_exist & isa(settings(stngs, stng.contained_type)[stng.contained], stng.contained_type)
+                    contained_stngs_exist = contained_stngs_exist & isa(get(stngs, contained_type(stng))[stng.contained], contained_type(stng))
                 end
                 # Test if linked contains settings exist
                 if hasproperty(stng, :contains)
                     for idx in stng.contains
-                        contains_stngs_exist = contains_stngs_exist & isa(settings(stngs, stng.contains_type)[idx], stng.contains_type)
+                        contains_stngs_exist = contains_stngs_exist & isa(get(stngs, contains_type(stng))[idx], contains_type(stng))
                     end
                 end
                 if Symbol(type) in keys(containers)
