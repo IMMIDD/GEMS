@@ -274,14 +274,22 @@ Increments the simulation status by one tick and executes all events that shall 
 function step!(simulation::Simulation)
     dormant = is_dormant(simulation)
 
-    # update disease state
+    inds = simulation |> population |> individuals
+    t = tick(simulation)
+
     if !dormant
-        Threads.@threads :static for i in simulation |> population |> individuals
-            update_individual!(i, tick(simulation), simulation)
+        # progress disease for every individual; flag those whose triggers fire this tick
+        fires = Vector{Bool}(undef, length(inds))
+        Threads.@threads :static for i in eachindex(inds)
+            indiv = inds[i]
+            update_individual!(indiv, t, simulation)
+            @inbounds fires[i] = fired_this_tick(indiv, t)
         end
-        if (!isempty(simulation.symptom_triggers) || !isempty(simulation.hospitalization_triggers))
-            for i in simulation |> population |> individuals
-                fire_individual_triggers!(i, tick(simulation), simulation)
+
+        # fire the flagged individuals serially
+        if has_individual_triggers(simulation)
+            @inbounds for (indiv, fired) in zip(inds, fires)
+                fired && fire_individual_triggers!(indiv, t, simulation)
             end
         end
     end
@@ -298,7 +306,7 @@ function step!(simulation::Simulation)
 
     # trigger tick triggers
     for tt in simulation |> tick_triggers
-        if should_fire(tt, tick(simulation))
+        if should_fire(tt, t)
             trigger(tt, simulation)
         end
     end
@@ -307,8 +315,8 @@ function step!(simulation::Simulation)
 
     # update quarantine state
     if !dormant
-        Threads.@threads :static for i in simulation |> population |> individuals
-            quarantined!(i, is_quarantined(i, tick(simulation)))
+        Threads.@threads :static for i in inds
+            quarantined!(i, is_quarantined(i, t))
         end
     end
 

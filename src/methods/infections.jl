@@ -309,6 +309,9 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     end
 end
 
+# coarse pre-filter for the parallel pass: does any trigger-relevant event land on `t`?
+@inline fired_this_tick(indiv::Individual, t::Int16) = symptom_onset(indiv) == t || hospital_admission(indiv) == t
+
 """
     fire_individual_triggers!(indiv::Individual, tick::Int16, sim::Simulation)
 

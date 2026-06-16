@@ -19,6 +19,7 @@ export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogge
 export statelogger, states
 export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
+export has_individual_triggers
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export stepmod
@@ -1831,6 +1832,16 @@ Returns the simulation's intervention event queue.
 """
 function event_queue(simulation::Simulation)
     return(simulation.event_queue) 
+end
+
+"""
+    has_individual_triggers(simulation)
+
+Returns `true` if the simulation has any symptom-onset or hospital-admission
+triggers registered, and `false` otherwise.
+"""
+function has_individual_triggers(simulation::Simulation)
+    return(!isempty(simulation.symptom_triggers) || !isempty(simulation.hospitalization_triggers)) 
 end
 
 """
