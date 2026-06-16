@@ -279,6 +279,11 @@ function step!(simulation::Simulation)
         Threads.@threads :static for i in simulation |> population |> individuals
             update_individual!(i, tick(simulation), simulation)
         end
+        if (!isempty(simulation.symptom_triggers) || !isempty(simulation.hospitalization_triggers))
+            for i in simulation |> population |> individuals
+                fire_individual_triggers!(i, tick(simulation), simulation)
+            end
+        end
     end
 
     # infect individuals in settings

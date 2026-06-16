@@ -3,7 +3,7 @@ THIS FILE HANDLES INFECTIONS ON DIFFERENT LEVELS
 This means, that the functionality to directly infect someone and spread a disease
 is contained here.
 =#
-export infect!, spread_infection!, try_to_infect!, update_individual!, sample_contacts, get_containers!
+export infect!, spread_infection!, try_to_infect!, update_individual!, fire_individual_triggers!, sample_contacts, get_containers!
 
 
 """
@@ -307,6 +307,23 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
             log!(deathlogger(sim), id(indiv), tick)
         end
     end
+end
+
+"""
+    fire_individual_triggers!(indiv::Individual, tick::Int16, sim::Simulation)
+
+Evaluate and execute conditional event triggers (symptom onset and hospital admission) 
+for an individual based on the current simulation tick. If the current `tick` matches 
+the individual's scheduled symptom onset or hospital  admission, the corresponding 
+collection of simulation triggers will be executed.
+
+# Parameters
+
+- `indiv::Individual`: Individual to update
+- `tick::Int16`: Current tick
+- `sim::Simulation`: Simulation object
+"""
+function fire_individual_triggers!(indiv::Individual, tick::Int16, sim::Simulation)
 
     # if onset of symptoms is this tick, trigger all symptom triggers
     if symptom_onset(indiv) == tick
