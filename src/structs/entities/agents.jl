@@ -377,9 +377,6 @@ function municipality_id(individual::Individual)::Int32
     return individual.municipality
 end
 
-# NOTE: `setting_id`, `setting_id!` and `settings_tuple` are defined in
-# `src/methods/settings.jl`, where the setting types they dispatch on already exist.
-# They derive from the single source `membership_setting_types(::Type{Individual})`.
 
 """
     is_working(individual::Individual)

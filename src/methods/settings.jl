@@ -5,6 +5,14 @@ export sample_individuals
 export activate!
 
 
+###
+### INDIVIDUAL-SETTING MEMBERSHIP
+###
+# These are Individual accessors (`setting_id`, `setting_id!`, `settings_tuple`,
+# `membership_setting_types`), placed here only because their `::Type{Household}` dispatch
+# needs the setting types, which are defined after agents.jl in the include order.
+# TODO: move these to a dedicated individual-methods file once the multipathogen branch
+# (which renames agents.jl -> individual.jl and splits it) is merged.
 
 """
     membership_setting_types(::Type{Individual})
