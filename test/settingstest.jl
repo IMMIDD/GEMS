@@ -142,6 +142,35 @@
             # Delete the file
             rm("temp.jld2")
         end
+
+        @testset "Faulty Settingfile: Unmapped Container IDs" begin
+            # A contained id missing from the renaming dict is caught and reset to the default
+            sc1 = SettingsContainer()
+            add_types!(sc1, [SchoolYear, SchoolClass])
+            add!(sc1, SchoolClass(id=1, contained=Int32(99), contact_sampling_method=rs))
+            renaming1 = Dict(SchoolYear => Dict{Int32,Int32}(Int32(1) => Int32(1)))
+            @test_logs (:warn,) match_mode=:any new_setting_ids!(sc1, renaming1)
+            @test settings(sc1, SchoolClass)[1].contained == GEMS.DEFAULT_SETTING_ID
+
+            # If every contained child is unmapped, the container is emptied (and warns)
+            sc2 = SettingsContainer()
+            add_types!(sc2, [SchoolYear, SchoolClass])
+            add!(sc2, SchoolYear(id=1, contains=Int32[5, 6], contact_sampling_method=rs))
+            renaming2 = Dict(SchoolClass => Dict{Int32,Int32}())
+            @test_logs (:warn,) match_mode=:any new_setting_ids!(sc2, renaming2)
+            @test isempty(settings(sc2, SchoolYear)[1].contains)
+        end
+
+        @testset "Faulty Settingfile: Dangling IDs" begin
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolYear, SchoolClass])
+            # links point past the end of the respective setting vectors (only one of each exists)
+            add!(sc, SchoolYear(id=1, contains=Int32[10], contact_sampling_method=rs))
+            add!(sc, SchoolClass(id=1, contained=Int32(5), contact_sampling_method=rs))
+            @test_logs (:warn,) match_mode=:any delete_dangling_ids!(sc)
+            @test settings(sc, SchoolClass)[1].contained == GEMS.DEFAULT_SETTING_ID
+            @test isempty(settings(sc, SchoolYear)[1].contains)
+        end
     end
 
     @testset "Households" begin
