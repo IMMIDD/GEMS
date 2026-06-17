@@ -74,8 +74,8 @@ include.(
 )
 
 # includde infectiousness
-include(basefolder() * "/src/pathogen/infectiousness_profile.jl")
-include(basefolder() * "/src/pathogen/immunity_profile.jl")
+include(_basefolder() * "/src/pathogen/infectiousness_profile.jl")
+include(_basefolder() * "/src/pathogen/immunity_profile.jl")
 
 
 

@@ -1249,10 +1249,10 @@ If no path is provided, it defaults to the default config file.
 function configfile_path(path::String)
     # if no file path is provided, use the default config file
     if isempty(path)
-        basefolder = dirname(dirname(pathof(GEMS)))
+        _basefolder = dirname(dirname(pathof(GEMS)))
         #default_configfile = GEMS.DEFAULT_CONFIGFILE # "data/DefaultConf.toml"
         default_configfile = "data/DefaultConf.toml"
-        default_configfile_path = joinpath(basefolder, default_configfile)
+        default_configfile_path = joinpath(_basefolder, default_configfile)
         return default_configfile_path
     end
 
