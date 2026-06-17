@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>5 - Running Batches · GEMS.jl</title><meta name="title" content="5 - Running Batches · GEMS.jl"/><meta property="og:title" content="5 - Running Batches · GEMS.jl"/><meta property="twitter:title" content="5 - Running Batches · GEMS.jl"/><meta name="description" content="Documentation for GEMS.jl."/><meta property="og:description" content="Documentation for GEMS.jl."/><meta property="twitter:description" content="Documentation for GEMS.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.jpeg" alt="GEMS.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">GEMS.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../installation/">Installation</a></li><li><span class="tocitem">Base Model</span><ul><li><a class="tocitem" href="../base-population/">Population</a></li><li><a class="tocitem" href="../base-contacts/">Contacts</a></li><li><a class="tocitem" href="../base-disease/">Disease</a></li><li><a class="tocitem" href="../TriSM/">Interventions</a></li><li><a class="tocitem" href="../base-config/">Default Parameters</a></li></ul></li><li><span class="tocitem">Running Simulations</span><ul><li><a class="tocitem" href="../tut_Intro/">Tutorials</a></li><li><a class="tocitem" href="../tut_gettingstarted/">1 - Getting Started</a></li><li><a class="tocitem" href="../tut_exploring/">2 - Exploring Models</a></li><li><a class="tocitem" href="../tut_plotting/">3 - Plotting</a></li><li><a class="tocitem" href="../tut_diseases/">4 - Configuring Diseases</a></li><li class="is-active"><a class="tocitem" href>5 - Running Batches</a><ul class="internal"><li><a class="tocitem" href="#Repeating-Simulations"><span>Repeating Simulations</span></a></li><li><a class="tocitem" href="#process!-Arguments"><span><code>process!</code> Arguments</span></a></li><li><a class="tocitem" href="#*BatchData*-Objects"><span><em>BatchData</em> Objects</span></a></li><li><a class="tocitem" href="#Custom-*BatchDataStyles*"><span>Custom <em>BatchDataStyles</em></span></a></li><li><a class="tocitem" href="#Running-Scenarios"><span>Running Scenarios</span></a></li><li><a class="tocitem" href="#Attaching-Interventions"><span>Attaching Interventions</span></a></li><li><a class="tocitem" href="#Sweeping-Parameter-Spaces"><span>Sweeping Parameter Spaces</span></a></li><li><a class="tocitem" href="#Median-Run"><span>Median Run</span></a></li><li><a class="tocitem" href="#Multi-Group-Median-Runs"><span>Multi-Group Median Runs</span></a></li><li><a class="tocitem" href="#Reproducibility"><span>Reproducibility</span></a></li></ul></li><li><a class="tocitem" href="../tut_pops/">6 - Creating Populations</a></li><li><a class="tocitem" href="../tut_configfiles/">7 - Advanced Parameterization</a></li><li><a class="tocitem" href="../tut_postprocessing/">8 - Logging &amp; Post-Processing</a></li><li><a class="tocitem" href="../tut_npi/">9 - Modeling Interventions</a></li><li><a class="tocitem" href="../tut_calibration/">10 - Calibration</a></li><li><a class="tocitem" href="../cheat-sheet/">Cheat Sheet</a></li></ul></li><li><a class="tocitem" href="../config-files/">Config Files</a></li><li><span class="tocitem">API</span><ul><li><a class="tocitem" href="../docstrings-overview/">Overview</a></li><li><a class="tocitem" href="../api_batch/">Batches</a></li><li><a class="tocitem" href="../api_contacts/">Contacts</a></li><li><a class="tocitem" href="../api_individuals/">Individuals</a></li><li><a class="tocitem" href="../api_infections/">Infections and Immunity</a></li><li><a class="tocitem" href="../api_interventions/">Interventions</a></li><li><a class="tocitem" href="../api_logger/">Logger</a></li><li><a class="tocitem" href="../api_mapping/">Mapping</a></li><li><a class="tocitem" href="../api_misc/">Misc</a></li><li><a class="tocitem" href="../api_movie/">Movie</a></li><li><a class="tocitem" href="../api_pathogens/">Pathogens</a></li><li><a class="tocitem" href="../api_plotting/">Plotting</a></li><li><a class="tocitem" href="../api_population/">Population</a></li><li><a class="tocitem" href="../api_postproc/">Post Processing</a></li><li><a class="tocitem" href="../api_reporting/">Reporting</a></li><li><a class="tocitem" href="../api_resultdata/">Result Data</a></li><li><a class="tocitem" href="../api_settings/">Settings</a></li><li><a class="tocitem" href="../api_simulation/">Simulation</a></li></ul></li><li><a class="tocitem" href="../contributing-guide/">Contributing to GEMS</a></li><li><a class="tocitem" href="../changelog/">Changelog</a></li><li><a class="tocitem" href="../faq-page/">FAQ</a></li><li><a class="tocitem" href="../glossary/">Glossary</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Running Simulations</a></li><li class="is-active"><a href>5 - Running Batches</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>5 - Running Batches</a></li></ul></nav><div class="docs-right"><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="5-Running-Batches"><a class="docs-heading-anchor" href="#5-Running-Batches">5 - Running Batches</a><a id="5-Running-Batches-1"></a><a class="docs-heading-anchor-permalink" href="#5-Running-Batches" title="Permalink"></a></h1><p>In most situations, running a simulation once is not sufficient. This tutorial teaches you how to work with so-called batches of simulations.</p><h2 id="Repeating-Simulations"><a class="docs-heading-anchor" href="#Repeating-Simulations">Repeating Simulations</a><a id="Repeating-Simulations-1"></a><a class="docs-heading-anchor-permalink" href="#Repeating-Simulations" title="Permalink"></a></h2><p>Use <code>Batch(n_runs = N, ...)</code> to create a batch of N identical simulation runs. Any keyword argument accepted by <code>Simulation()</code> can be passed here. Call <code>process!(b)</code> to run all simulations and return a <code>BatchProcessor</code> with the aggregated results. Wrap it in <code>BatchData()</code> to access the data:</p><pre><code class="language-julia hljs">using GEMS
+
+b = Batch(n_runs = 5)
+bp = process!(b)
+bd = BatchData(bp)
+gemsplot(bd)</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches.png" width="80%"/>
+</p><p><code>BatchData(b)</code> is a convenient shorthand for the two-step pipeline above:</p><pre><code class="language-julia hljs">bd = BatchData(b)  # equivalent to BatchData(process!(b))</code></pre><p>By default, <code>gemsplot(bd)</code> shows a mean line with a 95% confidence interval ribbon. Individual run traces are stored automatically (in a lightweight <code>LightRD</code> format), so you can call <code>runs(bd)</code> directly:</p><pre><code class="language-julia hljs">using GEMS
+
+b = Batch(n_runs = 5)
+bd = BatchData(b)
+gemsplot(runs(bd))</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_single_runs.png" width="80%"/>
+</p><p>To give the runs a shared name in the legend, pass a <code>label</code>:</p><pre><code class="language-julia hljs">using GEMS
+
+b = Batch(n_runs = 5, label = &quot;My Experiment&quot;)
+bd = BatchData(b)
+gemsplot(runs(bd), type = :TickCases)</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_labels.png" width="80%"/>
+</p><div class="admonition is-success" id="Disabling-run-storage-to-save-memory-bc4947acc935fcb"><header class="admonition-header">Disabling run storage to save memory<a class="admonition-anchor" href="#Disabling-run-storage-to-save-memory-bc4947acc935fcb" title="Permalink"></a></header><div class="admonition-body"><p>By default, GEMS stores the <code>ResultData</code> of each individual run so you can access them via <code>runs(bd)</code>. For large batches, pass <code>keep_rundata = false</code> to disable this and reduce RAM usage — in that case <code>runs(bd)</code> returns <code>nothing</code>.</p></div></div><h2 id="process!-Arguments"><a class="docs-heading-anchor" href="#process!-Arguments"><code>process!</code> Arguments</a><a id="process!-Arguments-1"></a><a class="docs-heading-anchor-permalink" href="#process!-Arguments" title="Permalink"></a></h2><p><code>process!</code> accepts the following keyword arguments:</p><table><tr><th style="text-align: left">Keyword</th><th style="text-align: left">Default</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>seed</code></td><td style="text-align: left"><code>nothing</code></td><td style="text-align: left">Integer seed for the RNG. Pass a fixed value for reproducible runs (see <a href="#Reproducibility">Reproducibility</a>). Randomised if omitted.</td></tr><tr><td style="text-align: left"><code>median_by</code></td><td style="text-align: left"><code>nothing</code></td><td style="text-align: left">Criterion function <code>pp -&gt; scalar</code> used to select the representative run (see <a href="#Median-Run">Median Run</a>). Disabled by default.</td></tr><tr><td style="text-align: left"><code>group_by</code></td><td style="text-align: left"><code>nothing</code></td><td style="text-align: left">A <code>Symbol</code> naming a field in each simulation config to use as the grouping key (e.g. <code>:label</code>). When set, enables per-group analysis via <code>per_group(bd)</code> and per-group median runs.</td></tr><tr><td style="text-align: left"><code>keep_rundata</code></td><td style="text-align: left"><code>true</code></td><td style="text-align: left">When <code>false</code>, individual <code>ResultData</code> objects are not stored, reducing RAM usage.</td></tr><tr><td style="text-align: left"><code>rd_style</code></td><td style="text-align: left"><code>&quot;LightRD&quot;</code></td><td style="text-align: left"><code>ResultData</code> style used when storing individual and median runs.</td></tr><tr><td style="text-align: left"><code>customlogger</code></td><td style="text-align: left"><code>nothing</code></td><td style="text-align: left">A <code>CustomLogger</code> attached to every simulation run.</td></tr></table><p>All of these can also be passed directly to the <code>BatchData(b; ...)</code> shorthand, which forwards them to <code>process!</code> internally.</p><h2 id="*BatchData*-Objects"><a class="docs-heading-anchor" href="#*BatchData*-Objects"><em>BatchData</em> Objects</a><a id="*BatchData*-Objects-1"></a><a class="docs-heading-anchor-permalink" href="#*BatchData*-Objects" title="Permalink"></a></h2><p>While <code>ResultData</code> objects are the processed output of single simulation runs, <code>BatchData</code> objects are processed output of batches. They contain aggregated data on the simulations, e.g., the average number of total infections including standard deviation, confidence intervals and ranges. Here&#39;s an example:</p><pre><code class="language-julia hljs">using GEMS
+
+b = Batch(n_runs = 5, label = &quot;My Experiment&quot;)
+bd = BatchData(b)
+total_infections(bd)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">Dict{String, Real} with 6 entries:
+  &quot;upper_95&quot; =&gt; 76052.5
+  &quot;max&quot;      =&gt; 76088
+  &quot;min&quot;      =&gt; 75363
+  &quot;lower_95&quot; =&gt; 75415.1
+  &quot;mean&quot;     =&gt; 75733.8
+  &quot;std&quot;      =&gt; 256.672</code></pre><p>Run the <code>info(...)</code> function to get an overview of values that you can retrieve from a <code>BatchData</code> object by calling a function of the same name (e.g., <code>total_infections(...)</code>) on the <code>BatchData</code> object:</p><pre><code class="language-julia hljs">info(bd)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">BatchData Entries
+└ meta_data
+  └ GEMS_version
+  └ id
+  └ execution_date
+└ dataframes
+  └ hospitalizations
+  └ dark_figure
+  └ generation_times
+  └ tick_cases
+  └ cumulative_disease_progressions
+  └ sero_tests
+  └ cumulative_cases
+  └ pool_tests
+  └ effectiveR
+  └ observed_R
+  └ cumulative_quarantines
+  └ tests
+└ sim_data
+  └ median_run
+  └ total_detected_cases
+  └ number_of_runs
+  └ tick_unit
+  └ attack_rate
+  └ detection_rate
+  └ total_infections
+  └ total_quarantines
+  └ total_tests
+  └ r0
+  └ runs
+  └ seed
+└ per_group
+└ system_data
+  └ cpu_data
+  └ git_commit
+  └ julia_version
+  └ total_mem_size
+  └ threads
+  └ kernel
+  └ free_mem_size
+  └ git_branch
+  └ word_size
+  └ git_repo</code></pre><h2 id="Custom-*BatchDataStyles*"><a class="docs-heading-anchor" href="#Custom-*BatchDataStyles*">Custom <em>BatchDataStyles</em></a><a id="Custom-*BatchDataStyles*-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-*BatchDataStyles*" title="Permalink"></a></h2><p>t.b.d.</p><h2 id="Running-Scenarios"><a class="docs-heading-anchor" href="#Running-Scenarios">Running Scenarios</a><a id="Running-Scenarios-1"></a><a class="docs-heading-anchor-permalink" href="#Running-Scenarios" title="Permalink"></a></h2><p>GEMS&#39; batch functionalities offer easy options to compare different scenarios and run multiple simulations for each of them. The example below compares a baseline scenario with a scenario with a lower <code>transmission_rate</code> and we assume that this is due to mask-wearing mandates. It spawns five simulations for each scenario, merges them into one batch, and visualises the results grouped by label.</p><p><code>group_by</code> tells GEMS which config field to use for splitting the batch into groups — statistics and plots are then computed per group instead of across all runs combined. Any config field works; <code>:label</code> is a natural choice for scenario comparisons:</p><pre><code class="language-julia hljs">using GEMS
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = &quot;Baseline&quot;)
+masks = Batch(n_runs = 5, transmission_rate = 0.15, label = &quot;Mask Wearing&quot;)
+bd = BatchData(merge(baseline, masks); group_by = :label)
+gemsplot(bd)</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_scenarios.png" width="80%"/>
+</p><p>To see the individual simulation traces, pass <code>runs(bd)</code> to <code>gemsplot</code>:</p><pre><code class="language-julia hljs">using GEMS
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = &quot;Baseline&quot;)
+masks = Batch(n_runs = 5, transmission_rate = 0.15, label = &quot;Mask Wearing&quot;)
+bd = BatchData(merge(baseline, masks); group_by = :label)
+gemsplot(runs(bd))</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_scenarios_single_runs.png" width="80%"/>
+</p><h2 id="Attaching-Interventions"><a class="docs-heading-anchor" href="#Attaching-Interventions">Attaching Interventions</a><a id="Attaching-Interventions-1"></a><a class="docs-heading-anchor-permalink" href="#Attaching-Interventions" title="Permalink"></a></h2><p>Pass a <code>setup</code> function to <code>Batch</code> to run custom code on each simulation after it is constructed but before it starts. The function receives the live <code>Simulation</code> object, so you can attach strategies, triggers, and interventions of any complexity:</p><pre><code class="language-julia hljs">using GEMS
+
+b = Batch(n_runs = 5,
+    setup = sim -&gt; begin
+        strat = IStrategy(&quot;Isolation&quot;, sim)
+        add_measure!(strat, SelfIsolation(14))
+        add_symptom_trigger!(sim, SymptomTrigger(strat))
+    end)</code></pre><p>For scenario comparisons where each scenario has a different intervention, each sub-batch carries its own <code>setup</code>. Combine them using <code>merge</code> as usual:</p><pre><code class="language-julia hljs">using GEMS
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = &quot;Baseline&quot;)
+
+measures = Batch(n_runs = 5, transmission_rate = 0.2, label = &quot;Isolation&quot;,
+    setup = sim -&gt; begin
+        strat = IStrategy(&quot;Isolation&quot;, sim)
+        add_measure!(strat, SelfIsolation(14))
+        add_symptom_trigger!(sim, SymptomTrigger(strat))
+    end)
+
+bd = BatchData(merge(baseline, measures); group_by = :label)
+gemsplot(bd)</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_setup_scenarios.png" width="80%"/>
+</p><h2 id="Sweeping-Parameter-Spaces"><a class="docs-heading-anchor" href="#Sweeping-Parameter-Spaces">Sweeping Parameter Spaces</a><a id="Sweeping-Parameter-Spaces-1"></a><a class="docs-heading-anchor-permalink" href="#Sweeping-Parameter-Spaces" title="Permalink"></a></h2><p>To scan parameter spaces, create one batch per configuration and merge them:</p><pre><code class="language-julia hljs">using GEMS
+
+b = merge([Batch(n_runs = 1, transmission_rate = tr, label = &quot;Transmission Rate $tr&quot;)
+           for tr in 0:0.1:0.5]...)
+bd = BatchData(b; group_by = :label)
+gemsplot(bd, legend = :topright)</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_parameter-spaces.png" width="80%"/>
+</p><p>You can also vary multiple parameters at once and show the results in a heatmap. This example runs simulations varying the <code>transmission_rate</code> and daily <code>household_contacts</code>, and plots the calculated <code>r0</code> value of all combinations in a heatmap:</p><pre><code class="language-julia hljs">using GEMS
+
+xvals = []
+yvals = []
+outvals = []
+
+# vary transmission rate
+for tr in 0.05:0.01:0.15
+    # vary household contacts
+    for con in 0:0.5:5
+        bd = BatchData(Batch(n_runs = 3, transmission_rate = tr, household_contacts = con))
+        push!(xvals, tr)
+        push!(yvals, con)
+        push!(outvals, r0(bd)[&quot;mean&quot;])
+    end
+end
+
+gemsheatmap(xvals, yvals, outvals,
+    xlabel = &quot;Transmission Rate&quot;,
+    ylabel = &quot;Daily Household Contacts&quot;,
+    colorbar_title = &quot;Basic Reproduction Number&quot;,
+    color = :r0) </code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_sweep_heatmap.png" width="80%"/>
+</p><h2 id="Median-Run"><a class="docs-heading-anchor" href="#Median-Run">Median Run</a><a id="Median-Run-1"></a><a class="docs-heading-anchor-permalink" href="#Median-Run" title="Permalink"></a></h2><p>To identify a representative run, pass a <code>median_by</code> criterion function to <code>process!</code>. GEMS selects the simulation whose criterion value is closest to the median across all runs, re-runs it with the same seed (producing the exact same result), and stores it as the <em>median run</em> — a single <code>ResultData</code> object that can be used as a stand-in for a typical run:</p><pre><code class="language-julia hljs">using GEMS
+
+b = Batch(n_runs = 10)
+bp = process!(b; median_by = pp -&gt; nrow(infectionsDF(pp)))
+rep = median_run(bp)
+gemsplot(rep, type = :TickCases)</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_median.png" width="80%"/>
+</p><p>You can customise the selection criterion by passing any <code>pp -&gt; scalar</code> function:</p><pre><code class="language-julia hljs"># Select the run with median deaths instead
+bp = process!(b; median_by = pp -&gt; nrow(deathsDF(pp)))</code></pre><h2 id="Multi-Group-Median-Runs"><a class="docs-heading-anchor" href="#Multi-Group-Median-Runs">Multi-Group Median Runs</a><a id="Multi-Group-Median-Runs-1"></a><a class="docs-heading-anchor-permalink" href="#Multi-Group-Median-Runs" title="Permalink"></a></h2><p>When <code>group_by</code> is set, GEMS computes one median run per group. <code>median_runs(bd)</code> returns a vector of <code>ResultData</code> objects (one per group) that you can pass directly to <code>gemsplot()</code>:</p><pre><code class="language-julia hljs">using GEMS, DataFrames
+
+baseline = Batch(n_runs = 5, transmission_rate = 0.2, label = &quot;Baseline&quot;)
+masks = Batch(n_runs = 5, transmission_rate = 0.15, label = &quot;Mask Wearing&quot;)
+
+b = merge(baseline, masks)
+bd = BatchData(b; group_by = :label, median_by = pp -&gt; nrow(infectionsDF(pp)))
+
+gemsplot(median_runs(bd))</code></pre><p><strong>Plot</strong></p><p align="center">
+    <img src="../assets/tutorials/tut_batches_median_runs.png" width="80%"/>
+</p><h2 id="Reproducibility"><a class="docs-heading-anchor" href="#Reproducibility">Reproducibility</a><a id="Reproducibility-1"></a><a class="docs-heading-anchor-permalink" href="#Reproducibility" title="Permalink"></a></h2><p>Each call to <code>process!</code> internally assigns a unique seed per run. Pass <code>seed</code> to fix the top-level RNG and get identical results every time:</p><pre><code class="language-julia hljs">using GEMS
+
+b = Batch(n_runs = 5)
+bd1 = BatchData(b; seed = 42)
+bd2 = BatchData(b; seed = 42)
+total_infections(bd1) == total_infections(bd2)  # true
+seed(bd1)  # 42</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_diseases/">« 4 - Configuring Diseases</a><a class="docs-footer-nextpage" href="../tut_pops/">6 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Wednesday 17 June 2026 14:07">Wednesday 17 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
