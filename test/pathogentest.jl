@@ -1,4 +1,4 @@
-import GEMS: _rand_val
+import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update_immunity!
 
 @testset "Pathogens" begin
 

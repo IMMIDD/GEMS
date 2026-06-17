@@ -10,7 +10,7 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
-export infection_registry, immunity_registry, test_registry, owner_shard
+export infection_registry, immunity_registry, test_registry
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
@@ -210,7 +210,7 @@ mutable struct Simulation{P<:Tuple}
     # THREAD-LOCAL BUFFERS
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
-    infection_buffers::Matrix{Vector{PendingInfection}}
+    infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{Tuple{Int32, Int32}}}
 
     # inner default constructor
@@ -277,7 +277,7 @@ mutable struct Simulation{P<:Tuple}
             # INITIALIZE BUFFERS
             [Vector{Individual}() for _ in 1:num_shards], # present_buffers
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
-            [sizehint!(Vector{PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
+            [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
             [sizehint!(Vector{Tuple{Int32,Int32}}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
         )
 
@@ -1640,11 +1640,11 @@ function pathogens(simulation::Simulation)
 end
 
 """
-    owner_shard(ind_id::Int32)
+    _owner_shard(ind_id::Int32)
 
 Returns the shard index (1 to `Threads.maxthreadid()`) assigned to the given `ind_id`.
 """
-@inline owner_shard(ind_id::Int32) = mod(ind_id - Int32(1), Int32(Threads.maxthreadid())) + 1
+@inline _owner_shard(ind_id::Int32) = mod(ind_id - Int32(1), Int32(Threads.maxthreadid())) + 1
 
 """
     infection_registry(simulation, ind_id::Int32)::InfectionRegistry
@@ -1652,7 +1652,7 @@ Returns the shard index (1 to `Threads.maxthreadid()`) assigned to the given `in
 Returns the specific `InfectionRegistry` shard that owns the given individual id.
 """
 function infection_registry(simulation::Simulation, ind_id::Int32)::InfectionRegistry
-    return simulation.infection_registries[owner_shard(ind_id)]
+    return simulation.infection_registries[_owner_shard(ind_id)]
 end
 
 """
@@ -1670,7 +1670,7 @@ end
 Returns the specific `ImmunityRegistry` shard that owns the given individual id.
 """
 function immunity_registry(simulation::Simulation, ind_id::Int32)::ImmunityRegistry
-    return simulation.immunity_registries[owner_shard(ind_id)]
+    return simulation.immunity_registries[_owner_shard(ind_id)]
 end
 
 """
@@ -1688,7 +1688,7 @@ end
 Returns the specific `TestRegistry` shard that owns the given individual id.
 """
 function test_registry(simulation::Simulation, ind_id::Int32)::TestRegistry
-    return simulation.test_registries[owner_shard(ind_id)]
+    return simulation.test_registries[_owner_shard(ind_id)]
 end
 
 """

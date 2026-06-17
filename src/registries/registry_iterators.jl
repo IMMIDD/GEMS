@@ -19,7 +19,7 @@ Returns an iterator over all active `InfectionState` entries for `individual`.
 """
 @inline each_infection(ind::Individual, reg::InfectionRegistry) = InfectionIterator(ind, reg)
 @inline each_infection(ind::Individual, sim::Simulation) = InfectionIterator(ind, infection_registry(sim, ind))
-@inline each_infection(ind::Individual, registries::Vector{InfectionRegistry}) = InfectionIterator(ind, registries[owner_shard(id(ind))])
+@inline each_infection(ind::Individual, registries::Vector{InfectionRegistry}) = InfectionIterator(ind, registries[_owner_shard(id(ind))])
 
 @inline function Base.iterate(iter::InfectionIterator, state::Tuple{Int32,Bool} = (Int32(1), true))
     i, in_cache = state
@@ -64,7 +64,7 @@ covering both on-individual cache slots and any overflow nodes in `registry`.
 """
 @inline each_immunity(ind::Individual, reg::ImmunityRegistry) = ImmunityIterator(ind, reg)
 @inline each_immunity(ind::Individual, sim::Simulation) = ImmunityIterator(ind, immunity_registry(sim, ind))
-@inline each_immunity(ind::Individual, registries::Vector{ImmunityRegistry}) = ImmunityIterator(ind, registries[owner_shard(id(ind))])
+@inline each_immunity(ind::Individual, registries::Vector{ImmunityRegistry}) = ImmunityIterator(ind, registries[_owner_shard(id(ind))])
 
 # state = (next_index::Int32, in_cache::Bool)
 @inline function Base.iterate(iter::ImmunityIterator, state::Tuple{Int32,Bool} = (Int32(1), true))

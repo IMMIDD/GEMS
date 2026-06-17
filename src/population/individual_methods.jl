@@ -10,7 +10,6 @@ export get_infection_state, get_immunity_state
 export infection_id
 export infectiousness
 export immunity_level
-export earliest_infectiousness_onset
 # disease progression timeline
 export exposure, infectiousness_onset, symptom_onset, severeness_onset, severeness_offset
 export hospital_admission, icu_admission, icu_discharge, ventilation_admission
@@ -20,13 +19,11 @@ export get_test_state
 export last_test
 export last_test_result
 export was_reported
-export last_reported_at
 export record_test!
 # vaccination
 export vaccinate!
 export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 # disease progression engine
-export update_immunity!
 export progress_disease!
 export set_progression!
 
@@ -480,7 +477,7 @@ Returns the `TestState` for `(individual, pathogen_id)` from the `TestRegistry`.
 Returns an empty `TestState()` sentinel if no test has been recorded.
 """
 @inline function get_test_state(individual::Individual, reg::TestRegistry, pathogen_id::Int8)
-    return get(reg.states, test_key(id(individual), pathogen_id), TestState())
+    return get(reg.states, _test_key(id(individual), pathogen_id), TestState())
 end
 
 """

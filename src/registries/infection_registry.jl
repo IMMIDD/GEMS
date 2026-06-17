@@ -1,4 +1,4 @@
-export InfectionRegistry, InfectionState, PendingInfection
+export InfectionRegistry, InfectionState
 
 
 """
@@ -107,13 +107,13 @@ end
 
 
 """
-    PendingInfection
+    _PendingInfection
 
 Per-thread transfer struct staged in `infection_buffers` during the threaded
 contact phase, then drained into the individual cache / registry by
 `flush_pending_infections!`.
 """
-struct PendingInfection
+struct _PendingInfection
     host_id::Int32
     infection_id::Int32
     pathogen_id::Int8

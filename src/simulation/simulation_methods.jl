@@ -379,7 +379,7 @@ end
 """
     flush_pending_infections!(sim::Simulation)
  
-Drains every `PendingInfection` staged in `sim.infection_buffers` into `sim.infection_registry`. 
+Drains every `_PendingInfection` staged in `sim.infection_buffers` into `sim.infection_registry`.
 Empties each buffer when done.
 """
 function flush_pending_infections!(sim::Simulation)
@@ -451,7 +451,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_symptomatic = symptomatic(indiv)
     was_hospitalized = is_hospitalized(indiv)
 
-    shard_id = owner_shard(id(indiv))
+    shard_id = _owner_shard(id(indiv))
 
     # update immunity levels
     if indiv.needs_immunity_update

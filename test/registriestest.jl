@@ -1,3 +1,7 @@
+import GEMS: push_infection!, remove_infection!, remove_infections!,
+    push_immunity!, remove_immunities!,
+    set_test_state!, _test_key
+
 @testset "Registries" begin
 
     ###
@@ -212,14 +216,14 @@
 
             # insert new entry
             set_test_state!(reg, ind_id, pid, Int16(3), true, true)
-            state = get(reg.states, test_key(ind_id, pid), TestState())
+            state = get(reg.states, _test_key(ind_id, pid), TestState())
             @test state.last_test == Int16(3)
             @test state.last_test_result == true
             @test state.was_reported == true
 
             # update: was_reported is monotone — once true it stays true
             set_test_state!(reg, ind_id, pid, Int16(7), false, false)
-            state2 = get(reg.states, test_key(ind_id, pid), TestState())
+            state2 = get(reg.states, _test_key(ind_id, pid), TestState())
             @test state2.last_test == Int16(7)
             @test state2.last_test_result == false
             @test state2.was_reported == true   # not cleared by false

@@ -99,8 +99,8 @@ function infect!(infectee::Individual,
             source_infection_id
         )
         # stage for serial flush after the threaded phase
-        shard_id = owner_shard(id(infectee))
-        push!(sim.infection_buffers[Threads.threadid(), shard_id], PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
+        shard_id = _owner_shard(id(infectee))
+        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
     end
 
     # increase lifetime number of infections
