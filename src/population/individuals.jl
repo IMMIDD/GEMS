@@ -10,7 +10,7 @@ export age, id, education, occupation, sex
 # behaviour
 export mandate_compliance, social_factor
 # settings
-export setting_id, household_id, class_id, office_id, municipality_id, settings_tuple
+export setting_id, household_id, class_id, office_id, municipality_id
 export is_working, is_student, has_municipality
 # health status
 export comorbidities, has_comorbidity
