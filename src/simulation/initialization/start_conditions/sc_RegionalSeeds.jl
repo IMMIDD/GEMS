@@ -131,7 +131,6 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_samp
     # infect individuals
     for i in to_infect
         infect!(i, tick(simulation), pathogen, sim = simulation, rng = rng_sample)
-
         activate_memberships!(i, simulation)
     end
 
