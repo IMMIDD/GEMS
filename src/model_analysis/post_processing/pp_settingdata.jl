@@ -1,6 +1,6 @@
 
 """ 
-    settingdata(postProcessor::PostProcessor)
+    _settingdata(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing information about setting types
 

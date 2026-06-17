@@ -1,6 +1,6 @@
 
 """
-    tick_generation_times(postProcessor::PostProcessor)
+    _tick_generation_times(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing aggregated information on the generation time per tick.
 

@@ -1,6 +1,6 @@
 
 """
-    county_infections_between(postProcessor::PostProcessor, start_tick::Int64, end_tick::Int64)
+    _county_infections_between(postProcessor::PostProcessor, start_tick::Int64, end_tick::Int64)
 
 Returns a two-column `DataFrame` with the county region code (`AGS`)
 and the number of infections in that region during the provided time

@@ -753,7 +753,7 @@ end
 
 
 """
-    calculate_absolute_error(matrix1::Matrix{T}, matrix2::Matrix{T})::Matrix{T} where T <: Number
+    _calculate_absolute_error(matrix1::Matrix{T}, matrix2::Matrix{T})::Matrix{T} where T <: Number
 
 Calculate the absolute difference between `matrix1` and `matrix2`.
 

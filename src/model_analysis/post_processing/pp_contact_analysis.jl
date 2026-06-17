@@ -1,7 +1,7 @@
 
 
 """
-    group_by_age(df::DataFrame)
+    _group_by_age(df::DataFrame)
     
 Groups a dataframe by its "age" column. The column "sum" contains the sum of each individual in this age.
 This also adds rows for each age from 0 till the maximum age in the "age" column.
@@ -39,7 +39,7 @@ end
 
 
 """
-    aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64)::Matrix
+    _aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64)::Matrix
 
 Helper function (it's not intended for direct use, its's rather called by other functions), to aggregate a populationDF by age. `interval_steps` describes the size of each age group to aggregate. 
 The aggregated populationDF will be returned as a `Matrix`.
@@ -60,7 +60,7 @@ function _aggregate_populationDF_by_age(population_df::DataFrame, interval_steps
 end
 
 """
-    aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64, max_age::Int64)::Vector
+    _aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64, max_age::Int64)::Vector
 
 Helper function (it's not intended for direct use, its's rather called by other functions, to aggregate a populationDF by age. `interval_steps` describes the size of each age group to aggregate. 
 `max_age` sets a maximum age until which the matrix should be aggregated.
@@ -102,7 +102,7 @@ end
 
 
 """
-    individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64)
+    _individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64)
 
 
 The population in `populationDF` will be splitted in age groups of size `interval_steps` and the number of individuals per age group is counted.
@@ -143,7 +143,7 @@ function _individuals_per_age_group(post_processor::PostProcessor, interval_step
 end
 
 """
-    individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64, aggregation_bound::Int64)
+    _individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64, aggregation_bound::Int64)
 
 The the population in `populationDF` will be splitted in age groups of size `interval_steps` and the number of individuals per age group is counted. The splitting is capped at `aggregation_bound`.
 
@@ -201,7 +201,7 @@ end
 
 
 """
-    mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where {T <: Setting}
+    _mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where {T <: Setting}
 
 Calculates the mean number of contacts between two age groups. The age gropus are defined by the size of `interval_steps`.
 The population data is accessed via the postProcessor object to get the number of individuals per age group.
@@ -245,7 +245,7 @@ function _mean_contacts_per_age_group(post_processor::PostProcessor, settingtype
 end
 
 """
-    mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::DataType, interval_steps::Int64, max_age::Int64)::ContactMatrix{Float64}
+    _mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::DataType, interval_steps::Int64, max_age::Int64)::ContactMatrix{Float64}
 
 Calculates the mean number of contacts between two age groups. The age gropus are defined by the size of `interval_steps`.
 The population data is accessed via the postProcessor object to get the number of individuals per age group.
@@ -285,7 +285,7 @@ function _mean_contacts_per_age_group(post_processor::PostProcessor, settingtype
 end
 
 """
-    weighted_error_sum(post_processor::PostProcessor, error_matrix::ContactMatrix{T})::T where T <: Number
+    _weighted_error_sum(post_processor::PostProcessor, error_matrix::ContactMatrix{T})::T where T <: Number
 
 Calculate a weighted error sum for the given contact matrix. Each cell will be multiplied by the number of individuals in the corresponding age group and then divided by the number of individuals in the whole population.
 
@@ -324,7 +324,7 @@ function _weighted_error_sum(post_processor::PostProcessor, error_matrix::Contac
 end
 
 """
-    weighted_error_sum(post_processor::PostProcessor, setting::DataType, reference_matrix::ContactMatrix{T}; fit_to_reference_matrix::Bool)::T where T <: Number
+    _weighted_error_sum(post_processor::PostProcessor, setting::DataType, reference_matrix::ContactMatrix{T}; fit_to_reference_matrix::Bool)::T where T <: Number
 
 Calculate a "weighted error sum" for a setting specific contact matrix compared to a `reference_matrix`. The `post_processor` is used to calculate a contact matrix for the associated simulation that will then be fitted by a factor `alpha` calculated from the differences between the simulation contact matrix and the `reference_matrix`. 
     

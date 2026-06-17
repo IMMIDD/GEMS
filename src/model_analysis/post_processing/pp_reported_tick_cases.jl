@@ -1,6 +1,6 @@
 
 """
-    reported_tick_cases(postProcessor::PostProcessor)
+    _reported_tick_cases(postProcessor::PostProcessor)
 
 Returns the number of reported positive test cases per tick.
 This analysis is based on the `testDF` dataframe.

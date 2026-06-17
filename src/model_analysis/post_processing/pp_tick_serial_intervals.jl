@@ -1,6 +1,6 @@
 
 """
-    tick_serial_intervals(postProcessor::PostProcessor)
+    _tick_serial_intervals(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing aggregated information on the serial interval per tick.
 

@@ -1,6 +1,6 @@
 
 """
-    detected_infections(postProcessor::PostProcessor)
+    _detected_infections(postProcessor::PostProcessor)
 
 A subset of the `infections` dataframe with only the detected cases.
 An infection is considered to be _detected_ if the infection has a non-missing `first_detected_tick`.

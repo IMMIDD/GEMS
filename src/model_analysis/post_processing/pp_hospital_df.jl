@@ -1,6 +1,6 @@
 
 """
-    hospital_df(postProcessor::PostProcessor)
+    _hospital_df(postProcessor::PostProcessor)
 
 Creates a DataFrame that includes information about the current hospitalizations etc.
 
