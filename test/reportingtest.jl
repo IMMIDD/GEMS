@@ -1,6 +1,6 @@
 import GEMS: _WelfordState as WelfordState, _welford_update! as welford_update!
 import GEMS: escape_markdown, savepath, markdown
-import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region_range
+import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region_range, prepare_map_df!
 
 @testset "Reporting" begin
 

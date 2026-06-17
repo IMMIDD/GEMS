@@ -6,7 +6,7 @@ export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
-export tick, label, start_condition, stop_criterion, settingscontainer, settings, population
+export tick, label, start_condition, stop_criterion, settingscontainer, settings, population, stepmod
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogen, pathogen!

@@ -1,4 +1,4 @@
-import GEMS: increment!, stepmod, infected!
+import GEMS: increment!, infected!
 
 @testset "Simulation" begin
 
