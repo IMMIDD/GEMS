@@ -1,3 +1,10 @@
+import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as identical, _bad_unique as bad_unique,
+    _parameters as parameters, _calculate_absolute_error as calculate_absolute_error,
+    _WelfordState as WelfordState, _welford_update! as welford_update!,
+    _welford_to_aggregate as welford_to_aggregate, _welford_df_to_stats_df as welford_df_to_stats_df,
+    _welford_df_to_stats_df_multicol as welford_df_to_stats_df_multicol,
+    _get_missing_docs as get_missing_docs
+
 @testset "Utils" begin
 
     @testset verbose = true "Matrix Aggregation" begin
@@ -81,7 +88,7 @@
         end
     end
     @testset "basefolder test" begin
-        path = GEMS.basefolder()
+        path = GEMS._basefolder()
         @test isdir(path)  # Es sollte ein existierendes Verzeichnis sein
     end
     @testset "identical tests" begin
@@ -137,15 +144,15 @@
     end
 
     @testset "find_subtype" begin
-        @test GEMS.find_subtype("Household", Setting) == Household
-        @test_throws ArgumentError GEMS.find_subtype("NonExistentType", Setting)
+        @test GEMS._find_subtype("Household", Setting) == Household
+        @test_throws ArgumentError GEMS._find_subtype("NonExistentType", Setting)
     end
 
     @testset "is_existing_subtype" begin
-        @test GEMS.is_existing_subtype("Household", Setting) == true
-        @test GEMS.is_existing_subtype("NonExistentType", Setting) == false
+        @test GEMS._is_existing_subtype("Household", Setting) == true
+        @test GEMS._is_existing_subtype("NonExistentType", Setting) == false
         # concrete_subtypes may return "GEMS.Household" - should still match on last segment
-        @test GEMS.is_existing_subtype("Household", IndividualSetting) == true
+        @test GEMS._is_existing_subtype("Household", IndividualSetting) == true
     end
 
     @testset "county_data" begin

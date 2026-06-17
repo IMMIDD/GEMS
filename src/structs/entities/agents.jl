@@ -59,6 +59,7 @@ export quarantine_release_tick
 export quarantine_tick
 export quarantine_status, home_quarantine!, end_quarantine!
 export is_quarantined, isquarantined, quarantined
+export AutoExtension
 
 
 ###

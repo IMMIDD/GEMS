@@ -1,3 +1,7 @@
+import GEMS: _WelfordState as WelfordState, _welford_update! as welford_update!
+import GEMS: escape_markdown, savepath, markdown
+import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region_range
+
 @testset "Reporting" begin
 
     basefolder = dirname(dirname(pathof(GEMS)))

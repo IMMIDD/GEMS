@@ -1,3 +1,5 @@
+import GEMS: _rand_val as rand_val
+
 @testset "Pathogens" begin
 
     # building blocks for tests

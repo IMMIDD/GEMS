@@ -1,3 +1,5 @@
+import GEMS: increment!, stepmod, infected!
+
 @testset "Simulation" begin
 
     # global parameters

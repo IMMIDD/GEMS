@@ -11,7 +11,7 @@ export git_repo, git_branch, git_commit
 export dataframes, population_size, setting_age_contacts, infections, vaccinations, deaths, effectiveR,aggregated_setting_age_contacts
 export compartment_periods, aggregated_compartment_periods, cumulative_disease_progressions, tick_cases, tick_deaths, tick_vaccinations
 export cumulative_cases, compartment_fill, cumulative_deaths, cumulative_vaccinations, age_incidence
-export tests, tick_pooltests, detected_tick_cases,rolling_observed_SI, time_to_detection, detection_rate, cumulative_quarantines, tick_hosptitalizations
+export tests, tick_pooltests, detected_tick_cases, rolling_observed_SI, time_to_detection, detection_rate, cumulative_quarantines, tick_hosptitalizations, tick_serial_intervals
 export customlogger, household_attack_rates, weekly_county_incidence, r0_per_county
 export population_pyramid, timer_output, timer_output!, id
 export exportJLD, exportJSON
