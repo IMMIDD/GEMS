@@ -796,7 +796,7 @@ This will set the number of contacts for all `Household` settings to `3.5`.
 """
 function determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
     # Fetch the list of settings
-    setting_list = settings(stngs, type)
+    setting_list = get(stngs, type)
 
     # if custom parameter is provided, use it
     if !isnothing(custom_par)
@@ -1439,15 +1439,6 @@ function settings(simulation::Simulation)
 end
 
 """
-    settings(simulation::Simulation, settingtype::DataType)
-
-Returns all settings of `settingtype` of the simulation.
-"""
-function settings(simulation::Simulation, settingtype::DataType)
-    return get(settingscontainer(simulation), settingtype)
-end
-
-"""
     settings(simulation::Simulation, ::Type{T}) where {T<:Setting}
 
 Type-stable accessor: returns `Vector{T}` for the given concrete setting type `T`.
@@ -1904,7 +1895,7 @@ function info(sim::Simulation)
 
     res *= "\u2514 Population ($(sim |> population |> size) individuals):\n"
     for st in settingtypes(settingscontainer(sim))
-        res *= "  \u2514 $(st)s: $(settings(sim, st) |> length)\n"
+        res *= "  \u2514 $(st)s: $(get(settingscontainer(sim), st) |> length)\n"
     end
 
     res *= "\u2514 Start Condition: $(sim |> start_condition)\n"
