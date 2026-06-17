@@ -119,7 +119,7 @@ mutable struct LightRD <: ResultDataStyle
                     "initial_infections" => () -> (pP |> infectionsDF |> nrow) - (pP |> sim_infectionsDF |> nrow),
                     "total_infections" => () -> pP |> infectionsDF |> nrow,
                     "attack_rate" => () -> pP |> attack_rate,
-                    "setting_data" => () -> pP |> settingdata,
+                    "setting_data" => () -> pP |> _settingdata,
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "region_info" => () -> pP |> simulation |> region_info,
                     "pathogens" => () -> [pP |> simulation |> pathogen],
@@ -155,16 +155,16 @@ mutable struct LightRD <: ResultDataStyle
                 Dict(
                     # TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
                     # TODO: This list should be determined dynamically depending on what settings are present in the simulation
-                    "Household" => () -> mean_contacts_per_age_group(pP, Household, 5),
-                    "SchoolClass" => () -> mean_contacts_per_age_group(pP, SchoolClass, 2),
-                    "School" => () -> mean_contacts_per_age_group(pP, School, 2),
-                    "SchoolComplex" => () -> mean_contacts_per_age_group(pP, SchoolComplex, 2),
-                    "Office" => () -> mean_contacts_per_age_group(pP, Office, 5), 
-                    "Department" => () -> mean_contacts_per_age_group(pP, Department, 5), 
-                    "Workplace" => () -> mean_contacts_per_age_group(pP, Workplace, 5), 
-                    "WorkplaceSite" => () -> mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
-                    "Municipality" => () -> mean_contacts_per_age_group(pP, Municipality, 5),
-                    "GlobalSetting" => () -> mean_contacts_per_age_group(pP, GlobalSetting, 5)
+                    "Household" => () -> _mean_contacts_per_age_group(pP, Household, 5),
+                    "SchoolClass" => () -> _mean_contacts_per_age_group(pP, SchoolClass, 2),
+                    "School" => () -> _mean_contacts_per_age_group(pP, School, 2),
+                    "SchoolComplex" => () -> _mean_contacts_per_age_group(pP, SchoolComplex, 2),
+                    "Office" => () -> _mean_contacts_per_age_group(pP, Office, 5), 
+                    "Department" => () -> _mean_contacts_per_age_group(pP, Department, 5), 
+                    "Workplace" => () -> _mean_contacts_per_age_group(pP, Workplace, 5), 
+                    "WorkplaceSite" => () -> _mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
+                    "Municipality" => () -> _mean_contacts_per_age_group(pP, Municipality, 5),
+                    "GlobalSetting" => () -> _mean_contacts_per_age_group(pP, GlobalSetting, 5)
                 ),
 
             "dataframes" =>
@@ -173,8 +173,8 @@ mutable struct LightRD <: ResultDataStyle
                     "tick_cases" => () -> pP |> tick_cases,
                     "tick_deaths" => () -> pP |> tick_deaths,
 #                    "tick_vaccinations" => () -> pP |> tick_vaccinations,
-                    "tick_serial_intervals" => () -> pP |> tick_serial_intervals,
-                    "tick_generation_times" => () -> pP |> tick_generation_times,
+                    "tick_serial_intervals" => () -> pP |> _tick_serial_intervals,
+                    "tick_generation_times" => () -> pP |> _tick_generation_times,
                     "cumulative_cases" => () -> pP |> cumulative_cases,
                     "compartment_fill" => () -> pP |> compartment_fill,
                     "aggregated_compartment_periods" => () -> pP |> aggregated_compartment_periods,
@@ -194,7 +194,7 @@ mutable struct LightRD <: ResultDataStyle
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
-                    "tick_hosptitalizations" => () -> pP |> hospital_df,
+                    "tick_hosptitalizations" => () -> pP |> _hospital_df,
                     "r0_per_county" => () -> pP |> r0_per_county
                 )
         )

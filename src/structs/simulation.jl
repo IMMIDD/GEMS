@@ -13,7 +13,7 @@ export pathogen, pathogen!
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
-export increment!, reset!, reset_tick!
+export reset!
 export tickunit
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
 export statelogger, states
@@ -21,7 +21,6 @@ export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, c
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
-export stepmod
 export rng, rngs, seed
 export present_buffers, contact_buffers
 

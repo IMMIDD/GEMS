@@ -1,4 +1,3 @@
-export tick_generation_times
 
 """
     tick_generation_times(postProcessor::PostProcessor)
@@ -19,7 +18,7 @@ Returns a `DataFrame` containing aggregated information on the generation time p
 | `std_generation_time`      | `Float64` | Stanard deviation for generation times that tick             |
 | `mean_generation_time`     | `Float64` | Mean for generation times that tick                          |
 """
-function tick_generation_times(postProcessor::PostProcessor)
+function _tick_generation_times(postProcessor::PostProcessor)
     return(
         aggregate_df(
             postProcessor |> infectionsDF |>

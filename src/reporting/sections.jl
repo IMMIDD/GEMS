@@ -1,6 +1,5 @@
 export AbstractSection, Section, PlotSection
-export title, title!, subtitle, subtitle!, content, content!, subsections
-export plt, plotpackage
+export title, title!, subtitle, subtitle!, plt
 export generate
 
 ### SECTION STRUCTS

@@ -1,12 +1,9 @@
 # DEFINE RESULTDATA AND FUNCTIONALITY
-export AbstractResultData
 export ResultData
 
-export ResultDataFunction, ResultDataStyle
-
-export meta_data, execution_date, execution_date_formatted, GEMS_version, config_file, config_file_val, population_file, population_params, final_tick
+export meta_data, execution_date, GEMS_version, config_file, population_file, final_tick
 export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data
-export setting_sizes, globalsetting_flag, pathogens, vaccine, vaccination_strategy, total_quarantines, total_tests
+export setting_sizes, pathogens, vaccine, vaccination_strategy, total_quarantines, total_tests
 export tick_unit, start_condition, stop_criterion, strategies, kernel, julia_version
 export system_data, word_size, threads, cpu_data, total_mem_size, free_mem_size, model_size
 export git_repo, git_branch, git_commit
@@ -15,12 +12,9 @@ export compartment_periods, aggregated_compartment_periods, cumulative_disease_p
 export cumulative_cases, compartment_fill, cumulative_deaths, cumulative_vaccinations, age_incidence
 export tests, tick_pooltests, detected_tick_cases,rolling_observed_SI, time_to_detection, detection_rate, cumulative_quarantines, tick_hosptitalizations
 export customlogger, household_attack_rates, weekly_county_incidence, r0_per_county
-export population_pyramid, timer_output, timer_output!, infections_hash, data_hash, id, hashes
+export population_pyramid, timer_output, timer_output!, id
 export exportJLD, exportJSON
-export import_resultdata,determine_difference, remove_fields!, merge_rd!, resultdata_functions
-export clean_rd!
-
-export allempty, someempty
+export import_resultdata
 
 export info
 
@@ -1144,23 +1138,23 @@ end
 
 
 """
-    hashes(rd::ResultData)
+    _hashes(rd::ResultData)
 
 Returns the dataframes of result data.
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
-function hashes(rd::ResultData)
+function _hashes(rd::ResultData)
     return(get(rd.data, "hashes", Dict()))
 end
 
 """
-    infections_hash(rd::ResultData)
+    _infections_hash(rd::ResultData)
 
 Returns a `SHA1` hash value for the `infections` DataFrame
 based on the `tick`, `id_a`, and `id_b` column.
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
-function infections_hash(rd::ResultData)
+function _infections_hash(rd::ResultData)
     return(
         rd |> infections |>
             x -> DataFrames.select(x, :tick, :id_a, :id_b) |>
@@ -1170,12 +1164,12 @@ function infections_hash(rd::ResultData)
 end
 
 """
-    data_hash(rd::ResultData)
+    _data_hash(rd::ResultData)
 
 Returns a `SHA1` hash value for the metadata of the `ResultData` object.
-DataFrames are excluded from the hash (use `infections_hash` for infection data).
+DataFrames are excluded from the hash (use `_infections_hash` for infection data).
 """
-function data_hash(rd::ResultData)
+function _data_hash(rd::ResultData)
     out = deepcopy(rd.data)
     clean_result!(out)
     return ContentHashes.hash(out)
@@ -1195,12 +1189,12 @@ end
 ###
 
 """
-    allempty(f::Function, rds::Vector{ResultData})
+    _allempty(f::Function, rds::Vector{ResultData})
 
 Returns `true` if the provided function returns an empty dictionary
 for all `ResultData` objects in the provided vector.
 """
-function allempty(f::Function, rds::Vector{ResultData})
+function _allempty(f::Function, rds::Vector{ResultData})
     for rd in rds
         if !(rd |> f |> isempty)
             return false
@@ -1210,12 +1204,12 @@ function allempty(f::Function, rds::Vector{ResultData})
 end
 
 """
-    someempty(f::Function, rds::Vector{ResultData})
+    _someempty(f::Function, rds::Vector{ResultData})
 
-Returns `true` if the provided function returns an empty 
+Returns `true` if the provided function returns an empty
 dictionary for at least one of the `ResultData` objects.
 """
-function someempty(f::Function, rds::Vector{ResultData})
+function _someempty(f::Function, rds::Vector{ResultData})
     for rd in rds
         if rd |> f |> isempty
             return true

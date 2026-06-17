@@ -1,6 +1,5 @@
 export SymptomTrigger, HospitalizationTrigger, ITickTrigger, STickTrigger
 export strategy, settingtype, switch_tick, interval
-export should_fire
 
 ###
 ### SYMPTOM TRIGGERS

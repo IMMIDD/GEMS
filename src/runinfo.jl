@@ -1,5 +1,3 @@
-export Runinfo
-export data
 
 """
     Runinfo

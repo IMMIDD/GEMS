@@ -1,4 +1,3 @@
-export hospital_df
 
 """
     hospital_df(postProcessor::PostProcessor)
@@ -22,7 +21,7 @@ Creates a DataFrame that includes information about the current hospitalizations
 | `current_icu`            | `Int64` | Current number of individuals in ICU at tick              |
 | `current_ventilation`    | `Int64` | Current number of individuals on ventilation at tick      |
 """
-function hospital_df(postProcessor::PostProcessor)
+function _hospital_df(postProcessor::PostProcessor)
 
     hospital_admissions = infectionsDF(postProcessor) |>
         df -> DataFrames.select(df, :tick, :hospital_admission) |>

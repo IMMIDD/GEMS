@@ -9,59 +9,56 @@ export Individual
 # basic attributes
 export age, id, education, occupation, sex
 # behaviour
-export mandate_compliance, mandate_compliance!, social_factor, social_factor!
+export mandate_compliance, social_factor
 # settings
-export setting_id, setting_id!, household_id, class_id, office_id, municipality_id, settings_tuple
+export setting_id, household_id, class_id, office_id, municipality_id, settings_tuple
 export is_working, is_student, has_municipality
 # health status
 export comorbidities, has_comorbidity
-export is_infected, isinfected, infected, infected!
-export is_infectious, isinfectious, infectious, infectious!
+export is_infected, isinfected, infected
+export is_infectious, isinfectious, infectious
 export is_exposed, isexposed, exposed
 export is_presymptomatic, ispresymptomatic, presymptomatic
-export is_symptomatic, issymptomatic, symptomatic, symptomatic!
+export is_symptomatic, issymptomatic, symptomatic
 export is_asymptomatic, isasymptomatic, asymptomatic
-export is_severe, issevere, severe, severe!
+export is_severe, issevere, severe
 export is_mild, ismild, mild
-export is_hospitalized, ishospitalized, hospitalized, hospitalized!
-export is_icu, isicu, icu, icu!
-export is_ventilated, isventilated, ventilated, ventilated!
+export is_hospitalized, ishospitalized, hospitalized
+export is_icu, isicu, icu
+export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
-export is_dead, isdead, dead, dead!
-export is_detected, isdetected, detected, detected!
+export is_dead, isdead, dead
+export is_detected, isdetected, detected
 # disease progression
-export exposure, exposure!
-export infectiousness_onset, infectiousness_onset!
-export symptom_onset, symptom_onset!
-export severeness_onset, severeness_onset!
-export severeness_offset, severeness_offset!
-export hospital_admission, hospital_admission!
-export icu_admission, icu_admission!
-export icu_discharge, icu_discharge!
-export ventilation_admission, ventilation_admission!
-export ventilation_discharge, ventilation_discharge!
-export hospital_discharge, hospital_discharge!
-export recovery, recovery!
-export death, death!
-export pathogen_id, pathogen_id!, infection_id, infection_id!
-export infectiousness, infectiousness!
+export exposure
+export infectiousness_onset
+export symptom_onset
+export severeness_onset
+export severeness_offset
+export hospital_admission
+export icu_admission
+export icu_discharge
+export ventilation_admission
+export ventilation_discharge
+export hospital_discharge
+export recovery
+export death
+export pathogen_id, infection_id
+export infectiousness
 export number_of_infections
-export inc_number_of_infections!
 # testing
-export last_test, last_test!
-export last_test_result, last_test_result!
-export last_reported_at, last_reported_at!
+export last_test
+export last_test_result
+export last_reported_at
 export isdetected
 # vaccination
 export vaccinate!
 export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 #quarantine
-export quarantine_release_tick, quarantine_release_tick!
-export quarantine_tick, quarantine_tick!
+export quarantine_release_tick
+export quarantine_tick
 export quarantine_status, home_quarantine!, end_quarantine!
-export is_quarantined, isquarantined, quarantined, quarantined!
-
-export progress_disease!
+export is_quarantined, isquarantined, quarantined
 
 
 ###
@@ -216,8 +213,6 @@ A type to represent individuals, that act as agents inside the simulation.
     # EXTENSIONS
     extensions::Any = nothing
 end
-
-export AutoExtension
 
 # CONSTRUCTOR
 """

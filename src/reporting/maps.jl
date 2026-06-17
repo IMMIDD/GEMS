@@ -1,14 +1,10 @@
 export MapPlot
-export region_range
-export generate_map
 
 # shapefile maps
-export agsmap, prepare_map_df!, prepare_map_df
+export agsmap, prepare_map_df
 
 # gemsmap
 export gemsmap
-
-export maptypes
 
 """
     region_range(coords::DataFrame)

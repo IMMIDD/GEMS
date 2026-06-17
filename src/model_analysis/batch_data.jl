@@ -1,11 +1,10 @@
 # DATA TYPE AND FUNCTIONALIYT FOR BATCH RUNS. ANALOGOUS TO RESULTDATA
 export BatchData
-export BatchDataStyle
 
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export sim_data, runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
+export runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines
 export total_detected_cases, detection_rate
 export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
 export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_group

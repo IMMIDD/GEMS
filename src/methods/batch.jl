@@ -56,7 +56,7 @@ function process!(batch::Batch;
 
         sim_setup !== nothing && sim_setup(sim)
 
-        customlogger !== nothing && customlogger!(sim, duplicate(customlogger))
+        customlogger !== nothing && customlogger!(sim, _duplicate(customlogger))
         run!(sim)
         pp = PostProcessor(sim)
         accumulate!(bp, pp; rd_style)

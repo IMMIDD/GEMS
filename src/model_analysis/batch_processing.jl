@@ -1,7 +1,5 @@
 # DATA PROCESSING FOR BATCHRUNS
-export BatchProcessor
-
-export rundata, n_runs, median_run, tick_unit, seed
+export median_run, tick_unit, seed
 export total_infections, total_tests, attack_rate, r0
 export tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
 export total_quarantines, dark_figure, cumulative_cases, generation_times
@@ -165,7 +163,7 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     _update_multicol!(bp.cumulative_cases, cumulative_cases(pp), :tick)
 
     # Mean generation time per tick
-    gt = tick_generation_times(pp)
+    gt = _tick_generation_times(pp)
     if !isempty(gt) && hasproperty(gt, :mean_generation_time)
         _update_singlecol!(
             bp.generation_times,
@@ -175,7 +173,7 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     end
 
     # Hospitalizations and observed R per tick
-    _update_multicol!(bp.hospitalizations, hospital_df(pp), :tick)
+    _update_multicol!(bp.hospitalizations, _hospital_df(pp), :tick)
     _update_multicol!(bp.observed_R, observed_R(pp), :tick)
 
     # Pool and serology tests per tick

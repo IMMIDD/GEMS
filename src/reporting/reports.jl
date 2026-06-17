@@ -8,8 +8,8 @@ export Report, SimulationReport, BatchReport
 export title, title!, subtitle, subtitle!
 export simulation, dpi, dpi!, fontfamily, fontfamily!, plt
 export reportdata, batchdata, author, author!, date, date!, abstract, abstract!
-export sections, glossary, glossary!, addsection!, addtimer!
-export generate, buildreport
+export glossary, glossary!, addsection!, addtimer!
+export generate
 export SimulationReportStyle, BatchReportStyle
 
 ### INCLUDES

@@ -1,5 +1,4 @@
-export test_sim, test_sim_r, report_test, plot_test, test_all, test_state, batch_test, intervention_test, geolocated_sim, geolocated_test, settingfile_sim, settingfile_test
-export getundocumented
+export test_sim, test_sim_r, geolocated_sim, settingfile_sim
 
 """
     test_sim()

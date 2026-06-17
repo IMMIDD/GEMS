@@ -1,9 +1,8 @@
 # CREATION OF PLOTS AND FIGURES FOR THE REPORT
-export ReportPlot, SimulationPlot, GMTWrapper
+export ReportPlot, SimulationPlot
 export title, description, description!, filename, filename!, generate
-export fontfamily!, dpi!, title!, titlefontsize!, saveplot, emptyplot
+export fontfamily!, dpi!, title!, titlefontsize!
 export gemsplot
-export plottypes, splitgroup, splitplot, plotseries!
 
 ###
 ### ABSTRACT HIERARCHY & TYPES

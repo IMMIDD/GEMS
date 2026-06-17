@@ -1,4 +1,3 @@
-export detected_infections
 
 """
     detected_infections(postProcessor::PostProcessor)
@@ -11,7 +10,7 @@ For the column definitions, look up the `infectionsDF(postProcessor)` documentat
 
 - `DataFrame`: Please look up the column definitions in the `infectionsDF(postProcessor)` documentation.
 """
-function detected_infections(postProcessor::PostProcessor)
+function _detected_infections(postProcessor::PostProcessor)
     return(
         postProcessor |> infectionsDF |>
             # remove undetected transmissions

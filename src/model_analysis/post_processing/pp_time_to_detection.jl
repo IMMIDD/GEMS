@@ -23,7 +23,7 @@ number of ticks between the time of exposure and time of detection.
 """
 function time_to_detection(postProcessor::PostProcessor)
     return(
-        postProcessor |> detected_infections |> 
+        postProcessor |> _detected_infections |>
         x -> DataFrames.select(x, [:tick, :first_detected_tick]) |>
         # calculate time to detection
         x -> transform(x, [:first_detected_tick, :tick] => (-) => :time_to_detection) |>

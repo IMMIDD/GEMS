@@ -1,5 +1,3 @@
-export group_by_age, aggregate_populationDF_by_age, individuals_per_age_group
-export mean_contacts_per_age_group, weighted_error_sum
 
 
 """
@@ -11,7 +9,7 @@ This also adds rows for each age from 0 till the maximum age in the "age" column
 # Returns
 - returns a DataFrame with an additional column "sum". This column contains the count of the age in the DataFrame.
 """
-function group_by_age(df::DataFrame)::DataFrame
+function _group_by_age(df::DataFrame)::DataFrame
     if (!("age" in names(df)))
         throw(ArgumentError("$(df) has to contain a column 'age'!"))
     end
@@ -47,13 +45,13 @@ Helper function (it's not intended for direct use, its's rather called by other 
 The aggregated populationDF will be returned as a `Matrix`.
 
 """
-function aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64)::Matrix
+function _aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64)::Matrix
 
     if (!("age" in names(population_df)))
         throw(ArgumentError("the population_df has to contain a column 'age'!"))
     end
 
-    sum_of_ages_df = group_by_age(population_df)
+    sum_of_ages_df = _group_by_age(population_df)
     
     aggregated_population_matrix = aggregate_matrix(sum_of_ages_df[:, :sum], interval_steps)
     
@@ -71,7 +69,7 @@ Helper function (it's not intended for direct use, its's rather called by other 
 
 The aggregated populationDF will be returned as a `Matrix`.
 """
-function aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64, max_age::Int64)::Matrix
+function _aggregate_populationDF_by_age(population_df::DataFrame, interval_steps::Int64, max_age::Int64)::Matrix
 
     if (!("age" in names(population_df)))
         throw(ArgumentError("the population_df has to contain a column 'age'!"))
@@ -119,11 +117,11 @@ The input DataFrame already needs a column called "sum" where the sum of individ
 | `age_group`      | `String` | Min and Max age in this age group              |
 | `num_individuals`| `Int64`  | Total number of individuals                    |
 """
-function individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64)::DataFrame
+function _individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64)::DataFrame
 
     population_df = populationDF(post_processor)
 
-    grouped_df = group_by_age(population_df)
+    grouped_df = _group_by_age(population_df)
 
     if (!("sum" in names(grouped_df)))
         throw(ArgumentError("$(population_df) has to contain a column 'sum'!"))
@@ -160,7 +158,7 @@ The input DataFrame already needs a column called "sum" where the sum of individ
 | `age_group`      | `String` | Min and Max age in this age group              |
 | `num_individuals`| `Int64`  | Total number of individuals                    |
 """
-function individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64, aggregation_bound::Int64)::DataFrame
+function _individuals_per_age_group(post_processor::PostProcessor, interval_steps::Int64, aggregation_bound::Int64)::DataFrame
 
     if (interval_steps <= 1)
         throw(ArgumentError("interval steps have to be at least 2 or greater!"))
@@ -180,7 +178,7 @@ function individuals_per_age_group(post_processor::PostProcessor, interval_steps
 
     population_df = populationDF(post_processor)
 
-    grouped_df = group_by_age(population_df)
+    grouped_df = _group_by_age(population_df)
 
     if (!("sum" in names(grouped_df)))
         throw(ArgumentError("$(grouped_df) has to contain a column 'sum'!"))
@@ -211,7 +209,7 @@ The population data is accessed via the postProcessor object to get the number o
 # Returns
 Returns a ContactMatrix object containing the calculated mean contacts per age group and the interval steps.
 """
-function mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where {T <: Setting}
+function _mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::Type{T}, interval_steps::Int64)::ContactMatrix{Float64} where {T <: Setting}
     
     # contact matrix data calculated from the simulation at the last step
     simulation_contact_matrix_data = setting_age_contacts(post_processor, settingtype)
@@ -224,7 +222,7 @@ function mean_contacts_per_age_group(post_processor::PostProcessor, settingtype:
 
     population_df = populationDF(post_processor)
 
-    aggregated_population = aggregate_populationDF_by_age(population_df, interval_steps)
+    aggregated_population = _aggregate_populationDF_by_age(population_df, interval_steps)
 
     mean_contacts_per_age_group_data = zeros(Float64, length(aggregated_population), length(aggregated_population))
 
@@ -257,7 +255,7 @@ The population data is accessed via the postProcessor object to get the number o
 # Returns
 Returns a ContactMatrix object containing the calculated mean contacts per age group and the interval steps and max age for aggregation.
 """
-function mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::DataType, interval_steps::Int64, max_age::Int64)::ContactMatrix{Float64}
+function _mean_contacts_per_age_group(post_processor::PostProcessor, settingtype::DataType, interval_steps::Int64, max_age::Int64)::ContactMatrix{Float64}
     
     if (max_age <= 1)
         throw(ArgumentError("max age has to be at least 2 or greater!"))
@@ -270,7 +268,7 @@ function mean_contacts_per_age_group(post_processor::PostProcessor, settingtype:
 
     population_df = populationDF(post_processor)
 
-    aggregated_population = aggregate_populationDF_by_age(population_df, interval_steps, max_age)
+    aggregated_population = _aggregate_populationDF_by_age(population_df, interval_steps, max_age)
 
     mean_contacts_per_age_group_data = zeros(Float64, length(aggregated_population), length(aggregated_population))
 
@@ -300,13 +298,13 @@ To calculate the weighted sum, "weighted arithmetic mean" is used.
 - `error_matrix` Matrix contains error values between two contact matrices.
 
 """
-function weighted_error_sum(post_processor::PostProcessor, error_matrix::ContactMatrix{T})::T where T <: Number
+function _weighted_error_sum(post_processor::PostProcessor, error_matrix::ContactMatrix{T})::T where T <: Number
 
     interval_steps::Int64 = error_matrix.interval_steps
     aggregation_bound::Int64 = error_matrix.aggregation_bound
 
     # get number of individuals per age group 
-    indv_per_age_group::DataFrame = individuals_per_age_group(post_processor, interval_steps, aggregation_bound)
+    indv_per_age_group::DataFrame = _individuals_per_age_group(post_processor, interval_steps, aggregation_bound)
 
     population_size::Int64 = Base.sum(indv_per_age_group[:,:num_individuals])
 
@@ -351,10 +349,10 @@ To calculate the weighted sum, "weighted arithmetic mean" is used.
 - `reference_matrix` logically stems from the same setting as `setting`!
 
 """
-function weighted_error_sum(post_processor::PostProcessor, setting::DataType, reference_matrix::ContactMatrix{T}; fit_to_reference_matrix::Bool)::T where T <: Number
+function _weighted_error_sum(post_processor::PostProcessor, setting::DataType, reference_matrix::ContactMatrix{T}; fit_to_reference_matrix::Bool)::T where T <: Number
 
     # calculate contact matrix for the given setting for the simulation based on the structure of the `reference_matrix`
-    simulation_contact_matrix_data::Matrix{T} = mean_contacts_per_age_group(post_processor, setting, reference_matrix.interval_steps, reference_matrix.aggregation_bound).data
+    simulation_contact_matrix_data::Matrix{T} = _mean_contacts_per_age_group(post_processor, setting, reference_matrix.interval_steps, reference_matrix.aggregation_bound).data
 
     # find alpha - a factor that defines the difference between both matrices
     alpha::T = GEMS.find_alpha(reference_matrix.data, simulation_contact_matrix_data)
@@ -369,5 +367,5 @@ function weighted_error_sum(post_processor::PostProcessor, setting::DataType, re
 
     error_contact_matrix = ContactMatrix{T}(error_matrix_data, reference_matrix.interval_steps, reference_matrix.aggregation_bound)
 
-    return weighted_error_sum(post_processor, error_contact_matrix)
+    return _weighted_error_sum(post_processor, error_contact_matrix)
 end

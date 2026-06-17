@@ -1,6 +1,3 @@
-export EventQueue
-export enqueue!, dequeue!, peek, peektick, isempty
-export stage!, flush_staging!
 
 ###
 ### EVENT QUEUES
