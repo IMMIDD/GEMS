@@ -314,7 +314,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`exposed_cnt`, `infectious_cnt`, `recovered_cnt`, `dead_cnt`).
 """
 function tick_cases(bp::BatchProcessor)
-    return __welford_df_to_stats_df_multicol(bp.tick_cases, :tick)
+    return _welford_df_to_stats_df_multicol(bp.tick_cases, :tick)
 end
 
 """
@@ -325,7 +325,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`effective_R`, `rolling_R`, `in_hh_effective_R`, `rolling_in_hh_R`, `rolling_out_hh_R`).
 """
 function effectiveR(bp::BatchProcessor)
-    return __welford_df_to_stats_df_multicol(bp.effectiveR, :tick)
+    return _welford_df_to_stats_df_multicol(bp.effectiveR, :tick)
 end
 
 """
@@ -336,7 +336,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`quarantined`, `students`, `workers`, `other`).
 """
 function cumulative_quarantines(bp::BatchProcessor)
-    return __welford_df_to_stats_df_multicol(bp.quarantines, :tick)
+    return _welford_df_to_stats_df_multicol(bp.quarantines, :tick)
 end
 
 """
@@ -347,7 +347,7 @@ Returns a `Dict{String, DataFrame}` keyed by compartment name
 (`latent`, `pre_symptomatic`, `symptomatic`, `asymptomatic`).
 """
 function cumulative_disease_progressions(bp::BatchProcessor)
-    return __welford_df_to_stats_df_multicol(bp.compartments, :tick)
+    return _welford_df_to_stats_df_multicol(bp.compartments, :tick)
 end
 
 """
@@ -357,7 +357,7 @@ Returns aggregated test statistics per tick for each test type.
 Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
 """
 function tests(bp::BatchProcessor)
-    return Dict(k => __welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.tests)
+    return Dict(k => _welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.tests)
 end
 
 """
@@ -367,7 +367,7 @@ Returns aggregated pool test statistics per tick for each test type.
 Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
 """
 function pool_tests(bp::BatchProcessor)
-    return Dict(k => __welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.pool_tests)
+    return Dict(k => _welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.pool_tests)
 end
 
 """
@@ -377,7 +377,7 @@ Returns aggregated serology test statistics per tick for each test type.
 Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
 """
 function sero_tests(bp::BatchProcessor)
-    return Dict(k => __welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.sero_tests)
+    return Dict(k => _welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.sero_tests)
 end
 
 """
@@ -388,7 +388,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (e.g. `current_hospitalized`, `current_icu`, `hospital_admissions`).
 """
 function hospitalizations(bp::BatchProcessor)
-    return __welford_df_to_stats_df_multicol(bp.hospitalizations, :tick)
+    return _welford_df_to_stats_df_multicol(bp.hospitalizations, :tick)
 end
 
 """
@@ -399,7 +399,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`mean_est_R`, `lower_est_R`, `upper_est_R`).
 """
 function observed_R(bp::BatchProcessor)
-    return __welford_df_to_stats_df_multicol(bp.observed_R, :tick)
+    return _welford_df_to_stats_df_multicol(bp.observed_R, :tick)
 end
 
 """
@@ -437,7 +437,7 @@ Returns aggregated cumulative case counts per tick across all runs.
 Returns a `Dict{String, DataFrame}` keyed by column name (e.g. `exposed_cum`, `recovered_cum`, `deaths_cum`).
 """
 function cumulative_cases(bp::BatchProcessor)
-    return __welford_df_to_stats_df_multicol(bp.cumulative_cases, :tick)
+    return _welford_df_to_stats_df_multicol(bp.cumulative_cases, :tick)
 end
 
 """

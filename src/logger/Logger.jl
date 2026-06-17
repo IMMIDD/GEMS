@@ -1,7 +1,7 @@
 # DEFINE LOGGER STRUCTURE AND FUNCTIONALITY
 export Logger, TickLogger, EventLogger, InfectionLogger, VaccinationLogger, DeathLogger, TestLogger, PoolTestLogger, SeroprevalenceLogger
 export QuarantineLogger, StateLogger, CustomLogger
-export tick, save, save_JLD2, dataframe
+export tick, log!, save, save_JLD2, dataframe
 export get_infections_between
 
 """

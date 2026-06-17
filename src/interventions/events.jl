@@ -1,3 +1,5 @@
+export IMeasureEvent, SMeasureEvent
+
 ###
 ### EVENT STRUCTS
 ###

@@ -1,5 +1,6 @@
 # DATA TYPE AND FUNCTIONALIYT FOR BATCH RUNS. ANALOGOUS TO RESULTDATA
 export BatchData
+export BatchDataStyle
 
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations

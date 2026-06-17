@@ -1,4 +1,5 @@
 export MapPlot
+export generate_map
 
 # shapefile maps
 export agsmap, prepare_map_df

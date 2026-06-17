@@ -2,6 +2,7 @@
 export ReportPlot, SimulationPlot
 export title, description, description!, filename, filename!, generate
 export fontfamily!, dpi!, title!, titlefontsize!
+export saveplot
 export gemsplot
 
 ###

@@ -3,6 +3,7 @@
 ###
 export SettingsContainer
 export add!, get, setting, settings
+export settingtypes, foreach_setting_vector, add_type!, add_types!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites 
 
 """

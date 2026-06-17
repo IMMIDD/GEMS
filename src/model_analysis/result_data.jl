@@ -1,5 +1,6 @@
 # DEFINE RESULTDATA AND FUNCTIONALITY
 export ResultData
+export ResultDataStyle
 
 export meta_data, execution_date, GEMS_version, config_file, population_file, final_tick
 export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data

@@ -6,6 +6,7 @@
 
 export Report, SimulationReport, BatchReport
 export title, title!, subtitle, subtitle!
+export buildreport, sections
 export simulation, dpi, dpi!, fontfamily, fontfamily!, plt
 export reportdata, batchdata, author, author!, date, date!, abstract, abstract!
 export glossary, glossary!, addsection!, addtimer!
