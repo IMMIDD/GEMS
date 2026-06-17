@@ -241,7 +241,7 @@ end
 ###
 
 """
-    trigger(st::SymptomTrigger, i::Individual, sim::Simulation)
+    trigger(st::SymptomTrigger, i::Individual, sim::Simulation; staged::Bool = false)
 
 Triggers the execution of the `IStrategy` associated with a `SymptomTrigger`.
 
@@ -250,14 +250,14 @@ Triggers the execution of the `IStrategy` associated with a `SymptomTrigger`.
 - `st::SymptomTrigger`: Trigger instance
 - `i::Individual`: Individual that the `IStrategy` contained in the `SymptomTrigger` is executed for
 - `sim::Simulation`: Simulation object
-
+- `staged::Bool = false`: stage events lock-free instead of enqueueing directly (set when fired from a parallel loop)
 """
-function trigger(st::SymptomTrigger, i::Individual, sim::Simulation)
-    trigger_strategy(st |> strategy, i, sim)
+function trigger(st::SymptomTrigger, i::Individual, sim::Simulation; staged::Bool = false)
+    trigger_strategy(st |> strategy, i, sim, staged = staged)
 end
 
 """
-    trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation)
+    trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation; staged::Bool = false)
 
 Triggers the execution of the `IStrategy` associated with a `HospitalizationTrigger`.
 
@@ -266,9 +266,10 @@ Triggers the execution of the `IStrategy` associated with a `HospitalizationTrig
 - `ht::HospitalizationTrigger`: Trigger instance
 - `i::Individual`: Individual that the `IStrategy` contained in the `HospitalizationTrigger` is executed for
 - `sim::Simulation`: Simulation object
+- `staged::Bool = false`: stage events lock-free instead of enqueueing directly (set when fired from a parallel loop)
 """
-function trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation)
-    trigger_strategy(ht |> strategy, i, sim)
+function trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation; staged::Bool = false)
+    trigger_strategy(ht |> strategy, i, sim, staged = staged)
 end
 
 """
@@ -311,9 +312,9 @@ function _trigger_settings!(str::SStrategy, stngs::Vector, sim::Simulation)
 end
 
 """
-    trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
+    trigger_strategy(str::IStrategy, i::Individual, sim::Simulation; staged::Bool = false)
 
-Enqueues an `IMeasureEvent` in the `Simulation` event queue for all `IMeasures` 
+Enqueues an `IMeasureEvent` in the `Simulation` event queue for all `IMeasures`
 of the provided `IStrategy` and the specified `Individual`.
 
 # Parameters
@@ -321,8 +322,9 @@ of the provided `IStrategy` and the specified `Individual`.
 - `str::IStrategy`: Strategy that is being triggered
 - `i::Individual`: Individual that the tiggered strategy is applied to
 - `sim::Simulation`: Simulation object
+- `staged::Bool = false`: stage events lock-free (via `stage!`) instead of `enqueue!`; set when triggered from a parallel loop
 """
-function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
+function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation; staged::Bool = false)
     # if condition is not met, return without executing measures
     cond = try
         str.condition(i)
@@ -334,15 +336,14 @@ function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
     if !cond
         return
     end
-    
+
+    eq = event_queue(sim)
     # generate one MeasureEvent for each associated measure and push it to the Simulation's event queue
     for me in str |> measures
-        # enqueue measure events with the current tick and the added delay
-        sim |> event_queue |>
-            x -> enqueue!(x,
-                IMeasureEvent(i, measure(me)::IMeasure, condition(me), process_fn(me)),
-                Int16(tick(sim) + offset(me) + delay(me)(i))
-            )
+        ev = IMeasureEvent(i, measure(me)::IMeasure, condition(me), process_fn(me))
+        # schedule for the current tick plus the measure's offset and added delay
+        t = Int16(tick(sim) + offset(me) + delay(me)(i))
+        staged ? stage!(eq, ev, t) : enqueue!(eq, ev, t)
     end
 end
 

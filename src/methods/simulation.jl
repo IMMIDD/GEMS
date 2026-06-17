@@ -279,6 +279,8 @@ function step!(simulation::Simulation)
         Threads.@threads :static for i in simulation |> population |> individuals
             update_individual!(i, tick(simulation), simulation)
         end
+        # merge per-thread staged trigger events into the queue before processing
+        flush_staging!(event_queue(simulation))
     end
 
     # infect individuals in settings

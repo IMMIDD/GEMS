@@ -308,17 +308,20 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         end
     end
 
+    # update_individual! runs in the parallel step! loop, so trigger events are staged
+    # lock-free per thread and merged into the queue by flush_staging! after the loop
+
     # if onset of symptoms is this tick, trigger all symptom triggers
     if symptom_onset(indiv) == tick
         for st in sim |> symptom_triggers
-            trigger(st, indiv, sim)
+            trigger(st, indiv, sim, staged = true)
         end
     end
 
     # if hospital admission is this tick, trigger all hospitalization triggers
     if hospital_admission(indiv) == tick
         for ht in sim |> hospitalization_triggers
-            trigger(ht, indiv, sim)
+            trigger(ht, indiv, sim, staged = true)
         end
     end
 end
