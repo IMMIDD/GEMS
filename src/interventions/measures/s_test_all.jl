@@ -137,7 +137,7 @@ follow-up strategy is handed over to the `EventQueue` for this setting.
 function process_measure(sim::Simulation, s::Setting, measure::TestAll)
 
     # testing each individual and return number of positive tests
-    numpos = sum(apply_test(i, measure |> type, sim, measure |> reportable) for i in individuals(s, sim))
+    numpos = sum(apply_test!(i, measure |> type, sim, measure |> reportable) for i in individuals(s, sim))
 
     INTERVENTION_DEBUG && @debug "Testing all members in $(string(typeof(s)))[$(id(s))]: $numpos positives at tick $(sim |> tick)"
 

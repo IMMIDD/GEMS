@@ -1,5 +1,4 @@
-export MeasureEntry
-export offset, measure, delay, condition, process_fn
+export offset, measure, delay, condition
 
 export IStrategy, SStrategy
 export name, condition, measures, add_measure!

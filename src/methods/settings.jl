@@ -1,6 +1,6 @@
 export household, office, schoolclass, municipality, getsetting
-export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
-export geolocation, lat, lon, remove_empty_settings!, present_individuals!, present_individuals, is_open, get_open_contained!, open!, close!
+export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, ags
+export geolocation, lat, lon, present_individuals, is_open, open!, close!
 export sample_individuals
 export activate!
 

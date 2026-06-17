@@ -2,7 +2,8 @@
 ### CONTAINER TYPE FOR ALL SETTINGS (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export SettingsContainer
-export add!, get, setting, settings, settingtypes, settingtypes_sorted, settings_from_jld2!, delete_dangling_ids!, new_setting_ids!, add_type!, add_types!, foreach_setting_vector
+export add!, get, setting, settings
+export settingtypes, foreach_setting_vector, add_type!, add_types!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites 
 
 """

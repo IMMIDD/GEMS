@@ -1,4 +1,4 @@
-export Handover, process_measure, i_measuretypes, s_measuretypes
+export Handover, process_measure
 
 ###
 ### HANDOVER STRUCT
@@ -32,7 +32,7 @@ defined in the `Test` measure.
 
 ```julia
 function process_measure(sim::Simulation, ind::Individual, test::Test)
-    test_pos = apply_test(ind, test |> type, sim, test |> reportable)
+    test_pos = apply_test!(ind, test |> type, sim, test |> reportable)
     return Handover(ind, test_pos ? test |> positive_followup : test |> negative_followup)
 end
 ```
@@ -122,7 +122,7 @@ end
 
 
 # include all Julia files from the "measures"-folder
-dir = basefolder() * "/src/interventions/measures/"
+dir = _basefolder() * "/src/interventions/measures/"
 
 include.(
     filter(

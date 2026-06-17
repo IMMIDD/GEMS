@@ -3,7 +3,6 @@ export Logger, TickLogger, EventLogger, InfectionLogger, VaccinationLogger, Deat
 export QuarantineLogger, StateLogger, CustomLogger
 export tick, log!, save, save_JLD2, dataframe
 export get_infections_between
-export duplicate
 
 """
 Supertype for all Loggers
@@ -680,5 +679,5 @@ end
 
 hasfuncs(cl::CustomLogger) = !(length(cl.funcs) == 1 && first(values(cl.funcs)) == tick)
 dataframe(cl::CustomLogger) = cl.data
-duplicate(cl::CustomLogger) = invoke(CustomLogger, Tuple{}; (cl.funcs |> Base.copy |> f -> delete!(f, :tick) |> NamedTuple)...)
+_duplicate(cl::CustomLogger) = invoke(CustomLogger, Tuple{}; (cl.funcs |> Base.copy |> f -> delete!(f, :tick) |> NamedTuple)...)
 Base.length(logger::CustomLogger) = nrow(logger.data)

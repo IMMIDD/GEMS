@@ -477,7 +477,7 @@ end
 # make sure to define the respective function there and export it (using the export statement).
 
 # include all Julia files from the "plots"-folder
-dir = basefolder() * "/src/model_analysis/post_processing"
+dir = _basefolder() * "/src/model_analysis/post_processing"
 
 include.(
     filter(

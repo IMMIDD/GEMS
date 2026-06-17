@@ -6,14 +6,14 @@ export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
-export tick, label, start_condition, stop_criterion, settingscontainer, settings, population
+export tick, label, start_condition, stop_criterion, settingscontainer, settings, population, stepmod
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogen, pathogen!
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
-export increment!, reset!, reset_tick!
+export reset!
 export tickunit
 export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
 export statelogger, states
@@ -21,7 +21,6 @@ export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, c
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
-export stepmod
 export rng, rngs, seed
 export present_buffers, contact_buffers
 
@@ -291,7 +290,7 @@ mutable struct Simulation
         cnfg = isempty(params[:configfile]) ? "with default configuration" : "from $(params[:configfile])"
         prms = length(passed_params) > 0 ? " and additional parameter(s): $(join(passed_params, ", "))" : ""
 
-        printinfo("Initializing Simulation $cnfg$prms")
+        _printinfo("Initializing Simulation $cnfg$prms")
         return _BUILD_Simulation(; params...)
     end
 
@@ -382,7 +381,7 @@ function _BUILD_Simulation(;
         )
 
         # everything after this is just generating, not loading from disk
-        printinfo("\u2514 Creating simulation object")
+        _printinfo("\u2514 Creating simulation object")
 
         # START DATE
         sd = determine_start_date(config, start_date)
@@ -476,7 +475,7 @@ function determine_start_date(configfile_params::Dict, start_date)
     end
 
     # if no start date is provided, look it up in config file
-    if !haspath(configfile_params, ["Simulation", "startdate"])
+    if !_haspath(configfile_params, ["Simulation", "startdate"])
         @warn "Start date not found in config file and not provided as argument; defualting to today."
         return today()
     end
@@ -505,7 +504,7 @@ function determine_end_date(configfile_params::Dict, end_date)
     end
 
     # if no end date is provided, look it up in config file
-    if !haspath(configfile_params, ["Simulation", "enddate"])
+    if !_haspath(configfile_params, ["Simulation", "enddate"])
         @warn "End date not found in config file and not provided as argument; defualting to today + 1 year."
         return today() + Year(1)
     end
@@ -540,7 +539,7 @@ function determine_tick_unit(configfile_params::Dict, tickunit)
     end
 
     # if no tick unit is provided, look it up in config file
-    if !haspath(configfile_params, ["Simulation", "tickunit"])
+    if !_haspath(configfile_params, ["Simulation", "tickunit"])
         @warn "Tick unit not found in config file and not provided as argument; defualting to 'd'."
         return 'd'
     end
@@ -563,7 +562,7 @@ If neither is provided, it will return the default start condition from the conf
 function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction)
     # return configfile start condition if nothing else provided
     if isnothing(start_condition) && isnothing(infected_fraction)
-        !haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' section must be specified in the config file."))
+        !_haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' section must be specified in the config file."))
         return try 
             create_start_condition(configfile_params["Simulation"]["StartCondition"])
         catch e
@@ -596,7 +595,7 @@ Otherwise, it will return the default stop criterion from the config file.
 function determine_stop_criterion(configfile_params::Dict, stop_criterion)
     # return configfile stop criterion if nothing else provided
     if isnothing(stop_criterion)
-        !haspath(configfile_params, ["Simulation", "StopCriterion"]) && throw(ConfigfileError("No stop criterion found in config file! Without a provided 'stop_criterion' argument, a '[Simulation.StopCriterion]' section must be specified in the config file."))
+        !_haspath(configfile_params, ["Simulation", "StopCriterion"]) && throw(ConfigfileError("No stop criterion found in config file! Without a provided 'stop_criterion' argument, a '[Simulation.StopCriterion]' section must be specified in the config file."))
 
         return try
             create_stop_criterion(configfile_params["Simulation"]["StopCriterion"])
@@ -631,7 +630,7 @@ function determine_pathogen(configfile_params::Dict, pathogen, transmission_func
     end
 
     # if no pathogen is provided, create one from config file parameters
-    !haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogen found in config file! Without a provided 'pathogen' argument, a '[Pathogens]' section must be specified in the config file."))
+    !_haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogen found in config file! Without a provided 'pathogen' argument, a '[Pathogens]' section must be specified in the config file."))
     pg = create_pathogens(configfile_params["Pathogens"])[1]# TODO: allow multiple pathogens
     
     if !isnothing(transmission_function)
@@ -665,7 +664,7 @@ function determine_global_setting(configfile_params::Dict, global_setting)
     end
 
     # if global_setting flag is not provided, look it up in config file
-    if !haspath(configfile_params, ["Simulation", "GlobalSetting"])
+    if !_haspath(configfile_params, ["Simulation", "GlobalSetting"])
         @warn "Global setting not found in config file and not provided as argument; defualting to 'false'."
         return false
     end
@@ -697,7 +696,7 @@ function determine_population(population::String, settingsfile, global_setting; 
     # if settingsfile is provided, load the settings from the file
     if !isnothing(settings_path)
         !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
-        printinfo("\u2514 Loading settings from $(basename(settings_path))")
+        _printinfo("\u2514 Loading settings from $(basename(settings_path))")
         settings_from_jld2!(settings_path, settings, renaming)
     end
 
@@ -748,10 +747,10 @@ function determine_population_and_settings(configfile_params::Dict, population, 
     end
 
     # if no population is provided, use the provided parameters
-    printinfo("\u2514 Creating population")
+    _printinfo("\u2514 Creating population")
 
     # baseline is configfile parameters
-    params = haskey(configfile_params, "Population") ? Dict{Symbol, Any}(prepare_kw_args(configfile_params["Population"])) : Dict{Symbol, Any}()
+    params = haskey(configfile_params, "Population") ? Dict{Symbol, Any}(_prepare_kw_args(configfile_params["Population"])) : Dict{Symbol, Any}()
     # update kw args
     !isnothing(pop_size) && (params[:n] = pop_size)
     !isnothing(avg_household_size) && (params[:avg_household_size] = avg_household_size)
@@ -815,13 +814,13 @@ function determine_setting_type_config!(stngs::SettingsContainer, type::DataType
     end
 
     # if no custom parameters are provided, check if config file has section for the setting type
-    if !haspath(configfile_params, ["Settings", structname(type)])
+    if !_haspath(configfile_params, ["Settings", structname(type)])
         @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
 
     # check if the setting type has a config part for contact sampling method
-    if !haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
+    if !_haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
         @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
@@ -928,19 +927,19 @@ function determine_seed(configfile_params::Dict, seed)
     # if seed is provided, use it
     if !isnothing(seed)
         !isa(seed, Integer) && throw(ArgumentError("Provided seed must be an integer value."))
-        printinfo("\u2514 Initializing RNG with seed $seed")
+        _printinfo("\u2514 Initializing RNG with seed $seed")
         return seed
     end
 
     # if no seed is provided, look it up in config file
-    if !haspath(configfile_params, ["Simulation", "seed"])
+    if !_haspath(configfile_params, ["Simulation", "seed"])
         #@warn "Seed not found in config file and not provided as argument; defualting to random seed."
         return gems_rand(Xoshiro(), 0:typemax(Int)) # generate seed randomly if none is provided
     end
 
     sd = configfile_params["Simulation"]["seed"]
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
-    printinfo("\u2514 Initializing RNG with seed $sd")
+    _printinfo("\u2514 Initializing RNG with seed $sd")
     return sd
 end
 
@@ -1184,16 +1183,16 @@ Interface to remotely access a setting and population file
 """
 function obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
-    printinfo("\u2514 Looking for \"$identifier\" population model")
+    _printinfo("\u2514 Looking for \"$identifier\" population model")
 
     # if argument points to existing population and setting files and forcedownload is deactivated
     if peoplelocal(identifier) |> isfile && settingslocal(identifier) |> isfile && !forcedownload
-        printinfo("\u2514 Retrieving population and settings from $(poplocal(identifier))")
+        _printinfo("\u2514 Retrieving population and settings from $(poplocal(identifier))")
         return (peoplelocal(identifier) , settingslocal(identifier))
     end
 
     # if not, download files
-    printinfo("Population and setting file not available locally. Downloading files...")
+    _printinfo("Population and setting file not available locally. Downloading files...")
     zipath = joinpath(poplocal(identifier), "data.zip")
     # make sure directory exists
     mkpath(dirname(zipath))
@@ -1204,7 +1203,7 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
             compress = :none,
             parser = x -> nothing,
             save_raw = zipath)
-        printinfo("Unpacking ZIP file")
+        _printinfo("Unpacking ZIP file")
     catch e
         throw("Attempted to download remote population `$(identifier)`. Data could not be downloaded. Are you sure the data is available at $(popurl(identifier))?")
     end

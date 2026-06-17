@@ -3,7 +3,7 @@ THIS FILE HANDLES INFECTIONS ON DIFFERENT LEVELS
 This means, that the functionality to directly infect someone and spread a disease
 is contained here.
 =#
-export infect!, spread_infection!, try_to_infect!, update_individual!, sample_contacts, get_containers!
+export infect!, sample_contacts
 
 
 """

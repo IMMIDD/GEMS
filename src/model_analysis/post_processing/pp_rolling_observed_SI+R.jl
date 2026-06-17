@@ -25,7 +25,7 @@ This is done in order to reduce large stochastic fluctuations due to small sampl
 """
 function rolling_observed_SI(postProcessor::PostProcessor)
     # detected cases and serial interval
-    detections = postProcessor |> detected_infections |>
+    detections = postProcessor |> _detected_infections |>
         # filter for data with known serial interval
         x -> x[.!ismissing.(x.serial_interval), :] |>
         # rename to SI
@@ -131,7 +131,7 @@ function observed_R(postProcessor::PostProcessor)
     
     # required data frames
     roSI = postProcessor |> rolling_observed_SI
-    rtc = postProcessor |> reported_tick_cases
+    rtc = postProcessor |> _reported_tick_cases
     
     # required constants
     r_window = R_ESTIMATION_TIME_WINDOW

@@ -1,7 +1,6 @@
-export reported_tick_cases
 
 """
-    reported_tick_cases(postProcessor::PostProcessor)
+    _reported_tick_cases(postProcessor::PostProcessor)
 
 Returns the number of reported positive test cases per tick.
 This analysis is based on the `testDF` dataframe.
@@ -15,7 +14,7 @@ This analysis is based on the `testDF` dataframe.
 | `tick`           | `Int16` | Simulation tick (time)                                                       |
 | `reported_cnt`   | `Int64` | Number of newly reported infections (positive reportable tests) at that tick |
 """
-function reported_tick_cases(postProcessor::PostProcessor)
+function _reported_tick_cases(postProcessor::PostProcessor)
 
     return (postProcessor |> testsDF |>
         x -> x[x.test_result .& x.reportable, :] |>

@@ -10,11 +10,8 @@ export settingchar, settingstring
 export contact_sampling_method, contact_sampling_method!
 export add!
 export id, individuals
-export update_infected_agents!
-export settings_from_population
 export activate!, deactivate!, isactive
 export open!, close!
-export contained, contained_type, contains_type
 
 ###
 ### ABSTRACT TYPES
@@ -831,7 +828,7 @@ function settings_from_population(population::Population, global_setting::Bool =
     default_sampling = ContactparameterSampling(0)
 
     # Get all concrete subtypes of IndividualSetting
-    stngtypes = concrete_subtypes(IndividualSetting)
+    stngtypes = _concrete_subtypes(IndividualSetting)
     if !global_setting
         stngtypes = filter(x -> x != GlobalSetting, stngtypes)
     end

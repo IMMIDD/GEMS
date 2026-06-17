@@ -6,7 +6,6 @@ that is dependent on other structs, so it has to be loaded later.
 =#
 ### EXPORTS
 export step!, run!
-export fire_custom_loggers!
 
 ###
 ### RUN SIMULATION
@@ -372,7 +371,7 @@ function (step!) until the stop criterion is met.
 - `Simulation`: Simulation object
 """
 function run!(simulation::Simulation; with_progressbar::Bool = true)
-    printinfo("Running Simulation $(label(simulation))")
+    _printinfo("Running Simulation $(label(simulation))")
 
     sc = stop_criterion(simulation)
     

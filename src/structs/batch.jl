@@ -1,5 +1,5 @@
 export Batch
-export add!, simconfigs, simsetups
+export add!, simconfigs
 
 """
     Batch

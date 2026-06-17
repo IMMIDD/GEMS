@@ -102,7 +102,7 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 """
 function generate(plt::InfectionDuration, rds::Vector{ResultData}; plotargs...)
 
-    if someempty(aggregated_compartment_periods, rds)
+    if _someempty(aggregated_compartment_periods, rds)
         @warn "Infection duration data not available in all RD-objects. Consider adding the 'aggregated_compartment_periods' field to your RD-Style or use a style that already contains the required data (e.g., the DefaultResultData style)"
         return emptyplot("Infection duration data not available in all RD-object.")
     end

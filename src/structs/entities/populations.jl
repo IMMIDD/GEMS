@@ -111,12 +111,12 @@ mutable struct Population
         file_ext = split(path, ".")[end]
 
         if file_ext == "csv"
-            printinfo("\u2514 Loading population data from $(basename(path))")
+            _printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from CSV and pass it to df constructor
             pop = Population(CSV.File(path) |> DataFrame; ind_extension = ind_extension)
 
         elseif file_ext == "jld2"
-            printinfo("\u2514 Loading population data from $(basename(path))")
+            _printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
             pop = Population(load(path, "data"); ind_extension = ind_extension)
 

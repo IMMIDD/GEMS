@@ -1,3 +1,5 @@
+import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging!, peek, peektick
+
 @testset "Interventions" begin
     #setup of the simulation object:
     sim = Simulation()

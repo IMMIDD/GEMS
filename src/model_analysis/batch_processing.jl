@@ -1,7 +1,5 @@
 # DATA PROCESSING FOR BATCHRUNS
-export BatchProcessor
-
-export rundata, n_runs, median_run, tick_unit, seed
+export median_run, tick_unit, seed
 export total_infections, total_tests, attack_rate, r0
 export tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
 export total_quarantines, dark_figure, cumulative_cases, generation_times
@@ -17,28 +15,28 @@ mutable struct BatchProcessor
     n_runs::Int
     tick_unit::String
 
-    # Per-tick Welford accumulators (tick -> WelfordState)
-    tick_cases::Dict{String, Dict{Int, WelfordState}}
-    effectiveR::Dict{String, Dict{Int, WelfordState}}
-    compartments::Dict{String, Dict{Int, WelfordState}}
-    quarantines::Dict{String, Dict{Int, WelfordState}}
-    tests::Dict{String, Dict{String, Dict{Int, WelfordState}}}
-    pool_tests::Dict{String, Dict{String, Dict{Int, WelfordState}}}
-    sero_tests::Dict{String, Dict{String, Dict{Int, WelfordState}}}
-    dark_figure::Dict{Int, WelfordState}
-    cumulative_cases::Dict{String, Dict{Int, WelfordState}}
-    generation_times::Dict{Int, WelfordState}
-    hospitalizations::Dict{String, Dict{Int, WelfordState}}
-    observed_R::Dict{String, Dict{Int, WelfordState}}
+    # Per-tick Welford accumulators (tick -> _WelfordState)
+    tick_cases::Dict{String, Dict{Int, _WelfordState}}
+    effectiveR::Dict{String, Dict{Int, _WelfordState}}
+    compartments::Dict{String, Dict{Int, _WelfordState}}
+    quarantines::Dict{String, Dict{Int, _WelfordState}}
+    tests::Dict{String, Dict{String, Dict{Int, _WelfordState}}}
+    pool_tests::Dict{String, Dict{String, Dict{Int, _WelfordState}}}
+    sero_tests::Dict{String, Dict{String, Dict{Int, _WelfordState}}}
+    dark_figure::Dict{Int, _WelfordState}
+    cumulative_cases::Dict{String, Dict{Int, _WelfordState}}
+    generation_times::Dict{Int, _WelfordState}
+    hospitalizations::Dict{String, Dict{Int, _WelfordState}}
+    observed_R::Dict{String, Dict{Int, _WelfordState}}
 
     # Scalar Welford accumulators
-    total_infections::WelfordState
-    attack_rate::WelfordState
-    r0::WelfordState
-    total_quarantines::WelfordState
-    total_tests::Dict{String, WelfordState}
-    total_detected_cases::WelfordState
-    detection_rate::WelfordState
+    total_infections::_WelfordState
+    attack_rate::_WelfordState
+    r0::_WelfordState
+    total_quarantines::_WelfordState
+    total_tests::Dict{String, _WelfordState}
+    total_detected_cases::_WelfordState
+    detection_rate::_WelfordState
 
     # Median run — set by process! when median_by is provided
     median_run::Union{Nothing, ResultData}
@@ -66,21 +64,21 @@ mutable struct BatchProcessor
         new(
             0,
             "tick",
-            Dict{String, Dict{Int, WelfordState}}(),
-            Dict{String, Dict{Int, WelfordState}}(),
-            Dict{String, Dict{Int, WelfordState}}(),
-            Dict{String, Dict{Int, WelfordState}}(),
-            Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
-            Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
-            Dict{String, Dict{String, Dict{Int, WelfordState}}}(),
-            Dict{Int, WelfordState}(),
-            Dict{String, Dict{Int, WelfordState}}(),
-            Dict{Int, WelfordState}(),
-            Dict{String, Dict{Int, WelfordState}}(),
-            Dict{String, Dict{Int, WelfordState}}(),
-            WelfordState(), WelfordState(), WelfordState(), WelfordState(),
-            Dict{String, WelfordState}(),
-            WelfordState(), WelfordState(),
+            Dict{String, Dict{Int, _WelfordState}}(),
+            Dict{String, Dict{Int, _WelfordState}}(),
+            Dict{String, Dict{Int, _WelfordState}}(),
+            Dict{String, Dict{Int, _WelfordState}}(),
+            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(),
+            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(),
+            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(),
+            Dict{Int, _WelfordState}(),
+            Dict{String, Dict{Int, _WelfordState}}(),
+            Dict{Int, _WelfordState}(),
+            Dict{String, Dict{Int, _WelfordState}}(),
+            Dict{String, Dict{Int, _WelfordState}}(),
+            _WelfordState(), _WelfordState(), _WelfordState(), _WelfordState(),
+            Dict{String, _WelfordState}(),
+            _WelfordState(), _WelfordState(),
             nothing,
             master_seed,
             keep_rundata ? ResultData[] : nothing,
@@ -95,22 +93,22 @@ end
 ### INTERNAL HELPERS
 ###
 
-function _update_singlecol!(accum::Dict{Int, WelfordState}, df::DataFrame, key_col::Symbol, val_col::Symbol)
+function _update_singlecol!(accum::Dict{Int, _WelfordState}, df::DataFrame, key_col::Symbol, val_col::Symbol)
     for row in eachrow(df)
         val = row[val_col]
         ismissing(val) && continue
-        welford_update!(get!(accum, Int(row[key_col]), WelfordState()), val)
+        _welford_update!(get!(accum, Int(row[key_col]), _WelfordState()), val)
     end
 end
 
-function _update_multicol!(accum::Dict{String, Dict{Int, WelfordState}}, df::DataFrame, key_col::Symbol)
+function _update_multicol!(accum::Dict{String, Dict{Int, _WelfordState}}, df::DataFrame, key_col::Symbol)
     val_cols = [name for name in names(df) if name != string(key_col)]
     for col in val_cols
-        col_accum = get!(accum, col, Dict{Int, WelfordState}())
+        col_accum = get!(accum, col, Dict{Int, _WelfordState}())
         for row in eachrow(df)
             val = row[col]
             ismissing(val) && continue
-            welford_update!(get!(col_accum, Int(row[key_col]), WelfordState()), val)
+            _welford_update!(get!(col_accum, Int(row[key_col]), _WelfordState()), val)
         end
     end
 end
@@ -142,7 +140,7 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
         # exclude derived rate columns — they are 0 for no-test ticks (not undefined),
         # which would bias the Welford mean; counts are accumulated instead
         _update_multicol!(
-            get!(bp.tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
+            get!(bp.tests, testtype, Dict{String, Dict{Int, _WelfordState}}()),
             select(df, Not(intersect(["positive_rate", "rolling_positive_rate"], names(df)))),
             :tick
         )
@@ -157,7 +155,7 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
             active = row[:exposed_cnt] + row[:infectious_cnt]
             active > 0 || continue
             frac = 1.0 - row[:detected_cnt] / active
-            welford_update!(get!(bp.dark_figure, Int(row[:tick]), WelfordState()), frac)
+            _welford_update!(get!(bp.dark_figure, Int(row[:tick]), _WelfordState()), frac)
         end
     end
 
@@ -165,7 +163,7 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     _update_multicol!(bp.cumulative_cases, cumulative_cases(pp), :tick)
 
     # Mean generation time per tick
-    gt = tick_generation_times(pp)
+    gt = _tick_generation_times(pp)
     if !isempty(gt) && hasproperty(gt, :mean_generation_time)
         _update_singlecol!(
             bp.generation_times,
@@ -175,33 +173,33 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     end
 
     # Hospitalizations and observed R per tick
-    _update_multicol!(bp.hospitalizations, hospital_df(pp), :tick)
+    _update_multicol!(bp.hospitalizations, _hospital_df(pp), :tick)
     _update_multicol!(bp.observed_R, observed_R(pp), :tick)
 
     # Pool and serology tests per tick
     for (testtype, df) in tick_pooltests(pp)
         _update_multicol!(
-            get!(bp.pool_tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
+            get!(bp.pool_tests, testtype, Dict{String, Dict{Int, _WelfordState}}()),
             df, :tick
         )
     end
     for (testtype, df) in tick_serotests(pp)
         _update_multicol!(
-            get!(bp.sero_tests, testtype, Dict{String, Dict{Int, WelfordState}}()),
+            get!(bp.sero_tests, testtype, Dict{String, Dict{Int, _WelfordState}}()),
             df, :tick
         )
     end
 
     # Scalar accumulators
-    welford_update!(bp.total_infections, nrow(infectionsDF(pp)))
-    welford_update!(bp.attack_rate, attack_rate(pp))
-    welford_update!(bp.r0, r0(pp))
-    welford_update!(bp.total_quarantines, total_quarantines(pp))
+    _welford_update!(bp.total_infections, nrow(infectionsDF(pp)))
+    _welford_update!(bp.attack_rate, attack_rate(pp))
+    _welford_update!(bp.r0, r0(pp))
+    _welford_update!(bp.total_quarantines, total_quarantines(pp))
     for (testtype, cnt) in total_tests(pp)
-        welford_update!(get!(bp.total_tests, testtype, WelfordState()), cnt)
+        _welford_update!(get!(bp.total_tests, testtype, _WelfordState()), cnt)
     end
-    welford_update!(bp.total_detected_cases, total_detected_cases(pp))
-    welford_update!(bp.detection_rate, detection_rate(pp))
+    _welford_update!(bp.total_detected_cases, total_detected_cases(pp))
+    _welford_update!(bp.detection_rate, detection_rate(pp))
 
     # Optional: all ResultData
     if bp.rundata !== nothing
@@ -269,7 +267,7 @@ Returns aggregated statistics for total infections across all runs.
 Keys: `"min"`, `"max"`, `"mean"`, `"std"`, `"lower_95"`, `"upper_95"`.
 """
 function total_infections(bp::BatchProcessor)
-    return welford_to_aggregate(bp.total_infections)
+    return _welford_to_aggregate(bp.total_infections)
 end
 
 """
@@ -278,7 +276,7 @@ end
 Returns aggregated statistics for the attack rate across all runs.
 """
 function attack_rate(bp::BatchProcessor)
-    return welford_to_aggregate(bp.attack_rate)
+    return _welford_to_aggregate(bp.attack_rate)
 end
 
 """
@@ -287,7 +285,7 @@ end
 Returns aggregated statistics for the basic reproduction number across all runs.
 """
 function r0(bp::BatchProcessor)
-    return welford_to_aggregate(bp.r0)
+    return _welford_to_aggregate(bp.r0)
 end
 
 """
@@ -296,7 +294,7 @@ end
 Returns aggregated statistics for total quarantines across all runs.
 """
 function total_quarantines(bp::BatchProcessor)
-    return welford_to_aggregate(bp.total_quarantines)
+    return _welford_to_aggregate(bp.total_quarantines)
 end
 
 """
@@ -305,7 +303,7 @@ end
 Returns a dict mapping test type name to aggregated statistics across all runs.
 """
 function total_tests(bp::BatchProcessor)
-    return Dict(k => welford_to_aggregate(v) for (k, v) in bp.total_tests)
+    return Dict(k => _welford_to_aggregate(v) for (k, v) in bp.total_tests)
 end
 
 """
@@ -316,7 +314,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`exposed_cnt`, `infectious_cnt`, `recovered_cnt`, `dead_cnt`).
 """
 function tick_cases(bp::BatchProcessor)
-    return welford_df_to_stats_df_multicol(bp.tick_cases, :tick)
+    return _welford_df_to_stats_df_multicol(bp.tick_cases, :tick)
 end
 
 """
@@ -327,7 +325,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`effective_R`, `rolling_R`, `in_hh_effective_R`, `rolling_in_hh_R`, `rolling_out_hh_R`).
 """
 function effectiveR(bp::BatchProcessor)
-    return welford_df_to_stats_df_multicol(bp.effectiveR, :tick)
+    return _welford_df_to_stats_df_multicol(bp.effectiveR, :tick)
 end
 
 """
@@ -338,7 +336,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`quarantined`, `students`, `workers`, `other`).
 """
 function cumulative_quarantines(bp::BatchProcessor)
-    return welford_df_to_stats_df_multicol(bp.quarantines, :tick)
+    return _welford_df_to_stats_df_multicol(bp.quarantines, :tick)
 end
 
 """
@@ -349,7 +347,7 @@ Returns a `Dict{String, DataFrame}` keyed by compartment name
 (`latent`, `pre_symptomatic`, `symptomatic`, `asymptomatic`).
 """
 function cumulative_disease_progressions(bp::BatchProcessor)
-    return welford_df_to_stats_df_multicol(bp.compartments, :tick)
+    return _welford_df_to_stats_df_multicol(bp.compartments, :tick)
 end
 
 """
@@ -359,7 +357,7 @@ Returns aggregated test statistics per tick for each test type.
 Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
 """
 function tests(bp::BatchProcessor)
-    return Dict(k => welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.tests)
+    return Dict(k => _welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.tests)
 end
 
 """
@@ -369,7 +367,7 @@ Returns aggregated pool test statistics per tick for each test type.
 Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
 """
 function pool_tests(bp::BatchProcessor)
-    return Dict(k => welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.pool_tests)
+    return Dict(k => _welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.pool_tests)
 end
 
 """
@@ -379,7 +377,7 @@ Returns aggregated serology test statistics per tick for each test type.
 Returns a `Dict{String, Dict{String, DataFrame}}` keyed by test type then column name.
 """
 function sero_tests(bp::BatchProcessor)
-    return Dict(k => welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.sero_tests)
+    return Dict(k => _welford_df_to_stats_df_multicol(v, :tick) for (k, v) in bp.sero_tests)
 end
 
 """
@@ -390,7 +388,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (e.g. `current_hospitalized`, `current_icu`, `hospital_admissions`).
 """
 function hospitalizations(bp::BatchProcessor)
-    return welford_df_to_stats_df_multicol(bp.hospitalizations, :tick)
+    return _welford_df_to_stats_df_multicol(bp.hospitalizations, :tick)
 end
 
 """
@@ -401,7 +399,7 @@ Returns a `Dict{String, DataFrame}` keyed by column name
 (`mean_est_R`, `lower_est_R`, `upper_est_R`).
 """
 function observed_R(bp::BatchProcessor)
-    return welford_df_to_stats_df_multicol(bp.observed_R, :tick)
+    return _welford_df_to_stats_df_multicol(bp.observed_R, :tick)
 end
 
 """
@@ -410,7 +408,7 @@ end
 Returns aggregated statistics for total detected cases across all runs.
 """
 function total_detected_cases(bp::BatchProcessor)
-    return welford_to_aggregate(bp.total_detected_cases)
+    return _welford_to_aggregate(bp.total_detected_cases)
 end
 
 """
@@ -419,7 +417,7 @@ end
 Returns aggregated statistics for the detection rate across all runs.
 """
 function detection_rate(bp::BatchProcessor)
-    return welford_to_aggregate(bp.detection_rate)
+    return _welford_to_aggregate(bp.detection_rate)
 end
 
 """
@@ -429,7 +427,7 @@ Returns aggregated dark figure fractions per tick across all runs as a `DataFram
 Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
 """
 function dark_figure(bp::BatchProcessor)
-    return welford_df_to_stats_df(bp.dark_figure, :tick)
+    return _welford_df_to_stats_df(bp.dark_figure, :tick)
 end
 
 """
@@ -439,7 +437,7 @@ Returns aggregated cumulative case counts per tick across all runs.
 Returns a `Dict{String, DataFrame}` keyed by column name (e.g. `exposed_cum`, `recovered_cum`, `deaths_cum`).
 """
 function cumulative_cases(bp::BatchProcessor)
-    return welford_df_to_stats_df_multicol(bp.cumulative_cases, :tick)
+    return _welford_df_to_stats_df_multicol(bp.cumulative_cases, :tick)
 end
 
 """
@@ -449,7 +447,7 @@ Returns aggregated mean generation times per tick across all runs as a `DataFram
 Columns: `tick`, `minimum`, `maximum`, `mean`, `std`, `lower_95`, `upper_95`.
 """
 function generation_times(bp::BatchProcessor)
-    return welford_df_to_stats_df(bp.generation_times, :tick)
+    return _welford_df_to_stats_df(bp.generation_times, :tick)
 end
 
 

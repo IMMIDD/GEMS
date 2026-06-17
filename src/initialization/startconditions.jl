@@ -11,7 +11,7 @@ export start_conditions
 # make sure to define the new struct and the required initialize!()-function.
 
 # include all Julia files from the "start_conditions"-folder
-dir = basefolder() * "/src/initialization/start_conditions"
+dir = _basefolder() * "/src/initialization/start_conditions"
 
 include.(
     filter(
