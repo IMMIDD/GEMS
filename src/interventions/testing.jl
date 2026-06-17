@@ -2,7 +2,6 @@ export TestType
 export SeroprevalenceTestType
 export pathogen, sensitivity, specificity, name
 
-export apply_test, apply_pool_test
 
 
 ###
@@ -197,7 +196,7 @@ Base.show(io::IO, tt::SeroprevalenceTestType) = print(io, "$(tt.pathogen.name)-T
 
 
 """
-    apply_test(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
+    apply_test!(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
 
 Subjects the individual to a test of the specified `TestType` and logs the result in the simulation's 
 `TestLogger`. Returns a boolean; `true` if test was positive and `false` otherwise. Note that this
@@ -217,7 +216,7 @@ undetected individual.
 - `Bool`: Test result (**Note**: Pay attention to test sensitivity and specificity of the respective `TestType` as this
     might lead to false negatives or false positives)
 """
-function apply_test(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
+function apply_test!(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
 
     # apply test
     test_pos = infected(ind) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
@@ -246,7 +245,7 @@ end
 
 """
 
-    apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual}, Nothing} = nothing)
+    apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual}, Nothing} = nothing)
 
 Subjects a collection of individuals to a pool test of the specified `TestType` and logs the result in the simulation's 
 `PoolTestLogger`. Returns a boolean; `true` if test was positive (at least one infected individual) and `false` otherwise. Note that this
@@ -266,7 +265,7 @@ take all individuals assigned to the specified setting.
 - `Bool`: Test result (**Note**: Pay attention to test sensitivity and specificity of the respective `TestType` as this
     might lead to false negatives or false positives)
 """
-function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual},Nothing}=nothing)
+function apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual},Nothing}=nothing)
     # if a subset is provided, check whether subset is ACTUALLY a subset of the setting
     if subset !== nothing && !issubset(subset, setting |> individuals)
         throw(ArgumentError("Not all individuals of the provided 'subset' are found to be members of the specified settting."))
@@ -297,7 +296,7 @@ function apply_pool_test(setting::Setting, testtype::TestType, sim::Simulation; 
 end
 
 """
-    apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simulation, reportable::Bool)
+    apply_test!(ind::Individual, testtype::SeroprevalenceTestType, sim::Simulation, reportable::Bool)
 
 Subjects the individual to a test of the specified `SeroprevalenceTestType`. Returns a boolean; 
 `true` if test was positive and `false` otherwise. Note that this
@@ -313,7 +312,7 @@ fuction might return false positives and false negatives, depending on the `Sero
 - `Bool`: Test result (**Note**: Pay attention to test sensitivity and specificity of the respective `SeroprevalenceTestType` as this
     might lead to false negatives or false positives)
 """
-function apply_test(ind::Individual, testtype::SeroprevalenceTestType, sim::Simulation, reportable::Bool)
+function apply_test!(ind::Individual, testtype::SeroprevalenceTestType, sim::Simulation, reportable::Bool)
 
     # apply test
     # check if individual has ever been infected

@@ -6,7 +6,6 @@ that is dependent on other structs, so it has to be loaded later.
 =#
 ### EXPORTS
 export step!, run!
-export fire_custom_loggers!
 
 ###
 ### RUN SIMULATION
