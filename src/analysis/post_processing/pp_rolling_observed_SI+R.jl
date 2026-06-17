@@ -28,7 +28,7 @@ function rolling_observed_SI(postProcessor::PostProcessor)
     windowsize = SI_ESTIMATION_TIME_WINDOW
     final_tick = postProcessor |> simulation |> tick
 
-    det_all = postProcessor |> detected_infections |>
+    det_all = postProcessor |> _detected_infections |>
         x -> subset(x, :serial_interval => ByRow(!ismissing), view=true) |>
         x -> DataFrames.select(x, :tick, :pathogen_id, :serial_interval => :SI) |>
         x -> sort!(x, [:pathogen_id, :tick])

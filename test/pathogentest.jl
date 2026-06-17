@@ -1,4 +1,4 @@
-import GEMS: _rand_val as rand_val
+import GEMS: _rand_val
 
 @testset "Pathogens" begin
 
@@ -179,13 +179,13 @@ import GEMS: _rand_val as rand_val
         function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression, rng::Xoshiro )
             
             # Calculate the time to infectiousness
-            infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
+            infectiousness_onset = tick + Int16(1) + _rand_val(dp.exposure_to_infectiousness_onset, rng)
 
             # Calculate the time to symptom onset
-            symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset, rng)
+            symptom_onset = infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng)
 
             # Calculate the time to recovery
-            recovery = symptom_onset + rand_val(dp.symptom_onset_to_recovery, rng)
+            recovery = symptom_onset + _rand_val(dp.symptom_onset_to_recovery, rng)
 
             return DiseaseProgression(
                 exposure = Int16(tick),

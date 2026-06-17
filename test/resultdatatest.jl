@@ -1,5 +1,5 @@
-import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hashes as hashes,
-    _allempty as allempty, _someempty as someempty,
+import GEMS: _infections_hash, _data_hash, _hashes,
+    _allempty, _someempty,
     config_file_val, population_params
 
 @testset "Result Data" begin
@@ -455,9 +455,9 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
     end
 
     @testset "Hashes" begin
-        @test infections_hash(rd) isa Base.SHA1
-        @test data_hash(rd) isa Base.SHA1
-        @test hashes(rd) == Dict()
+        @test _infections_hash(rd) isa Base.SHA1
+        @test _data_hash(rd) isa Base.SHA1
+        @test _hashes(rd) == Dict()
     end
 
     @testset "Printing" begin
@@ -469,7 +469,7 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
     @testset "Testing allempty and someempty with ResultData" begin
         f(rd) = get(rd.data, "test_key", [])
         rd = ResultData(pp)
-        @test allempty(f, [rd])
-        @test someempty(f, [rd])
+        @test _allempty(f, [rd])
+        @test _someempty(f, [rd])
     end
 end

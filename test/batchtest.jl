@@ -1,4 +1,4 @@
-import GEMS: _WelfordState as WelfordState, _welford_update! as welford_update!
+import GEMS: _WelfordState, _welford_update!
 import GEMS: BatchProcessor, n_runs, rundata
 
 @testset "Batch" begin
@@ -355,12 +355,12 @@ import GEMS: BatchProcessor, n_runs, rundata
             # directly insert fake per-type test data to exercise the multi-type branch of generate(TotalTests(), bd::BatchData)
             bp_tests = BatchProcessor()
             for testtype in ["PCR", "Antigen"]
-                bp_tests.tests[testtype] = Dict{String, Dict{Int, WelfordState}}()
+                bp_tests.tests[testtype] = Dict{String, Dict{Int, _WelfordState}}()
                 for col in ["total_tests", "positive_tests", "negative_tests"]
-                    col_accum = Dict{Int, WelfordState}()
+                    col_accum = Dict{Int, _WelfordState}()
                     for tick in 1:5
-                        s = WelfordState()
-                        welford_update!(s, Float64(tick))
+                        s = _WelfordState()
+                        _welford_update!(s, Float64(tick))
                         col_accum[tick] = s
                     end
                     bp_tests.tests[testtype][col] = col_accum

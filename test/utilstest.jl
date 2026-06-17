@@ -1,9 +1,12 @@
-import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as identical, _bad_unique as bad_unique,
-    _parameters as parameters, _calculate_absolute_error as calculate_absolute_error,
-    _WelfordState as WelfordState, _welford_update! as welford_update!,
-    _welford_to_aggregate as welford_to_aggregate, _welford_df_to_stats_df as welford_df_to_stats_df,
-    _welford_df_to_stats_df_multicol as welford_df_to_stats_df_multicol,
-    _get_missing_docs as get_missing_docs
+import GEMS: _isdate, _foldercount, _identical, _bad_unique,
+    _parameters, _calculate_absolute_error,
+    _WelfordState, _welford_update!,
+    _welford_to_aggregate, _welford_df_to_stats_df,
+    _welford_df_to_stats_df_multicol,
+    _get_missing_docs,
+    _concrete_subtypes,
+    _basefolder, _find_subtype, _is_existing_subtype,
+    find_alpha, structname, type_in_collection
 
 @testset "Utils" begin
 
@@ -65,38 +68,38 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
     end
 
     @testset "isdate tests" begin
-        @test isdate("2024-01-01") == true
-        @test isdate("not-a-date") == false
+        @test _isdate("2024-01-01") == true
+        @test _isdate("not-a-date") == false
     end
 
     @testset "foldercount tests" begin
         mktempdir() do tmpdir
             # Leeres Verzeichnis
-            @test foldercount(tmpdir) == 0
+            @test _foldercount(tmpdir) == 0
 
             # Füge eine Datei hinzu
             touch(joinpath(tmpdir, "file.txt"))
-            @test foldercount(tmpdir) == 0
+            @test _foldercount(tmpdir) == 0
 
             # Füge einen Unterordner hinzu
             mkdir(joinpath(tmpdir, "subfolder1"))
-            @test foldercount(tmpdir) == 1
+            @test _foldercount(tmpdir) == 1
 
             # Noch ein Unterordner
             mkdir(joinpath(tmpdir, "subfolder2"))
-            @test foldercount(tmpdir) == 2
+            @test _foldercount(tmpdir) == 2
         end
     end
     @testset "basefolder test" begin
-        path = GEMS._basefolder()
+        path = _basefolder()
         @test isdir(path)  # Es sollte ein existierendes Verzeichnis sein
     end
     @testset "identical tests" begin
         # Primitive Types
-        @test identical(5, 5) == true
-        @test identical(5, 6) == false
-        @test identical("hi", "hi") == true
-        @test identical("hi", "ho") == false
+        @test _identical(5, 5) == true
+        @test _identical(5, 6) == false
+        @test _identical("hi", "hi") == true
+        @test _identical("hi", "ho") == false
 
         # Structs mit Feldern
         struct TestStruct
@@ -107,11 +110,11 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
         a = TestStruct(1, "test")
         b = TestStruct(1, "test")
         c = TestStruct(2, "fail")
-        @test identical(a, b) == true
-        @test identical(a, c) == false
+        @test _identical(a, b) == true
+        @test _identical(a, c) == false
 
         # Verschiedene Typen
-        @test identical(5, "5") == false
+        @test _identical(5, "5") == false
     end
 
     @testset "bad_unique tests" begin
@@ -127,38 +130,38 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
 =#
         # length 1: returns immediately, vector unchanged
         v = [42]
-        bad_unique(v)
+        _bad_unique(v)
         @test v == [42]
 
         # length > 1: duplicate removed, unique values preserved
         v = [1, 1, 2]
-        bad_unique(v)
+        _bad_unique(v)
         @test length(v) == 2
         @test 1 in v
         @test 2 in v
 
         # length > 1: no duplicates, vector unchanged
         v = [1, 2, 3]
-        bad_unique(v)
+        _bad_unique(v)
         @test v == [1, 2, 3]
     end
 
     @testset "find_subtype" begin
-        @test GEMS._find_subtype("Household", Setting) == Household
-        @test_throws ArgumentError GEMS._find_subtype("NonExistentType", Setting)
+        @test _find_subtype("Household", Setting) == Household
+        @test_throws ArgumentError _find_subtype("NonExistentType", Setting)
     end
 
     @testset "concrete_subtypes" begin
         # abstract type with no subtypes returns empty vector
         abstract type _EmptyAbstract end
-        @test concrete_subtypes(_EmptyAbstract) == DataType[]
+        @test _concrete_subtypes(_EmptyAbstract) == DataType[]
     end
 
     @testset "is_existing_subtype" begin
-        @test GEMS._is_existing_subtype("Household", Setting) == true
-        @test GEMS._is_existing_subtype("NonExistentType", Setting) == false
+        @test _is_existing_subtype("Household", Setting) == true
+        @test _is_existing_subtype("NonExistentType", Setting) == false
         # concrete_subtypes may return "GEMS.Household" - should still match on last segment
-        @test GEMS._is_existing_subtype("Household", IndividualSetting) == true
+        @test _is_existing_subtype("Household", IndividualSetting) == true
     end
 
     @testset "county_data" begin
@@ -192,7 +195,7 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
     end
 
     @testset "get_missing_docs test" begin
-        missing = get_missing_docs()
+        missing = _get_missing_docs()
         @test missing isa Vector{Symbol}  # Es sollte ein Symbol-Vektor sein
     end
 
@@ -289,13 +292,13 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
 
     @testset "parameters" begin
         d = Normal(2.0, 0.5)
-        p = parameters(d)
+        p = _parameters(d)
         @test p["distribution"] == string(d)
         @test isapprox(p["mean"], 2.0, atol = 1e-10)
         @test isapprox(p["std"], 0.5, atol = 1e-10)
 
         d2 = Uniform(0.0, 1.0)
-        p2 = parameters(d2)
+        p2 = _parameters(d2)
         @test isapprox(p2["mean"], 0.5, atol = 1e-10)
         @test isapprox(p2["std"], 1/sqrt(12), atol = 1e-10)
     end
@@ -305,19 +308,19 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
         m2 = [3 1; 4 2]
 
         expected = [1 1; 2 0]
-        result = calculate_absolute_error(m1, m2)
+        result = _calculate_absolute_error(m1, m2)
 
         @test result == expected
     end
     @testset "find_alpha" begin
         om = [1.0 2.0; 3.0 4.0]
         pm = [0.5 1.0; 1.5 2.0]
-        alpha = GEMS.find_alpha(om, pm)
+        alpha = find_alpha(om, pm)
         @test isapprox(alpha, 2.0, atol=1e-10)
 
         om2 = [1 2]
         pm2 = [1 2; 3 4]
-        @test_throws ArgumentError GEMS.find_alpha(om2, pm2)
+        @test_throws ArgumentError find_alpha(om2, pm2)
     end
 
     @testset "gemscolors" begin
@@ -353,20 +356,20 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
     @testset "Typing System" begin
 
         # not exported but important to test
-        @test GEMS.structname("GEMS.Household") == "Household"
-        @test GEMS.structname(GEMS.Household) == "Household"
+        @test structname("GEMS.Household") == "Household"
+        @test structname(GEMS.Household) == "Household"
 
         plt_types = convert.(DataType, subtypes(SimulationPlot))
         test_plt = plt_types[1]
 
-        @test GEMS.type_in_collection(string(test_plt), plt_types)
-        @test GEMS.type_in_collection("GEMS.$test_plt", plt_types)
-        @test GEMS.type_in_collection("Other.$test_plt", plt_types)
-        @test GEMS.type_in_collection(test_plt, plt_types)
-        @test GEMS.type_in_collection(string(test_plt), string.(plt_types))
-        @test GEMS.type_in_collection(test_plt, string.(plt_types))
-        @test GEMS.type_in_collection(test_plt, (x -> "GEMS.$x").(plt_types))
-              
+        @test type_in_collection(string(test_plt), plt_types)
+        @test type_in_collection("GEMS.$test_plt", plt_types)
+        @test type_in_collection("Other.$test_plt", plt_types)
+        @test type_in_collection(test_plt, plt_types)
+        @test type_in_collection(string(test_plt), string.(plt_types))
+        @test type_in_collection(test_plt, string.(plt_types))
+        @test type_in_collection(test_plt, (x -> "GEMS.$x").(plt_types))
+
         # transmission functions
         tfs = transmission_functions()
         @test all(x -> (isa(x, DataType) || isa(x, UnionAll)) && x <: TransmissionFunction, tfs)
@@ -375,7 +378,7 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
 
     @testset "WelfordState" begin
         # initial state
-        s = WelfordState()
+        s = _WelfordState()
         @test s.n == 0
         @test s.min == Inf
         @test s.max == -Inf
@@ -383,7 +386,7 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
         # accumulate known values and verify against Statistics
         vals = [3.0, 7.0, 1.0, 9.0, 5.0]
         for v in vals
-            welford_update!(s, v)
+            _welford_update!(s, v)
         end
         @test s.n == 5
         @test s.mean ≈ mean(vals)
@@ -391,7 +394,7 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
         @test s.max == 9.0
 
         # welford_to_aggregate keys and correctness
-        agg = welford_to_aggregate(s)
+        agg = _welford_to_aggregate(s)
         @test Set(keys(agg)) == Set(["mean", "std", "min", "max", "lower_95", "upper_95"])
         @test agg["mean"] ≈ mean(vals)
         @test agg["std"] ≈ std(vals) atol = 1e-10
@@ -400,11 +403,11 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
         @test agg["lower_95"] < agg["mean"] < agg["upper_95"]
 
         # welford_df_to_stats_df schema and values
-        accum = Dict{Int, WelfordState}()
+        accum = Dict{Int, _WelfordState}()
         for (tick, v) in [(1, 10.0), (1, 20.0), (2, 5.0), (2, 15.0)]
-            welford_update!(get!(accum, tick, WelfordState()), v)
+            _welford_update!(get!(accum, tick, _WelfordState()), v)
         end
-        df = welford_df_to_stats_df(accum, :tick)
+        df = _welford_df_to_stats_df(accum, :tick)
         @test "tick" in names(df)
         @test "mean" in names(df)
         @test "minimum" in names(df)
@@ -414,12 +417,12 @@ import GEMS: _isdate as isdate, _foldercount as foldercount, _identical as ident
         @test df[df.tick .== 2, "mean"][1] ≈ 10.0
 
         # welford_df_to_stats_df_multicol returns one df per column
-        accum_multi = Dict{String, Dict{Int, WelfordState}}()
+        accum_multi = Dict{String, Dict{Int, _WelfordState}}()
         for col in ["a", "b"]
-            accum_multi[col] = Dict{Int, WelfordState}()
-            welford_update!(get!(accum_multi[col], 1, WelfordState()), col == "a" ? 2.0 : 8.0)
+            accum_multi[col] = Dict{Int, _WelfordState}()
+            _welford_update!(get!(accum_multi[col], 1, _WelfordState()), col == "a" ? 2.0 : 8.0)
         end
-        dfs = welford_df_to_stats_df_multicol(accum_multi, :tick)
+        dfs = _welford_df_to_stats_df_multicol(accum_multi, :tick)
         @test Set(keys(dfs)) == Set(["a", "b"])
         @test dfs["a"][1, "mean"] ≈ 2.0
         @test dfs["b"][1, "mean"] ≈ 8.0

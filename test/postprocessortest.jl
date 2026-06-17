@@ -1,6 +1,7 @@
-import GEMS: _mean_contacts_per_age_group as mean_contacts_per_age_group,
-    _individuals_per_age_group as individuals_per_age_group,
-    _weighted_error_sum as weighted_error_sum
+import GEMS: _mean_contacts_per_age_group,
+    _individuals_per_age_group,
+    _weighted_error_sum,
+    _aggregate_populationDF_by_age
 
 @testset "Post Processing" begin
     # setting up post processor structure
@@ -154,9 +155,9 @@ import GEMS: _mean_contacts_per_age_group as mean_contacts_per_age_group,
         number_of_intervals = ceil(Int, length(simulation_contact_matrix_data[1, :]) / 10)
 
         population_df = populationDF(pp)
-        aggregated_population = GEMS._aggregate_populationDF_by_age(population_df, 10)
+        aggregated_population = _aggregate_populationDF_by_age(population_df, 10)
 
-        contact_matrix = mean_contacts_per_age_group(pp, Household, 10)
+        contact_matrix = _mean_contacts_per_age_group(pp, Household, 10)
 
         # test interval length of output matrix
         @test contact_matrix._size == number_of_intervals
@@ -165,49 +166,49 @@ import GEMS: _mean_contacts_per_age_group as mean_contacts_per_age_group,
         @test contact_matrix._size == length(aggregated_population)
 
         # aggregate_populationDF_by_age: error without age column
-        @test_throws ArgumentError GEMS._aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10)
-        @test_throws ArgumentError GEMS._aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10, 80)
+        @test_throws ArgumentError _aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10)
+        @test_throws ArgumentError _aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10, 80)
 
         # aggregate_populationDF_by_age with max_age: all individuals are preserved in aggregated bins
-        agg_pop_bounded = GEMS._aggregate_populationDF_by_age(population_df, 10, 80)
+        agg_pop_bounded = _aggregate_populationDF_by_age(population_df, 10, 80)
         @test sum(agg_pop_bounded) == nrow(population_df)
 
         # individuals_per_age_group without aggregation_bound
-        ipag = individuals_per_age_group(pp, 10)
+        ipag = _individuals_per_age_group(pp, 10)
         @test ipag isa DataFrame
         @test :age_groups in propertynames(ipag)
         @test :num_individuals in propertynames(ipag)
         @test sum(ipag.num_individuals) == nrow(population_df)
 
         # individuals_per_age_group with aggregation_bound: error cases
-        @test_throws ArgumentError individuals_per_age_group(pp, 1, 80)  # interval_steps <= 1
-        @test_throws ArgumentError individuals_per_age_group(pp, 10, 1)  # aggregation_bound <= 1
-        @test_throws ArgumentError individuals_per_age_group(pp, 10, 5)  # aggregation_bound < interval_steps
-        @test_throws ArgumentError individuals_per_age_group(pp, 10, 85) # not a multiple
+        @test_throws ArgumentError _individuals_per_age_group(pp, 1, 80)  # interval_steps <= 1
+        @test_throws ArgumentError _individuals_per_age_group(pp, 10, 1)  # aggregation_bound <= 1
+        @test_throws ArgumentError _individuals_per_age_group(pp, 10, 5)  # aggregation_bound < interval_steps
+        @test_throws ArgumentError _individuals_per_age_group(pp, 10, 85) # not a multiple
 
         # individuals_per_age_group with aggregation_bound: all individuals preserved
-        ipag_bounded = individuals_per_age_group(pp, 10, 80)
+        ipag_bounded = _individuals_per_age_group(pp, 10, 80)
         @test ipag_bounded isa DataFrame
         @test sum(ipag_bounded.num_individuals) == nrow(population_df)
 
         # mean_contacts_per_age_group with max_age: error case
-        @test_throws ArgumentError mean_contacts_per_age_group(pp, Household, 10, 1)
+        @test_throws ArgumentError _mean_contacts_per_age_group(pp, Household, 10, 1)
 
         # mean_contacts_per_age_group with max_age: returns valid non-negative matrix
-        cm_bounded = mean_contacts_per_age_group(pp, Household, 10, 80)
+        cm_bounded = _mean_contacts_per_age_group(pp, Household, 10, 80)
         @test cm_bounded isa ContactMatrix{Float64}
         @test all(x -> x >= 0.0, cm_bounded.data)
 
         # weighted_error_sum with a zero error matrix → 0
         n = cm_bounded._size
-        @test weighted_error_sum(pp, ContactMatrix{Float64}(zeros(Float64, n, n), 10, 80)) == 0.0
+        @test _weighted_error_sum(pp, ContactMatrix{Float64}(zeros(Float64, n, n), 10, 80)) == 0.0
 
         # weighted_error_sum with a ones error matrix → positive (population is non-empty)
-        @test weighted_error_sum(pp, ContactMatrix{Float64}(ones(Float64, n, n), 10, 80)) > 0.0
+        @test _weighted_error_sum(pp, ContactMatrix{Float64}(ones(Float64, n, n), 10, 80)) > 0.0
 
         # weighted_error_sum comparing simulation against its own contact matrix → non-negative
-        @test weighted_error_sum(pp, Household, cm_bounded; fit_to_reference_matrix=false) >= 0.0
-        @test weighted_error_sum(pp, Household, cm_bounded; fit_to_reference_matrix=true) >= 0.0
+        @test _weighted_error_sum(pp, Household, cm_bounded; fit_to_reference_matrix=false) >= 0.0
+        @test _weighted_error_sum(pp, Household, cm_bounded; fit_to_reference_matrix=true) >= 0.0
 
     end
 end

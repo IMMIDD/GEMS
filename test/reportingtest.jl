@@ -1,4 +1,4 @@
-import GEMS: _WelfordState as WelfordState, _welford_update! as welford_update!
+import GEMS: _WelfordState, _welford_update!
 import GEMS: escape_markdown, savepath, markdown
 import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region_range, prepare_map_df!
 
@@ -580,9 +580,9 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
         end
 
         @testset "TotalTests with BatchData" begin
-            # helper: WelfordState seeded with a few values
+            # helper: _WelfordState seeded with a few values
             function make_tick_accum(ticks)
-                Dict(t => (s = WelfordState(); welford_update!(s, Float64(t)); s) for t in ticks)
+                Dict(t => (s = _WelfordState(); _welford_update!(s, Float64(t)); s) for t in ticks)
             end
 
             # path 1: isempty(t) → emptyplot (bd has no test data)

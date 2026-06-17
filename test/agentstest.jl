@@ -1,9 +1,7 @@
 import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!, ventilated!, dead!, detected!, progress_disease!,
-    exposure!, infectiousness_onset!, symptom_onset!, severeness_onset!, severeness_offset!,
-    hospital_admission!, icu_admission!, icu_discharge!, ventilation_admission!, ventilation_discharge!, hospital_discharge!,
-    recovery!, death!, last_test!, last_test_result!, last_reported_at!,
+    inc_number_of_infections!,
     quarantine_release_tick!, quarantine_tick!, quarantined!,
-    mandate_compliance!, social_factor!, setting_id!, pathogen_id!, infection_id!
+    mandate_compliance!, social_factor!, setting_id!
 
 @testset "Agents" begin
     @testset "Individuals" begin
