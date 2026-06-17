@@ -6,7 +6,7 @@
 
 # EXPORTS
 # setting membership and lookup
-export household, office, schoolclass, getsetting
+export household, office, schoolclass, getsetting, settings_tuple
 # registry-based getters
 export get_infection_state, get_immunity_state
 export infection_id
