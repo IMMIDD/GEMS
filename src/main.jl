@@ -50,7 +50,7 @@ function main(configfile::String, population::String, outputdir::String;
     with_progressbar::Bool = true,
     simargs...)::ResultData
 
-    printinfo("Starting simulation with $(Threads.nthreads()) threads")
+    _printinfo("Starting simulation with $(Threads.nthreads()) threads")
 
     to = TimerOutput()
     timestamp = now()
@@ -69,7 +69,7 @@ function main(configfile::String, population::String, outputdir::String;
     end
 
     # initialize simulation
-    printinfo("Initializing simulation")
+    _printinfo("Initializing simulation")
     @timeit to "1 Initialization" sim = Simulation(; configfile, population, simargs...)
 
     # apply optional simulation modifier
@@ -81,11 +81,11 @@ function main(configfile::String, population::String, outputdir::String;
     customlogger!(sim, customlogger)
 
     # run simulation
-    printinfo("Running simulation")
+    _printinfo("Running simulation")
     @timeit to "2 Runtime" run!(sim; with_progressbar)
 
     if csv
-        printinfo("Exporting raw CSV data")
+        _printinfo("Exporting raw CSV data")
         mkpath(outputdir * "/output")
         @timeit to "3 Data Export" begin
             save(infectionlogger(sim), outputdir * "/output/infections.csv")
@@ -94,7 +94,7 @@ function main(configfile::String, population::String, outputdir::String;
         end
     end
 
-    printinfo("Exporting raw JLD2 data")
+    _printinfo("Exporting raw JLD2 data")
     mkpath(outputdir * "/output_JLD2")
     @timeit to "3 Data Export" begin
         save_JLD2(infectionlogger(sim), outputdir * "/output_JLD2/infections.jld2")
@@ -103,25 +103,25 @@ function main(configfile::String, population::String, outputdir::String;
     end
 
     # post-process
-    printinfo("Post processing [parallel: $PARALLEL_POST_PROCESSING; caching: $POST_PROCESSOR_CACHING]")
+    _printinfo("Post processing [parallel: $PARALLEL_POST_PROCESSING; caching: $POST_PROCESSOR_CACHING]")
     @timeit to "4 Post processing" rd = sim |> PostProcessor |>
         x -> ResultData(x, style = get(get(TOML.parsefile(configfile), "PostProcessing", Dict()), "style", ""))
 
     timer_output!(rd, to)
 
-    printinfo("Exporting processed ResultData")
+    _printinfo("Exporting processed ResultData")
     @timeit to "3 Data Export" exportJLD(rd, outputdir * "/output_processed")
 
     exportJSON(rd, outputdir * "/output_processed")
 
     if report
-        printinfo("Generating report [parallel: $PARALLEL_REPORT_GENERATION]")
+        _printinfo("Generating report [parallel: $PARALLEL_REPORT_GENERATION]")
         @timeit to "5 Report" rep = buildreport(rd, get(TOML.parsefile(configfile), "reporting", ""))
         addtimer!(rep, to)
         generate(rep, outputdir)
     end
 
-    printinfo("Simulation completed in $(canonicalize(Dates.CompoundPeriod(now() - timestamp)))")
+    _printinfo("Simulation completed in $(canonicalize(Dates.CompoundPeriod(now() - timestamp)))")
 
     return rd
 end

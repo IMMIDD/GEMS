@@ -36,7 +36,7 @@ Base.show(io::IO, c::MultiStartCondition) = write(io, "MultiStartCondition($(joi
 # make sure to define the new struct and the required initialize!()-function.
 
 # include all Julia files from the "start_conditions"-folder
-dir = basefolder() * "/src/simulation/initialization/start_conditions"
+dir = _basefolder() * "/src/simulation/initialization/start_conditions"
 
 include.(
     filter(

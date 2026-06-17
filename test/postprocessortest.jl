@@ -1,3 +1,7 @@
+import GEMS: _mean_contacts_per_age_group as mean_contacts_per_age_group,
+    _individuals_per_age_group as individuals_per_age_group,
+    _weighted_error_sum as weighted_error_sum
+
 @testset "Post Processing" begin
     # setting up post processor structure
     basef = dirname(dirname(pathof(GEMS)))
@@ -47,7 +51,7 @@
             num_individuals = nrow(population_df)
 
             # test if grouping by age keeps the number of individuals
-            grouped_by_age = GEMS.group_by_age(population_df)
+            grouped_by_age = GEMS._group_by_age(population_df)
 
             @test num_individuals == sum(grouped_by_age[:, :sum])
 
@@ -55,10 +59,10 @@
             copied_df = copy(population_df)
             morphed_df = select!(copied_df, :id)
 
-            @test_throws ArgumentError GEMS.group_by_age(morphed_df)
+            @test_throws ArgumentError GEMS._group_by_age(morphed_df)
 
             # test if output contains a column "sum"
-            grouped_by_age = GEMS.group_by_age(population_df)
+            grouped_by_age = GEMS._group_by_age(population_df)
 
             @test :sum in propertynames(grouped_by_age)
 
@@ -150,7 +154,7 @@
         number_of_intervals = ceil(Int, length(simulation_contact_matrix_data[1, :]) / 10)
 
         population_df = populationDF(pp)
-        aggregated_population = GEMS.aggregate_populationDF_by_age(population_df, 10)
+        aggregated_population = GEMS._aggregate_populationDF_by_age(population_df, 10)
 
         contact_matrix = mean_contacts_per_age_group(pp, Household, 10)
 
@@ -161,11 +165,11 @@
         @test contact_matrix._size == length(aggregated_population)
 
         # aggregate_populationDF_by_age: error without age column
-        @test_throws ArgumentError GEMS.aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10)
-        @test_throws ArgumentError GEMS.aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10, 80)
+        @test_throws ArgumentError GEMS._aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10)
+        @test_throws ArgumentError GEMS._aggregate_populationDF_by_age(DataFrame(x = [1, 2, 3]), 10, 80)
 
         # aggregate_populationDF_by_age with max_age: all individuals are preserved in aggregated bins
-        agg_pop_bounded = GEMS.aggregate_populationDF_by_age(population_df, 10, 80)
+        agg_pop_bounded = GEMS._aggregate_populationDF_by_age(population_df, 10, 80)
         @test sum(agg_pop_bounded) == nrow(population_df)
 
         # individuals_per_age_group without aggregation_bound

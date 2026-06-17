@@ -1,8 +1,75 @@
 export household, office, schoolclass, municipality, getsetting
-export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, get_containers!, get_contained!, individuals, individuals!, ags
-export geolocation, lat, lon, remove_empty_settings!, present_individuals!, present_individuals, is_open, get_open_contained!, open!, close!
+export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, ags
+export geolocation, lat, lon, present_individuals, is_open, open!, close!
 export sample_individuals
 export activate!
+
+
+###
+### INDIVIDUAL-SETTING MEMBERSHIP
+###
+# These are Individual accessors (`setting_id`, `setting_id!`, `settings_tuple`,
+# `membership_setting_types`), placed here only because their `::Type{Household}` dispatch
+# needs the setting types, which are defined after agents.jl in the include order.
+# TODO: move these to a dedicated individual-methods file once the multipathogen branch
+# (which renames agents.jl -> individual.jl and splits it) is merged.
+
+"""
+    membership_setting_types(::Type{Individual})
+
+The `IndividualSetting` types an `Individual` can be a member of via a dedicated `Int32` field.
+"""
+membership_setting_types(::Type{Individual}) = (Household, Office, SchoolClass, Municipality)
+
+"""
+    setting_id(individual::Individual, ::Type{T}) where {T<:Setting}
+
+Returns the id of the setting of type `T` associated with the individual. Dispatched per
+type (the type → field map); falls back to `DEFAULT_SETTING_ID` when the individual is not
+part of a setting of that type.
+"""
+@inline setting_id(individual::Individual, ::Type{Household}) = individual.household
+@inline setting_id(individual::Individual, ::Type{Office}) = individual.office
+@inline setting_id(individual::Individual, ::Type{SchoolClass}) = individual.schoolclass
+@inline setting_id(individual::Individual, ::Type{Municipality}) = individual.municipality
+@inline setting_id(individual::Individual, ::Type{GlobalSetting}) = GLOBAL_SETTING_ID # there is only one GlobalSetting
+@inline setting_id(individual::Individual, ::Type{<:Setting}) = DEFAULT_SETTING_ID
+
+"""
+    setting_id!(individual::Individual, ::Type{T}, id::Int32) where {T<:Setting}
+
+Changes the assigned setting id of the individual for the given type of setting to `id`.
+Types without a dedicated field (e.g. `GlobalSetting`) are a no-op.
+"""
+@inline setting_id!(individual::Individual, ::Type{Household}, id::Int32) = (individual.household = id; nothing)
+@inline setting_id!(individual::Individual, ::Type{Office}, id::Int32) = (individual.office = id; nothing)
+@inline setting_id!(individual::Individual, ::Type{SchoolClass}, id::Int32) = (individual.schoolclass = id; nothing)
+@inline setting_id!(individual::Individual, ::Type{Municipality}, id::Int32) = (individual.municipality = id; nothing)
+@inline setting_id!(individual::Individual, ::Type{<:Setting}, id::Int32) = nothing
+
+"""
+    settings_tuple(individual::Individual)
+
+Returns all individual's associated setting IDs as a Tuple of `(type, id)` pairs.
+Derived from `membership_setting_types(Individual)`.
+"""
+settings_tuple(individual::Individual) = map(T -> (T, setting_id(individual, T)), membership_setting_types(Individual))
+
+"""
+    activate_memberships!(c::Individual, sim::Simulation)
+
+Activates every setting the individual `c` belongs to (and, recursively, their containers).
+Unrolls over `membership_setting_types(Individual)` so each access is type-stable.
+"""
+@inline activate_memberships!(c::Individual, sim::Simulation) = _activate_memberships!(c, sim, membership_setting_types(Individual)...)
+@inline _activate_memberships!(c::Individual, sim::Simulation) = nothing
+@inline function _activate_memberships!(c::Individual, sim::Simulation, ::Type{T}, rest...) where {T<:IndividualSetting}
+    sid = setting_id(c, T)
+    if sid != DEFAULT_SETTING_ID
+        activate!(settings(sim, T)[sid], sim)
+    end
+    _activate_memberships!(c, sim, rest...)
+end
 
 
 ### setting extraction from individuals
@@ -186,13 +253,15 @@ Recursively gets the contained settings of the setting `stng` and adds them to t
 """
 function get_contained!(stng::ContainerSetting, dct::Dict{DataType, Vector{Int32}}, sim::Simulation)
     if stng.contains != DEFAULT_SETTING_ID
-        if haskey(dct, stng |> contains_type)
-            push!(dct[stng |> contains_type], (stng |> contains)...)
+        C = contains_type(typeof(stng))
+        if haskey(dct, C)
+            push!(dct[C], (stng |> contains)...)
         else
-            dct[stng |> contains_type] = stng |> contains |> deepcopy
+            dct[C] = stng |> contains |> deepcopy
         end
+        stngs = settings(sim, C)
         for s in stng.contains
-            get_contained!(settings(sim, stng |> contains_type)[s], dct, sim)
+            get_contained!(stngs[s], dct, sim)
         end
     end
 end
@@ -232,8 +301,9 @@ function get_open_contained!(stng::ContainerSetting, dct::Dict{DataType, Vector{
             push!(dct[typeof(stng)], stng |> id)
         end
         if stng.contains != DEFAULT_SETTING_ID
+            stngs = settings(sim, contains_type(typeof(stng)))
             for s in stng.contains
-                get_open_contained!(settings(sim, stng.contains_type)[s], dct, sim)
+                get_open_contained!(stngs[s], dct, sim)
             end
         end
     end
@@ -275,8 +345,9 @@ Recursively gets the containers of the setting `stng` and adds them to the dicti
 function get_containers!(stng::Setting, dct::Dict{DataType, Int32}, sim::Simulation)::Nothing
     if hasproperty(stng, :contained)
         if stng.contained != DEFAULT_SETTING_ID
-            dct[stng.contained_type] = stng.contained
-            get_containers!(settings(sim, stng.contained_type)[stng.contained], dct, sim)
+            P = contained_type(typeof(stng))
+            dct[P] = stng.contained
+            get_containers!(settings(sim, P)[stng.contained], dct, sim)
         end
     end
 end
@@ -311,8 +382,9 @@ recursively calling the `individuals!` function.
 - `simulation::Simulation`: Simulation object
 """
 function individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
+    stngs = settings(simulation, contains_type(typeof(setting)))
     for s in setting.contains
-        individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
+        individuals!(indivs, stngs[s], simulation)
     end
 end
 
@@ -333,8 +405,9 @@ all contained settings using the `individuals!` function.
 """
 function individuals(setting::ContainerSetting, simulation::Simulation)
     indivs = Vector{Individual}()
+    stngs = settings(simulation, contains_type(typeof(setting)))
     for s in setting.contains
-        individuals!(indivs, settings(simulation, setting.contains_type)[s], simulation)
+        individuals!(indivs, stngs[s], simulation)
     end
     return indivs
 end
@@ -393,9 +466,9 @@ Pushes the individuals present in a given ContainerSetting, i.e., only those in 
 function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
     # Check that setting and all containers are open
     if setting |> is_open
-        stngs = settings(simulation, setting.contains_type)
+        stngs = settings(simulation, contains_type(typeof(setting)))
         for s in setting |> contains
-            present_individuals!(indivs, stngs[s]::Setting, simulation)
+            present_individuals!(indivs, stngs[s], simulation)
         end
     end
 end
@@ -451,7 +524,7 @@ function precompute_ags!(sim::Simulation)
             return stng.ags
         end
         if length(stng.contains) > 0
-            child = settings(sim, stng.contains_type)[first(stng.contains)]
+            child = settings(sim, contains_type(typeof(stng)))[first(stng.contains)]
             stng.ags = _calc_ags(child)
             return stng.ags
         else
@@ -462,7 +535,7 @@ function precompute_ags!(sim::Simulation)
 
     for st in settingtypes(settingscontainer(sim))
         if st <: ContainerSetting
-            for s in settings(sim, st)
+            for s in get(settingscontainer(sim), st)
                 _calc_ags(s)
             end
         end
@@ -490,7 +563,8 @@ lon(stng::Geolocated) = stng.lon
 Get the location of a ContainerSetting by getting the location of the first contained setting.
 """
 function geolocation(stng::ContainerSetting, sim::Simulation)::Vector{Float32}
-    return geolocation(settings(sim, stng |> contains_type)[stng |> contains |> Base.first], sim)
+    stngs = settings(sim, contains_type(typeof(stng)))
+    return geolocation(stngs[stng |> contains |> Base.first], sim)
 end
 
 """
@@ -536,8 +610,9 @@ Returns the sum of the sizes of all contained settings.
 """
 function Base.size(setting::ContainerSetting, simulation::Simulation)::Int
     total_size = 0
+    stngs = settings(simulation, contains_type(typeof(setting)))
     for s_id in setting.contains
-        contained_setting = settings(simulation, setting.contains_type)[s_id]
+        contained_setting = stngs[s_id]
         total_size += size(contained_setting, simulation)
     end
     return total_size
@@ -666,7 +741,7 @@ function open!(setting::Setting, simulation::Simulation)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
-        stngs = settings(simulation, k)
+        stngs = get(settingscontainer(simulation), k)
         for idx in v
             open!(stngs[idx]::Setting)
         end
@@ -692,7 +767,7 @@ function close!(setting::Setting, simulation::Simulation)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
-        stngs = settings(simulation, k)
+        stngs = get(settingscontainer(simulation), k)
         for idx in v
             close!(stngs[idx]::Setting)
         end
@@ -728,7 +803,7 @@ function remove_empty_settings!(sim::Simulation)
 
     # Delete all settings that have no individuals
     for (type, deleteats) in rem_dict
-        deleteat!(settings(sim, type), deleteats)
+        deleteat!(get(settingscontainer(sim), type), deleteats)
     end
 
     # Update all ids
@@ -746,7 +821,7 @@ function activate!(setting::Setting, sim::Simulation)
     # Check if this setting is contained within a parent setting
     if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
         # Recursively activate the parent
-        parent_setting = settings(sim, setting.contained_type)[setting.contained]::Setting
+        parent_setting = settings(sim, contained_type(typeof(setting)))[setting.contained]
         activate!(parent_setting, sim)
     end
 end

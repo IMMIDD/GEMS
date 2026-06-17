@@ -55,12 +55,7 @@ function initialize!(simulation::Simulation, condition::PatientZero; seed_sample
     for i in to_infect
         infect!(i, tick(simulation), pathogen, sim = simulation, rng = rng_sample)
 
-        for (type, id) in settings_tuple(i)
-            if id != DEFAULT_SETTING_ID
-                current_setting = settings(simulation, type)[id]
-                activate!(current_setting, simulation)
-            end
-        end
+        activate_memberships!(i, simulation)
     end
 
     # push pending infections to InfectionRegistry 

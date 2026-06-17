@@ -1,5 +1,4 @@
-export IMeasureEvent
-export SMeasureEvent
+export IMeasureEvent, SMeasureEvent
 
 ###
 ### EVENT STRUCTS

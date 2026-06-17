@@ -1,7 +1,6 @@
-export settingdata
 
 """ 
-    settingdata(postProcessor::PostProcessor)
+    _settingdata(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing information about setting types
 
@@ -18,7 +17,7 @@ Returns a `DataFrame` containing information about setting types
 | `avg_individuals`    | `Float64` | Average number of individuals assigned to a setting of this type |
 
 """
-function settingdata(postProcessor::PostProcessor)
+function _settingdata(postProcessor::PostProcessor)
 
     stype = Vector{String}()
     cnt = Vector{Int64}()

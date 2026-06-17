@@ -5,7 +5,7 @@ export BatchDataStyle
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export sim_data, runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines, pathogen_names
+export runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines, pathogen_names
 export total_detected_cases, detection_rate
 export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
 export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_group
@@ -25,7 +25,7 @@ abstract type BatchDataStyle end
 # make sure to define the respective struct there and export it (using the export statement).
 
 # include all Julia files from the "rd_styles"-folder
-dir = basefolder() * "/src/analysis/bd_styles"
+dir = _basefolder() * "/src/analysis/bd_styles"
 
 include.(
     filter(
@@ -62,14 +62,14 @@ mutable struct BatchData <: AbstractResultData
     """
     function BatchData(batchProcessor::BatchProcessor; style::String = "DefaultBatchData")
         # Determine the style to be used
-        id = findfirst(x -> occursin(style, x), string.(concrete_subtypes(BatchDataStyle)))
+        id = findfirst(x -> occursin(style, x), string.(_concrete_subtypes(BatchDataStyle)))
         if isnothing(id)
             @warn "The provided style $style was not found. The `DefaultBatchDataStyle` will be used!"
-            id = findfirst(x -> occursin("DefaultBatchData", x), string.(concrete_subtypes(BatchDataStyle)))
+            id = findfirst(x -> occursin("DefaultBatchData", x), string.(_concrete_subtypes(BatchDataStyle)))
         end
 
         # get style
-        style = concrete_subtypes(BatchDataStyle)[id](batchProcessor)
+        style = _concrete_subtypes(BatchDataStyle)[id](batchProcessor)
 
         # Use the data to create the ResultData struct
         bd = new(style.data)

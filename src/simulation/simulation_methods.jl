@@ -6,8 +6,6 @@ that is dependent on other structs, so it has to be loaded later.
 =#
 ### EXPORTS
 export step!, run!
-export fire_custom_loggers!
-export update_individual!
 
 ###
 ### RUN SIMULATION
@@ -292,6 +290,8 @@ function step!(simulation::Simulation)
             update_individual!(i, tick(simulation), simulation)
         end
         flush_ended_infections!(simulation)
+        # merge per-thread staged trigger events into the queue before processing
+        flush_staging!(event_queue(simulation))
     end
 
     # infect individuals in settings
@@ -492,7 +492,7 @@ function (step!) until the stop criterion is met.
 - `Simulation`: Simulation object
 """
 function run!(simulation::Simulation; with_progressbar::Bool = true)
-    printinfo("Running Simulation $(label(simulation))")
+    _printinfo("Running Simulation $(label(simulation))")
 
     sc = stop_criterion(simulation)
     

@@ -1,3 +1,5 @@
+import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containers!, dead!, hospitalized!
+
 @testset "Infections" begin
     test_rng = Xoshiro()
 

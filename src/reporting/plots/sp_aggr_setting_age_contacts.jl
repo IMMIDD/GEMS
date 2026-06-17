@@ -194,7 +194,7 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
     end
 
     # add custom arguments that were passed
-    plot!(p; remove_kw(:title, plotargs)...)
+    plot!(p; _remove_kw(:title, plotargs)...)
 
     return(p)
 end

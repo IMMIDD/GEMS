@@ -130,7 +130,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "initial_infections" => () -> pP |> initial_infections,
                     "total_infections" => () -> pP |> total_infections,
                     "attack_rate" => () -> pP |> attack_rate,
-                    "setting_data" => () -> pP |> settingdata,
+                    "setting_data" => () -> pP |> _settingdata,
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "region_info" => () -> pP |> simulation |> region_info,
                     "pathogens" => () -> collect(pathogens(simulation(pP))),
@@ -155,9 +155,9 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "cpu_data" => () -> cpudata(),
                     "total_mem_size" => () -> round(Sys.total_memory()/2^20, digits = 2),
                     "free_mem_size" => () -> round(Sys.free_memory()/2^20, digits = 2),
-                    "git_repo" => () -> read_git_repo(),
-                    "git_branch" => () -> read_git_branch(),
-                    "git_commit" => () -> read_git_commit()#,
+                    "git_repo" => () -> _read_git_repo(),
+                    "git_branch" => () -> _read_git_branch(),
+                    "git_commit" => () -> _read_git_commit()#,
                     #"model_size" => round(Base.summarysize(pP |> simulation)/2^20, digits = 2),
                     #"population_size" => round(Base.summarysize(population(pP |> simulation))/2^20, digits = 2),
                 ),
@@ -172,17 +172,17 @@ mutable struct DefaultResultData <: ResultDataStyle
                 Dict(
                     # TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
                     # TODO: This list should be determined dynamically depending on what settings are present in the simulation
-                    "Household" => () -> mean_contacts_per_age_group(pP, Household, 5),
-                    "SchoolClass" => () -> mean_contacts_per_age_group(pP, SchoolClass, 2),
-                    "SchoolYear" => () -> mean_contacts_per_age_group(pP, SchoolYear, 2),
-                    "School" => () -> mean_contacts_per_age_group(pP, School, 2),
-                    "SchoolComplex" => () -> mean_contacts_per_age_group(pP, SchoolComplex, 2),
-                    "Office" => () -> mean_contacts_per_age_group(pP, Office, 5), 
-                    "Department" => () -> mean_contacts_per_age_group(pP, Department, 5), 
-                    "Workplace" => () -> mean_contacts_per_age_group(pP, Workplace, 5), 
-                    "WorkplaceSite" => () -> mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
-                    "Municipality" => () -> mean_contacts_per_age_group(pP, Municipality, 5),
-                    "GlobalSetting" => () -> mean_contacts_per_age_group(pP, GlobalSetting, 5)
+                    "Household" => () -> _mean_contacts_per_age_group(pP, Household, 5),
+                    "SchoolClass" => () -> _mean_contacts_per_age_group(pP, SchoolClass, 2),
+                    "SchoolYear" => () -> _mean_contacts_per_age_group(pP, SchoolYear, 2),
+                    "School" => () -> _mean_contacts_per_age_group(pP, School, 2),
+                    "SchoolComplex" => () -> _mean_contacts_per_age_group(pP, SchoolComplex, 2),
+                    "Office" => () -> _mean_contacts_per_age_group(pP, Office, 5), 
+                    "Department" => () -> _mean_contacts_per_age_group(pP, Department, 5), 
+                    "Workplace" => () -> _mean_contacts_per_age_group(pP, Workplace, 5), 
+                    "WorkplaceSite" => () -> _mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
+                    "Municipality" => () -> _mean_contacts_per_age_group(pP, Municipality, 5),
+                    "GlobalSetting" => () -> _mean_contacts_per_age_group(pP, GlobalSetting, 5)
                 ),
 
             "dataframes" =>
@@ -195,8 +195,8 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "aggregated_compartment_periods" => () -> pP |> aggregated_compartment_periods,
                     "tick_cases" => () -> pP |> tick_cases,
                     "tick_deaths" => () -> pP |> tick_deaths,
-                    "tick_serial_intervals" => () -> pP |> tick_serial_intervals,
-                    "tick_generation_times" => () -> pP |> tick_generation_times,
+                    "tick_serial_intervals" => () -> pP |> _tick_serial_intervals,
+                    "tick_generation_times" => () -> pP |> _tick_generation_times,
                     "cumulative_cases" => () -> pP |> cumulative_cases,
                     "compartment_fill" => () -> pP |> compartment_fill,
                     "cumulative_deaths" => () -> pP |> cumulative_deaths,
@@ -214,8 +214,8 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
-                    "tick_hosptitalizations" => () -> pP |> hospital_df,
-                    "weekly_county_incidence" => () -> pP |> weekly_county_incidence,
+                    "tick_hosptitalizations" => () -> pP |> _hospital_df,
+                    "weekly_county_incidence" => () -> pP |> _weekly_county_incidence,
                     "r0_per_county" => () -> pP |> r0_per_county
                 )      
         )

@@ -27,7 +27,7 @@ mutable struct OptimisedResultData <: ResultDataStyle
                     "initial_infections" => () -> pP |> initial_infections,
                     "total_infections" => () -> pP |> total_infections,
                     "attack_rate" => () -> pP |> attack_rate,
-                    "setting_data" => () -> pP |> settingdata,
+                    "setting_data" => () -> pP |> _settingdata,
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "pathogens" => () -> collect(pathogens(simulation(pP))),
                     "tick_unit" => () -> pP |> simulation |> tickunit,
@@ -43,7 +43,7 @@ mutable struct OptimisedResultData <: ResultDataStyle
             "aggregated_setting_age_contacts" =>
                 Dict(
                     # TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
-                    "Household" => () -> mean_contacts_per_age_group(pP, Household, 10) 
+                    "Household" => () -> _mean_contacts_per_age_group(pP, Household, 10) 
                 ),
             
             "system_data" =>
@@ -52,9 +52,9 @@ mutable struct OptimisedResultData <: ResultDataStyle
                 "julia_version" => () -> string(Base.VERSION),
                 "threads" => () -> Threads.nthreads(),
                 "cpu_data" => () -> cpudata(),
-                "git_repo" => () -> read_git_repo(),
-                "git_branch" => () -> read_git_branch(),
-                "git_commit" => () -> read_git_commit(),
+                "git_repo" => () -> _read_git_repo(),
+                "git_branch" => () -> _read_git_branch(),
+                "git_commit" => () -> _read_git_commit(),
                 ),
 
             "dataframes" =>
@@ -66,8 +66,8 @@ mutable struct OptimisedResultData <: ResultDataStyle
                     "compartment_periods" => () -> pP |> compartment_periods,
                     "tick_cases" => () -> pP |> tick_cases,
                     "tick_deaths" => () -> pP |> tick_deaths,
-                    "tick_serial_intervals" => () -> pP |> tick_serial_intervals,
-                    "tick_generation_times" => () -> pP |> tick_generation_times,
+                    "tick_serial_intervals" => () -> pP |> _tick_serial_intervals,
+                    "tick_generation_times" => () -> pP |> _tick_generation_times,
                     "cumulative_cases" => () -> pP |> cumulative_cases,
                     "compartment_fill" => () -> pP |> compartment_fill,
                     "cumulative_deaths" => () -> pP |> cumulative_deaths,

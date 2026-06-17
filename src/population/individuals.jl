@@ -8,35 +8,34 @@ export Individual
 # basic attributes
 export age, id, education, occupation, sex
 # behaviour
-export mandate_compliance, mandate_compliance!, social_factor, social_factor!
+export mandate_compliance, social_factor
 # settings
-export setting_id, setting_id!, household_id, class_id, office_id, municipality_id, settings_tuple
+export setting_id, household_id, class_id, office_id, municipality_id, settings_tuple
 export is_working, is_student, has_municipality
 # health status
 export comorbidities, has_comorbidity
-export is_infected, isinfected, infected, infected!
-export is_infectious, isinfectious, infectious, infectious!
+export is_infected, isinfected, infected
+export is_infectious, isinfectious, infectious
 export is_exposed, isexposed, exposed
 export is_presymptomatic, ispresymptomatic, presymptomatic
-export is_symptomatic, issymptomatic, symptomatic, symptomatic!
+export is_symptomatic, issymptomatic, symptomatic
 export is_asymptomatic, isasymptomatic, asymptomatic
-export is_severe, issevere, severe, severe!
+export is_severe, issevere, severe
 export is_mild, ismild, mild
-export is_hospitalized, ishospitalized, hospitalized, hospitalized!
-export is_icu, isicu, icu, icu!
-export is_ventilated, isventilated, ventilated, ventilated!
+export is_hospitalized, ishospitalized, hospitalized
+export is_icu, isicu, icu
+export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
-export is_dead, isdead, dead, dead!
-export is_detected, isdetected, detected, detected!
+export is_dead, isdead, dead
+export is_detected, isdetected, detected
 export get_active_pathogens
 export number_of_infections
-export inc_number_of_infections!
 #quarantine
-export quarantine_release_tick, quarantine_release_tick!
-export quarantine_tick, quarantine_tick!
+export quarantine_release_tick
+export quarantine_tick
 export quarantine_status, home_quarantine!, end_quarantine!
-export is_quarantined, isquarantined, quarantined, quarantined!
-
+export is_quarantined, isquarantined, quarantined
+export AutoExtension
 
 
 
@@ -145,8 +144,6 @@ A type to represent individuals that act as agents inside the simulation.
     # EXTENSIONS
     extensions::Any = nothing
 end
-
-export AutoExtension
 
 # CONSTRUCTOR
 """
@@ -307,61 +304,6 @@ function municipality_id(individual::Individual)::Int32
     return individual.municipality
 end
 
-"""
-    settings_tuple(individual::Individual)
-
-Returns all individual's associated setting IDs as a Tuple.
-"""
-function settings_tuple(individual::Individual)
-    return (
-        (Household, individual.household),
-        (Office, individual.office),
-        (SchoolClass, individual.schoolclass),
-        (Municipality, individual.municipality)
-    )
-end
-
-"""
-    setting_id(individual::Individual, type::DataType)
-
-Returns the id of the setting of `type` associated with the individual. If the settingtype
-is unknown or the agent isn't part of a setting of that type, -1 will be returned.
-"""
-function setting_id(individual::Individual, type::DataType)::Int32
-    if type==Household
-        return individual.household
-    elseif type==Office
-        return individual.office
-    elseif type == SchoolClass
-        return individual.schoolclass
-    elseif type == Municipality
-        return individual.municipality
-    elseif type==GlobalSetting
-        return GLOBAL_SETTING_ID # there is only one GlobalSetting
-    else
-        # in any other case it defaults to -1 as this means no ID
-        return DEFAULT_SETTING_ID
-    end
-end
-
-"""
-    setting_id!(individual::Individual, type::DataType, id::Int32)
-
-Changes the assigned setting id of the individual for the given type of setting to `id`.
-"""
-function setting_id!(individual::Individual, type::DataType, id::Int32)
-    if type==Household
-        individual.household = id
-    elseif type==Office
-        individual.office = id
-    elseif type==SchoolClass
-        individual.schoolclass = id
-    elseif type==Municipality
-        individual.municipality = id
-    end
-
-    return nothing
-end
 
 """
     is_working(individual::Individual)

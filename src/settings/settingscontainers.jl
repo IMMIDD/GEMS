@@ -2,7 +2,8 @@
 ### CONTAINER TYPE FOR ALL SETTINGS (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export SettingsContainer
-export add!, get, setting, settings, settingtypes, settingtypes_sorted, settings_from_jld2!, delete_dangling_ids!, new_setting_ids!, add_type!, add_types!, foreach_setting_vector
+export add!, get, setting, settings
+export settingtypes, foreach_setting_vector, add_type!, add_types!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites 
 
 """
@@ -155,15 +156,6 @@ function settings(container::SettingsContainer)::Dict{DataType, Vector}
 end
 
 """
-    settings(container::SettingsContainer, type::DataType)
-
-Returns the vector of settings for the given runtime type.
-"""
-function settings(container::SettingsContainer, type::DataType)
-    return container.settings[type]
-end
-
-"""
     settings(container::SettingsContainer, ::Type{T}) where {T<:Setting}
 
 Type-stable accessor: returns `Vector{T}` for the given concrete setting type `T`.
@@ -180,7 +172,7 @@ end
 Returns a particular setting of a particular type and ID.
 """
 function setting(container::SettingsContainer, type::DataType, id::Int32)
-    return settings(container, type)[id]
+    return get(container, type)[id]
 end
 
 """
@@ -244,14 +236,14 @@ function new_setting_ids!(cntnr::SettingsContainer, renaming_dict::Dict = Dict()
         if length(settinglist) != 0 && hasfield(settingtype, :contained)
 
             # Check if the contained setting type were reassigned an id
-            if haskey(renaming_dict, settinglist[1].contained_type)
+            if haskey(renaming_dict, contained_type(settingtype))
 
                 # Iterate through the settings and update the contained field
                 for setting in settinglist
                     try
-                        setting.contained = renaming_dict[setting.contained_type][setting.contained]
+                        setting.contained = renaming_dict[contained_type(settingtype)][setting.contained]
                     catch
-                        @warn "The container for $settingtype with id $(setting.id) was provided as $(setting.contained_type) with id $(setting.contained), but not found in the data."
+                        @warn "The container for $settingtype with id $(setting.id) was provided as $(contained_type(settingtype)) with id $(setting.contained), but not found in the data."
                         setting.contained = DEFAULT_SETTING_ID
                     end
                 end
@@ -262,13 +254,13 @@ function new_setting_ids!(cntnr::SettingsContainer, renaming_dict::Dict = Dict()
         if length(settinglist) != 0 && hasfield(settingtype, :contains)
 
             # Check if the contains setting type were reassigned an id
-            if haskey(renaming_dict, settinglist[1].contains_type)
+            if haskey(renaming_dict, contains_type(settingtype))
 
                 # Iterate through the settings and update the contains field
                 for setting in settinglist
 
                     # Get the new ids of the contains settings if they can not be found in the dicitonary turn them to missing and filter them out
-                    setting.contains = [get(renaming_dict[setting.contains_type], sc, missing) for sc in setting.contains] |> x -> filter!(!ismissing, x) 
+                    setting.contains = [get(renaming_dict[contains_type(settingtype)], sc, missing) for sc in setting.contains] |> x -> filter!(!ismissing, x)
                     if length(setting.contains) == 0
                         @warn "The container with type $settingtype with id $(setting.id) is empty."
                     end
@@ -303,8 +295,8 @@ function _delete_dangling_for_type!(
         # Handle settings with a contained field
         if has_contained
             if setting.contained != DEFAULT_SETTING_ID
-                if length(settings(cntnr)[setting.contained_type]) < setting.contained
-                    @warn "Setting of type $(setting.contained_type) with id $(setting.id) has a contained ID that is out of bounds"
+                if length(settings(cntnr)[contained_type(settingtype)]) < setting.contained
+                    @warn "Setting of type $(contained_type(settingtype)) with id $(setting.id) has a contained ID that is out of bounds"
                     setting.contained = DEFAULT_SETTING_ID
                 end
             end
@@ -312,13 +304,13 @@ function _delete_dangling_for_type!(
 
         # Handle settings with a contains field
         if has_contains
-            max_bounds = length(settings(cntnr)[setting.contains_type])
-            
+            max_bounds = length(settings(cntnr)[contains_type(settingtype)])
+
             # Iterate backwards
             for i in length(setting.contains):-1:1
                 s = setting.contains[i]
                 if max_bounds < s
-                    @warn "Setting of type $(setting.contains_type) with id $(setting.id) has a contains ID that is out of bounds"
+                    @warn "Setting of type $(contains_type(settingtype)) with id $(setting.id) has a contains ID that is out of bounds"
                     deleteat!(setting.contains, i)
                 end
             end

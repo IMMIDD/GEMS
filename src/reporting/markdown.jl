@@ -1,6 +1,4 @@
 # CREATION OF MARKDOWN CODE FOR THE REPORT
-export escape_markdown, markdown, settingsMD
-export savepath
 
 ###
 ### ESCAPING STRINGS

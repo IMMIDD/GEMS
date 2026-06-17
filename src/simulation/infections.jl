@@ -3,8 +3,7 @@ THIS FILE HANDLES INFECTIONS ON DIFFERENT LEVELS
 This means, that the functionality to directly infect someone and spread a disease
 is contained here.
 =#
-export infect!, spread_infection!, try_to_infect!, sample_contacts, get_containers!
-
+export infect!, sample_contacts
 
 
 """
@@ -449,12 +448,7 @@ function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id)
     for c in c_buffer
         if can_be_contacted(c, setting)
             if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
-                for (type, sid) in settings_tuple(c)
-                    if sid != DEFAULT_SETTING_ID
-                        current_setting = settings(sim, type)[sid]
-                        activate!(current_setting, sim)
-                    end
-                end
+                activate_memberships!(c, sim)
             end
         end
     end

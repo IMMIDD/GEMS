@@ -1,3 +1,6 @@
+import GEMS: _WelfordState as WelfordState, _welford_update! as welford_update!
+import GEMS: BatchProcessor, n_runs, rundata
+
 @testset "Batch" begin
 
     basefolder = dirname(dirname(pathof(GEMS)))

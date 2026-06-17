@@ -237,9 +237,9 @@ function generate_movie(rd::ResultData; seconds::Int64 = 60, fps::Int64 = 24, sa
     reg = data |> x -> filter(row -> !any(isnan, row), x) |> region_range
     max_act_inf = maximum(compartment_fill(rd).exposed_cnt + compartment_fill(rd).infectious_cnt)
 
-    printinfo("Generating video frames")
+    _printinfo("Generating video frames")
     imgs = render_frames(data, reg, ft, max_act_inf, rd |> tick_unit |> uppercasefirst, seconds, fps)
 
-    printinfo("Rendering video")
+    _printinfo("Rendering video")
     VideoIO.save(savepath, imgs, framerate=fps, encoder_options=(crf=17, preset="slow", tune="film"), codec_name="libx264")
 end

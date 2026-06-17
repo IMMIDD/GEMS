@@ -23,7 +23,7 @@ number of ticks between the time of exposure and time of detection.
 | `lower_95_time_to_detection` | `Int64` | Lower 95% confidence interval of time to detection at that tick |
 """
 function time_to_detection(postProcessor::PostProcessor)
-    det = postProcessor |> detected_infections |>
+    det = postProcessor |> _detected_infections |>
         x -> DataFrames.select(x, [:tick, :pathogen_id, :first_detected_tick]) |>
         x -> transform(x, [:first_detected_tick, :tick] => (-) => :time_to_detection) |>
         x -> DataFrames.select(x, :first_detected_tick => :tick, :pathogen_id, :time_to_detection)

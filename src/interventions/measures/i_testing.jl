@@ -134,7 +134,7 @@ follow-up strategy is handed over to the `EventQueue` for this individual.
 """
 function process_measure(sim::Simulation, ind::Individual, test::Test)
 
-    test_pos = apply_test(ind, test |> type, sim, test |> reportable)
+    test_pos = apply_test!(ind, test |> type, sim, test |> reportable)
     
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) $(ind |> infected ? "(inf)" : "") tested $(test_pos ? "positive" : "negative") at tick $(sim |> tick)"
 

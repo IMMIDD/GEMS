@@ -1,7 +1,6 @@
-export tick_serial_intervals
 
 """
-    tick_serial_intervals(postProcessor::PostProcessor)
+    _tick_serial_intervals(postProcessor::PostProcessor)
 
 Returns a `DataFrame` containing aggregated information on the serial interval per tick and pathogen.
 
@@ -20,7 +19,7 @@ Returns a `DataFrame` containing aggregated information on the serial interval p
 | `std_SI`      | `Float64` | Stanard deviation for serial intervals that tick             |
 | `mean_SI`     | `Float64` | Mean for serial intervals that tick                          |
 """
-function tick_serial_intervals(postProcessor::PostProcessor)
+function _tick_serial_intervals(postProcessor::PostProcessor)
     df = infectionsDF(postProcessor) |>
         x -> DataFrames.select(x, :tick, :pathogen_id, :serial_interval => :SI)
     results = DataFrame[]

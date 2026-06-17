@@ -1,3 +1,7 @@
+import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hashes as hashes,
+    _allempty as allempty, _someempty as someempty,
+    config_file_val, population_params
+
 @testset "Result Data" begin
     basefolder = dirname(dirname(pathof(GEMS)))
 

@@ -1,3 +1,5 @@
+import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging!, peek, peektick
+
 @testset "Interventions" begin
     #setup of the simulation object:
     sim = Simulation()
@@ -909,6 +911,28 @@
             @test length(eq) == 1
             @test peektick(eq) == Int16(7)
             @test peek(eq) === i_measure_event
+
+            # staged events are not visible until flush_staging! merges them in
+            empty!(eq)
+            stage!(eq, s_measure_event, Int16(4))
+            stage!(eq, i_measure_event, Int16(2))
+            @test length(eq) == 0
+            @test isempty(eq) === true
+
+            flush_staging!(eq)
+            @test length(eq) == 2
+            @test peektick(eq) == Int16(2)
+            @test peek(eq) === i_measure_event
+
+            # flush clears the staging buffers: a second flush adds nothing
+            flush_staging!(eq)
+            @test length(eq) == 2
+
+            # empty! also clears any staged-but-unflushed events
+            stage!(eq, i_measure_event, Int16(9))
+            empty!(eq)
+            flush_staging!(eq)
+            @test length(eq) == 0
         end
     end
 

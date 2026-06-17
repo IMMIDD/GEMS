@@ -1,3 +1,10 @@
+import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!, ventilated!, dead!, detected!, progress_disease!,
+    exposure!, infectiousness_onset!, symptom_onset!, severeness_onset!, severeness_offset!,
+    hospital_admission!, icu_admission!, icu_discharge!, ventilation_admission!, ventilation_discharge!, hospital_discharge!,
+    recovery!, death!, last_test!, last_test_result!, last_reported_at!,
+    quarantine_release_tick!, quarantine_tick!, quarantined!,
+    mandate_compliance!, social_factor!, setting_id!, pathogen_id!, infection_id!
+
 @testset "Agents" begin
     @testset "Individuals" begin
         @testset "Attributes" begin
@@ -655,5 +662,25 @@
     # Test default/undefined settings
     i_default = Individual(id=2, sex = 0, age = 1)
     @test all(pair -> pair[2] == GEMS.DEFAULT_SETTING_ID, settings_tuple(i_default))
+    end
+
+    @testset "setting_id / setting_id!" begin
+        i = Individual(id=1, sex=0, age=25, household=10, office=20, schoolclass=30, municipality=40)
+
+        # getters dispatch per type; GlobalSetting is constant, other settings fall back to the default
+        @test setting_id(i, Household) == Int32(10)
+        @test setting_id(i, GlobalSetting) == GEMS.GLOBAL_SETTING_ID
+        @test setting_id(i, SchoolYear) == GEMS.DEFAULT_SETTING_ID
+
+        # setters write the matching field
+        setting_id!(i, Household, Int32(1))
+        setting_id!(i, Office, Int32(2))
+        setting_id!(i, SchoolClass, Int32(3))
+        setting_id!(i, Municipality, Int32(4))
+        @test (household_id(i), office_id(i), class_id(i), municipality_id(i)) == (Int32(1), Int32(2), Int32(3), Int32(4))
+
+        # a setting type without a dedicated field is a no-op and leaves the individual unchanged
+        @test setting_id!(i, SchoolYear, Int32(99)) === nothing
+        @test (household_id(i), office_id(i), class_id(i), municipality_id(i)) == (Int32(1), Int32(2), Int32(3), Int32(4))
     end
 end

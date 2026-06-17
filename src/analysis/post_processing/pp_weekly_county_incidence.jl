@@ -1,14 +1,12 @@
-export county_infections_between
-export weekly_county_incidence
 
 """
-    county_infections_between(postProcessor::PostProcessor, start_tick::Int64, end_tick::Int64)
+    _county_infections_between(postProcessor::PostProcessor, start_tick::Int64, end_tick::Int64)
 
 Returns a `DataFrame` with the county region code (`AGS`), pathogen id,
 and the number of infections in that region during the provided time
 window (`start_tick` and `end_tick`)
 """
-function county_infections_between(postProcessor::PostProcessor, start_tick::Int64, end_tick::Int64)
+function _county_infections_between(postProcessor::PostProcessor, start_tick::Int64, end_tick::Int64)
 
     if start_tick > end_tick
         throw(ArgumentError("Start tick cannot be larger than end tick."))
@@ -35,7 +33,7 @@ Returns a `DataFrame` with columns `ags`, `pathogen_id` and one column for each 
 of the simulation (`week_1`, `week_2`, `...`).
 Each row contains the weekly incidence per 100,000 per county and pathogen.
 """
-function weekly_county_incidence(postProcessor::PostProcessor)
+function _weekly_county_incidence(postProcessor::PostProcessor)
 
     if postProcessor |> simulation |> municipalities |> isempty
         #@warn "There are no regions (municipalities) in the input model. Therefore, GEMS cannot process regional incidences."
@@ -59,7 +57,7 @@ function weekly_county_incidence(postProcessor::PostProcessor)
     while (week + 1) * 7 <= ft
         new_col = Symbol("week_$week")
 
-        cnts = county_infections_between(
+        cnts = _county_infections_between(
             postProcessor,
             week * 7 + 1,
             (week + 1) * 7) |>

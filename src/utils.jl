@@ -1,36 +1,20 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
-export duplicates
-export concrete_subtypes, is_existing_subtype, find_subtype
-export isdate
 export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_by_pathogen, aggregate_values, aggregate_dicts, print_aggregates
-export WelfordState, welford_update!, welford_to_aggregate, welford_df_to_stats_df, welford_df_to_stats_df_multicol
-export read_git_repo, read_git_branch, read_git_commit
 export aggregate_matrix
-export basefolder, identical, bad_unique
-export get_missing_docs
-export parameters
-export lognow, printinfo, subinfo
-export _int
-export remove_kw, prepare_kw_args
 export germanshapes, state_data, county_data, municipality_data
 export gemscolors
-export haspath
-export rand_val
-
-# contact stuff
-export calculate_absolute_error
 
 ###
 ### GENERAL UTILS
 ###
 
 """
-    duplicates(vec)
+    _duplicates(vec)
 
 Returns values that are duplicates in a provided array.
 """
-function duplicates(vec)
+function _duplicates(vec)
     return collect(keys(filter(x -> x[2] > 1, countmap(vec))))
 end
 
@@ -39,26 +23,26 @@ end
 ### TYPING AND SUBTYPES
 ###
 
-function concrete_subtypes(type::Type)::Vector{DataType}
+function _concrete_subtypes(type::Type)::Vector{DataType}
     if subtypes(type) == []
         if !isabstracttype(type)
             return [type]
         end
         return []
     else
-        return vcat([concrete_subtypes(t) for t in subtypes(type)]...)
+        return vcat([_concrete_subtypes(t) for t in subtypes(type)]...)
     end
 end
 
-function is_existing_subtype(subtype::String, type::Type)::Bool
-    #= 
-    sometimes 'concrete_subtypes' produces a list with subtypes in namespace
+function _is_existing_subtype(subtype::String, type::Type)::Bool
+    #=
+    sometimes '_concrete_subtypes' produces a list with subtypes in namespace
     e.g. Distributions.Uniform
     Therefore, if applicable, we split the name to the last part after the dot
     and filter only the last part. The following will do that
     =#
-    return subtype in [t[end] for t in split.(string.(concrete_subtypes(type)), ".")]
-    # return subtype in string.(concrete_subtypes(type))
+    return subtype in [t[end] for t in split.(string.(_concrete_subtypes(type)), ".")]
+    # return subtype in string.(_concrete_subtypes(type))
 end
 
 """
@@ -92,8 +76,8 @@ end
 is_subtype(type::Symbol, parent::DataType) = is_subtype(string(type), parent)
 
 
-function find_subtype(subtype::String, type::Type)::Type
-    subtypes = concrete_subtypes(type)
+function _find_subtype(subtype::String, type::Type)::Type
+    subtypes = _concrete_subtypes(type)
     idx = findfirst(item -> item[end] == subtype, split.(string.(subtypes),"."))
     if idx === nothing
         throw(ArgumentError("$subtype is not a subtype of "*string(type)))
@@ -115,7 +99,7 @@ function get_subtype(type::String, parent::Type)
     # throw exception if multiple modules define a struct subtype
     # of the same name. This can happen if GEMS is used as a dependency in
     # another module
-    doubles = duplicates(structname.(stypes))
+    doubles = _duplicates(structname.(stypes))
     !isempty(doubles) ? throw(ErrorException("There are multiple $(structname(parent)) structs of the same name: $(join(doubles, ", ")). Did you (re-)define them in a custom module?")) : nothing
 
     # find right struct's index
@@ -161,7 +145,7 @@ type_in_collection(type::DataType, collection::Vector{DataType}) =
 ###
 
 # helper function to check whether input is valid date format
-function isdate(x)
+function _isdate(x)
     try
         Date(x)
         return true
@@ -171,11 +155,11 @@ function isdate(x)
 end
 
 """
-    foldercount(directory)
+    _foldercount(directory)
 
 Returns the number of subfolders in a directory.
 """
-function foldercount(directory::AbstractString)
+function _foldercount(directory::AbstractString)
     items = readdir(directory)
     count = 0
 
@@ -514,7 +498,7 @@ function print_aggregates(agg::Dict; unit::String = "", multiplier = 1, digits::
 end
 
 
-function read_git_repo()
+function _read_git_repo()
     cmd = `git config --get remote.origin.url`
     try
         @suppress result = strip(String(read(cmd)))
@@ -525,7 +509,7 @@ function read_git_repo()
 end
 
 
-function read_git_branch()
+function _read_git_branch()
     cmd  = `git rev-parse --abbrev-ref HEAD`
     try
         @suppress result = strip(String(read(cmd)))
@@ -535,7 +519,7 @@ function read_git_branch()
     end
 end
 
-function read_git_commit()
+function _read_git_commit()
     cmd = `git rev-parse HEAD`
     try
         @suppress result = strip(String(read(cmd)))
@@ -796,12 +780,12 @@ end
 
 
 
-function basefolder()
+function _basefolder()
     return(dirname(dirname(pathof(GEMS))))
 end
 
 
-function identical(a, b, ident = true)
+function _identical(a, b, ident = true)
     if typeof(a) != typeof(b)
         return false
     end
@@ -809,20 +793,20 @@ function identical(a, b, ident = true)
         ident = a == b && ident
     else
         for f in fieldnames(typeof(a))
-            ident = identical(getproperty(a, f), getproperty(b, f)) && ident
+            ident = _identical(getproperty(a, f), getproperty(b, f)) && ident
         end
     end
     return ident
 end
 
-function bad_unique(vec)
+function _bad_unique(vec)
     if length(vec) == 1
         return
     end
     for (i, entry) in enumerate(vec)
         j = i + 1
         while j <= length(vec)
-            if entry == vec[j] || identical(entry, vec[j])
+            if entry == vec[j] || _identical(entry, vec[j])
                 deleteat!(vec, j)
             else
                 j += 1
@@ -834,7 +818,7 @@ end
 
 
 
-function get_missing_docs()
+function _get_missing_docs()
     # copied from: https://discourse.julialang.org/t/check-if-a-function-has-a-docstring/103489/3
     hasdoc(mod::Module, sym::Symbol) = haskey(Base.Docs.meta(mod), Base.Docs.Binding(mod, sym));
 
@@ -844,12 +828,12 @@ function get_missing_docs()
 end
 
 """
-    parameters(d::Distribution)
+    _parameters(d::Distribution)
 
 Returns a dictionary containing the string() of the distribution, the mean and
 the std.
 """
-function parameters(d::Distribution)
+function _parameters(d::Distribution)
     # Get the parameters as a named tuple
     res = Dict( 
         "distribution" => string(d),
@@ -899,7 +883,7 @@ end
 
 
 """
-    calculate_absolute_error(matrix1::Matrix{T}, matrix2::Matrix{T})::Matrix{T} where T <: Number
+    _calculate_absolute_error(matrix1::Matrix{T}, matrix2::Matrix{T})::Matrix{T} where T <: Number
 
 Calculate the absolute difference between `matrix1` and `matrix2`.
 
@@ -922,7 +906,7 @@ calculate_absolute_error(m1,m2)
  2  0
 ```
 """
-function calculate_absolute_error(matrix1::Matrix{T}, matrix2::Matrix{T})::Matrix{T} where T <: Number
+function _calculate_absolute_error(matrix1::Matrix{T}, matrix2::Matrix{T})::Matrix{T} where T <: Number
 
     result::Matrix = zeros(T, length(matrix1[1,:]), length(matrix1[1,:]))
 
@@ -981,32 +965,32 @@ function find_alpha(observation_matrix::Matrix{T}, prediction_matrix::Matrix{T})
     return alpha
 end
 """
-    lognow()
+    _lognow()
 
 Returns the current time in HH:MM:SS format for logging purposes.
 """
-function lognow()
+function _lognow()
     return(Dates.format(Dates.now(), "HH:MM:SS"))
 end
 
 
 """
-    printinfo(str::String)
+    _printinfo(str::String)
 
 Prints an @info-Text with the provided string and a HH:MM:SS timestamp.
 """
-function printinfo(str::String)
-    PRINT_INFOS ? (@info "$(lognow()) | $str") : nothing
+function _printinfo(str::String)
+    PRINT_INFOS ? (@info "$(_lognow()) | $str") : nothing
 end
 
 
 """
-    subinfo(str::String)
+    _subinfo(str::String)
 
 Returns a string with a "sub-line-hook" indicating subtasks
-of an @info task (as generated by `printinfo()`)
+of an @info task (as generated by `_printinfo()`)
 """
-function subinfo(str::String)
+function _subinfo(str::String)
     if !PRINT_INFOS return "" end
 
     #  console dimensions
@@ -1016,8 +1000,8 @@ function subinfo(str::String)
     offset = 8
     # cut string length if necessary
 
-    toprint = "$(lognow()) | \u2514 $str"
-    
+    toprint = "$(_lognow()) | \u2514 $str"
+
     toprint = offset < width ? (" " ^ offset) * toprint : toprint
 
     # cut output to console length
@@ -1038,7 +1022,7 @@ _int(f) = x->f(x)::Int
 
 
 """
-    remove_kw(to_remove::Symbol, kwrds)
+    _remove_kw(to_remove::Symbol, kwrds)
 
 Removes a particular keyword from a Named Tuple keyword ist.
 This is mainly used to exclude certain keywords in plots
@@ -1048,7 +1032,7 @@ when passing `plotargs...` to subplots.
 
 ```julia
 function my_function(;args...)
-    new_kwrds = remove_kw(:a, args)
+    new_kwrds = _remove_kw(:a, args)
     my_other_function(new_kwrds...)
 end
 ```
@@ -1057,7 +1041,7 @@ If you call the above function with `my_function(a = 2, b = 3)`,
 it will call the inner function with `my_other_function(b = 3)`.
 
 """
-function remove_kw(to_remove::Symbol, kwrds)
+function _remove_kw(to_remove::Symbol, kwrds)
     kwrds_dict = Dict(kwrds)
     if haskey(kwrds_dict, to_remove)
         delete!(kwrds_dict, to_remove)
@@ -1067,11 +1051,11 @@ end
 
 
 """
-    prepare_kw_args(dict::Dict)
+    _prepare_kw_args(dict::Dict)
 
 Converts a dictionary with string keys to a dictionary with Symbol keys.
 """
-function prepare_kw_args(dict::Dict{String, <:Any})
+function _prepare_kw_args(dict::Dict{String, <:Any})
     return Dict(Symbol(k) => v for (k, v) in dict)
 end
 
@@ -1103,7 +1087,7 @@ function germanshapes(level::Int64)
     end
 
     # download shapefile
-    printinfo("German shapefile not available locally. Downloading files...")
+    _printinfo("German shapefile not available locally. Downloading files...")
     
     zipath = joinpath(TEMP_FOLDER_PATH, "shapefile.zip")
     
@@ -1116,7 +1100,7 @@ function germanshapes(level::Int64)
             compress = :none,
             parser = x -> nothing,
             save_raw = zipath)
-        printinfo("Unpacking ZIP file")
+        _printinfo("Unpacking ZIP file")
     catch e
         msg = "Data could not be downloaded. Are you sure the data is available at $GERMAN_SHAPEFILE_URL? "
         msg *= "Is there a firewall preventing automatic downloads? "
@@ -1154,7 +1138,7 @@ function germanshapes(level::Int64)
 end
 
 """
-    haspath(dict::Dict, path::Vector{<:Any})
+    _haspath(dict::Dict, path::Vector{<:Any})
 
 Checks if a dictionary has a path of keys.
 The path is a vector of keys that should be present in the dictionary.
@@ -1163,11 +1147,11 @@ The path is a vector of keys that should be present in the dictionary.
 
 ```julia
 julia> d = Dict(:a => Dict(:b => Dict(:c => 1)))
-julia> haspath(d, [:a, :b, :c])
+julia> _haspath(d, [:a, :b, :c])
 true
 ```
 """
-function haspath(dict::Dict, path::Vector{<:Any})
+function _haspath(dict::Dict, path::Vector{<:Any})
     d = dict
     for p in path
         if haskey(d, p)
@@ -1181,14 +1165,14 @@ end
 
 
 """
-    rand_val(val::Real, rng::Xoshiro)
-    rand_val(dist::Distribution, rng::Xoshiro)
+    _rand_val(val::Real, rng::Xoshiro)
+    _rand_val(dist::Distribution, rng::Xoshiro)
 
 If the input is a real number, it is returned as is.
 If the input is a distribution, a random value is drawn from it.
 """
-rand_val(val::Real, rng::Xoshiro) = val
-rand_val(dist::Distribution, rng::Xoshiro) = gems_rand(rng, dist)
+_rand_val(val::Real, rng::Xoshiro) = val
+_rand_val(dist::Distribution, rng::Xoshiro) = gems_rand(rng, dist)
 
 """
     state_data()
@@ -1257,12 +1241,12 @@ end
 ###
 
 """
-    WelfordState
+    _WelfordState
 
 Mutable accumulator for online computation of mean, variance, min, and max
 using Welford's algorithm. One tick at a time, with O(1) memory.
 """
-mutable struct WelfordState
+mutable struct _WelfordState
     n::Int
     mean::Float64
     M2::Float64
@@ -1270,14 +1254,14 @@ mutable struct WelfordState
     max::Float64
 end
 
-WelfordState() = WelfordState(0, 0.0, 0.0, Inf, -Inf)
+_WelfordState() = _WelfordState(0, 0.0, 0.0, Inf, -Inf)
 
 """
-    welford_update!(s::WelfordState, x::Real)
+    _welford_update!(s::_WelfordState, x::Real)
 
 Update the accumulator `s` with a new observation `x`.
 """
-function welford_update!(s::WelfordState, x::Real)
+function _welford_update!(s::_WelfordState, x::Real)
     s.n += 1
     delta = x - s.mean
     s.mean += delta / s.n
@@ -1287,12 +1271,12 @@ function welford_update!(s::WelfordState, x::Real)
 end
 
 """
-    welford_to_aggregate(s::WelfordState) -> Dict{String, Real}
+    _welford_to_aggregate(s::_WelfordState) -> Dict{String, Real}
 
-Convert a `WelfordState` to an aggregate statistics dict with the same schema
+Convert a `_WelfordState` to an aggregate statistics dict with the same schema
 as `aggregate_values`: keys `"min"`, `"max"`, `"mean"`, `"std"`, `"lower_95"`, `"upper_95"`.
 """
-function welford_to_aggregate(s::WelfordState)::Dict{String, Real}
+function _welford_to_aggregate(s::_WelfordState)::Dict{String, Real}
     std_val = s.n > 1 ? sqrt(s.M2 / (s.n - 1)) : 0.0
     critical_value = quantile(TDist(max(s.n - 1, 1 + 1e-8)), 0.975)
     se = s.n > 0 ? std_val / sqrt(s.n) : 0.0
@@ -1307,13 +1291,13 @@ function welford_to_aggregate(s::WelfordState)::Dict{String, Real}
 end
 
 """
-    welford_df_to_stats_df(accum::Dict{Int, WelfordState}, key::Symbol) -> DataFrame
+    _welford_df_to_stats_df(accum::Dict{Int, _WelfordState}, key::Symbol) -> DataFrame
 
 Convert per-tick Welford accumulators to an aggregated DataFrame with the same schema
 as `aggregate_dfs`: columns `key`, `"minimum"`, `"maximum"`, `"mean"`, `"std"`,
 `"lower_95"`, `"upper_95"`. Rows are sorted by `key`.
 """
-function welford_df_to_stats_df(accum::Dict{Int, WelfordState}, key::Symbol)::DataFrame
+function _welford_df_to_stats_df(accum::Dict{Int, _WelfordState}, key::Symbol)::DataFrame
     ticks = sort(collect(keys(accum)))
     if isempty(ticks)
         return DataFrame(
@@ -1358,11 +1342,11 @@ function welford_df_to_stats_df(accum::Dict{Int, WelfordState}, key::Symbol)::Da
 end
 
 """
-    welford_df_to_stats_df_multicol(accum::Dict{String, Dict{Int, WelfordState}}, key::Symbol) -> Dict{String, DataFrame}
+    _welford_df_to_stats_df_multicol(accum::Dict{String, Dict{Int, _WelfordState}}, key::Symbol) -> Dict{String, DataFrame}
 
 Convert multi-column per-tick Welford accumulators to a dict of aggregated DataFrames,
 one per accumulated column. Matches the output schema of `aggregate_dfs_multcol`.
 """
-function welford_df_to_stats_df_multicol(accum::Dict{String, Dict{Int, WelfordState}}, key::Symbol)::Dict{String, DataFrame}
-    Dict(col => welford_df_to_stats_df(tick_accum, key) for (col, tick_accum) in accum)
+function _welford_df_to_stats_df_multicol(accum::Dict{String, Dict{Int, _WelfordState}}, key::Symbol)::Dict{String, DataFrame}
+    Dict(col => _welford_df_to_stats_df(tick_accum, key) for (col, tick_accum) in accum)
 end

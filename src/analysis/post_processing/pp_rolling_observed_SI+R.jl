@@ -112,7 +112,7 @@ function observed_R(postProcessor::PostProcessor)
 
     # required data frames
     roSI = postProcessor |> rolling_observed_SI
-    rtc = postProcessor |> reported_tick_cases
+    rtc = postProcessor |> _reported_tick_cases
 
     # required constants
     r_window = R_ESTIMATION_TIME_WINDOW

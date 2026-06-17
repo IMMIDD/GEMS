@@ -1,5 +1,4 @@
-export test_sim, test_sim_r, report_test, plot_test, test_all, test_state, batch_test, intervention_test, geolocated_sim, geolocated_test, settingfile_sim, settingfile_test
-export getundocumented
+export test_sim, test_sim_r, geolocated_sim, settingfile_sim
 
 """
     test_sim()
@@ -165,7 +164,7 @@ add_geo_coords! = function(sim::Simulation)
 
     # sample a location for all setting types in the simulation
     for st in settingtypes(settingscontainer(sim))
-        for s in settings(sim, st)
+        for s in get(settingscontainer(sim), st)
             if typeof(s) <: Geolocated
                 pos = gems_rand(sim.main_rng, 1:length(lats))
                 lat = lats[pos]

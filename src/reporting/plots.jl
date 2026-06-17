@@ -1,9 +1,9 @@
 # CREATION OF PLOTS AND FIGURES FOR THE REPORT
-export ReportPlot, SimulationPlot, GMTWrapper
+export ReportPlot, SimulationPlot
 export title, description, description!, filename, filename!, generate
-export fontfamily!, dpi!, title!, titlefontsize!, saveplot, emptyplot
+export fontfamily!, dpi!, title!, titlefontsize!
+export saveplot
 export gemsplot
-export plottypes, splitgroup, splitplot, plotseries!
 
 ###
 ### ABSTRACT HIERARCHY & TYPES
@@ -531,7 +531,7 @@ Returns a split side-by-side plot for multiple `ResultData` objects.
 
 - `Plots.Plot`: Plot using the `Plots.jl` package's struct.
 """
-splitplot(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...) = plot((map(rd -> generate(plt, rd, title = label(rd); remove_kw(:plot_title, plotargs)...), rds))...; plotargs...)
+splitplot(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...) = plot((map(rd -> generate(plt, rd, title = label(rd); _remove_kw(:plot_title, plotargs)...), rds))...; plotargs...)
 
 
 """
@@ -566,7 +566,7 @@ function splitgroup(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
     plts = [generate(plt, rd,
                 title = lab,
                 color = colors[lab];
-                remove_kw(:plot_title, plotargs)...) for (lab, rd) in data]
+                _remove_kw(:plot_title, plotargs)...) for (lab, rd) in data]
     return plot(plts..., plot_title = title(plt), layout = (1, length(labels)); plotargs...)
 end
 
@@ -645,7 +645,7 @@ end
 # make sure to define the Plot-Struct and the generate() function.
 
 # include all Julia files from the "plots"-folder
-dir = basefolder() * "/src/reporting/plots/"
+dir = _basefolder() * "/src/reporting/plots/"
 
 include.(
     filter(

@@ -1,8 +1,7 @@
 export AbstractTestType
-export Maesure, IMeasure, SMeasure, CMeasure
+export IMeasure, SMeasure, CMeasure
 export Strategy
 export InterventionTrigger, ITrigger, STrigger
-export Event
 
 ###
 ### TESTING

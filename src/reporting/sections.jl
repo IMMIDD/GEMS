@@ -1,6 +1,6 @@
 export AbstractSection, Section, PlotSection
-export title, title!, subtitle, subtitle!, content, content!, subsections
-export plt, plotpackage
+export title, title!, subtitle, subtitle!, plt
+export subsections, content, content!
 export generate
 
 ### SECTION STRUCTS
@@ -305,7 +305,7 @@ of the report.
 """
 function generate(section::Section, depth::Int64, rd::AbstractResultData, directory::AbstractString)
     
-    @info "\r$(subinfo(section |> title))" # console info outpupt
+    @info "\r$(_subinfo(section |> title))" # console info outpupt
     
     res  = generate_title(section, depth)  
     @suppress res *= generate_content(section, rd, directory)
@@ -328,7 +328,7 @@ in dedicated "/img" folder.
 """
 function generate(section::PlotSection, depth::Int64, rd::AbstractResultData, directory::AbstractString)
     
-    @info "\r$(subinfo(section |> plt |> title))" # console info outpupt
+    @info "\r$(_subinfo(section |> plt |> title))" # console info outpupt
 
     # content function genertes title so must be run in advance
     plotcontent = @suppress generate_content(section, rd, directory)
