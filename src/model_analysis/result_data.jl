@@ -80,13 +80,13 @@ function process_funcs(func_dicts::Dict)
         # non-parallel post processing
         else
             for field_name in collect(keys(dct))
-                print("\r$(subinfo("$key/$field_name"))")
+                print("\r$(_subinfo("$key/$field_name"))")
                 data[key][field_name] = dct[field_name]()
             end
         end
     end
 
-    print("\r$(subinfo("Done"))")
+    print("\r$(_subinfo("Done"))")
 
     return(data)
 end
@@ -134,7 +134,7 @@ end
 # make sure to define the respective struct there and export it (using the export statement).
 
 # include all Julia files from the "rd_styles"-folder
-dir = basefolder() * "/src/model_analysis/rd_styles"
+dir = _basefolder() * "/src/model_analysis/rd_styles"
 
 include.(
     filter(
@@ -179,7 +179,7 @@ mutable struct ResultData <: AbstractResultData
     for the fields to be calculated. Post Processing requires a simulation to be done.
     """
     function ResultData(postProcessor::PostProcessor; style::String="DefaultResultData")
-        printinfo("Processing simulation data")
+        _printinfo("Processing simulation data")
         
         # Create the style struct
         style = get_style(style)(postProcessor)
@@ -212,7 +212,7 @@ mutable struct ResultData <: AbstractResultData
 
         rds = Vector{ResultData}()
         for pp in postProcessors
-            printinfo("Processing Simulation $(cnt = cnt + 1)/$(postProcessors |> length) in Batch")
+            _printinfo("Processing Simulation $(cnt = cnt + 1)/$(postProcessors |> length) in Batch")
             GEMS.PRINT_INFOS = print_infos
             push!(rds, ResultData(pp, style = style))
             GEMS.PRINT_INFOS = prev_print_state

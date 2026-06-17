@@ -50,7 +50,7 @@ function process!(batch::Batch;
     group_indices = multi_group && collect_median ? Dict{String, Vector{Int}}() : nothing
 
     for (i, (cfg, sim_setup, sim_group)) in enumerate(zip(configs, setups, cfg_groups))
-        printinfo("Processing Simulation $i/$n in Batch")
+        _printinfo("Processing Simulation $i/$n in Batch")
 
         sim = Simulation(; cfg..., seed = sim_seeds[i])
 
@@ -97,7 +97,7 @@ function _run_median_run!(bp, configs, setups, sim_seeds, criterion_values, rd_s
     (isnothing(criterion_values) || isempty(criterion_values)) && return
     final_median = median(criterion_values)
     best_idx = argmin(abs(v - final_median) for v in criterion_values)
-    printinfo("Re-running median simulation (config $best_idx)")
+    _printinfo("Re-running median simulation (config $best_idx)")
     cfg = configs[best_idx]
     rep_sim = Simulation(; cfg..., seed = sim_seeds[best_idx])
     setups[best_idx] !== nothing && setups[best_idx](rep_sim)
@@ -112,7 +112,7 @@ function _run_group_median_runs!(bp, configs, setups, sim_seeds, group_criteria,
         final_median = median(criteria)
         best_local = argmin(abs(v - final_median) for v in criteria)
         best_idx = indices[best_local]
-        printinfo("Re-running median simulation for group \"$grp\" (config $best_idx)")
+        _printinfo("Re-running median simulation for group \"$grp\" (config $best_idx)")
         cfg = configs[best_idx]
         rep_sim = Simulation(; cfg..., seed = sim_seeds[best_idx])
         setups[best_idx] !== nothing && setups[best_idx](rep_sim)

@@ -146,9 +146,9 @@ mutable struct LightRD <: ResultDataStyle
                     "cpu_data" => () -> cpudata(),
                     "total_mem_size" => () -> round(Sys.total_memory()/2^20, digits = 2),
                     "free_mem_size" => () -> round(Sys.free_memory()/2^20, digits = 2),
-                    "git_repo" => () -> read_git_repo(),
-                    "git_branch" => () -> read_git_branch(),
-                    "git_commit" => () -> read_git_commit()#,
+                    "git_repo" => () -> _read_git_repo(),
+                    "git_branch" => () -> _read_git_branch(),
+                    "git_commit" => () -> _read_git_commit()#,
                 ),
 
             "aggregated_setting_age_contacts" =>

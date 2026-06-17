@@ -52,9 +52,9 @@ mutable struct OptimisedResultData <: ResultDataStyle
                 "julia_version" => () -> string(Base.VERSION),
                 "threads" => () -> Threads.nthreads(),
                 "cpu_data" => () -> cpudata(),
-                "git_repo" => () -> read_git_repo(),
-                "git_branch" => () -> read_git_branch(),
-                "git_commit" => () -> read_git_commit(),
+                "git_repo" => () -> _read_git_repo(),
+                "git_branch" => () -> _read_git_branch(),
+                "git_commit" => () -> _read_git_commit(),
                 ),
 
             "dataframes" =>

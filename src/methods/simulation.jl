@@ -372,7 +372,7 @@ function (step!) until the stop criterion is met.
 - `Simulation`: Simulation object
 """
 function run!(simulation::Simulation; with_progressbar::Bool = true)
-    printinfo("Running Simulation $(label(simulation))")
+    _printinfo("Running Simulation $(label(simulation))")
 
     sc = stop_criterion(simulation)
     

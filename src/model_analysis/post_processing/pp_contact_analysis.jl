@@ -365,7 +365,7 @@ function weighted_error_sum(post_processor::PostProcessor, setting::DataType, re
     end
 
     # calculate absolute error between both matrices
-    error_matrix_data::Matrix{T} = GEMS.calculate_absolute_error(reference_matrix.data, simulation_contact_matrix_data)
+    error_matrix_data::Matrix{T} = GEMS._calculate_absolute_error(reference_matrix.data, simulation_contact_matrix_data)
 
     error_contact_matrix = ContactMatrix{T}(error_matrix_data, reference_matrix.interval_steps, reference_matrix.aggregation_bound)
 

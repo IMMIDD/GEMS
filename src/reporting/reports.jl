@@ -279,7 +279,7 @@ abstract type BatchReportStyle end
 # make sure to define the respective struct there and export it (using the export statement).
 
 # include all Julia files from the "styles"-folder
-dir = basefolder() * "/src/reporting/styles"
+dir = _basefolder() * "/src/reporting/styles"
 
 include.(
     filter(
@@ -431,7 +431,7 @@ function generate(report::Report, directory::AbstractString)
     end
 
 
-    @info "\r$(subinfo("Done"))"
+    @info "\r$(_subinfo("Done"))"
 
     # add glossary
     if glossary(report)
@@ -489,11 +489,11 @@ function buildreport(data::Union{ResultData,BatchData}, style::String = "")
     else
         type = BatchReportStyle
     end
-    id = findfirst(x -> occursin(style, x), string.(concrete_subtypes(type)))
+    id = findfirst(x -> occursin(style, x), string.(_concrete_subtypes(type)))
     if isnothing(id)
-        style = concrete_subtypes(type)[1](data = data)
+        style = _concrete_subtypes(type)[1](data = data)
     else
-        style = concrete_subtypes(type)[id](data = data)
+        style = _concrete_subtypes(type)[id](data = data)
     end
 
     # Create the Report struct

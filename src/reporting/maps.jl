@@ -271,7 +271,7 @@ end
 # make sure to define the MapPlot-Struct and the generate() function.
 
 # include all Julia files from the "plots"-folder
-dir = basefolder() * "/src/reporting/maps/"
+dir = _basefolder() * "/src/reporting/maps/"
 
 include.(
     filter(

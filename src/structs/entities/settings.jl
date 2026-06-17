@@ -831,7 +831,7 @@ function settings_from_population(population::Population, global_setting::Bool =
     default_sampling = ContactparameterSampling(0)
 
     # Get all concrete subtypes of IndividualSetting
-    stngtypes = concrete_subtypes(IndividualSetting)
+    stngtypes = _concrete_subtypes(IndividualSetting)
     if !global_setting
         stngtypes = filter(x -> x != GlobalSetting, stngtypes)
     end

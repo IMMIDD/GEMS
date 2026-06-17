@@ -122,7 +122,7 @@ end
 
 
 # include all Julia files from the "measures"-folder
-dir = basefolder() * "/src/interventions/measures/"
+dir = _basefolder() * "/src/interventions/measures/"
 
 include.(
     filter(

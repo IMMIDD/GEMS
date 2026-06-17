@@ -25,7 +25,7 @@ abstract type BatchDataStyle end
 # make sure to define the respective struct there and export it (using the export statement).
 
 # include all Julia files from the "rd_styles"-folder
-dir = basefolder() * "/src/model_analysis/bd_styles"
+dir = _basefolder() * "/src/model_analysis/bd_styles"
 
 include.(
     filter(
@@ -62,14 +62,14 @@ mutable struct BatchData <: AbstractResultData
     """
     function BatchData(batchProcessor::BatchProcessor; style::String = "DefaultBatchData")
         # Determine the style to be used
-        id = findfirst(x -> occursin(style, x), string.(concrete_subtypes(BatchDataStyle)))
+        id = findfirst(x -> occursin(style, x), string.(_concrete_subtypes(BatchDataStyle)))
         if isnothing(id)
             @warn "The provided style $style was not found. The `DefaultBatchDataStyle` will be used!"
-            id = findfirst(x -> occursin("DefaultBatchData", x), string.(concrete_subtypes(BatchDataStyle)))
+            id = findfirst(x -> occursin("DefaultBatchData", x), string.(_concrete_subtypes(BatchDataStyle)))
         end
 
         # get style
-        style = concrete_subtypes(BatchDataStyle)[id](batchProcessor)
+        style = _concrete_subtypes(BatchDataStyle)[id](batchProcessor)
 
         # Use the data to create the ResultData struct
         bd = new(style.data)

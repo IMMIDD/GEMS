@@ -17,7 +17,7 @@ export progression_assignments
 # make sure to define the function.
 
 # include all Julia files from the "progression_categories"-folder
-dir = basefolder() * "/src/pathogen/progression_categories"
+dir = _basefolder() * "/src/pathogen/progression_categories"
 
 include.(
     filter(
@@ -38,7 +38,7 @@ include.(
 # make sure to define the function.
 
 # include all Julia files from the "progression_assignment"-folder
-dir = basefolder() * "/src/pathogen/progression_assignments"
+dir = _basefolder() * "/src/pathogen/progression_assignments"
 
 include.(
     filter(
@@ -59,7 +59,7 @@ include.(
 # make sure to define the function.
 
 # include all Julia files from the "transmission_functions"-folder
-dir = basefolder() * "/src/pathogen/transmission_functions"
+dir = _basefolder() * "/src/pathogen/transmission_functions"
 
 include.(
     filter(

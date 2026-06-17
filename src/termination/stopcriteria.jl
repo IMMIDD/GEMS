@@ -11,7 +11,7 @@ export start_conditions
 # make sure to define the new struct and the required evaluate()-function.
 
 # include all Julia files from the "stop_criteria"-folder
-dir = basefolder() * "/src/termination/stop_criteria"
+dir = _basefolder() * "/src/termination/stop_criteria"
 
 include.(
     filter(
