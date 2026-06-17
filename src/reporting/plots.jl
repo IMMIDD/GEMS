@@ -436,7 +436,7 @@ end
 # Returns a NamedTuple with pathogen title injected and :plot_title removed,
 # for use as kwargs when building a per-pathogen subplot in a multi-pathogen layout.
 function _pathogen_subargs(pid, pnames, plotargs)
-    return (; title = get(pnames, pid, "Pathogen $pid"), remove_kw(:plot_title, plotargs)...)
+    return (; title = get(pnames, pid, "Pathogen $pid"), _remove_kw(:plot_title, plotargs)...)
 end
 
 # Combines subplots into a multi-panel layout (one panel per pathogen).

@@ -3,7 +3,6 @@ export Logger, TickLogger, EventLogger, InfectionLogger, VaccinationLogger, Deat
 export QuarantineLogger, StateLogger, CustomLogger
 export tick, log!, save, save_JLD2, dataframe
 export get_infections_between
-export duplicate
 
 """
 Supertype for all Loggers

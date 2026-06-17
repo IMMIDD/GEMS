@@ -181,7 +181,7 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; pathogen = 
 
     subplots = [begin
         p = _scatter_for_pid(pid)
-        plot!(p; title = get(pnames, pid, "Pathogen $pid"), remove_kw(:plot_title, plotargs)...)
+        plot!(p; title = get(pnames, pid, "Pathogen $pid"), _remove_kw(:plot_title, plotargs)...)
         p
     end for pid in pids]
     return plot(subplots..., layout = (1, length(pids)), size = (600 * length(pids), 400); plotargs...)

@@ -153,7 +153,7 @@ function generate(plt::InfectionDuration, rds::Vector{ResultData}; pathogen = no
 
     subplots = [begin
         p = _boxplot_for_pid(pid)
-        plot!(p; title = get(pnames, pid, "Pathogen $pid"), remove_kw(:plot_title, plotargs)...)
+        plot!(p; title = get(pnames, pid, "Pathogen $pid"), _remove_kw(:plot_title, plotargs)...)
         p
     end for pid in pids]
     return plot(subplots..., layout = (1, length(pids)), size = (500 * length(pids), 400); plotargs...)

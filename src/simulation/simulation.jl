@@ -704,7 +704,7 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
             throw(ArgumentError("Provided pathogens must be a Pathogen, Tuple, or Vector{<:Pathogen}!"))
         end
     else
-        !haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogens found in config file!"))
+        !_haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogens found in config file!"))
         create_pathogens(configfile_params["Pathogens"])
     end
 
