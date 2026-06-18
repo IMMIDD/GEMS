@@ -18,10 +18,7 @@ Executes the `process_measure` function for all measures in the
 simulation's `EventQueue` for the current tick.
 """
 function process_events!(simulation::Simulation)
-    eq = event_queue(simulation)
-    while !isempty(eq) && peektick(eq) <= tick(simulation)
-        process_event(dequeue!(eq), simulation)
-    end
+    process_due!(event_queue(simulation), simulation, tick(simulation))
 end
 
 """

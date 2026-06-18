@@ -210,6 +210,37 @@ function dequeue!(queue::EventQueue)
 end
 
 """
+    process_due!(queue::EventQueue, sim, t)
+
+Drains and processes every event scheduled for a tick `<= t`, in tick order (setting events
+before individual events within a tick, each LIFO). Used by `process_events!` instead of
+`dequeue!`: draining the concretely-typed buckets directly keeps `process_event` statically
+dispatched and avoids boxing each event into a `Union{IMeasureEvent, SMeasureEvent}` return.
+Re-entrantly scheduled events (follow-ups) are picked up by the surrounding loop.
+"""
+function process_due!(queue::EventQueue, sim, t)
+    _advance_head!(queue)
+    while !isempty(queue) && queue.head <= t
+        idx = queue.head + 1
+        _drain_bucket!(queue.s_buckets, idx, queue, sim)
+        _drain_bucket!(queue.i_buckets, idx, queue, sim)
+        _advance_head!(queue)
+    end
+    return nothing
+end
+
+# drain one tick bucket (specialized per event type, so `pop!`/`process_event` are concrete)
+@inline function _drain_bucket!(buckets, idx::Int, queue::EventQueue, sim)
+    idx <= length(buckets) || return nothing
+    b = buckets[idx]
+    while !isempty(b)
+        process_event(pop!(b), sim)
+        queue.count -= 1
+    end
+    return nothing
+end
+
+"""
     empty!(queue::EventQueue)
 
 Removes all `Event`s from the `EventQueue`, retaining bucket capacity.
