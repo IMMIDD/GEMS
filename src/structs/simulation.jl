@@ -362,7 +362,8 @@ function _BUILD_Simulation(;
 
         # SEED
         rng_seed = determine_seed(config, seed)
-        rngs = [Xoshiro(gems_rand(Xoshiro(rng_seed), UInt)) for _ in 1:Threads.maxthreadid()]
+        master_rng = Xoshiro(rng_seed)
+        rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
 
         # GLOBAL SETTING FLAG
         gs = determine_global_setting(config, global_setting)
@@ -1741,7 +1742,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # Re-initialize RNGs
     if !isnothing(simulation.seed)
-        simulation.rngs = [Xoshiro(gems_rand(Xoshiro(simulation.seed), UInt)) for _ in 1:Threads.maxthreadid()]
+        master_rng = Xoshiro(simulation.seed)
+        simulation.rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
     end
 
     # Initialize the simulation's start condition
