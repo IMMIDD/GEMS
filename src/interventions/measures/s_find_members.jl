@@ -75,6 +75,8 @@ struct FindMembers <: SMeasure
     selectionfilter::IPredicate
     has_filter::Bool
 
+    # reused buffer for the filtered candidates; serial use only
+    buffer::Vector{Individual}
 
     function FindMembers(follow_up::IStrategy;
         sample_size::Int64 = -1, sample_fraction::Float64 = 1.0, selectionfilter::Function = _select_all)
@@ -92,7 +94,7 @@ struct FindMembers <: SMeasure
         end
 
         return(
-            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all)
+            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all, Individual[])
         )
     end
 
@@ -172,21 +174,30 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
 
     INTERVENTION_DEBUG && @debug "Identifying members of setting $(string(typeof(s)))[$(id(s))] at tick $(sim |> tick)"
 
-    members = individuals(s)
-    if has_filter(measure)
-        members = filter(selectionfilter(measure), members)
-    end
-
     fu = measure |> follow_up
 
-    # trigger the follow-up for the requested members: a sample of size "sample_size",
-    # a sample of size "sample_fraction * length", or all members
-    if sample_size(measure) >= 0
-        apply_followup!(sim, sample_individuals(members, sample_size(measure), rng=rng(sim)), fu)
-    elseif sample_fraction(measure) < 1
-        apply_followup!(sim, sample_individuals(members, Int64(ceil((length(members) * sample_fraction(measure)))), rng=rng(sim)), fu)
-    else
-        apply_followup!(sim, members, fu)
+    # no sampling: trigger the follow-up for every (filtered) member without materializing a list
+    if sample_size(measure) < 0 && sample_fraction(measure) >= 1
+        if has_filter(measure)
+            for i in individuals(s)
+                selectionfilter(measure)(i) && trigger_strategy(fu, i, sim)
+            end
+        else
+            apply_followup!(sim, individuals(s), fu)
+        end
+        return nothing
     end
+
+    # sampling: collect the candidates first, reusing the buffer when a filter is set
+    members = individuals(s)
+    if has_filter(measure)
+        members = empty!(measure.buffer)
+        for i in individuals(s)
+            selectionfilter(measure)(i) && push!(members, i)
+        end
+    end
+
+    n = sample_size(measure) >= 0 ? sample_size(measure) : Int64(ceil(length(members) * sample_fraction(measure)))
+    apply_followup!(sim, sample_individuals(members, n, rng=rng(sim)), fu)
     return nothing
 end
