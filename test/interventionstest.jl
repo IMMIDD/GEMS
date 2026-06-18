@@ -829,6 +829,34 @@ end
             trigger5 = ITickTrigger(strategy, switch_tick=Int16(1), interval=Int16(5))
             @test should_fire(trigger5, Int16(7)) == false  # 7 is not a multiple of 5 (interval)
         end
+
+        #test should_fire(trigger, sim) which also consults the trigger-level condition
+        @testset "Testing should_fire with trigger-level condition" begin
+            sim = Simulation()
+            strategy = IStrategy("i_strategy", sim)
+
+            # default condition (always true) doesn't change scheduling behavior
+            default_trigger = ITickTrigger(strategy)
+            @test should_fire(default_trigger, sim) == true
+
+            # a false condition suppresses firing even though the schedule is due
+            gated_trigger = ITickTrigger(strategy, condition = s -> false)
+            @test should_fire(gated_trigger, sim) == false
+            @test GEMS.condition(gated_trigger)(sim) == false
+
+            # the condition is irrelevant if the schedule itself isn't due yet
+            future_trigger = ITickTrigger(strategy, switch_tick = Int16(10), condition = s -> true)
+            @test should_fire(future_trigger, sim) == false
+
+            # a non-boolean-returning condition raises a clear error, same as strategy conditions
+            bad_trigger = ITickTrigger(strategy, condition = s -> nothing)
+            @test_throws ErrorException should_fire(bad_trigger, sim)
+
+            # STickTrigger supports the same trigger-level condition
+            s_strategy = SStrategy("s_strategy", sim)
+            gated_s_trigger = STickTrigger(Office, s_strategy, condition = s -> false)
+            @test should_fire(gated_s_trigger, sim) == false
+        end
     end
 
     @testset "Test Measure Events" begin
