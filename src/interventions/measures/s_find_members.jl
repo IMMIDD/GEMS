@@ -75,8 +75,9 @@ struct FindMembers <: SMeasure
     selectionfilter::IPredicate
     has_filter::Bool
 
-    # reused buffer for the filtered candidates; serial use only
-    buffer::Vector{Individual}
+    # reused buffers (serial use only): filtered candidates and the sampled subset
+    filter_buffer::Vector{Individual}
+    sample_buffer::Vector{Individual}
 
     function FindMembers(follow_up::IStrategy;
         sample_size::Int64 = -1, sample_fraction::Float64 = 1.0, selectionfilter::Function = _select_all)
@@ -94,7 +95,7 @@ struct FindMembers <: SMeasure
         end
 
         return(
-            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all, Individual[])
+            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all, Individual[], Individual[])
         )
     end
 
@@ -188,16 +189,16 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
         return nothing
     end
 
-    # sampling: collect the candidates first, reusing the buffer when a filter is set
+    # sampling: collect the candidates first, reusing the filter buffer when a filter is set
     members = individuals(s)
     if has_filter(measure)
-        members = empty!(measure.buffer)
+        members = empty!(measure.filter_buffer)
         for i in individuals(s)
             selectionfilter(measure)(i) && push!(members, i)
         end
     end
 
     n = sample_size(measure) >= 0 ? sample_size(measure) : Int64(ceil(length(members) * sample_fraction(measure)))
-    apply_followup!(sim, sample_individuals(members, n, rng=rng(sim)), fu)
+    apply_followup!(sim, sample_individuals!(measure.sample_buffer, members, n, rng=rng(sim)), fu)
     return nothing
 end
