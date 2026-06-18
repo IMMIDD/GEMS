@@ -6,6 +6,7 @@ that is dependent on other structs, so it has to be loaded later.
 =#
 ### EXPORTS
 export step!, run!
+export is_disease_active
 
 ###
 ### RUN SIMULATION
@@ -290,7 +291,7 @@ function step!(simulation::Simulation)
 
     # trigger tick triggers
     for tt in simulation |> tick_triggers
-        if should_fire(tt, tick(simulation))
+        if should_fire(tt, simulation)
             trigger(tt, simulation)
         end
     end
@@ -322,7 +323,7 @@ end
 """
     is_dormant(simulation::Simulation)
 
-Checks if the simulation can be safely fast-forwarded. 
+Checks if the simulation can be safely fast-forwarded.
 Returns `false` if there is active disease, active quarantines, or any events/triggers scheduled for today.
 """
 function is_dormant(simulation::Simulation)
@@ -336,8 +337,8 @@ function is_dormant(simulation::Simulation)
 
     # wake up if a trigger fires today
     for tt in simulation.tick_triggers
-        if should_fire(tt, current_t)
-            return false 
+        if should_fire(tt, simulation)
+            return false
         end
     end
 
@@ -353,6 +354,21 @@ function is_dormant(simulation::Simulation)
     cur_quar = sl.quarantined[end]
     
     return cur_exp == 0 && cur_inf == 0 && cur_quar == 0
+end
+
+"""
+    is_disease_active(simulation::Simulation)
+
+Returns `true` if there is currently active disease transmission (i.e. any
+individuals exposed or infectious), `false` otherwise. Intended for use as a
+tick-trigger `condition`, so that interventions stop re-firing once the
+disease has died out, allowing `is_dormant` to fast-forward the simulation
+again.
+"""
+function is_disease_active(simulation::Simulation)::Bool
+    sl = statelogger(simulation)
+    isempty(sl.exposed) && return true
+    return sl.exposed[end] > 0 || sl.infectious[end] > 0
 end
 
 
