@@ -20,8 +20,7 @@ simulation's `EventQueue` for the current tick.
 function process_events!(simulation::Simulation)
     eq = event_queue(simulation)
     while !isempty(eq) && peektick(eq) <= tick(simulation)
-        event = dequeue!(eq)::Union{IMeasureEvent, SMeasureEvent}
-        process_event(event, simulation)
+        process_event(dequeue!(eq), simulation)
     end
 end
 
@@ -333,8 +332,9 @@ function is_dormant(simulation::Simulation)
     current_t = tick(simulation)
 
     # wake up if an event is scheduled for today (or was missed)
-    if !isempty(simulation.event_queue) && peektick(simulation.event_queue) <= current_t
-        return false 
+    eq = event_queue(simulation)
+    if !isempty(eq) && peektick(eq) <= current_t
+        return false
     end
 
     # wake up if a trigger fires today

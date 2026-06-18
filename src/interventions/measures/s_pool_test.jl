@@ -117,9 +117,8 @@ follow-up strategy is handed over to the `EventQueue` for this setting.
 
 # Returns
 
-- `Handover`: Struct that contains the focus setting (`s`) and the respective 
-    followup `SStrategy` defined in the input `PoolTest` measure depending
-    on whether the test returned a positive or negative result.
+- `Nothing`: Triggers the positive or negative follow-up strategy (depending on the test
+    result) for `s`.
 """
 function process_measure(sim::Simulation, s::Setting, measure::PoolTest)
 
@@ -128,5 +127,6 @@ function process_measure(sim::Simulation, s::Setting, measure::PoolTest)
 
     INTERVENTION_DEBUG && @debug "Pool testing setting $(string(typeof(s)))[$(id(s))]: $(test_pos ? "positive" : "negative") test result at tick $(sim |> tick)"
 
-    return Handover(s, test_pos ?  measure |> positive_followup : measure |> negative_followup) 
+    apply_followup!(sim, s, test_pos ? measure |> positive_followup : measure |> negative_followup)
+    return nothing
 end

@@ -166,8 +166,7 @@ can be used to condition or limit the results.
 
 # Returns
 
-- `Handover`: Struct that contains the list of setting members and the
-    followup `IStrategy` defined in the input `FindMembers` measure.
+- `Nothing`: Triggers the `follow_up` strategy for each found member (or sampled subset).
 """
 function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
 
@@ -178,16 +177,16 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
         members = filter(selectionfilter(measure), members)
     end
 
-    # return a sample of size "sample_size"
+    fu = measure |> follow_up
+
+    # trigger the follow-up for the requested members: a sample of size "sample_size",
+    # a sample of size "sample_fraction * length", or all members
     if sample_size(measure) >= 0
-        return Handover(sample_individuals(members, sample_size(measure), rng=rng(sim)), measure |> follow_up)
+        apply_followup!(sim, sample_individuals(members, sample_size(measure), rng=rng(sim)), fu)
+    elseif sample_fraction(measure) < 1
+        apply_followup!(sim, sample_individuals(members, Int64(ceil((length(members) * sample_fraction(measure)))), rng=rng(sim)), fu)
+    else
+        apply_followup!(sim, members, fu)
     end
-
-    # return a sample of size "sample_fraction * length"
-    if sample_fraction(measure) < 1
-        return Handover(sample_individuals(members, Int64(ceil((length(members) * sample_fraction(measure)))), rng=rng(sim)), measure |> follow_up)
-    end
-
-    # return all individuals
-    return Handover(members, measure |> follow_up)
+    return nothing
 end

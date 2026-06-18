@@ -1,5 +1,27 @@
 import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging!, peek, peektick
 
+# helpers to inspect what a measure resolved to: built-in measures now trigger their
+# follow-up directly (enqueuing events) and return nothing, so drain the queue to check
+gems_focal(e::GEMS.IMeasureEvent) = e.individual
+gems_focal(e::GEMS.SMeasureEvent) = e.setting
+
+function drain_events!(eq)
+    evs = GEMS.Event[]
+    while !isempty(eq)
+        push!(evs, dequeue!(eq))
+    end
+    return evs
+end
+
+# distinct focal objects the queued follow-up events were triggered for
+followup_focals(evs) = unique(gems_focal.(evs))
+
+# true if there is at least one event and every event carries a measure from strategy `str`
+function events_from_strategy(evs, str)
+    sm = [measure(me) for me in measures(str)]
+    return !isempty(evs) && all(e -> any(m -> m === e.measure, sm), evs)
+end
+
 @testset "Interventions" begin
     #setup of the simulation object:
     sim = Simulation()
@@ -122,11 +144,18 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         @test settingtype(find_setting) === Household
         @test follow_up(find_setting) === s_strategy
 
-        #test processing find_setting measure:
-        result = process_measure(sim, i, find_setting)
-
-        @test typeof(result.focal_objects[1]) === Household
-        @test result.follow_up === s_strategy
+        #test processing find_setting measure: it triggers the follow-up directly for the
+        #resolved setting, so inspect the enqueued events (use a fresh, non-empty follow-up)
+        fs_fu = SStrategy("find_setting_fu", sim)
+        add_measure!(fs_fu, CloseSetting())
+        find_setting_proc = FindSetting(Household, fs_fu)
+        eq = GEMS.event_queue(sim)
+        empty!(eq)
+        @test process_measure(sim, i, find_setting_proc) === nothing
+        evs = drain_events!(eq)
+        @test length(followup_focals(evs)) == 1
+        @test typeof(followup_focals(evs)[1]) === Household
+        @test events_from_strategy(evs, fs_fu)
 
     end
 
@@ -150,15 +179,15 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         i_strategy2 = IStrategy("i_strategy2", sim2)
         find_setting_members3 = FindSettingMembers(Household, i_strategy2)
 
-        #test process measure
+        #test process measure: members now get the follow-up triggered directly
+        add_measure!(i_strategy2, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
         individuals_from_sim = individuals(sim2)
-        result = process_measure(sim2, first(individuals_from_sim), find_setting_members3)
-
-        @test individuals_from_sim == result.focal_objects
-        for i in eachindex(result.focal_objects)
-            @test result.focal_objects[i] === individuals_from_sim[i]
-        end
-        @test result.follow_up === i_strategy2
+        eq2 = GEMS.event_queue(sim2)
+        empty!(eq2)
+        @test process_measure(sim2, first(individuals_from_sim), find_setting_members3) === nothing
+        evs = drain_events!(eq2)
+        @test Set(followup_focals(evs)) == Set(individuals_from_sim)
+        @test events_from_strategy(evs, i_strategy2)
     end
 
     @testset "Testing" begin
@@ -207,16 +236,19 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         end
 
         #test processing measure
-        result = process_measure(sim, i, test_measure3)
-        follow_up_strategy = result.follow_up
-
-        @test follow_up_strategy === i_strategy
+        eq = GEMS.event_queue(sim)
+        empty!(eq)
+        @test process_measure(sim, i, test_measure3) === nothing   # negative result → negative follow-up
+        evs = drain_events!(eq)
+        @test followup_focals(evs) == [i]
+        @test events_from_strategy(evs, i_strategy)
 
         infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
-        result2 = process_measure(sim, i, test_measure2)
-        follow_up_strategy2 = result2.follow_up
-
-        @test follow_up_strategy2 === i_strategy
+        empty!(eq)
+        @test process_measure(sim, i, test_measure2) === nothing   # positive result → positive follow-up
+        evs2 = drain_events!(eq)
+        @test followup_focals(evs2) == [i]
+        @test events_from_strategy(evs2, i_strategy)
     end
 
     @testset "Seroprevalence Testing" begin
@@ -267,10 +299,12 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
 
         #test processing measure
         infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
-        result = process_measure(sim, i, s_test_measure2)
-        follow_up_strategy = result.follow_up
-
-        @test follow_up_strategy === i_strategy
+        eq = GEMS.event_queue(sim)
+        empty!(eq)
+        @test process_measure(sim, i, s_test_measure2) === nothing   # positive result → positive follow-up
+        evs = drain_events!(eq)
+        @test followup_focals(evs) == [i]
+        @test events_from_strategy(evs, i_strategy)
 
     end
 
@@ -297,10 +331,13 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         infect!(ind1, Int16(0), pathogen(sim3), rng = Xoshiro())
         ind1.infectiousness_onset = Int16(0)
         infect!(ind2, Int16(0), pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = Xoshiro())
-        contacts = process_measure(sim3, ind1, trace_infectious2)
-        @test contacts !== nothing
-        @test length(contacts.focal_objects) == 1
-        @test contacts.focal_objects[1] === ind2
+        add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
+        eq3 = GEMS.event_queue(sim3)
+        empty!(eq3)
+        @test process_measure(sim3, ind1, trace_infectious2) === nothing
+        evs = drain_events!(eq3)
+        @test followup_focals(evs) == [ind2]
+        @test events_from_strategy(evs, i_strategy3)
     end
 
     @testset "Custom I Measure" begin
@@ -337,25 +374,18 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         @test find_members2.selectionfilter(i2) == false
         @test sample_fraction(find_members3) == 0.5
 
-        #test processing measure:
-        result = process_measure(sim, gs, find_members)
+        #test processing measure: each found member gets the follow-up triggered directly
+        eq = GEMS.event_queue(sim)
+        empty!(eq)
+        @test process_measure(sim, gs, find_members) === nothing
+        evs = drain_events!(eq)
+        @test Set(followup_focals(evs)) == Set(indis)
+        @test events_from_strategy(evs, i_strategy)
 
-        for i in eachindex(indis)
-            @test result.focal_objects[i] === indis[i]
-        end
-        @test result.follow_up === i_strategy
-
-        result2 = process_measure(sim, gs, find_members2)
-
-        @test typeof(result2) == Handover
-
-        individuals = result2.focal_objects
-        strategy = result2.follow_up
-
-        @test typeof(individuals) <: AbstractVector{<:Individual}
-        @test length(individuals) == 0
-
-        @test typeof(strategy) <: IStrategy
+        # find_members2 filters to age > 18; all members are age 18, so no members → no follow-up
+        empty!(eq)
+        @test process_measure(sim, gs, find_members2) === nothing
+        @test isempty(drain_events!(eq))
 
         expected_strategies = [
             "SelfIsolation",
@@ -367,33 +397,17 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
             "GEMS.Test"
         ]
 
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(strategy, :measures))
+        # the configured follow-up strategy (i_strategy) carries the expected measures
+        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 
-        result3 = process_measure(sim, gs, find_members3)
+        # find_members3 also filters to age > 18 → no members → no follow-up
+        empty!(eq)
+        @test process_measure(sim, gs, find_members3) === nothing
+        @test isempty(drain_events!(eq))
 
-        @test typeof(result3) == Handover
-
-        individuals = result3.focal_objects
-        strategy = result3.follow_up
-
-        @test typeof(individuals) <: AbstractVector{<:Individual}
-        @test length(individuals) == 0
-
-        @test typeof(strategy) <: IStrategy
-
-        expected_strategies = [
-            "SelfIsolation",
-            "CancelSelfIsolation",
-            "FindSetting",
-            "FindSettingMembers",
-            "GEMS.Test",
-            "TraceInfectiousContacts",
-            "GEMS.Test"
-        ]
-
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(strategy, :measures))
+        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 
@@ -464,14 +478,18 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         @test positive_followup(is_open3) === nothing
 
         #test processing measure
-        result = process_measure(sim, gs, is_open)
-        @test result.focal_objects[1] === gs
-        @test result.follow_up === s_strategy
+        eq = GEMS.event_queue(sim)
+        empty!(eq)
+        @test process_measure(sim, gs, is_open) === nothing   # gs open → positive follow-up
+        evs = drain_events!(eq)
+        @test followup_focals(evs) == [gs]
+        @test events_from_strategy(evs, s_strategy)
 
         close_setting = CloseSetting()
-        process_measure(sim, gs, close_setting)
-        result2 = process_measure(sim, gs, is_open)
-        @test result2.follow_up === nothing
+        process_measure(sim, gs, close_setting)               # closes gs (no follow-up)
+        empty!(eq)
+        @test process_measure(sim, gs, is_open) === nothing   # gs closed → negative follow-up is nothing
+        @test isempty(drain_events!(eq))
     end
 
     @testset "Pool Test Measure" begin
@@ -505,18 +523,21 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         end
 
         #test processing measure:
-        result = process_measure(sim, gs, pool_test3)
-        follow_up_strategy = result.follow_up
-
-        @test follow_up_strategy === s_strategy
+        eq = GEMS.event_queue(sim)
+        empty!(eq)
+        @test process_measure(sim, gs, pool_test3) === nothing   # no infected → negative follow-up
+        evs = drain_events!(eq)
+        @test followup_focals(evs) == [gs]
+        @test events_from_strategy(evs, s_strategy)
 
         for ind in indis
             infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
         end
-        result2 = process_measure(sim, gs, pool_test2)
-        follow_up_strategy2 = result2.follow_up
-
-        @test follow_up_strategy2 === s_strategy
+        empty!(eq)
+        @test process_measure(sim, gs, pool_test2) === nothing   # infected → positive follow-up
+        evs2 = drain_events!(eq)
+        @test followup_focals(evs2) == [gs]
+        @test events_from_strategy(evs2, s_strategy)
     end
 
     @testset "Vaccinate Measure" begin
@@ -534,29 +555,34 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
  
         # vaccinate an individual
         ind_a = Individual(id = 10, sex = 0, age = 30)
-        result = process_measure(vacc_sim, ind_a, vacc_measure)
- 
+        eqv = GEMS.event_queue(vacc_sim)
+        empty!(eqv)
+        @test process_measure(vacc_sim, ind_a, vacc_measure) === nothing
+
         @test isvaccinated(ind_a) == true
         @test vaccine_id(ind_a) == id(my_vaccine)
         @test vaccination_tick(ind_a) == tick(vacc_sim)
         @test number_of_vaccinations(ind_a) == 1
-        @test result.focal_objects[1] === ind_a
-        @test result.follow_up === nothing
- 
+        @test isempty(drain_events!(eqv))   # no follow_up configured
+
         # follow_up strategy is forwarded
         ind_b = Individual(id = 11, sex = 1, age = 25)
-        result_b = process_measure(vacc_sim, ind_b, vacc_with_followup)
- 
+        add_measure!(fu_strategy, SelfIsolation(Int16(1)))   # sentinel so the follow-up enqueues
+        empty!(eqv)
+        @test process_measure(vacc_sim, ind_b, vacc_with_followup) === nothing
+
         @test isvaccinated(ind_b) == true
-        @test result_b.focal_objects[1] === ind_b
-        @test result_b.follow_up === fu_strategy
- 
+        evs_b = drain_events!(eqv)
+        @test followup_focals(evs_b) == [ind_b]
+        @test events_from_strategy(evs_b, fu_strategy)
+
         # re-vaccination increments dose count
-        result_booster = process_measure(vacc_sim, ind_a, vacc_measure)
- 
+        empty!(eqv)
+        @test process_measure(vacc_sim, ind_a, vacc_measure) === nothing
+
         @test number_of_vaccinations(ind_a) == 2
-        @test result_booster.focal_objects[1] === ind_a
- 
+        @test isempty(drain_events!(eqv))
+
         # measure round-trips through add_measure!
         vacc_strategy = IStrategy("vaccinate", vacc_sim)
         add_measure!(vacc_strategy, Vaccinate(my_vaccine))
@@ -602,18 +628,21 @@ import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging
         end
 
         #test processing measure:
-        result = process_measure(sim, gs2, test_all3)
-        follow_up_strategy = result.follow_up
-
-        @test follow_up_strategy === s_strategy
+        eq = GEMS.event_queue(sim)
+        empty!(eq)
+        @test process_measure(sim, gs2, test_all3) === nothing   # no infected → negative follow-up
+        evs = drain_events!(eq)
+        @test followup_focals(evs) == [gs2]
+        @test events_from_strategy(evs, s_strategy)
 
         for ind in indis2
             infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
         end
-        result2 = process_measure(sim, gs2, test_all2)
-        follow_up_strategy2 = result2.follow_up
-
-        @test follow_up_strategy2 === s_strategy
+        empty!(eq)
+        @test process_measure(sim, gs2, test_all2) === nothing   # infected → positive follow-up
+        evs2 = drain_events!(eq)
+        @test followup_focals(evs2) == [gs2]
+        @test events_from_strategy(evs2, s_strategy)
     end
 
     @testset "Custom S Measure" begin

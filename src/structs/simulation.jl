@@ -192,7 +192,8 @@ mutable struct Simulation
     symptom_triggers::Vector{ITrigger}
     tick_triggers::Vector{TickTrigger}
     hospitalization_triggers::Vector{ITrigger}
-    event_queue::EventQueue
+    # concrete EventQueue is defined after Simulation; event_queue(sim) narrows this back
+    event_queue::AbstractEventQueue
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
 
@@ -1820,7 +1821,8 @@ end
 Returns the simulation's intervention event queue.
 """
 function event_queue(simulation::Simulation)
-    return(simulation.event_queue) 
+    # narrow the abstractly-typed field to the concrete EventQueue for type-stable access
+    return simulation.event_queue::EventQueue
 end
 
 """
