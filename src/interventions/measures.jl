@@ -86,6 +86,22 @@ Returns the follow-up strategy  associated with a `Handover` struct.
 """
 follow_up(h::Handover) = h.follow_up
 
+"""
+    apply_followup!(sim::Simulation, focal, fu)
+
+Triggers the follow-up strategy `fu` for `focal` (a single `Individual`/`Setting` or a
+vector of them). No-op if `fu` is `nothing`.
+"""
+apply_followup!(sim::Simulation, ::Union{Individual, Setting}, ::Nothing) = nothing
+apply_followup!(sim::Simulation, ::AbstractVector, ::Nothing) = nothing
+apply_followup!(sim::Simulation, i::Individual, fu::IStrategy) = trigger_strategy(fu, i, sim)
+apply_followup!(sim::Simulation, s::Setting, fu::SStrategy) = trigger_strategy(fu, s, sim)
+function apply_followup!(sim::Simulation, objs::AbstractVector, fu::Strategy)
+    for o in objs
+        trigger_strategy(fu, o, sim)
+    end
+end
+
 ###
 ### MEASURES
 ###

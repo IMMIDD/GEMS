@@ -76,8 +76,7 @@ for an individual and hands over a `follow_up` strategy for the respective setti
 
 # Returns
 
-- `Handover`: Struct that contains the detected setting and the
-    followup `SStrategy` defined in the input `FindSetting` measure.
+- `Nothing`: Triggers the `follow_up` strategy for the detected setting.
 """
 function process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
 
@@ -89,6 +88,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
 
         INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$sid] at tick $(sim |> tick)"
 
-    # return setting
-    return Handover(s, measure |> follow_up)
+    # trigger the follow-up strategy for the detected setting
+    apply_followup!(sim, s, measure |> follow_up)
+    return nothing
 end

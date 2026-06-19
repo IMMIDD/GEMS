@@ -2,6 +2,10 @@ export SymptomTrigger, HospitalizationTrigger, ITickTrigger, STickTrigger
 export strategy, settingtype, switch_tick, interval
 export should_fire
 
+# Predicate on the Simulation that can suppress a TickTrigger from firing at all,
+# checked in addition to the switch_tick/interval schedule (see should_fire below).
+const SimPredicate = FunctionWrapper{Bool, Tuple{Simulation}}
+
 ###
 ### SYMPTOM TRIGGERS
 ###
@@ -60,15 +64,18 @@ end
 
 A struct defining an `IStrategy` with timed execution for all individuals in the model.
 The `switch_tick` sets a threshold for the onset of strategy execution based on the current tick.
-The `interval` defines a reoccurence (optional). If no `switch_tick` is given, the 
+The `interval` defines a reoccurence (optional). If no `switch_tick` is given, the
 strategy will be fired in each tick. If only the `interval` is given, the strategy
 will be fired from tick 1 onwards in the specified interval.
+An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
+simulation-wide state), regardless of `switch_tick`/`interval`.
 
 # Parameters
 
 - `strategy::IStrategy`: Strategy that will be triggered
 - `switch_tick::Int16 = Int16(-1)` *(optional)*: Threshold for the strategy onset
 - `interval::Int16 = Int16(-1)` *(optional)*: Trigger strategy in reoccuring intervals
+- `condition::Function = sim -> true` *(optional)*: Predicate function on the `Simulation` that can be used to suppress this trigger from firing at all
 
 # Examples
 
@@ -86,22 +93,31 @@ will trigger `my_home_office_strategy` from tick 20 in a 7-tick interval for eac
 ITickTrigger(my_lockdown_strategy, switch_tick = Int16(50)
 ```
 will trigger the `my_lockdown_strategy` once on tick 50.
+
+```
+ITickTrigger(my_surveillance_strategy, switch_tick = Int16(10), interval = Int16(7),
+    condition = is_disease_active)
+```
+will trigger `my_surveillance_strategy` from tick 10 in a 7-tick interval, but only
+while the disease is still active, so the trigger stops firing (and the simulation
+can go dormant) once it has died out.
 """
 struct ITickTrigger <: TickTrigger
     strategy::IStrategy
     switch_tick::Int16 # if -1, the strategy is triggered every tick. If >= 0, this strategy is triggered at the defined tick
     interval::Int16 # if X == -1, the trigger is not fired regularly. If X >= 1, this strategy is triggered every X ticks
+    condition::SimPredicate # predicate on the Simulation that can suppress firing entirely
 
-    function ITickTrigger(strategy::IStrategy; switch_tick::Int16 = Int16(-1), interval::Int16 = Int16(-1))
+    function ITickTrigger(strategy::IStrategy; switch_tick::Int16 = Int16(-1), interval::Int16 = Int16(-1), condition::Function = sim -> true)
         if switch_tick <= 0 && switch_tick != -1
             throw(ArgumentError("The switch_tick must either be a positive integer or -1"))
         end
-        
+
         if interval <= 0 && interval != -1
             throw(ArgumentError("The interval must either be a positive integer or -1"))
         end
 
-        new(strategy, switch_tick, interval)
+        new(strategy, switch_tick, interval, SimPredicate(condition))
     end
 end
 
@@ -111,9 +127,11 @@ end
 
 A struct defining an `SStrategy` with timed execution for all settings of a specified `settingtype` in the model.
 The `switch_tick` sets a threshold for the onset of strategy execution based on the current tick.
-The `interval` defines a reoccurence (optional). If no `switch_tick` is given, the 
+The `interval` defines a reoccurence (optional). If no `switch_tick` is given, the
 strategy will be fired in each tick. If only the `interval` is given, the strategy
 will be fired from tick 1 onwards in the specified interval.
+An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
+simulation-wide state), regardless of `switch_tick`/`interval`.
 
 # Parameters
 
@@ -121,6 +139,7 @@ will be fired from tick 1 onwards in the specified interval.
 - `strategy::SStrategy`: Strategy that will be triggered
 - `switch_tick::Int16 = Int16(-1)` *(optional)*: Threshold for the strategy onset
 - `interval::Int16 = Int16(-1)` *(optional)*: Trigger strategy in reoccuring intervals
+- `condition::Function = sim -> true` *(optional)*: Predicate function on the `Simulation` that can be used to suppress this trigger from firing at all
 
 # Examples
 
@@ -144,8 +163,9 @@ struct STickTrigger <: TickTrigger
     strategy::SStrategy
     switch_tick::Int16 # if X == -1, the strategy is triggered every tick. If X >= 0, this strategy is triggered at the defined tick
     interval::Int16 # if X == -1, the trigger is not fired regularly. If X >= 1, this strategy is triggered every X ticks
+    condition::SimPredicate # predicate on the Simulation that can suppress firing entirely
 
-    function STickTrigger(settingtype::DataType, strategy::SStrategy; switch_tick::Int16 = Int16(-1), interval::Int16 = Int16(-1))
+    function STickTrigger(settingtype::DataType, strategy::SStrategy; switch_tick::Int16 = Int16(-1), interval::Int16 = Int16(-1), condition::Function = sim -> true)
         if !(settingtype <: Setting)
             throw(ArgumentError("The first argument must be a DataType inheriting from 'Setting'"))
         end
@@ -158,7 +178,7 @@ struct STickTrigger <: TickTrigger
             throw(ArgumentError("The interval must either be a positive integer or -1"))
         end
 
-        new(settingtype, strategy, switch_tick, interval)
+        new(settingtype, strategy, switch_tick, interval, SimPredicate(condition))
     end
 end
 
@@ -199,6 +219,18 @@ function interval(trigger::TickTrigger)
 end
 
 """
+    condition(trigger::TickTrigger)
+
+Returns the trigger-level `condition` predicate associated with a `TickTrigger`.
+This is separate from the per-individual/per-setting condition on the trigger's
+`strategy`; it is consulted (alongside `switch_tick`/`interval`) to decide whether
+the trigger fires at all.
+"""
+function condition(trigger::TickTrigger)
+    return(trigger.condition)
+end
+
+"""
     should_fire(trigger::TickTrigger, tick::Int16)
 
 Evaluates whether a trigger should be fired at a given tick.
@@ -233,6 +265,29 @@ function should_fire(trigger::TickTrigger, tick::Int16)
 
     # return false in any other case
     return(false)
+end
+
+"""
+    should_fire(trigger::TickTrigger, sim::Simulation)
+
+Evaluates whether a trigger should be fired in the given simulation at its
+current tick. Considers `switch_tick`, `interval`, and the trigger's
+trigger-level `condition`.
+
+# Returns
+
+- `Bool`: True, if the trigger should fire now. False otherwise.
+"""
+function should_fire(trigger::TickTrigger, sim::Simulation)
+    should_fire(trigger, tick(sim)) || return(false)
+
+    cond = try
+        condition(trigger)(sim)
+    catch
+        throw(ErrorException("The condition that you passed to a tick trigger does not return a boolean value."))
+    end
+
+    return(cond)
 end
 
 

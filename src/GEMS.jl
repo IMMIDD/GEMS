@@ -53,7 +53,6 @@ module GEMS
 
     # INTERVENTION ABSTRACTS
     include("interventions/abstract_structs.jl")
-    include("interventions/event_queue.jl")
 
     # CORE SIMULATION - TYPE DEFINITIONS 
     include("pathogen/disease_progression.jl")

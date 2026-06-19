@@ -166,7 +166,7 @@ add_geo_coords! = function(sim::Simulation)
     for st in settingtypes(settingscontainer(sim))
         for s in get(settingscontainer(sim), st)
             if typeof(s) <: Geolocated
-                pos = gems_rand(sim.main_rng, 1:length(lats))
+                pos = gems_rand(rng(sim), 1:length(lats))
                 lat = lats[pos]
                 lon = lons[pos]
                 s.lat = lat

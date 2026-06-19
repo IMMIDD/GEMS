@@ -76,8 +76,7 @@ The `follow_up` strategy of the `TraceInfectiousContacts` measure is handed over
 
 # Returns
 
-- `Handover`: Struct that contains the list of detected infectious individuals and the
-    followup `IStrategy` defined in the input `TraceInfectiousContacts` measure.
+- `Nothing`: Triggers the `follow_up` strategy for each successfully traced infectee.
 """
 function process_measure(sim::Simulation, ind::Individual, measure::TraceInfectiousContacts)
 
@@ -88,16 +87,14 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
     # get infectee IDs from logger
     infectee_ids = get_infections_between(sim  |> infectionlogger, ind |> id, infectious_at, now)
 
-    # filter by success_rate
-    infectee_ids = infectee_ids[gems_rand(sim, infectee_ids |> length) .< sr]
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) tracing $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
 
-    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identiying $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
-
-    # return "nothing" default, if list is empty
-    if infectee_ids |> length == 0
-        return(nothing)
+    # filter by success_rate (one draw per infectee, in order) and trigger the follow-up
+    fu = measure |> follow_up
+    pop = sim |> population
+    for iid in infectee_ids
+        gems_rand(sim) < sr || continue
+        trigger_strategy(fu, get_individual_by_id(pop, iid), sim)
     end
-
-    # return all individuals extracted from IDs
-    return Handover([get_individual_by_id(sim |> population, i) for i in infectee_ids], measure |> follow_up)
+    return nothing
 end

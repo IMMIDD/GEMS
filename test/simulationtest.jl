@@ -970,6 +970,48 @@ import GEMS: increment!, infected!
             @test GEMS.is_dormant(sim) == true
         end
 
+        @testset "is_disease_active evaluation" begin
+            sim = Simulation(pop_size = 100)
+
+            # before any step, statelogger is empty -> treated as active (unknown state)
+            @test GEMS.is_disease_active(sim) == true
+
+            step!(sim)
+            @test tick(sim) == 1
+
+            # tick 1: 0 exposed/infectious logged -> disease inactive
+            @test GEMS.is_disease_active(sim) == false
+
+            push!(statelogger(sim).infectious, 1)
+            @test GEMS.is_disease_active(sim) == true
+            pop!(statelogger(sim).infectious) # revert
+
+            push!(statelogger(sim).exposed, 1)
+            @test GEMS.is_disease_active(sim) == true
+            pop!(statelogger(sim).exposed) # revert
+
+            # quarantine alone is administrative, not disease transmission
+            push!(statelogger(sim).quarantined, 1)
+            @test GEMS.is_disease_active(sim) == false
+            pop!(statelogger(sim).quarantined) # revert
+        end
+
+        @testset "is_dormant respects a tick trigger's condition" begin
+            # an always-firing recurring trigger keeps the simulation awake
+            sim_blocked = Simulation(pop_size = 100)
+            step!(sim_blocked)
+            strategy_blocked = IStrategy("noop", sim_blocked)
+            add_tick_trigger!(sim_blocked, ITickTrigger(strategy_blocked))
+            @test GEMS.is_dormant(sim_blocked) == false
+
+            # the same trigger, gated on a false condition, no longer blocks dormancy
+            sim_gated = Simulation(pop_size = 100)
+            step!(sim_gated)
+            strategy_gated = IStrategy("noop", sim_gated)
+            add_tick_trigger!(sim_gated, ITickTrigger(strategy_gated, condition = s -> is_disease_active(s)))
+            @test GEMS.is_dormant(sim_gated) == true
+        end
+
         @testset "copy_last_log_state" begin
             sim = Simulation(pop_size = 100)
             @test tick(sim) == 0

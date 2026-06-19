@@ -97,8 +97,8 @@ The `follow_up` strategy is handed over to all found members (and enqueued in th
 
 # Returns
 
-- `Handover`: Struct that contains the list of detected setting members and the
-    followup `IStrategy` defined in the input `FindSettingMemers` measure.
+- `Nothing`: Triggers the `follow_up` strategy for each found member (skipping the focal
+    individual when `nonself` is set).
 """
 function process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers)
 
@@ -114,6 +114,12 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSettingM
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identiying $(settingchar(s)) contacts $(map(x -> GEMS.id(x), [i for i in individuals(s) if i != ind])) at tick $(sim |> tick)"
 
-    # return all individuals and filter out focal individual if nonself flag is set
-    return Handover(nonself(measure) ? filter(x -> x != ind, individuals(s, sim)) : individuals(s, sim), measure |> follow_up)
+    # trigger the follow-up for all members, skipping the focal individual if the nonself flag is set
+    fu = measure |> follow_up
+    skip_self = nonself(measure)
+    for member in individuals(s, sim)
+        skip_self && member === ind && continue
+        trigger_strategy(fu, member, sim)
+    end
+    return nothing
 end

@@ -130,9 +130,8 @@ follow-up strategy is handed over to the `EventQueue` for this setting.
 
 # Returns
 
-- `Handover`: Struct that contains the focus setting (`s`) and the respective 
-    followup `SStrategy` defined in the input `TestAll` measure depending
-    on whether the test returned a at least one positive or all negative result.
+- `Nothing`: Triggers the positive or negative follow-up strategy (depending on whether at
+    least one test was positive) for `s`.
 """
 function process_measure(sim::Simulation, s::Setting, measure::TestAll)
 
@@ -141,5 +140,6 @@ function process_measure(sim::Simulation, s::Setting, measure::TestAll)
 
     INTERVENTION_DEBUG && @debug "Testing all members in $(string(typeof(s)))[$(id(s))]: $numpos positives at tick $(sim |> tick)"
 
-    return Handover(s, numpos > 0 ? measure |> positive_followup : measure |> negative_followup)
+    apply_followup!(sim, s, numpos > 0 ? measure |> positive_followup : measure |> negative_followup)
+    return nothing
 end

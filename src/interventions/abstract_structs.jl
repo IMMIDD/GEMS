@@ -47,3 +47,6 @@ abstract type STrigger <: InterventionTrigger end
 ###
 
 abstract type Event end
+
+# supertype for the EventQueue, declared early so Simulation can type its event_queue field
+abstract type AbstractEventQueue end

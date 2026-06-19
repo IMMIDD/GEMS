@@ -128,16 +128,16 @@ follow-up strategy is handed over to the `EventQueue` for this individual.
 
 # Returns
 
-- `Handover`: Struct that contains the focus individual (`ind`) and the respective 
-    followup `IStrategy` defined in the input `Test` measure depending
-    on whether the test returned a positive or negative result.
+- `Nothing`: Triggers the positive or negative follow-up strategy (depending on the test
+    result) for `ind`.
 """
 function process_measure(sim::Simulation, ind::Individual, test::Test)
 
     test_pos = apply_test!(ind, test |> type, sim, test |> reportable)
-    
+
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) $(ind |> infected ? "(inf)" : "") tested $(test_pos ? "positive" : "negative") at tick $(sim |> tick)"
 
-    # if test is positive, return strategy for handling positive results for this individual
-    return Handover(ind, test_pos ? test |> positive_followup : test |> negative_followup)
+    # if test is positive, trigger the strategy for handling positive results for this individual
+    apply_followup!(sim, ind, test_pos ? test |> positive_followup : test |> negative_followup)
+    return nothing
 end

@@ -42,100 +42,49 @@ SMeasureEvent(setting::Setting, measure::SMeasure, condition) =
     SMeasureEvent(setting, measure, condition, SProcessFn((sim, s) -> process_measure(sim, s, measure)))
 
 
-
 ###
 ### PROCESS EVENTS
 ###
 
 """
-    trigger_handover!(objs::Vector, fu::Strategy, sim::Simulation)
-
-Triggers the follow-up strategy `fu` for every focal object in `objs`. Acts as a
-function barrier: `focal_objects(::Handover)` is abstractly typed
-(`Union{Vector{<:Individual}, Vector{<:Setting}}`), so resolving the concrete types once
-here lets the per-object loop run type-stable instead of dynamically dispatching
-`trigger_strategy` for each focal object.
-"""
-function trigger_handover!(objs::Vector, fu::Strategy, sim::Simulation)
-    for o in objs
-        trigger_strategy(fu, o, sim)
-    end
-end
-
-
-"""
     process_event(e::IMeasureEvent, sim::Simulation)
 
-Executes a specific `IMeasure` for a secific `Individual` (as stored in the `IMeasureEvent`)
-and triggers potential follow-up strategies if specified in the `Handover` object that 
-the `process_measure()` functions return.
+Executes a specific `IMeasure` for a secific `Individual` (as stored in the `IMeasureEvent`).
+If the `process_measure` returns a `Handover`, its follow-up strategy is triggered.
 """
 function process_event(e::IMeasureEvent, sim::Simulation)
     ind = e.individual
-    cnd = e.condition
-
-    # PROCESS EVENT
 
     # do not process measure if condition is not met
-    if !cnd(ind)
+    if !e.condition(ind)
         return
     end
 
     # call the prebuilt, type-erased process callback
     res = e.process_fn(sim, ind)
 
-    # HANDLE NEXT EVENTS
-
-    # if nothing was handed over, end function
-    if !(res isa Handover)
-        return
-    end
-
-    # if no follow-up strategy was handed over, end function
-    fu = follow_up(res)
-    if isnothing(fu)
-        return
-    end
-
-    # trigger the handover strategy for each focal object (function barrier for type stability)
-    trigger_handover!(focal_objects(res), fu, sim)
+    res isa Handover && apply_followup!(sim, focal_objects(res), follow_up(res))
+    return
 end
 
 
 """
     process_event(e::SMeasureEvent, sim::Simulation)
 
-Executes a specific `SMeasure` for a secific `Setting` (as stored in the `SMeasureEvent`)
-and triggers potential follow-up strategies if specified in the `Handover` object that 
-the `process_measure()` functions return.
+Executes a specific `SMeasure` for a secific `Setting` (as stored in the `SMeasureEvent`).
+If the `process_measure` returns a `Handover`, its follow-up strategy is triggered.
 """
 function process_event(e::SMeasureEvent, sim::Simulation)
     stng = e.setting
-    cnd = e.condition
-
-    # PROCESS EVENT
 
     # do not process measure if condition is not met
-    if !cnd(stng)
+    if !e.condition(stng)
         return
     end
 
     # call the prebuilt, type-erased process callback
     res = e.process_fn(sim, stng)
 
-    # HANDLE NEXT EVENTS
-
-    # if nothing was handed over, end function
-    if !(res isa Handover)
-        return
-    end
-
-    # if no follow-up strategy was handed over, end function
-    fu = follow_up(res)
-    if isnothing(fu)
-        return
-    end
-
-    # trigger the handover strategy for each focal object (function barrier for type stability)
-    trigger_handover!(focal_objects(res), fu, sim)
+    res isa Handover && apply_followup!(sim, focal_objects(res), follow_up(res))
+    return
 end

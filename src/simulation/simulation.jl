@@ -196,7 +196,8 @@ mutable struct Simulation{P<:Tuple}
     symptom_triggers::Vector{ITrigger}
     tick_triggers::Vector{TickTrigger}
     hospitalization_triggers::Vector{ITrigger}
-    event_queue::EventQueue
+    # concrete EventQueue is defined after Simulation; event_queue(sim) narrows this back
+    event_queue::AbstractEventQueue
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
 
@@ -380,7 +381,8 @@ function _BUILD_Simulation(;
 
         # SEED
         rng_seed = determine_seed(config, seed)
-        rngs = [Xoshiro(gems_rand(Xoshiro(rng_seed), UInt)) for _ in 1:Threads.maxthreadid()]
+        master_rng = Xoshiro(rng_seed)
+        rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
 
         # GLOBAL SETTING FLAG
         gs = determine_global_setting(config, global_setting)
@@ -1980,7 +1982,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # Re-initialize RNGs
     if !isnothing(simulation.seed)
-        simulation.rngs = [Xoshiro(gems_rand(Xoshiro(simulation.seed), UInt)) for _ in 1:Threads.maxthreadid()]
+        master_rng = Xoshiro(simulation.seed)
+        simulation.rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
     end
 
     # Initialize the simulation's start condition
@@ -2060,7 +2063,8 @@ end
 Returns the simulation's intervention event queue.
 """
 function event_queue(simulation::Simulation)
-    return(simulation.event_queue) 
+    # narrow the abstractly-typed field to the concrete EventQueue for type-stable access
+    return simulation.event_queue::EventQueue
 end
 
 """
