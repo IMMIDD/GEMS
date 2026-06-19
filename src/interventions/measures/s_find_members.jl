@@ -75,6 +75,9 @@ struct FindMembers <: SMeasure
     selectionfilter::IPredicate
     has_filter::Bool
 
+    # reused buffers (serial use only): filtered candidates and the sampled subset
+    filter_buffer::Vector{Individual}
+    sample_buffer::Vector{Individual}
 
     function FindMembers(follow_up::IStrategy;
         sample_size::Int64 = -1, sample_fraction::Float64 = 1.0, selectionfilter::Function = _select_all)
@@ -92,7 +95,7 @@ struct FindMembers <: SMeasure
         end
 
         return(
-            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all)
+            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all, Individual[], Individual[])
         )
     end
 
@@ -166,28 +169,36 @@ can be used to condition or limit the results.
 
 # Returns
 
-- `Handover`: Struct that contains the list of setting members and the
-    followup `IStrategy` defined in the input `FindMembers` measure.
+- `Nothing`: Triggers the `follow_up` strategy for each found member (or sampled subset).
 """
 function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
 
     INTERVENTION_DEBUG && @debug "Identifying members of setting $(string(typeof(s)))[$(id(s))] at tick $(sim |> tick)"
 
+    fu = measure |> follow_up
+
+    # no sampling: trigger the follow-up for every (filtered) member without materializing a list
+    if sample_size(measure) < 0 && sample_fraction(measure) >= 1
+        if has_filter(measure)
+            for i in individuals(s)
+                selectionfilter(measure)(i) && trigger_strategy(fu, i, sim)
+            end
+        else
+            apply_followup!(sim, individuals(s), fu)
+        end
+        return nothing
+    end
+
+    # sampling: collect the candidates first, reusing the filter buffer when a filter is set
     members = individuals(s)
     if has_filter(measure)
-        members = filter(selectionfilter(measure), members)
+        members = empty!(measure.filter_buffer)
+        for i in individuals(s)
+            selectionfilter(measure)(i) && push!(members, i)
+        end
     end
 
-    # return a sample of size "sample_size"
-    if sample_size(measure) >= 0
-        return Handover(sample_individuals(members, sample_size(measure), rng=rng(sim)), measure |> follow_up)
-    end
-
-    # return a sample of size "sample_fraction * length"
-    if sample_fraction(measure) < 1
-        return Handover(sample_individuals(members, Int64(ceil((length(members) * sample_fraction(measure)))), rng=rng(sim)), measure |> follow_up)
-    end
-
-    # return all individuals
-    return Handover(members, measure |> follow_up)
+    n = sample_size(measure) >= 0 ? sample_size(measure) : Int64(ceil(length(members) * sample_fraction(measure)))
+    apply_followup!(sim, sample_individuals!(measure.sample_buffer, members, n, rng=rng(sim)), fu)
+    return nothing
 end

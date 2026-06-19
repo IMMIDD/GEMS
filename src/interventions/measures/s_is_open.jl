@@ -87,13 +87,13 @@ the respective follow-up strategies as specified in the `IsOpen` measure.
 
 # Returns
 
-- `Handover`: Struct that contains the focus setting (`s`) and the respective 
-    followup `SStrategy` defined in the input `IsOpen` measure depending
-    on whether the setting is open or closed.
+- `Nothing`: Triggers the positive or negative follow-up strategy (depending on whether the
+    setting is open) for `s`.
 """
 function process_measure(sim::Simulation, s::Setting, measure::IsOpen)
 
     INTERVENTION_DEBUG && @debug "Testing if Setting $(s |> typeof) $(s |> id) is open ($(is_open(s)) at tick $(sim |> tick)"
 
-    return Handover(s, is_open(s) ?  measure |> positive_followup : measure |> negative_followup)
+    apply_followup!(sim, s, is_open(s) ? measure |> positive_followup : measure |> negative_followup)
+    return nothing
 end

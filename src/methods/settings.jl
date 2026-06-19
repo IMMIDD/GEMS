@@ -436,6 +436,25 @@ sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_
 
 
 """
+    sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+
+In-place variant of `sample_individuals` that writes the subsample of size `n` into `buffer`
+(resized accordingly) instead of allocating a new vector. Copies all individuals if
+`n >= length(individuals)`. Returns `buffer`.
+"""
+function sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+    if n >= length(individuals)
+        resize!(buffer, length(individuals))
+        copyto!(buffer, individuals)
+    else
+        resize!(buffer, n)
+        gems_sample!(rng, individuals, buffer, replace = false)
+    end
+    return buffer
+end
+
+
+"""
     present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
 
 Pushes the individuals present in a given IndividualSetting, i.e., only those in open settings to the provided `indivs` vector. 

@@ -76,8 +76,8 @@ follow_up(m::Vaccinate) = m.follow_up
 """
     process_measure(sim::Simulation, ind::Individual, m::Vaccinate)
 
-Administers the vaccine carried by `m` to `ind` and returns a `Handover`
-containing the configured `follow_up` strategy (or `nothing`).
+Administers the vaccine carried by `m` to `ind` and triggers the configured `follow_up`
+strategy (if any) for `ind`.
 
 # Parameters
 
@@ -87,12 +87,13 @@ containing the configured `follow_up` strategy (or `nothing`).
 
 # Returns
 
-- `Handover`: The focus individual paired with the follow-up strategy (or `nothing`).
+- `Nothing`: Triggers the configured `follow_up` strategy (if any) for `ind`.
 """
 function process_measure(sim::Simulation, ind::Individual, m::Vaccinate)
     vaccinate!(ind, vaccine(m), tick(sim))
 
     INTERVENTION_DEBUG && @debug "Individual $(id(ind)) vaccinated with $(name(vaccine(m))) at tick $(tick(sim))"
 
-    return Handover(ind, follow_up(m))
+    apply_followup!(sim, ind, follow_up(m))
+    return nothing
 end
