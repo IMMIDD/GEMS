@@ -987,6 +987,51 @@ end
             empty!(eq)
             flush_staging!(eq)
             @test length(eq) == 0
+
+            # s events drain before i events when both are scheduled for the same tick
+            empty!(eq)
+            enqueue!(eq, i_measure_event, Int16(4))
+            enqueue!(eq, s_measure_event, Int16(4))
+            @test peektick(eq) == Int16(4)
+            @test peek(eq) === s_measure_event
+            @test dequeue!(eq) === s_measure_event
+            @test dequeue!(eq) === i_measure_event
+
+            # re-enqueueing into a slot that was just fully drained remains correct
+            empty!(eq)
+            enqueue!(eq, i_measure_event, Int16(2))
+            dequeue!(eq)
+            @test isempty(eq)
+            enqueue!(eq, i_measure_event, Int16(2))
+            @test length(eq) == 1
+            @test peektick(eq) == Int16(2)
+            @test dequeue!(eq) === i_measure_event
+
+            # head is pulled back when flush_staging! inserts into a tick the queue has
+            # already advanced past (the two-source drain scenario)
+            empty!(eq)
+            enqueue!(eq, i_measure_event, Int16(3))
+            enqueue!(eq, i_measure_event, Int16(5))
+            dequeue!(eq)
+            dequeue!(eq)
+            @test isempty(eq)
+            stage!(eq, s_measure_event, Int16(3))
+            flush_staging!(eq)
+            @test length(eq) == 1
+            @test peektick(eq) == Int16(3)
+            @test dequeue!(eq) === s_measure_event
+
+            # correctness is preserved across repeated empty!/re-enqueue cycles (exercises
+            # free-list reuse: recycled bucket vectors must behave identically to fresh ones)
+            for _ in 1:3
+                empty!(eq)
+                enqueue!(eq, i_measure_event, Int16(1))
+                enqueue!(eq, s_measure_event, Int16(1))
+                @test length(eq) == 2
+                @test dequeue!(eq) === s_measure_event
+                @test dequeue!(eq) === i_measure_event
+                @test isempty(eq)
+            end
         end
     end
 

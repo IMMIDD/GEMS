@@ -1,4 +1,3 @@
-
 ###
 ### EVENT QUEUES
 ###
@@ -15,10 +14,16 @@ and setting events (`SMeasureEvent`) are kept in separate, concretely-typed buck
 (`i_buckets`/`s_buckets`). `buckets[t + 1]` holds every event scheduled for tick `t`
 (ticks are 0-based). `enqueue!` is an `O(1)` `push!` into the relevant bucket; draining a
 tick pops over its buckets, setting events before individual events (each LIFO).
+
+Drained bucket vectors are pushed onto typed free lists (`i_free`/`s_free`) and their
+slot is replaced by a fresh zero-capacity placeholder. `_insert!` draws from the free list
+before allocating, so new tick slots reuse existing capacity rather than repeatedly calling
+`array_new_memory`.
 """
 mutable struct EventQueue <: AbstractEventQueue
 
-    # i_buckets[t + 1] / s_buckets[t + 1] hold all individual/setting events for tick t
+    # i_buckets[t + 1] / s_buckets[t + 1] hold all individual/setting events for tick t.
+    # Drained slots hold a fresh zero-capacity vector until the next event arrives.
     i_buckets::Vector{Vector{IMeasureEvent}}
     s_buckets::Vector{Vector{SMeasureEvent}}
 
@@ -34,6 +39,11 @@ mutable struct EventQueue <: AbstractEventQueue
     # Per-thread, lock-free staging buffers (one set per event type).
     i_staging::Vector{Vector{Tuple{IMeasureEvent, Int16}}}
     s_staging::Vector{Vector{Tuple{SMeasureEvent, Int16}}}
+
+    # Recycled bucket vectors: drained buckets are pushed here so their allocated capacity
+    # can be reused for future tick slots
+    i_free::Vector{Vector{IMeasureEvent}}
+    s_free::Vector{Vector{SMeasureEvent}}
 end
 
 """
@@ -48,7 +58,9 @@ EventQueue() = EventQueue(
     0,
     ReentrantLock(),
     [Tuple{IMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
-    [Tuple{SMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()]
+    [Tuple{SMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
+    Vector{Vector{IMeasureEvent}}(),
+    Vector{Vector{SMeasureEvent}}()
 )
 
 """
@@ -113,18 +125,23 @@ end
     _insert!(queue::EventQueue, event, tick::Int16)
 
 Inserts `event` into the bucket for `tick`, growing the bucket vector if needed and moving
-`head` back for re-entrantly scheduled earlier ticks. `O(1)`. Dispatches on the event type
-(individual vs setting). Not thread-safe on its own: callers either hold `queue.lock`
+`head` back if the target tick is below the current head. `O(1)`. Dispatches on the event
+type (individual vs setting). Not thread-safe on its own: callers either hold `queue.lock`
 (`enqueue!`) or run single-threaded (`flush_staging!`).
+
+New slots draw from the free list before allocating so that capacity grown by earlier ticks
+is reused rather than abandoned. `head` is pulled back when a staged event is flushed into
+a tick that `_advance_head!` has already passed (possible when `flush_staging!` runs after
+a partial drain of the current tick).
 """
 function _insert!(queue::EventQueue, event::IMeasureEvent, tick::Int16)
     idx = Int(tick) + 1
     while length(queue.i_buckets) < idx
-        push!(queue.i_buckets, Vector{IMeasureEvent}())
+        v = isempty(queue.i_free) ? Vector{IMeasureEvent}() : pop!(queue.i_free)
+        push!(queue.i_buckets, v)
     end
     push!(queue.i_buckets[idx], event)
     queue.count += 1
-    # a re-entrantly scheduled event may target a tick below the current head
     Int(tick) < queue.head && (queue.head = Int(tick))
     return nothing
 end
@@ -132,7 +149,8 @@ end
 function _insert!(queue::EventQueue, event::SMeasureEvent, tick::Int16)
     idx = Int(tick) + 1
     while length(queue.s_buckets) < idx
-        push!(queue.s_buckets, Vector{SMeasureEvent}())
+        v = isempty(queue.s_free) ? Vector{SMeasureEvent}() : pop!(queue.s_free)
+        push!(queue.s_buckets, v)
     end
     push!(queue.s_buckets[idx], event)
     queue.count += 1
@@ -216,34 +234,42 @@ Drains and processes every event scheduled for a tick `<= t`, in tick order (set
 before individual events within a tick, each LIFO). Used by `process_events!` instead of
 `dequeue!`: draining the concretely-typed buckets directly keeps `process_event` statically
 dispatched and avoids boxing each event into a `Union{IMeasureEvent, SMeasureEvent}` return.
-Re-entrantly scheduled events (follow-ups) are picked up by the surrounding loop.
+Re-entrantly scheduled events (follow-ups) are picked up by the surrounding loop. Drained
+bucket vectors are recycled onto the queue's free lists for reuse by future tick slots.
 """
 function process_due!(queue::EventQueue, sim, t)
     _advance_head!(queue)
     while !isempty(queue) && queue.head <= t
         idx = queue.head + 1
-        _drain_bucket!(queue.s_buckets, idx, queue, sim)
-        _drain_bucket!(queue.i_buckets, idx, queue, sim)
+        _drain_bucket!(queue.s_buckets, queue.s_free, idx, queue, sim)
+        _drain_bucket!(queue.i_buckets, queue.i_free, idx, queue, sim)
         _advance_head!(queue)
     end
     return nothing
 end
 
-# drain one tick bucket (specialized per event type, so `pop!`/`process_event` are concrete)
-@inline function _drain_bucket!(buckets, idx::Int, queue::EventQueue, sim)
+# Drain one tick bucket, specialized per event type via `where {E}` so `pop!` and
+# `process_event` are statically dispatched. After draining, the now-empty but
+# capacity-holding vector is pushed to `free` for reuse and the slot is replaced by a
+# fresh zero-capacity placeholder. Skips immediately if the bucket is already empty.
+@inline function _drain_bucket!(buckets::Vector{Vector{E}}, free::Vector{Vector{E}}, idx::Int, queue::EventQueue, sim) where {E}
     idx <= length(buckets) || return nothing
     b = buckets[idx]
+    isempty(b) && return nothing
     while !isempty(b)
         process_event(pop!(b), sim)
         queue.count -= 1
     end
+    push!(free, b)
+    buckets[idx] = Vector{E}()
     return nothing
 end
 
 """
     empty!(queue::EventQueue)
 
-Removes all `Event`s from the `EventQueue`, retaining bucket capacity.
+Removes all `Event`s from the `EventQueue`, retaining bucket capacity for reuse.
+Free-list vectors are already empty and are left ready for the next run.
 """
 function Base.empty!(queue::EventQueue)
     for b in queue.i_buckets
