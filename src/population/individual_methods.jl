@@ -662,7 +662,7 @@ function is_detected(individual::Individual, infections::InfectionRegistry, path
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
     !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
-    return individual.detected_mask & (UInt32(1) << (pathogen_id - 1)) != 0
+    return is_detected(individual, pathogen_id)
 end
 isdetected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
 detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
@@ -735,7 +735,7 @@ updates `ind.detected_mask` if the test is a positive reportable result.
 @inline function record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
     detected = test_result && reportable
     set_test_state!(tests, id(ind), pathogen_id, tick, test_result, detected)
-    detected && (ind.detected_mask |= (UInt32(1) << (pathogen_id - 1)))
+    detected && detected!(ind, pathogen_id, true)
     return nothing
 end
 
@@ -1060,7 +1060,7 @@ function progress_disease!(
         # check recovery
         if Int16(0) < state.recovery <= tick
             infected!(individual, state.pathogen_id, false)
-            individual.detected_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
+            detected!(individual, state.pathogen_id, false)
             individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), i)
             push!(removal_buf, (individual.id, Int32(-i)))
             continue
@@ -1104,7 +1104,7 @@ function progress_disease!(
             # check recovery
             if Int16(0) < state.recovery <= tick
                 infected!(individual, state.pathogen_id, false)
-                individual.detected_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
+                detected!(individual, state.pathogen_id, false)
                 push!(removal_buf, (individual.id, Int32(node)))
                 node = next_node
                 continue

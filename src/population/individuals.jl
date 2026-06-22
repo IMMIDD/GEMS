@@ -549,7 +549,7 @@ detected(individual::Individual, pathogen_id::Int8) = is_detected(individual, pa
  
 Sets or clears the detected bit for `pathogen_id` on the individual.
 """
-function detected!(individual::Individual, pathogen_id::Int8, val::Bool)
+@inline function detected!(individual::Individual, pathogen_id::Int8, val::Bool)
     if val
         individual.detected_mask |= (UInt32(1) << (pathogen_id - 1))
     else
