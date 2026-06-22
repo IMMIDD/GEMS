@@ -870,8 +870,16 @@ Applies `dp` directly to `ind` by writing an active `InfectionState` into the in
 infection cache, bypassing the normal simulation buffer and flush cycle.
 The individual is immediately visible as infected for `pathogen_id` without needing a running
 `Simulation` or a call to `step!`.
+
+If `ind` is already actively infected with `pathogen_id`, this is a no-op (with a warning):
+at most one active infection per pathogen is allowed.
 """
 function set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
+    # at most one active infection per pathogen; skip a duplicate rather than corrupt the invariant
+    if infected(ind, pathogen_id)
+        @warn "set_progression!: individual $(id(ind)) is already infected with pathogen $pathogen_id; skipping to preserve the one-active-infection-per-pathogen invariant."
+        return nothing
+    end
     # without a persistent registry, an overflow would dangle, so require a free cache slot
     any(i -> !ind.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
         throw(ArgumentError("set_progression! cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual without a Simulation context."))
@@ -889,6 +897,11 @@ Useful when you need an active infection slot for a specific pathogen without
 constraining any timeline values.
 """
 function set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
+    # at most one active infection per pathogen; skip a duplicate rather than corrupt the invariant
+    if infected(ind, pathogen_id)
+        @warn "set_progression!: individual $(id(ind)) is already infected with pathogen $pathogen_id; skipping to preserve the one-active-infection-per-pathogen invariant."
+        return nothing
+    end
     blank = InfectionState(
         DEFAULT_INFECTION_ID, Int32(0),
         DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,

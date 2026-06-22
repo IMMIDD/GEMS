@@ -42,7 +42,8 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 
 # Returns
 
-- `Int32`: New infection ID
+- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` if `infectee` is
+  already actively infected with `pathogen`.
 
 """
 function infect!(infectee::Individual,
@@ -58,6 +59,11 @@ function infect!(infectee::Individual,
         ags::Int32 ,
         source_infection_id::Int32)
 
+    # an individual can hold at most one active infection per pathogen 
+    if infected(infectee, id(pathogen))
+        @warn "infect!: individual $(id(infectee)) is already infected with pathogen $(id(pathogen)); skipping to preserve the one-active-infection-per-pathogen invariant."
+        return DEFAULT_INFECTION_ID
+    end
 
     # calculate disease progression
     paf = progression_assignment(pathogen)
@@ -151,7 +157,8 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 
 # Returns
 
-- `Int32`: New infection ID
+- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` (with a warning) if `infectee` is
+  already actively infected with `pathogen`.
 
 """
 
