@@ -26,10 +26,9 @@ struct _OverflowNode; node::Int32; end # registry overflow linked-list node inde
 @inline _clear_slot!(ind, reg::InfectionRegistry, l::_CacheSlot) = _set_slot!(ind, reg, l, InfectionState())
 @inline _clear_slot!(ind, reg::InfectionRegistry, l::_OverflowNode) = nothing
 
-# Stage an ended slot into the removal buffer using the sign-encoding that `remove_infection!`
-# above decodes (`-i` = cache slot i, `node` = overflow node). 
-@inline _stage_slot_removal!(buf, ind, l::_CacheSlot) = push!(buf, (ind.id, Int32(-l.i)))
-@inline _stage_slot_removal!(buf, ind, l::_OverflowNode) = push!(buf, (ind.id, l.node))
+# Stage an ended slot into the removal buffer as a tagged _SlotRemoval.
+@inline _stage_slot_removal!(buf, ind, l::_CacheSlot) = push!(buf, _SlotRemoval(ind.id, false, l.i))
+@inline _stage_slot_removal!(buf, ind, l::_OverflowNode) = push!(buf, _SlotRemoval(ind.id, true, l.node))
 
 
 # =========================================================================================
@@ -164,20 +163,20 @@ end
 
 
 """
-    remove_infection!(reg::InfectionRegistry, ind::Individual, val::Int32)
+    remove_infection!(reg::InfectionRegistry, ind::Individual, r::_SlotRemoval)
 
-Remove a single infection that has ended, as encoded by `val` in the removal buffer:
-- `val < 0`: the infection lived in cache slot `-val`; promotes the overflow head
-  into that freed slot if one exists.
-- `val >= 0`: the infection lived in overflow node `val`; unlinks and frees it.
+Remove a single infection that has ended, as tagged by `r`:
+- `r.is_overflow == false`: the infection lived in cache slot `r.index`; promotes the
+  overflow head into that freed slot if one exists.
+- `r.is_overflow == true`: the infection lived in overflow node `r.index`; unlinks and frees it.
 
 Called by `flush_ended_infections!` after the threaded disease-update phase.
 """
-function remove_infection!(reg::InfectionRegistry, ind::Individual, val::Int32)
-    if val < 0
-        ind.infection_head != 0 && _promote_to_cache!(reg, ind, Int32(-val))
+function remove_infection!(reg::InfectionRegistry, ind::Individual, r::_SlotRemoval)
+    if r.is_overflow
+        _unlink_overflow!(reg, ind, r.index)
     else
-        _unlink_overflow!(reg, ind, val)
+        ind.infection_head != 0 && _promote_to_cache!(reg, ind, r.index)
     end
 end
 

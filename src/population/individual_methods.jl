@@ -936,11 +936,11 @@ function _infectiousness_level(pathogen, state::InfectionState, individual::Indi
 end
 
 """
-    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{Tuple{Int32,Int32}})
+    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_SlotRemoval})
 
 Handles the health flags and memory-management when an individual dies.
 """
-@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{Tuple{Int32,Int32}})
+@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_SlotRemoval})
     individual.dead = true
 
     individual.killing_pathogen_id = pathogen_id
@@ -1062,7 +1062,7 @@ function progress_disease!(
     individual::Individual, 
     infections::InfectionRegistry, 
     pathogens::P, 
-    removal_buf::Vector{Tuple{Int32,Int32}}, 
+    removal_buf::Vector{_SlotRemoval},
     tick::Int16, 
     rng::Xoshiro
 ) where {P<:Tuple}

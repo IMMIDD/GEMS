@@ -119,3 +119,16 @@ struct _PendingInfection
     pathogen_id::Int8
     dp::DiseaseProgression
 end
+
+"""
+    _SlotRemoval
+
+Per-thread transfer struct staged in `removal_buffers` when an infection ends, then drained
+by `flush_ended_infections!`. `index` is the cache slot index (`is_overflow == false`) or 
+the overflow node index (`is_overflow == true`) within the individual's `InfectionRegistry`.
+"""
+struct _SlotRemoval
+    host_id::Int32
+    is_overflow::Bool
+    index::Int32
+end

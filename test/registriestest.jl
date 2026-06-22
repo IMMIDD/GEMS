@@ -1,6 +1,7 @@
 import GEMS: push_infection!, remove_infection!, remove_infections!,
     push_immunity!, remove_immunities!,
-    set_test_state!, _test_key
+    set_test_state!, _test_key,
+    _SlotRemoval
 
 @testset "Registries" begin
 
@@ -45,8 +46,8 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(1), Int32(1), dp1)  # cache slot 1
             push_infection!(reg, i, Int8(2), Int32(2), dp2)  # overflow node 1
 
-            # remove cache slot 1 (val = -1); should promote overflow node into cache
-            remove_infection!(reg, i, Int32(-1))
+            # remove cache slot 1; should promote overflow node into cache
+            remove_infection!(reg, i, _SlotRemoval(i.id, false, Int32(1)))
             @test i.infection_cache[1].pathogen_id == Int8(2)
             @test i.infection_head == Int32(0)
             @test length(reg.free_slots) == 1  # freed overflow slot returned to pool
@@ -61,8 +62,8 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(1), Int32(1), dp1)
             push_infection!(reg, i, Int8(2), Int32(2), dp2)
 
-            # remove the overflow node (val = 1, the index in reg.states)
-            remove_infection!(reg, i, Int32(1))
+            # remove the overflow node (index 1 in reg.states)
+            remove_infection!(reg, i, _SlotRemoval(i.id, true, Int32(1)))
             @test i.infection_head == Int32(0)
             @test !isempty(reg.free_slots)  # slot returned to pool
         end
@@ -78,7 +79,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(2), Int32(2), dp)  # overflow node 1
             push_infection!(reg, i, Int8(3), Int32(3), dp)  # overflow node 2 (new head)
 
-            remove_infection!(reg, i, Int32(1))  # remove non-head node (pid2)
+            remove_infection!(reg, i, _SlotRemoval(i.id, true, Int32(1)))  # remove non-head node (pid2)
             @test i.infection_head == Int32(2)   # head still points to pid3's node
             @test length(reg.free_slots) == 1
         end
@@ -90,7 +91,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
 
             push_infection!(reg, i, Int8(1), Int32(1), dp)
             push_infection!(reg, i, Int8(2), Int32(2), dp)
-            remove_infection!(reg, i, Int32(1))          # free overflow slot 1
+            remove_infection!(reg, i, _SlotRemoval(i.id, true, Int32(1)))  # free overflow slot 1
             push_infection!(reg, i, Int8(3), Int32(3), dp)  # should reuse slot 1
 
             @test length(reg.states) == 1  # no new allocation, reused existing slot
