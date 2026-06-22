@@ -328,28 +328,6 @@ end
 
 
 """
-    infected(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Bool
-
-Returns `true` if the individual currently has an active infection with the given
-`pathogen_id`. Performs a cache-first lookup via `infection_id` and checks whether
-the result differs from `DEFAULT_INFECTION_ID`.
-
-See also: `infection_id`, `infected(::Individual)` for the aggregate flag.
-"""
-@inline function infected(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Bool
-    return infection_id(individual, pathogen_id, infections) != DEFAULT_INFECTION_ID
-end
-
-"""
-    infected(individual::Individual, pathogen_id::Int8, sim::Simulation)::Bool
-
-Convenience wrapper that safely routes to the correct `InfectionRegistry` shard for the given individual.
-"""
-@inline function infected(individual::Individual, pathogen_id::Int8, sim::Simulation)::Bool
-    return infected(individual, pathogen_id, infection_registry(sim, individual))
-end
-
-"""
     infectiousness(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int8
 
 Returns the individual's current infectiousness for the given pathogen

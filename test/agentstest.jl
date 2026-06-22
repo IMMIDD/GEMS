@@ -196,10 +196,10 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 # infectiousness returns 0 before infectiousness_onset
                 @test infectiousness(i, pid2, reg) == Int8(0)
 
-                # infected(ind, pid, reg) — current-tick variant
-                @test infected(i, pid1, reg)
-                @test infected(i, pid2, reg)
-                @test !infected(i, Int8(3), reg)
+                # active registry record present for pid1/pid2, absent for an unused pathogen
+                @test infection_id(i, pid1, reg) != GEMS.DEFAULT_INFECTION_ID
+                @test infection_id(i, pid2, reg) != GEMS.DEFAULT_INFECTION_ID
+                @test infection_id(i, Int8(3), reg) == GEMS.DEFAULT_INFECTION_ID
 
                 # pid1 lives in the cache slot
                 @test get_infection_state(i, reg, pid1).pathogen_id == pid1
@@ -249,7 +249,7 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 push_infection!(infection_registry(sim_sw, i_sw), i_sw, pid_sw, Int32(1),
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
 
-                @test infected(i_sw, pid_sw, sim_sw)
+                @test infection_id(i_sw, pid_sw, sim_sw) != GEMS.DEFAULT_INFECTION_ID
                 @test infectiousness(i_sw, pid_sw, sim_sw) == Int8(0)
                 @test earliest_infectiousness_onset(i_sw, sim_sw) == Int16(3)
 

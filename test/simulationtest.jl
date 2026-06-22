@@ -331,8 +331,8 @@ import GEMS: increment!, infected!
             # infected_fraction with multiple pathogens auto-expands to MultiStartCondition
             p_a = Pathogen(id=1, name="PA"); p_b = Pathogen(id=2, name="PB")
             sim_2p = Simulation(pathogens=(p_a, p_b), pop_size=100, infected_fraction=0.3, seed=1)
-            @test count(i -> infected(i, Int8(1), infection_registry(sim_2p, i)), individuals(sim_2p)) > 0
-            @test count(i -> infected(i, Int8(2), infection_registry(sim_2p, i)), individuals(sim_2p)) > 0
+            @test count(i -> infected(i, Int8(1)), individuals(sim_2p)) > 0
+            @test count(i -> infected(i, Int8(2)), individuals(sim_2p)) > 0
 
             # NoneInfected: no time limit → uses Iterators.countfrom + break when epidemic clears
             sim_ni = Simulation(pop_size = 100, start_condition = PatientZero(),
