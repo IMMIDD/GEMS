@@ -16,7 +16,7 @@ first, then overflow nodes. Only yields entries where `active == true`.
 `src` is either a single `InfectionRegistry` or the simulation's `Vector{InfectionRegistry}`;
 the shard is resolved lazily, so a cache-only individual never touches the registry.
 """
-struct InfectionIterator{S}
+struct InfectionIterator{S<:Union{InfectionRegistry,Vector{InfectionRegistry}}}
     individual::Individual
     src::S
 end
@@ -61,7 +61,7 @@ then overflow nodes in the linked-list registry. Yields only active entries.
 Users of custom `TransmissionFunction` implementations should use this rather
 than accessing `immunity_cache` or the registry directly.
 """
-struct ImmunityIterator{S}
+struct ImmunityIterator{S<:Union{ImmunityRegistry,Vector{ImmunityRegistry}}}
     individual::Individual
     src::S
 end
