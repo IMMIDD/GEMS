@@ -124,11 +124,11 @@ Override this (instead of `transmission_probability`) only when full control is 
 e.g. to bypass the standard immunity model or handle infectiousness differently.
 """
 function effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
-    inf = infectiousness(infecter, pathogen_id, sim)
+    inf = infectiousness(infecter, sim, pathogen_id)
     inf == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
     return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
            inf / 100.0 *
-           (1.0 - immunity_level(infectee, pathogen_id, sim) / 100.0)
+           (1.0 - immunity_level(infectee, sim, pathogen_id) / 100.0)
 end
 
 """

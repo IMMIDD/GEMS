@@ -438,8 +438,8 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             GEMS.update_individual!(infecter, Int16(1), sim)
 
             @test transmission_probability(test_ctr, id(first_pathogen(sim)), infecter, suscpt_ind, households(sim)[1], Int16(1), sim) == 0.3
-            let inf_l = infectiousness(infecter, id(first_pathogen(sim)), sim)
-                imm_l = immunity_level(suscpt_ind, id(first_pathogen(sim)), sim)
+            let inf_l = infectiousness(infecter, sim, id(first_pathogen(sim)))
+                imm_l = immunity_level(suscpt_ind, sim, id(first_pathogen(sim)))
                 @test effective_transmission_probability(test_ctr, id(first_pathogen(sim)), infecter, suscpt_ind, households(sim)[1], Int16(1), sim) ≈ 0.3 * (inf_l / 100.0) * (1.0 - imm_l / 100.0)
             end
 
@@ -539,7 +539,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
 
             infect!(infecter_ci, Int16(0), first_pathogen(sim_ci), rng=Xoshiro())
             GEMS.update_individual!(infecter_ci, Int16(1), sim_ci)
-            inf_level = infectiousness(infecter_ci, pid, sim_ci)
+            inf_level = infectiousness(infecter_ci, sim_ci, pid)
 
             # no other pathogens: base rate = 0.5 (cross product = 1.0; own immunity excluded)
             prob_none = transmission_probability(tf_ci, pid, infecter_ci, infectee_ci,
@@ -619,7 +619,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
 
             infect!(infecter_vi, Int16(0), first_pathogen(sim_vi), rng=Xoshiro())
             GEMS.update_individual!(infecter_vi, Int16(1), sim_vi)
-            inf_level = infectiousness(infecter_vi, pid1, sim_vi)
+            inf_level = infectiousness(infecter_vi, sim_vi, pid1)
 
             # no concurrent infections: base rate = 0.5
             @test transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
@@ -671,8 +671,8 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             GEMS.update_individual!(infecter_c, Int16(1), sim_c)
 
             pid_c = id(first_pathogen(sim_c))
-            inf_level_c = infectiousness(infecter_c, pid_c, sim_c)
-            imm_level_c = immunity_level(infectee_c, pid_c, sim_c)
+            inf_level_c = infectiousness(infecter_c, sim_c, pid_c)
+            imm_level_c = immunity_level(infectee_c, sim_c, pid_c)
 
             # no concurrent infections: combined base rate = const_rate * vi_rate
             @test transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 1.0

@@ -729,23 +729,23 @@ end
 Assigns or validates pathogen ids. `id` is a plain `Int8` field (not a type parameter), so
 mutating it in place leaves each pathogen's type and the tuple type unchanged.
 
-- all ids unset (`DEFAULT_PATHOGEN_ID`): auto-assign `1..N` (errors if `N > 32`)
-- all ids set: validate each is in `[1, 32]` and unique
+- all ids unset (`DEFAULT_PATHOGEN_ID`): auto-assign `1..N` (errors if `N > MAX_PATHOGENS`)
+- all ids set: validate each is in `[1, MAX_PATHOGENS]` and unique
 - mixed: error (ambiguous)
 
-The 32-id ceiling comes from the `UInt32` pathogen masks (`1 << (id - 1)`) and `_test_key`.
+The id ceiling (`MAX_PATHOGENS`) comes from the `UInt32` pathogen masks (`1 << (id - 1)`) and `_test_key`.
 """
 function _finalize_pathogen_ids!(raw::Tuple)
     n = length(raw)
     ids = map(id, raw)
     n_unset = count(==(DEFAULT_PATHOGEN_ID), ids)
     if n_unset == n
-        n > 32 && throw(ArgumentError("At most 32 pathogens are supported (got $n)."))
+        n > MAX_PATHOGENS && throw(ArgumentError("At most $MAX_PATHOGENS pathogens are supported (got $n)."))
         for (i, p) in enumerate(raw)
             p.id = Int8(i)
         end
     elseif n_unset == 0
-        any(x -> x < 1 || x > 32, ids) && throw(ArgumentError("Pathogen ids must be in [1, 32] (got $(collect(ids)))."))
+        any(x -> x < 1 || x > MAX_PATHOGENS, ids) && throw(ArgumentError("Pathogen ids must be in [1, $MAX_PATHOGENS] (got $(collect(ids)))."))
         length(unique(ids)) == n || throw(ArgumentError("Pathogen ids must be unique (got $(collect(ids)))."))
     else
         throw(ArgumentError("Set ids on all pathogens or none; got a partial assignment: $(collect(ids))."))

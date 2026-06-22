@@ -8,12 +8,15 @@ A `StopCriterion` that specifies a time limit.
 
 # Fields
 - `limit::Int16`: A time limit. When reached, the simulation should be terminated.
+
+Ticks are stored as `Int16`, so `limit` (and the reachable tick range in general) cannot exceed
+`typemax(Int16)` (32767)n
 """
 struct TimesUp <: StopCriterion
     limit::Int16
 
-    function TimesUp(;limit::Int) 
-        limit <= 0 && throw(ArgumentError("TimesUp must be 1 or larger!"))
+    function TimesUp(;limit::Int)
+        (1 <= limit <= typemax(Int16)) || throw(ArgumentError("TimesUp limit must be between 1 and $(typemax(Int16)) (ticks are Int16); got $limit."))
         new(Int16(limit))
     end
 end

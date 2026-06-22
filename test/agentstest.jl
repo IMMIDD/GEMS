@@ -191,15 +191,15 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 @test get_infection_state(i, reg, pid2).pathogen_id == pid2
 
                 # infection_id looks up the overflow node
-                @test infection_id(i, pid2, reg) == Int32(2)
+                @test infection_id(i, reg, pid2) == Int32(2)
 
                 # infectiousness returns 0 before infectiousness_onset
-                @test infectiousness(i, pid2, reg) == Int8(0)
+                @test infectiousness(i, reg, pid2) == Int8(0)
 
                 # active registry record present for pid1/pid2, absent for an unused pathogen
-                @test infection_id(i, pid1, reg) != GEMS.DEFAULT_INFECTION_ID
-                @test infection_id(i, pid2, reg) != GEMS.DEFAULT_INFECTION_ID
-                @test infection_id(i, Int8(3), reg) == GEMS.DEFAULT_INFECTION_ID
+                @test infection_id(i, reg, pid1) != GEMS.DEFAULT_INFECTION_ID
+                @test infection_id(i, reg, pid2) != GEMS.DEFAULT_INFECTION_ID
+                @test infection_id(i, reg, Int8(3)) == GEMS.DEFAULT_INFECTION_ID
 
                 # pid1 lives in the cache slot
                 @test get_infection_state(i, reg, pid1).pathogen_id == pid1
@@ -220,25 +220,25 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                     DiseaseProgression(exposure=Int16(3), infectiousness_onset=Int16(5), recovery=Int16(30)))
                 # list after 3 pushes: cache=pid1, head points to pid3 which points to pid2
                 @test get_infection_state(i, reg, pid2).pathogen_id == pid2  # traverses past pid3
-                @test infection_id(i, pid2, reg) == Int32(2)
-                @test infectiousness(i, pid2, reg) == Int8(0)
+                @test infection_id(i, reg, pid2) == Int32(2)
+                @test infectiousness(i, reg, pid2) == Int8(0)
                 # pathogen not in list at all returns defaults
-                @test infectiousness(i, Int8(4), reg) == Int8(0)
-                @test infection_id(i, Int8(4), reg) == GEMS.DEFAULT_INFECTION_ID
+                @test infectiousness(i, reg, Int8(4)) == Int8(0)
+                @test infection_id(i, reg, Int8(4)) == GEMS.DEFAULT_INFECTION_ID
 
                 # immunity overflow (IMMUNITY_CACHE_SIZE = 1, second pathogen overflows)
                 ireg = ImmunityRegistry()
                 push_immunity!(ireg, i, pid1, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 push_immunity!(ireg, i, pid2, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2
-                @test immunity_level(i, pid2, ireg) == Int8(0)
+                @test immunity_level(i, ireg, pid2) == Int8(0)
 
                 # multi-node immunity overflow: traverse past head to find second node
                 push_immunity!(ireg, i, pid3, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 # head points to pid3 which points to pid2
                 @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2  # traverses past pid3
-                @test immunity_level(i, pid2, ireg) == Int8(0)
-                @test immunity_level(i, Int8(4), ireg) == Int8(0)  # not found returns 0
+                @test immunity_level(i, ireg, pid2) == Int8(0)
+                @test immunity_level(i, ireg, Int8(4)) == Int8(0)  # not found returns 0
             end
 
             @testset "Sim Wrappers" begin
@@ -249,12 +249,12 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 push_infection!(infection_registry(sim_sw, i_sw), i_sw, pid_sw, Int32(1),
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
 
-                @test infection_id(i_sw, pid_sw, sim_sw) != GEMS.DEFAULT_INFECTION_ID
-                @test infectiousness(i_sw, pid_sw, sim_sw) == Int8(0)
+                @test infection_id(i_sw, sim_sw, pid_sw) != GEMS.DEFAULT_INFECTION_ID
+                @test infectiousness(i_sw, sim_sw, pid_sw) == Int8(0)
                 @test earliest_infectiousness_onset(i_sw, sim_sw) == Int16(3)
 
                 push_immunity!(immunity_registry(sim_sw, i_sw), i_sw, pid_sw, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
-                @test immunity_level(i_sw, pid_sw, sim_sw) == Int8(0)
+                @test immunity_level(i_sw, sim_sw, pid_sw) == Int8(0)
             end
 
         end
@@ -500,9 +500,9 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             sim_tr = Simulation()
             i_tr2 = Individual(id=2, sex=0, age=30)
             record_test!(i_tr2, sim_tr, pid_tr, Int16(7), false, false)
-            @test last_test(i_tr2, pid_tr, sim_tr) == Int16(7)
-            @test last_test_result(i_tr2, pid_tr, sim_tr) == false
-            @test !was_reported(i_tr2, pid_tr, sim_tr)
+            @test last_test(i_tr2, sim_tr, pid_tr) == Int16(7)
+            @test last_test_result(i_tr2, sim_tr, pid_tr) == false
+            @test !was_reported(i_tr2, sim_tr, pid_tr)
         end
 
         @testset "Quarantine" begin

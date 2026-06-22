@@ -267,7 +267,7 @@ Returns an empty sentinel `InfectionState` if no record exists for `pathogen_id`
     node = ind.infection_head
     while node != 0
         @inbounds s = infections.states[node]
-        s.pathogen_id == pathogen_id && return s
+        s.active && s.pathogen_id == pathogen_id && return s
         node = s.next
     end
     return InfectionState()
@@ -288,7 +288,7 @@ Returns an empty sentinel `ImmunityState` if no record exists for `pathogen_id`.
     node = ind.immunity_head
     while node != 0
         @inbounds s = reg.states[node]
-        s.pathogen_id == pathogen_id && return s
+        _is_active_immunity(s) && s.pathogen_id == pathogen_id && return s
         node = s.next
     end
     return ImmunityState(pathogen_id)
@@ -297,99 +297,59 @@ end
 ### PATHOGEN ATTRIBUTES ###
 
 """
-    infection_id(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int32
+    infection_id(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8)::Int32
 
 Returns the `infection_id` of the individual's currently active infection
 with `pathogen_id`, or `DEFAULT_INFECTION_ID` if no such infection exists.
 """
-@inline function infection_id(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int32
-    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        s = individual.infection_cache[i]
-        s.active && s.pathogen_id == pathogen_id && return s.infection_id
-    end
-    individual.infection_head != 0 || return DEFAULT_INFECTION_ID
-    node = individual.infection_head
-    while node != 0
-        @inbounds s = infections.states[node]
-        s.active && s.pathogen_id == pathogen_id && return s.infection_id
-        node = s.next
-    end
-    return DEFAULT_INFECTION_ID
-end
+@inline infection_id(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8)::Int32 =
+    get_infection_state(individual, infections, pathogen_id).infection_id
 
 """
-    infection_id(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int32
+    infection_id(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int32
 
 Convenience wrapper that safely routes to the correct `InfectionRegistry` shard for the given individual.
 """
-@inline function infection_id(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int32
-    return infection_id(individual, pathogen_id, infection_registry(sim, individual))
-end
+@inline infection_id(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int32 =
+    infection_id(individual, infection_registry(sim, individual), pathogen_id)
 
 
 """
-    infectiousness(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int8
+    infectiousness(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8)::Int8
 
 Returns the individual's current infectiousness for the given pathogen
 (`Int8`, 0–100). Returns `0` if the individual is not currently infected
 with that pathogen, or is in the exposed-but-not-yet-infectious window,
 or has recovered.
 """
-@inline function infectiousness(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry)::Int8
-    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        s = individual.infection_cache[i]
-        s.active && s.pathogen_id == pathogen_id && return s.infectiousness
-    end
-    individual.infection_head != 0 || return Int8(0)
-    node = individual.infection_head
-    while node != 0
-        @inbounds s = infections.states[node]
-        s.active && s.pathogen_id == pathogen_id && return s.infectiousness
-        node = s.next
-    end
-    return Int8(0)
-end
+@inline infectiousness(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8)::Int8 =
+    get_infection_state(individual, infections, pathogen_id).infectiousness
 
 """
-    infectiousness(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int8
+    infectiousness(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8
 
 Convenience wrapper that safely routes to the correct `InfectionRegistry` shard for the given individual.
 """
-@inline function infectiousness(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int8
-    return infectiousness(individual, pathogen_id, infection_registry(sim, individual))
-end
+@inline infectiousness(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8 =
+    infectiousness(individual, infection_registry(sim, individual), pathogen_id)
 
 
 """
-    immunity_level(individual::Individual, pathogen_id::Int8, immunities::ImmunityRegistry)::Int8
+    immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)::Int8
 
 Returns the current cached immunity level (0-100) against `pathogen_id`,
 or 0 if the individual has no immunity record for that pathogen.
 """
-@inline function immunity_level(individual::Individual, pathogen_id::Int8, immunities::ImmunityRegistry)::Int8
-    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
-        s = individual.immunity_cache[i]
-        !_is_active_immunity(s) && continue
-        s.pathogen_id == pathogen_id && return s.immunity_level
-    end
-    individual.immunity_head != 0 || return Int8(0)
-    node = individual.immunity_head
-    while node != 0
-        @inbounds s = immunities.states[node]
-        _is_active_immunity(s) && s.pathogen_id == pathogen_id && return s.immunity_level
-        node = s.next
-    end
-    return Int8(0)
-end
+@inline immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)::Int8 =
+    get_immunity_state(individual, immunities, pathogen_id).immunity_level
 
 """
-    immunity_level(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int8
+    immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8
 
 Convenience wrapper that safely routes to the correct `ImmunityRegistry` shard for the given individual.
 """
-@inline function immunity_level(individual::Individual, pathogen_id::Int8, sim::Simulation)::Int8
-    return immunity_level(individual, pathogen_id, immunity_registry(sim, individual))
-end
+@inline immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8 =
+    immunity_level(individual, immunity_registry(sim, individual), pathogen_id)
 
 """
     earliest_infectiousness_onset(ind::Individual, infections::InfectionRegistry)::Int16
@@ -689,11 +649,11 @@ Returns `DEFAULT_TICK` (-1) if never tested.
 last_test(individual::Individual, reg::TestRegistry, pathogen_id::Int8) = get_test_state(individual, reg, pathogen_id).last_test
 
 """
-    last_test(individual::Individual, pathogen_id::Int8, sim::Simulation)
+    last_test(individual::Individual, sim::Simulation, pathogen_id::Int8)
 
 Convenience wrapper that safely routes to the correct `TestRegistry` shard for the given individual.
 """
-last_test(individual::Individual, pathogen_id::Int8, sim::Simulation) = get_test_state(individual, test_registry(sim, individual), pathogen_id).last_test
+last_test(individual::Individual, sim::Simulation, pathogen_id::Int8) = get_test_state(individual, test_registry(sim, individual), pathogen_id).last_test
 
 """
     last_test_result(individual::Individual, reg::TestRegistry, pathogen_id::Int8)
@@ -703,11 +663,11 @@ Returns whether the most recent test was positive for this individual and pathog
 last_test_result(individual::Individual, reg::TestRegistry, pathogen_id::Int8) = get_test_state(individual, reg, pathogen_id).last_test_result
 
 """
-    last_test_result(individual::Individual, pathogen_id::Int8, sim::Simulation)
+    last_test_result(individual::Individual, sim::Simulation, pathogen_id::Int8)
 
 Convenience wrapper that safely routes to the correct `TestRegistry` shard for the given individual.
 """
-last_test_result(individual::Individual, pathogen_id::Int8, sim::Simulation) = get_test_state(individual, test_registry(sim, individual), pathogen_id).last_test_result
+last_test_result(individual::Individual, sim::Simulation, pathogen_id::Int8) = get_test_state(individual, test_registry(sim, individual), pathogen_id).last_test_result
 
 
 """
@@ -719,11 +679,11 @@ and pathogen.
 was_reported(individual::Individual, reg::TestRegistry, pathogen_id::Int8) = get_test_state(individual, reg, pathogen_id).was_reported
 
 """
-    was_reported(individual::Individual, pathogen_id::Int8, sim::Simulation)
+    was_reported(individual::Individual, sim::Simulation, pathogen_id::Int8)
 
 Convenience wrapper that safely routes to the correct `TestRegistry` shard for the given individual.
 """
-was_reported(individual::Individual, pathogen_id::Int8, sim::Simulation) = get_test_state(individual, test_registry(sim, individual), pathogen_id).was_reported
+was_reported(individual::Individual, sim::Simulation, pathogen_id::Int8) = get_test_state(individual, test_registry(sim, individual), pathogen_id).was_reported
 
 
 """

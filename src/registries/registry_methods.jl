@@ -325,9 +325,9 @@ end
 
 Returns a packed `UInt64` composite key for `(ind_id, pathogen_id)` for use
 as a `TestRegistry` dict key. Unique for any `Int32` agent ID and any
-`pathogen_id` in [1, 32].
+`pathogen_id` in [1, MAX_PATHOGENS].
 """
-@inline _test_key(ind_id::Int32, pathogen_id::Int8) = UInt64(ind_id) * UInt64(32) + UInt64(pathogen_id - Int8(1))
+@inline _test_key(ind_id::Int32, pathogen_id::Int8) = UInt64(ind_id) * UInt64(MAX_PATHOGENS) + UInt64(pathogen_id - Int8(1))
 
 """
     set_test_state!(reg::TestRegistry, ind_id::Int32, pathogen_id::Int8, last_test::Int16, last_test_result::Bool, was_reported::Bool)
