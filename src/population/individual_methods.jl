@@ -868,6 +868,22 @@ function _immunity_level_and_stable(pathogen, state::ImmunityState, individual::
 end
 
 """
+    _step_immunity!(ind, registry, pathogens, loc, tick, rng)
+
+Recomputes the immunity level for the single record at slot `loc` (a `_CacheSlot` or
+`_OverflowNode`) and writes it back only when it changed. Shared by both branches of
+`update_immunity!` so the recompute logic lives once; the storage details are handled by
+`_slot_state` / `_set_slot!` dispatch. Returns whether the record is stable.
+"""
+@inline function _step_immunity!(ind::Individual, registry::ImmunityRegistry, pathogens::P, loc, tick::Int16, rng::Xoshiro) where {P<:Tuple}
+    state = _slot_state(ind, registry, loc)
+    pat = get_pathogen(pathogens, state.pathogen_id)
+    new_level, stable = _immunity_level_and_stable(pat, state, ind, tick, rng)
+    new_level != state.immunity_level && _set_slot!(ind, registry, loc, _setstate(state, Val(:immunity_level), new_level))
+    return stable
+end
+
+"""
     update_immunity!(individual::Individual, registry::ImmunityRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
 
 Refresh the per-individual immunity cache (`immune_pathogens`, `immunity_level`)
@@ -886,34 +902,16 @@ function update_immunity!(
 
     # Cache slots
     @inbounds for i in 1:IMMUNITY_CACHE_SIZE
-        state = individual.immunity_cache[i]
-        _is_active_immunity(state) || continue
-
-        pat = get_pathogen(pathogens, state.pathogen_id)
-        new_level, stable = _immunity_level_and_stable(pat, state, individual, tick, rng)
-        _all_stable &= stable
-
-        if new_level != state.immunity_level
-            individual.immunity_cache = Base.setindex(individual.immunity_cache,
-                ImmunityState(state.next, state.natural_acquired_tick, state.vaccine_acquired_tick,
-                    new_level, state.pathogen_id, state.vaccine_id, state.dose_number),
-                i)
-        end
+        _is_active_immunity(individual.immunity_cache[i]) || continue
+        _all_stable &= _step_immunity!(individual, registry, pathogens, _CacheSlot(Int32(i)), tick, rng)
     end
 
     # Overflow slots
     if individual.immunity_head != 0
         node = individual.immunity_head
         while node != 0
-            @inbounds state = registry.states[node]
-            next_node = state.next
-            pat = get_pathogen(pathogens, state.pathogen_id)
-            new_level, stable = _immunity_level_and_stable(pat, state, individual, tick, rng)
-            _all_stable &= stable
-            if new_level != state.immunity_level
-                @inbounds registry.states[node] = ImmunityState(state.next, state.natural_acquired_tick,
-                    state.vaccine_acquired_tick, new_level, state.pathogen_id, state.vaccine_id, state.dose_number)
-            end
+            @inbounds next_node = registry.states[node].next
+            _all_stable &= _step_immunity!(individual, registry, pathogens, _OverflowNode(node), tick, rng)
             node = next_node
         end
     end
@@ -960,7 +958,7 @@ Handles the health flags and memory-management when an individual dies.
     # stage all active cache memory for removal
     @inbounds for c in 1:INFECTIONS_CACHE_SIZE
         if individual.infection_cache[c].active
-            push!(removal_buf, (individual.id, Int32(-c)))
+            _stage_slot_removal!(removal_buf, individual, _CacheSlot(Int32(c)))
             # Clear it AFTER pushing to the buffer
             individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), c)
         end
@@ -970,12 +968,81 @@ Handles the health flags and memory-management when an individual dies.
     if individual.infection_head != 0
         node_idx = individual.infection_head
         while node_idx != 0
-            push!(removal_buf, (individual.id, Int32(node_idx)))
+            _stage_slot_removal!(removal_buf, individual, _OverflowNode(node_idx))
             node_idx = infections.states[node_idx].next
         end
     end
 
     return nothing
+end
+
+"""
+    HealthFlags
+
+Private accumulator mirroring the individual's seven boolean health-status fields
+(`infected`/`infectious`/`symptomatic`/`severe`/`hospitalized`/`icu`/`ventilated`). OR-ed
+across an individual's active infections in `progress_disease!`, then unpacked once into
+those fields. Ephemeral fold result — not stored on the individual.
+"""
+struct HealthFlags
+    inf::Bool; infectious::Bool; symp::Bool; sev::Bool; hosp::Bool; icu::Bool; vent::Bool
+end
+HealthFlags() = HealthFlags(false, false, false, false, false, false, false)
+@inline Base.:|(a::HealthFlags, b::HealthFlags) = HealthFlags(
+    a.inf|b.inf, a.infectious|b.infectious, a.symp|b.symp, a.sev|b.sev, a.hosp|b.hosp, a.icu|b.icu, a.vent|b.vent)
+
+"""
+    _health_flags(s::InfectionState, tick::Int16, end_tick::Int16)::HealthFlags
+
+Single source of truth for the per-tick health-state predicates of one active infection.
+"""
+@inline _health_flags(s::InfectionState, tick::Int16, end_tick::Int16) = HealthFlags(
+    s.exposure <= tick < end_tick,
+    s.infectiousness_onset <= tick < end_tick,
+    Int16(0) <= s.symptom_onset <= tick < end_tick,
+    Int16(0) <= s.severeness_onset <= tick < s.severeness_offset,
+    Int16(0) <= s.hospital_admission <= tick < s.hospital_discharge,
+    Int16(0) <= s.icu_admission <= tick < s.icu_discharge,
+    Int16(0) <= s.ventilation_admission <= tick < s.ventilation_discharge)
+
+"""
+    _step_infection!(ind, infections, pathogens, removal_buf, loc, tick, rng)
+
+Processes the single infection at slot `loc` (a `_CacheSlot` or `_OverflowNode`) for `tick`:
+handles death, recovery, and the per-tick infectiousness recompute, reading/writing/clearing
+the slot through `_slot_state` / `_set_slot!` / `_clear_slot!` dispatch. Shared by both
+branches of `progress_disease!`. Returns `(died, flags)`: when `died` is true the caller must
+return immediately; otherwise `flags` are the record's `HealthFlags` contribution.
+"""
+@inline function _step_infection!(ind::Individual, infections::InfectionRegistry, pathogens::P, removal_buf, loc, tick::Int16, rng::Xoshiro) where {P<:Tuple}
+    state = _slot_state(ind, infections, loc)
+
+    # check death
+    if Int16(0) < state.death <= tick
+        _process_death!(ind, state.pathogen_id, infections, removal_buf)
+        return (true, HealthFlags())
+    end
+
+    # check recovery
+    if Int16(0) < state.recovery <= tick
+        infected!(ind, state.pathogen_id, false)
+        detected!(ind, state.pathogen_id, false)
+        _clear_slot!(ind, infections, loc)
+        _stage_slot_removal!(removal_buf, ind, loc)
+        return (false, HealthFlags())
+    end
+
+    # update infectiousness while active
+    end_tick = max(state.recovery, state.death)
+    if state.exposure <= tick < end_tick
+        level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, rng)
+        if level != state.infectiousness
+            state = _setstate(state, Val(:infectiousness), level)
+            _set_slot!(ind, infections, loc, state)
+        end
+    end
+
+    return (false, _health_flags(state, tick, end_tick))
 end
 
 """
@@ -1002,107 +1069,37 @@ function progress_disease!(
 
     individual.dead && return nothing
 
-    # initialize trackers
-    _is_inf = _is_infectious = _is_symp = _is_sev = false
-    _is_hosp = _is_icu = _is_vent = false
+    # OR-accumulated health flags across all active infections
+    acc = HealthFlags()
 
-    # process cache
+    # process cache slots
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
-        state = individual.infection_cache[i]
-        !state.active && continue
-
-        # check death
-        if Int16(0) < state.death <= tick
-            _process_death!(individual, state.pathogen_id, infections, removal_buf)
-            return nothing
-        end
-
-        # check recovery
-        if Int16(0) < state.recovery <= tick
-            infected!(individual, state.pathogen_id, false)
-            detected!(individual, state.pathogen_id, false)
-            individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), i)
-            push!(removal_buf, (individual.id, Int32(-i)))
-            continue
-        end
-
-        # update infectiousness
-        end_tick = max(state.recovery, state.death)
-        _active = state.exposure <= tick < end_tick
-
-        if _active
-            level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, individual, tick, rng)
-            if level != state.infectiousness
-                state = _setstate(state, Val(:infectiousness), level)
-                individual.infection_cache = Base.setindex(individual.infection_cache, state, i)
-            end
-        end
-
-        # accumulate state flags
-        _is_inf|= _active
-        _is_infectious |= state.infectiousness_onset <= tick < end_tick
-        _is_symp |= Int16(0) <= state.symptom_onset <= tick < end_tick
-        _is_sev |= Int16(0) <= state.severeness_onset <= tick < state.severeness_offset
-        _is_hosp |= Int16(0) <= state.hospital_admission <= tick < state.hospital_discharge
-        _is_icu |= Int16(0) <= state.icu_admission <= tick < state.icu_discharge
-        _is_vent |= Int16(0) <= state.ventilation_admission <= tick < state.ventilation_discharge
+        individual.infection_cache[i].active || continue
+        died, f = _step_infection!(individual, infections, pathogens, removal_buf, _CacheSlot(Int32(i)), tick, rng)
+        died && return nothing
+        acc |= f
     end
 
-    # process registry
+    # process overflow nodes
     if individual.infection_head != 0
         node = individual.infection_head
         while node != 0
-            @inbounds state = infections.states[node]
-            next_node = state.next
-
-            # check death
-            if Int16(0) < state.death <= tick
-                _process_death!(individual, state.pathogen_id, infections, removal_buf)
-                return nothing
-            end
-
-            # check recovery
-            if Int16(0) < state.recovery <= tick
-                infected!(individual, state.pathogen_id, false)
-                detected!(individual, state.pathogen_id, false)
-                push!(removal_buf, (individual.id, Int32(node)))
-                node = next_node
-                continue
-            end
-
-            # update infectiousness
-            end_tick = max(state.recovery, state.death)
-            _active = state.exposure <= tick < end_tick
-
-            if _active
-                level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, individual, tick, rng)
-                if level != state.infectiousness
-                    state = _setstate(state, Val(:infectiousness), level)
-                    @inbounds infections.states[node] = state
-                end
-            end
-
-            # accumulate state flags
-            _is_inf |= _active
-            _is_infectious |= state.infectiousness_onset <= tick < end_tick
-            _is_symp |= Int16(0) <= state.symptom_onset <= tick < end_tick
-            _is_sev |= Int16(0) <= state.severeness_onset <= tick < state.severeness_offset
-            _is_hosp |= Int16(0) <= state.hospital_admission <= tick < state.hospital_discharge
-            _is_icu |= Int16(0) <= state.icu_admission <= tick < state.icu_discharge
-            _is_vent |= Int16(0) <= state.ventilation_admission <= tick < state.ventilation_discharge
-
+            next_node = (@inbounds infections.states[node].next)   # capture before any mutation
+            died, f = _step_infection!(individual, infections, pathogens, removal_buf, _OverflowNode(node), tick, rng)
+            died && return nothing
+            acc |= f
             node = next_node
         end
     end
 
-    # commit states
-    infected!(individual, _is_inf)
-    infectious!(individual, _is_infectious)
-    symptomatic!(individual, _is_symp)
-    severe!(individual, _is_sev)
-    hospitalized!(individual, _is_hosp)
-    icu!(individual, _is_icu)
-    ventilated!(individual, _is_vent)
+    # commit accumulated flags
+    infected!(individual, acc.inf)
+    infectious!(individual, acc.infectious)
+    symptomatic!(individual, acc.symp)
+    severe!(individual, acc.sev)
+    hospitalized!(individual, acc.hosp)
+    icu!(individual, acc.icu)
+    ventilated!(individual, acc.vent)
 
     return nothing
 end

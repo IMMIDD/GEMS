@@ -1,6 +1,39 @@
 
 
 
+# === SLOT ADDRESSING =====================================================================
+# A single record lives either in an individual's inline cache NTuple or in an overflow node of the
+# registry linked list; these markers name *which*, so the disease-update loops can
+# read/write/clear a slot through one dispatched interface instead of duplicating the cache-
+# and overflow-specific code.
+
+struct _CacheSlot; i::Int32; end # inline cache slot index
+struct _OverflowNode; node::Int32; end # registry overflow linked-list node index
+
+# read the state at a slot
+@inline _slot_state(ind, reg::InfectionRegistry, l::_CacheSlot) = @inbounds ind.infection_cache[l.i]
+@inline _slot_state(ind, reg::InfectionRegistry, l::_OverflowNode) = @inbounds reg.states[l.node]
+@inline _slot_state(ind, reg::ImmunityRegistry, l::_CacheSlot) = @inbounds ind.immunity_cache[l.i]
+@inline _slot_state(ind, reg::ImmunityRegistry, l::_OverflowNode) = @inbounds reg.states[l.node]
+
+# write a (possibly mutated) state back to a slot
+@inline _set_slot!(ind, reg::InfectionRegistry, l::_CacheSlot, s) = (ind.infection_cache = Base.setindex(ind.infection_cache, s, l.i); nothing)
+@inline _set_slot!(ind, reg::InfectionRegistry, l::_OverflowNode, s) = (@inbounds reg.states[l.node] = s; nothing)
+@inline _set_slot!(ind, reg::ImmunityRegistry, l::_CacheSlot, s) = (ind.immunity_cache = Base.setindex(ind.immunity_cache, s, l.i); nothing)
+@inline _set_slot!(ind, reg::ImmunityRegistry, l::_OverflowNode, s) = (@inbounds reg.states[l.node] = s; nothing)
+
+# clear an ended slot: cache slots are zeroed in place; overflow nodes are freed by the flush
+@inline _clear_slot!(ind, reg::InfectionRegistry, l::_CacheSlot) = _set_slot!(ind, reg, l, InfectionState())
+@inline _clear_slot!(ind, reg::InfectionRegistry, l::_OverflowNode) = nothing
+
+# Stage an ended slot into the removal buffer using the sign-encoding that `remove_infection!`
+# above decodes (`-i` = cache slot i, `node` = overflow node). 
+@inline _stage_slot_removal!(buf, ind, l::_CacheSlot) = push!(buf, (ind.id, Int32(-l.i)))
+@inline _stage_slot_removal!(buf, ind, l::_OverflowNode) = push!(buf, (ind.id, l.node))
+
+
+# =========================================================================================
+
 """
     _setstate(state::T, ::Val{name}, value)::T
 
@@ -18,7 +51,9 @@ end
 
 
 
-
+###
+### INFECTION REGISTRY
+###
 
 
 """
@@ -166,6 +201,9 @@ end
 
 
 
+###
+### IMMUNITY REGISTRY
+###
 
 
 @inline _is_active_immunity(s::ImmunityState) = s.pathogen_id != DEFAULT_PATHOGEN_ID
