@@ -201,9 +201,18 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 @test infected(i, pid2, reg)
                 @test !infected(i, Int8(3), reg)
 
-                # get_active_pathogens returns cache-slot pathogen IDs (0 for inactive slots)
-                active = get_active_pathogens(i)
-                @test pid1 in active
+                # pid1 lives in the cache slot
+                @test get_infection_state(i, reg, pid1).pathogen_id == pid1
+
+                # active_pathogens_mask getter + infected!(ind, pid, val) setter (mask-based,
+                # independent of the registry; push_infection! above did not touch the mask)
+                @test active_pathogens_mask(i) == UInt32(0)
+                infected!(i, pid1, true)
+                @test infected(i, pid1)
+                @test active_pathogens_mask(i) == (UInt32(1) << (pid1 - 1))
+                infected!(i, pid1, false)
+                @test !infected(i, pid1)
+                @test active_pathogens_mask(i) == UInt32(0)
 
                 # multi-node overflow: traverse past a non-matching head node (covers node = s.next)
                 pid3 = Int8(3)

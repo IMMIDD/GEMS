@@ -720,6 +720,36 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
         !isnothing(transmission_rate) && @warn "Pathogens were provided, therefore transmission_rate will be ignored."
     end
 
+    return _finalize_pathogen_ids!(raw)
+end
+
+"""
+    _finalize_pathogen_ids!(raw::Tuple)
+
+Assigns or validates pathogen ids. `id` is a plain `Int8` field (not a type parameter), so
+mutating it in place leaves each pathogen's type and the tuple type unchanged.
+
+- all ids unset (`DEFAULT_PATHOGEN_ID`): auto-assign `1..N` (errors if `N > 32`)
+- all ids set: validate each is in `[1, 32]` and unique
+- mixed: error (ambiguous)
+
+The 32-id ceiling comes from the `UInt32` pathogen masks (`1 << (id - 1)`) and `_test_key`.
+"""
+function _finalize_pathogen_ids!(raw::Tuple)
+    n = length(raw)
+    ids = map(id, raw)
+    n_unset = count(==(DEFAULT_PATHOGEN_ID), ids)
+    if n_unset == n
+        n > 32 && throw(ArgumentError("At most 32 pathogens are supported (got $n)."))
+        for (i, p) in enumerate(raw)
+            p.id = Int8(i)
+        end
+    elseif n_unset == 0
+        any(x -> x < 1 || x > 32, ids) && throw(ArgumentError("Pathogen ids must be in [1, 32] (got $(collect(ids)))."))
+        length(unique(ids)) == n || throw(ArgumentError("Pathogen ids must be unique (got $(collect(ids)))."))
+    else
+        throw(ArgumentError("Set ids on all pathogens or none; got a partial assignment: $(collect(ids))."))
+    end
     return raw
 end
 
@@ -1960,7 +1990,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     end
     reset_tick!(simulation)
 
-    # Reset all loggers 
+    # Reset all loggers
     simulation.infectionlogger = InfectionLogger()
     simulation.deathlogger = DeathLogger()
     simulation.testlogger = TestLogger()
@@ -1969,6 +1999,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     simulation.quarantinelogger = QuarantineLogger()
     simulation.statelogger = StateLogger()
     simulation.customlogger = CustomLogger()
+
+    simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
 
     # Reset NPI triggers and strategies
     simulation.event_queue = EventQueue()

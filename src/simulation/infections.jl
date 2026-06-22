@@ -67,7 +67,10 @@ function infect!(infectee::Individual,
     dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
 
     if isnothing(sim)
-        # no simulation context — store InfectionState directly in the individual's cache
+        # no simulation context — store InfectionState directly in the individual's cache.
+        # without a persistent registry, an overflow would dangle, so require a free cache slot
+        any(i -> !infectee.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
+            throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
         push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp)
     else
@@ -107,7 +110,7 @@ function infect!(infectee::Individual,
     inc_number_of_infections!(infectee)
 
     # flag this pathogen as currently active
-    infectee.active_pathogens_mask |= (UInt32(1) << (id(pathogen) - 1))
+    infected!(infectee, id(pathogen), true)
 
     # set infected flag
     infected!(infectee, true)
@@ -218,7 +221,7 @@ function try_to_infect!(infctr::Individual,
     end
 
     # check if infctd is already infected with this pathogen
-    (infctd.active_pathogens_mask & (UInt32(1) << (id(pathogen) - 1))) != 0 && return false
+    infected(infctd, id(pathogen)) && return false
 
 
     # calculate infection probability
@@ -414,28 +417,11 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
                 empty!(c_buffer)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
 
-                # Randomise pathogen order for fairness
-                pathogen_iter = gems_rand(current_rng, Bool) ? (INFECTIONS_CACHE_SIZE:-1:1) : (1:INFECTIONS_CACHE_SIZE)
-
-                @inbounds for i in pathogen_iter
-                    state = ind.infection_cache[i]
-                    !state.active && continue
+                # spread each active, shedding pathogen (cache then overflow); the iterator
+                # only resolves the shard registry if the individual has overflow infections
+                for state in each_infection(ind, sim)
                     state.infectiousness == 0 && continue
                     _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id)
-                end
-
-                # Overflow infections (multi-pathogen)
-                if ind.infection_head != 0
-                    infections = infection_registry(sim, id(ind))
-                    node = ind.infection_head
-                    while node != 0
-                        @inbounds state = infections.states[node]
-                        nxt = state.next
-                        if state.active && state.infectiousness != 0
-                            _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id)
-                        end
-                        node = nxt
-                    end
                 end
             end
         end

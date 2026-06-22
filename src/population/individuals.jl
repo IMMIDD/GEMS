@@ -28,7 +28,7 @@ export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
 export is_dead, isdead, dead
 export is_detected, isdetected, detected
-export get_active_pathogens
+export active_pathogens_mask
 export number_of_infections
 #quarantine
 export quarantine_release_tick
@@ -373,6 +373,20 @@ Sets the `infected` flag of the individual.
 infected!(individual::Individual, infected::Bool) = (individual.infected = infected)
 
 """
+    infected!(individual::Individual, pathogen_id::Int8, val::Bool)
+
+Sets or clears the active bit for `pathogen_id` in the individual's `active_pathogens_mask`.
+Mirrors `detected!(individual, pathogen_id, val)`; read back with `infected(individual, pathogen_id)`.
+"""
+@inline function infected!(individual::Individual, pathogen_id::Int8, val::Bool)
+    if val
+        individual.active_pathogens_mask |= (UInt32(1) << (pathogen_id - 1))
+    else
+        individual.active_pathogens_mask &= ~(UInt32(1) << (pathogen_id - 1))
+    end
+end
+
+"""
     is_infectious(individual::Individual)
     isinfectious(individual::Individual)
     infectious(individual::Individual)
@@ -556,13 +570,13 @@ end
 # --- PATHOGEN ATTRIBUTES ---
 
 """
-    get_active_pathogens(individual::Individual)::NTuple{MAX_CONCURRENT_INFECTIONS, Int8}
+    active_pathogens_mask(individual::Individual)::UInt32
 
-Returns an individual's active pathogens.
+Returns the individual's `active_pathogens_mask`: a bitmask where bit `pathogen_id - 1` is set
+for every pathogen the individual is currently actively infected with (cache and overflow
+alike). Use `infected(individual, pathogen_id)` to test a single pathogen without decoding.
 """
-@inline function get_active_pathogens(ind::Individual)
-    ntuple(i -> ind.infection_cache[i].active ? ind.infection_cache[i].pathogen_id : Int8(0), INFECTIONS_CACHE_SIZE)
-end
+@inline active_pathogens_mask(ind::Individual)::UInt32 = ind.active_pathogens_mask
 
 """
     infected(individual::Individual, pathogen_id::Int8)::Bool

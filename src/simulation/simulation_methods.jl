@@ -438,9 +438,15 @@ function flush_ended_infections!(sim::Simulation)
 
         @inbounds for producer_id in 1:num_shards
             buf = sim.removal_buffers[producer_id, shard_id]
+            # overflow unlinks (val >= 0) before cache-slot promotions (val < 0), so a
+            # just-ended overflow head is unlinked before any promotion can pull it into cache
             for (host_id, val) in buf
-                ind = get_individual_by_id(pop, host_id)
-                remove_infection!(reg, ind, val)
+                val >= 0 || continue
+                remove_infection!(reg, get_individual_by_id(pop, host_id), val)
+            end
+            for (host_id, val) in buf
+                val < 0 || continue
+                remove_infection!(reg, get_individual_by_id(pop, host_id), val)
             end
             empty!(buf)
         end

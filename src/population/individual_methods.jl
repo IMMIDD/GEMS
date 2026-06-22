@@ -872,9 +872,12 @@ The individual is immediately visible as infected for `pathogen_id` without need
 `Simulation` or a call to `step!`.
 """
 function set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
+    # without a persistent registry, an overflow would dangle, so require a free cache slot
+    any(i -> !ind.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
+        throw(ArgumentError("set_progression! cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual without a Simulation context."))
     push_infection!(InfectionRegistry(), ind, pathogen_id, DEFAULT_INFECTION_ID, dp)
     infected!(ind, true)
-    ind.active_pathogens_mask |= (UInt32(1) << (pathogen_id - 1))
+    infected!(ind, pathogen_id, true)
     return nothing
 end
 
@@ -895,7 +898,7 @@ function set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
     )
     ind.infection_cache = Base.setindex(ind.infection_cache, blank, 1)
     infected!(ind, true)
-    ind.active_pathogens_mask |= (UInt32(1) << (pathogen_id - 1))
+    infected!(ind, pathogen_id, true)
     return nothing
 end
 
@@ -1065,7 +1068,7 @@ function progress_disease!(
 
         # check recovery
         if Int16(0) < state.recovery <= tick
-            individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
+            infected!(individual, state.pathogen_id, false)
             individual.detected_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
             individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), i)
             push!(removal_buf, (individual.id, Int32(-i)))
@@ -1109,7 +1112,7 @@ function progress_disease!(
 
             # check recovery
             if Int16(0) < state.recovery <= tick
-                individual.active_pathogens_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
+                infected!(individual, state.pathogen_id, false)
                 individual.detected_mask &= ~(UInt32(1) << (state.pathogen_id - 1))
                 push!(removal_buf, (individual.id, Int32(node)))
                 node = next_node
