@@ -1,9 +1,11 @@
 
 
+###
+### SLOT ADDRESSING
+###
 
-# === SLOT ADDRESSING =====================================================================
 # A single record lives either in an individual's inline cache NTuple or in an overflow node of the
-# registry linked list; these markers name *which*, so the disease-update loops can
+# registry linked list; these markers name which, so the disease-update loops can
 # read/write/clear a slot through one dispatched interface instead of duplicating the cache-
 # and overflow-specific code.
 
@@ -31,7 +33,6 @@ struct _OverflowNode; node::Int32; end # registry overflow linked-list node inde
 @inline _stage_slot_removal!(buf, ind, l::_OverflowNode) = push!(buf, _SlotRemoval(ind.id, true, l.node))
 
 
-# =========================================================================================
 
 """
     _setstate(state::T, ::Val{name}, value)::T
