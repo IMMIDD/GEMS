@@ -2,6 +2,7 @@ export offset, measure, delay, condition
 
 export IStrategy, SStrategy
 export name, condition, measures, add_measure!
+export Handover
 
 # Concrete function-wrapper types for the per-strategy callbacks. Wrapping the user closures in
 # these keeps the callback fields (and the measure vector) concretely typed, so calling them on
@@ -12,12 +13,85 @@ const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
 const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
 
+
+###
+### HANDOVER STRUCT
+###
+
+# Forward declaration. Fields depend only on abstract `Strategy` + Individual + Setting,
+# all already loaded. The convenience constructors that name IStrategy/SStrategy are
+# defined later (measures.jl) as outer methods.
+
+
+"""
+    Handover
+
+The `Handover` struct provides a standard data structure for handling
+outputs of the `process_measure()` functions. It is being used
+to pass follow-up strategies to focal objects that are being
+determined within the `process_measure()` functions. The
+`Handover`s organize how follow-up strategies are passed to the
+event queue. There is no application for `Handover`s outside
+of `process_measure()` functions.
+
+# Fields
+
+- `focal_objects::Union{Vector{Individual},Vector{<:Setting}}`:
+    List of focal objects (either all `Individual`s or all `Setting`s)
+- `follow_up::Union{<:Strategy, Nothing}`: Strategy that shall be
+    triggered for all focus objects in the `focal_objects` list
+
+# Examples
+
+The code below defines how a `Test` measure shall be processed.
+First, the passed individual `ind` is being tested. The function then
+returns a new `Handover` with the focus object (the individual) and
+the either positive- or negative-follow-up stategy that are
+defined in the `Test` measure. 
+
+```julia
+function process_measure(sim::Simulation, ind::Individual, test::Test)
+    test_pos = apply_test!(ind, test |> type, sim, test |> reportable)
+    return Handover(ind, test_pos ? test |> positive_followup : test |> negative_followup)
+end
+```
+
+The handovers can be instantiated with single focal objects (`Individual`s or `Setting`s)
+as well as vectors of focal objects (`Vector{Individual}` or `Vector{Setting}`).
+It's also possible to instantiate a Handover with `nothing` as the `follow_up` strategy
+which is sometimmes helpful if you don't know whether there will be a 
+subsequent strategy or not.
+
+Here are some more examples on how to instantiate `Handover`s:
+
+```julia
+i1 = Indiviual(...)
+i2 = Indiviual(...)
+s = Household(...)
+istr = IStrategy("my_istr", sim)
+sstr = SStrategy("my_sstr", sim)
+
+h1 = Handover(i1, istr)
+h2 = Handover([i1, i2], istr)
+h3 = Handover(s, nothing)
+h4 = Handover([s], sstr)
+```
+
+**Note**: Naturally, A `Handover` must either have all `Individual`s and an `IStrategy` or
+ all `Settings`s and an `SStrategy`.
+"""
+struct Handover
+    focal_objects::Union{Vector{Individual}, Vector{<:Setting}}
+    follow_up::Union{<:Strategy, Nothing}
+end
+
+
 # Per-measure process callbacks. Built once at `add_measure!` time, where the concrete measure
 # type is statically known, so the wrapped closure resolves `process_measure` statically. The
 # wrapper type-erases the closure to a single concrete type, turning the intervention-hot-path
 # call into a fixed indirect call instead of a dynamic `process_measure` dispatch.
-const IProcessFn = FunctionWrapper{Any, Tuple{Simulation, Individual}}
-const SProcessFn = FunctionWrapper{Any, Tuple{Simulation, Setting}}
+const IProcessFn = FunctionWrapper{Union{Nothing, Handover}, Tuple{Simulation, Individual}}
+const SProcessFn = FunctionWrapper{Union{Nothing, Handover}, Tuple{Simulation, Setting}}
 
 """
     MeasureEntry{O}
@@ -37,7 +111,7 @@ struct MeasureEntry{O}
     delay::FunctionWrapper{Int, Tuple{O}}
     condition::FunctionWrapper{Bool, Tuple{O}}
     # type-erased `process_measure` callback for this measure (see IProcessFn/SProcessFn above)
-    process_fn::FunctionWrapper{Any, Tuple{Simulation, O}}
+    process_fn::FunctionWrapper{Union{Nothing, Handover}, Tuple{Simulation, O}}
 end
 
 
@@ -304,13 +378,19 @@ All these optional arguments and predicate functions can be combined. The
 calculated `delay` is added to the `offset` (if specified).
 """
 function add_measure!(str::IStrategy, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
-    fn = IProcessFn((sim, ind) -> process_measure(sim, ind, measure))
+    fn = IProcessFn((sim, ind) -> begin
+        r = process_measure(sim, ind, measure)
+        r isa Handover ? r : nothing
+    end)
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
     return str
 end
 
 function add_measure!(str::SStrategy, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
-    fn = SProcessFn((sim, s) -> process_measure(sim, s, measure))
+    fn = SProcessFn((sim, s) -> begin
+        r = process_measure(sim, s, measure)
+        r isa Handover ? r : nothing
+    end)
     push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
     return str
 end

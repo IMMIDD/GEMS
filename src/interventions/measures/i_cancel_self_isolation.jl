@@ -47,4 +47,5 @@ function process_measure(sim::Simulation, ind::Individual, cancel::CancelSelfIso
     # set release tick to now; remove quarantine starting tick to prevent triggering another indefinite quarantine
     quarantine_release_tick!(ind, t)
     quarantine_tick!(ind, DEFAULT_TICK)
+    return nothing
 end

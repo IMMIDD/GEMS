@@ -52,5 +52,6 @@ function process_measure(sim::Simulation, s::Setting, close::CloseSetting)
     #println("Close Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)")
     INTERVENTION_DEBUG && @debug "Close Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
 
-    close!(s, sim)    
+    close!(s, sim)      
+    return nothing
 end

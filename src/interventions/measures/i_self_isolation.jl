@@ -62,4 +62,5 @@ function process_measure(sim::Simulation, ind::Individual, isolation::SelfIsolat
     # set start and end of isolation
     quarantine_tick!(ind, t)
     quarantine_release_tick!(ind, Int16(t + d))
+    return nothing
 end

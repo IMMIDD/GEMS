@@ -61,5 +61,6 @@ function process_measure(sim::Simulation, s::Setting, measure::ChangeContactMeth
     INTERVENTION_DEBUG && @debug "Update contact sampling method of $(s |> typeof) $(s |> id) from $(s |> contact_sampling_method) to $(measure |> sampling_method) at tick $(sim |> tick)"
 
     # update contact method
-    contact_sampling_method!(s, measure |> sampling_method)
+    contact_sampling_method!(s, measure |> sampling_method)   
+    return nothing
 end

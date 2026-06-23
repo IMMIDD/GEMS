@@ -52,4 +52,5 @@ function process_measure(sim::Simulation, s::Setting, close::OpenSetting)
     INTERVENTION_DEBUG && @debug "Open Setting $(s |> typeof) $(s |> id) at tick $(sim |> tick)"
 
     open!(s, sim)    
+    return nothing
 end
