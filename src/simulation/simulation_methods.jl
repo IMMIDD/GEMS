@@ -488,12 +488,12 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
     if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
-            trigger(st, indiv, sim)
+            trigger(st, indiv, sim, staged = true)
         end
     end
     if !was_hospitalized && is_hospitalized(indiv)
         for ht in sim |> hospitalization_triggers
-            trigger(ht, indiv, sim)
+            trigger(ht, indiv, sim, staged = true)
         end
     end
 end
