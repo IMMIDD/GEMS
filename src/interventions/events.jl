@@ -19,9 +19,10 @@ struct IMeasureEvent <: Event
 end
 
 # convenience constructor that builds the process callback from the measure; used in tests.
-# The intervention hot path passes a prebuilt wrapper from the MeasureEntry instead.
-IMeasureEvent(individual::Individual, measure::IMeasure, condition) =
-    IMeasureEvent(individual, measure, condition, IProcessFn((sim, ind) -> process_measure(sim, ind, measure)))
+# The intervention hot path passes a prebuilt wrapper from the MeasureEntry instead. `sim` is
+# captured by the callback (see IProcessFn), so it must be supplied here.
+IMeasureEvent(individual::Individual, measure::IMeasure, condition, sim::Simulation) =
+    IMeasureEvent(individual, measure, condition, IProcessFn(ind -> process_measure(sim, ind, measure)))
 
 """
     SMeasureEvent <: Event
@@ -38,8 +39,9 @@ struct SMeasureEvent <: Event
 end
 
 # convenience constructor that builds the process callback from the measure; used in tests.
-SMeasureEvent(setting::Setting, measure::SMeasure, condition) =
-    SMeasureEvent(setting, measure, condition, SProcessFn((sim, s) -> process_measure(sim, s, measure)))
+# `sim` is captured by the callback (see SProcessFn), so it must be supplied here.
+SMeasureEvent(setting::Setting, measure::SMeasure, condition, sim::Simulation) =
+    SMeasureEvent(setting, measure, condition, SProcessFn(s -> process_measure(sim, s, measure)))
 
 
 ###
@@ -60,8 +62,8 @@ function process_event(e::IMeasureEvent, sim::Simulation)
         return
     end
 
-    # call the prebuilt, type-erased process callback
-    res = e.process_fn(sim, ind)
+    # call the prebuilt, type-erased process callback (its `sim` is captured, see IProcessFn)
+    res = e.process_fn(ind)
 
     res isa Handover && apply_followup!(sim, focal_objects(res), follow_up(res))
     return
@@ -82,8 +84,8 @@ function process_event(e::SMeasureEvent, sim::Simulation)
         return
     end
 
-    # call the prebuilt, type-erased process callback
-    res = e.process_fn(sim, stng)
+    # call the prebuilt, type-erased process callback (its `sim` is captured, see SProcessFn)
+    res = e.process_fn(stng)
 
     res isa Handover && apply_followup!(sim, focal_objects(res), follow_up(res))
     return

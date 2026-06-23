@@ -56,7 +56,7 @@ end
     add_tick_trigger!(sim, s_tick_trigger)
 
     @testset "IStrategy" begin
-        @test typeof(i_strategy) === IStrategy
+        @test i_strategy isa IStrategy
         @test name(i_strategy) === "i_strategy"
         @test measures(i_strategy) == MeasureEntry[]
         @test GEMS.condition(i_strategy) isa GEMS.IPredicate
@@ -66,7 +66,7 @@ end
     end
 
     @testset "SStrategy" begin
-        @test typeof(s_strategy) === SStrategy
+        @test s_strategy isa SStrategy
         @test name(s_strategy) === "s_strategy"
         @test measures(s_strategy) == MeasureEntry[]
         @test GEMS.condition(s_strategy) isa GEMS.SPredicate
@@ -893,8 +893,8 @@ end
 
         condition = (_) -> true
 
-        i_measure_event = IMeasureEvent(i, test_measure, condition)
-        s_measure_event = SMeasureEvent(gs, test_all_measure, condition)
+        i_measure_event = IMeasureEvent(i, test_measure, condition, sim)
+        s_measure_event = SMeasureEvent(gs, test_all_measure, condition, sim)
 
         @test i_measure_event.individual === i
         @test i_measure_event.measure === test_measure
@@ -918,8 +918,8 @@ end
         #test different inputs
         condition2 = (_) -> false
 
-        i_measure_event2 = IMeasureEvent(i, test_measure, condition2)
-        s_measure_event2 = SMeasureEvent(gs, test_all_measure, condition2)
+        i_measure_event2 = IMeasureEvent(i, test_measure, condition2, sim)
+        s_measure_event2 = SMeasureEvent(gs, test_all_measure, condition2, sim)
 
         @test GEMS.process_event(i_measure_event2, sim) === nothing
         @test GEMS.process_event(s_measure_event2, sim) === nothing
@@ -931,8 +931,8 @@ end
         s_measure_function2 = (s, simobj) -> (size(s) < 5 ? close!(s) : nothing)
         custom_s_measure2 = CustomSMeasure(s_measure_function2)
 
-        i_measure_event3 = IMeasureEvent(i, custom_i_measure2, condition)
-        s_measure_event3 = SMeasureEvent(gs, custom_s_measure2, condition)
+        i_measure_event3 = IMeasureEvent(i, custom_i_measure2, condition, sim)
+        s_measure_event3 = SMeasureEvent(gs, custom_s_measure2, condition, sim)
 
         @test GEMS.process_event(i_measure_event3, sim) === nothing
         @test i.mandate_compliance == 0.5f0
