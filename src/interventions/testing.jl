@@ -59,6 +59,16 @@ struct TestType <: AbstractTestType
     end
 end
 
+
+"""
+    TestType(name, pathogen::Pathogen, sim; kwargs...)
+
+Backwards-compatible constructor. Accepts a `Pathogen` object and extracts its id.
+"""
+function TestType(name::String, pathogen::Pathogen, sim::Simulation; sensitivity::Float64=1.0, specificity::Float64=1.0)
+    return TestType(name, id(pathogen), sim; sensitivity=sensitivity, specificity=specificity)
+end
+
 """
     SeroprevalenceTestType <: AbstractTestType
 
@@ -106,6 +116,15 @@ struct SeroprevalenceTestType <: AbstractTestType
 
         return (temp)
     end
+end
+
+"""
+    SeroprevalenceTestType(name, pathogen::Pathogen, sim; kwargs...)
+
+Backwards-compatible constructor. Accepts a `Pathogen` object and extracts its id.
+"""
+function SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation; sensitivity::Float64=1.0, specificity::Float64=1.0)
+    return SeroprevalenceTestType(name, id(pathogen), sim; sensitivity=sensitivity, specificity=specificity)
 end
 
 """
