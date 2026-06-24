@@ -75,9 +75,11 @@ A type to represent individuals that act as agents inside the simulation.
     - `icu::Bool`: Flag indicating individual is in the ICU
     - `ventilated::Bool`: Flag indicating individual is on a ventilator
     - `dead::Bool`: Flag indicating individual's decease
+    - `number_of_infections::Int8`: Lifetime infection count
     - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
 
 - Interventions
+    - `detected_mask::UInt32`: Bitmask of pathogens for which an infection is detected
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
     - `quarantine_status::Int8`: Status indicator (none, household, etc.)
@@ -86,63 +88,66 @@ A type to represent individuals that act as agents inside the simulation.
     - `infection_cache::NTuple{N, InfectionState}`: Fixed-size cache of current infections
     - `infection_head::Int32`: Pointer to the first overflow node in the InfectionRegistry
     - `active_pathogens_mask::UInt32`: Bitmask of currently active pathogen types
-    - `detected_mask::UInt32`: Bitmask of pathogens for which an infection is detected
-    - `number_of_infections::Int8`: Lifetime infection count
 
 - Immunity
     - `immunity_cache::NTuple{N, ImmunityState}`: Fixed-size cache of pathogen immunities
     - `immunity_head::Int32`: Pointer to the first overflow node in the ImmunityRegistry
     - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
+
+- Extensions
+    - `extensions::Any`: Optional container for dynamically added per-individual attributes (`nothing` when unused)
 """
 @with_kw_noshow mutable struct Individual
     # GENERAL
-    id::Int32                               # 4 bytes
-    sex::Int8                               # 1 byte
-    age::Int8                               # 1 byte
-    occupation::Int16 = DEFAULT_SETTING_ID  # 2 bytes
-    education::Int8 = DEFAULT_SETTING_ID    # 1 byte
+    id::Int32                               # off 0,   4B,  line 0
+    sex::Int8                               # off 4,   1B,  line 0
+    age::Int8                               # off 5,   1B,  line 0
+    occupation::Int16 = DEFAULT_SETTING_ID  # off 6,   2B,  line 0
+    education::Int8 = DEFAULT_SETTING_ID    # off 8,   1B,  line 0   (then 3B padding)
 
     # BEHAVIOR
-    social_factor::Float32 = 0              # 4 bytes
-    mandate_compliance::Float32 = 0         # 4 bytes
+    social_factor::Float32 = 0              # off 12,  4B,  line 0
+    mandate_compliance::Float32 = 0         # off 16,  4B,  line 0
 
     # ASSIGNED SETTINGS
-    household::Int32 = DEFAULT_SETTING_ID   # 4 bytes
-    office::Int32 = DEFAULT_SETTING_ID      # 4 bytes
-    schoolclass::Int32 = DEFAULT_SETTING_ID # 4 bytes
-    municipality::Int32 = DEFAULT_SETTING_ID # 4 bytes
+    household::Int32 = DEFAULT_SETTING_ID    # off 20,  4B,  line 0
+    office::Int32 = DEFAULT_SETTING_ID       # off 24,  4B,  line 0
+    schoolclass::Int32 = DEFAULT_SETTING_ID  # off 28,  4B,  line 0
+    municipality::Int32 = DEFAULT_SETTING_ID # off 32,  4B,  line 0
 
     # HEALTH STATUS
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # 1 byte
-    infected::Bool = false                  # 1 byte
-    infectious::Bool = false                # 1 byte
-    symptomatic::Bool = false               # 1 byte
-    severe::Bool = false                    # 1 byte
-    hospitalized::Bool = false              # 1 byte
-    icu::Bool = false                       # 1 byte
-    ventilated::Bool = false                # 1 byte
-    dead::Bool = false                      # 1 byte
-    comorbidities::UInt16 = 0               # 2 bytes
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 36,  1B,  line 0
+    infected::Bool = false                  # off 37,  1B,  line 0
+    infectious::Bool = false                # off 38,  1B,  line 0
+    symptomatic::Bool = false               # off 39,  1B,  line 0
+    severe::Bool = false                    # off 40,  1B,  line 0
+    hospitalized::Bool = false              # off 41,  1B,  line 0
+    icu::Bool = false                       # off 42,  1B,  line 0
+    ventilated::Bool = false                # off 43,  1B,  line 0
+    dead::Bool = false                      # off 44,  1B,  line 0
+    number_of_infections::Int8 = 0          # off 45,  1B,  line 0
+    comorbidities::UInt16 = 0               # off 46,  2B,  line 0
 
     # INTERVENTIONS
-    quarantine_tick::Int16 = DEFAULT_TICK           # 2 bytes
-    quarantine_release_tick::Int16 = DEFAULT_TICK   # 2 bytes
-    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # 1 byte
+    detected_mask::UInt32 = 0                       # off 48,  4B,  line 0
+    quarantine_tick::Int16 = DEFAULT_TICK           # off 52,  2B,  line 0
+    quarantine_release_tick::Int16 = DEFAULT_TICK   # off 54,  2B,  line 0
+    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 56,  1B,  line 0   (then 3B padding)
 
     # PATHOGEN
-    infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} = ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE) # INFECTIONS_CACHE_SIZE * sizeof(InfectionState)
-    infection_head::Int32 = 0               # 4 byte
-    active_pathogens_mask::UInt32 = 0       # 4 bytes
-    detected_mask::UInt32 = 0               # 4 bytes
-    number_of_infections::Int8 = 0          # 1 byte
+    infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} =
+        ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)  # off 60,  40B,  lines 0–1 (crosses the 64-byte boundary)
+    infection_head::Int32 = 0               # off 100, 4B,  line 1
+    active_pathogens_mask::UInt32 = 0       # off 104, 4B,  line 1
 
     # IMMUNITY
-    immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE) # IMMUNITY_CACHE_SIZE * sizeof(ImmunityState)
-    immunity_head::Int32 = 0                # 4 byte
-    needs_immunity_update::Bool = false     # 1 byte
+    immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} =
+        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 108, 12B,  line 1
+    immunity_head::Int32 = 0                # off 120, 4B,  line 1
+    needs_immunity_update::Bool = false     # off 124, 1B,  line 1   (then 3B padding)
 
     # EXTENSIONS
-    extensions::Any = nothing
+    extensions::Any = nothing               # off 128, 8B,  line 2
 end
 
 # CONSTRUCTOR
