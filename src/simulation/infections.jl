@@ -1,0 +1,448 @@
+#=
+THIS FILE HANDLES INFECTIONS ON DIFFERENT LEVELS
+This means, that the functionality to directly infect someone and spread a disease
+is contained here.
+=#
+export infect!, sample_contacts
+
+
+"""
+    infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen,
+        sim::Union{Simulation, Nothing},
+        rng::Xoshiro,
+        infecter_id::Int32,
+        setting_id::Int32 ,
+        lon::Float32,
+        lat::Float32,
+        setting_type::Char,
+        ags::Int32,
+        source_infection_id::Int32)
+
+Infect `infectee` with the specified `pathogen` and calculate time to infectiousness
+and time to recovery. Optional arguments `infecter_id`. `setting_id`, and `setting_type`
+can be passed for logging. It's not required to calulate the infection. The infection
+can only be logged, if `Simulation` object is passed (as this object holds the logger).
+
+# Parameters
+
+- `infectee::Individual`: Individual to infect
+- `tick::Int16`: Infection tick
+- `pathogen::Pathogen`: Pathogen to infect the individual with
+- `sim::Union{Simulation, Nothing}` = Simulation object (used to get logger)
+- `rng::Xoshiro`: RNG to use for stochastic parts
+- `infecter_id::Int32`: Infecting individual
+- `setting_id::Int32`: ID of setting this infection happens in
+- `lon::Float32`: Longitude of the infection infection location (setting)
+- `lat::Float32`: Latitude of the infection infection location (setting)
+- `setting_type::Char`: Setting type as char (e.g. "h" for `Household`)
+- `ags::Int32`*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
+- `source_infection_id::Int32`: Current infection ID of the infecting individual
+
+# Returns
+
+- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` if `infectee` is
+  already actively infected with `pathogen`.
+
+"""
+function infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen,
+        sim::Union{Simulation, Nothing},
+        rng::Xoshiro,
+        infecter_id::Int32,
+        setting_id::Int32,
+        lon::Float32,
+        lat::Float32,
+        setting_type::Char,
+        ags::Int32 ,
+        source_infection_id::Int32)
+
+    # an individual can hold at most one active infection per pathogen 
+    if infected(infectee, id(pathogen))
+        @warn "infect!: individual $(id(infectee)) is already infected with pathogen $(id(pathogen)); skipping to preserve the one-active-infection-per-pathogen invariant."
+        return DEFAULT_INFECTION_ID
+    end
+
+    # calculate disease progression
+    paf = progression_assignment(pathogen)
+    pc = assign(infectee, paf, rng)
+
+    prog = get_progression(pathogen.progressions, pc)
+    dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
+
+    if isnothing(sim)
+        # no simulation context — store InfectionState directly in the individual's cache.
+        # without a persistent registry, an overflow would dangle, so require a free cache slot
+        any(i -> !infectee.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
+            throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
+        new_infection_id = DEFAULT_INFECTION_ID
+        push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp)
+    else
+        # log infection
+        new_infection_id = log!(
+            infectionlogger(sim),
+            infecter_id,
+            id(infectee),
+            id(pathogen),
+            nameof(pc),
+            tick,
+            infectiousness_onset(dp),
+            symptom_onset(dp),
+            severeness_onset(dp),
+            hospital_admission(dp),
+            hospital_discharge(dp),
+            icu_admission(dp),
+            icu_discharge(dp),
+            ventilation_admission(dp),
+            ventilation_discharge(dp),
+            severeness_offset(dp),
+            recovery(dp),
+            death(dp),
+            setting_id,
+            setting_type,
+            lat,
+            lon,
+            ags,
+            source_infection_id
+        )
+        # stage for serial flush after the threaded phase
+        shard_id = _owner_shard(id(infectee))
+        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
+    end
+
+    # increase lifetime number of infections
+    inc_number_of_infections!(infectee)
+
+    # flag this pathogen as currently active
+    infected!(infectee, id(pathogen), true)
+
+    # set infected flag
+    infected!(infectee, true)
+
+    return new_infection_id
+end
+
+"""
+    infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen;
+        sim::Union{Simulation, Nothing} = nothing,
+        rng::Xoshiro = default_gems_rng(),
+        infecter_id::Int32 = Int32(-1),
+        setting_id::Int32 = Int32(-1),
+        lon::Float32 = NaN32,
+        lat::Float32 = NaN32,
+        setting_type::Char = '?',
+        ags::Int32 = Int32(-1),
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+
+Infect `infectee` with the pathogen of the simulation at the current tick of the simulation. Wrapper for optional keyword arguments
+
+# Parameters
+
+- `infectee::Individual`: Individual to infect
+- `tick::Int16`: Infection tick
+- `pathogen::Pathogen`: Pathogen to infect the individual with
+- `sim::Union{Simulation, Nothing} = nothing` *(optional)* = Simulation object (used to get logger)
+- `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG to use for stochastic parts
+- `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
+- `setting_id::Int32 = Int32(-1)` *(optional)*: ID of setting this infection happens in
+- `lon::Float32 = NaN32` *(optional)*: Longitude of the infection infection location (setting)
+- `lat::Float32 = NaN32` *(optional)*: Latitude of the infection infection location (setting)
+- `setting_type::Char = '?'` *(optional)*: Setting type as char (e.g. "h" for `Household`)
+- `ags::Int32 = Int32(-1)` *(optional)*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
+- `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
+
+# Returns
+
+- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` (with a warning) if `infectee` is
+  already actively infected with `pathogen`.
+
+"""
+
+function infect!(infectee::Individual,
+        tick::Int16,
+        pathogen::Pathogen;
+        # optional keyword arguments (mainly needed for logging)
+        sim::Union{Simulation, Nothing} = nothing,
+        rng::Xoshiro = default_gems_rng(),
+        infecter_id::Int32 = Int32(-1),
+        setting_id::Int32 = Int32(-1),
+        lon::Float32 = NaN32,
+        lat::Float32 = NaN32,
+        setting_type::Char = '?',
+        ags::Int32 = Int32(-1),
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+
+        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
+end
+"""
+    infect!(infectee::Individual, sim::Simulation)
+
+Infect `infectee` with the pathogen of the simulation at the current tick of the simulation.
+Mainly a convenience wrapper around `infect!` with less parameters.
+Used for example in test cases.
+"""
+infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), first_pathogen(sim); sim = sim, rng = rng(sim))
+
+"""
+    try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,
+        source_infection_id::Int32)
+
+Tries to infect the `infctd` with the given `pathogen` transmitted by `infctr `at time `tick(sim)` with `sim`
+being the simulation. Success depends on whether the agent is alive, not already infected
+an whether an infection event was sampled using the provided distribution or probability.
+Returns `true` if infection was successful.
+
+# Parameters
+
+- `infctr::Individual`: Infecting individual
+- `infctd::Individual`: Individual to infect
+- `sim::Simulation`: Simulation object
+- `pathogen::Pathogen`: Pathogen to infect the individual with
+- `setting::Setting`: Setting this infection happens in
+- `source_infection_id::Int32`: Current infection ID of the infecting individual
+
+# Returns
+
+- `Bool`: True if infection was successful, false otherwise
+
+"""
+function try_to_infect!(infctr::Individual,
+        infctd::Individual,
+        sim::Simulation,
+        pathogen::Pathogen,
+        setting::Setting,
+        source_infection_id::Int32)::Bool
+
+    # if one of both is dead
+    if dead(infctr) || dead(infctd)
+        return false
+    end
+
+    # if one of both is hospitalized
+    if hospitalized(infctr) || hospitalized(infctd)
+        return false
+    end
+
+    # check if infctd is already infected with this pathogen
+    infected(infctd, id(pathogen)) && return false
+
+
+    # calculate infection probability
+    infection_probability = effective_transmission_probability(
+        pathogen |> transmission_function,
+        pathogen |> id,
+        infctr, infctd,
+        setting, sim |> tick,
+        sim,
+        rng(sim)
+    )
+
+    # try to infect
+    if gems_rand(sim) < infection_probability
+        hh = settings(sim, Household)[household_id(infctd)]::Household
+        infect!(infctd,
+            tick(sim),
+            pathogen,
+            sim,
+            rng(sim),
+            id(infctr),
+            id(setting),
+            lon(hh),
+            lat(hh),
+            settingchar(setting),
+            ags(setting) |> id,
+            source_infection_id)
+        return true
+    end
+
+    return false
+
+end
+
+"""
+    try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting;
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+
+Tries to infect the `infctd` with the given `pathogen` transmitted by `infctr `at time `tick(sim)` with `sim`
+being the simulation. Success depends on whether the agent is alive, not already infected
+an whether an infection event was sampled using the provided distribution or probability.
+Returns `true` if infection was successful. Wrapper for optional keyword arguments.
+
+# Parameters
+
+- `infctr::Individual`: Infecting individual
+- `infctd::Individual`: Individual to infect
+- `sim::Simulation`: Simulation object
+- `pathogen::Pathogen`: Pathogen to infect the individual with
+- `setting::Setting`: Setting this infection happens in
+- `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
+
+# Returns
+
+- `Bool`: True if infection was successful, false otherwise
+
+"""
+
+function try_to_infect!(infctr::Individual,
+        infctd::Individual,
+        sim::Simulation,
+        pathogen::Pathogen,
+        setting::Setting;
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID)::Bool
+
+        try_to_infect!(infctr, infctd, sim, pathogen, setting, source_infection_id)
+end
+
+
+"""
+    can_infect(ind::Individual, setting::Setting)::Bool
+
+Determines whether the individual can infect others in the given setting.
+Checks for infectiousness, setting openness, and quarantine status.
+
+# Parameters
+- `ind::Individual`: Individual to check
+- `setting::Setting`: Setting to check
+
+# Returns
+- `Bool`: True if the individual can infect others in the setting, false otherwise
+"""
+function can_infect(ind::Individual, setting::Setting)::Bool
+    # if individual is not infectious
+    if !infectious(ind)
+        return false
+    end
+
+    # if individual is hospitalized
+    if is_hospitalized(ind)
+        return false
+    end
+
+    # if setting is closed
+    if !is_open(setting)
+        return false
+    end
+
+    # severe symptoms prevent infecting others outside the household
+    if is_severe(ind) && (typeof(setting) != Household)
+        return false
+    end
+
+    # if individual is quarantined
+    if isquarantined(ind)
+        # if individual is in household quarantine and setting is not Household
+        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
+            return false
+        end
+    end
+
+    return true
+end
+
+"""
+    can_be_contacted(ind::Individual, setting::Setting)::Bool
+
+Determines whether the individual can be contacted (and thus infected) in the given setting.
+Checks for death and quarantine status.
+
+# Parameters
+- `ind::Individual`: Individual to check
+- `setting::Setting`: Setting to check
+
+# Returns
+- `Bool`: True if the individual can be contacted in the setting, false otherwise
+"""
+function can_be_contacted(ind::Individual, setting::Setting)::Bool
+    # if individual is dead
+    if dead(ind)
+        return false
+    end
+
+    # if individual is hospitalized
+    if is_hospitalized(ind)
+        return false
+    end
+
+    # if individual is quarantined
+    if isquarantined(ind)
+        # if individual is in household quarantine and setting is not Household
+        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
+            return false
+        end
+    end
+
+    return true
+end
+
+
+"""
+    spread_infection!(setting::Setting, sim::Simulation)
+
+Spreads the infection of `pathogen` inside the provided setting. This will simulate the
+infection dynamics at the time `tick(sim)` inside `setting` within the context of the
+simulation `sim`. This will also update all settings, the individual is part of, if the
+infection is successful.
+
+# Parameters
+
+- `setting::Setting`: Setting in which the pathogen shall be spreaded
+- `sim::Simulation`: Simulation object
+
+"""
+function spread_infection!(setting::Setting, sim::Simulation)
+    tid = Threads.threadid()
+    p_buffer = sim.present_buffers[tid]
+    c_buffer = sim.contact_buffers[tid]
+
+    empty!(p_buffer)
+    present_individuals!(p_buffer, setting, sim)
+
+    csm = setting.contact_sampling_method
+
+    num_infected = _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+
+    if num_infected == 0
+        deactivate!(setting)
+    end
+end
+
+
+function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    num_infected = 0
+    current_tick = tick(sim)
+    current_rng = rng(sim)
+
+    for ind_index in 1:length(p_buffer)
+        ind = p_buffer[ind_index]
+        if infected(ind)
+            num_infected += 1
+            if can_infect(ind, setting)
+                empty!(c_buffer)
+                sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
+
+                # spread each active, shedding pathogen (cache then overflow); the iterator
+                # only resolves the shard registry if the individual has overflow infections
+                for state in each_infection(ind, sim)
+                    state.infectiousness == 0 && continue
+                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id)
+                end
+            end
+        end
+    end
+
+    return num_infected
+end
+
+function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id)
+    for c in c_buffer
+        if can_be_contacted(c, setting)
+            if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
+                activate_memberships!(c, sim)
+            end
+        end
+    end
+end

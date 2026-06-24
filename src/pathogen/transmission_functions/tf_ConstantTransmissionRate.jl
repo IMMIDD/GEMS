@@ -20,38 +20,41 @@ end
 Base.show(io::IO, ctr::ConstantTransmissionRate) = write(io, "ConstantTranmissionRate(β=$(ctr.transmission_rate))")
 
 
-
 """
-    transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
+    transmission_probability(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
 
-Calculates the transmission probability for the `ConstantTransmissionRate`. Returns the `transmission_rate`
-for all individuals who have not been infected in the past. If the individual has already recovered,
-the function returns `0.0`, assuming full indefinite natural immunity.
+Calculates the base transmission rate for the `ConstantTransmissionRate`. Returns the
+`transmission_rate`; infectiousness and immunity scaling are applied automatically by
+the framework via `effective_transmission_probability`.
 
 # Parameters
 
 - `transFunc::ConstantTransmissionRate`: Transmission function struct
+- `pathogen_id::Int8`: ID of the current pathogen
 - `infecter::Individual`: Infecting individual
 - `infectee::Individual`: Individual to infect
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
-- `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
+- `sim::Simulation`: Simulation object
+- `rng::Xoshiro`: RNG used for probability
 
 # Returns
 
-- `Float64`: Transmission probability p (`0 <= p <= 1`)
+- `Float64`: Base transmission rate (`0 <= p <= 1`)
 
 """
-function transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
-    # error handling
-    !infected(infecter) && throw(ArgumentError("Infecting individual must be infected to calculate transmission probability."))
-    
-    if  -1 < recovery(infectee) <= tick # if the agent has already recovered (natural immunity)
-        return 0.0
-    end
-    
+function transmission_probability(
+        transFunc::ConstantTransmissionRate,
+        pathogen_id::Int8,
+        infecter::Individual,
+        infectee::Individual,
+        setting::Setting,
+        tick::Int16,
+        sim::Simulation,
+        rng::Xoshiro)::Float64
     return transFunc.transmission_rate
 end
+
 # if no RNG was passed, use default RNG
-transmission_probability(transFunc::ConstantTransmissionRate, infecter::Individual, infected::Individual, setting::Setting, tick::Int16) = 
-    transmission_probability(transFunc, infecter, infected, setting, tick, default_gems_rng())
+transmission_probability(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())

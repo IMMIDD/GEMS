@@ -1,6 +1,6 @@
 # THIS FILE CONTAINS UTILITY FUNCTION THAT ARE USEFUL FOR GEMS
 # BUT DONT HAVE A COMMON THEME OR CONTRIBUTE TO INFECTION LOGIC
-export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_values, aggregate_dicts, print_aggregates
+export foldercount, aggregate_df, aggregate_dfs, aggregate_dfs_multcol, aggregate_by_pathogen, aggregate_values, aggregate_dicts, print_aggregates
 export aggregate_matrix
 export germanshapes, state_data, county_data, municipality_data
 export gemscolors
@@ -222,11 +222,39 @@ function aggregate_dfs(dfs::Vector{DataFrame}, key::Symbol)
     )
 end
 """
+    aggregate_dfs(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+
+Joins the input vector of `dataframes` on the compound `keys` and
+aggregates the residual data. Requires all dataframes to
+provide the exact same columns and column names.
+"""
+function aggregate_dfs(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+    n_keys = length(keys)
+    res = reduce((df1, df2) -> outerjoin(df1, df2, on = keys, makeunique = true), dfs)
+
+    val_cols = res[!, n_keys+1:ncol(res)]
+    mins = [minimum(row) for row in eachrow(val_cols)]
+    maxs = [maximum(row) for row in eachrow(val_cols)]
+    avgs = [mean(row) for row in eachrow(val_cols)]
+    stds = [std(row) for row in eachrow(val_cols)]
+    CIs = [confidence_interval_95(row) for row in eachrow(val_cols)]
+
+    out = DataFrames.select(res, keys)
+    out.minimum = mins
+    out.maximum = maxs
+    out.mean = avgs
+    out.std = stds
+    out.lower_95 = [t[1] for t in CIs]
+    out.upper_95 = [t[2] for t in CIs]
+    return out
+end
+
+"""
     aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
 
-Aggregates data on the columns of the dataframes contained in the 
+Aggregates data on the columns of the dataframes contained in the
 provided vector for each value in the key column.
-All dataframes must have identical columnnames. 
+All dataframes must have identical columnnames.
 Returns a dictionary with the columnnames as keys and a dataframe as the value.
 """
 function aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
@@ -280,6 +308,58 @@ function aggregate_dfs_multcol(dfs::Vector{DataFrame}, key::Symbol)
     return res_dict
 end
 
+"""
+    aggregate_dfs_multcol(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+
+Aggregates data on the columns of the dataframes contained in the
+provided vector for each combination of values in the compound `keys` columns.
+All dataframes must have identical columnnames.
+Returns a dictionary with the columnnames as keys and a dataframe as the value.
+"""
+function aggregate_dfs_multcol(dfs::Vector{DataFrame}, keys::Vector{Symbol})
+    columns = names(dfs[1])
+
+    if !all(names(df) == columns for df in dfs)
+        @error "The dataframes do not have identical columns!"
+    elseif length(columns) == 0
+        @error "The Dataframes are empty!"
+    end
+
+    key_strings = string.(keys)
+    value_columns = filter(c -> !(c in key_strings), columns)
+
+    res_dict = Dict()
+    for c in value_columns
+        res = deepcopy(DataFrames.select(dfs[1], keys..., c))
+        for df in dfs[2:end]
+            res = outerjoin(res, DataFrames.select(df, keys..., c), on = keys, makeunique = true)
+        end
+
+        for col in names(res)
+            res[!, col] = coalesce.(res[!, col], 0)
+        end
+
+        n_keys = length(keys)
+        val_cols = res[!, n_keys+1:ncol(res)]
+        mins = [minimum(row) for row in eachrow(val_cols)]
+        maxs = [maximum(row) for row in eachrow(val_cols)]
+        avgs = [mean(row) for row in eachrow(val_cols)]
+        stds = [std(row) for row in eachrow(val_cols)]
+        CIs = [confidence_interval_95(row) for row in eachrow(val_cols)]
+
+        out = DataFrames.select(res, keys)
+        out.minimum = mins
+        out.maximum = maxs
+        out.mean = avgs
+        out.std = stds
+        out.lower_95 = [t[1] for t in CIs]
+        out.upper_95 = [t[2] for t in CIs]
+
+        res_dict[c] = out
+    end
+    return res_dict
+end
+
 function aggregate_values(values)
     return(
         Dict(
@@ -287,10 +367,33 @@ function aggregate_values(values)
             "max" => maximum(values),
             "mean" => mean(values),
             "std" => std(values),
-            "lower_95" => confidence_interval_95(values)[1], 
-            "upper_95" =>confidence_interval_95(values)[2]
+            "lower_95" => confidence_interval_95(values)[1],
+            "upper_95" => confidence_interval_95(values)[2]
         )
     )
+end
+
+"""
+    aggregate_by_pathogen(dfs::Vector{DataFrame}, value_col::Symbol)
+
+Takes a vector of per-pathogen DataFrames (one per simulation run, each with
+a `pathogen_id` column and one value column), collects values per `pathogen_id`
+across runs, and returns aggregated statistics per pathogen.
+
+# Returns
+
+- `Dict{Int8, Dict{String, Real}}`: keyed by `pathogen_id`, value is a stats
+  dict with keys `"min"`, `"max"`, `"mean"`, `"std"`, `"lower_95"`, `"upper_95"`.
+"""
+function aggregate_by_pathogen(dfs::Vector{DataFrame}, value_col::Symbol)
+    isempty(dfs) && return Dict{Int8, Dict{String, Real}}()
+    all_pids = unique(reduce(vcat, [df.pathogen_id for df in dfs]))
+    result = Dict{Int8, Dict{String, Real}}()
+    for pid in all_pids
+        values = [df[df.pathogen_id .== pid, value_col][1] for df in dfs]
+        result[pid] = aggregate_values(values)
+    end
+    return result
 end
 
 function aggregate_dicts(dicts::Vector{<:Dict})
@@ -351,18 +454,35 @@ function aggregate_df(df::DataFrame, key::Symbol)
 end
 
 """
-    print_aggregates(agg; unit, multiplier, digits)
+    print_aggregates(agg::Dict{<:Integer, <:Dict}; unit, multiplier, digits)
+
+Pretty-prints per-pathogen aggregate statistics returned by `attack_rate` or `r0`
+on a `BatchProcessor`. Each entry in `agg` maps a pathogen id to a `Dict{String, Real}`
+with keys `"mean"`, `"std"`, `"min"`, `"max"`, `"lower_95"`, `"upper_95"`.
+Pathogens are printed in ascending id order, separated by `"; "`.
+"""
+function print_aggregates(agg::Dict{<:Integer, <:Dict}; unit::String = "", multiplier = 1, digits::Int = 2)
+    parts = [
+        "Pathogen $pid: " * print_aggregates(inner; unit, multiplier, digits)
+        for (pid, inner) in sort(collect(agg), by = first)
+    ]
+    return join(parts, "; ")
+end
+
+"""
+    print_aggregates(agg::Dict; unit, multiplier, digits)
 
 Pretty-prints the outcomes of an `aggregate_values()` function call.
+`agg` must have keys `"mean"`, `"std"`, `"min"`, `"max"`, `"lower_95"`, `"upper_95"`.
 """
 function print_aggregates(agg::Dict; unit::String = "", multiplier = 1, digits::Int = 2)
 
     u = unit |> length <= 1 ? unit : " " * unit
 
     return(
-        "$(round(multiplier*agg["mean"], digits = digits))$(u), " * 
-        "std: $(round(multiplier*agg["std"], digits = digits))$(u), " *  
-        "95-CI: " *  
+        "$(round(multiplier*agg["mean"], digits = digits))$(u), " *
+        "std: $(round(multiplier*agg["std"], digits = digits))$(u), " *
+        "95-CI: " *
         "[" *
             "$(round(multiplier*agg["lower_95"], digits = digits))" *
             "-" *
@@ -740,12 +860,22 @@ function clean_result!(dict::Dict)
             dict[key] = [Dict("type" => string(typeof(v))) for v in val]
         elseif isa(val, Pathogen) || isa(val, Vaccine)
             dict[key] = Dict("id" => id(val), "name" => name(val))
-        elseif isa(val, Vector{Pathogen}) || isa(val, Vector{Vaccine})
+        elseif isa(val, AbstractVector) && !isempty(val) && isa(first(val), Pathogen)
+            dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
+        elseif isa(val, AbstractVector) && !isempty(val) && isa(first(val), Vaccine)
+            dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
+        elseif isa(val, Tuple) && !isempty(val) && isa(first(val), Pathogen)
             dict[key] = [Dict("id" => id(v), "name" => name(v)) for v in val]
         elseif isa(val, Dict)
             clean_result!(dict[key])
             if length(dict[key]) == 0
                 delete!(dict, key)
+            end
+        elseif !isa(val, Number) && !isa(val, AbstractString) && !isa(val, Bool) && !isnothing(val)
+            try
+                JSON.json(val)  # test if serializable
+            catch
+                dict[key] = string(typeof(val))  # fall back to type name
             end
         end
     end

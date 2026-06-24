@@ -1,9 +1,14 @@
 export transmission_probability
+export transmission_factor
+export effective_transmission_probability
 export transmission_functions
 export progression_categories
 export progression_assignments
+export calculate_infectiousness
+export calculate_immunity
+export immunity_is_stable
 
-# the main defintion of pathogens is in src/structs/parameters/pathogens.jl
+# the main defintion of pathogens is in src/pathogen/pathogens.jl
 
 
 ###
@@ -68,37 +73,108 @@ include.(
     )
 )
 
+# includde infectiousness
+include(_basefolder() * "/src/pathogen/infectiousness_profile.jl")
+include(_basefolder() * "/src/pathogen/immunity_profile.jl")
+
 
 
 ### ABSTRACT INTERFACE
 
 # fallback for assign functions
 function assign(individual::Individual, pa_func::ProgressionAssignmentFunction, rng::Xoshiro)
-    @error "The assign function is not defined for the provided ProgressionAssignmentFunction struct $(typeof(pa_func))."
+    error("The assign function is not defined for the provided ProgressionAssignmentFunction struct $(typeof(pa_func)).")
 end
 
 
 
 
 
-# fallback for tranmission functions
-function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16)::Float64
-    @error "The transmission_probability function is not defined for the provided TransmissionFunction struct $(typeof(transFunc))."
+"""
+    transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using `default_gems_rng()`.
+"""
+function transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 end
 
 """
-    transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16; rng::Xoshiro = default_gems_rng())
+    transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
 
-General function for TransmissionFunction struct. Should be overwritten for newly created structs, as it only serves
-to catch undefined `transmission_probability` functions.
+Fallback that raises an error. Every concrete `TransmissionFunction` subtype must implement
+its own `transmission_probability` method returning the base transmission rate only,
+without infectiousness or immunity scaling. The framework applies those automatically via
+`effective_transmission_probability`.
 """
-function transmission_probability(transFunc::TransmissionFunction, infecter::Individual, infected::Individual, setting::Setting, tick::Int16, rng::Xoshiro)::Float64
-    # this is the fallback function that is called if no of the specific transmission_proability
-    # functions has already fired. In that case, we try finding a transmission_probability
-    # function without a dedicated RNG passed. If that doesn't work, the default 
-    # TF-function (above) will trigger an error
-    return transmission_probability(transFunc, infecter, infected, setting, tick)
+function transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
+    error("transmission_probability is not implemented for $(typeof(transFunc)).")
 end
+
+"""
+    effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
+
+Framework entry point called by the simulation loop. Applies infectiousness and standard
+immunity exactly once around the base rate from `transmission_probability`:
+`base_rate × infectiousness/100 × (1 − immunity/100)`.
+
+Throws an `ArgumentError` if the infecter has zero infectiousness for `pathogen_id`.
+
+Override this (instead of `transmission_probability`) only when full control is needed,
+e.g. to bypass the standard immunity model or handle infectiousness differently.
+"""
+function effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
+    inf = infectiousness(infecter, sim, pathogen_id)
+    inf == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
+           inf / 100.0 *
+           (1.0 - immunity_level(infectee, sim, pathogen_id) / 100.0)
+end
+
+"""
+    effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using `default_gems_rng()`.
+"""
+effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+    effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+"""
+    calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+
+This fallback raises an error; any concrete subtype must provide its own method.
+"""
+function calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+    error("calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile)).")
+end
+
+"""
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+
+This fallback raises an error; any concrete subtype must provide its own method.
+"""
+function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+    error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)).")
+end
+
+"""
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
+
+Fallback for `ImmunityProfile` that doesn't need an RNG.
+"""
+@inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
+    return calculate_immunity(profile, state, individual, tick, default_gems_rng())
+end
+
+"""
+    immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool
+
+Returns `true` if the immunity level produced by `profile` for the given `state` at `tick`
+is guaranteed not to change in any future tick, allowing the per-individual immunity cache
+to skip recomputation. Falls back to `false` for any profile that does not provide a
+concrete method, which is always safe.
+"""
+immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool = false
 
 
 """

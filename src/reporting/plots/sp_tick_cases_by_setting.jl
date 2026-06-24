@@ -19,7 +19,7 @@ A simulation plot type for generating tick cases for each included setting type.
     # is used to parallelize report generation and prevents
     # concurrent generation of plots coming from the same package
     # if you don't know the origin package or if the function
-    # returns different plot types depending on the input, 
+    # returns different plot types depending on the input,
     # just put ":other" which will trigger sequential generation
     package::Symbol = :Plots
 end
@@ -27,6 +27,16 @@ end
 ###
 ### PLOT GENERATION
 ###
+
+function _tick_cases_by_setting_subplot(data, utick; plotargs...)
+    p = plot(xlabel=utick, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
+    for setting in sort(unique(data.setting_type))
+        sub = filter(row -> row.setting_type == setting, data)
+        sum(sub.daily_cases) != 0 && plot!(p, sub.tick, sub.daily_cases, label=settingstring(setting))
+    end
+    plot!(p; plotargs...)
+    return p
+end
 
 """
     generate(plt::TickCasesBySetting, rd::ResultData; plotargs...)
@@ -38,44 +48,27 @@ You can pass any additional keyword arguments using `plotargs...` that are avail
 
 - `plt::TickCasesBySetting`: `SimulationPlot` struct with meta data (i.e. title, description, and filename)
 - `rd::ResultData`: Input data used to generate plot
+- `pathogen::Union{Nothing, Int8, Integer, AbstractString} = nothing` *(optional)*: Filter to a single pathogen by id or name. Default shows all pathogens as subplots.
 - `plotargs...` *(optional)*: Any argument that the `plot()` function of the `Plots.jl` package can take.
 
 # Returns
 
 - `Plots.Plot`: Tick Cases By Setting plot
 """
-function generate(plt::TickCasesBySetting, rd::ResultData; plotargs...)
-    
-    # Assume this function exists to get the daily cases by setting
-    # The returned DataFrame might have columns: "tick", "school", "office", ...
-    tick_cases_data = rd |> tick_cases_per_setting
-    
-    # Get unique setting types and sort (so coloring remains the same across scenarios)
-    unique_settings = unique(tick_cases_data.setting_type) |> sort
-    
-    # Determine the tickunit to use it for the xlabel
-    uticks = rd |> tick_unit |> uppercasefirst
+function generate(plt::TickCasesBySetting, rd::ResultData; pathogen = nothing, plotargs...)
 
-    # add title
-    title!(plt, "Infections per $uticks for each SettingType")
+    utick = rd |> tick_unit |> uppercasefirst
 
-    # add description
-    desc = "This graph shows the number of newly infected individuals per $uticks "
+    title!(plt, "Infections per $utick for each SettingType")
+    desc = "This graph shows the number of newly infected individuals per $utick "
     desc *= "for each of the setting types included in the simulation."
     description!(plt, desc)
 
-    p = plot(xlabel=uticks, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
+    all_data, pids, pnames, _ = _pathogen_setup(tick_cases_per_setting(rd), rd, pathogen)
 
-    for setting in unique_settings
-        subset_df = filter(row -> row.setting_type == setting, tick_cases_data)
-        # Plot the setting if there are any cases to be plotted
-        if sum(subset_df.daily_cases) != 0
-            plot!(p, subset_df.tick, subset_df.daily_cases, label=settingstring(setting))
-        end 
-    end
-
-    # add custom arguments that were passed
-    plot!(p; plotargs...)
-
-    return p
+    subplots = [_tick_cases_by_setting_subplot(
+        filter(row -> row.pathogen_id == pid, all_data), utick;
+        (length(pids) > 1 ? _pathogen_subargs(pid, pnames, plotargs) : NamedTuple(plotargs))...)
+        for pid in pids]
+    return _multi_pathogen_plot(subplots, plotargs)
 end

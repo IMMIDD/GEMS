@@ -1,5 +1,5 @@
-import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hashes as hashes,
-    _allempty as allempty, _someempty as someempty,
+import GEMS: _infections_hash, _data_hash, _hashes,
+    _allempty, _someempty,
     config_file_val, population_params
 
 @testset "Result Data" begin
@@ -24,6 +24,11 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
         end
         # Use style
         @testset "ResultDataStyle" begin
+            # unknown style falls back to DefaultResultData with a warning
+            key_rd_unknown = ResultData(pp, style="NonExistentStyle_XYZ")
+            @test key_rd_unknown isa ResultData
+            @test key_rd_unknown |> dataframes != Dict()
+
             key_rd = ResultData(pp, style="DefaultResultData")
             @test key_rd |> dataframes != Dict()
             @test key_rd |> infections != Dict()
@@ -91,10 +96,10 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
         @test rd |> population_file |> isfile
         @test rd |> final_tick == sim |> tick
         @test rd |> number_of_individuals == sim |> population |> size
-        @test rd |> total_infections > 0
+        @test sum((rd |> total_infections).total_infections) > 0
         # check if settting type names match
         @test (rd|>setting_data)[!, "setting_type"] |> sort == string.(sim |> settingscontainer |> settingtypes |> collect) |> sort
-        @test rd |> pathogens == [sim |> pathogen]
+        @test rd |> pathogens == collect(sim |> GEMS.pathogens)
         @test rd |> tick_unit == sim |> tickunit
         @test rd |> start_condition == sim |> start_condition
         @test rd |> stop_criterion == sim |> stop_criterion
@@ -335,7 +340,7 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
 
     @testset "tests(rd) and time_to_detection" begin
         sim = Simulation()
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         add_testtype!(sim, test)
         i_strategy = IStrategy("i_strategy", sim)
         test_measure = GEMS.Test("test", test)
@@ -346,15 +351,16 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
         run!(sim)
         rd = sim |> PostProcessor |> ResultData
         df = tests(rd)
-        @test all(row -> row.test_tick == 1, eachrow(df))
+        @test all(row -> row.tick == 1, eachrow(df))
 
         @test isa(df, DataFrame)
         @test nrow(df) > 0
 
         expected_cols = [
-            "test_id", "test_tick", "id", "test_result", "infected", "infection_id",
-            "test_type", "reportable", "sex", "age", "number_of_vaccinations",
-            "vaccination_tick", "education", "occupation", "household", "office", "schoolclass"
+            "test_id", "tick", "id", "test_result", "infected", "infection_id",
+            "test_type", "reportable", "sex", "age",
+            "education", "occupation", "household", "office", "schoolclass",
+            "pathogen_id"
         ]
         @test all(col -> col in names(df), expected_cols)
 
@@ -401,7 +407,7 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
 
     @testset "tick_pooltests" begin
         sim = Simulation()
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         s_strategy = SStrategy("s_strategy", sim)
         pool_test = PoolTest("Pool Test", test)
         add_measure!(s_strategy, pool_test)
@@ -425,7 +431,7 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
     @testset "tick_serotests" begin
         # Scenario Setup
         seroprevalence_testing = Simulation()
-        seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+        seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", id(first_pathogen(seroprevalence_testing)), seroprevalence_testing)
         testing = IStrategy("Testing", seroprevalence_testing)
         add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
         trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(120))
@@ -449,9 +455,9 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
     end
 
     @testset "Hashes" begin
-        @test infections_hash(rd) isa Base.SHA1
-        @test data_hash(rd) isa Base.SHA1
-        @test hashes(rd) == Dict()
+        @test _infections_hash(rd) isa Base.SHA1
+        @test _data_hash(rd) isa Base.SHA1
+        @test _hashes(rd) == Dict()
     end
 
     @testset "Printing" begin
@@ -463,7 +469,7 @@ import GEMS: _infections_hash as infections_hash, _data_hash as data_hash, _hash
     @testset "Testing allempty and someempty with ResultData" begin
         f(rd) = get(rd.data, "test_key", [])
         rd = ResultData(pp)
-        @test allempty(f, [rd])
-        @test someempty(f, [rd])
+        @test _allempty(f, [rd])
+        @test _someempty(f, [rd])
     end
 end

@@ -9,7 +9,7 @@
         type = "InfectedFraction"
         [Simulation.StartCondition.parameters]
             fraction = 0.001
-            #pathogen = "Covid19"
+            pathogen = "Covid19"
 
     [Simulation.StopCriterion]
         type = "TimesUp"
@@ -30,6 +30,14 @@
             type = "ConstantTransmissionRate"
             [Pathogens.Covid19.transmission_function.parameters]
                 transmission_rate = 0.2
+
+        [Pathogens.Covid19.infectiousness_profile]
+            type = "ConstantInfectiousness"
+            [Pathogens.Covid19.infectiousness_profile.parameters]
+                level = 100
+
+        [Pathogens.Covid19.immunity_profile]
+            type = "FullImmunity"
 
         [Pathogens.Covid19.progressions]
 

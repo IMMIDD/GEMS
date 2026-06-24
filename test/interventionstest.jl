@@ -56,7 +56,7 @@ end
     add_tick_trigger!(sim, s_tick_trigger)
 
     @testset "IStrategy" begin
-        @test typeof(i_strategy) === IStrategy
+        @test i_strategy isa IStrategy
         @test name(i_strategy) === "i_strategy"
         @test measures(i_strategy) == MeasureEntry[]
         @test GEMS.condition(i_strategy) isa GEMS.IPredicate
@@ -66,7 +66,7 @@ end
     end
 
     @testset "SStrategy" begin
-        @test typeof(s_strategy) === SStrategy
+        @test s_strategy isa SStrategy
         @test name(s_strategy) === "s_strategy"
         @test measures(s_strategy) == MeasureEntry[]
         @test GEMS.condition(s_strategy) isa GEMS.SPredicate
@@ -192,18 +192,18 @@ end
 
     @testset "Testing" begin
 
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         test_measure = GEMS.Test("test", test)
         add_measure!(i_strategy, test_measure)
         add_testtype!(sim, test)
         @test testtypes(sim)[1] === test
 
-        @test_throws ArgumentError TestType("Test", pathogen(sim), sim, sensitivity=2.0)
-        @test_throws ArgumentError TestType("Test", pathogen(sim), sim, specificity=2.0)
+        @test_throws ArgumentError TestType("Test", id(first_pathogen(sim)), sim, sensitivity=2.0)
+        @test_throws ArgumentError TestType("Test", id(first_pathogen(sim)), sim, specificity=2.0)
 
         #Testtype Tests
         @test name(test) === "Test"
-        @test pathogen(test) === pathogen(sim)
+        @test pathogen_id(test) == id(first_pathogen(sim))
         @test sensitivity(test) == 1.0
         @test GEMS.specificity(test) == 1.0
 
@@ -235,37 +235,39 @@ end
             test_measure5 = GEMS.Test()
         end
 
-        #test processing measure
+        i_test_neg = Individual(id=201, sex=0, age=31, household=1)
         eq = GEMS.event_queue(sim)
         empty!(eq)
-        @test process_measure(sim, i, test_measure3) === nothing   # negative result → negative follow-up
+        @test process_measure(sim, i_test_neg, test_measure3) === nothing   # negative result → negative follow-up
         evs = drain_events!(eq)
-        @test followup_focals(evs) == [i]
+        @test followup_focals(evs) == [i_test_neg]
         @test events_from_strategy(evs, i_strategy)
 
-        infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
+        i_test_pos = Individual(id=202, sex=0, age=31, household=1)
+        infect!(i_test_pos, Int16(0), first_pathogen(sim), rng = Xoshiro())
         empty!(eq)
-        @test process_measure(sim, i, test_measure2) === nothing   # positive result → positive follow-up
+        @test process_measure(sim, i_test_pos, test_measure2) === nothing
+        # positive result → positive follow-up
         evs2 = drain_events!(eq)
-        @test followup_focals(evs2) == [i]
+        @test followup_focals(evs2) == [i_test_pos]
         @test events_from_strategy(evs2, i_strategy)
     end
 
     @testset "Seroprevalence Testing" begin
 
-        s_test = SeroprevalenceTestType("Sero Test", pathogen(sim), sim)
+        s_test = SeroprevalenceTestType("Sero Test", id(first_pathogen(sim)), sim)
         s_test_measure = GEMS.Test("test", s_test)
         add_measure!(i_strategy, s_test_measure)
         add_testtype!(sim, s_test)
         @test testtypes(sim)[3] == s_test
         println(testtypes(sim))
 
-        @test_throws ArgumentError SeroprevalenceTestType("Test", pathogen(sim), sim, sensitivity=2.0)
-        @test_throws ArgumentError SeroprevalenceTestType("Test", pathogen(sim), sim, specificity=2.0)
+        @test_throws ArgumentError SeroprevalenceTestType("Test", id(first_pathogen(sim)), sim, sensitivity=2.0)
+        @test_throws ArgumentError SeroprevalenceTestType("Test", id(first_pathogen(sim)), sim, specificity=2.0)
 
         #Testtype Tests
         @test name(s_test) == "Sero Test"
-        @test pathogen(s_test) == pathogen(sim)
+        @test pathogen_id(s_test) == id(first_pathogen(sim))
         @test sensitivity(s_test) == 1.0
         @test GEMS.specificity(s_test) == 1.0
 
@@ -297,13 +299,14 @@ end
             s_test_measure5 = GEMS.Test()
         end
 
-        #test processing measure
-        infect!(i, Int16(0), pathogen(sim), rng = Xoshiro())
+        i_sero = Individual(id=203, sex=0, age=31, household=1)
+        infect!(i_sero, Int16(0), first_pathogen(sim), rng = Xoshiro())
+        GEMS.push_immunity!(immunity_registry(sim, i_sero), i_sero, id(first_pathogen(sim)), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
         eq = GEMS.event_queue(sim)
         empty!(eq)
-        @test process_measure(sim, i, s_test_measure2) === nothing   # positive result → positive follow-up
+        @test process_measure(sim, i_sero, s_test_measure2) === nothing   # positive result → positive follow-up
         evs = drain_events!(eq)
-        @test followup_focals(evs) == [i]
+        @test followup_focals(evs) == [i_sero]
         @test events_from_strategy(evs, i_strategy)
 
     end
@@ -328,9 +331,12 @@ end
         trace_infectious2 = TraceInfectiousContacts(i_strategy3, success_rate=1.0)
         ind1 = first(individuals(sim3))
         ind2 = individuals(sim3)[2]
-        infect!(ind1, Int16(0), pathogen(sim3), rng = Xoshiro())
-        ind1.infectiousness_onset = Int16(0)
-        infect!(ind2, Int16(0), pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = Xoshiro())
+        pid3 = id(first_pathogen(sim3))
+        # seed a blank InfectionState (infectiousness_onset=-1) so earliest_infectiousness_onset returns -1
+        # then infect ind2 at tick=0; get_infections_between finds it in range [-1..0]
+        set_progression!(ind1, pid3)
+        infect!(ind2, Int16(0), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
+        
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
         eq3 = GEMS.event_queue(sim3)
         empty!(eq3)
@@ -493,7 +499,7 @@ end
     end
 
     @testset "Pool Test Measure" begin
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         pool_test = PoolTest("Pool Test", test)
         add_measure!(s_strategy, pool_test)
 
@@ -531,7 +537,7 @@ end
         @test events_from_strategy(evs, s_strategy)
 
         for ind in indis
-            infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
+            infect!(ind, Int16(0), first_pathogen(sim), rng = Xoshiro())
         end
         empty!(eq)
         @test process_measure(sim, gs, pool_test2) === nothing   # infected → positive follow-up
@@ -543,26 +549,30 @@ end
     @testset "Vaccinate Measure" begin
         vacc_sim = Simulation()
         fu_strategy = IStrategy("i_strategy", vacc_sim)
-        my_vaccine = Vaccine(id = Int8(1), name = "TestVax")
- 
+        my_vaccine = Vaccine(id = Int8(1), name = "TestVax", target_pathogen_id = Int8(1))
+        vacc_pid = target_pathogen_id(my_vaccine)
+
         # struct and accessors
         vacc_measure = Vaccinate(my_vaccine)
         vacc_with_followup = Vaccinate(my_vaccine, follow_up = fu_strategy)
- 
+
         @test vaccine(vacc_measure) === my_vaccine
         @test follow_up(vacc_measure) === nothing
         @test follow_up(vacc_with_followup) === fu_strategy
- 
+
+        # vaccinate an individual
+        ind_a = Individual(id = 10, sex = 0, age = 30)
         # vaccinate an individual
         ind_a = Individual(id = 10, sex = 0, age = 30)
         eqv = GEMS.event_queue(vacc_sim)
         empty!(eqv)
         @test process_measure(vacc_sim, ind_a, vacc_measure) === nothing
 
-        @test isvaccinated(ind_a) == true
-        @test vaccine_id(ind_a) == id(my_vaccine)
-        @test vaccination_tick(ind_a) == tick(vacc_sim)
-        @test number_of_vaccinations(ind_a) == 1
+        vacc_reg_a = immunity_registry(vacc_sim, ind_a)
+        @test isvaccinated(ind_a, vacc_reg_a, vacc_pid) == true
+        @test vaccine_id(ind_a, vacc_reg_a, vacc_pid) == id(my_vaccine)
+        @test vaccination_tick(ind_a, vacc_reg_a, vacc_pid) == tick(vacc_sim)
+        @test number_of_vaccinations(ind_a, vacc_reg_a, vacc_pid) == 1
         @test isempty(drain_events!(eqv))   # no follow_up configured
 
         # follow_up strategy is forwarded
@@ -571,7 +581,8 @@ end
         empty!(eqv)
         @test process_measure(vacc_sim, ind_b, vacc_with_followup) === nothing
 
-        @test isvaccinated(ind_b) == true
+        vacc_reg_b = immunity_registry(vacc_sim, ind_b)
+        @test isvaccinated(ind_b, vacc_reg_b, vacc_pid) == true
         evs_b = drain_events!(eqv)
         @test followup_focals(evs_b) == [ind_b]
         @test events_from_strategy(evs_b, fu_strategy)
@@ -580,9 +591,8 @@ end
         empty!(eqv)
         @test process_measure(vacc_sim, ind_a, vacc_measure) === nothing
 
-        @test number_of_vaccinations(ind_a) == 2
+        @test number_of_vaccinations(ind_a, immunity_registry(vacc_sim, ind_a), vacc_pid) == 2
         @test isempty(drain_events!(eqv))
-
         # measure round-trips through add_measure!
         vacc_strategy = IStrategy("vaccinate", vacc_sim)
         add_measure!(vacc_strategy, Vaccinate(my_vaccine))
@@ -596,7 +606,7 @@ end
 
 
     @testset "Test All Measure" begin
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         test_all = TestAll("Test All", test)
         add_measure!(s_strategy, test_all)
 
@@ -636,7 +646,7 @@ end
         @test events_from_strategy(evs, s_strategy)
 
         for ind in indis2
-            infect!(ind, Int16(0), pathogen(sim), rng = Xoshiro())
+            infect!(ind, Int16(0), first_pathogen(sim), rng = Xoshiro())
         end
         empty!(eq)
         @test process_measure(sim, gs2, test_all2) === nothing   # infected → positive follow-up
@@ -877,14 +887,14 @@ end
         custom_s_strategy = SStrategy("custom s strategy", sim)
         add_measure!(custom_s_strategy, custom_s_measure)
 
-        test = TestType("Test", pathogen(sim), sim)
+        test = TestType("Test", id(first_pathogen(sim)), sim)
         test_measure = GEMS.Test("test", test, negative_followup=custom_i_strategy)
         test_all_measure = TestAll("test", test, negative_followup=custom_s_strategy)
 
         condition = (_) -> true
 
-        i_measure_event = IMeasureEvent(i, test_measure, condition)
-        s_measure_event = SMeasureEvent(gs, test_all_measure, condition)
+        i_measure_event = IMeasureEvent(i, test_measure, condition, sim)
+        s_measure_event = SMeasureEvent(gs, test_all_measure, condition, sim)
 
         @test i_measure_event.individual === i
         @test i_measure_event.measure === test_measure
@@ -908,8 +918,8 @@ end
         #test different inputs
         condition2 = (_) -> false
 
-        i_measure_event2 = IMeasureEvent(i, test_measure, condition2)
-        s_measure_event2 = SMeasureEvent(gs, test_all_measure, condition2)
+        i_measure_event2 = IMeasureEvent(i, test_measure, condition2, sim)
+        s_measure_event2 = SMeasureEvent(gs, test_all_measure, condition2, sim)
 
         @test GEMS.process_event(i_measure_event2, sim) === nothing
         @test GEMS.process_event(s_measure_event2, sim) === nothing
@@ -921,8 +931,8 @@ end
         s_measure_function2 = (s, simobj) -> (size(s) < 5 ? close!(s) : nothing)
         custom_s_measure2 = CustomSMeasure(s_measure_function2)
 
-        i_measure_event3 = IMeasureEvent(i, custom_i_measure2, condition)
-        s_measure_event3 = SMeasureEvent(gs, custom_s_measure2, condition)
+        i_measure_event3 = IMeasureEvent(i, custom_i_measure2, condition, sim)
+        s_measure_event3 = SMeasureEvent(gs, custom_s_measure2, condition, sim)
 
         @test GEMS.process_event(i_measure_event3, sim) === nothing
         @test i.mandate_compliance == 0.5f0

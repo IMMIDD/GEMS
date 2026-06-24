@@ -1,9 +1,8 @@
 import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!, ventilated!, dead!, detected!, progress_disease!,
-    exposure!, infectiousness_onset!, symptom_onset!, severeness_onset!, severeness_offset!,
-    hospital_admission!, icu_admission!, icu_discharge!, ventilation_admission!, ventilation_discharge!, hospital_discharge!,
-    recovery!, death!, last_test!, last_test_result!, last_reported_at!,
+    inc_number_of_infections!,
     quarantine_release_tick!, quarantine_tick!, quarantined!,
-    mandate_compliance!, social_factor!, setting_id!, pathogen_id!, infection_id!
+    mandate_compliance!, social_factor!, setting_id!,
+    earliest_infectiousness_onset, push_infection!, push_immunity!
 
 @testset "Agents" begin
     @testset "Individuals" begin
@@ -58,6 +57,23 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test is_working(Individual(id=2, sex=0, age=25, office=Int32(5)))
             @test is_student(Individual(id=3, sex=0, age=10, schoolclass=Int32(7)))
             @test has_municipality(Individual(id=4, sex=0, age=40, municipality=Int32(3)))
+
+            # setting_id! covers Office and Municipality branches
+            i_set = Individual(id=5, sex=0, age=30)
+            setting_id!(i_set, Office, Int32(7))
+            @test i_set.office == Int32(7)
+            setting_id!(i_set, Municipality, Int32(3))
+            @test i_set.municipality == Int32(3)
+
+            # setting_id for unknown type returns DEFAULT_SETTING_ID
+            @test setting_id(Individual(id=6, sex=0, age=20), WorkplaceSite) == GEMS.DEFAULT_SETTING_ID
+
+            # detected!(ind, pathogen_id, false) clears the per-pathogen bit
+            i_det = Individual(id=7, sex=0, age=30)
+            detected!(i_det, Int8(1), true)
+            @test isdetected(i_det, Int8(1))
+            detected!(i_det, Int8(1), false)
+            @test !isdetected(i_det, Int8(1))
         end
 
         @testset "Comorbidities" begin
@@ -82,8 +98,8 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
 
         @testset "Reset" begin
             i = Individual(id=1, sex=1, age=30)
-            
-            # Modify health status
+
+            # Modify health status flags
             infected!(i, true)
             infectious!(i, true)
             symptomatic!(i, true)
@@ -93,46 +109,21 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             ventilated!(i, true)
             dead!(i, true)
             detected!(i, true)
-            
-            # Modify infection status
-            i.pathogen_id = 1
-            i.infection_id = 123
-            i.infectiousness = 50
-            i.number_of_infections = 2
-            
-            # Modify natural disease history
-            exposure!(i, Int16(5))
-            infectiousness_onset!(i, Int16(6))
-            symptom_onset!(i, Int16(7))
-            severeness_onset!(i, Int16(8))
-            hospital_admission!(i, Int16(9))
-            icu_admission!(i, Int16(10))
-            icu_discharge!(i, Int16(11))
-            ventilation_admission!(i, Int16(12))
-            ventilation_discharge!(i, Int16(13))
-            hospital_discharge!(i, Int16(14))
-            severeness_offset!(i, Int16(15))
-            recovery!(i, Int16(16))
-            death!(i, Int16(17))
-            
-            # Modify Testing
-            last_test!(i, Int16(10))
-            last_test_result!(i, true)
-            last_reported_at!(i, Int16(11))
-            
-            # Modify Vaccination
-            i.vaccine_id = 2
-            i.number_of_vaccinations = 1
-            i.vaccination_tick = Int16(1)
-            
-            # Modify Interventions
+
+            # Modify infection count
+            inc_number_of_infections!(i)
+            inc_number_of_infections!(i)
+            @test i.number_of_infections == 2
+            @test number_of_infections(i) == 2
+
+            # Modify interventions
             home_quarantine!(i)
             quarantine_tick!(i, Int16(5))
             quarantine_release_tick!(i, Int16(15))
-            
-            # Call the reset! function
-            GEMS.reset!(i)
-            
+
+            # Call reset! with empty registries (no overflow state to clean up)
+            GEMS.reset!(i, InfectionRegistry(), ImmunityRegistry())
+
             # Assert health status is clean
             @test !isinfected(i)
             @test !isinfectious(i)
@@ -143,37 +134,13 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test !isventilated(i)
             @test !isdead(i)
             @test !isdetected(i)
-            
-            # Assert infection status
-            @test pathogen_id(i) == GEMS.DEFAULT_PATHOGEN_ID
-            @test i.infection_id == GEMS.DEFAULT_INFECTION_ID
-            @test i.infectiousness == 0
+
+            # Assert infection count and masks cleared
             @test i.number_of_infections == 0
-            
-            # Assert disease progression
-            @test exposure(i) == GEMS.DEFAULT_TICK
-            @test infectiousness_onset(i) == GEMS.DEFAULT_TICK
-            @test symptom_onset(i) == GEMS.DEFAULT_TICK
-            @test severeness_onset(i) == GEMS.DEFAULT_TICK
-            @test hospital_admission(i) == GEMS.DEFAULT_TICK
-            @test icu_admission(i) == GEMS.DEFAULT_TICK
-            @test icu_discharge(i) == GEMS.DEFAULT_TICK
-            @test ventilation_admission(i) == GEMS.DEFAULT_TICK
-            @test ventilation_discharge(i) == GEMS.DEFAULT_TICK
-            @test hospital_discharge(i) == GEMS.DEFAULT_TICK
-            @test severeness_offset(i) == GEMS.DEFAULT_TICK
-            @test recovery(i) == GEMS.DEFAULT_TICK
-            @test death(i) == GEMS.DEFAULT_TICK
-            
-            # Assert testing & vaccines
-            @test last_test(i) == GEMS.DEFAULT_TICK
-            @test last_test_result(i) == false
-            @test last_reported_at(i) == GEMS.DEFAULT_TICK
-            @test i.vaccine_id == GEMS.DEFAULT_VACCINE_ID
-            @test i.number_of_vaccinations == 0
-            @test i.vaccination_tick == GEMS.DEFAULT_TICK
-            
-            # Assert Interventions
+            @test i.active_pathogens_mask == 0
+            @test i.detected_mask == 0
+
+            # Assert interventions cleared
             @test quarantine_status(i) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
             @test quarantine_tick(i) == GEMS.DEFAULT_TICK
             @test quarantine_release_tick(i) == GEMS.DEFAULT_TICK
@@ -181,42 +148,115 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
 
         @testset "Disease Progression & Hospitalization" begin
             @testset "Times Setter & Getter" begin
-                i = Individual(id = 1, sex = 0, age = 31)
-                # testing default ticks in disease progression
-                getter = [  exposure,
-                            infectiousness_onset,
-                            symptom_onset,
-                            severeness_onset,
-                            hospital_admission,
-                            icu_admission,
-                            icu_discharge,
-                            ventilation_admission,
-                            ventilation_discharge,
-                            hospital_discharge,
-                            severeness_offset,
-                            recovery,
-                            death
-                        ]
-                for g in getter
-                    # test default
-                    @test g(i) == GEMS.DEFAULT_TICK
-                end
+                pid = Int8(1)
+                reg = InfectionRegistry()
 
-                # test if setter for the ticks do work
-                for f in getter
-                    setter = getfield(GEMS, Symbol(string(f)*"!"))
-                    setter(i, Int16(42))
-                    for g in getter
-                        if g==f
-                            @test g(i) == 42
-                        else
-                            @test g(i) == GEMS.DEFAULT_TICK
-                        end
-                    end
-                    setter(i, Int16(GEMS.DEFAULT_TICK)) # reset the time for the tests
-                end
+                # default: individual with no infection → all timeline fields return DEFAULT_TICK
+                i = Individual(id = 1, sex = 0, age = 31)
+                @test exposure(i, reg, pid) == GEMS.DEFAULT_TICK
+                @test infectiousness_onset(i, reg, pid) == GEMS.DEFAULT_TICK
+                @test recovery(i, reg, pid) == GEMS.DEFAULT_TICK
+                @test death(i, reg, pid) == GEMS.DEFAULT_TICK
+
+                # after set_progression! the DiseaseProgression values are readable
+                dp = DiseaseProgression(
+                    exposure = Int16(1),
+                    infectiousness_onset = Int16(3),
+                    symptom_onset = Int16(5),
+                    recovery = Int16(15),
+                )
+                set_progression!(i, dp, pid)
+                @test exposure(i, reg, pid) == 1
+                @test infectiousness_onset(i, reg, pid) == 3
+                @test symptom_onset(i, reg, pid) == 5
+                @test recovery(i, reg, pid) == 15
+                @test severeness_onset(i, reg, pid) == GEMS.DEFAULT_TICK
+                @test hospital_admission(i, reg, pid) == GEMS.DEFAULT_TICK
+                @test death(i, reg, pid) == GEMS.DEFAULT_TICK
             end
-            
+
+            @testset "Registry Overflow" begin
+                # With INFECTIONS_CACHE_SIZE = 1, a second simultaneous infection spills into
+                # the registry linked list. All per-pathogen accessors must traverse that list.
+                reg = InfectionRegistry()
+                i = Individual(id=1, sex=0, age=30)
+                pid1 = Int8(1)
+                pid2 = Int8(2)
+                push_infection!(reg, i, pid1, Int32(1),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+                push_infection!(reg, i, pid2, Int32(2),
+                    DiseaseProgression(exposure=Int16(2), infectiousness_onset=Int16(4), recovery=Int16(25)))
+
+                # overflow node is accessible via get_infection_state
+                @test get_infection_state(i, reg, pid2).pathogen_id == pid2
+
+                # infection_id looks up the overflow node
+                @test infection_id(i, reg, pid2) == Int32(2)
+
+                # infectiousness returns 0 before infectiousness_onset
+                @test infectiousness(i, reg, pid2) == Int8(0)
+
+                # active registry record present for pid1/pid2, absent for an unused pathogen
+                @test infection_id(i, reg, pid1) != GEMS.DEFAULT_INFECTION_ID
+                @test infection_id(i, reg, pid2) != GEMS.DEFAULT_INFECTION_ID
+                @test infection_id(i, reg, Int8(3)) == GEMS.DEFAULT_INFECTION_ID
+
+                # pid1 lives in the cache slot
+                @test get_infection_state(i, reg, pid1).pathogen_id == pid1
+
+                # active_pathogens_mask getter + infected!(ind, pid, val) setter (mask-based,
+                # independent of the registry; push_infection! above did not touch the mask)
+                @test active_pathogens_mask(i) == UInt32(0)
+                infected!(i, pid1, true)
+                @test infected(i, pid1)
+                @test active_pathogens_mask(i) == (UInt32(1) << (pid1 - 1))
+                infected!(i, pid1, false)
+                @test !infected(i, pid1)
+                @test active_pathogens_mask(i) == UInt32(0)
+
+                # multi-node overflow: traverse past a non-matching head node (covers node = s.next)
+                pid3 = Int8(3)
+                push_infection!(reg, i, pid3, Int32(3),
+                    DiseaseProgression(exposure=Int16(3), infectiousness_onset=Int16(5), recovery=Int16(30)))
+                # list after 3 pushes: cache=pid1, head points to pid3 which points to pid2
+                @test get_infection_state(i, reg, pid2).pathogen_id == pid2  # traverses past pid3
+                @test infection_id(i, reg, pid2) == Int32(2)
+                @test infectiousness(i, reg, pid2) == Int8(0)
+                # pathogen not in list at all returns defaults
+                @test infectiousness(i, reg, Int8(4)) == Int8(0)
+                @test infection_id(i, reg, Int8(4)) == GEMS.DEFAULT_INFECTION_ID
+
+                # immunity overflow (IMMUNITY_CACHE_SIZE = 1, second pathogen overflows)
+                ireg = ImmunityRegistry()
+                push_immunity!(ireg, i, pid1, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                push_immunity!(ireg, i, pid2, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2
+                @test immunity_level(i, ireg, pid2) == Int8(0)
+
+                # multi-node immunity overflow: traverse past head to find second node
+                push_immunity!(ireg, i, pid3, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                # head points to pid3 which points to pid2
+                @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2  # traverses past pid3
+                @test immunity_level(i, ireg, pid2) == Int8(0)
+                @test immunity_level(i, ireg, Int8(4)) == Int8(0)  # not found returns 0
+            end
+
+            @testset "Sim Wrappers" begin
+                # one-liner wrappers that route to the correct registry shard via the sim
+                sim_sw = Simulation()
+                pid_sw = id(first_pathogen(sim_sw))
+                i_sw = Individual(id=1, sex=0, age=30)
+                push_infection!(infection_registry(sim_sw, i_sw), i_sw, pid_sw, Int32(1),
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+
+                @test infection_id(i_sw, sim_sw, pid_sw) != GEMS.DEFAULT_INFECTION_ID
+                @test infectiousness(i_sw, sim_sw, pid_sw) == Int8(0)
+                @test earliest_infectiousness_onset(i_sw, sim_sw) == Int16(3)
+
+                push_immunity!(immunity_registry(sim_sw, i_sw), i_sw, pid_sw, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                @test immunity_level(i_sw, sim_sw, pid_sw) == Int8(0)
+            end
+
         end
 
         @testset "Health Status Aliases (Current-State)" begin
@@ -298,132 +338,134 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
 
 
         @testset "Time-Parameterized Disease Status" begin
+            pid = Int8(1)
+            reg = InfectionRegistry()
             i = Individual(id=1, sex=1, age=30)
-            exposure!(i, Int16(5))
-            infectiousness_onset!(i, Int16(7))
-            symptom_onset!(i, Int16(10))
-            severeness_onset!(i, Int16(15))
-            severeness_offset!(i, Int16(20))
-            hospital_admission!(i, Int16(15))
-            hospital_discharge!(i, Int16(25))
-            icu_admission!(i, Int16(15))
-            icu_discharge!(i, Int16(18))
-            ventilation_admission!(i, Int16(15))
-            ventilation_discharge!(i, Int16(17))
-            recovery!(i, Int16(30))
-            last_reported_at!(i, Int16(12))
+            dp_i = DiseaseProgression(
+                exposure = Int16(5),
+                infectiousness_onset = Int16(7),
+                symptom_onset = Int16(10),
+                severeness_onset = Int16(15),
+                hospital_admission = Int16(15),
+                icu_admission = Int16(15),
+                icu_discharge = Int16(18),
+                ventilation_admission = Int16(15),
+                ventilation_discharge = Int16(17),
+                hospital_discharge = Int16(25),
+                severeness_offset = Int16(26),
+                recovery = Int16(30),
+            )
+            set_progression!(i, dp_i, pid)
+            detected!(i, Int8(1), true) # mark as detected for pathogen 1
 
             # is_infected / isinfected / infected
-            @test !is_infected(i, Int16(4))
-            @test is_infected(i, Int16(5))
-            @test is_infected(i, Int16(20))
-            @test !is_infected(i, Int16(30))
-            @test isinfected(i, Int16(10)) == is_infected(i, Int16(10))
-            @test infected(i, Int16(10)) == is_infected(i, Int16(10))
+            @test !is_infected(i, reg, pid, Int16(4))
+            @test is_infected(i, reg, pid, Int16(5))
+            @test is_infected(i, reg, pid, Int16(20))
+            @test !is_infected(i, reg, pid, Int16(30))
+            @test isinfected(i, reg, pid, Int16(10)) == is_infected(i, reg, pid, Int16(10))
+            @test infected(i, reg, pid, Int16(10)) == is_infected(i, reg, pid, Int16(10))
 
             # is_exposed / isexposed / exposed
-            @test !is_exposed(i, Int16(4))
-            @test is_exposed(i, Int16(5))
-            @test is_exposed(i, Int16(6))
-            @test !is_exposed(i, Int16(7))
-            @test isexposed(i, Int16(5)) == is_exposed(i, Int16(5))
-            @test exposed(i, Int16(5)) == is_exposed(i, Int16(5))
+            @test !is_exposed(i, reg, pid, Int16(4))
+            @test is_exposed(i, reg, pid, Int16(5))
+            @test is_exposed(i, reg, pid, Int16(6))
+            @test !is_exposed(i, reg, pid, Int16(7))
+            @test isexposed(i, reg, pid, Int16(5)) == is_exposed(i, reg, pid, Int16(5))
+            @test exposed(i, reg, pid, Int16(5)) == is_exposed(i, reg, pid, Int16(5))
 
             # is_infectious / isinfectious / infectious
-            @test !is_infectious(i, Int16(6))
-            @test is_infectious(i, Int16(7))
-            @test is_infectious(i, Int16(15))
-            @test !is_infectious(i, Int16(30))
-            @test isinfectious(i, Int16(7)) == is_infectious(i, Int16(7))
-            @test infectious(i, Int16(7)) == is_infectious(i, Int16(7))
+            @test !is_infectious(i, reg, pid, Int16(6))
+            @test is_infectious(i, reg, pid, Int16(7))
+            @test is_infectious(i, reg, pid, Int16(15))
+            @test !is_infectious(i, reg, pid, Int16(30))
+            @test isinfectious(i, reg, pid, Int16(7)) == is_infectious(i, reg, pid, Int16(7))
+            @test infectious(i, reg, pid, Int16(7)) == is_infectious(i, reg, pid, Int16(7))
 
             # is_presymptomatic / ispresymptomatic / presymptomatic
-            @test is_presymptomatic(i, Int16(7))
-            @test is_presymptomatic(i, Int16(9))
-            @test !is_presymptomatic(i, Int16(10))
-            @test !is_presymptomatic(i, Int16(4))
-            @test ispresymptomatic(i, Int16(7)) == is_presymptomatic(i, Int16(7))
-            @test presymptomatic(i, Int16(7)) == is_presymptomatic(i, Int16(7))
+            @test is_presymptomatic(i, reg, pid, Int16(7))
+            @test is_presymptomatic(i, reg, pid, Int16(9))
+            @test !is_presymptomatic(i, reg, pid, Int16(10))
+            @test !is_presymptomatic(i, reg, pid, Int16(4))
+            @test ispresymptomatic(i, reg, pid, Int16(7)) == is_presymptomatic(i, reg, pid, Int16(7))
+            @test presymptomatic(i, reg, pid, Int16(7)) == is_presymptomatic(i, reg, pid, Int16(7))
 
             # is_symptomatic / issymptomatic / symptomatic
-            @test !is_symptomatic(i, Int16(9))
-            @test is_symptomatic(i, Int16(10))
-            @test is_symptomatic(i, Int16(25))
-            @test !is_symptomatic(i, Int16(30))
-            @test issymptomatic(i, Int16(10)) == is_symptomatic(i, Int16(10))
-            @test symptomatic(i, Int16(10)) == is_symptomatic(i, Int16(10))
+            @test !is_symptomatic(i, reg, pid, Int16(9))
+            @test is_symptomatic(i, reg, pid, Int16(10))
+            @test is_symptomatic(i, reg, pid, Int16(25))
+            @test !is_symptomatic(i, reg, pid, Int16(30))
+            @test issymptomatic(i, reg, pid, Int16(10)) == is_symptomatic(i, reg, pid, Int16(10))
+            @test symptomatic(i, reg, pid, Int16(10)) == is_symptomatic(i, reg, pid, Int16(10))
 
             # is_severe / issevere / severe
-            @test !is_severe(i, Int16(14))
-            @test is_severe(i, Int16(15))
-            @test is_severe(i, Int16(19))
-            @test !is_severe(i, Int16(20))
-            @test issevere(i, Int16(15)) == is_severe(i, Int16(15))
-            @test severe(i, Int16(15)) == is_severe(i, Int16(15))
+            @test !is_severe(i, reg, pid, Int16(14))
+            @test is_severe(i, reg, pid, Int16(15))
+            @test is_severe(i, reg, pid, Int16(25))
+            @test !is_severe(i, reg, pid, Int16(26))
+            @test issevere(i, reg, pid, Int16(15)) == is_severe(i, reg, pid, Int16(15))
+            @test severe(i, reg, pid, Int16(15)) == is_severe(i, reg, pid, Int16(15))
 
             # is_mild / ismild / mild
-            @test is_mild(i, Int16(12))
-            @test !is_mild(i, Int16(15))
-            @test ismild(i, Int16(12)) == is_mild(i, Int16(12))
-            @test mild(i, Int16(12)) == is_mild(i, Int16(12))
+            @test is_mild(i, reg, pid, Int16(12))
+            @test !is_mild(i, reg, pid, Int16(15))
+            @test ismild(i, reg, pid, Int16(12)) == is_mild(i, reg, pid, Int16(12))
+            @test mild(i, reg, pid, Int16(12)) == is_mild(i, reg, pid, Int16(12))
 
             # is_hospitalized / ishospitalized / hospitalized
-            @test !is_hospitalized(i, Int16(14))
-            @test is_hospitalized(i, Int16(15))
-            @test is_hospitalized(i, Int16(24))
-            @test !is_hospitalized(i, Int16(25))
-            @test ishospitalized(i, Int16(15)) == is_hospitalized(i, Int16(15))
-            @test hospitalized(i, Int16(15)) == is_hospitalized(i, Int16(15))
+            @test !is_hospitalized(i, reg, pid, Int16(14))
+            @test is_hospitalized(i, reg, pid, Int16(15))
+            @test is_hospitalized(i, reg, pid, Int16(24))
+            @test !is_hospitalized(i, reg, pid, Int16(25))
+            @test ishospitalized(i, reg, pid, Int16(15)) == is_hospitalized(i, reg, pid, Int16(15))
+            @test hospitalized(i, reg, pid, Int16(15)) == is_hospitalized(i, reg, pid, Int16(15))
 
             # is_icu / isicu / icu
-            @test !is_icu(i, Int16(14))
-            @test is_icu(i, Int16(15))
-            @test is_icu(i, Int16(17))
-            @test !is_icu(i, Int16(18))
-            @test isicu(i, Int16(15)) == is_icu(i, Int16(15))
-            @test icu(i, Int16(15)) == is_icu(i, Int16(15))
+            @test !is_icu(i, reg, pid, Int16(14))
+            @test is_icu(i, reg, pid, Int16(15))
+            @test is_icu(i, reg, pid, Int16(17))
+            @test !is_icu(i, reg, pid, Int16(18))
+            @test isicu(i, reg, pid, Int16(15)) == is_icu(i, reg, pid, Int16(15))
+            @test icu(i, reg, pid, Int16(15)) == is_icu(i, reg, pid, Int16(15))
 
             # is_ventilated / isventilated / ventilated
-            @test !is_ventilated(i, Int16(14))
-            @test is_ventilated(i, Int16(15))
-            @test is_ventilated(i, Int16(16))
-            @test !is_ventilated(i, Int16(17))
-            @test isventilated(i, Int16(15)) == is_ventilated(i, Int16(15))
-            @test ventilated(i, Int16(15)) == is_ventilated(i, Int16(15))
+            @test !is_ventilated(i, reg, pid, Int16(14))
+            @test is_ventilated(i, reg, pid, Int16(15))
+            @test is_ventilated(i, reg, pid, Int16(16))
+            @test !is_ventilated(i, reg, pid, Int16(17))
+            @test isventilated(i, reg, pid, Int16(15)) == is_ventilated(i, reg, pid, Int16(15))
+            @test ventilated(i, reg, pid, Int16(15)) == is_ventilated(i, reg, pid, Int16(15))
 
             # is_recovered / isrecovered / recovered
-            @test !is_recovered(i, Int16(29))
-            @test is_recovered(i, Int16(30))
-            @test is_recovered(i, Int16(50))
-            @test isrecovered(i, Int16(30)) == is_recovered(i, Int16(30))
-            @test recovered(i, Int16(30)) == is_recovered(i, Int16(30))
+            @test !is_recovered(i, reg, pid, Int16(29))
+            @test is_recovered(i, reg, pid, Int16(30))
+            @test is_recovered(i, reg, pid, Int16(50))
+            @test isrecovered(i, reg, pid, Int16(30)) == is_recovered(i, reg, pid, Int16(30))
+            @test recovered(i, reg, pid, Int16(30)) == is_recovered(i, reg, pid, Int16(30))
 
             # is_detected / isdetected / detected
-            @test is_detected(i, Int16(12))
-            @test isdetected(i, Int16(12)) == is_detected(i, Int16(12))
-            @test detected(i, Int16(12)) == is_detected(i, Int16(12))
+            @test is_detected(i, reg, pid, Int16(12))
+            @test isdetected(i, reg, pid, Int16(12)) == is_detected(i, reg, pid, Int16(12))
+            @test detected(i, reg, pid, Int16(12)) == is_detected(i, reg, pid, Int16(12))
             i_undetected = Individual(id=99, sex=0, age=20)
-            exposure!(i_undetected, Int16(5))
-            recovery!(i_undetected, Int16(20))
-            @test !is_detected(i_undetected, Int16(10))
+            set_progression!(i_undetected, DiseaseProgression(exposure=Int16(5), infectiousness_onset=Int16(6), recovery=Int16(20)), pid)
+            @test !is_detected(i_undetected, reg, pid, Int16(10))
 
             # is_dead / isdead / dead
             i_dead = Individual(id=2, sex=2, age=60)
-            exposure!(i_dead, Int16(5))
-            death!(i_dead, Int16(15))
-            @test !is_dead(i_dead, Int16(14))
-            @test is_dead(i_dead, Int16(15))
-            @test isdead(i_dead, Int16(15)) == is_dead(i_dead, Int16(15))
-            @test dead(i_dead, Int16(15)) == is_dead(i_dead, Int16(15))
+            set_progression!(i_dead, DiseaseProgression(exposure=Int16(5), infectiousness_onset=Int16(6), symptom_onset=Int16(7), death=Int16(15)), pid)
+            @test !is_dead(i_dead, reg, pid, Int16(14))
+            @test is_dead(i_dead, reg, pid, Int16(15))
+            @test isdead(i_dead, reg, pid, Int16(15)) == is_dead(i_dead, reg, pid, Int16(15))
+            @test dead(i_dead, reg, pid, Int16(15)) == is_dead(i_dead, reg, pid, Int16(15))
 
             # is_asymptomatic / isasymptomatic / asymptomatic
             i_asymp = Individual(id=3, sex=0, age=25)
-            exposure!(i_asymp, Int16(5))
-            recovery!(i_asymp, Int16(20))
-            @test is_asymptomatic(i_asymp, Int16(10))
-            @test isasymptomatic(i_asymp, Int16(10)) == is_asymptomatic(i_asymp, Int16(10))
-            @test asymptomatic(i_asymp, Int16(10)) == is_asymptomatic(i_asymp, Int16(10))
-            @test !is_asymptomatic(i, Int16(15))
+            set_progression!(i_asymp, DiseaseProgression(exposure=Int16(5), infectiousness_onset=Int16(6), recovery=Int16(20)), pid)
+            @test is_asymptomatic(i_asymp, reg, pid, Int16(10))
+            @test isasymptomatic(i_asymp, reg, pid, Int16(10)) == is_asymptomatic(i_asymp, reg, pid, Int16(10))
+            @test asymptomatic(i_asymp, reg, pid, Int16(10)) == is_asymptomatic(i_asymp, reg, pid, Int16(10))
+            @test !is_asymptomatic(i, reg, pid, Int16(15))
 
             # is_quarantined / isquarantined / quarantined (with tick)
             i_quar = Individual(id=4, sex=1, age=40)
@@ -435,6 +477,32 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test !is_quarantined(i_quar, Int16(10))
             @test isquarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
             @test quarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
+        end
+
+        @testset "Testing Registry" begin
+            treg = TestRegistry()
+            i_tr = Individual(id=1, sex=0, age=30)
+            pid_tr = Int8(1)
+
+            # defaults before any test
+            @test last_test(i_tr, treg, pid_tr) == GEMS.DEFAULT_TICK
+            @test last_test_result(i_tr, treg, pid_tr) == false
+            @test !GEMS.was_reported(i_tr, treg, pid_tr)
+
+            # positive reportable test sets last_test, last_test_result, was_reported and detected_mask
+            record_test!(i_tr, treg, pid_tr, Int16(5), true, true)
+            @test last_test(i_tr, treg, pid_tr) == Int16(5)
+            @test last_test_result(i_tr, treg, pid_tr) == true
+            @test was_reported(i_tr, treg, pid_tr)
+            @test isdetected(i_tr, pid_tr)
+
+            # sim wrappers route to the correct TestRegistry shard
+            sim_tr = Simulation()
+            i_tr2 = Individual(id=2, sex=0, age=30)
+            record_test!(i_tr2, sim_tr, pid_tr, Int16(7), false, false)
+            @test last_test(i_tr2, sim_tr, pid_tr) == Int16(7)
+            @test last_test_result(i_tr2, sim_tr, pid_tr) == false
+            @test !was_reported(i_tr2, sim_tr, pid_tr)
         end
 
         @testset "Quarantine" begin

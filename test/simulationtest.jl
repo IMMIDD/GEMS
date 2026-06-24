@@ -97,6 +97,17 @@ import GEMS: increment!, infected!
             @test tickunit(sim) == "day"
             sim = Simulation(pop_size = 100, tickunit = 'w')
             @test tickunit(sim) == "week"
+            # remaining branches only reachable via direct field mutation (config-loaded sims)
+            sim_y = Simulation(pop_size = 100, tickunit = 'h'); sim_y.tickunit = 'y'
+            @test tickunit(sim_y) == "year"
+            sim_mo = Simulation(pop_size = 100, tickunit = 'h'); sim_mo.tickunit = 'm'
+            @test tickunit(sim_mo) == "month"
+            sim_mi = Simulation(pop_size = 100, tickunit = 'h'); sim_mi.tickunit = 'M'
+            @test tickunit(sim_mi) == "minute"
+            sim_s = Simulation(pop_size = 100, tickunit = 'h'); sim_s.tickunit = 'S'
+            @test tickunit(sim_s) == "second"
+            sim_def = Simulation(pop_size = 100, tickunit = 'h'); sim_def.tickunit = 'x'
+            @test tickunit(sim_def) == "tick"
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, tickunit = 'g')
             @test_throws ArgumentError Simulation(pop_size = 100, tickunit = "abc")
@@ -317,6 +328,18 @@ import GEMS: increment!, infected!
             sim = Simulation(pop_size = 100, stop_criterion = TimesUp(limit = 11))
             run!(sim)
             @test tick(sim) == 11
+            # infected_fraction with multiple pathogens auto-expands to MultiStartCondition
+            p_a = Pathogen(id=1, name="PA"); p_b = Pathogen(id=2, name="PB")
+            sim_2p = Simulation(pathogens=(p_a, p_b), pop_size=100, infected_fraction=0.3, seed=1)
+            @test count(i -> infected(i, Int8(1)), individuals(sim_2p)) > 0
+            @test count(i -> infected(i, Int8(2)), individuals(sim_2p)) > 0
+
+            # NoneInfected: no time limit → uses Iterators.countfrom + break when epidemic clears
+            sim_ni = Simulation(pop_size = 100, start_condition = PatientZero(),
+                stop_criterion = NoneInfected(), seed = 42)
+            run!(sim_ni)
+            @test tick(sim_ni) > 0
+            @test count(infected, population(sim_ni)) == 0
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, stop_criterion = "none")
         end
@@ -335,8 +358,8 @@ import GEMS: increment!, infected!
             # PATHOGEN
             # passing
             p = Pathogen(id=1, name="Test")
-            sim = Simulation(pop_size = 100, pathogen = p)
-            @test pathogen(sim) === p
+            sim = Simulation(pop_size = 100, pathogen = p, infected_fraction = 0.0)
+            @test first_pathogen(sim) === p
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, pathogen = "none")
 
@@ -344,15 +367,15 @@ import GEMS: increment!, infected!
             # passing
             tf = ConstantTransmissionRate(transmission_rate = 0.5)
             sim = Simulation(pop_size = 100, transmission_function = tf)
-            @test transmission_function(pathogen(sim)) === tf
+            @test transmission_function(first_pathogen(sim)) === tf
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, transmission_function = "none")
 
             # TRANSMISSION RATE
             # passing
             sim = Simulation(pop_size = 100, transmission_rate = 0.111)
-            @test transmission_function(pathogen(sim)) isa ConstantTransmissionRate
-            @test transmission_function(pathogen(sim)).transmission_rate == 0.111
+            @test transmission_function(first_pathogen(sim)) isa ConstantTransmissionRate
+            @test transmission_function(first_pathogen(sim)).transmission_rate == 0.111
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, transmission_rate = -0.1)
             @test_throws ArgumentError Simulation(pop_size = 100, transmission_rate = 1.1)
@@ -378,7 +401,7 @@ import GEMS: increment!, infected!
             infected!(ind, true)
             
             # Add data to loggers
-            log!(deathlogger(sim), Int32(1), Int16(2))
+            log!(deathlogger(sim), Int32(1), Int8(1), Int16(2))
             @test length(deathlogger(sim)) == 1
             
             # Add NPI triggers and strategies
@@ -450,10 +473,10 @@ import GEMS: increment!, infected!
                 sc_ref, 0.1)
             @test result === sc_ref
 
-            # determine_pathogen: pathogen + transmission_rate -> warns, uses pathogen
+            # determine_pathogens: pathogen + transmission_rate -> uses rate to rebuild, returns a Tuple
             p_ref = Pathogen(id=1, name="TestPathogen")
-            result = @test_logs (:warn, r"transmission_rate will be ignored") GEMS.determine_pathogen(Dict(), p_ref, nothing, 0.5)
-            @test result === p_ref
+            result = GEMS.determine_pathogens(Dict(), p_ref, nothing, 0.5)
+            @test result isa Tuple && length(result) == 1
 
             # determine_setting_type_config!: setting type not in config -> warns
             sim_w = Simulation(pop_size=100)
@@ -466,7 +489,7 @@ import GEMS: increment!, infected!
             # determine_pathogen: transmission_function + transmission_rate -> warns, tf wins
             default_config = GEMS.load_configfile(GEMS.configfile_path(""))
             tf_ref2 = ConstantTransmissionRate(transmission_rate=0.3)
-            @test_logs (:warn, r"transmission_rate will be ignored") GEMS.determine_pathogen(default_config, nothing, tf_ref2, 0.5)
+            @test_logs (:warn, r"transmission_rate will be ignored") GEMS.determine_pathogens(default_config, nothing, tf_ref2, 0.5)
 
             # determine_population_and_settings: string path + pop_size -> warns, path wins
             pop_path_warn = joinpath(BASE_FOLDER, "test/testdata/TestPop.csv")
@@ -476,7 +499,7 @@ import GEMS: increment!, infected!
             # transmission_function + transmission_rate: tf wins, rate ignored
             tf_ref = ConstantTransmissionRate(transmission_rate=0.3)
             sim_tf = Simulation(pop_size=100, transmission_function=tf_ref, transmission_rate=0.9)
-            @test transmission_function(pathogen(sim_tf)) === tf_ref
+            @test transmission_function(first_pathogen(sim_tf)) === tf_ref
 
             # Population object + pop_size: object wins, pop_size ignored
             pop_obj = Population(n=200, rng=Xoshiro())
@@ -504,7 +527,7 @@ import GEMS: increment!, infected!
 
             @test_throws GEMS.ConfigfileError GEMS.determine_start_condition(Dict(), nothing, nothing)
             @test_throws GEMS.ConfigfileError GEMS.determine_stop_criterion(Dict(), nothing)
-            @test_throws GEMS.ConfigfileError GEMS.determine_pathogen(Dict(), nothing, nothing, nothing)
+            @test_throws GEMS.ConfigfileError GEMS.determine_pathogens(Dict(), nothing, nothing, nothing)
 
             # determine_start_date: config has unparseable date value
             @test_throws GEMS.ConfigfileError GEMS.determine_start_date(Dict("Simulation" => Dict("startdate" => "date")), nothing)
@@ -567,6 +590,24 @@ import GEMS: increment!, infected!
                 nothing)
         end
 
+        @testset "Factory Functions" begin
+            # create_transmission_function: CompositeTransmissionRate branch
+            tf = GEMS.create_transmission_function(Dict(
+                "type" => "CompositeTransmissionRate",
+                "base" => Dict("type" => "ConstantTransmissionRate",
+                               "parameters" => Dict("transmission_rate" => 0.3)),
+                "modifiers" => [Dict("type" => "SinusoidalSeasonalModifier",
+                                     "parameters" => Dict("amplitude" => 0.3, "peak_day" => 15))]))
+            @test tf isa CompositeTransmissionRate
+            @test tf.base isa ConstantTransmissionRate
+
+            # create_transmission_modifier: happy path
+            mod = GEMS.create_transmission_modifier(Dict(
+                "type" => "SinusoidalSeasonalModifier",
+                "parameters" => Dict("amplitude" => 0.3, "peak_day" => 15)))
+            @test mod isa SinusoidalSeasonalModifier
+        end
+
         @testset "Throw Paths (ErrorException)" begin
             # create_progression: missing required fields
             @test_throws ErrorException GEMS.create_progression(Dict(), "Symptomatic")
@@ -580,6 +621,11 @@ import GEMS: increment!, infected!
             @test_throws ErrorException GEMS.create_transmission_function(
                 Dict("type" => "ConstantTransmissionRate",
                     "parameters" => Dict("transmission_rate" => 2.0)))
+
+            # create_transmission_modifier: invalid params
+            @test_throws ErrorException GEMS.create_transmission_modifier(Dict(
+                "type" => "SinusoidalSeasonalModifier",
+                "parameters" => Dict("amplitude" => -1.0, "peak_day" => 15)))
 
             # create_start_condition: fraction out of range
             @test_throws ErrorException GEMS.create_start_condition(
@@ -650,6 +696,19 @@ import GEMS: increment!, infected!
             infs -> (i -> ags(household(i, sim))).(infs) |>
             h_ags -> all(a -> a in AGS.(keys(hb_seeds)), h_ags)
 
+        # non-parseable seed value raises ArgumentError
+        @test_throws ArgumentError RegionalSeeds(seeds = Dict(04011000 => "notanumber"))
+
+        # state-level AGS: filter_by_ags uses in_state for state codes
+        sim_hb_state = Simulation(population = "HB",
+            start_condition = RegionalSeeds(seeds = Dict(04000000 => 2)))
+        @test count(infected, population(sim_hb_state)) == 2
+
+        # overlapping regions produce a duplicate-sample warning (state contains county)
+        sim_hb_overlap = Simulation(population = "HB",
+            start_condition = RegionalSeeds(seeds = Dict(04000000 => 1, 04011000 => 1)))
+        @test count(infected, population(sim_hb_overlap)) >= 1
+
         # passing: seed_sample gives reproducible results
         cond = RegionalSeeds(seeds = Dict(04011000 => 3))
         seed_sim = Simulation(population = "HB")
@@ -658,6 +717,17 @@ import GEMS: increment!, infected!
         reset!(seed_sim)
         initialize!(seed_sim, cond, seed_sample = 42)
         @test individuals(seed_sim)[infected.(individuals(seed_sim))] == infs_first
+
+        # MULTI START CONDITION
+        @test_throws ArgumentError MultiStartCondition(StartCondition[])
+
+        mc = MultiStartCondition([PatientZero(), InfectedFraction(fraction=0.05)])
+        @test length(mc.conditions) == 2
+        @test !isempty(@capture_out show(mc))
+
+        sim_mc = Simulation(pop_size=100, start_condition=mc, seed=1)
+        # PatientZero seeds 1 + InfectedFraction(0.05) seeds 5 → at least 5 infected
+        @test count(infected, population(sim_mc)) >= 5
     end
 
     @testset "Parameter Tests" begin
@@ -721,8 +791,14 @@ import GEMS: increment!, infected!
             GEMS.assign_values_to_parameters!(sim, x=[42], arg=["seed"])
             @test sim.seed == 42
             
-            GEMS.assign_values_to_parameters!(sim, x=[0.75], arg=["sim.pathogen.transmission_function.transmission_rate"])
-            @test sim.pathogen.transmission_function.transmission_rate == 0.75
+            GEMS.assign_values_to_parameters!(sim, x=[0.75], arg=["sim.pathogens[1].transmission_function.transmission_rate"])
+            @test first_pathogen(sim).transmission_function.transmission_rate == 0.75
+
+            GEMS.assign_values_to_parameters!(sim, x=[0.6], arg=["sim.pathogens.1.transmission_function.transmission_rate"])
+            @test first_pathogen(sim).transmission_function.transmission_rate == 0.6
+
+            GEMS.assign_values_to_parameters!(sim, x=[0.5], arg=["sim.pathogen.transmission_function.transmission_rate"])
+            @test first_pathogen(sim).transmission_function.transmission_rate == 0.5
         end
         
         using Random # for setting the seed
@@ -741,7 +817,7 @@ import GEMS: increment!, infected!
             initial_x = [10.0]
             
             # dummy target function: just returns the current value of the parameter
-            dummy_target_fn(s) = [s.pathogen.transmission_function.transmission_rate] 
+            dummy_target_fn(s) = [first_pathogen(s).transmission_function.transmission_rate]
             
             # Call calibrate! 
             res = GEMS.calibrate!(
@@ -778,10 +854,32 @@ import GEMS: increment!, infected!
         output_with_strategy = @capture_out info(sim_with_strategy)
         @test occursin("test_strategy", output_with_strategy)
 
-        # pathogen! setter
-        new_pathogen = deepcopy(pathogen(sim))
-        pathogen!(sim, new_pathogen)
-        @test pathogen(sim) === new_pathogen
+        # pathogen accessor (first pathogen in single-pathogen sim)
+        @test first_pathogen(sim) === first(pathogens(sim))
+        @test pathogen(sim) === first_pathogen(sim)
+
+        # pathogen throws on multipathogen sim
+        p2 = Pathogen(id=2, name="P2")
+        sim_mp = Simulation(pathogens=(first_pathogen(sim), p2), infected_fraction=0.0)
+        @test_throws ArgumentError pathogen(sim_mp)
+
+
+        # _make_pathogen_tuple(v::AbstractVector) — called when pathogens is passed as a Vector
+        p_vec = Pathogen(id=1, name="VecPathogen")
+        sim_vec = Simulation(pathogens=[p_vec], infected_fraction=0.0)
+        @test length(GEMS.pathogens(sim_vec)) == 1
+
+        # incidence: rolling infection count per base_size population
+        sim_inc = Simulation(pop_size=1000, stop_criterion=TimesUp(limit=10), seed=1)
+        run!(sim_inc)
+        @test incidence(sim_inc, first_pathogen(sim_inc)) >= 0.0
+        @test incidence(sim_inc, id(first_pathogen(sim_inc))) >= 0.0
+        @test incidence(sim_inc, name(first_pathogen(sim_inc))) >= 0.0
+
+        # get_pathogen throw paths
+        @test_throws ArgumentError get_pathogen(sim, Int8(-1))
+        @test_throws ArgumentError get_pathogen(GEMS.pathogens(sim), Int8(-1))
+        @test_throws ArgumentError get_pathogen(sim, "NonExistentPathogen")
     end
 
     @testset "stepmod Getter" begin
@@ -944,6 +1042,38 @@ import GEMS: increment!, infected!
             @test df.infectious[end] == 0
             @test df.quarantined[end] == 0
         end
+    end
+
+    @testset "Multipathogen run!" begin
+        # infected_fraction only seeds the first pathogen — use MultiStartCondition
+        # to seed both so ~9% of individuals start with both pathogens simultaneously
+        # (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow block
+        # in _process_infections!
+        p1 = Pathogen(id=1, name="PathA")
+        p2 = Pathogen(id=2, name="PathB")
+        mc = MultiStartCondition([
+            InfectedFraction(fraction=0.3, pathogen="PathA"),
+            InfectedFraction(fraction=0.3, pathogen="PathB")
+        ])
+        sim_mp = Simulation(pathogens=(p1, p2), pop_size=500,
+            start_condition=mc, seed=42)
+        run!(sim_mp)
+
+        @test tick(sim_mp) > 0
+        inf_df = infections(sim_mp)
+        @test Int8(1) in inf_df.pathogen_id
+        @test Int8(2) in inf_df.pathogen_id
+    end
+
+    @testset "Closed Setting in Step" begin
+        # _compute_non_locatable! adds all individuals in a closed setting to the
+        # unable-to-locate counter (simulation_methods.jl line 106)
+        sim_cl = Simulation(pop_size=100, stop_criterion=TimesUp(limit=3), seed=1)
+        s_cl = SStrategy("close_schools", sim_cl)
+        add_measure!(s_cl, CloseSetting())
+        add_tick_trigger!(sim_cl, STickTrigger(SchoolClass, s_cl, switch_tick=Int16(1)))
+        run!(sim_cl)
+        @test tick(sim_cl) == 3
     end
 
     @testset "Simulation Buffers" begin

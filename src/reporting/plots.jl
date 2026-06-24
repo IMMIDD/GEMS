@@ -380,11 +380,19 @@ end
 gemsplot(rd::ResultData; plotargs...) = gemsplot([rd]; plotargs...)
 
 function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::String;
-    col_key::Union{Nothing, String} = nothing, plotargs...)
+    col_key::Union{Nothing, String} = nothing,
+    pathogen_id::Union{Nothing, Int8} = nothing,
+    color = nothing,
+    plotargs...)
     function _extract(data_dict)
         v = get(data_dict, df_key, nothing)
         isnothing(v) && return DataFrame()
-        isa(v, Dict) && !isnothing(col_key) ? get(v, col_key, DataFrame()) : v
+        # drill into per-pathogen level when pathogen_id is given
+        if !isnothing(pathogen_id) && isa(v, AbstractDict) && !isempty(v) && isa(first(keys(v)), Integer)
+            v = get(v, pathogen_id, nothing)
+            isnothing(v) && return DataFrame()
+        end
+        isa(v, AbstractDict) && !isnothing(col_key) ? get(v, col_key, DataFrame()) : v
     end
     pl = per_group(bd)
     if length(pl) > 1
@@ -392,17 +400,61 @@ function _plot_labelled_ribbon!(p, bd::BatchData, df_key::String, series_label::
         for lab in sort(collect(keys(pl)))
             df = _extract(dataframes(pl[lab]))
             isempty(df) && continue
+            c = isnothing(color) ? colors[lab] : color
             plot!(p, df[!, "tick"], df[!, "mean"],
                 ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
-                fillalpha = 0.3, linewidth = 2, label = lab, color = colors[lab])
+                fillalpha = 0.3, linewidth = 2, label = lab, color = c)
         end
     else
         df = _extract(dataframes(bd))
         isempty(df) && return
+        c = isnothing(color) ? :auto : color
         plot!(p, df[!, "tick"], df[!, "mean"],
             ribbon = (df[!, "mean"] .- df[!, "lower_95"], df[!, "upper_95"] .- df[!, "mean"]),
-            fillalpha = 0.3, linewidth = 2, label = series_label)
+            fillalpha = 0.3, linewidth = 2, label = series_label, color = c)
     end
+end
+
+function _resolve_pathogen_id(rd::ResultData, pathogen)
+    isnothing(pathogen) && return nothing
+    isa(pathogen, AbstractString) &&
+        return id(first(filter(p -> name(p) == pathogen, pathogens(rd))))
+    return Int8(pathogen)
+end
+
+# Filters df by pathogen (non-mutating), returns (filtered_data, sorted_pids, pnames, colors).
+# Fixes the filter! mutation bug: tick_cases(rd) etc. return references to stored DataFrames.
+function _pathogen_setup(df::DataFrame, rd::ResultData, pathogen)
+    pid_filter = _resolve_pathogen_id(rd, pathogen)
+    data = isnothing(pid_filter) ? df : filter(row -> row.pathogen_id == pid_filter, df)
+    pnames = pathogen_names(rd)
+    pids = sort(unique(data.pathogen_id))
+    colors = Dict(zip(pids, gemscolors(length(pids))))
+    return data, pids, pnames, colors
+end
+
+# Returns a NamedTuple with pathogen title injected and :plot_title removed,
+# for use as kwargs when building a per-pathogen subplot in a multi-pathogen layout.
+function _pathogen_subargs(pid, pnames, plotargs)
+    return (; title = get(pnames, pid, "Pathogen $pid"), _remove_kw(:plot_title, plotargs)...)
+end
+
+# Combines subplots into a multi-panel layout (one panel per pathogen).
+# For a single subplot, returns it directly (plotargs already applied inside).
+function _multi_pathogen_plot(subplots::Vector, plotargs; width_per_plot::Int = 600, height::Int = 400)
+    length(subplots) == 1 && return first(subplots)
+    return plot(subplots..., layout = (1, length(subplots)),
+        size = (width_per_plot * length(subplots), height); plotargs...)
+end
+
+# Resolves the list of pathogen IDs to plot in a batch generate function.
+# Returns all pathogen IDs from the data dict when pathogen=nothing, or a single-element
+# vector for a filtered pathogen.
+function _batch_pids(data, pnames::Dict, pathogen)
+    isnothing(pathogen) && return sort(collect(keys(data)))
+    pid8 = isa(pathogen, AbstractString) ?
+        first(k for (k, v) in pnames if v == pathogen) : Int8(pathogen)
+    return [pid8]
 end
 gemsplot(::Nothing; plotargs...) = error("runs(bd) returned nothing — re-run with keep_rundata=true to store individual ResultData objects.")
 
@@ -442,12 +494,12 @@ function gemsplot(bd::BatchData; type = :nothing, plotargs...)
         return p
     end
 
-    !is_subtype(type, SimulationPlot) && throw("There's no plot type that matches $type")
+    !is_subtype(type, SimulationPlot) && throw(ErrorException("There's no plot type that matches $type"))
 
     plt = try
         get_subtype(type, SimulationPlot)()
     catch
-        throw("$type plots cannot be created via gemsplot — use generate($type(args...), bd) instead.")
+        throw(ErrorException("$type plots cannot be created via gemsplot — use generate($type(args...), bd) instead."))
     end
 
     hasmethod(generate, (typeof(plt), BatchData)) || error(

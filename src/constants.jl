@@ -1,7 +1,5 @@
 # this file defines constant global variables used throughout the GEMS package
 
-# !!! for the LookUp Table of Terminal states, see structs/parameters/age_strat.jl !!! #
-
 ##################
 # DEFAULT VALUES #
 ##################
@@ -97,6 +95,21 @@ const SYMPTOM_CATEGORIES = Dict(
 const QUARANTINE_STATE_NO_QUARANTINE = Int8(0)
 const QUARANTINE_STATE_HOUSEHOLD_QUARANTINE = Int8(1)
 const QUARANTINE_STATE_HOSPITAL = Int8(2)
+
+# Maximum number of distinct pathogens a simulation can track. Bounded by the per-individual
+# UInt32 pathogen bitmasks (`active_pathogens_mask`/`detected_mask`, bit `id - 1`) and the
+# `_test_key` packing. Raising this requires widening those mask fields.
+const MAX_PATHOGENS = 32
+
+# Maximum number of cached infections
+const INFECTIONS_CACHE_SIZE = 1
+# Maximum number cached immunizations
+const IMMUNITY_CACHE_SIZE = 1
+
+# Source flags stored in ImmunityRow / ImmunityState.
+const IMMUNITY_SOURCE_NATURAL = Int8(1)
+const IMMUNITY_SOURCE_VACCINE = Int8(2)
+
 
 
 ##########################

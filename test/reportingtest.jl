@@ -1,4 +1,4 @@
-import GEMS: _WelfordState as WelfordState, _welford_update! as welford_update!
+import GEMS: _WelfordState, _welford_update!
 import GEMS: escape_markdown, savepath, markdown
 import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region_range, prepare_map_df!
 
@@ -46,9 +46,9 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
         @test markdown(stop_crits) |> typeof == String
 
         # Pathogens & Vaccines
-        @test sim |> pathogen |> markdown |> typeof == String
+        @test sim |> first_pathogen |> markdown |> typeof == String
 
-        v = Vaccine(id=1, name="Antitest")
+        v = Vaccine(id=1, name="Antitest", target_pathogen_id=Int8(1))
         md_vac = markdown(v)
         @test md_vac |> typeof == String
         @test occursin("Antitest", md_vac)
@@ -494,7 +494,7 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
 
             #Isolation and Test Scenario
             scenario = Simulation(label="Scenario")
-            PCR_Test = TestType("PCR Test", pathogen(scenario), scenario)
+            PCR_Test = TestType("PCR Test", id(first_pathogen(scenario)), scenario)
             self_isolation = IStrategy("Self Isolation", scenario)
             add_measure!(self_isolation, SelfIsolation(14))
             testing = IStrategy("Testing", scenario)
@@ -529,7 +529,7 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
         end
         @testset "Seroprevalence-Testing-Plot" begin
             seroprevalence_testing = Simulation()
-            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", pathogen(seroprevalence_testing), seroprevalence_testing)
+            seroprevalence_test = SeroprevalenceTestType("Seroprevalence Test", id(first_pathogen(seroprevalence_testing)), seroprevalence_testing)
             testing = IStrategy("Testing", seroprevalence_testing)
             add_measure!(testing, GEMS.Test("Test", seroprevalence_test))
             trigger = ITickTrigger(testing, switch_tick=Int16(1), interval=Int16(120))
@@ -580,9 +580,9 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
         end
 
         @testset "TotalTests with BatchData" begin
-            # helper: WelfordState seeded with a few values
+            # helper: _WelfordState seeded with a few values
             function make_tick_accum(ticks)
-                Dict(t => (s = WelfordState(); welford_update!(s, Float64(t)); s) for t in ticks)
+                Dict(t => (s = _WelfordState(); _welford_update!(s, Float64(t)); s) for t in ticks)
             end
 
             # path 1: isempty(t) → emptyplot (bd has no test data)
@@ -605,7 +605,7 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
         @testset "TotalTests with test data (Vector{ResultData})" begin
             function make_rd_with_tests()
                 s = Simulation()
-                test = TestType("PCR", pathogen(s), s)
+                test = TestType("PCR", id(first_pathogen(s)), s)
                 strat = IStrategy("Testing", s)
                 add_measure!(strat, GEMS.Test("Test", test))
                 add_symptom_trigger!(s, SymptomTrigger(strat))

@@ -1,0 +1,2230 @@
+###
+### SIMULATION (TYPE DEFINITION & BASIC FUNCTIONALITY)
+###
+export StartCondition, StopCriterion
+export InfectedFraction, PatientZero, PatientZeros
+export TimesUp
+export Simulation
+
+export tick, label, start_condition, stop_criterion, settingscontainer, settings, population, stepmod
+export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
+export region_info
+export pathogens, get_pathogen, first_pathogen, pathogen
+export infection_registry, immunity_registry, test_registry
+export configfile, populationfile
+export evaluate
+export initialize!, reinitialize!
+export reset!
+export tickunit
+export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export statelogger, states
+export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
+export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
+export event_queue
+export add_strategy!, strategies, add_testtype!, testtypes
+export rng, rngs, seed
+export present_buffers, contact_buffers
+
+export info
+
+"supertype for all start conditions"
+abstract type StartCondition end
+
+"supertype for all stop criteria"
+abstract type StopCriterion end
+
+###
+### SIMULATION STRUCT
+###
+"""
+    Simulation
+
+A struct for the management of a single run, holding all necessary informations.
+
+# Initialization
+
+    Simulation(; kwargs...)
+    Simulation(params::Dict)
+
+You can initialize a simulation without any parameters, which will then use the default configuration file.
+Providing any additional keyword arguments will override the respective configuration file parameter.
+If you provide a custom config file, the parameters in the config file will be used as defaults and only the provided keyword arguments will override them.
+
+Here's a list of all available parameters:
+
+| Parameter                 | Type                                   | Description                                                                                                                                                                       |
+| :------------------------ | :------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configfile`              | `String`                               | Path to the configuration file. If not provided, the default configuration will be used.                                                                                          |
+| `tickunit`                | `Char`                                 | Time unit of one simulation step (tick). Must be one of 'h' (hours), 'd' (days), or 'w' (weeks).                                                                                  |
+| `start_date`              | `Date`                                 | Start date of the simulation.                                                                                                                                                     |
+| `end_date`                | `Date`                                 | End date of the simulation.                                                                                                                                                       |
+| `label`                   | `String`                               | Label used for plot visualizations and aggregating simulations into batches.                                                                                                      |
+| `population`              | `String`, `Population`, or `DataFrame` | Path to a population file, a population identifier (e.g., 'DE'), a `Population` object, or a `DataFrame`.                                                                         |
+| `pop_size`                | `Int`                                  | Size of the population to be created. Will be ignored if a `population` is provided.                                                                                              |
+| `avg_household_size`      | `Float`                                | Average household size for the population to be created. Will be ignored if a `population` is provided.                                                                           |
+| `avg_office_size`         | `Float`                                | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
+| `avg_school_size`         | `Float`                                | Average school size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
+| `global_setting`          | `Bool`                                 | Flag indicating whether to use the global setting.                                                                                                                                |
+| `settingsfile`            | `String`                               | Path to a settings file.                                                                                                                                                          |
+| `household_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
+| `office_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
+| `department_contacts`     | `ContactSamplingMethod` or `Float`     | Method for sampling department contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                   |
+| `workplace_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling workplace contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
+| `workplace_site_contacts` | `ContactSamplingMethod` or `Float`     | Method for sampling workplace site contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
+| `school_class_contacts`   | `ContactSamplingMethod` or `Float`     | Method for sampling school class contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
+| `school_year_contacts`    | `ContactSamplingMethod` or `Float`     | Method for sampling school year contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                  |
+| `school_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling school contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
+| `school_complex_contacts` | `ContactSamplingMethod` or `Float`     | Method for sampling school complex contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
+| `municipality_contacts`   | `ContactSamplingMethod` or `Float`     | Method for sampling municipality contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
+| `global_setting_contacts` | `ContactSamplingMethod` or `Float`     | Method for sampling global setting contacts or a fixed value that will be regarded as the expected value of a Poisson distribution. Requires `global_setting` to be true.         |
+| `start_condition`         | `StartCondition`                       | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
+| `infected_fraction`       | `Float`                                | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
+| `stop_criterion`          | `StopCriterion`                        | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
+| `pathogens`               | `Tuple`                                | A Tuple of `Pathogen`s to be simulated.                                                                                                                                           |
+| `transmission_function`   | `TransmissionFunction`                 | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
+| `transmission_rate`       | `Float`                                | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
+| `stepmod`                 | `Function`                             | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |                                                                                          
+
+# Examples
+
+```julia
+# Initialize a simulation with default configuration
+sim = Simulation()
+
+# Initialize a simulation with a custom configuration file
+sim = Simulation(configfile="path/to/configfile.toml")
+
+# Initialize a simulation with custom parameters
+sim = Simulation(
+    tickunit='d',
+    label="My Simulation",
+    avg_household_size=5,
+)
+
+# Initialize a simulation with a predefined population model
+sim = Simulation(population="SH") # Schleswig-Holstein, Germany
+
+# Initialize a simulation with a custom population file
+sim = Simulation(population="path/to/populationfile.csv")
+
+# Initialize a simulation with a custom start condition
+sim = Simulation(start_condition=PatientZero()) # starts with a single infected individual
+
+# Initialize a simulation with a custom transmission rate
+sim = Simulation(transmission_rate=0.1) # sets a constant per-contact transmission rate (chance) of 0.1
+
+# Initialize a simulation with a parameter dictionary
+params = Dict(
+    :tickunit => 'd',
+    :label => "My Simulation",
+    :avg_household_size => 5,
+)
+sim = Simulation(params)
+```
+
+# Internal Simulation Struct Fields
+
+- Data Sources
+    - `configfile::String`: Path to config file
+- General
+    - `tick::Int16`: Current tick/timestep
+    - `tickunit::Char`: Time unit of one simulation step (tick)
+    - `startdate::Date`: Start date of the simulation
+    - `enddate::Date`: End date of the simulation
+    - `start_condition::StartCondition`: Starting condition that sets the initial situation
+    - `stop_criterion::StopCriterion`: Criterion that terminates a simulation run
+    - `label::String`: Label for plot visualizations
+- Model
+    - `population::Population`: Container to hold all present individuals
+    - `settings::SettingsContainer`: All settings present in the simulation
+    - `pathogens::Tuple`: A Tuple of Pathoges of which infections are simulated
+- Logger
+    - `infectionlogger::InfectionLogger`: A logger tracking all infections    
+    - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
+    - `testlogger::TestLogger`: A logger tracking all individual tests
+    - `pooltestlogger::PoolTestLogger`: A logger tracking all pool tests
+    - `seroprevalencelogger::SeroprevalenceLogger`: A logger tracking all seroprevalence tests
+    - `quarantinelogger::QuarantineLogger`: A tracking cumulative quarantines per tick
+    - `customlogger::CustomLogger`: A logger running custom methods on the `Simulation` object in each tick
+- Interventions
+    - `symptom_triggers::Vector{ITrigger}`: List of all `SymptomTriggers`
+    - `tick_triggers::Vector{TickTrigger}`: List of all `TickTriggers`
+    - `hospitalization_triggers::Vector{ITrigger}`: List of all `HospitalizationTriggers`
+    - `event_queue::EventQueue`: Event Queue to apply intervention measures
+    - `strategies::Vector{Strategy}`: List of all registered intervention strategies
+    - `testtypes::Vector{AbstractTestType}`: List of all `TestTypes` (e.g. Antigen- or PCR-Test)
+- Runtime Modifiers
+    - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
+- RNG
+    - `seed::Int64`: Seed used to initialize the main RNG
+    - `rngs::Vector{Xoshiro}`: RNG instances for each thread
+
+"""
+mutable struct Simulation{P<:Tuple}
+
+    # data TODO check if config file needs to be adapted actually
+    configfile::String
+
+    # config
+    tick::Int16
+    tickunit::Char
+    startdate::Date
+    enddate::Date
+    start_condition::StartCondition
+    stop_criterion::StopCriterion
+    label::String
+
+    # model
+    population::Population
+    settings::SettingsContainer
+    pathogens::P
+    infection_registries::Vector{InfectionRegistry}
+    immunity_registries::Vector{ImmunityRegistry}
+    test_registries::Vector{TestRegistry}
+
+    # logger
+    infectionlogger::InfectionLogger
+    deathlogger::DeathLogger
+    testlogger::TestLogger
+    pooltestlogger::PoolTestLogger
+    seroprevalencelogger::SeroprevalenceLogger
+    quarantinelogger::QuarantineLogger
+    statelogger::StateLogger
+    customlogger::CustomLogger
+
+    # NPI trigger
+    symptom_triggers::Vector{ITrigger}
+    tick_triggers::Vector{TickTrigger}
+    hospitalization_triggers::Vector{ITrigger}
+    # concrete EventQueue is defined after Simulation; event_queue(sim) narrows this back
+    event_queue::AbstractEventQueue
+    strategies::Vector{Strategy}
+    testtypes::Vector{AbstractTestType}
+
+    # StepMod
+    stepmod::Function
+
+    # RNG
+    seed::Int64
+    rngs::Vector{Xoshiro} # rng for each thread
+
+    # THREAD-LOCAL BUFFERS
+    present_buffers::Vector{Vector{Individual}}
+    contact_buffers::Vector{Vector{Individual}}
+    infection_buffers::Matrix{Vector{_PendingInfection}}
+    removal_buffers::Matrix{Vector{_SlotRemoval}}
+
+    # inner default constructor
+    function Simulation(
+        configfile::String,
+        tickunit::Char,
+        startdate::Date,
+        enddate::Date,
+        start_condition::StartCondition,
+        stop_criterion::StopCriterion,
+        population::Population,
+        settings::SettingsContainer,
+        pathogens::P,
+        stepmod::Function,
+        seed::Int64,
+        rngs::Vector{<:Xoshiro}
+    ) where {P<:Tuple} 
+    num_shards = Threads.maxthreadid()
+    matrix_size_hint = ceil(Int, (length(population.individuals) * 0.1) / (num_shards^2))
+        sim = new{P}(
+            # config
+            configfile,
+            Int16(0), # tick
+            tickunit,
+            startdate,
+            enddate,
+            start_condition,
+            stop_criterion,
+            "Simulation " * string(GEMS.SIMS_INSTANTIATED + 1), # label
+
+            # model
+            population,
+            settings,
+            pathogens,
+            [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
+            [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
+            [TestRegistry() for _ in 1:num_shards],
+
+            # logger
+            InfectionLogger(),
+            DeathLogger(),
+            TestLogger(),
+            PoolTestLogger(),
+            SeroprevalenceLogger(),
+            QuarantineLogger(),
+            StateLogger(),
+            CustomLogger(),
+
+            # NPI trigger
+            [],
+            [],
+            [],
+            EventQueue(),
+            [],
+            [],
+
+            # StepMod
+            stepmod,
+
+            # RNG
+            seed,
+            rngs,
+            
+            # INITIALIZE BUFFERS
+            [Vector{Individual}() for _ in 1:num_shards], # present_buffers
+            [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
+            [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
+            [sizehint!(Vector{_SlotRemoval}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
+        )
+
+        # increase simulation counter
+        global GEMS.SIMS_INSTANTIATED += 1
+        return sim
+    end
+
+    # outer constructor with keyword arguments
+    # wrapper to _BUILD_Simulation
+    function Simulation(; params...)
+        # backward-compat: pathogen (singular) → pathogens (plural)
+        if haskey(params, :pathogen) && !haskey(params, :pathogens)
+            params = merge(NamedTuple(params), (pathogens = params[:pathogen],))
+            params = Base.structdiff(params, NamedTuple{(:pathogen,)}((nothing,)))
+        end
+
+        # check if all parameters are known to _BUILD_Simulation
+        validkeys = methods(GEMS._BUILD_Simulation) |> first |> Base.kwarg_decl
+        errs = setdiff(keys(params), validkeys)
+        length(errs) > 0 && throw(ArgumentError("Unknown keyword arguments provided to Simulation: $(join(errs, ", ")).\n\nValid arguments are: $(join(validkeys, ", "))"))
+
+        # determine config file
+        params = (; params..., configfile = haskey(params, :configfile) ? params[:configfile] : "")
+
+        # determine other parameters
+        passed_params = setdiff(keys(params), [:configfile])
+
+        cnfg = isempty(params[:configfile]) ? "with default configuration" : "from $(params[:configfile])"
+        prms = length(passed_params) > 0 ? " and additional parameter(s): $(join(passed_params, ", "))" : ""
+
+        _printinfo("Initializing Simulation $cnfg$prms")
+        return _BUILD_Simulation(; params...)
+    end
+
+    # constructor from dictionary
+    Simulation(params::Dict) = Simulation(;params...)
+end
+
+
+function _BUILD_Simulation(;
+        configfile::String = "",
+
+        # common parameters
+        tickunit = nothing,
+        start_date = nothing,
+        end_date = nothing,
+        label = nothing,
+
+        # population
+        population = nothing,
+        pop_size = nothing,
+        avg_household_size = nothing,
+        avg_office_size = nothing,
+        avg_school_size = nothing,
+
+        # settings
+        global_setting = nothing,
+        settingsfile = nothing,
+
+        # contacts
+        household_contacts = nothing,
+        office_contacts = nothing,
+        department_contacts = nothing,
+        workplace_contacts = nothing,
+        workplace_site_contacts = nothing,
+        school_class_contacts = nothing,
+        school_year_contacts = nothing,
+        school_contacts = nothing,
+        school_complex_contacts = nothing,
+        municipality_contacts = nothing,
+        global_setting_contacts = nothing,
+
+        
+        # start condition
+        start_condition = nothing,
+        infected_fraction = nothing,
+
+        # stop criterion
+        stop_criterion = nothing,
+
+        # pathogen
+        pathogens = nothing,
+        transmission_function = nothing,
+        transmission_rate = nothing,
+
+        # stepmod
+        stepmod::Function = x -> x,
+
+        # seed
+        seed = nothing,
+
+        # individual extensions
+        ind_extension = nothing
+    )
+
+        # parse the config file (or default to default.toml)
+        configpath = configfile_path(configfile)
+        config = load_configfile(configpath)
+
+        # SEED
+        rng_seed = determine_seed(config, seed)
+        master_rng = Xoshiro(rng_seed)
+        rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+
+        # GLOBAL SETTING FLAG
+        gs = determine_global_setting(config, global_setting)
+
+        # POPULATION
+        pop, settings = determine_population_and_settings(
+            config,
+            population,
+            gs,
+            pop_size,
+            avg_household_size,
+            avg_office_size,
+            avg_school_size,
+            settingsfile,
+            rngs[1],
+            ind_extension
+        )
+
+        # everything after this is just generating, not loading from disk
+        _printinfo("\u2514 Creating simulation object")
+
+        # START DATE
+        sd = determine_start_date(config, start_date)
+
+        # END DATE
+        ed = determine_end_date(config, end_date)
+
+        ed < sd && throw(ArgumentError("End date must be after start date."))
+
+        # TICK UNIT
+        tu = determine_tick_unit(config, tickunit)
+
+        # SETTINGS & CONTACTS
+        determine_setting_config!(settings, config,
+            household_contacts = household_contacts,
+            office_contacts = office_contacts,
+            department_contacts = department_contacts,
+            workplace_contacts = workplace_contacts,
+            workplace_site_contacts = workplace_site_contacts,
+            school_class_contacts = school_class_contacts,
+            school_year_contacts = school_year_contacts,
+            school_contacts = school_contacts,
+            school_complex_contacts = school_complex_contacts,
+            municipality_contacts = municipality_contacts,
+            global_setting_contacts = global_setting_contacts)
+
+        # STOP CRITERION
+        stop_criterion = determine_stop_criterion(
+            config,
+            stop_criterion)
+
+        # PATHOGENS
+        pathogen_tuple = determine_pathogens(
+            config,
+            pathogens,
+            transmission_function,
+            transmission_rate
+        )
+
+        # START CONDITION
+        start_condition = determine_start_condition(
+            config,
+            start_condition,
+            infected_fraction,
+            pathogen_tuple)
+
+
+
+        # CREATES SIMULATION OBJECT
+        sim = Simulation(
+            configpath,
+            tu,
+            sd,
+            ed,
+            start_condition,
+            stop_criterion,
+            pop,
+            settings,
+            pathogen_tuple,
+            stepmod,
+            rng_seed,
+            rngs
+        )
+
+        precompute_ags!(sim)
+        
+        # update label
+        sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
+
+        # initialize simulation
+        initialize!(sim)
+
+        return sim
+    end
+
+
+### DETERMINATION FUNCTIONS
+
+"""
+    determine_start_date(configfile_params::Dict, start_date)
+
+Determines the start date for the simulation based on the provided parameters.
+If a `start_date` is provided, it will be used.
+If not, it will look for a `startdate` in the config file.
+If neither is found, it will default to today.
+"""
+function determine_start_date(configfile_params::Dict, start_date)
+    # if start_date is provided, use it
+    if !isnothing(start_date)
+        !isa(start_date, Date) && !isa(start_date, String) && throw(ArgumentError("Provided start_date must be an object of type Date!"))
+        return Date(start_date)
+    end
+
+    # if no start date is provided, look it up in config file
+    if !_haspath(configfile_params, ["Simulation", "startdate"])
+        @warn "Start date not found in config file and not provided as argument; defualting to today."
+        return today()
+    end
+
+    sd = configfile_params["Simulation"]["startdate"]
+    return try
+        Date(sd)
+    catch e
+        throw(ConfigfileError("'[Simulation] => startdate' could not be read from config file.", e))
+    end
+end
+
+"""
+    determine_end_date(configfile_params::Dict, end_date)
+
+Determines the end date for the simulation based on the provided parameters.
+If a `end_date` is provided, it will be used.
+If not, it will look for an `enddate` in the config file.
+If neither is found, it will default to today + 1 year.
+"""
+function determine_end_date(configfile_params::Dict, end_date)
+    # if end_date is provided, use it
+    if !isnothing(end_date)
+        !isa(end_date, Date) && !isa(end_date, String) && throw(ArgumentError("Provided end_date must be an object of type Date!"))
+        return Date(end_date)
+    end
+
+    # if no end date is provided, look it up in config file
+    if !_haspath(configfile_params, ["Simulation", "enddate"])
+        @warn "End date not found in config file and not provided as argument; defualting to today + 1 year."
+        return today() + Year(1)
+    end
+
+    ed = configfile_params["Simulation"]["enddate"]
+    return try
+        Date(ed)
+    catch e
+        throw(ConfigfileError("'[Simulation] => enddate' could not be read from config file.", e))
+    end
+end
+
+"""
+    determine_tick_unit(configfile_params::Dict, tickunit)
+
+Determines the tick unit for the simulation based on the provided parameters.
+If a `tickunit` is provided, it will be used.
+If not, it will look for a `tickunit` in the config file.
+If neither is found, it will default to 'd' (days).
+"""
+function determine_tick_unit(configfile_params::Dict, tickunit)
+    # if tickunit is provided, use it
+    if !isnothing(tickunit)
+        tu = try
+            only(tickunit)
+        catch
+            throw(ArgumentError("Provided tickunit must be a single character!"))
+        end
+        !(tu in ['h', 'd', 'w']) && throw(ArgumentError("Provided tickunit must be one of: 'h', 'd', 'w'"))
+        #!isa(only(tickunit), Char) && throw(ArgumentError("Provided tickunit must be a single character!"))
+        return only(tickunit)
+    end
+
+    # if no tick unit is provided, look it up in config file
+    if !_haspath(configfile_params, ["Simulation", "tickunit"])
+        @warn "Tick unit not found in config file and not provided as argument; defualting to 'd'."
+        return 'd'
+    end
+
+    tu = configfile_params["Simulation"]["tickunit"]
+    !isa(only(tu), Char) && throw(ConfigfileError("'[Simulation] => tickunit' must be a single character!"))
+    return only(tu)
+end
+
+
+"""
+    determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
+
+Determines the start condition for the simulation based on the provided parameters.
+If a `start_condition` is provided, it will be used.
+If not, it will check for an `infected_fraction`.
+If `infected_fraction` is provided and `pathogens_tuple` contains more than one pathogen,
+a `MultiStartCondition` is returned with one `InfectedFraction` per pathogen (each seeded
+at `infected_fraction`). For a single pathogen, a plain `InfectedFraction` is returned.
+If neither is provided, it will return the default start condition from the config file.
+"""
+function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
+    # return configfile start condition if nothing else provided
+    if isnothing(start_condition) && isnothing(infected_fraction)
+        !haskey(configfile_params, "Simulation") && throw(ConfigfileError("No start condition found in config file!"))
+        sim_params = configfile_params["Simulation"]
+
+        # array-of-tables form [[Simulation.StartConditions]]
+        if haskey(sim_params, "StartConditions")
+            conditions = try
+                [create_start_condition(sc) for sc in sim_params["StartConditions"]]
+            catch e
+                throw(ConfigfileError("'[[Simulation.StartConditions]]' could not be read from config file.", e))
+            end
+            return length(conditions) == 1 ? conditions[1] : MultiStartCondition(conditions)
+        end
+
+        # single [Simulation.StartCondition]
+        !_haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' or '[[Simulation.StartConditions]]' section must be specified in the config file."))
+        return try
+            create_start_condition(configfile_params["Simulation"]["StartCondition"])
+        catch e
+            throw(ConfigfileError("'[Simulation.StartCondition]' could not be read from config file.", e))
+        end
+    end
+
+    # if start_condition is provided, use it
+    if !isnothing(start_condition)
+        !isa(start_condition, StartCondition) && throw(ArgumentError("Provided start_condition must be an object of type StartCondition! Try any of $(join(subtypes(StartCondition), ", "))"))
+        !isnothing(infected_fraction) && @warn "A start_condition was provided, therefore infected_fraction will be ignored."
+        return start_condition
+    end
+
+    # if infected_fraction is provided, use it
+    if length(pathogens_tuple) > 1
+        conditions = [InfectedFraction(fraction = infected_fraction, pathogen = p.name)
+                      for p in pathogens_tuple]
+        return MultiStartCondition(conditions)
+    end
+    return InfectedFraction(
+        fraction = infected_fraction,
+        pathogen = ""
+    )
+end
+
+"""
+    determine_stop_criterion(configfile_params::Dict, stop_criterion)
+
+Determines the stop criterion for the simulation based on the provided parameters.
+If a `stop_criterion` is provided, it will be used.
+Otherwise, it will return the default stop criterion from the config file.
+"""
+function determine_stop_criterion(configfile_params::Dict, stop_criterion)
+    # return configfile stop criterion if nothing else provided
+    if isnothing(stop_criterion)
+        !_haspath(configfile_params, ["Simulation", "StopCriterion"]) && throw(ConfigfileError("No stop criterion found in config file! Without a provided 'stop_criterion' argument, a '[Simulation.StopCriterion]' section must be specified in the config file."))
+
+        return try
+            create_stop_criterion(configfile_params["Simulation"]["StopCriterion"])
+        catch e
+            throw(ConfigfileError("'[Simulation.StopCriterion]' could not be created from config file.", e))
+        end
+    end
+
+    # if stop_criterion is provided, use it
+    !isa(stop_criterion, StopCriterion) && throw(ArgumentError("Provided stop_criterion must be an object of type StopCriterion! Try any of $(join(subtypes(StopCriterion), ", "))"))
+    return stop_criterion
+end
+
+"""
+    _make_pathogen_tuple(v::AbstractVector)
+ 
+Converts a homogeneous vector of pathogens (all sharing the same concrete type)
+into a typed Tuple, preserving the concrete element type so that `Simulation{P}`
+gets a fully concrete `P`.
+ 
+All elements must share the same concrete `Pathogen{TF,IP,IM,PA}` type. For
+heterogeneous pathogen types, the user must supply a Tuple directly.
+"""
+function _make_pathogen_tuple(v::AbstractVector) 
+    isempty(v) && throw(ArgumentError("At least one pathogen must be provided."))
+    T = typeof(v[1])
+    all(x -> typeof(x) === T, v) || throw(ArgumentError(
+        "When pathogens are supplied as a Vector, all must share the same concrete " *
+        "Pathogen type (same TF, IP, IM, PA type parameters). " *
+        "For heterogeneous pathogen types pass a Tuple: pathogens = (p1, p2, ...)."
+    ))
+    return _as_pathogen_tuple(convert(Vector{T}, v))
+end
+ 
+# Function barrier: T is now a compile-time parameter so the returned Tuple is typed.
+function _as_pathogen_tuple(v::Vector{T}) where {T<:Pathogen}
+    return _build_typed_tuple(v, Val(length(v)))
+end
+
+@generated function _build_typed_tuple(v::Vector{T}, ::Val{N}) where {T<:Pathogen, N}
+    exprs = [:(v[$i]) for i in 1:N]
+    return :( ($(exprs...),) )
+end
+
+
+"""
+    determine_pathogen(configfile_params::Dict, pathogen, transmission_function, transmission_rate)
+
+Determines the pathogen for the simulation based on the provided parameters.
+If a `pathogen` is provided, it will be used.
+If not, it will look for a `Pathogens` section in the config file to create a pathogen.
+If a `transmission_function` is provided, it will be set for the pathogen.
+If a `transmission_rate` is provided, it will be set as a `ConstantTransmissionRate` for the pathogen.
+The `transmission_rate` will be ignored if a `transmission_function` is provided.
+"""
+function determine_pathogens(configfile_params::Dict, pathogens, transmission_function, transmission_rate)
+
+    raw = if !isnothing(pathogens)
+        if isa(pathogens, Pathogen)
+            (pathogens,) 
+        elseif isa(pathogens, Tuple) 
+            pathogens
+        elseif isa(pathogens, AbstractVector)
+            _make_pathogen_tuple(pathogens) 
+        else
+            throw(ArgumentError("Provided pathogens must be a Pathogen, Tuple, or Vector{<:Pathogen}!"))
+        end
+    else
+        !_haspath(configfile_params, ["Pathogens"]) && throw(ConfigfileError("No pathogens found in config file!"))
+        create_pathogens(configfile_params["Pathogens"])
+    end
+
+    if !isnothing(transmission_function)
+        !isa(transmission_function, TransmissionFunction) && throw(ArgumentError("transmission_function must be a TransmissionFunction!"))
+        !isnothing(transmission_rate) && @warn "A transmission_function was provided, therefore transmission_rate will be ignored."
+        raw = map(p -> _rebuild_pathogen(p; transmission_function = transmission_function), raw)
+    elseif !isnothing(transmission_rate)
+        raw = map(p -> _rebuild_pathogen(p; transmission_function = ConstantTransmissionRate(transmission_rate = transmission_rate)), raw)
+    else
+        !isnothing(transmission_rate) && @warn "Pathogens were provided, therefore transmission_rate will be ignored."
+    end
+
+    return _finalize_pathogen_ids!(raw)
+end
+
+"""
+    _finalize_pathogen_ids!(raw::Tuple)
+
+Assigns or validates pathogen ids. `id` is a plain `Int8` field (not a type parameter), so
+mutating it in place leaves each pathogen's type and the tuple type unchanged.
+
+- all ids unset (`DEFAULT_PATHOGEN_ID`): auto-assign `1..N` (errors if `N > MAX_PATHOGENS`)
+- all ids set: validate each is in `[1, MAX_PATHOGENS]` and unique
+- mixed: error (ambiguous)
+
+The id ceiling (`MAX_PATHOGENS`) comes from the `UInt32` pathogen masks (`1 << (id - 1)`) and `_test_key`.
+"""
+function _finalize_pathogen_ids!(raw::Tuple)
+    n = length(raw)
+    ids = map(id, raw)
+    n_unset = count(==(DEFAULT_PATHOGEN_ID), ids)
+    if n_unset == n
+        n > MAX_PATHOGENS && throw(ArgumentError("At most $MAX_PATHOGENS pathogens are supported (got $n)."))
+        for (i, p) in enumerate(raw)
+            p.id = Int8(i)
+        end
+    elseif n_unset == 0
+        any(x -> x < 1 || x > MAX_PATHOGENS, ids) && throw(ArgumentError("Pathogen ids must be in [1, $MAX_PATHOGENS] (got $(collect(ids)))."))
+        length(unique(ids)) == n || throw(ArgumentError("Pathogen ids must be unique (got $(collect(ids)))."))
+    else
+        throw(ArgumentError("Set ids on all pathogens or none; got a partial assignment: $(collect(ids))."))
+    end
+    return raw
+end
+
+"""
+    determine_global_setting(configfile_params::Dict, global_setting)
+
+Determines the global setting flag for the simulation based on the provided parameters.
+If a `global_setting` is provided, it will be used.
+If not, it will look for a `GlobalSetting` in the config file.
+If neither is found, it will default to false.
+"""
+function determine_global_setting(configfile_params::Dict, global_setting)
+    # if global_setting is provided, use it
+    if !isnothing(global_setting)
+        !isa(global_setting, Bool) && throw(ArgumentError("global_setting flag must be a boolean value!"))
+        return global_setting
+    end
+
+    # if global_setting flag is not provided, look it up in config file
+    if !_haspath(configfile_params, ["Simulation", "GlobalSetting"])
+        @warn "Global setting not found in config file and not provided as argument; defualting to 'false'."
+        return false
+    end
+
+    gs = configfile_params["Simulation"]["GlobalSetting"]
+    !isa(gs, Bool) && throw(ArgumentError("global_setting flag must be a boolean value!"))
+    return gs
+end
+
+"""
+    determine_population(population::String, settingsfile, global_setting)
+
+Determines the population and settings for the simulation based on the provided parameters.
+If a `population` string is provided, it will be used to load the population from a file or obtain remote files.
+If a `settingsfile` is provided, it will be used to load the settings from a file.
+If neither is provided, an error will be thrown.
+"""
+function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing)
+    # if a path was provided, load the population from the file, otherwise assume it's a population identifier
+    (pop_path, settings_path) = try
+        is_pop_file(population) ? (population, settingsfile) : obtain_remote_files(population)
+    catch
+        throw(ArgumentError("Provided population must be a valid population file path or a population model identifier (e.g., 'DE')!"))
+    end
+
+    pop = Population(pop_path; ind_extension = ind_extension)
+    settings, renaming = settings_from_population(pop, global_setting)
+
+    # if settingsfile is provided, load the settings from the file
+    if !isnothing(settings_path)
+        !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
+        _printinfo("\u2514 Loading settings from $(basename(settings_path))")
+        settings_from_jld2!(settings_path, settings, renaming)
+    end
+
+    return pop, settings
+end
+
+"""
+    determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile)
+
+Determines the population and settings for the simulation based on the provided parameters.
+If a `population` is provided, it will be used to load the population from a file or obtain remote files.
+If not, it will create a new population based on the provided parameters or config file parameters.
+"""
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension)
+    # if population is provided, use it
+    if !isnothing(population)
+        # if a Population object is provided, use it
+        if isa(population, Population)
+            # throw warning if any other parameters were provided
+            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, and settingsfile will be ignored."
+            if ind_extension isa AbstractVector{Symbol}
+                @warn """ind_extension as Vector{Symbol} requires the original DataFrame, which is not retained in a pre-built Population. Either:
+                        - pass the DataFrame directly:  Simulation(population = df, ind_extension = ...)
+                        - or apply it at construction:  Population(df; ind_extension = ...)"""
+            elseif !isnothing(ind_extension)
+                # apply ind_extension to the population if provided
+                population = Population(dataframe(population); ind_extension = ind_extension) 
+            end
+            settings, renaming = settings_from_population(population, global_setting)
+            return population, settings
+        end
+
+        # if a DataFrame is provided, build the population from it directly
+        if isa(population, DataFrame)
+            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A DataFrame was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
+            pop = Population(population; ind_extension = ind_extension)
+            settings, renaming = settings_from_population(pop, global_setting)
+            return pop, settings
+        end
+
+        # throw exception if population is neither a string nor a Population object
+        !isa(population, String) && throw(ArgumentError("Provided population must be a String path to a population file, a population identifier (e.g., 'DE') or Population object!"))
+        # throw warning if any other parameters were provided
+        !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
+
+        # if a population file path is provided, load the population from the file
+        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension)
+    end
+
+    # if no population is provided, use the provided parameters
+    _printinfo("\u2514 Creating population")
+
+    # baseline is configfile parameters
+    params = haskey(configfile_params, "Population") ? Dict{Symbol, Any}(_prepare_kw_args(configfile_params["Population"])) : Dict{Symbol, Any}()
+    # update kw args
+    !isnothing(pop_size) && (params[:n] = pop_size)
+    !isnothing(avg_household_size) && (params[:avg_household_size] = avg_household_size)
+    !isnothing(avg_office_size) && (params[:avg_office_size] = avg_office_size)
+    !isnothing(avg_school_size) && (params[:avg_school_size] = avg_school_size)
+
+    # create population object
+    pop = Population(; rng = rng, ind_extension = ind_extension, params...)
+    settings, renaming = settings_from_population(pop, global_setting)
+    return pop, settings
+end
+
+
+"""
+    _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
+
+Internal function barrier to set the contact sampling method on every setting in
+`setting_list` without dynamic dispatch. The concrete `settingtype` assertion inside
+the loop ensures type-stable field access.
+"""
+function _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
+    for s_abs in setting_list
+        s = s_abs::settingtype
+        s.contact_sampling_method = method
+    end
+end
+"""
+    determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
+
+Determines the settings of a specific type for the simulation based on the provided parameters.
+If a `custom_par` is provided, it will be used to set the settings of the specified type.
+If not, it will look for the settings in the config file.
+Requires to be called with a type that is actually present in the settings container.
+
+# Example
+
+```julia
+determine_setting_type_config!(settings_container, Household, configfile_params; custom_par = 3.5)
+```
+
+This will set the number of contacts for all `Household` settings to `3.5`.
+"""
+function determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
+    # Fetch the list of settings
+    setting_list = get(stngs, type)
+
+    # if custom parameter is provided, use it
+    if !isnothing(custom_par)
+        # if a ContactSamplingMethod is provided, use it
+        if isa(custom_par, ContactSamplingMethod)
+            _set_contact_sampling_method!(setting_list, custom_par, type)
+            return stngs
+        # if a number is provided set it as number of contacts
+        elseif isa(custom_par, Real)
+            method = ContactparameterSampling(contactparameter = custom_par)
+            _set_contact_sampling_method!(setting_list, method, type)
+            return stngs
+        else
+            throw(ArgumentError("Provided parameter for `$(structname(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
+        end
+    end
+
+    # if no custom parameters are provided, check if config file has section for the setting type
+    if !_haspath(configfile_params, ["Settings", structname(type)])
+        @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+        return stngs 
+    end
+
+    # check if the setting type has a config part for contact sampling method
+    if !_haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
+        @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+        return stngs 
+    end
+
+    # build contact sampling method
+    csm_params = configfile_params["Settings"][structname(type)]["contact_sampling_method"]
+    sampling_method = create_contact_sampling_method(csm_params)
+    
+    # Apply the sampling method
+    _set_contact_sampling_method!(setting_list, sampling_method, type)
+    
+    return stngs
+end
+
+"""
+    determine_setting_config!(stngs::SettingsContainer, configfile_params::Dict; household_contacts = nothing,
+        office_contacts = nothing,
+        department_contacts = nothing,
+        workplace_contacts = nothing,
+        workplace_site_contacts = nothing,
+        school_class_contacts = nothing,
+        school_year_contacts = nothing,
+        school_contacts = nothing,
+        school_complex_contacts = nothing,
+        global_setting_contacts = nothing
+    )
+
+Determines the settings for all setting types present in the simulation based on the provided parameters.
+If a custom parameter for a specific setting type is provided, it will be used to set the settings of that type.
+If not, it will look for the settings in the config file.
+Requires to be called with setting types that are actually present in the settings container.
+"""
+function determine_setting_config!(stngs::SettingsContainer, configfile_params::Dict;
+        household_contacts = nothing,
+        office_contacts = nothing,
+        department_contacts = nothing,
+        workplace_contacts = nothing,
+        workplace_site_contacts = nothing,
+        school_class_contacts = nothing,
+        school_year_contacts = nothing,
+        school_contacts = nothing,
+        school_complex_contacts = nothing,
+        municipality_contacts = nothing,
+        global_setting_contacts = nothing
+    )
+
+    # check if a contact parameter was passed without that setting type being present
+    !isnothing(household_contacts) && !haskey(stngs.settings, Household) && throw(ArgumentError("Provided household_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(office_contacts) && !haskey(stngs.settings, Office) && throw(ArgumentError("Provided office_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(department_contacts) && !haskey(stngs.settings, Department) && throw(ArgumentError("Provided department_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(workplace_contacts) && !haskey(stngs.settings, Workplace) && throw(ArgumentError("Provided workplace_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(workplace_site_contacts) && !haskey(stngs.settings, WorkplaceSite) && throw(ArgumentError("Provided workplace_site_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_class_contacts) && !haskey(stngs.settings, SchoolClass) && throw(ArgumentError("Provided school_class_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_year_contacts) && !haskey(stngs.settings, SchoolYear) && throw(ArgumentError("Provided school_year_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_contacts) && !haskey(stngs.settings, School) && throw(ArgumentError("Provided school_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(school_complex_contacts) && !haskey(stngs.settings, SchoolComplex) && throw(ArgumentError("Provided school_complex_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(municipality_contacts) && !haskey(stngs.settings, Municipality) && throw(ArgumentError("Provided municipality_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+    !isnothing(global_setting_contacts) && !haskey(stngs.settings, GlobalSetting) && throw(ArgumentError("Provided global_setting_contacts but simulation only contains these settings: $(join(keys(stngs.settings), ", "))."))
+
+
+    # apply configuration
+    for (type, settings_list) in settings(stngs)
+        if type == Household
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = household_contacts)
+        elseif type == Office
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = office_contacts)
+        elseif type == Department
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = department_contacts)
+        elseif type == Workplace
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = workplace_contacts)
+        elseif type == WorkplaceSite
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = workplace_site_contacts)
+        elseif type == SchoolClass
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_class_contacts)
+        elseif type == SchoolYear
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_year_contacts)
+        elseif type == School
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_contacts)
+        elseif type == SchoolComplex
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = school_complex_contacts)
+        elseif type == Municipality
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = municipality_contacts)
+        elseif type == GlobalSetting
+            determine_setting_type_config!(stngs, type, configfile_params; custom_par = global_setting_contacts)
+        # for all other setting types, just look for config file parameters
+        else
+            determine_setting_type_config!(stngs, type, configfile_params)
+        end
+    end
+
+    return stngs
+end
+
+
+"""
+    determine_seed(configfile_params::Dict, seed)
+
+Determines the seed for the simulation based on the provided parameters.
+If a `seed` is provided, it will be used.
+If not, it will look for a `seed` in the config file.
+If neither is found, it will generate a random seed.
+"""
+function determine_seed(configfile_params::Dict, seed)
+    # if seed is provided, use it
+    if !isnothing(seed)
+        !isa(seed, Integer) && throw(ArgumentError("Provided seed must be an integer value."))
+        _printinfo("\u2514 Initializing RNG with seed $seed")
+        return seed
+    end
+
+    # if no seed is provided, look it up in config file
+    if !_haspath(configfile_params, ["Simulation", "seed"])
+        #@warn "Seed not found in config file and not provided as argument; defualting to random seed."
+        return gems_rand(Xoshiro(), 0:typemax(Int)) # generate seed randomly if none is provided
+    end
+
+    sd = configfile_params["Simulation"]["seed"]
+    !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
+    _printinfo("\u2514 Initializing RNG with seed $sd")
+    return sd
+end
+
+
+
+### CREATOR FUNCTIONS
+
+"""
+    create_distribution(params::Dict)
+
+Creates a distribution based on the provided parameters.
+The `params` dictionary must contain a `distribution` key with the name of the distribution type
+and a `parameters` key with a list of parameters for the distribution constructor.
+"""
+function create_distribution(params::Dict)
+    # find the distribution type in the parameters
+    dist_type = GEMS.get_subtype(params["distribution"], Distribution)
+    return dist_type(params["parameters"]...)
+
+end
+
+"""
+    create_progression_parameter(params::Union{Dict, Real})
+
+Creates a progression parameter based on the provided parameters.
+If `params` is a dictionary, it will be used to create a distribution.
+If `params` is a real number, it will be used as a single value.
+"""
+function create_progression_parameter(params::Union{Dict, Real})
+    # If parameter is a dictionary, we assume it describes a distribution
+    # Otherwise, we assume it is a single value
+    return isa(params, Dict) ? create_distribution(params) : params
+end
+
+"""
+    create_progression(params::Dict, category::String)
+
+Creates a progression of the specified category based on the provided parameters.
+The `params` dictionary must contain the parameters for the progression constructor.
+The `category` string must be the name of a subtype of `ProgressionCategory`.
+"""
+function create_progression(params::Dict, category::String)
+    # convert parameters to keyword arguments
+    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
+    # create the progression category using the keyword arguments
+    return try
+        GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
+    catch e
+        throw(ErrorException("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_progression_assignment(params::Dict)
+
+Creates a progression assignment function based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the progression assignment type
+and a `parameters` key with a list of parameters for the progression assignment constructor.
+"""
+function create_progression_assignment(params::Dict)
+    pa_type = GEMS.get_subtype(params["type"], ProgressionAssignmentFunction)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+
+    return try
+        pa_type(;kw_args...)
+    catch e
+        throw(ErrorException("ProgressionAssignmentFunction of type '$pa_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_transmission_function(params::Dict)
+
+Creates a transmission function based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the transmission function
+and a `parameters` key with a list of parameters for the transmission function constructor.
+"""
+function create_transmission_function(params::Dict)
+    if params["type"] == "CompositeTransmissionRate"
+        base_fn = create_transmission_function(params["base"])
+        modifier_fns = map(f -> create_transmission_modifier(f), get(params, "modifiers", []))
+        return CompositeTransmissionRate(base_fn, modifier_fns...)
+    end
+    tf_type = GEMS.get_subtype(params["type"], TransmissionFunction)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return try
+        tf_type(;kw_args...)
+    catch e
+        throw(ErrorException("TransmissionFunction of type '$tf_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_transmission_modifier(params::Dict)
+
+Creates a `TransmissionModifier` based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the modifier
+and a `parameters` key with a list of parameters for the modifier constructor.
+"""
+function create_transmission_modifier(params::Dict)
+    mod_type = GEMS.get_subtype(params["type"], TransmissionModifier)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return try
+        mod_type(;kw_args...)
+    catch e
+        throw(ErrorException("TransmissionModifier of type '$mod_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_infectiousness_profile(params::Dict)
+
+Creates an infectiousness profile based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the infectiousness profile
+and a `parameters` key with a list of parameters for the infectiousness profile constructor.
+"""
+function create_infectiousness_profile(params::Dict)
+    ip_type = GEMS.get_subtype(params["type"], InfectiousnessProfile)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return try
+        ip_type(;kw_args...)
+    catch e
+        throw(ErrorException("InfectiousnessProfile of type '$ip_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_pathogen(params::Dict, name, id)
+
+Creates a pathogen based on the provided parameters.
+The `params` dictionary must contain the parameters for the pathogen constructor.
+The `name` string is the name of the pathogen.
+The `id` integer is the unique identifier for the pathogen.
+"""
+function create_pathogen(params::Dict, name, id)
+
+    # create progressions
+    progressions = try
+       [create_progression(pars, category) for (category, pars) in params["progressions"]] 
+    catch e
+        throw(ConfigfileError("progressions for pathogen '$name' could not be created from config file.", e))
+    end
+    # create progression assignment
+    pa = try
+        create_progression_assignment(params["progression_assignment"])
+    catch e
+        throw(ConfigfileError("progression assignment for pathogen '$name' could not be created from config file.", e))
+    end
+
+    # create transmission function
+    tf = try 
+        create_transmission_function(params["transmission_function"])
+    catch e
+        throw(ConfigfileError("transmission function for pathogen '$name' could not be created from config file.", e))
+    end
+
+    # create infectiousness profile
+    ip = haskey(params, "infectiousness_profile") ?
+        try
+            create_infectiousness_profile(params["infectiousness_profile"])
+        catch e
+            throw(ConfigfileError("infectiousness_profile for pathogen '$name' could not be created from config file.", e))
+        end :
+        ConstantInfectiousness()
+
+    return Pathogen(
+        id = id,
+        name = name,
+        progressions = progressions,
+        progression_assignment = pa,
+        transmission_function = tf,
+        infectiousness_profile = ip
+    )
+end
+
+"""
+    create_pathogens(params::Dict)
+
+Creates a tuple of pathogens based on the provided parameters.
+The `params` dictionary must contain the parameters for each pathogen constructor.
+"""
+function create_pathogens(params::Dict)
+    items = sort(collect(params), by = first)
+    length(items) == 0 && throw(ConfigfileError("No pathogens were found..."))
+    pathogens = [create_pathogen(pars, name, i) for (i, (name, pars)) in enumerate(items)]
+    return Tuple(pathogens)
+end
+
+"""
+    create_start_condition(params::Dict)
+
+Creates a start condition based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the start condition type
+and a `parameters` key with a list of parameters for the start condition constructor.
+"""
+function create_start_condition(params::Dict)
+    sc_type = get_subtype(params["type"], StartCondition)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return try
+        sc_type(;kw_args...)
+    catch e
+        throw(ErrorException("StartCondition of type '$sc_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_stop_criterion(params::Dict)
+
+Creates a stop criterion based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the stop criterion type
+and a `parameters` key with a list of parameters for the stop criterion constructor.
+"""
+function create_stop_criterion(params::Dict)
+    sc_type = get_subtype(params["type"], StopCriterion)
+    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    return try
+        sc_type(;kw_args...)
+    catch e
+        throw(ErrorException("StopCriterion of type '$sc_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+### FILE LOADERS
+
+
+### FILE LOADERS
+
+"""
+    configfile_path(path::String)
+
+Returns the path to the config file.
+If no path is provided, it defaults to the default config file.
+"""
+function configfile_path(path::String)
+    # if no file path is provided, use the default config file
+    if isempty(path)
+        _basefolder = dirname(dirname(pathof(GEMS)))
+        #default_configfile = GEMS.DEFAULT_CONFIGFILE # "data/DefaultConf.toml"
+        default_configfile = "data/DefaultConf.toml"
+        default_configfile_path = joinpath(_basefolder, default_configfile)
+        return default_configfile_path
+    end
+
+    return path
+end
+
+
+"""
+    load_configfile(path::String)
+
+Loads a config file from the specified path.
+"""
+function load_configfile(path::String)
+    !isfile(path) && throw(ConfigfileError("Provided config file path does not point to a valid file: '$path'"))
+    !is_toml_file(path) && throw(ConfigfileError("Provided config file path does not point to a valid .toml file: '$path'"))    
+    return TOML.parsefile(path)
+end
+
+### Helper Methods to set up parts of the simulation:
+
+"""
+    is_toml_file(filename::String)
+
+Function to check if the provided file is a .toml file
+"""
+function is_toml_file(filename::String)
+    return endswith(filename, ".toml")
+end
+
+"""
+    is_pop_file(filename::String)
+
+Function to check if the file ends with one of the endings identifying it as a population file (.csv and .jld2).
+"""
+function is_pop_file(filename::String)
+    return endswith(filename, ".csv") || endswith(filename, ".jld2")
+end
+
+
+"""
+    obtain_remote_files(identifier::String; forcedownload::Bool = false)
+
+Interface to remotely access a setting and population file
+"""
+function obtain_remote_files(identifier::String; forcedownload::Bool = false)
+
+    _printinfo("\u2514 Looking for \"$identifier\" population model")
+
+    # if argument points to existing population and setting files and forcedownload is deactivated
+    if peoplelocal(identifier) |> isfile && settingslocal(identifier) |> isfile && !forcedownload
+        _printinfo("\u2514 Retrieving population and settings from $(poplocal(identifier))")
+        return (peoplelocal(identifier) , settingslocal(identifier))
+    end
+
+    # if not, download files
+    _printinfo("Population and setting file not available locally. Downloading files...")
+    zipath = joinpath(poplocal(identifier), "data.zip")
+    # make sure directory exists
+    mkpath(dirname(zipath))
+    # download stuff
+    
+    try 
+        urldownload(popurl(identifier), true;
+            compress = :none,
+            parser = x -> nothing,
+            save_raw = zipath)
+        _printinfo("Unpacking ZIP file")
+    catch e
+        throw("Attempted to download remote population `$(identifier)`. Data could not be downloaded. Are you sure the data is available at $(popurl(identifier))?")
+    end
+
+    # unzip
+    z = ZipFile.Reader(zipath)
+    for f in z.files
+        # Determine the output file path
+        out_path = joinpath(poplocal(identifier), f.name)
+        
+        # Ensure that the output directory exists
+        mkpath(dirname(out_path))
+        
+        # Open the output file for writing
+        open(out_path, "w") do io
+            # Write the uncompressed data to the output file
+            write(io, read(f))
+        end
+    end
+
+    # Close the ZIP archive to free resources
+    close(z)
+
+    # remove temporary zipfile
+    rm(zipath, force = true)
+
+    # return local data paths
+    return (peoplelocal(identifier) , settingslocal(identifier))       
+end
+
+### INTERFACE FOR CONDITION AND CRITERIA ###
+
+# TODO REMOVE
+"""
+    initialize!(simulation::Simulation, condition::StartCondition; kwargs...)
+
+Initializes the simulation model according to a provided start condition.
+    This is an 'abstract' function that must be implemented for concrete start condition types.
+"""
+function initialize!(simulation::Simulation, condition::StartCondition; kwargs...)
+    error("`initialize!` not implemented for start condition "
+        *string(typeof(condition)))
+end
+
+"""
+    evaluate(simulation::Simulation, criterion::StopCriterion)
+
+Evaluates whether the specified stop criterion is met for the simulation model. 
+    Return `True` if criterion was met.
+    This is an 'abstract' function that must be implemented for concrete criterion types.
+"""
+function evaluate(simulation::Simulation, criterion::StopCriterion)
+    error("`evaluate` not implemented for stop criterion "
+        *string(typeof(criterion)))
+end
+
+"""
+    limit(criterion::StopCriterion)
+
+Returns the maximum number of ticks for the criterion, or `nothing` if the criterion does not have a fixed limit.
+"""
+limit(criterion::StopCriterion) = nothing
+
+
+### GETTERS & SETTERS
+"""
+    configfile(simulation)
+
+Returns configfile that was used to initialize simulation.
+"""
+function configfile(simulation::Simulation)
+    return simulation.configfile
+end
+
+"""
+    populationfile(simulation)
+
+Returns populationfile that was used to initialize simulation.
+"""
+function populationfile(simulation::Simulation)
+    return simulation |> population |> populationfile
+end
+
+"""
+    tick(simulation)
+
+Returns current tick of the simulation run.
+"""
+function tick(simulation::Simulation)
+    return simulation.tick
+end
+
+"""
+    label(simulation::Simulation)
+
+Returns simulation object's string label.
+"""
+function label(simulation::Simulation)
+    return simulation.label
+end
+
+"""
+    tickunit(simulation)
+
+Returns the unit of the ticks as a char like in date formats,
+i.e. 'd' means days, 'h' mean hours, etc.
+"""
+function tickunit(simulation::Simulation)::String
+    ut = simulation.tickunit
+    if ut == 'y'
+        return "year"
+    elseif ut == 'm'
+        return "month"
+    elseif ut == 'd'
+        return "day"
+    elseif ut == 'w'
+        return "week"
+    elseif ut == 'h'
+        return "hour"
+    elseif ut == 'M'
+        return "minute"
+    elseif ut == 'S'
+        return "second"
+    else
+        return "tick"
+    end
+end
+
+
+"""
+    rng(simulation::Simulation)
+
+Returns the thread-local RNG associated with the simulation run.
+This way, `rng(simulation)` can be called inside multi-threaded code
+to get the correct RNG for the current thread.
+"""
+function rng(simulation::Simulation)
+    return simulation.rngs[Threads.threadid()]
+end
+
+"""
+    rngs(simulation::Simulation)
+
+Returns the RNGs for all threads associated with the simulation run.
+"""
+function rngs(simulation::Simulation)
+    return simulation.rngs
+end
+
+"""
+    seed(simulation::Simulation)
+
+Returns seed associated with the simulation run.
+"""
+function seed(simulation::Simulation)
+    return simulation.seed
+end
+
+"""
+    present_buffers(simulation::Simulation)
+
+Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
+"""
+function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+    return simulation.present_buffers
+end
+
+"""
+    contact_buffers(simulation::Simulation)
+
+Returns the thread-local buffers for storing sampled contacts, used to eliminate array allocations.
+"""
+function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
+    return simulation.contact_buffers
+end
+
+"""
+    start_condition(simulation)
+
+Returns start condition associated with the simulation run.
+"""
+function start_condition(simulation::Simulation)
+    return simulation.start_condition
+end
+
+"""
+    stop_criterion(simulation)
+
+Returns stop criterion associated with the simulation run.
+"""
+function stop_criterion(simulation::Simulation)
+    return simulation.stop_criterion
+end
+
+
+"""
+    population(simulation)
+
+Returns the population associated with the simulation run.
+"""
+function population(simulation::Simulation)
+    return simulation.population
+end
+
+"""
+    populationDF(simulation::Simulation)
+
+Calls the `dataframe()` function on the simulation's `Population object`.
+"""
+populationDF(simulation::Simulation) = simulation |> population |> dataframe
+
+###
+### SETTINGS
+###
+
+"""
+    settingscontainer(simulation::Simulation)
+
+Returns the container object of all settings of the simulation.
+"""
+function settingscontainer(simulation::Simulation)::SettingsContainer
+    return simulation.settings
+end
+
+"""
+    settings(simulation::Simulation)
+
+Returns a dictionary containing all settings, separated by setting type (key).
+"""
+function settings(simulation::Simulation)
+    return simulation |> settingscontainer |> settings
+end
+
+"""
+    settings(simulation::Simulation, ::Type{T}) where {T<:Setting}
+
+Type-stable accessor: returns `Vector{T}` for the given concrete setting type `T`.
+Returns an empty `Vector{T}` when the type is not present.
+"""
+function settings(simulation::Simulation, ::Type{T}) where {T<:Setting}
+    return settings(settingscontainer(simulation), T)
+end
+
+
+municipalities(sim::Simulation) = settings(sim, Municipality)
+households(sim::Simulation) = settings(sim, Household)
+
+schoolclasses(sim::Simulation) = settings(sim, SchoolClass)
+schoolyears(sim::Simulation) = settings(sim, SchoolYear)
+schools(sim::Simulation) = settings(sim, School)
+schoolcomplexes(sim::Simulation) = settings(sim, SchoolComplex)
+
+offices(sim::Simulation) = settings(sim, Office)
+departments(sim::Simulation) = settings(sim, Department)
+workplaces(sim::Simulation) = settings(sim, Workplace)
+workplacesites(sim::Simulation) = settings(sim, WorkplaceSite)
+
+individuals(sim::Simulation) = sim |> population |> individuals
+
+"""
+    region_info(sim::Simulation)
+
+Returns a `DataFrame` containing information about the 
+`Municipality`s in the model with the following columns:
+
+| Name         | Type      | Description                                                                  |
+| :----------- | :-------- | :--------------------------------------------------------------------------- |
+| `ags`        | `AGS`     | Amtlicher Gemeindeschlüssel (Community Identification Code)                  |
+| `pop_size`   | `Int64`   | Number of individuals in that municipality                                   |
+| `area`       | `Float64` | Area size of this municipality in km²                                        |
+
+Note: This function will download the Germany shapefile, if it's not available locally,
+and return `missing` values for `pop_size` and `area` if the download cannot be completed.
+"""
+function region_info(sim::Simulation)
+
+    muns = sim |> municipalities
+    isnothing(muns) ? muns = [] : nothing
+
+    # try to load Germany shapefile. If it doesn't work,
+    # return a dataframe with municipalities and missing pop_size data
+    gshps = try
+         germanshapes(3)
+    catch e
+        @warn "region_info() failed to obtain information with the following error: $e"
+        return DataFrame(
+            ags = ags.(muns),
+            pop_size = fill(missing, length(muns)),
+            area = fill(missing, length(muns)))
+    end
+
+    return DataFrame(
+            ags = ags.(muns),
+            pop_size = size.(muns)) |>
+        x -> leftjoin(x, 
+                # load shapefile to join dataframe with
+                gshps |>
+                    y -> DataFrame(
+                        ags = AGS.(y.AGS_0),
+                        area = y.KFL) |>
+                    # there are duplicates in the AGS of the shapefile. We take the ones with the biggest area
+                    y -> groupby(y, :ags) |>
+                    y -> combine(y, :area => maximum => :area), # Katasterfläche
+                on = :ags) 
+end
+
+###
+### PATHOGEN
+###
+
+"""
+    pathogens(simulation)
+
+Returns the Tuple of Pathogens of the simulation.
+"""
+function pathogens(simulation::Simulation)
+    return simulation.pathogens
+end
+
+"""
+    _owner_shard(ind_id::Int32)
+
+Returns the shard index (1 to `Threads.maxthreadid()`) assigned to the given `ind_id`.
+"""
+@inline _owner_shard(ind_id::Int32) = mod(ind_id - Int32(1), Int32(Threads.maxthreadid())) + 1
+
+"""
+    infection_registry(simulation, ind_id::Int32)::InfectionRegistry
+
+Returns the specific `InfectionRegistry` shard that owns the given individual id.
+"""
+function infection_registry(simulation::Simulation, ind_id::Int32)::InfectionRegistry
+    return simulation.infection_registries[_owner_shard(ind_id)]
+end
+
+"""
+    infection_registry(simulation, individual::Individual)::InfectionRegistry
+
+Returns the specific `InfectionRegistry` shard that owns the given individual.
+"""
+function infection_registry(simulation::Simulation, individual::Individual)::InfectionRegistry
+    return infection_registry(simulation, id(individual))
+end
+
+"""
+    immunity_registry(simulation, ind_id::Int32)::ImmunityRegistry
+
+Returns the specific `ImmunityRegistry` shard that owns the given individual id.
+"""
+function immunity_registry(simulation::Simulation, ind_id::Int32)::ImmunityRegistry
+    return simulation.immunity_registries[_owner_shard(ind_id)]
+end
+
+"""
+    immunity_registry(simulation, individual::Individual)::ImmunityRegistry
+
+Returns the specific `ImmunityRegistry` shard that owns the given individual.
+"""
+function immunity_registry(simulation::Simulation, individual::Individual)::ImmunityRegistry
+    return immunity_registry(simulation, id(individual))
+end
+
+"""
+    test_registry(simulation, ind_id::Int32)::TestRegistry
+
+Returns the specific `TestRegistry` shard that owns the given individual id.
+"""
+function test_registry(simulation::Simulation, ind_id::Int32)::TestRegistry
+    return simulation.test_registries[_owner_shard(ind_id)]
+end
+
+"""
+    test_registry(simulation, individual::Individual)::TestRegistry
+
+Returns the specific `TestRegistry` shard that owns the given individual.
+"""
+function test_registry(simulation::Simulation, individual::Individual)::TestRegistry
+    return test_registry(simulation, id(individual))
+end
+
+
+"""
+    get_pathogen(sim, pid)
+ 
+Retrieves the pathogen with the given `Int8` id. Uses a `@generated` if/elseif
+chain so Julia resolves dispatch statically (union-splitting) for up to 8
+distinct pathogen types.
+"""
+@generated function get_pathogen(sim::Simulation{P}, pid::Int8) where P
+    N = fieldcount(P)
+    checks = [:(sim.pathogens[$i].id == pid && return sim.pathogens[$i]) for i in 1:N]
+    return quote
+        $(checks...)
+        throw(ArgumentError("No pathogen with id $pid found in simulation."))
+    end
+end
+
+"""
+    get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
+
+Retrieve a pathogen by id from a typed Tuple of pathogens. Emits a static
+`if/elseif` chain at compile time so each branch returns a concrete type,
+enabling union-splitting at the callsite with no dynamic dispatch.
+"""
+@generated function get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
+    N = fieldcount(P)
+    checks = [:(pathogens[$i].id == pid && return pathogens[$i]) for i in 1:N]
+    return quote
+        $(checks...)
+        throw(ArgumentError("No pathogen with id $pid found."))
+    end
+end
+
+
+"""
+    get_pathogen(sim::Simulation, pid::Int8)
+
+Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name. 
+Returns the only pathogen is `pname` is empty for backwards compatibility.
+"""
+function get_pathogen(simulation::Simulation, pname::String)
+    if isempty(pname)
+        return first_pathogen(simulation)
+    end
+    for p in pathogens(simulation)
+        p.name == pname && return p
+    end
+    throw(ArgumentError("Pathogen '$pname' not found in simulation."))
+end
+
+"""
+    first_pathogen(sim::Simulation)
+
+Returns the first (or only) pathogen in the simulation. 
+Useful as a convenience function when running single-disease models.
+"""
+function first_pathogen(sim::Simulation)
+    return first(pathogens(sim))
+end
+
+"""
+    pathogen(sim::Simulation)
+
+Returns the single pathogen in the simulation.
+Throws an `ArgumentError` if the simulation contains more than one pathogen;
+use `pathogens(sim)` or `get_pathogen(sim, id)` in that case.
+"""
+function pathogen(sim::Simulation)
+    length(sim.pathogens) > 1 && throw(ArgumentError(
+        "Simulation has $(length(sim.pathogens)) pathogens; use pathogens(sim), get_pathogen(sim, id), or get_pathogen(sim, name)."))
+    return first(sim.pathogens)
+end
+
+"""
+    infectionlogger(simulation)
+
+Returns the InfectionLogger of the simulation.
+"""
+function infectionlogger(simulation::Simulation)::InfectionLogger
+    return simulation.infectionlogger
+end
+
+"""
+    infections(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `InfectionLogger`.
+"""
+infections(simulation::Simulation) = simulation |> infectionlogger |> dataframe
+    
+
+"""
+    deathlogger(simulation)
+
+Returns the `DeathLogger` of the simulation.
+"""
+function deathlogger(simulation::Simulation)::DeathLogger
+    return simulation.deathlogger
+end
+
+"""
+    deaths(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `DeathLogger`.
+"""
+deaths(simulation::Simulation) = simulation |> deathlogger |> dataframe
+
+"""
+    testlogger(simulation)
+
+Returns the `TestLogger` of the simulation.
+"""
+function testlogger(simulation::Simulation)::TestLogger
+    return simulation.testlogger
+end
+
+"""
+    tests(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `TestLogger`.
+"""
+tests(simulation::Simulation) = simulation |> testlogger |> dataframe
+
+"""
+    pooltestlogger(simulation)
+
+Returns the `PoolTestLogger` of the simulation.
+"""
+function pooltestlogger(simulation::Simulation)::PoolTestLogger
+    return simulation.pooltestlogger
+end
+
+"""
+    pooltests(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `PoolTestLogger`.
+"""
+pooltests(simulation::Simulation) = simulation |> pooltestlogger |> dataframe
+
+"""
+    seroprevalencelogger(simulation)
+
+Returns the `SeroprevalenceLogger` of the simulation.
+"""
+function seroprevalencelogger(simulation::Simulation)::SeroprevalenceLogger
+    return simulation.seroprevalencelogger
+end
+
+"""
+    seroprevalencetests(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `SeroprevalenceLogger`.
+"""
+seroprevalencetests(simulation::Simulation) = simulation |> seroprevalencelogger |> dataframe
+
+"""
+    quarantinelogger(simulation)
+
+Returns the `QuarantineLogger` of the simulation.
+"""
+function quarantinelogger(simulation::Simulation)::QuarantineLogger
+    return simulation.quarantinelogger
+end
+
+"""
+    quarantines(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `QuarantineLogger`.
+"""
+quarantines(simulation::Simulation) = simulation |> quarantinelogger |> dataframe
+
+"""
+    statelogger(simulation)
+
+Returns the `StateLogger` of the simulation.
+"""
+function statelogger(simulation::Simulation)
+    return simulation.statelogger
+end
+
+"""
+    states(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `StateLogger`.
+"""
+states(simulation::Simulation) = simulation |> statelogger |> dataframe
+
+"""
+    customlogger!(simulation, customlogger)
+
+Sets the Simulation's `CustomLogger`.
+"""
+function customlogger!(simulation::Simulation, customlogger::CustomLogger)
+    simulation.customlogger = customlogger
+end
+
+"""
+    customlogger(simulation)
+
+Returns the `CustomLogger` of the simulation.
+"""
+function customlogger(simulation::Simulation)::CustomLogger
+    return simulation.customlogger
+end
+
+"""
+    customlogs(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `CustomLogger`.
+"""
+customlogs(simulation::Simulation) = simulation |> customlogger |> dataframe
+
+
+### LOGIC
+
+"""
+    increment!(simulation)
+
+Increments the current simulation's tick counter by 1.
+"""
+function increment!(simulation::Simulation)
+    simulation.tick += 1
+end
+
+"""
+    reset_tick!(simulation)
+
+Resets the current simulation's tick counter to 0.
+"""
+function reset_tick!(simulation::Simulation)
+    simulation.tick = 0
+end
+
+### INITALIZATION
+"""
+    initialize!(simulation)
+
+Initializes the simulation model with a provided start condition.
+"""
+function initialize!(simulation::Simulation)
+    initialize!(simulation, start_condition(simulation))
+end
+
+"""
+    reset!(simulation::Simulation; reset_interventions::Bool = false)
+
+Resets the simulation model to its initial state according to its start condition.
+This resets all individuals, loggers, the event queue, tick, and RNGs, and
+re-applies the start condition.
+If `reset_interventions` is true (default), all intervention triggers and strategies
+are also cleared.
+"""
+function reset!(simulation::Simulation; reset_interventions::Bool = false)
+    # reset individual to initial state
+    for ind in individuals(simulation)
+        reset!(ind, infection_registry(simulation, id(ind)), immunity_registry(simulation, id(ind)))
+    end
+    reset_tick!(simulation)
+
+    # Reset all loggers
+    simulation.infectionlogger = InfectionLogger()
+    simulation.deathlogger = DeathLogger()
+    simulation.testlogger = TestLogger()
+    simulation.pooltestlogger = PoolTestLogger()
+    simulation.seroprevalencelogger = SeroprevalenceLogger()
+    simulation.quarantinelogger = QuarantineLogger()
+    simulation.statelogger = StateLogger()
+    simulation.customlogger = CustomLogger()
+
+    simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
+
+    # Reset NPI triggers and strategies
+    simulation.event_queue = EventQueue()
+    if reset_interventions
+        simulation.symptom_triggers = []
+        simulation.tick_triggers = []
+        simulation.hospitalization_triggers = []
+        simulation.strategies = []
+        simulation.testtypes = []
+    end
+
+    # Re-initialize RNGs
+    if !isnothing(simulation.seed)
+        master_rng = Xoshiro(simulation.seed)
+        simulation.rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+    end
+
+    # Initialize the simulation's start condition
+    initialize!(simulation)
+end
+
+"""
+    reinitialize!(simulation::Simulation; reset_interventions::Bool = false)
+
+Alias for `reset!`. Kept for backwards compatibility.
+"""
+function reinitialize!(simulation::Simulation; reset_interventions::Bool = false)
+    reset!(simulation; reset_interventions = reset_interventions)
+end
+
+###
+### INTERVENTIONS
+###
+
+"""
+    add_symptom_trigger!(simulation, trigger)
+
+Adds a `SymptomTrigger` to the simulation.
+"""
+function add_symptom_trigger!(simulation::Simulation, trigger::ITrigger)
+    push!(simulation.symptom_triggers, trigger)
+end
+
+"""
+    symptom_triggers(simulation)
+
+Returns the list of `SymptomTrigger`s registered in the simulation.
+"""
+function symptom_triggers(simulation::Simulation)
+    return(simulation.symptom_triggers)
+end
+
+"""
+    add_tick_trigger!(simulation, trigger)
+
+Adds a `TickTrigger` to the simulation.
+"""
+function add_tick_trigger!(simulation::Simulation, trigger::TickTrigger)
+    push!(simulation.tick_triggers, trigger)
+end
+
+"""
+    tick_triggers(simulation)
+
+Returns the list of `TickTrigger`s registered in the simulation.
+"""
+function tick_triggers(simulation::Simulation)
+    return(simulation.tick_triggers)
+end
+
+"""
+    add_hospitalization_trigger!(simulation, trigger)
+
+Adds a `HospitalizationTrigger` to the simulation.
+"""
+function add_hospitalization_trigger!(simulation::Simulation, trigger::ITrigger)
+    push!(simulation.hospitalization_triggers, trigger)
+end
+
+"""
+    hospitalization_triggers(simulation)
+
+Returns the list of `HospitalizationTrigger`s registered in the simulation.
+"""
+function hospitalization_triggers(simulation::Simulation)
+    return(simulation.hospitalization_triggers)
+end
+
+"""
+    event_queue(simulation)
+
+Returns the simulation's intervention event queue.
+"""
+function event_queue(simulation::Simulation)
+    # narrow the abstractly-typed field to the concrete EventQueue for type-stable access
+    return simulation.event_queue::EventQueue
+end
+
+"""
+    add_strategy!(simulation, strategy)
+
+Adds an intervention `Strategy` to the simulation object.
+A strategy must be added to the simulation object to make it appear in the report.
+In order to execute a strategy during the simulation run, you 
+must define a `Trigger` and link this strategy. Just adding it here 
+will not execute the strategy.
+"""
+function add_strategy!(simulation::Simulation, strategy::Strategy)
+    push!(simulation.strategies, strategy)
+end
+
+"""
+    strategy(simulation)
+
+Returns the intervention `Strategy`s registered in the simulation.
+"""
+function strategies(simulation::Simulation)
+    return(simulation.strategies)
+end
+
+"""
+    add_testtype!(simulation, testtype)
+
+Adds a test type to the simulation.
+"""
+function add_testtype!(simulation::Simulation, testtype::AbstractTestType)
+    push!(simulation.testtypes, testtype)
+end
+
+"""
+    testtypes(simulation)
+
+Returns the test types registered in the simulation.
+"""
+function testtypes(simulation::Simulation)
+    return(simulation.testtypes)
+end
+
+"""
+    stepmod(simulation::Simulation)
+
+Returns the defined step mod.
+"""
+function stepmod(simulation::Simulation)
+    return(simulation.stepmod)
+end
+
+
+###
+### PRINTING
+###
+
+"""
+    info(sim::Simulation)
+
+Summary output for `Simulation` object configuration.
+"""
+function info(sim::Simulation)
+
+    #TODO this function throws a duplicate definition warning
+    # probably due to the usage of @with_kw. But as we plan
+    # to remove that anyway, we will not touch it for now.
+    res = "Simulation [$(sim |> label)] (current $(sim |> tickunit): $(sim |> tick))\n"
+
+    res *= "\u2514 Config File: $(sim |> configfile)\n"
+    res *= "\u2514 Population File: $(sim |> population |> populationfile)\n"
+
+    res *= "\u2514 Population ($(sim |> population |> size) individuals):\n"
+    for st in settingtypes(settingscontainer(sim))
+        res *= "  \u2514 $(st)s: $(get(settingscontainer(sim), st) |> length)\n"
+    end
+
+    res *= "\u2514 Start Condition: $(sim |> start_condition)\n"
+    res *= "\u2514 Stop Criterion: $(sim |> stop_criterion |> typeof)\n"
+    
+    # pathogen (use the pathogen's show method for detailed info)
+    buf = IOBuffer()
+    for p in pathogens(sim)
+        show(buf, p)
+        write(buf, "\n")
+    end
+    s = String(take!(buf))    # convert buffer → String
+
+    lines = split(s, "\n", keepempty = true)
+    if !isempty(lines)
+        res *= join(["\u2514 $(lines[1])"; " " .* lines[2:end]], "\n")
+    else
+        res *= "\u2514 No Pathogens\n"
+    end
+    
+    # intervention strategies
+    if sim |> strategies |> length > 0
+        res *= "\u2514 Intervention Strategies: \n"
+        for st in sim |> strategies
+            res *= "  \u2514 $(name(st)) ($(st |> measures |> length) measures) \n"
+        end
+    else
+        res *= "\u2514 No Intervention Strategies\n"
+    end
+
+    tr_num = (sim |> symptom_triggers |> length) +
+        (sim |> hospitalization_triggers |> length) +
+        (sim |> tick_triggers |> length)
+    
+    tr_num > 0 ? res *= "\u2514 Intervention Triggers: $tr_num\n" : res *= "\u2514 No Intervention Triggers\n"
+
+    res *= "\u2514 Loggers:\n"
+    res *= "  \u2514 Infections: $(sim |> infectionlogger |> length)\n"
+    res *= "  \u2514 Deaths: $(sim |> deathlogger |> length)\n"
+    res *= "  \u2514 Tests: $(sim |> testlogger |> length)\n"
+    res *= "  \u2514 Pooltests: $(sim |> pooltestlogger |> length)\n"
+    res *= "  \u2514 Seroprevalencetests: $(sim |> seroprevalencelogger |> length)\n"
+
+    println(res)
+end
+
+
+"""
+    Base.show(io::IO, sim::Simulation)
+
+Standard console output for `Simulation` objects.
+For more comprehensive information use `info(sim)`.
+"""
+function Base.show(io::IO, sim::Simulation)
+    res = "Simulation [$(sim |> label)] ($(sim |> population |> size) individuals; current $(sim |> tickunit): $(sim |> tick))\n"
+    write(io, res)
+end

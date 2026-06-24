@@ -90,7 +90,7 @@ strategy (if any) for `ind`.
 - `Nothing`: Triggers the configured `follow_up` strategy (if any) for `ind`.
 """
 function process_measure(sim::Simulation, ind::Individual, m::Vaccinate)
-    vaccinate!(ind, vaccine(m), tick(sim))
+    vaccinate!(ind, immunity_registry(sim, ind), vaccine(m), tick(sim))
 
     INTERVENTION_DEBUG && @debug "Individual $(id(ind)) vaccinated with $(name(vaccine(m))) at tick $(tick(sim))"
 

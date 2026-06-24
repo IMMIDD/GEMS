@@ -27,7 +27,7 @@ but will not be reported to the authorities.
 # Example
 
 ```julia
-antigen_test = TestType("Antigen Test", pathogen(sim), sim)
+antigen_test = TestType("Antigen Test", first_pathogen, sim)
 
 my_str = IStrategy("self-test", sim)
 add_measure!(my_str, Test("self-test", antigen_test, positive_followup = my_other_strategy))

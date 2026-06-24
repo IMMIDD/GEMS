@@ -1,6 +1,6 @@
 export TestType
 export SeroprevalenceTestType
-export pathogen, sensitivity, specificity, name
+export pathogen_id, sensitivity, specificity, name
 
 
 
@@ -15,31 +15,31 @@ A type to specify a type of pathogen test (e.g. 'PCR Test') and its parameteriza
 
 # Fields
 - `name::String`: Name of the test (e.g. 'Rapid Test' or 'PCR Test')
-- `pathogen::Pathogen`: Pathogen that this test will detect
+- `pathogen_id::Int8`: Pathogen that this test will detect
 - `sensitivity::Float64 = 1.0`: Probability (0-1) that this test will positively identify an infection (true positive rate) 
 - `specificity::Float64 = 1.0`: Probability (0-1) that this test will negatively identify a non-infection (true negative rate)
 
 """
 struct TestType <: AbstractTestType
     name::String
-    pathogen::Pathogen
+    pathogen_id::Int8
     sensitivity::Float64 # 0-1
     specificity::Float64 # 0-1
 
     @doc """
-        TestType(name::String, pathogen::Pathogen, sim::Simulation;
+        TestType(name::String, pathogen_id::Int8, sim::Simulation;
             sensitivity::Float64 = 1.0, specificity::Float64 = 1.0, reportable::Bool = true)
 
     Creates a TestType object.
 
     # Parameters
       - `name::String`: Name of the test (e.g. 'Rapid Test' or 'PCR Test')
-      - `pathogen::Pathogen`: Pathogen that this test will detect
+      - `pathogen_id::Int8`: Pathogen that this test will detect
       - `sim::Simulation`: Simulation object (required to interlink test with simulation)
       - `sensitivity::Float64 = 1.0` *(optional)*: Probability (0-1) that this test will positively identify an infection (true positive rate) 
       - `specificity::Float64 = 1.0` *(optional)*: Probability (0-1) that this test will negatively identify a non-infection (true negative rate)
     """
-    function TestType(name::String, pathogen::Pathogen, sim::Simulation;
+    function TestType(name::String, pathogen_id::Int8, sim::Simulation;
         sensitivity::Float64=1.0, specificity::Float64=1.0)
 
         # check input
@@ -51,12 +51,22 @@ struct TestType <: AbstractTestType
             throw(ArgumentError("Test specificity value must be between 0 and 1"))
         end
 
-        temp = new(name, pathogen, sensitivity, specificity)
+        temp = new(name, pathogen_id, sensitivity, specificity)
 
         add_testtype!(sim, temp)
 
         return (temp)
     end
+end
+
+
+"""
+    TestType(name, pathogen::Pathogen, sim; kwargs...)
+
+Backwards-compatible constructor. Accepts a `Pathogen` object and extracts its id.
+"""
+function TestType(name::String, pathogen::Pathogen, sim::Simulation; sensitivity::Float64=1.0, specificity::Float64=1.0)
+    return TestType(name, id(pathogen), sim; sensitivity=sensitivity, specificity=specificity)
 end
 
 """
@@ -66,29 +76,29 @@ Represents a serological test used to detect antibodies against a specific patho
 
 # Fields
 - `name::String`: The name of the test (e.g., "ELISA", "Rapid Test").
-- `pathogen::Pathogen`: The pathogen that the test is designed to detect antibodies for.
+- `pathogen_id::Int8`: The pathogen that the test is designed to detect antibodies for.
 - `sensitivity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who have antibodies (true positive rate).
 - `specificity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who do not have antibodies (true negative rate).
 """
 struct SeroprevalenceTestType <: AbstractTestType
     name::String
-    pathogen::Pathogen
+    pathogen_id::Int8
     sensitivity::Float64 # 0-1
     specificity::Float64 # 0-1
 
     @doc """
-        SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation;
+        SeroprevalenceTestType(name::String, pathogen_id::Int8, sim::Simulation;
             sensitivity::Float64 = 1.0, specificity::Float64 = 1.0)
 
     Creates a SeroprevalenceTestType object.
 
     # Parameters
       - `name::String`: The name of the test (e.g., "ELISA", "Rapid Test").
-      - `pathogen::Pathogen`: The pathogen that the test is designed to detect antibodies for.
+      - `pathogen_id::Int8`: The pathogen that the test is designed to detect antibodies for.
       - `sensitivity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who have antibodies (true positive rate).
       - `specificity::Float64 = 1.0`: The probability (between 0 and 1) that the test correctly identifies individuals who do not have antibodies (true negative rate).
     """
-    function SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation;
+    function SeroprevalenceTestType(name::String, pathogen_id::Int8, sim::Simulation;
         sensitivity::Float64=1.0, specificity::Float64=1.0)
 
         # check input
@@ -100,12 +110,21 @@ struct SeroprevalenceTestType <: AbstractTestType
             throw(ArgumentError("Test specificity value must be between 0 and 1"))
         end
 
-        temp = new(name, pathogen, sensitivity, specificity)
+        temp = new(name, pathogen_id, sensitivity, specificity)
 
         add_testtype!(sim, temp)
 
         return (temp)
     end
+end
+
+"""
+    SeroprevalenceTestType(name, pathogen::Pathogen, sim; kwargs...)
+
+Backwards-compatible constructor. Accepts a `Pathogen` object and extracts its id.
+"""
+function SeroprevalenceTestType(name::String, pathogen::Pathogen, sim::Simulation; sensitivity::Float64=1.0, specificity::Float64=1.0)
+    return SeroprevalenceTestType(name, id(pathogen), sim; sensitivity=sensitivity, specificity=specificity)
 end
 
 """
@@ -118,12 +137,12 @@ function name(tt::TestType)
 end
 
 """
-    pathogen(tt::TestType)
+    pathogen_id(tt::TestType)
 
-Returns the TestType's associated pathogen.
+Returns the TestType's associated pathogen_id.
 """
-function pathogen(tt::TestType)
-    return (tt.pathogen)
+function pathogen_id(tt::TestType)
+    return (tt.pathogen_id)
 end
 
 """
@@ -155,12 +174,12 @@ function name(tt::SeroprevalenceTestType)
 end
 
 """
-    pathogen(tt::SeroprevalenceTestType)
+    pathogen_id(tt::SeroprevalenceTestType)
 
-Returns the SeroprevalenceTestType's associated pathogen.
+Returns the SeroprevalenceTestType's associated pathogen_id.
 """
-function pathogen(tt::SeroprevalenceTestType)
-    return (tt.pathogen)
+function pathogen_id(tt::SeroprevalenceTestType)
+    return (tt.pathogen_id)
 end
 
 """
@@ -185,9 +204,9 @@ end
 ### PRINTING
 ###
 
-Base.show(io::IO, tt::TestType) = print(io, "$(tt.pathogen.name)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
+Base.show(io::IO, tt::TestType) = print(io, "$(tt.pathogen_id)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
 
-Base.show(io::IO, tt::SeroprevalenceTestType) = print(io, "$(tt.pathogen.name)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
+Base.show(io::IO, tt::SeroprevalenceTestType) = print(io, "$(tt.pathogen_id)-Test: $(tt.name) (Sensitivity: $(tt.sensitivity), Specificity: $(tt.specificity))")
 
 
 ###
@@ -219,14 +238,12 @@ undetected individual.
 function apply_test!(ind::Individual, testtype::TestType, sim::Simulation, reportable::Bool)
 
     # apply test
-    test_pos = infected(ind) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
-        !infected(ind) && gems_rand(rng(sim)) > testtype |> specificity
+    test_pos = infected(ind, testtype.pathogen_id) && gems_rand(rng(sim)) <= testtype |> sensitivity ||
+        !infected(ind, testtype.pathogen_id) && gems_rand(rng(sim)) > testtype |> specificity
 
-    # add test information in agent
-    last_test!(ind, sim |> tick)
-    last_test_result!(ind, test_pos)
-    test_pos && reportable ? last_reported_at!(ind, sim |> tick) : nothing
-
+    # record test result
+    record_test!(ind, test_registry(sim, ind), testtype.pathogen_id, sim |> tick, test_pos, reportable)
+ 
     # log test in sim object
     log!(
         sim |> testlogger,
@@ -234,12 +251,15 @@ function apply_test!(ind::Individual, testtype::TestType, sim::Simulation, repor
         sim |> tick,
         test_pos,
         ind |> infected,
-        infected(ind) ? infection_id(ind) : DEFAULT_INFECTION_ID,
+        infected(ind, testtype.pathogen_id) ? infection_id(ind, sim, testtype.pathogen_id) : DEFAULT_INFECTION_ID,
+        testtype |> pathogen_id,
         testtype |> name,
         test_pos && reportable)
-
+ 
     return test_pos
 end
+
+
 
 
 
@@ -275,7 +295,8 @@ function apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation;
     no_of_ind = subset === nothing ? setting |> individuals |> length : subset |> length
 
     # number of infected. If no subset provided, use all individuals from setting
-    no_of_inf = subset === nothing ? setting |> individuals |> num_of_infected : subset |> num_of_infected
+    pid = pathogen_id(testtype)
+    no_of_inf = subset === nothing ? num_of_infected(individuals(setting), pid) : num_of_infected(subset, pid)
 
     # apply test
     test_pos = no_of_inf > 0 && gems_rand(rng(sim)) <= testtype |> sensitivity ||
@@ -290,6 +311,7 @@ function apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation;
         test_pos,
         Int16(no_of_ind),
         Int16(no_of_inf),
+        testtype |> pathogen_id,
         testtype |> name)
 
     return test_pos
@@ -316,7 +338,8 @@ function apply_test!(ind::Individual, testtype::SeroprevalenceTestType, sim::Sim
 
     # apply test
     # check if individual has ever been infected
-    was_infected = number_of_infections(ind) > 0
+    imm = get_immunity_state(ind, immunity_registry(sim, ind), testtype.pathogen_id)
+    was_infected = imm.natural_acquired_tick != DEFAULT_TICK
 
     # simulate test result with test sensitivity and specificity
     test_pos = was_infected && gems_rand(rng(sim)) <= sensitivity(testtype) ||
@@ -330,7 +353,8 @@ function apply_test!(ind::Individual, testtype::SeroprevalenceTestType, sim::Sim
         test_pos,
         ind |> infected,
         was_infected,
-        infected(ind) ? infection_id(ind) : DEFAULT_INFECTION_ID,
+        infected(ind, testtype.pathogen_id) ? infection_id(ind, sim, testtype.pathogen_id) : DEFAULT_INFECTION_ID,
+        testtype |> pathogen_id,
         testtype |> name)
 
     return test_pos

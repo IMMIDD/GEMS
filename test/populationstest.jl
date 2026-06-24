@@ -275,7 +275,7 @@
             result = dataframe(pop)
 
             # only base fields (no leftover columns from the source DataFrame)
-            base_names = Set([:id, :sex, :age, :number_of_vaccinations, :vaccination_tick,
+            base_names = Set([:id, :sex, :age,
                               :education, :occupation, :household, :office, :schoolclass])
             @test Set(propertynames(result)) == base_names
         end
