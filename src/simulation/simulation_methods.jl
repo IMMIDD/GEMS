@@ -470,8 +470,6 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_symptomatic = symptomatic(indiv)
     was_hospitalized = is_hospitalized(indiv)
 
-    shard_id = _owner_shard(id(indiv))
-
     # update immunity levels
     if indiv.needs_immunity_update
         update_immunity!(indiv, immunity_registry(sim, id(indiv)), sim.pathogens, tick, rng(sim))
@@ -479,6 +477,8 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
     # progress disease for currently infected individuals
     if infected(indiv)
+        shard_id = _owner_shard(id(indiv))
+        
         progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, rng(sim))
 
         if !was_dead && dead(indiv)
