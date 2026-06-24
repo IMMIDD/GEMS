@@ -75,7 +75,6 @@ A type to represent individuals that act as agents inside the simulation.
     - `icu::Bool`: Flag indicating individual is in the ICU
     - `ventilated::Bool`: Flag indicating individual is on a ventilator
     - `dead::Bool`: Flag indicating individual's decease
-    - `number_of_infections::Int8`: Lifetime infection count
     - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
 
 - Interventions
@@ -83,6 +82,10 @@ A type to represent individuals that act as agents inside the simulation.
     - `quarantine_tick::Int16`: Start tick of quarantine
     - `quarantine_release_tick::Int16`: End tick of quarantine
     - `quarantine_status::Int8`: Status indicator (none, household, etc.)
+
+- Bookkeeping
+    - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
+    - `number_of_infections::Int8`: Lifetime infection count
 
 - Pathogen
     - `infection_cache::NTuple{N, InfectionState}`: Fixed-size cache of current infections
@@ -92,7 +95,6 @@ A type to represent individuals that act as agents inside the simulation.
 - Immunity
     - `immunity_cache::NTuple{N, ImmunityState}`: Fixed-size cache of pathogen immunities
     - `immunity_head::Int32`: Pointer to the first overflow node in the ImmunityRegistry
-    - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
 
 - Extensions
     - `extensions::Any`: Optional container for dynamically added per-individual attributes (`nothing` when unused)
@@ -124,15 +126,18 @@ A type to represent individuals that act as agents inside the simulation.
     hospitalized::Bool = false              # off 41,  1B,  line 0
     icu::Bool = false                       # off 42,  1B,  line 0
     ventilated::Bool = false                # off 43,  1B,  line 0
-    dead::Bool = false                      # off 44,  1B,  line 0
-    number_of_infections::Int8 = 0          # off 45,  1B,  line 0
+    dead::Bool = false                      # off 44,  1B,  line 0   (then 1B padding)
     comorbidities::UInt16 = 0               # off 46,  2B,  line 0
 
     # INTERVENTIONS
     detected_mask::UInt32 = 0                       # off 48,  4B,  line 0
     quarantine_tick::Int16 = DEFAULT_TICK           # off 52,  2B,  line 0
     quarantine_release_tick::Int16 = DEFAULT_TICK   # off 54,  2B,  line 0
-    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 56,  1B,  line 0   (then 3B padding)
+    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 56,  1B,  line 0
+
+    # BOOKKEEPING
+    needs_immunity_update::Bool = false     # off 57,  1B,  line 0
+    number_of_infections::Int8 = 0          # off 58,  1B,  line 0   (then 1B padding)
 
     # PATHOGEN
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} =
@@ -143,8 +148,7 @@ A type to represent individuals that act as agents inside the simulation.
     # IMMUNITY
     immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} =
         ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 108, 12B,  line 1
-    immunity_head::Int32 = 0                # off 120, 4B,  line 1
-    needs_immunity_update::Bool = false     # off 124, 1B,  line 1   (then 3B padding)
+    immunity_head::Int32 = 0                # off 120, 4B,  line 1   (then 4B padding)
 
     # EXTENSIONS
     extensions::Any = nothing               # off 128, 8B,  line 2
@@ -572,7 +576,7 @@ function detected!(individual::Individual, val::Bool)
 end
 
 
-# --- PATHOGEN ATTRIBUTES ---
+# ### PATHOGEN ATTRIBUTES ###
 
 """
     active_pathogens_mask(individual::Individual)::UInt32
