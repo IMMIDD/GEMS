@@ -21,15 +21,10 @@ struct InfectionState
     infectiousness_onset::Int16
     symptom_onset::Int16
     severeness_onset::Int16
-    hospital_admission::Int16
-    icu_admission::Int16
-    icu_discharge::Int16
-    ventilation_admission::Int16
-    ventilation_discharge::Int16
-    hospital_discharge::Int16
+    critical_onset::Int16
+    critical_offset::Int16
     severeness_offset::Int16
     recovery::Int16
-    death::Int16
     infectiousness::Int8
     pathogen_id::Int8
     active::Bool
@@ -47,15 +42,10 @@ function InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgr
         infectiousness_onset(dp),
         symptom_onset(dp),
         severeness_onset(dp),
-        hospital_admission(dp),
-        icu_admission(dp),
-        icu_discharge(dp),
-        ventilation_admission(dp),
-        ventilation_discharge(dp),
-        hospital_discharge(dp),
+        critical_onset(dp),
+        critical_offset(dp),
         severeness_offset(dp),
         recovery(dp),
-        death(dp),
         Int8(0),
         pathogen_id,
         true
@@ -73,7 +63,6 @@ function InfectionState()::InfectionState
         DEFAULT_INFECTION_ID, Int32(0),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
-        Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int8(0), Int8(0), false
     )
 end

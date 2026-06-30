@@ -79,6 +79,7 @@ function infect!(infectee::Individual,
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
         push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp)
+        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), tick, rng)
     else
         # log infection
         new_infection_id = log!(
@@ -91,15 +92,10 @@ function infect!(infectee::Individual,
             infectiousness_onset(dp),
             symptom_onset(dp),
             severeness_onset(dp),
-            hospital_admission(dp),
-            hospital_discharge(dp),
-            icu_admission(dp),
-            icu_discharge(dp),
-            ventilation_admission(dp),
-            ventilation_discharge(dp),
+            critical_onset(dp),
+            critical_offset(dp),
             severeness_offset(dp),
             recovery(dp),
-            death(dp),
             setting_id,
             setting_type,
             lat,
@@ -223,7 +219,7 @@ function try_to_infect!(infctr::Individual,
     end
 
     # if one of both is hospitalized
-    if hospitalized(infctr) || hospitalized(infctd)
+    if hospitalized(infctr, tick(sim)) || hospitalized(infctd, tick(sim))
         return false
     end
 
@@ -311,14 +307,14 @@ Checks for infectiousness, setting openness, and quarantine status.
 # Returns
 - `Bool`: True if the individual can infect others in the setting, false otherwise
 """
-function can_infect(ind::Individual, setting::Setting)::Bool
+function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
     # if individual is not infectious
     if !infectious(ind)
         return false
     end
 
     # if individual is hospitalized
-    if is_hospitalized(ind)
+    if is_hospitalized(ind, tick)
         return false
     end
 
@@ -356,14 +352,14 @@ Checks for death and quarantine status.
 # Returns
 - `Bool`: True if the individual can be contacted in the setting, false otherwise
 """
-function can_be_contacted(ind::Individual, setting::Setting)::Bool
+function can_be_contacted(ind::Individual, setting::Setting, tick::Int16)::Bool
     # if individual is dead
     if dead(ind)
         return false
     end
 
     # if individual is hospitalized
-    if is_hospitalized(ind)
+    if is_hospitalized(ind, tick)
         return false
     end
 
@@ -420,7 +416,7 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
         ind = p_buffer[ind_index]
         if infected(ind)
             num_infected += 1
-            if can_infect(ind, setting)
+            if can_infect(ind, setting, current_tick)
                 empty!(c_buffer)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
 
@@ -428,7 +424,7 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
                 # only resolves the shard registry if the individual has overflow infections
                 for state in each_infection(ind, sim)
                     state.infectiousness == 0 && continue
-                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id)
+                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id, current_tick)
                 end
             end
         end
@@ -437,9 +433,9 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
     return num_infected
 end
 
-function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id)
+function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick::Int16)
     for c in c_buffer
-        if can_be_contacted(c, setting)
+        if can_be_contacted(c, setting, tick)
             if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
                 activate_memberships!(c, sim)
             end

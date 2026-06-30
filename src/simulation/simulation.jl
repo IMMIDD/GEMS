@@ -10,13 +10,14 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
+export health_progression
 export infection_registry, immunity_registry, test_registry
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
 export reset!
 export tickunit
-export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export infectionlogger, deathlogger, healthlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
 export statelogger, states
 export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
@@ -160,7 +161,7 @@ sim = Simulation(params)
     - `rngs::Vector{Xoshiro}`: RNG instances for each thread
 
 """
-mutable struct Simulation{P<:Tuple}
+mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
 
     # data TODO check if config file needs to be adapted actually
     configfile::String
@@ -178,6 +179,7 @@ mutable struct Simulation{P<:Tuple}
     population::Population
     settings::SettingsContainer
     pathogens::P
+    health_progression::HP
     infection_registries::Vector{InfectionRegistry}
     immunity_registries::Vector{ImmunityRegistry}
     test_registries::Vector{TestRegistry}
@@ -185,6 +187,7 @@ mutable struct Simulation{P<:Tuple}
     # logger
     infectionlogger::InfectionLogger
     deathlogger::DeathLogger
+    healthlogger::HealthLogger
     testlogger::TestLogger
     pooltestlogger::PoolTestLogger
     seroprevalencelogger::SeroprevalenceLogger
@@ -225,13 +228,14 @@ mutable struct Simulation{P<:Tuple}
         population::Population,
         settings::SettingsContainer,
         pathogens::P,
+        health_progression::HP,
         stepmod::Function,
         seed::Int64,
         rngs::Vector{<:Xoshiro}
-    ) where {P<:Tuple} 
+    ) where {P<:Tuple, HP<:HealthProgression}
     num_shards = Threads.maxthreadid()
     matrix_size_hint = ceil(Int, (length(population.individuals) * 0.1) / (num_shards^2))
-        sim = new{P}(
+        sim = new{P, HP}(
             # config
             configfile,
             Int16(0), # tick
@@ -246,6 +250,7 @@ mutable struct Simulation{P<:Tuple}
             population,
             settings,
             pathogens,
+            health_progression,
             [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [TestRegistry() for _ in 1:num_shards],
@@ -253,6 +258,7 @@ mutable struct Simulation{P<:Tuple}
             # logger
             InfectionLogger(),
             DeathLogger(),
+            HealthLogger(),
             TestLogger(),
             PoolTestLogger(),
             SeroprevalenceLogger(),
@@ -365,6 +371,9 @@ function _BUILD_Simulation(;
         transmission_function = nothing,
         transmission_rate = nothing,
 
+        # health progression
+        health_progression = nothing,
+
         # stepmod
         stepmod::Function = x -> x,
 
@@ -442,6 +451,9 @@ function _BUILD_Simulation(;
             transmission_rate
         )
 
+        # HEALTH PROGRESSION
+        hp = determine_health_progression(config, health_progression)
+
         # START CONDITION
         start_condition = determine_start_condition(
             config,
@@ -462,6 +474,7 @@ function _BUILD_Simulation(;
             pop,
             settings,
             pathogen_tuple,
+            hp,
             stepmod,
             rng_seed,
             rngs
@@ -721,6 +734,19 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
     end
 
     return _finalize_pathogen_ids!(raw)
+end
+
+"""
+    determine_health_progression(configfile_params::Dict, health_progression)
+
+Resolves the simulation's `HealthProgression`: a provided `health_progression` argument wins,
+otherwise a top-level `[HealthProgression]` config section is parsed, otherwise the default.
+"""
+function determine_health_progression(configfile_params::Dict, health_progression)
+    !isnothing(health_progression) && return health_progression
+    _haspath(configfile_params, ["HealthProgression"]) &&
+        return create_health_progression(configfile_params["HealthProgression"])
+    return DefaultHealthProgression()
 end
 
 """
@@ -1168,6 +1194,45 @@ function create_infectiousness_profile(params::Dict)
         ip_type(;kw_args...)
     catch e
         throw(ErrorException("InfectiousnessProfile of type '$ip_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_care(care_type, params::Dict)
+
+Creates a tier care profile (`SevereCare`/`CriticalCare`) from a nested config table, turning
+each leaf value into a distribution or real.
+"""
+function create_care(care_type, params::Dict)
+    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
+    return try
+        care_type(;kw_args...)
+    catch e
+        throw(ErrorException("$care_type could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_health_progression(params::Dict)
+
+Creates a `HealthProgression` based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the health progression
+and a `parameters` key. For `DefaultHealthProgression` the parameters hold `severe` and
+`critical` sub-tables; other types receive their parameters as distributions or reals.
+"""
+function create_health_progression(params::Dict)
+    hp_type = get_subtype(params["type"], HealthProgression)
+    if hp_type == DefaultHealthProgression
+        p = params["parameters"]
+        return DefaultHealthProgression(
+            severe = create_care(SevereCare, p["severe"]),
+            critical = create_care(CriticalCare, p["critical"]))
+    end
+    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params["parameters"])
+    return try
+        hp_type(;kw_args...)
+    catch e
+        throw(ErrorException("HealthProgression of type '$hp_type' could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1672,6 +1737,15 @@ function pathogens(simulation::Simulation)
 end
 
 """
+    health_progression(simulation)
+
+Returns the host `HealthProgression` of the simulation.
+"""
+function health_progression(simulation::Simulation)
+    return simulation.health_progression
+end
+
+"""
     _owner_shard(ind_id::Int32)
 
 Returns the shard index (1 to `Threads.maxthreadid()`) assigned to the given `ind_id`.
@@ -1839,6 +1913,15 @@ Calls the `dataframe()` function on the internal simulation's `DeathLogger`.
 deaths(simulation::Simulation) = simulation |> deathlogger |> dataframe
 
 """
+    healthlogger(simulation)
+
+Returns the `HealthLogger` of the simulation.
+"""
+function healthlogger(simulation::Simulation)::HealthLogger
+    return simulation.healthlogger
+end
+
+"""
     testlogger(simulation)
 
 Returns the `TestLogger` of the simulation.
@@ -1993,6 +2076,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # Reset all loggers
     simulation.infectionlogger = InfectionLogger()
     simulation.deathlogger = DeathLogger()
+    simulation.healthlogger = HealthLogger()
     simulation.testlogger = TestLogger()
     simulation.pooltestlogger = PoolTestLogger()
     simulation.seroprevalencelogger = SeroprevalenceLogger()

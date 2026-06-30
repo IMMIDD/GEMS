@@ -17,7 +17,7 @@ struct ConstantInfectiousness <: InfectiousnessProfile
 end
 
 @inline function calculate_infectiousness(profile::ConstantInfectiousness, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    end_t = max(state.recovery, state.death)
+    end_t = state.recovery
     return (state.infectiousness_onset >= 0 && state.infectiousness_onset <= tick < end_t) ? profile.level : Int8(0)
 end
 
@@ -34,7 +34,7 @@ Per-pathogen mapping from disease stage to infectiousness level (`Int8`, 0–100
   for individuals that *will* become symptomatic.
 - `symptomatic::Int8`: Past `symptom_onset`, before any severe stage.
 - `severe::Int8`: Past `severeness_onset`, before `severeness_offset`.
-- `critical::Int8`: While in ICU (between `icu_admission` and `icu_discharge`).
+- `critical::Int8`: While critically ill (between `critical_onset` and `critical_offset`).
 """
 @with_kw struct StagedInfectiousness  <: InfectiousnessProfile
     asymptomatic::Int8 = Int8(50)
@@ -61,18 +61,18 @@ end
 Compute the current infectiousness for a single (host, pathogen) infectionat tick `tick`, given the pathogen's `profile`, the infection's `state`,
 the `individual` host, and an `rng` (unused by built-in profiles but available for user-defined extensions).
 
-Returns `Int8(0)` if `tick` is outside the infectious window `[infectiousness_onset, max(recovery, death))`. 
+Returns `Int8(0)` if `tick` is outside the infectious window `[infectiousness_onset, recovery)`.
 Otherwise picks the profile field that matches the highest active disease stage at `tick`.
 """
 @inline function calculate_infectiousness(profile::StagedInfectiousness, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    end_t = max(state.recovery, state.death)
+    end_t = state.recovery
     # outside the infectious window
     if state.infectiousness_onset < 0 || tick < state.infectiousness_onset || tick >= end_t
         return Int8(0)
     end
 
     # pick the highest stage active at tick
-    if 0 <= state.icu_admission <= tick < state.icu_discharge
+    if 0 <= state.critical_onset <= tick < state.critical_offset
         return profile.critical
     end
     if 0 <= state.severeness_onset <= tick < state.severeness_offset

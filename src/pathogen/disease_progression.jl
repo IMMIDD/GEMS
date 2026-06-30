@@ -8,12 +8,8 @@ export exposure
 export infectiousness_onset
 export symptom_onset
 export severeness_onset
-export hospital_admission
-export icu_admission
-export icu_discharge
-export ventilation_admission
-export ventilation_discharge
-export hospital_discharge
+export critical_onset
+export critical_offset
 export severeness_offset
 
 export is_infected, isinfected, infected
@@ -22,12 +18,9 @@ export is_infectious, isinfectious, infectious
 export is_asymptomatic, isasymptomatic, asymptomatic
 export is_symptomatic, issymptomatic, symptomatic
 export is_severe, issevere, severe
+export is_critical, iscritical, critical
 export is_mild, ismild, mild
-export is_hospitalized, ishospitalized, hospitalized
-export is_icu, isicu, icu
-export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
-export is_dead, isdead, dead
 
 """
     DiseaseProgression
@@ -35,33 +28,24 @@ export is_dead, isdead, dead
 A struct to represent the disease progression of an infectious disease.
 
 # Fields
-- `pathogen_id::Int8`: The ID of the pathogen associated with this disease progression.
 - `exposure::Int16`: Exposure (infection) tick of the disease.
 - `infectiousness_onset::Int16`: Tick when the individual becomes infectious.
 - `symptom_onset::Int16`: Tick when the individual develops symptoms.
 - `severeness_onset::Int16`: Tick when the individual develops severe symptoms.
-- `hospital_admission::Int16`: Tick when the individual is admitted to hospital.
-- `icu_admission::Int16`: Tick when the individual is admitted to ICU.
-- `icu_discharge::Int16`: Tick when the individual is discharged from ICU.
-- `hospital_discharge::Int16`: Tick when the individual is discharged from hospital.
+- `critical_onset::Int16`: Tick when the individual develops critical symptoms.
+- `critical_offset::Int16`: Tick when the individual's critical symptoms subside.
+- `severeness_offset::Int16`: Tick when the individual's severe symptoms subside.
 - `recovery::Int16`: Tick when the individual recovers from the disease.
-- `death::Int16`: Tick when the individual dies from the disease.
 
 # Constraints
 - `exposure` must be non-negative.
 - `infectiousness_onset` must be at least one tick after `exposure`.
 - `symptom_onset` is optional but must be at least one tick after `exposure` if set.
-- `severeness_onset` is optional, but if set, requires `symptom_onset` and cannot be prior to `symptom_onset`.
-- `hospital_admission` is optional, but if set, requires `severeness_onset`, cannot be prior to `severeness_onset`, and requires `hospital_discharge`.
-- `icu_admission` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and requires `ICU_discharge`.
-- `icu_discharge` is optional, but if set, requires `ICU_admission`, and cannot be prior to `ICU_admission`.
-- `ventilation_admission` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and requires `ventilation_discharge`.
-- `ventilation_discharge` is optional, but if set, requires `ventilation_admission`, and cannot be prior to `ventilation_admission`.
-- `hospital_discharge` is optional, but if set, requires `hospital_admission`, cannot be prior to `hospital_admission`, and cannot be prior to `ICU_discharge` if set.
-- `severeness_offset` is optional, but if set, requires `severeness_onset`, cannot be prior to `severeness_onset`, and cannot be prior to `hospital_discharge` if set.
-- `recovery` and `death` are mutually exclusive; at least one must be set.
-- `recovery` must be at least one tick after `exposure`, `symptom_onset` if set, `severeness_onset` if set, and cannot be prior to `hospital_discharge`.
-- `death` requires `symptom_onset` and cannot precede any other disease progression events.
+- `severeness_onset` is optional, but if set, requires `symptom_onset`, cannot be prior to `symptom_onset`, and requires `severeness_offset`.
+- `severeness_offset` is optional, but if set, requires `severeness_onset` and cannot be prior to `severeness_onset`.
+- `critical_onset` is optional, but if set, requires `severeness_onset`, cannot be prior to `severeness_onset`, and requires `critical_offset`.
+- `critical_offset` is optional, but if set, requires `critical_onset` and cannot be prior to `critical_onset`.
+- `recovery` must be set, at least one tick after `exposure`, and cannot be prior to `symptom_onset`, `severeness_offset`, or `critical_offset` if set.
 
 # Examples
 
@@ -90,30 +74,20 @@ struct DiseaseProgression
     infectiousness_onset::Int16
     symptom_onset::Int16
     severeness_onset::Int16
-    hospital_admission::Int16
-    icu_admission::Int16
-    icu_discharge::Int16
-    ventilation_admission::Int16
-    ventilation_discharge::Int16
-    hospital_discharge::Int16
+    critical_onset::Int16
+    critical_offset::Int16
     severeness_offset::Int16
     recovery::Int16
-    death::Int16
 
     function DiseaseProgression(
         exposure::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
         severeness_onset::Int16,
-        hospital_admission::Int16,
-        icu_admission::Int16,
-        icu_discharge::Int16,
-        ventilation_admission::Int16,
-        ventilation_discharge::Int16,
-        hospital_discharge::Int16,
+        critical_onset::Int16,
+        critical_offset::Int16,
         severeness_offset::Int16,
-        recovery::Int16,
-        death::Int16
+        recovery::Int16
     )
 
         # SANITY CHECKS
@@ -127,48 +101,24 @@ struct DiseaseProgression
         severeness_onset >= 0 && symptom_onset < 0 && throw(ArgumentError("Symptom onset must be given if severeness onset is set (symptom_onset: $symptom_onset, severeness_onset: $severeness_onset)."))
         severeness_onset >= 0 && severeness_onset < symptom_onset && throw(ArgumentError("Severeness onset cannot happen before symptom onset (symptom_onset: $symptom_onset, severeness_onset: $severeness_onset)."))
         severeness_onset >= 0 && severeness_offset < 0 && throw(ArgumentError("Severeness onset cannot be set if severeness offset is unset (severeness_onset: $severeness_onset, severeness_offset: $severeness_offset)."))
-        # hospital admission
-        hospital_admission >= 0 && severeness_onset < 0 && throw(ArgumentError("Severeness onset must be given if hospital admission is set (severeness_onset: $severeness_onset, hospital_admission: $hospital_admission)."))
-        hospital_admission >= 0 && hospital_admission < severeness_onset && throw(ArgumentError("Hospital admission cannot happen before severeness onset (severeness_onset: $severeness_onset, hospital_admission: $hospital_admission)."))
-        hospital_admission >= 0 && hospital_discharge < 0 && throw(ArgumentError("Hospital admission cannot be set if hospital discharge is unset (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
-        # ICU admission
-        icu_admission >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if ICU admission is set (hospital_admission: $hospital_admission, icu_admission: $icu_admission)."))
-        icu_admission >= 0 && icu_admission < hospital_admission && throw(ArgumentError("ICU admission cannot happen before hospital admission (hospital_admission: $hospital_admission, icu_admission: $icu_admission)."))
-        icu_admission >= 0 && icu_discharge < 0 && throw(ArgumentError("ICU admission cannot be set if ICU discharge is unset (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
-        # ICU discharge
-        icu_discharge >= 0 && icu_admission < 0 && throw(ArgumentError("ICU admission must be given if ICU discharge is set (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
-        icu_discharge >= 0 && icu_discharge < icu_admission && throw(ArgumentError("ICU discharge cannot happen before ICU admission (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
-        # ventilation admission
-        ventilation_admission >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if ventilation admission is set (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))
-        ventilation_admission >= 0 && ventilation_admission < hospital_admission && throw(ArgumentError("Ventilation admission cannot happen before hospital admission (hospital_admission: $hospital_admission, ventilation_admission: $ventilation_admission)."))
-        ventilation_admission >= 0 && ventilation_discharge < 0 && throw(ArgumentError("Ventilation admission cannot be set if ventilation discharge is unset (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
-        # ventilation discharge
-        ventilation_discharge >= 0 && ventilation_admission < 0 && throw(ArgumentError("Ventilation admission must be given if ventilation discharge is set (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
-        ventilation_discharge >= 0 && ventilation_discharge < ventilation_admission && throw(ArgumentError("Ventilation discharge cannot happen before ventilation admission (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
-        # hospital discharge
-        hospital_discharge >= 0 && hospital_admission < 0 && throw(ArgumentError("Hospital admission must be given if hospital discharge is set (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
-        hospital_discharge >= 0 && hospital_discharge < hospital_admission && throw(ArgumentError("Hospital discharge cannot happen before hospital admission (hospital_admission: $hospital_admission, hospital_discharge: $hospital_discharge)."))
-        hospital_discharge >= 0 && icu_discharge >= 0 && hospital_discharge < icu_discharge && throw(ArgumentError("Hospital discharge requires ICU discharge (ICU_discharge: $icu_discharge, hospital_discharge: $hospital_discharge)."))
         # severeness offset
         severeness_offset >= 0 && severeness_onset < 0 && throw(ArgumentError("Severeness onset must be given if severeness offset is set (severeness_onset: $severeness_onset, severeness_offset: $severeness_offset)."))
         severeness_offset >= 0 && severeness_offset < severeness_onset && throw(ArgumentError("Severeness offset cannot happen before severeness onset (severeness_onset: $severeness_onset, severeness_offset: $severeness_offset)."))
-        severeness_offset >= 0 && hospital_discharge >= 0 && severeness_offset < hospital_discharge && throw(ArgumentError("Severeness offset cannot happen before hospital discharge (hospital_discharge: $hospital_discharge, severeness_offset: $severeness_offset)."))
-        # recovery and death (mutually exclusive)
-        recovery >= 0 && death >= 0 && throw(ArgumentError("Recovery and death cannot both happen (recovery: $recovery, death: $death)."))
-        recovery < 0 && death < 0 && throw(ArgumentError("Individuals must either recover or die (recovery: $recovery, death: $death)."))
+        # critical onset
+        critical_onset >= 0 && severeness_onset < 0 && throw(ArgumentError("Severeness onset must be given if critical onset is set (severeness_onset: $severeness_onset, critical_onset: $critical_onset)."))
+        critical_onset >= 0 && critical_onset < severeness_onset && throw(ArgumentError("Critical onset cannot happen before severeness onset (severeness_onset: $severeness_onset, critical_onset: $critical_onset)."))
+        critical_onset >= 0 && critical_offset < 0 && throw(ArgumentError("Critical onset cannot be set if critical offset is unset (critical_onset: $critical_onset, critical_offset: $critical_offset)."))
+        # critical offset
+        critical_offset >= 0 && critical_onset < 0 && throw(ArgumentError("Critical onset must be given if critical offset is set (critical_onset: $critical_onset, critical_offset: $critical_offset)."))
+        critical_offset >= 0 && critical_offset < critical_onset && throw(ArgumentError("Critical offset cannot happen before critical onset (critical_onset: $critical_onset, critical_offset: $critical_offset)."))
         # recovery
-        recovery >= 0 && recovery < infectiousness_onset && throw(ArgumentError("Infectiousness cannot set on after recovery (infectiousness_onset: $infectiousness_onset, recovery: $recovery)."))
-        recovery >= 0 && severeness_offset >= 0 && recovery < severeness_offset && throw(ArgumentError("Recovery cannot happen before severeness offset (severeness_offset: $severeness_offset, recovery: $recovery)."))
-        recovery >= 0 && hospital_discharge >= 0 && recovery < hospital_discharge && throw(ArgumentError("Recovery cannot happen before hospital discharge (hospital_discharge: $hospital_discharge, recovery: $recovery)."))
-        recovery >= 0 && severeness_onset >= 0 && recovery < severeness_onset && throw(ArgumentError("Recovery cannot happen before severeness onset (severeness_onset: $severeness_onset, recovery: $recovery)."))
-        recovery >= 0 && symptom_onset >= 0 && recovery < symptom_onset && throw(ArgumentError("Recovery cannot happen before symptom onset (symptom_onset: $symptom_onset, recovery: $recovery)."))
-        recovery >= 0 && recovery < exposure && throw(ArgumentError("Recovery cannot happen before exposure (exposure: $exposure, recovery: $recovery)."))
-        # death
-        death >= 0 && infectiousness_onset > death && throw(ArgumentError("Infectiousness cannot set on after death (infectiousness_onset: $infectiousness_onset, death: $death)."))
-        death >= 0 && symptom_onset < 0 && throw(ArgumentError("Asymptomatic individuals cannot die; symptom onset must be set (symptom_onset: $symptom_onset, death: $death)."))
-        death >= 0 && symptom_onset >= 0 && death < symptom_onset && throw(ArgumentError("Death cannot happen before symptom onset (symptom_onset: $symptom_onset, death: $death)."))
-        death >= 0 && severeness_onset > death && throw(ArgumentError("Individuals cannot develop severe symptoms after they died (severeness_onset: $severeness_onset, death: $death)."))
-        death >= 0 && hospital_admission > death && throw(ArgumentError("Individuals cannot be admitted to hospital after they died (hospital_admission: $hospital_admission, death: $death)."))
+        recovery < 0 && throw(ArgumentError("Individuals must recover (recovery: $recovery)."))
+        recovery < infectiousness_onset && throw(ArgumentError("Infectiousness cannot set on after recovery (infectiousness_onset: $infectiousness_onset, recovery: $recovery)."))
+        severeness_offset >= 0 && recovery < severeness_offset && throw(ArgumentError("Recovery cannot happen before severeness offset (severeness_offset: $severeness_offset, recovery: $recovery)."))
+        critical_offset >= 0 && recovery < critical_offset && throw(ArgumentError("Recovery cannot happen before critical offset (critical_offset: $critical_offset, recovery: $recovery)."))
+        severeness_onset >= 0 && recovery < severeness_onset && throw(ArgumentError("Recovery cannot happen before severeness onset (severeness_onset: $severeness_onset, recovery: $recovery)."))
+        symptom_onset >= 0 && recovery < symptom_onset && throw(ArgumentError("Recovery cannot happen before symptom onset (symptom_onset: $symptom_onset, recovery: $recovery)."))
+        recovery < exposure && throw(ArgumentError("Recovery cannot happen before exposure (exposure: $exposure, recovery: $recovery)."))
 
 
         return new(
@@ -176,15 +126,10 @@ struct DiseaseProgression
             infectiousness_onset,
             symptom_onset,
             severeness_onset,
-            hospital_admission,
-            icu_admission,
-            icu_discharge,
-            ventilation_admission,
-            ventilation_discharge,
-            hospital_discharge,
+            critical_onset,
+            critical_offset,
             severeness_offset,
-            recovery,
-            death
+            recovery
         )
     end
 
@@ -193,56 +138,41 @@ struct DiseaseProgression
         infectiousness_onset = Int16(-1),
         symptom_onset = Int16(-1),
         severeness_onset = Int16(-1),
-        hospital_admission = Int16(-1),
-        icu_admission = Int16(-1),
-        icu_discharge = Int16(-1),
-        ventilation_admission = Int16(-1),
-        ventilation_discharge = Int16(-1),
-        hospital_discharge = Int16(-1),
+        critical_onset = Int16(-1),
+        critical_offset = Int16(-1),
         severeness_offset = Int16(-1),
-        recovery = Int16(-1),
-        death = Int16(-1)
+        recovery = Int16(-1)
     )
         return DiseaseProgression(
             Int16(exposure),
             Int16(infectiousness_onset),
             Int16(symptom_onset),
             Int16(severeness_onset),
-            Int16(hospital_admission),
-            Int16(icu_admission),
-            Int16(icu_discharge),
-            Int16(ventilation_admission),
-            Int16(ventilation_discharge),
-            Int16(hospital_discharge),
+            Int16(critical_onset),
+            Int16(critical_offset),
             Int16(severeness_offset),
-            Int16(recovery),
-            Int16(death)
+            Int16(recovery)
         )
     end
 end
 
 function Base.show(io::IO, dp::DiseaseProgression)
     
-    max_val = max(dp.recovery, dp.death)
+    max_val = dp.recovery
     max_width = max(4, length("$max_val")) # max width of tick column
 
     spcs(x, max) = length("$x") > max ? "" : repeat(" ", max - length("$x")) * "$x"
-    
+
     res = "Disease Progression(\n"
     res *= "  $(spcs("tick", max_width)) | event\n"
     res *= dp.exposure >= 0 ?             "  $(spcs(dp.exposure, max_width)) | exposure\n" : ""
     res *= dp.infectiousness_onset >= 0 ? "  $(spcs(dp.infectiousness_onset, max_width)) | infectiousness_onset\n" : ""
     res *= dp.symptom_onset >= 0 ?        "  $(spcs(dp.symptom_onset, max_width)) | symptom_onset\n" : ""
     res *= dp.severeness_onset >= 0 ?     "  $(spcs(dp.severeness_onset, max_width)) | severeness_onset\n" : ""
-    res *= dp.hospital_admission >= 0 ?   "  $(spcs(dp.hospital_admission, max_width)) | hospital_admission\n" : ""
-    res *= dp.icu_admission >= 0 ?        "  $(spcs(dp.icu_admission, max_width)) | icu_admission\n" : ""
-    res *= dp.icu_discharge >= 0 ?        "  $(spcs(dp.icu_discharge, max_width)) | icu_discharge\n" : ""
-    res *= dp.ventilation_admission >= 0 ? "  $(spcs(dp.ventilation_admission, max_width)) | ventilation_admission\n" : ""
-    res *= dp.ventilation_discharge >= 0 ? "  $(spcs(dp.ventilation_discharge, max_width)) | ventilation_discharge\n" : ""
-    res *= dp.hospital_discharge >= 0 ?   "  $(spcs(dp.hospital_discharge, max_width)) | hospital_discharge\n" : ""
+    res *= dp.critical_onset >= 0 ?       "  $(spcs(dp.critical_onset, max_width)) | critical_onset\n" : ""
+    res *= dp.critical_offset >= 0 ?      "  $(spcs(dp.critical_offset, max_width)) | critical_offset\n" : ""
     res *= dp.severeness_offset >= 0 ?     "  $(spcs(dp.severeness_offset, max_width)) | severeness_offset\n" : ""
     res *= dp.recovery >= 0 ?             "  $(spcs(dp.recovery, max_width)) | recovery\n" : ""
-    res *= dp.death >= 0 ?                "  $(spcs(dp.death, max_width)) | death\n" : ""
     res *= ")"
     print(io, res)
 end
@@ -283,51 +213,20 @@ If the individual will not develop severe symptoms, this will return `-1`.
 severeness_onset(dp::DiseaseProgression) = dp.severeness_onset
 
 """
-    hospital_admission(dp::DiseaseProgression)
+    critical_onset(dp::DiseaseProgression)
 
-Returns the tick when the individual with disease progression `dp` is admitted to hospital.
-If the individual is never admitted to hospital, this will return `-1`.
+Returns the tick when the individual with disease progression `dp` develops critical symptoms.
+If the individual will not develop critical symptoms, this will return `-1`.
 """
-hospital_admission(dp::DiseaseProgression) = dp.hospital_admission
-
-"""
-    icu_admission(dp::DiseaseProgression)
-
-Returns the tick when the individual with disease progression `dp` is admitted to ICU.
-If the individual is never admitted to ICU, this will return `-1`.
-"""
-icu_admission(dp::DiseaseProgression) = dp.icu_admission
+critical_onset(dp::DiseaseProgression) = dp.critical_onset
 
 """
-    icu_discharge(dp::DiseaseProgression)
+    critical_offset(dp::DiseaseProgression)
 
-Returns the tick when the individual with disease progression `dp` is discharged from ICU.
-If the individual is never admitted to ICU, this will return `-1`.
+Returns the tick when the individual with disease progression `dp`'s critical symptoms subside.
+If the individual never has critical symptoms, this will return `-1`.
 """
-icu_discharge(dp::DiseaseProgression) = dp.icu_discharge
-
-"""
-    ventilation_admission(dp::DiseaseProgression)
-
-Returns the tick when the individual with disease progression `dp` is admitted to ventilation.
-If the individual is never admitted to ventilation, this will return `-1`.
-"""
-ventilation_admission(dp::DiseaseProgression) = dp.ventilation_admission
-
-"""
-    ventilation_discharge(dp::DiseaseProgression)
-
-Returns the tick when the individual with disease progression `dp` is discharged from ventilation.
-If the individual is never admitted to ventilation, this will return `-1`.
-"""
-ventilation_discharge(dp::DiseaseProgression) = dp.ventilation_discharge
-
-"""
-    hospital_discharge(dp::DiseaseProgression)
-Returns the tick when the individual with disease progression `dp` is discharged from hospital.
-If the individual is never admitted to hospital, this will return `-1`.
-"""
-hospital_discharge(dp::DiseaseProgression) = dp.hospital_discharge
+critical_offset(dp::DiseaseProgression) = dp.critical_offset
 
 """
     severeness_offset(dp::DiseaseProgression)
@@ -341,17 +240,8 @@ severeness_offset(dp::DiseaseProgression) = dp.severeness_offset
     recovery(dp::DiseaseProgression)
 
 Returns the tick when the individual with disease progression `dp` recovers from the disease.
-If the individual dies instead, this will return `-1`.
 """
 recovery(dp::DiseaseProgression) = dp.recovery
-
-"""
-    death(dp::DiseaseProgression)
-
-Returns the tick when the individual with disease progression `dp` dies from the disease.
-If the individual recovers instead, this will return `-1`.
-"""
-death(dp::DiseaseProgression) = dp.death
 
 
 
@@ -366,7 +256,7 @@ death(dp::DiseaseProgression) = dp.death
 
 Returns `true` if the individual with disease progression `dp` is infected at tick `t`, otherwise `false`.    
 """
-is_infected(dp::DiseaseProgression, t::Int16) = dp.exposure <= t < max(dp.recovery, dp.death)
+is_infected(dp::DiseaseProgression, t::Int16) = dp.exposure <= t < dp.recovery
 isinfected(dp::DiseaseProgression, t::Int16) = is_infected(dp, t)
 infected(dp::DiseaseProgression, t::Int16) = is_infected(dp, t)
 
@@ -377,7 +267,7 @@ infected(dp::DiseaseProgression, t::Int16) = is_infected(dp, t)
 
 Returns `true` if the individual with disease progression `dp` is infectious at tick `t`, otherwise `false`.
 """
-is_infectious(dp::DiseaseProgression, t::Int16) = dp.infectiousness_onset <= t < max(dp.recovery, dp.death)
+is_infectious(dp::DiseaseProgression, t::Int16) = dp.infectiousness_onset <= t < dp.recovery
 isinfectious(dp::DiseaseProgression, t::Int16) = is_infectious(dp, t)
 infectious(dp::DiseaseProgression, t::Int16) = is_infectious(dp, t)
 
@@ -400,7 +290,7 @@ presymptomatic(dp::DiseaseProgression, t::Int16) = is_presymptomatic(dp, t)
 
 Returns `true` if the individual with disease progression `dp` is symptomatic at tick `t`, otherwise `false`.
 """
-is_symptomatic(dp::DiseaseProgression, t::Int16) = 0 <= dp.symptom_onset <= t < max(dp.recovery, dp.death)
+is_symptomatic(dp::DiseaseProgression, t::Int16) = 0 <= dp.symptom_onset <= t < dp.recovery
 issymptomatic(dp::DiseaseProgression, t::Int16) = is_symptomatic(dp, t)
 symptomatic(dp::DiseaseProgression, t::Int16) = is_symptomatic(dp, t)
 
@@ -428,6 +318,17 @@ issevere(dp::DiseaseProgression, t::Int16) = is_severe(dp, t)
 severe(dp::DiseaseProgression, t::Int16) = is_severe(dp, t)
 
 """
+    is_critical(dp::DiseaseProgression, t::Int16)
+    iscritical(dp::DiseaseProgression, t::Int16)
+    critical(dp::DiseaseProgression, t::Int16)
+
+Returns `true` if the individual with disease progression `dp` has critical symptoms at tick `t`, otherwise `false`.
+"""
+is_critical(dp::DiseaseProgression, t::Int16) = 0 <= dp.critical_onset <= t < dp.critical_offset
+iscritical(dp::DiseaseProgression, t::Int16) = is_critical(dp, t)
+critical(dp::DiseaseProgression, t::Int16) = is_critical(dp, t)
+
+"""
     is_mild(dp::DiseaseProgression, t::Int16)
     ismild(dp::DiseaseProgression, t::Int16)
     mild(dp::DiseaseProgression, t::Int16)
@@ -440,39 +341,6 @@ ismild(dp::DiseaseProgression, t::Int16) = is_mild(dp, t)
 mild(dp::DiseaseProgression, t::Int16) = is_mild(dp, t)
 
 """
-    is_hospitalized(dp::DiseaseProgression, t::Int16)
-    ishospitalized(dp::DiseaseProgression, t::Int16)
-    hospitalized(dp::DiseaseProgression, t::Int16)
-
-Returns `true` if the individual with disease progression `dp` is in hospital at tick `t`, otherwise `false`.
-"""
-is_hospitalized(dp::DiseaseProgression, t::Int16) = 0 <= dp.hospital_admission <= t < dp.hospital_discharge
-ishospitalized(dp::DiseaseProgression, t::Int16) = is_hospitalized(dp, t)
-hospitalized(dp::DiseaseProgression, t::Int16) = is_hospitalized(dp, t)
-
-"""
-    is_icu(dp::DiseaseProgression, t::Int16)
-    isicu(dp::DiseaseProgression, t::Int16)
-    icu(dp::DiseaseProgression, t::Int16)
-
-Returns `true` if the individual with disease progression `dp` is in the ICU at tick `t`, otherwise `false`.
-"""
-is_icu(dp::DiseaseProgression, t::Int16) = 0 <= dp.icu_admission <= t < dp.icu_discharge
-isicu(dp::DiseaseProgression, t::Int16) = is_icu(dp, t)
-icu(dp::DiseaseProgression, t::Int16) = is_icu(dp, t)
-
-"""
-    is_ventilated(dp::DiseaseProgression, t::Int16)
-    isventilated(dp::DiseaseProgression, t::Int16)
-    ventilated(dp::DiseaseProgression, t::Int16)
-
-Returns `true` if the individual with disease progression `dp` is on a ventilator at tick `t`, otherwise `false`.
-"""
-is_ventilated(dp::DiseaseProgression, t::Int16) = 0 <= dp.ventilation_admission <= t < dp.ventilation_discharge
-isventilated(dp::DiseaseProgression, t::Int16) = is_ventilated(dp, t)
-ventilated(dp::DiseaseProgression, t::Int16) = is_ventilated(dp, t)
-
-"""
     is_recovered(dp::DiseaseProgression, t::Int16)
     isrecovered(dp::DiseaseProgression, t::Int16)
     recovered(dp::DiseaseProgression, t::Int16)
@@ -482,14 +350,3 @@ Returns `true` if the individual with disease progression `dp` has recovered bef
 is_recovered(dp::DiseaseProgression, t::Int16) = 0 <= dp.recovery <= t
 isrecovered(dp::DiseaseProgression, t::Int16) = is_recovered(dp, t)
 recovered(dp::DiseaseProgression, t::Int16) = is_recovered(dp, t)
-
-"""
-    is_dead(dp::DiseaseProgression, t::Int16)
-    isdead(dp::DiseaseProgression, t::Int16)
-    dead(dp::DiseaseProgression, t::Int16)
-
-Returns `true` if the individual with disease progression `dp` has died before tick `t`, otherwise `false`.
-"""
-is_dead(dp::DiseaseProgression, t::Int16) = 0 <= dp.death <= t
-isdead(dp::DiseaseProgression, t::Int16) = is_dead(dp, t)
-dead(dp::DiseaseProgression, t::Int16) = is_dead(dp, t)

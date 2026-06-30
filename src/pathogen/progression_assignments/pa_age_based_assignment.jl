@@ -21,7 +21,7 @@ categories, and a stratification matrix.
 ```julia
 aba = AgeBasedProgressionAssignment(
     age_groups = ["-14", "15-65", "66-"],
-    progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Critical"],
+    progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Critical"],
     stratification_matrix = [[0.4, 0.45, 0.1, 0.05],
                              [0.2, 0.6, 0.15, 0.05],
                              [0.1, 0.4, 0.3, 0.2]]

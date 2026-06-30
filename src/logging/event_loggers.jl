@@ -91,6 +91,61 @@ Base.length(logger::DeathLogger) = sum(length, logger.tick)
 
 
 ###
+### HealthLogger
+###
+
+"""
+    HealthLogger <: EventLogger
+
+Records host-level care events (hospital/ICU/ventilation admission and discharge) as they
+are realized. Each event is `(id, event, tick)` where `event` is a `Symbol` such as
+`:hospital_admission` or `:icu_discharge`. Host death is recorded separately by the
+`DeathLogger`. Data is thread-local to prevent lock contention.
+"""
+@with_kw mutable struct HealthLogger <: EventLogger
+    last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
+    id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+    event::Vector{Vector{Symbol}} = [Vector{Symbol}() for _ in 1:Threads.maxthreadid()]
+    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
+end
+
+function log!(
+        healthlogger::HealthLogger,
+        id::Int32,
+        event::Symbol,
+        tick::Int16,
+    )
+    tid = Threads.threadid()
+    push!(healthlogger.id[tid], id)
+    push!(healthlogger.event[tid], event)
+    push!(healthlogger.tick[tid], tick)
+    Threads.atomic_xchg!(healthlogger.last_modified_tick, tick)
+end
+
+function save(healthlogger::HealthLogger, path::AbstractString)
+    CSV.write(path, dataframe(healthlogger))
+end
+
+function save_JLD2(healthlogger::HealthLogger, path::AbstractString)
+    jldopen(path, "w") do file
+        file["tick"] = vcat(healthlogger.tick...)
+        file["id"] = vcat(healthlogger.id...)
+        file["event"] = vcat(healthlogger.event...)
+    end
+end
+
+function dataframe(healthlogger::HealthLogger)::DataFrame
+    return DataFrame(
+        tick = vcat(healthlogger.tick...),
+        id = vcat(healthlogger.id...),
+        event = vcat(healthlogger.event...)
+    )
+end
+
+Base.length(logger::HealthLogger) = sum(length, logger.tick)
+
+
+###
 ### TestLogger
 ###
 @with_kw mutable struct TestLogger <: EventLogger

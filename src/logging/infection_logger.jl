@@ -26,15 +26,10 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     infectiousness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     symptom_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     severeness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    hospital_admission::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    hospital_discharge::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    icu_admission::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    icu_discharge::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    ventilation_admission::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    ventilation_discharge::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
+    critical_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
+    critical_offset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     severeness_offset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     recovery::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    death::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
 
     # External data
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
@@ -56,15 +51,10 @@ function log!(
         infectiousness_onset::Int16,
         symptom_onset::Int16,
         severeness_onset::Int16,
-        hospital_admission::Int16,
-        hospital_discharge::Int16,
-        icu_admission::Int16,
-        icu_discharge::Int16,
-        ventilation_admission::Int16,
-        ventilation_discharge::Int16,
+        critical_onset::Int16,
+        critical_offset::Int16,
         severeness_offset::Int16,
         recovery::Int16,
-        death::Int16,
         setting_id::Int32,
         setting_type::Char,
         lat::Float32,
@@ -88,15 +78,10 @@ function log!(
     push!(logger.infectiousness_onset[tid], infectiousness_onset)
     push!(logger.symptom_onset[tid], symptom_onset)
     push!(logger.severeness_onset[tid], severeness_onset)
-    push!(logger.hospital_admission[tid], hospital_admission)
-    push!(logger.hospital_discharge[tid], hospital_discharge)
-    push!(logger.icu_admission[tid], icu_admission)
-    push!(logger.icu_discharge[tid], icu_discharge)
-    push!(logger.ventilation_admission[tid], ventilation_admission)
-    push!(logger.ventilation_discharge[tid], ventilation_discharge)
+    push!(logger.critical_onset[tid], critical_onset)
+    push!(logger.critical_offset[tid], critical_offset)
     push!(logger.severeness_offset[tid], severeness_offset)
     push!(logger.recovery[tid], recovery)
-    push!(logger.death[tid], death)
     push!(logger.setting_id[tid], setting_id)
     push!(logger.setting_type[tid], setting_type)
     push!(logger.lat[tid], lat)
@@ -119,15 +104,10 @@ function log!(;
         infectiousness_onset::Int16,
         symptom_onset::Int16,
         severeness_onset::Int16,
-        hospital_admission::Int16,
-        hospital_discharge::Int16,
-        icu_admission::Int16,
-        icu_discharge::Int16,
-        ventilation_admission::Int16,
-        ventilation_discharge::Int16,
+        critical_onset::Int16,
+        critical_offset::Int16,
         severeness_offset::Int16,
         recovery::Int16,
-        death::Int16,
         setting_id::Int32,
         setting_type::Char,
         lat::Float32,
@@ -139,9 +119,8 @@ function log!(;
     return log!(
         logger, a, b, pathogen_id, progression_category, tick,
         infectiousness_onset, symptom_onset, severeness_onset,
-        hospital_admission, hospital_discharge, icu_admission, icu_discharge,
-        ventilation_admission, ventilation_discharge, severeness_offset,
-        recovery, death, setting_id, setting_type, lat, lon, ags, source_infection_id
+        critical_onset, critical_offset, severeness_offset,
+        recovery, setting_id, setting_type, lat, lon, ags, source_infection_id
     )
 end
 
@@ -184,15 +163,10 @@ function dataframe(logger::InfectionLogger)
         infectiousness_onset = vcat(logger.infectiousness_onset...),
         symptom_onset = vcat(logger.symptom_onset...),
         severeness_onset = vcat(logger.severeness_onset...),
-        hospital_admission = vcat(logger.hospital_admission...),
-        hospital_discharge = vcat(logger.hospital_discharge...),
-        icu_admission = vcat(logger.icu_admission...),
-        icu_discharge = vcat(logger.icu_discharge...),
-        ventilation_admission = vcat(logger.ventilation_admission...),
-        ventilation_discharge = vcat(logger.ventilation_discharge...),
+        critical_onset = vcat(logger.critical_onset...),
+        critical_offset = vcat(logger.critical_offset...),
         severeness_offset = vcat(logger.severeness_offset...),
         recovery = vcat(logger.recovery...),
-        death = vcat(logger.death...),
         setting_id = vcat(logger.setting_id...),
         setting_type = vcat(logger.setting_type...),
         lat = vcat(logger.lat...),
@@ -213,15 +187,10 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["infectiousness_onset"] = vcat(logger.infectiousness_onset...)
         file["symptom_onset"] = vcat(logger.symptom_onset...)
         file["severeness_onset"] = vcat(logger.severeness_onset...)
-        file["hospital_admission"] = vcat(logger.hospital_admission...)
-        file["hospital_discharge"] = vcat(logger.hospital_discharge...)
-        file["icu_admission"] = vcat(logger.icu_admission...)
-        file["icu_discharge"] = vcat(logger.icu_discharge...)
-        file["ventilation_admission"] = vcat(logger.ventilation_admission...)
-        file["ventilation_discharge"] = vcat(logger.ventilation_discharge...)
+        file["critical_onset"] = vcat(logger.critical_onset...)
+        file["critical_offset"] = vcat(logger.critical_offset...)
         file["severeness_offset"] = vcat(logger.severeness_offset...)
         file["recovery"] = vcat(logger.recovery...)
-        file["death"] = vcat(logger.death...)
         file["setting_id"] = vcat(logger.setting_id...)
         file["setting_type"] = vcat(logger.setting_type...)
         file["lat"] = vcat(logger.lat...)
