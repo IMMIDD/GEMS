@@ -7,7 +7,7 @@ Care parameters for an infection whose peak tier is `severe`: a possible hospita
 admission, anchored at the infection's `severeness_onset`.
 
 # Parameters
-- `hospital_probability::Real`: Hospital admission probability.
+- `hospital_probability::Real`: Hospital admission probability (`0.0` by default).
 - `severeness_onset_to_hospital_admission::Union{Distribution, Real}`: Admission delay after severeness onset.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Ward stay length.
 """
@@ -17,9 +17,9 @@ struct SevereCare <: Care
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
 
     function SevereCare(;
-        hospital_probability,
-        severeness_onset_to_hospital_admission,
-        hospital_admission_to_hospital_discharge)
+        hospital_probability = 0.0,
+        severeness_onset_to_hospital_admission = 0,
+        hospital_admission_to_hospital_discharge = 0)
 
         0.0 <= hospital_probability <= 1.0 || throw(ArgumentError("hospital_probability must be between 0 and 1 (got $hospital_probability)."))
         return new(hospital_probability, severeness_onset_to_hospital_admission,
@@ -49,18 +49,18 @@ P(ventilation | ICU)); discharges chain inward-out so the stays nest by construc
 are anchored at the infection's `critical_onset`.
 
 # Parameters
-- `hospital_probability::Real`: Hospital admission probability.
+- `hospital_probability::Real`: Hospital admission probability (`0.0` by default).
 - `critical_onset_to_hospital_admission::Union{Distribution, Real}`: Admission delay after critical onset.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Ward stay length when the patient does not enter the ICU.
-- `icu_probability::Real`: ICU probability for a hospitalized patient.
+- `icu_probability::Real`: ICU probability for a hospitalized patient (`0.0` by default).
 - `hospital_admission_to_icu_admission::Union{Distribution, Real}`: Delay from hospital to ICU admission.
 - `icu_admission_to_icu_discharge::Union{Distribution, Real}`: ICU stay length when the patient is not ventilated.
-- `ventilation_probability::Real`: Ventilation probability for an ICU patient.
+- `ventilation_probability::Real`: Ventilation probability for an ICU patient (`0.0` by default).
 - `icu_admission_to_ventilation_admission::Union{Distribution, Real}`: Delay from ICU to ventilation admission.
 - `ventilation_admission_to_ventilation_discharge::Union{Distribution, Real}`: Ventilation length.
 - `ventilation_discharge_to_icu_discharge::Union{Distribution, Real}`: ICU stay after ventilation ends.
 - `icu_discharge_to_hospital_discharge::Union{Distribution, Real}`: Hospital stay after ICU discharge.
-- `death_probability::Real`: Death probability (not gated by hospital or ICU).
+- `death_probability::Real`: Death probability (not gated by hospital or ICU; `0.0` by default).
 - `critical_onset_to_death::Union{Distribution, Real}`: Delay from critical onset to death.
 """
 struct CriticalCare <: Care
@@ -79,19 +79,19 @@ struct CriticalCare <: Care
     critical_onset_to_death::Union{Distribution, Real}
 
     function CriticalCare(;
-        hospital_probability,
-        critical_onset_to_hospital_admission,
-        hospital_admission_to_hospital_discharge,
-        icu_probability,
-        hospital_admission_to_icu_admission,
-        icu_admission_to_icu_discharge,
-        ventilation_probability,
-        icu_admission_to_ventilation_admission,
-        ventilation_admission_to_ventilation_discharge,
-        ventilation_discharge_to_icu_discharge,
-        icu_discharge_to_hospital_discharge,
-        death_probability,
-        critical_onset_to_death)
+        hospital_probability = 0.0,
+        critical_onset_to_hospital_admission = 0,
+        hospital_admission_to_hospital_discharge = 0,
+        icu_probability = 0.0,
+        hospital_admission_to_icu_admission = 0,
+        icu_admission_to_icu_discharge = 0,
+        ventilation_probability = 0.0,
+        icu_admission_to_ventilation_admission = 0,
+        ventilation_admission_to_ventilation_discharge = 0,
+        ventilation_discharge_to_icu_discharge = 0,
+        icu_discharge_to_hospital_discharge = 0,
+        death_probability = 0.0,
+        critical_onset_to_death = 0)
 
         for (nm, p) in ((:hospital_probability, hospital_probability),
             (:icu_probability, icu_probability),
@@ -176,10 +176,6 @@ struct DefaultHealthProgression{S<:Care, C<:Care} <: HealthProgression
             icu_probability = 0.5,
             hospital_admission_to_icu_admission = Poisson(1),
             icu_admission_to_icu_discharge = Poisson(8),
-            ventilation_probability = 0.0,
-            icu_admission_to_ventilation_admission = 0,
-            ventilation_admission_to_ventilation_discharge = 0,
-            ventilation_discharge_to_icu_discharge = 0,
             icu_discharge_to_hospital_discharge = Poisson(5),
             death_probability = 0.3,
             critical_onset_to_death = Poisson(7)))
@@ -226,4 +222,44 @@ function calculate_health_progression(individual::Individual, infections::Infect
         timeline = _combine_independent(timeline, tl)
     end
     return timeline
+end
+
+
+"""
+    _care_type(::Type{<:ProgressionCategory})
+
+The `Care` type a progression category routes embedded health params into, or `nothing` if the
+tier takes no host care. Overridden per category (e.g. `_care_type(::Type{Severe}) = SevereCare`).
+"""
+_care_type(::Type{<:ProgressionCategory}) = nothing
+
+# the embedded Care of a category (nothing if its tier takes no care)
+_embedded_care(c::ProgressionCategory) = _care_type(typeof(c)) === nothing ? nothing : c.care
+
+_has_embedded_care(p) = any(c -> _embedded_care(c) !== nothing, p.progressions)
+
+# assemble the global health policy from care embedded across a single pathogen's categories
+function _harvest_health_progression(pathogens)
+    severe_care = nothing
+    critical_care = nothing
+    for p in pathogens, c in p.progressions
+        care = _embedded_care(c)
+        care === nothing && continue
+        tier = _care_type(typeof(c))
+        if tier === SevereCare
+            isnothing(severe_care) || throw(ArgumentError("more than one severe-tier category carries embedded care"))
+            severe_care = care
+        elseif tier === CriticalCare
+            isnothing(critical_care) || throw(ArgumentError("more than one critical-tier category carries embedded care"))
+            critical_care = care
+        end
+    end
+    if !isnothing(severe_care) && !isnothing(critical_care)
+        return DefaultHealthProgression(severe = severe_care, critical = critical_care)
+    elseif !isnothing(severe_care)
+        return DefaultHealthProgression(severe = severe_care)
+    elseif !isnothing(critical_care)
+        return DefaultHealthProgression(critical = critical_care)
+    end
+    return DefaultHealthProgression()
 end

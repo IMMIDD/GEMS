@@ -452,7 +452,7 @@ function _BUILD_Simulation(;
         )
 
         # HEALTH PROGRESSION
-        hp = determine_health_progression(config, health_progression)
+        hp = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
 
         # START CONDITION
         start_condition = determine_start_condition(
@@ -737,15 +737,29 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
 end
 
 """
-    determine_health_progression(configfile_params::Dict, health_progression)
+    determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
 
-Resolves the simulation's `HealthProgression`: a provided `health_progression` argument wins,
-otherwise a top-level `[HealthProgression]` config section is parsed, otherwise the default.
+Resolves the simulation's `HealthProgression`. An explicit `health_progression` argument wins. Then,
+if any progression carries embedded care (the single-pathogen convenience): when the pathogens were
+passed explicitly it is harvested (taking precedence over the default config section); when they came
+from the config it conflicts with a `[HealthProgression]` section. Otherwise a `[HealthProgression]`
+section is parsed, else the default. Embedded care with an explicit policy or `>1` pathogen errors.
 """
-function determine_health_progression(configfile_params::Dict, health_progression)
-    !isnothing(health_progression) && return health_progression
-    _haspath(configfile_params, ["HealthProgression"]) &&
+function determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
+    embedded = any(_has_embedded_care, pathogens)
+    if !isnothing(health_progression)
+        embedded && throw(ArgumentError("embedded care parameters conflict with an explicit `health_progression`; remove one."))
+        return health_progression
+    end
+    _harvest() = (length(pathogens) > 1 &&
+        throw(ArgumentError("embedded care parameters are only supported for a single pathogen; use an explicit [HealthProgression].")); _harvest_health_progression(pathogens))
+    # embedded care from explicitly-passed pathogens wins over the (possibly default) config section
+    embedded && pathogens_explicit && return _harvest()
+    if _haspath(configfile_params, ["HealthProgression"])
+        embedded && throw(ArgumentError("embedded care parameters conflict with a [HealthProgression] config section; remove one."))
         return create_health_progression(configfile_params["HealthProgression"])
+    end
+    embedded && return _harvest()
     return DefaultHealthProgression()
 end
 
@@ -1109,7 +1123,9 @@ end
     create_progression(params::Dict, category::String)
 
 Creates a progression of the specified category based on the provided parameters.
-The `params` dictionary must contain the parameters for the progression constructor.
+The `params` dictionary must contain the parameters for the progression constructor. For
+`Severe`/`Critical`, `params` may also carry that tier's `Care` parameters directly (the
+convenience embedding); the category constructor splits them out itself.
 The `category` string must be the name of a subtype of `ProgressionCategory`.
 """
 function create_progression(params::Dict, category::String)
