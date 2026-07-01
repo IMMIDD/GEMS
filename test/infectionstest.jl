@@ -1,4 +1,4 @@
-import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containers!, dead!, hospitalized!,
+import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containers!, dead!,
     push_infection!, push_immunity!, update_immunity!, _SlotRemoval
 
 @testset "Infections" begin
@@ -12,12 +12,8 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 infectiousness_onset = Int16(2),
                 symptom_onset = Int16(3),
                 severeness_onset = Int16(4),
-                hospital_admission = Int16(5),
-                icu_admission = Int16(6),
-                icu_discharge = Int16(7),
-                ventilation_admission = Int16(8),
-                ventilation_discharge = Int16(9),
-                hospital_discharge = Int16(10),
+                critical_onset = Int16(5),
+                critical_offset = Int16(8),
                 severeness_offset = Int16(11),
                 recovery = Int16(12),
             )
@@ -32,15 +28,12 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             @test infectiousness_onset(i, reg, pid) == 2
             @test symptom_onset(i, reg, pid) == 3
             @test severeness_onset(i, reg, pid) == 4
-            @test hospital_admission(i, reg, pid) == 5
-            @test icu_admission(i, reg, pid) == 6
-            @test icu_discharge(i, reg, pid) == 7
-            @test ventilation_admission(i, reg, pid) == 8
-            @test ventilation_discharge(i, reg, pid) == 9
-            @test hospital_discharge(i, reg, pid) == 10
+            @test critical_onset(i, reg, pid) == 5
+            @test critical_offset(i, reg, pid) == 8
             @test severeness_offset(i, reg, pid) == 11
             @test recovery(i, reg, pid) == 12
-            @test death(i, reg, pid) == GEMS.DEFAULT_TICK
+            # death is host-level, not per-pathogen-registry
+            @test i.death == GEMS.DEFAULT_TICK
 
             # check state functions
             # infected
@@ -88,20 +81,10 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             @test mild(i, reg, pid, Int16(11)) # after severeness offset
             @test !mild(i, reg, pid, Int16(12)) # after recovery
 
-            # hospitalized
-            @test !hospitalized(i, reg, pid, Int16(4)) # before
-            @test hospitalized(i, reg, pid, Int16(6)) # during
-            @test !hospitalized(i, reg, pid, Int16(11)) # after
-
-            # ICU
-            @test !icu(i, reg, pid, Int16(5)) # before
-            @test icu(i, reg, pid, Int16(6)) # during
-            @test !icu(i, reg, pid, Int16(10)) # after
-
-            # ventilated
-            @test !ventilated(i, reg, pid, Int16(7)) # before
-            @test ventilated(i, reg, pid, Int16(8)) # during
-            @test !ventilated(i, reg, pid, Int16(10)) # after
+            # critical
+            @test !critical(i, reg, pid, Int16(4)) # before
+            @test critical(i, reg, pid, Int16(6)) # during
+            @test !critical(i, reg, pid, Int16(8)) # after
 
             # recovered
             @test !recovered(i, reg, pid, Int16(0)) # before infection
@@ -109,22 +92,17 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             @test recovered(i, reg, pid, Int16(12)) # at recovery
             @test recovered(i, reg, pid, Int16(13)) # after
 
-            # dead
-            @test !dead(i, reg, pid, Int16(0)) # before infection
-            @test !dead(i, reg, pid, Int16(12)) # before death
+            # dead (host-level flag, not tick-parameterized)
+            @test !is_dead(i)
+            @test i.death == GEMS.DEFAULT_TICK
 
-            # death progression
-            dp_death = DiseaseProgression(
-                exposure = Int16(1),
-                infectiousness_onset = Int16(2),
-                symptom_onset = Int16(3),
-                death = Int16(5),
-            )
+            # death (host-level; set directly, not via DiseaseProgression)
             j = Individual(id = 2, sex = 0, age = 31)
-            set_progression!(j, dp_death, pid)
-            @test !dead(j, reg, pid, Int16(4)) # before death
-            @test dead(j, reg, pid, Int16(5)) # at death
-            @test dead(j, reg, pid, Int16(6)) # after death
+            j.death = Int16(5)
+            @test !is_dead(j) # flag not yet set by dead!
+            dead!(j, true)
+            @test is_dead(j)
+            @test j.death == Int16(5)
 
             # asymptomatic progression
             dp_asymp = DiseaseProgression(
@@ -170,12 +148,15 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 @test !isempty(buf_r) # overflow node staged for removal
 
                 # death path: overflow infection triggers death (covers _process_death! overflow)
+                # death is host-level now, so it's set directly rather than via DiseaseProgression
                 reg_d = InfectionRegistry()
                 i_d = Individual(id=12, sex=0, age=30)
                 push_infection!(reg_d, i_d, Int8(1), Int32(5),
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(30)))
                 push_infection!(reg_d, i_d, Int8(2), Int32(6),
-                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), symptom_onset=Int16(3), death=Int16(5)))
+                    DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(30)))
+                i_d.death = Int16(5)
+                i_d.killing_pathogen_id = Int8(2)
                 buf_d = _SlotRemoval[]
                 progress_disease!(i_d, reg_d, pths, buf_d, Int16(10), test_rng)
                 @test isdead(i_d)
@@ -201,6 +182,9 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
         end
 
         @testset "Basic Infection" begin
+            # per-infection disease-progression scheduling only; host-level care/death
+            # (hospital/icu/ventilation/death) is a HealthProgression concern, covered in
+            # healthprogressiontest.jl
             reg = InfectionRegistry()
 
             # ASYMPTOMATIC PROGRESSION
@@ -218,14 +202,6 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             # everything else should be -1
             @test symptom_onset(i, reg, pid_p) == GEMS.DEFAULT_TICK
             @test severeness_onset(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test hospital_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test icu_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test icu_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test hospital_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test severeness_offset(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test death(i, reg, pid_p) == GEMS.DEFAULT_TICK
             @test infected(i) # should be infected
             @test !infectious(i) # but not infectious yet
 
@@ -244,44 +220,30 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             @test -1 < exposure(i, reg, pid_p) <= infectiousness_onset(i, reg, pid_p) <= symptom_onset(i, reg, pid_p) <= recovery(i, reg, pid_p)
             # everything else should be -1
             @test severeness_onset(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test hospital_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test icu_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test icu_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test hospital_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test severeness_offset(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test death(i, reg, pid_p) == GEMS.DEFAULT_TICK
             @test infected(i) # should be infected
             @test !infectious(i) # but not infectious yet
 
-            # HOSPITALIZED PROGRESSION
+            # SEVERE PROGRESSION
             i = Individual(id = 1, sex = 0, age = 31)
             p = Pathogen(
                 name = "TestPathogen",
-                progressions = [Hospitalized(
+                progressions = [Severe(
                     exposure_to_infectiousness_onset = Poisson(3),
                     infectiousness_onset_to_symptom_onset = Poisson(1),
                     symptom_onset_to_severeness_onset = Poisson(1),
-                    severeness_onset_to_hospital_admission = Poisson(2),
-                    hospital_admission_to_hospital_discharge = Poisson(7),
-                    hospital_discharge_to_severeness_offset = Poisson(3),
+                    severeness_onset_to_severeness_offset = Poisson(7),
                     severeness_offset_to_recovery = Poisson(4)
             )])
             infect!(i, Int16(0), p, rng = Xoshiro())
             pid_p = id(p)
-            @test -1 < exposure(i, reg, pid_p) <= infectiousness_onset(i, reg, pid_p) <= symptom_onset(i, reg, pid_p) <= severeness_onset(i, reg, pid_p) <= hospital_admission(i, reg, pid_p) <= hospital_discharge(i, reg, pid_p) <= severeness_offset(i, reg, pid_p) <= recovery(i, reg, pid_p)
-
+            @test -1 < exposure(i, reg, pid_p) <= infectiousness_onset(i, reg, pid_p) <= symptom_onset(i, reg, pid_p) <= severeness_onset(i, reg, pid_p) <= severeness_offset(i, reg, pid_p) <= recovery(i, reg, pid_p)
             # everything else should be -1
-            @test icu_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test icu_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test death(i, reg, pid_p) == GEMS.DEFAULT_TICK
+            @test critical_onset(i, reg, pid_p) == GEMS.DEFAULT_TICK
+            @test critical_offset(i, reg, pid_p) == GEMS.DEFAULT_TICK
             @test infected(i) # should be infected
             @test !infectious(i) # but not infectious yet
 
-            # CRITICAL PROGRESSION — no death
+            # CRITICAL PROGRESSION
             i = Individual(id = 1, sex = 0, age = 31)
             p = Pathogen(
                 name = "TestPathogen",
@@ -289,50 +251,14 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                     exposure_to_infectiousness_onset = Poisson(3),
                     infectiousness_onset_to_symptom_onset = Poisson(1),
                     symptom_onset_to_severeness_onset = Poisson(1),
-                    severeness_onset_to_hospital_admission = Poisson(2),
-                    hospital_admission_to_icu_admission = Poisson(2),
-                    icu_admission_to_icu_discharge = Poisson(7),
-                    icu_discharge_to_hospital_discharge = Poisson(7),
-                    hospital_discharge_to_severeness_offset = Poisson(3),
-                    severeness_offset_to_recovery = Poisson(4),
-                    icu_admission_to_death = Poisson(10),
-                    death_probability = 0.0
+                    severeness_onset_to_critical_onset = Poisson(2),
+                    critical_onset_to_critical_offset = Poisson(7),
+                    critical_offset_to_severeness_offset = Poisson(3),
+                    severeness_offset_to_recovery = Poisson(4)
             )])
             infect!(i, Int16(0), p, rng = Xoshiro())
             pid_p = id(p)
-            @test -1 < exposure(i, reg, pid_p) <= infectiousness_onset(i, reg, pid_p) <= symptom_onset(i, reg, pid_p) <= severeness_onset(i, reg, pid_p) <= hospital_admission(i, reg, pid_p) <= icu_admission(i, reg, pid_p) <= icu_discharge(i, reg, pid_p) <= hospital_discharge(i, reg, pid_p) <= severeness_offset(i, reg, pid_p) <= recovery(i, reg, pid_p)
-            # everything else should be -1
-            @test ventilation_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test death(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test infected(i) # should be infected
-            @test !infectious(i) # but not infectious yet
-
-            # CRITICAL PROGRESSION — with death
-            i = Individual(id = 1, sex = 0, age = 31)
-            p = Pathogen(
-                name = "TestPathogen",
-                progressions = [Critical(
-                    exposure_to_infectiousness_onset = Poisson(3),
-                    infectiousness_onset_to_symptom_onset = Poisson(1),
-                    symptom_onset_to_severeness_onset = Poisson(1),
-                    severeness_onset_to_hospital_admission = Poisson(2),
-                    hospital_admission_to_icu_admission = Poisson(2),
-                    icu_admission_to_icu_discharge = Poisson(7),
-                    icu_discharge_to_hospital_discharge = Poisson(7),
-                    hospital_discharge_to_severeness_offset = Poisson(3),
-                    severeness_offset_to_recovery = Poisson(4),
-                    icu_admission_to_death = Poisson(10),
-                    death_probability = 1.0
-            )])
-            infect!(i, Int16(0), p, rng = Xoshiro())
-            pid_p = id(p)
-            @test -1 < exposure(i, reg, pid_p) <= infectiousness_onset(i, reg, pid_p) <= symptom_onset(i, reg, pid_p) <= severeness_onset(i, reg, pid_p) <= hospital_admission(i, reg, pid_p) <= icu_admission(i, reg, pid_p) <= icu_discharge(i, reg, pid_p) <= hospital_discharge(i, reg, pid_p) <= severeness_offset(i, reg, pid_p) <= death(i, reg, pid_p)
-
-            # everything else should be -1
-            @test ventilation_admission(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test ventilation_discharge(i, reg, pid_p) == GEMS.DEFAULT_TICK
-            @test recovery(i, reg, pid_p) == GEMS.DEFAULT_TICK
+            @test -1 < exposure(i, reg, pid_p) <= infectiousness_onset(i, reg, pid_p) <= symptom_onset(i, reg, pid_p) <= severeness_onset(i, reg, pid_p) <= critical_onset(i, reg, pid_p) <= critical_offset(i, reg, pid_p) <= severeness_offset(i, reg, pid_p) <= recovery(i, reg, pid_p)
             @test infected(i) # should be infected
             @test !infectious(i) # but not infectious yet
         end
@@ -393,7 +319,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             sim = custom_test_sim()
             infecter = individuals(sim)[1]
             infectee = individuals(sim)[2]
-            hospitalized!(infectee, true)
+            infectee.hospital_admission = Int16(0); infectee.hospital_discharge = Int16(100)
             infect!(infecter, Int16(0), first_pathogen(sim), rng = Xoshiro())
             GEMS.update_individual!(infecter, Int16(1), sim)
             @test !try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
@@ -415,7 +341,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             infectee = individuals(sim)[2]
             infect!(infecter, Int16(0), first_pathogen(sim), rng = Xoshiro())
             GEMS.update_individual!(infecter, Int16(1), sim)
-            hospitalized!(infecter, true)
+            infecter.hospital_admission = Int16(0); infecter.hospital_discharge = Int16(100)
             @test !try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
 
             # TRY TO INFECT INFECTER-INFECTEE (should NOT work - infecter not infected
@@ -494,14 +420,15 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             # no infections should occur in the population, as all infected are hospitalized
             p = Pathogen(
                 name = "TestPathogen",
-                progressions = [Hospitalized(
-                    exposure_to_infectiousness_onset = 1,
+                progressions = [Severe(
+                    exposure_to_infectiousness_onset = 0,
                     infectiousness_onset_to_symptom_onset = 0,
                     symptom_onset_to_severeness_onset = 0,
+                    severeness_onset_to_severeness_offset = 7,
+                    severeness_offset_to_recovery = 0,
+                    hospital_probability = 1.0,
                     severeness_onset_to_hospital_admission = 0,
-                    hospital_admission_to_hospital_discharge = 7,
-                    hospital_discharge_to_severeness_offset = 0,
-                    severeness_offset_to_recovery = 0
+                    hospital_admission_to_hospital_discharge = 7
             )])
 
             sim = Simulation(pop_size = 1000, pathogen = p, infected_fraction = 0.1)

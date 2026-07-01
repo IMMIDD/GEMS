@@ -1,4 +1,4 @@
-import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!, ventilated!, dead!, detected!, progress_disease!,
+import GEMS: infected!, infectious!, symptomatic!, severe!, dead!, detected!, progress_disease!,
     inc_number_of_infections!,
     quarantine_release_tick!, quarantine_tick!, quarantined!,
     mandate_compliance!, social_factor!, setting_id!,
@@ -104,11 +104,16 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             infectious!(i, true)
             symptomatic!(i, true)
             severe!(i, true)
-            hospitalized!(i, true)
-            icu!(i, true)
-            ventilated!(i, true)
+            i.hospital_admission = Int16(0); i.hospital_discharge = Int16(100)
+            i.icu_admission = Int16(0); i.icu_discharge = Int16(100)
+            i.ventilation_admission = Int16(0); i.ventilation_discharge = Int16(100)
             dead!(i, true)
             detected!(i, true)
+
+            tcheck = Int16(50)
+            @test is_hospitalized(i, tcheck)
+            @test is_icu(i, tcheck)
+            @test is_ventilated(i, tcheck)
 
             # Modify infection count
             inc_number_of_infections!(i)
@@ -129,9 +134,9 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test !isinfectious(i)
             @test !issymptomatic(i)
             @test !issevere(i)
-            @test !ishospitalized(i)
-            @test !isicu(i)
-            @test !isventilated(i)
+            @test !is_hospitalized(i, tcheck)
+            @test !is_icu(i, tcheck)
+            @test !is_ventilated(i, tcheck)
             @test !isdead(i)
             @test !isdetected(i)
 
@@ -156,7 +161,9 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 @test exposure(i, reg, pid) == GEMS.DEFAULT_TICK
                 @test infectiousness_onset(i, reg, pid) == GEMS.DEFAULT_TICK
                 @test recovery(i, reg, pid) == GEMS.DEFAULT_TICK
-                @test death(i, reg, pid) == GEMS.DEFAULT_TICK
+                # death and care ticks are host-level, not per-pathogen-registry
+                @test i.death == GEMS.DEFAULT_TICK
+                @test i.hospital_admission == GEMS.DEFAULT_TICK
 
                 # after set_progression! the DiseaseProgression values are readable
                 dp = DiseaseProgression(
@@ -171,8 +178,8 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 @test symptom_onset(i, reg, pid) == 5
                 @test recovery(i, reg, pid) == 15
                 @test severeness_onset(i, reg, pid) == GEMS.DEFAULT_TICK
-                @test hospital_admission(i, reg, pid) == GEMS.DEFAULT_TICK
-                @test death(i, reg, pid) == GEMS.DEFAULT_TICK
+                @test i.hospital_admission == GEMS.DEFAULT_TICK
+                @test i.death == GEMS.DEFAULT_TICK
             end
 
             @testset "Registry Overflow" begin
@@ -272,12 +279,9 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test !symptomatic(i)
             @test !issevere(i)
             @test !severe(i)
-            @test !ishospitalized(i)
-            @test !hospitalized(i)
-            @test !isicu(i)
-            @test !icu(i)
-            @test !isventilated(i)
-            @test !ventilated(i)
+            @test !ishospitalized(i, Int16(50))
+            @test !isicu(i, Int16(50))
+            @test !isventilated(i, Int16(50))
             @test !isdead(i)
             @test !dead(i)
             @test !isdetected(i)
@@ -304,17 +308,17 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test issevere(i)
             @test severe(i)
 
-            hospitalized!(i, true)
-            @test ishospitalized(i)
-            @test hospitalized(i)
+            i.hospital_admission = Int16(0); i.hospital_discharge = Int16(100)
+            @test ishospitalized(i, Int16(50))
+            @test hospitalized(i, Int16(50))
 
-            icu!(i, true)
-            @test isicu(i)
-            @test icu(i)
+            i.icu_admission = Int16(0); i.icu_discharge = Int16(100)
+            @test isicu(i, Int16(50))
+            @test icu(i, Int16(50))
 
-            ventilated!(i, true)
-            @test isventilated(i)
-            @test ventilated(i)
+            i.ventilation_admission = Int16(0); i.ventilation_discharge = Int16(100)
+            @test isventilated(i, Int16(50))
+            @test ventilated(i, Int16(50))
 
             dead!(i, true)
             @test isdead(i)
@@ -346,12 +350,8 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
                 infectiousness_onset = Int16(7),
                 symptom_onset = Int16(10),
                 severeness_onset = Int16(15),
-                hospital_admission = Int16(15),
-                icu_admission = Int16(15),
-                icu_discharge = Int16(18),
-                ventilation_admission = Int16(15),
-                ventilation_discharge = Int16(17),
-                hospital_discharge = Int16(25),
+                critical_onset = Int16(18),
+                critical_offset = Int16(24),
                 severeness_offset = Int16(26),
                 recovery = Int16(30),
             )
@@ -406,35 +406,50 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test issevere(i, reg, pid, Int16(15)) == is_severe(i, reg, pid, Int16(15))
             @test severe(i, reg, pid, Int16(15)) == is_severe(i, reg, pid, Int16(15))
 
+            # is_critical / iscritical / critical
+            @test !is_critical(i, reg, pid, Int16(17))
+            @test is_critical(i, reg, pid, Int16(18))
+            @test is_critical(i, reg, pid, Int16(23))
+            @test !is_critical(i, reg, pid, Int16(24))
+            @test iscritical(i, reg, pid, Int16(18)) == is_critical(i, reg, pid, Int16(18))
+            @test critical(i, reg, pid, Int16(18)) == is_critical(i, reg, pid, Int16(18))
+
             # is_mild / ismild / mild
             @test is_mild(i, reg, pid, Int16(12))
             @test !is_mild(i, reg, pid, Int16(15))
             @test ismild(i, reg, pid, Int16(12)) == is_mild(i, reg, pid, Int16(12))
             @test mild(i, reg, pid, Int16(12)) == is_mild(i, reg, pid, Int16(12))
 
+            # host-level care states (hospital/icu/ventilation): set directly on the individual,
+            # not through the per-pathogen registry
+            i_host = Individual(id=5, sex=1, age=45)
+            i_host.hospital_admission = Int16(15); i_host.hospital_discharge = Int16(25)
+            i_host.icu_admission = Int16(15); i_host.icu_discharge = Int16(18)
+            i_host.ventilation_admission = Int16(15); i_host.ventilation_discharge = Int16(17)
+
             # is_hospitalized / ishospitalized / hospitalized
-            @test !is_hospitalized(i, reg, pid, Int16(14))
-            @test is_hospitalized(i, reg, pid, Int16(15))
-            @test is_hospitalized(i, reg, pid, Int16(24))
-            @test !is_hospitalized(i, reg, pid, Int16(25))
-            @test ishospitalized(i, reg, pid, Int16(15)) == is_hospitalized(i, reg, pid, Int16(15))
-            @test hospitalized(i, reg, pid, Int16(15)) == is_hospitalized(i, reg, pid, Int16(15))
+            @test !is_hospitalized(i_host, Int16(14))
+            @test is_hospitalized(i_host, Int16(15))
+            @test is_hospitalized(i_host, Int16(24))
+            @test !is_hospitalized(i_host, Int16(25))
+            @test ishospitalized(i_host, Int16(15)) == is_hospitalized(i_host, Int16(15))
+            @test hospitalized(i_host, Int16(15)) == is_hospitalized(i_host, Int16(15))
 
             # is_icu / isicu / icu
-            @test !is_icu(i, reg, pid, Int16(14))
-            @test is_icu(i, reg, pid, Int16(15))
-            @test is_icu(i, reg, pid, Int16(17))
-            @test !is_icu(i, reg, pid, Int16(18))
-            @test isicu(i, reg, pid, Int16(15)) == is_icu(i, reg, pid, Int16(15))
-            @test icu(i, reg, pid, Int16(15)) == is_icu(i, reg, pid, Int16(15))
+            @test !is_icu(i_host, Int16(14))
+            @test is_icu(i_host, Int16(15))
+            @test is_icu(i_host, Int16(17))
+            @test !is_icu(i_host, Int16(18))
+            @test isicu(i_host, Int16(15)) == is_icu(i_host, Int16(15))
+            @test icu(i_host, Int16(15)) == is_icu(i_host, Int16(15))
 
             # is_ventilated / isventilated / ventilated
-            @test !is_ventilated(i, reg, pid, Int16(14))
-            @test is_ventilated(i, reg, pid, Int16(15))
-            @test is_ventilated(i, reg, pid, Int16(16))
-            @test !is_ventilated(i, reg, pid, Int16(17))
-            @test isventilated(i, reg, pid, Int16(15)) == is_ventilated(i, reg, pid, Int16(15))
-            @test ventilated(i, reg, pid, Int16(15)) == is_ventilated(i, reg, pid, Int16(15))
+            @test !is_ventilated(i_host, Int16(14))
+            @test is_ventilated(i_host, Int16(15))
+            @test is_ventilated(i_host, Int16(16))
+            @test !is_ventilated(i_host, Int16(17))
+            @test isventilated(i_host, Int16(15)) == is_ventilated(i_host, Int16(15))
+            @test ventilated(i_host, Int16(15)) == is_ventilated(i_host, Int16(15))
 
             # is_recovered / isrecovered / recovered
             @test !is_recovered(i, reg, pid, Int16(29))
@@ -451,13 +466,13 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             set_progression!(i_undetected, DiseaseProgression(exposure=Int16(5), infectiousness_onset=Int16(6), recovery=Int16(20)), pid)
             @test !is_detected(i_undetected, reg, pid, Int16(10))
 
-            # is_dead / isdead / dead
+            # is_dead / isdead / dead (host-level flag, not tick-parameterized)
             i_dead = Individual(id=2, sex=2, age=60)
-            set_progression!(i_dead, DiseaseProgression(exposure=Int16(5), infectiousness_onset=Int16(6), symptom_onset=Int16(7), death=Int16(15)), pid)
-            @test !is_dead(i_dead, reg, pid, Int16(14))
-            @test is_dead(i_dead, reg, pid, Int16(15))
-            @test isdead(i_dead, reg, pid, Int16(15)) == is_dead(i_dead, reg, pid, Int16(15))
-            @test dead(i_dead, reg, pid, Int16(15)) == is_dead(i_dead, reg, pid, Int16(15))
+            @test !is_dead(i_dead)
+            dead!(i_dead, true)
+            @test is_dead(i_dead)
+            @test isdead(i_dead) == is_dead(i_dead)
+            @test dead(i_dead) == is_dead(i_dead)
 
             # is_asymptomatic / isasymptomatic / asymptomatic
             i_asymp = Individual(id=3, sex=0, age=25)
@@ -527,8 +542,8 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, hospitalized!, icu!,
             @test !isquarantined(i)
             @test quarantine_status(i) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
 
-            hospitalized!(i, true)
-            @test ishospitalized(i)
+            i.hospital_admission = Int16(0); i.hospital_discharge = Int16(100)
+            @test ishospitalized(i, Int16(50))
         end
     end
     

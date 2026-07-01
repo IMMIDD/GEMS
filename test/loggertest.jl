@@ -12,15 +12,10 @@
             "infectiousness_onset",
             "symptom_onset",
             "severeness_onset",
-            "hospital_admission",
-            "hospital_discharge",
-            "icu_admission",
-            "icu_discharge",
-            "ventilation_admission",
-            "ventilation_discharge",
+            "critical_onset",
+            "critical_offset",
             "severeness_offset",
             "recovery",
-            "death",
             "tick",
             "setting_id",
             "setting_type",
@@ -51,15 +46,10 @@
                 infectiousness_onset = Int16(0),
                 symptom_onset = Int16(0),
                 severeness_onset = Int16(0),
-                hospital_admission = Int16(0),
-                hospital_discharge = Int16(0),
-                icu_admission = Int16(0),
-                icu_discharge = Int16(0),
-                ventilation_admission = Int16(0),
-                ventilation_discharge = Int16(0),
+                critical_onset = Int16(0),
+                critical_offset = Int16(0),
                 severeness_offset = Int16(0),
                 recovery = Int16(0),
-                death = Int16(0),
                 setting_id = Int32(0),
                 setting_type = 'h',
                 lat = Float32(0),
@@ -117,15 +107,10 @@
             @test df1.infectiousness_onset[end] >= t+3
             @test df1.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df1.severeness_onset[end] == GEMS.DEFAULT_TICK
-            @test df1.hospital_admission[end] == GEMS.DEFAULT_TICK
-            @test df1.hospital_discharge[end] == GEMS.DEFAULT_TICK
-            @test df1.icu_admission[end] == GEMS.DEFAULT_TICK
-            @test df1.icu_discharge[end] == GEMS.DEFAULT_TICK
-            @test df1.ventilation_admission[end] == GEMS.DEFAULT_TICK
-            @test df1.ventilation_discharge[end] == GEMS.DEFAULT_TICK
+            @test df1.critical_onset[end] == GEMS.DEFAULT_TICK
+            @test df1.critical_offset[end] == GEMS.DEFAULT_TICK
             @test df1.severeness_offset[end] == GEMS.DEFAULT_TICK
             @test df1.recovery[end] >= t+10
-            @test df1.death[end] == GEMS.DEFAULT_TICK
             @test df1.setting_id[end] == GEMS.DEFAULT_SETTING_ID
             @test df1.setting_type[end] == '?'
             @test df1.lat[end] === NaN32
@@ -151,15 +136,10 @@
             @test df2.infectiousness_onset[end] >= t+3
             @test df2.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df2.severeness_onset[end] == GEMS.DEFAULT_TICK
-            @test df2.hospital_admission[end] == GEMS.DEFAULT_TICK
-            @test df2.hospital_discharge[end] == GEMS.DEFAULT_TICK
-            @test df2.icu_admission[end] == GEMS.DEFAULT_TICK
-            @test df2.icu_discharge[end] == GEMS.DEFAULT_TICK
-            @test df2.ventilation_admission[end] == GEMS.DEFAULT_TICK
-            @test df2.ventilation_discharge[end] == GEMS.DEFAULT_TICK
+            @test df2.critical_onset[end] == GEMS.DEFAULT_TICK
+            @test df2.critical_offset[end] == GEMS.DEFAULT_TICK
             @test df2.severeness_offset[end] == GEMS.DEFAULT_TICK
             @test df2.recovery[end] >= t+10
-            @test df2.death[end] == GEMS.DEFAULT_TICK
             @test df2.setting_id[end] == id(h)
             @test df2.setting_type[end] == 'h'
             @test df2.lat[end] === NaN32
@@ -251,14 +231,12 @@
                         exposure_to_infectiousness_onset = 1,
                         infectiousness_onset_to_symptom_onset = 0,
                         symptom_onset_to_severeness_onset = 0,
-                        severeness_onset_to_hospital_admission = 0,
-                        hospital_admission_to_icu_admission = 0,
-                        icu_admission_to_icu_discharge = 0,
-                        icu_discharge_to_hospital_discharge = 0,
-                        hospital_discharge_to_severeness_offset = 0,
+                        severeness_onset_to_critical_onset = 0,
+                        critical_onset_to_critical_offset = 0,
+                        critical_offset_to_severeness_offset = 0,
                         severeness_offset_to_recovery = 0,
-                        icu_admission_to_death = 0,
-                        death_probability = 1.0
+                        death_probability = 1.0,
+                        critical_onset_to_death = 0
                     )]
             ))
 
