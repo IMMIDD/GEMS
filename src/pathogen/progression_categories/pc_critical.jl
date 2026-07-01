@@ -40,8 +40,8 @@ dp = Critical(
 )
 ```
 
-Host care for this tier may be embedded directly, either as a `CriticalCare` object or as flat
-`CriticalCare` parameters (the latter is a convenience only; see `CriticalCare` for its defaults
+Host care for this tier may be embedded directly, either as a `CriticalHealthProfile` object or as flat
+`CriticalHealthProfile` parameters (the latter is a convenience only; see `CriticalHealthProfile` for its defaults
 and the cascading-off caveat):
 
 ```julia
@@ -67,8 +67,8 @@ mutable struct Critical <: ProgressionCategory
     critical_offset_to_severeness_offset::Union{Distribution, Real}
     severeness_offset_to_recovery::Union{Distribution, Real}
     # embedded host care (build-time only; harvested into the global HealthProgression, ignored by
-    # calculate_progression). Pass `care=CriticalCare(...)` or the CriticalCare params directly.
-    care::Union{Nothing, Care}
+    # calculate_progression). Pass `care=CriticalHealthProfile(...)` or the CriticalHealthProfile params directly.
+    care::Union{Nothing, HealthProfile}
 
     function Critical(;
         exposure_to_infectiousness_onset,
@@ -78,16 +78,16 @@ mutable struct Critical <: ProgressionCategory
         critical_onset_to_critical_offset,
         critical_offset_to_severeness_offset,
         severeness_offset_to_recovery,
-        care::Union{Nothing, Care} = nothing,
+        care::Union{Nothing, HealthProfile} = nothing,
         care_params...)
 
         if !isnothing(care)
             isempty(care_params) || throw(ArgumentError("provide either `care` or individual care parameters, not both"))
         elseif !isempty(care_params)
             for k in keys(care_params)
-                k in fieldnames(CriticalCare) || throw(ArgumentError("unknown progression parameter `$k`"))
+                k in fieldnames(CriticalHealthProfile) || throw(ArgumentError("unknown progression parameter `$k`"))
             end
-            care = CriticalCare(; care_params...)
+            care = CriticalHealthProfile(; care_params...)
         end
 
         return new(exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset,
@@ -97,7 +97,7 @@ mutable struct Critical <: ProgressionCategory
     end
 end
 
-_care_type(::Type{Critical}) = CriticalCare
+_health_profile_type(::Type{Critical}) = CriticalHealthProfile
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Critical, rng::Xoshiro)
 

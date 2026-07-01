@@ -1,5 +1,5 @@
-export HealthProgression, Care
-export calculate_health_progression, calculate_care, compute_health!
+export HealthProgression, HealthProfile
+export calculate_health_progression, calculate_health_profile, compute_health!
 
 """
     HealthProgression
@@ -15,12 +15,13 @@ Subtype it and implement `calculate_health_progression` to define a custom combi
 abstract type HealthProgression end
 
 """
-    Care
+    HealthProfile
 
-Abstract supertype for a single disease tier's care profile (e.g. `SevereCare`, `CriticalCare`).
-Implement `calculate_care` to define how one infection of that tier demands host care.
+Abstract supertype for a single disease tier's health profile (e.g. `SevereHealthProfile`,
+`CriticalHealthProfile`). Implement `calculate_health_profile` to define how one infection of
+that tier demands host care and/or mortality risk.
 """
-abstract type Care end
+abstract type HealthProfile end
 
 """
     calculate_health_progression(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, tick::Int16, rng::Xoshiro)::HealthTimeline
@@ -32,12 +33,12 @@ infections onto a single `HealthTimeline`. Iterate the active infections with
 function calculate_health_progression end
 
 """
-    calculate_care(care::Care, infection::InfectionState, rng::Xoshiro)::HealthTimeline
+    calculate_health_profile(profile::HealthProfile, infection::InfectionState, rng::Xoshiro)::HealthTimeline
 
 Overridable per-tier policy. Maps a single infection's `severe`/`critical` schedule onto a
 `HealthTimeline`. The host's `HealthProgression` combines the per-infection results.
 """
-function calculate_care end
+function calculate_health_profile end
 
 """
     compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, tick::Int16, rng::Xoshiro)

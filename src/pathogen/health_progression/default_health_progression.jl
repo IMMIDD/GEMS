@@ -1,9 +1,9 @@
-export DefaultHealthProgression, SevereCare, CriticalCare
+export DefaultHealthProgression, SevereHealthProfile, CriticalHealthProfile
 
 """
-    SevereCare
+    SevereHealthProfile
 
-Care parameters for an infection whose peak tier is `severe`: a possible hospital (ward)
+Health profile for an infection whose peak tier is `severe`: a possible hospital (ward)
 admission, anchored at the infection's `severeness_onset`.
 
 # Parameters
@@ -11,12 +11,12 @@ admission, anchored at the infection's `severeness_onset`.
 - `severeness_onset_to_hospital_admission::Union{Distribution, Real}`: Admission delay after severeness onset.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Ward stay length.
 """
-struct SevereCare <: Care
+struct SevereHealthProfile <: HealthProfile
     hospital_probability::Real
     severeness_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
 
-    function SevereCare(;
+    function SevereHealthProfile(;
         hospital_probability = 0.0,
         severeness_onset_to_hospital_admission = 0,
         hospital_admission_to_hospital_discharge = 0)
@@ -28,7 +28,7 @@ struct SevereCare <: Care
 end
 
 # care contribution of a single severe-peak infection
-function calculate_care(sc::SevereCare, infection::InfectionState, rng::Xoshiro)
+function calculate_health_profile(sc::SevereHealthProfile, infection::InfectionState, rng::Xoshiro)
     hospital_admission::Int16 = Int16(-1)
     hospital_discharge::Int16 = Int16(-1)
     if gems_rand(rng) <= Float64(sc.hospital_probability)
@@ -40,9 +40,9 @@ function calculate_care(sc::SevereCare, infection::InfectionState, rng::Xoshiro)
 end
 
 """
-    CriticalCare
+    CriticalHealthProfile
 
-Care parameters for an infection whose peak tier is `critical`: a hospital admission that can
+Health profile for an infection whose peak tier is `critical`: a hospital admission that can
 escalate to ICU and ventilation, plus an ungated death. Each step's probability is conditional
 on the step below (`icu_probability` = P(ICU | hospitalized), `ventilation_probability` =
 P(ventilation | ICU)); discharges chain inward-out so the stays nest by construction. Timings
@@ -63,7 +63,7 @@ are anchored at the infection's `critical_onset`.
 - `death_probability::Real`: Death probability (not gated by hospital or ICU; `0.0` by default).
 - `critical_onset_to_death::Union{Distribution, Real}`: Delay from critical onset to death.
 """
-struct CriticalCare <: Care
+struct CriticalHealthProfile <: HealthProfile
     hospital_probability::Real
     critical_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
@@ -78,7 +78,7 @@ struct CriticalCare <: Care
     death_probability::Real
     critical_onset_to_death::Union{Distribution, Real}
 
-    function CriticalCare(;
+    function CriticalHealthProfile(;
         hospital_probability = 0.0,
         critical_onset_to_hospital_admission = 0,
         hospital_admission_to_hospital_discharge = 0,
@@ -110,7 +110,7 @@ struct CriticalCare <: Care
 end
 
 # care contribution of a single critical-peak infection
-function calculate_care(cc::CriticalCare, infection::InfectionState, rng::Xoshiro)
+function calculate_health_profile(cc::CriticalHealthProfile, infection::InfectionState, rng::Xoshiro)
     hospital_admission::Int16 = Int16(-1)
     hospital_discharge::Int16 = Int16(-1)
     icu_admission::Int16 = Int16(-1)
@@ -146,30 +146,30 @@ end
 """
     DefaultHealthProgression <: HealthProgression
 
-Default host health policy. Holds a `SevereCare` and a `CriticalCare` profile; each active
+Default host health policy. Holds a `SevereHealthProfile` and a `CriticalHealthProfile`; each active
 infection contributes care from the profile for its peak tier, and the contributions are folded
-(`_combine_independent`). Ventilation is disabled by default (`CriticalCare` has zero ventilation
+(`_combine_independent`). Ventilation is disabled by default (`CriticalHealthProfile` has zero ventilation
 probability and length).
 
 # Example
 
 ```julia
 hp = DefaultHealthProgression(
-    severe = SevereCare(hospital_probability = 0.1),
-    critical = CriticalCare(icu_probability = 0.6, death_probability = 0.25))
+    severe = SevereHealthProfile(hospital_probability = 0.1),
+    critical = CriticalHealthProfile(icu_probability = 0.6, death_probability = 0.25))
 ```
 """
-struct DefaultHealthProgression{S<:Care, C<:Care} <: HealthProgression
+struct DefaultHealthProgression{S<:HealthProfile, C<:HealthProfile} <: HealthProgression
     severe::S
     critical::C
 
-    # the canonical default policy; type parameters are inferred from the cares
+    # the canonical default policy; type parameters are inferred from the profiles
     function DefaultHealthProgression(;
-        severe::Care = SevereCare(
+        severe::HealthProfile = SevereHealthProfile(
             hospital_probability = 0.05,
             severeness_onset_to_hospital_admission = Poisson(2),
             hospital_admission_to_hospital_discharge = Poisson(10)),
-        critical::Care = CriticalCare(
+        critical::HealthProfile = CriticalHealthProfile(
             hospital_probability = 0.95,
             critical_onset_to_hospital_admission = Poisson(1),
             hospital_admission_to_hospital_discharge = Poisson(10),
@@ -218,7 +218,7 @@ function calculate_health_progression(individual::Individual, infections::Infect
     for infection in each_infection(individual, infections)
         # a non-severe infection demands no host care
         infection.severeness_onset < 0 && continue
-        tl = infection.critical_onset < 0 ? calculate_care(hp.severe, infection, rng) : calculate_care(hp.critical, infection, rng)
+        tl = infection.critical_onset < 0 ? calculate_health_profile(hp.severe, infection, rng) : calculate_health_profile(hp.critical, infection, rng)
         timeline = _combine_independent(timeline, tl)
     end
     return timeline
@@ -226,40 +226,41 @@ end
 
 
 """
-    _care_type(::Type{<:ProgressionCategory})
+    _health_profile_type(::Type{<:ProgressionCategory})
 
-The `Care` type a progression category routes embedded health params into, or `nothing` if the
-tier takes no host care. Overridden per category (e.g. `_care_type(::Type{Severe}) = SevereCare`).
+The `HealthProfile` type a progression category routes embedded health params into, or `nothing`
+if the tier takes no host care. Overridden per category
+(e.g. `_health_profile_type(::Type{Severe}) = SevereHealthProfile`).
 """
-_care_type(::Type{<:ProgressionCategory}) = nothing
+_health_profile_type(::Type{<:ProgressionCategory}) = nothing
 
-# the embedded Care of a category (nothing if its tier takes no care)
-_embedded_care(c::ProgressionCategory) = _care_type(typeof(c)) === nothing ? nothing : c.care
+# the embedded HealthProfile of a category (nothing if its tier takes no care)
+_embedded_health_profile(c::ProgressionCategory) = _health_profile_type(typeof(c)) === nothing ? nothing : c.care
 
-_has_embedded_care(p) = any(c -> _embedded_care(c) !== nothing, p.progressions)
+_has_embedded_health_profile(p) = any(c -> _embedded_health_profile(c) !== nothing, p.progressions)
 
 # assemble the global health policy from care embedded across a single pathogen's categories
 function _harvest_health_progression(pathogens)
-    severe_care = nothing
-    critical_care = nothing
+    severe_profile = nothing
+    critical_profile = nothing
     for p in pathogens, c in p.progressions
-        care = _embedded_care(c)
-        care === nothing && continue
-        tier = _care_type(typeof(c))
-        if tier === SevereCare
-            isnothing(severe_care) || throw(ArgumentError("more than one severe-tier category carries embedded care"))
-            severe_care = care
-        elseif tier === CriticalCare
-            isnothing(critical_care) || throw(ArgumentError("more than one critical-tier category carries embedded care"))
-            critical_care = care
+        profile = _embedded_health_profile(c)
+        profile === nothing && continue
+        tier = _health_profile_type(typeof(c))
+        if tier === SevereHealthProfile
+            isnothing(severe_profile) || throw(ArgumentError("more than one severe-tier category carries embedded care"))
+            severe_profile = profile
+        elseif tier === CriticalHealthProfile
+            isnothing(critical_profile) || throw(ArgumentError("more than one critical-tier category carries embedded care"))
+            critical_profile = profile
         end
     end
-    if !isnothing(severe_care) && !isnothing(critical_care)
-        return DefaultHealthProgression(severe = severe_care, critical = critical_care)
-    elseif !isnothing(severe_care)
-        return DefaultHealthProgression(severe = severe_care)
-    elseif !isnothing(critical_care)
-        return DefaultHealthProgression(critical = critical_care)
+    if !isnothing(severe_profile) && !isnothing(critical_profile)
+        return DefaultHealthProgression(severe = severe_profile, critical = critical_profile)
+    elseif !isnothing(severe_profile)
+        return DefaultHealthProgression(severe = severe_profile)
+    elseif !isnothing(critical_profile)
+        return DefaultHealthProgression(critical = critical_profile)
     end
     return DefaultHealthProgression()
 end

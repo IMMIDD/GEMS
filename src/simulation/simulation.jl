@@ -746,7 +746,7 @@ from the config it conflicts with a `[HealthProgression]` section. Otherwise a `
 section is parsed, else the default. Embedded care with an explicit policy or `>1` pathogen errors.
 """
 function determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
-    embedded = any(_has_embedded_care, pathogens)
+    embedded = any(_has_embedded_health_profile, pathogens)
     if !isnothing(health_progression)
         embedded && throw(ArgumentError("embedded care parameters conflict with an explicit `health_progression`; remove one."))
         return health_progression
@@ -1124,7 +1124,7 @@ end
 
 Creates a progression of the specified category based on the provided parameters.
 The `params` dictionary must contain the parameters for the progression constructor. For
-`Severe`/`Critical`, `params` may also carry that tier's `Care` parameters directly (the
+`Severe`/`Critical`, `params` may also carry that tier's `HealthProfile` parameters directly (the
 convenience embedding); the category constructor splits them out itself.
 The `category` string must be the name of a subtype of `ProgressionCategory`.
 """
@@ -1214,17 +1214,17 @@ function create_infectiousness_profile(params::Dict)
 end
 
 """
-    create_care(care_type, params::Dict)
+    create_health_profile(profile_type, params::Dict)
 
-Creates a tier care profile (`SevereCare`/`CriticalCare`) from a nested config table, turning
+Creates a tier health profile (`SevereHealthProfile`/`CriticalHealthProfile`) from a nested config table, turning
 each leaf value into a distribution or real.
 """
-function create_care(care_type, params::Dict)
+function create_health_profile(profile_type, params::Dict)
     kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
     return try
-        care_type(;kw_args...)
+        profile_type(;kw_args...)
     catch e
-        throw(ErrorException("$care_type could not be created. $(sprint(showerror, e))"))
+        throw(ErrorException("$profile_type could not be created. $(sprint(showerror, e))"))
     end
 end
 
@@ -1241,8 +1241,8 @@ function create_health_progression(params::Dict)
     if hp_type == DefaultHealthProgression
         p = params["parameters"]
         return DefaultHealthProgression(
-            severe = create_care(SevereCare, p["severe"]),
-            critical = create_care(CriticalCare, p["critical"]))
+            severe = create_health_profile(SevereHealthProfile, p["severe"]),
+            critical = create_health_profile(CriticalHealthProfile, p["critical"]))
     end
     kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params["parameters"])
     return try
