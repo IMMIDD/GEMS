@@ -149,11 +149,11 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             critical_offset_to_severeness_offset = poi3,
             severeness_offset_to_recovery = poi4,
             hospital_probability = 0.9,
-            icu_probability = 0.5
+            hospital_to_icu_probability = 0.5
         )
         @test crit_with_care.care isa CriticalHealthProfile
         @test crit_with_care.care.hospital_probability == 0.9
-        @test crit_with_care.care.icu_probability == 0.5
+        @test crit_with_care.care.hospital_to_icu_probability == 0.5
 
         # care= object and flat kwargs are mutually exclusive
         @test_throws ArgumentError Critical(

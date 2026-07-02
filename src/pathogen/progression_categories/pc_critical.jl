@@ -54,7 +54,7 @@ dp = Critical(
     critical_offset_to_severeness_offset = Poisson(2),
     severeness_offset_to_recovery = Poisson(7),
     hospital_probability = 0.9,
-    icu_probability = 0.5
+    hospital_to_icu_probability = 0.5
 )
 ```
 """

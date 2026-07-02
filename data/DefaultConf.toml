@@ -9,7 +9,7 @@
         type = "InfectedFraction"
         [Simulation.StartCondition.parameters]
             fraction = 0.001
-            pathogen = "Covid19"
+            pathogen = ""
 
     [Simulation.StopCriterion]
         type = "TimesUp"
@@ -151,8 +151,8 @@
     # CRITICAL-PEAK CARE [hospital -> ICU -> ventilation, plus ungated death; ventilation off by default]
     [HealthProgression.parameters.critical]
         hospital_probability = 0.95
-        icu_probability = 0.5            # P(ICU | hospitalized)
-        ventilation_probability = 0.0    # P(ventilation | ICU)
+        hospital_to_icu_probability = 0.5
+        icu_to_ventilation_probability = 0.0
         death_probability = 0.3          # ungated by hospital/ICU
         icu_admission_to_ventilation_admission = 0
         ventilation_admission_to_ventilation_discharge = 0

@@ -50,7 +50,7 @@ end
 
 Health profile for an infection whose peak tier is `critical`: a hospital admission that can
 escalate to ICU and ventilation, plus mortality risk. Each step's probability is conditional
-on the step below (`icu_probability` = P(ICU | hospitalized), `ventilation_probability` =
+on the step below (`hospital_to_icu_probability` = P(ICU | hospitalized), `icu_to_ventilation_probability` =
 P(ventilation | ICU)); discharges chain inward-out so the stays nest by construction. Timings
 are anchored at the infection's `critical_onset`. Care and mortality are computed independently
 here and reconciled once, downstream, by `compute_health!`.
@@ -59,10 +59,10 @@ here and reconciled once, downstream, by `compute_health!`.
 - `hospital_probability::Real`: Hospital admission probability (`0.0` by default).
 - `critical_onset_to_hospital_admission::Union{Distribution, Real}`: Admission delay after critical onset.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Ward stay length when the patient does not enter the ICU.
-- `icu_probability::Real`: ICU probability for a hospitalized patient (`0.0` by default).
+- `hospital_to_icu_probability::Real`: ICU probability for a hospitalized patient (`0.0` by default).
 - `hospital_admission_to_icu_admission::Union{Distribution, Real}`: Delay from hospital to ICU admission.
 - `icu_admission_to_icu_discharge::Union{Distribution, Real}`: ICU stay length when the patient is not ventilated.
-- `ventilation_probability::Real`: Ventilation probability for an ICU patient (`0.0` by default).
+- `icu_to_ventilation_probability::Real`: Ventilation probability for an ICU patient (`0.0` by default).
 - `icu_admission_to_ventilation_admission::Union{Distribution, Real}`: Delay from ICU to ventilation admission.
 - `ventilation_admission_to_ventilation_discharge::Union{Distribution, Real}`: Ventilation length.
 - `ventilation_discharge_to_icu_discharge::Union{Distribution, Real}`: ICU stay after ventilation ends.
@@ -74,10 +74,10 @@ struct CriticalHealthProfile <: HealthProfile
     hospital_probability::Real
     critical_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
-    icu_probability::Real
+    hospital_to_icu_probability::Real
     hospital_admission_to_icu_admission::Union{Distribution, Real}
     icu_admission_to_icu_discharge::Union{Distribution, Real}
-    ventilation_probability::Real
+    icu_to_ventilation_probability::Real
     icu_admission_to_ventilation_admission::Union{Distribution, Real}
     ventilation_admission_to_ventilation_discharge::Union{Distribution, Real}
     ventilation_discharge_to_icu_discharge::Union{Distribution, Real}
@@ -89,10 +89,10 @@ struct CriticalHealthProfile <: HealthProfile
         hospital_probability = 0.0,
         critical_onset_to_hospital_admission = 0,
         hospital_admission_to_hospital_discharge = 0,
-        icu_probability = 0.0,
+        hospital_to_icu_probability = 0.0,
         hospital_admission_to_icu_admission = 0,
         icu_admission_to_icu_discharge = 0,
-        ventilation_probability = 0.0,
+        icu_to_ventilation_probability = 0.0,
         icu_admission_to_ventilation_admission = 0,
         ventilation_admission_to_ventilation_discharge = 0,
         ventilation_discharge_to_icu_discharge = 0,
@@ -101,16 +101,16 @@ struct CriticalHealthProfile <: HealthProfile
         critical_onset_to_death = 0)
 
         for (nm, p) in ((:hospital_probability, hospital_probability),
-            (:icu_probability, icu_probability),
-            (:ventilation_probability, ventilation_probability),
+            (:hospital_to_icu_probability, hospital_to_icu_probability),
+            (:icu_to_ventilation_probability, icu_to_ventilation_probability),
             (:death_probability, death_probability))
             0.0 <= p <= 1.0 || throw(ArgumentError("$nm must be between 0 and 1 (got $p)."))
         end
 
         return new(hospital_probability, critical_onset_to_hospital_admission,
-            hospital_admission_to_hospital_discharge, icu_probability,
+            hospital_admission_to_hospital_discharge, hospital_to_icu_probability,
             hospital_admission_to_icu_admission, icu_admission_to_icu_discharge,
-            ventilation_probability, icu_admission_to_ventilation_admission,
+            icu_to_ventilation_probability, icu_admission_to_ventilation_admission,
             ventilation_admission_to_ventilation_discharge, ventilation_discharge_to_icu_discharge,
             icu_discharge_to_hospital_discharge, death_probability, critical_onset_to_death)
     end
@@ -134,9 +134,9 @@ function calculate_health_profile(cc::CriticalHealthProfile, individual::Individ
 
     if gems_rand(rng) <= Float64(cc.hospital_probability)
         hospital_admission = round(Int16, infection.critical_onset + _rand_val(cc.critical_onset_to_hospital_admission, rng))
-        if gems_rand(rng) <= Float64(cc.icu_probability)
+        if gems_rand(rng) <= Float64(cc.hospital_to_icu_probability)
             icu_admission = round(Int16, hospital_admission + _rand_val(cc.hospital_admission_to_icu_admission, rng))
-            if gems_rand(rng) <= Float64(cc.ventilation_probability)
+            if gems_rand(rng) <= Float64(cc.icu_to_ventilation_probability)
                 ventilation_admission = round(Int16, icu_admission + _rand_val(cc.icu_admission_to_ventilation_admission, rng))
                 ventilation_discharge = round(Int16, ventilation_admission + _rand_val(cc.ventilation_admission_to_ventilation_discharge, rng))
                 icu_discharge = round(Int16, ventilation_discharge + _rand_val(cc.ventilation_discharge_to_icu_discharge, rng))
@@ -174,7 +174,7 @@ ventilation probability and length).
 ```julia
 hp = DefaultHealthProgression(
     severe = SevereHealthProfile(hospital_probability = 0.1),
-    critical = CriticalHealthProfile(icu_probability = 0.6, death_probability = 0.25))
+    critical = CriticalHealthProfile(hospital_to_icu_probability = 0.6, death_probability = 0.25))
 ```
 """
 struct DefaultHealthProgression{S<:HealthProfile, C<:HealthProfile} <: HealthProgression
@@ -191,7 +191,7 @@ struct DefaultHealthProgression{S<:HealthProfile, C<:HealthProfile} <: HealthPro
             hospital_probability = 0.95,
             critical_onset_to_hospital_admission = Poisson(1),
             hospital_admission_to_hospital_discharge = Poisson(10),
-            icu_probability = 0.5,
+            hospital_to_icu_probability = 0.5,
             hospital_admission_to_icu_admission = Poisson(1),
             icu_admission_to_icu_discharge = Poisson(8),
             icu_discharge_to_hospital_discharge = Poisson(5),

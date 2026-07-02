@@ -94,7 +94,7 @@
             [Pathogens.Covid19.progressions.Critical]
                 # embedded host care: always hospitalized + always ICU (matches the old Critical progression)
                 hospital_probability = 1.0
-                icu_probability = 1.0
+                hospital_to_icu_probability = 1.0
                 death_probability = 0.3
                 critical_onset_to_hospital_admission = 0
                 hospital_admission_to_icu_admission = 0

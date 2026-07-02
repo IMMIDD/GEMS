@@ -25,14 +25,14 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         # no-arg defaults: everything off
         cc = CriticalHealthProfile()
         @test cc.hospital_probability == 0.0
-        @test cc.icu_probability == 0.0
-        @test cc.ventilation_probability == 0.0
+        @test cc.hospital_to_icu_probability == 0.0
+        @test cc.icu_to_ventilation_probability == 0.0
         @test cc.death_probability == 0.0
 
         @test_throws ArgumentError CriticalHealthProfile(hospital_probability = -0.1)
         @test_throws ArgumentError CriticalHealthProfile(hospital_probability = 1.1)
-        @test_throws ArgumentError CriticalHealthProfile(icu_probability = 1.1)
-        @test_throws ArgumentError CriticalHealthProfile(ventilation_probability = -0.1)
+        @test_throws ArgumentError CriticalHealthProfile(hospital_to_icu_probability = 1.1)
+        @test_throws ArgumentError CriticalHealthProfile(icu_to_ventilation_probability = -0.1)
         @test_throws ArgumentError CriticalHealthProfile(death_probability = 1.1)
     end
 
@@ -61,7 +61,7 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         # death is set well after the care ladder resolves, so it doesn't cap those ticks
         # (_cap_care caps ongoing care at death; that's covered separately)
         cc = CriticalHealthProfile(hospital_probability = 1.0, critical_onset_to_hospital_admission = 0,
-            icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
+            hospital_to_icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5, icu_discharge_to_hospital_discharge = 3,
             death_probability = 1.0, critical_onset_to_death = 20)
         care2, outcome2 = calculate_health_profile(cc, ind, inf_crit, rng)
@@ -75,8 +75,8 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         # full critical ladder: guaranteed ventilation nests inside ICU which nests inside the ward.
         # discharges chain inward-out, so ventilation ends first, then ICU, then hospital.
         cc_vent = CriticalHealthProfile(hospital_probability = 1.0, critical_onset_to_hospital_admission = 0,
-            icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
-            ventilation_probability = 1.0, icu_admission_to_ventilation_admission = 0,
+            hospital_to_icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
+            icu_to_ventilation_probability = 1.0, icu_admission_to_ventilation_admission = 0,
             ventilation_admission_to_ventilation_discharge = 4, ventilation_discharge_to_icu_discharge = 2,
             icu_discharge_to_hospital_discharge = 3)
         care_vent, outcome_vent = calculate_health_profile(cc_vent, ind, inf_crit, rng)
@@ -86,9 +86,9 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test care_vent.hospital_discharge == 17   # 3 days of ward after ICU ends
         @test outcome_vent.death == -1             # death is off for this profile
 
-        # cascading-off caveat: icu_probability set without hospital_probability is a no-op,
+        # cascading-off caveat: hospital_to_icu_probability set without hospital_probability is a no-op,
         # since ICU is gated behind a hospital admission that never happens
-        cc2 = CriticalHealthProfile(icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
+        cc2 = CriticalHealthProfile(hospital_to_icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5)
         care3, _ = calculate_health_profile(cc2, ind, inf_crit, rng)
         @test care3.hospital_admission == -1
@@ -163,7 +163,7 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
 
     @testset "DefaultHealthProgression folds across a host's infections" begin
         rng = Xoshiro(1)
-        cc = CriticalHealthProfile(hospital_probability = 1.0, icu_probability = 1.0, death_probability = 1.0,
+        cc = CriticalHealthProfile(hospital_probability = 1.0, hospital_to_icu_probability = 1.0, death_probability = 1.0,
             critical_onset_to_hospital_admission = 0, hospital_admission_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5, icu_discharge_to_hospital_discharge = 3,
             critical_onset_to_death = 9)
@@ -264,10 +264,10 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
             severeness_offset_to_recovery = Poisson(4))
 
         # flat kwargs embed a CriticalHealthProfile directly in the disease progression
-        crit = Critical(; dkw..., hospital_probability = 0.9, icu_probability = 0.6)
+        crit = Critical(; dkw..., hospital_probability = 0.9, hospital_to_icu_probability = 0.6)
         @test crit.care isa CriticalHealthProfile
         @test crit.care.hospital_probability == 0.9
-        @test crit.care.icu_probability == 0.6
+        @test crit.care.hospital_to_icu_probability == 0.6
         @test _health_profile_type(Critical) == CriticalHealthProfile
         @test _embedded_health_profile(crit) === crit.care
 
@@ -290,7 +290,7 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         sim = Simulation(pop_size = 3000, pathogens = p, seed = 1)
         hp = health_progression(sim)
         @test hp.critical.hospital_probability == 0.9
-        @test hp.critical.icu_probability == 0.6
+        @test hp.critical.hospital_to_icu_probability == 0.6
 
         # error: embedded care conflicts with an explicit health_progression
         @test_throws ArgumentError Simulation(pop_size = 1000,
@@ -314,10 +314,10 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
             "critical_onset_to_critical_offset" => Dict("distribution" => "Poisson", "parameters" => [7]),
             "critical_offset_to_severeness_offset" => Dict("distribution" => "Poisson", "parameters" => [3]),
             "severeness_offset_to_recovery" => Dict("distribution" => "Poisson", "parameters" => [4]),
-            "hospital_probability" => 0.9, "icu_probability" => 0.6)
+            "hospital_probability" => 0.9, "hospital_to_icu_probability" => 0.6)
         crit_cfg = create_progression(cfg, "Critical")
         @test crit_cfg.care.hospital_probability == 0.9
-        @test crit_cfg.care.icu_probability == 0.6
+        @test crit_cfg.care.hospital_to_icu_probability == 0.6
     end
 
     @testset "Explicit [HealthProgression] config round-trip" begin
@@ -327,7 +327,7 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
                 "severeness_onset_to_hospital_admission" => Dict("distribution" => "Poisson", "parameters" => [2]),
                 "hospital_admission_to_hospital_discharge" => Dict("distribution" => "Poisson", "parameters" => [10])),
             "critical" => Dict(
-                "hospital_probability" => 0.9, "icu_probability" => 0.6, "death_probability" => 0.3,
+                "hospital_probability" => 0.9, "hospital_to_icu_probability" => 0.6, "death_probability" => 0.3,
                 "critical_onset_to_hospital_admission" => Dict("distribution" => "Poisson", "parameters" => [1]),
                 "hospital_admission_to_hospital_discharge" => Dict("distribution" => "Poisson", "parameters" => [10]),
                 "hospital_admission_to_icu_admission" => Dict("distribution" => "Poisson", "parameters" => [1]),
@@ -337,7 +337,7 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         hp = create_health_progression(Dict("type" => "DefaultHealthProgression", "parameters" => params))
         @test hp isa DefaultHealthProgression
         @test hp.severe.hospital_probability == 0.1
-        @test hp.critical.icu_probability == 0.6
+        @test hp.critical.hospital_to_icu_probability == 0.6
 
         # a failed profile construction is rewrapped as an ErrorException carrying the type name
         @test_throws ErrorException create_health_profile(SevereHealthProfile, Dict("hospital_probability" => 1.5))
