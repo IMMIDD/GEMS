@@ -89,33 +89,8 @@ If you want to set up a custom config file, you can copy this one into your own 
                     distribution = "Poisson"
                     parameters = [4]
 
-            # HOSPITALIZED PROGRESSION [TOTAL DURATION ~ 20 DAYS]
-            [Pathogens.Covid19.progressions.Hospitalized]
-                [Pathogens.Covid19.progressions.Hospitalized.exposure_to_infectiousness_onset]
-                    distribution = "Poisson"
-                    parameters = [1]
-                [Pathogens.Covid19.progressions.Hospitalized.infectiousness_onset_to_symptom_onset]
-                    distribution = "Poisson"
-                    parameters = [1]
-                [Pathogens.Covid19.progressions.Hospitalized.symptom_onset_to_severeness_onset]
-                    distribution = "Poisson"
-                    parameters = [1]
-                [Pathogens.Covid19.progressions.Hospitalized.severeness_onset_to_hospital_admission]
-                    distribution = "Poisson"
-                    parameters = [2]
-                [Pathogens.Covid19.progressions.Hospitalized.hospital_admission_to_hospital_discharge]
-                    distribution = "Poisson"
-                    parameters = [7]
-                [Pathogens.Covid19.progressions.Hospitalized.hospital_discharge_to_severeness_offset]
-                    distribution = "Poisson"
-                    parameters = [3]
-                [Pathogens.Covid19.progressions.Hospitalized.severeness_offset_to_recovery]
-                    distribution = "Poisson"
-                    parameters = [4]
-
-            # CRITICAL PROGRESSION [TOTAL DURATION ~ 30 DAYS]
+            # CRITICAL PROGRESSION [disease tier only; hospital/ICU/death are decided by the HealthProgression]
             [Pathogens.Covid19.progressions.Critical]
-                death_probability = 0.3
                 [Pathogens.Covid19.progressions.Critical.exposure_to_infectiousness_onset]
                     distribution = "Poisson"
                     parameters = [1]
@@ -125,41 +100,70 @@ If you want to set up a custom config file, you can copy this one into your own 
                 [Pathogens.Covid19.progressions.Critical.symptom_onset_to_severeness_onset]
                     distribution = "Poisson"
                     parameters = [1]
-                [Pathogens.Covid19.progressions.Critical.severeness_onset_to_hospital_admission]
+                [Pathogens.Covid19.progressions.Critical.severeness_onset_to_critical_onset]
                     distribution = "Poisson"
                     parameters = [2]
-                [Pathogens.Covid19.progressions.Critical.hospital_admission_to_icu_admission]
-                    distribution = "Poisson"
-                    parameters = [2]
-                
-                # RECOVERY PATHWAY
-                [Pathogens.Covid19.progressions.Critical.icu_admission_to_icu_discharge]
+                [Pathogens.Covid19.progressions.Critical.critical_onset_to_critical_offset]
                     distribution = "Poisson"
                     parameters = [7]
-                [Pathogens.Covid19.progressions.Critical.icu_discharge_to_hospital_discharge]
-                    distribution = "Poisson"
-                    parameters = [7]
-                [Pathogens.Covid19.progressions.Critical.hospital_discharge_to_severeness_offset]
+                [Pathogens.Covid19.progressions.Critical.critical_offset_to_severeness_offset]
                     distribution = "Poisson"
                     parameters = [3]
                 [Pathogens.Covid19.progressions.Critical.severeness_offset_to_recovery]
                     distribution = "Poisson"
                     parameters = [4]
 
-                # DEATH PATHWAY
-                [Pathogens.Covid19.progressions.Critical.icu_admission_to_death]
-                    distribution = "Poisson"
-                    parameters = [10]
-
         # progression assignment method
         [Pathogens.Covid19.progression_assignment]
             type = "AgeBasedProgressionAssignment"
             [Pathogens.Covid19.progression_assignment.parameters]
                 age_groups = ["-14", "15-65", "66-"]
-                progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Hospitalized", "Critical"]
-                stratification_matrix = [[0.400, 0.580, 0.010, 0.007, 0.003],
-                                         [0.250, 0.600, 0.110, 0.030, 0.010],
-                                         [0.150, 0.400, 0.250, 0.120, 0.080]]
+                progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Critical"]
+                stratification_matrix = [[0.400, 0.580, 0.017, 0.003],
+                                         [0.250, 0.600, 0.140, 0.010],
+                                         [0.150, 0.400, 0.370, 0.080]]
+
+# host-level care/death policy; each infection contributes care for its peak tier, folded per host
+[HealthProgression]
+    type = "DefaultHealthProgression"
+
+    # SEVERE-PEAK CARE [ward admission only]
+    [HealthProgression.parameters.severe]
+        hospital_probability = 0.05
+        [HealthProgression.parameters.severe.severeness_onset_to_hospital_admission]
+            distribution = "Poisson"
+            parameters = [2]
+        [HealthProgression.parameters.severe.hospital_admission_to_hospital_discharge]
+            distribution = "Poisson"
+            parameters = [10]
+
+    # CRITICAL-PEAK CARE [hospital -> ICU -> ventilation, plus ungated death; ventilation off by default]
+    [HealthProgression.parameters.critical]
+        hospital_probability = 0.95
+        hospital_to_icu_probability = 0.5
+        icu_to_ventilation_probability = 0.0
+        death_probability = 0.3          # ungated by hospital/ICU
+        icu_admission_to_ventilation_admission = 0
+        ventilation_admission_to_ventilation_discharge = 0
+        ventilation_discharge_to_icu_discharge = 0
+        [HealthProgression.parameters.critical.critical_onset_to_hospital_admission]
+            distribution = "Poisson"
+            parameters = [1]
+        [HealthProgression.parameters.critical.hospital_admission_to_hospital_discharge]
+            distribution = "Poisson"
+            parameters = [10]
+        [HealthProgression.parameters.critical.hospital_admission_to_icu_admission]
+            distribution = "Poisson"
+            parameters = [1]
+        [HealthProgression.parameters.critical.icu_admission_to_icu_discharge]
+            distribution = "Poisson"
+            parameters = [8]
+        [HealthProgression.parameters.critical.icu_discharge_to_hospital_discharge]
+            distribution = "Poisson"
+            parameters = [5]
+        [HealthProgression.parameters.critical.critical_onset_to_death]
+            distribution = "Poisson"
+            parameters = [7]
 
 [Settings]
 
@@ -193,7 +197,7 @@ If you want to set up a custom config file, you can copy this one into your own 
 While you can adapt many parameters via the `Simulation()` constructor, config files are required if you want to add custom mechanics (like custom transmission functions or custom contact sampling functions).
 Please have a look at the tutorial for [advanced parameterization](@ref advanced).
 
-A config file contains four sections: `[Simulation]`, `[Population]`, `[Pathogens]`, and `[Settings]`.
+A config file contains five sections: `[Simulation]`, `[Population]`, `[Pathogens]`, `[HealthProgression]`, and `[Settings]`.
 
 ```@contents
 Pages = ["config-files.md"]
@@ -324,7 +328,7 @@ The `type` argument specifies the `TransmissionFunction` that conditions the dis
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `TransmissionFunction` struct upon initialization.
 
 #### `progressions`
-Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Symptomatic`, `Severe`, `Hospitalized`, and `Critical`. 
+Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Symptomatic`, `Severe`, and `Critical`. `Severe` and `Critical` may also carry host-care parameters (see [`HealthProgression`](#healthprogression) below) directly inline, as a single-pathogen convenience.
 
 Within each category, you must define the intervals between state transitions (e.g., `exposure_to_infectiousness_onset`, `symptom_onset_to_recovery`). Every interval requires two arguments to initialize the underlying random distribution:
 * **`distribution`**: A string representing the statistical distribution (e.g., `"Poisson"`, `"Binomial"`).
@@ -346,16 +350,47 @@ Determines how the distinct disease tracks defined above are distributed among t
     type = "AgeBasedProgressionAssignment"
     [Pathogens.Covid19.progression_assignment.parameters]
         age_groups = ["-14", "15-65", "66-"]
-        progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Hospitalized", "Critical"]
-        stratification_matrix = [[0.400, 0.580, 0.010, 0.007, 0.003],
-                                 [0.250, 0.600, 0.110, 0.030, 0.010],
-                                 [0.150, 0.400, 0.250, 0.120, 0.080]]
+        progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Critical"]
+        stratification_matrix = [[0.400, 0.580, 0.017, 0.003],
+                                 [0.250, 0.600, 0.140, 0.010],
+                                 [0.150, 0.400, 0.370, 0.080]]
 ```
 
 The nested `[.parameters]` block requires three lists:
 * **`age_groups`**: An array of strings defining age brackets. `"-14"` means 0-14, `"15-65"` means 15-65, and `"66-"` means 66+.
 * **`progression_categories`**: An array of strings defining the available progression structs. These must exactly match the names defined in your `[Pathogens.<Name>.progressions]` block.
 * **`stratification_matrix`**: A 2D array mapping the age groups (rows) to the progression categories (columns). The sum of probabilities in each row must equal `1.0`.
+
+### HealthProgression
+
+Host-level care and mortality (hospitalization, ICU, ventilation, death) are decided independently
+of the disease progression, by a `HealthProgression` that folds the demand of *all* of a host's
+active infections into one care timeline. The `[HealthProgression]` section configures this policy
+for the whole simulation.
+
+```toml
+[HealthProgression]
+    type = "DefaultHealthProgression"
+    [HealthProgression.parameters.severe]
+        hospital_probability = 0.05
+        ...
+    [HealthProgression.parameters.critical]
+        hospital_probability = 0.95
+        hospital_to_icu_probability = 0.5
+        death_probability = 0.3
+        ...
+```
+
+For `DefaultHealthProgression`, the `[.parameters]` block holds a `severe` and a `critical`
+sub-table, corresponding to a `SevereHealthProfile` and a `CriticalHealthProfile` respectively (see
+the pathogen API reference for their full parameter lists).
+
+If your simulation has exactly **one** pathogen, you can skip this section entirely and instead
+write the `severe`/`critical` parameters directly inside that tier's disease progression in
+`[Pathogens.<Name>.progressions]` — they will be routed into the global `HealthProgression`
+automatically. This convenience is rejected (with an error) if you also define an explicit
+`[HealthProgression]` section, or if your simulation has more than one pathogen (since a single
+global policy cannot unambiguously combine care embedded in more than one pathogen's progressions).
 
 ### Settings
 

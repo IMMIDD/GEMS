@@ -17,16 +17,18 @@ progression_categories()
 **Output**
 
 ```
-5-element Vector{Any}:
+4-element Vector{Any}:
  Asymptomatic
  Critical
- Hospitalized
  Severe
  Symptomatic
 ```
 
 !!! info "How do I find out how to define any of the progressions?"
     Put a `?` into the Julia REPL and call `help?> Symptomatic` (or another progression) to learn about the parameters the constructor requires.
+
+!!! info "What about hospitalization and death?"
+    A progression category only describes the *disease* timeline. Host-level care and mortality (hospitalization, ICU, ventilation, death) are configured separately through a health progression. See [Custom Health Progression](@ref custom-health-progression).
 
 Let's set up a symptomatic progression where each agent will become infectious after two days.
 They will then become symptomatic one day three and recover one week later.

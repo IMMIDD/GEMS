@@ -22,8 +22,9 @@ Pathogen
 
 ```@docs
 Asymptomatic
-Hospitalized
+Symptomatic
 Severe
+Critical
 ```
 
 ### Functions
@@ -32,6 +33,24 @@ Severe
 
 ```
 
+## Health Progression
+
+Host-level care and mortality (hospital, ICU, ventilation, death) are decided independently of the
+disease progression, by a `HealthProgression` that folds the demand of all of a host's active
+infections into one timeline.
+
+```@docs
+HealthProgression
+HealthProfile
+DefaultHealthProgression
+SevereHealthProfile
+CriticalHealthProfile
+calculate_health_progression
+calculate_health_profile
+compute_health!
+CareTimeline
+HealthOutcome
+```
 
 ## Progression Assignment
 
