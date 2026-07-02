@@ -98,6 +98,19 @@ mutable struct PostProcessor
 
         # join deaths with additional info from population DF
         deaths = dataframe(deathlogger(simulation))
+
+        # host death is host-level, not logged per infection; reconcile it back so `recovery` reflects what actually happened.
+        host_death = DataFrames.select(deaths, :id, :tick => :host_death, copycols=false)
+        leftjoin!(infections, host_death, on = [:id_b => :id])
+        transform!(infections,
+            [:recovery, :host_death] => ByRow((r, d) -> !ismissing(d) && d < r ?
+                (death = d, recovery = Int16(-1)) : (death = Int16(-1), recovery = r)) => AsTable)
+
+        cols = names(infections, Not([:host_death, :death]))
+        i = findfirst(==("recovery"), cols)
+        select!(infections, cols[1:i]..., :death, cols[i+1:end]...)
+
+        # join deaths with additional info from population DF
         leftjoin!(deaths, pop, on = :id)
 
         # join tests with population data
