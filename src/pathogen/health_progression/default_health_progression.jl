@@ -27,26 +27,33 @@ struct SevereHealthProfile <: HealthProfile
     end
 end
 
-# care contribution of a single severe-peak infection
-function calculate_health_profile(sc::SevereHealthProfile, infection::InfectionState, rng::Xoshiro)
+"""
+    calculate_health_profile(sc::SevereHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro)
+
+Care contribution of a single `severe`-peak infection: a Bernoulli hospital admission anchored
+at `infection.severeness_onset`. `severe` carries no mortality risk, so the returned
+`HealthOutcome` is always empty.
+"""
+function calculate_health_profile(sc::SevereHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro)
     hospital_admission::Int16 = Int16(-1)
     hospital_discharge::Int16 = Int16(-1)
     if gems_rand(rng) <= Float64(sc.hospital_probability)
         hospital_admission = round(Int16, infection.severeness_onset + _rand_val(sc.severeness_onset_to_hospital_admission, rng))
         hospital_discharge = round(Int16, hospital_admission + _rand_val(sc.hospital_admission_to_hospital_discharge, rng))
     end
-    return HealthTimeline(hospital_admission, hospital_discharge, Int16(-1), Int16(-1),
-        Int16(-1), Int16(-1), Int16(-1), infection.pathogen_id)
+    care = CareTimeline(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge)
+    return care, HealthOutcome()
 end
 
 """
     CriticalHealthProfile
 
 Health profile for an infection whose peak tier is `critical`: a hospital admission that can
-escalate to ICU and ventilation, plus an ungated death. Each step's probability is conditional
+escalate to ICU and ventilation, plus mortality risk. Each step's probability is conditional
 on the step below (`icu_probability` = P(ICU | hospitalized), `ventilation_probability` =
 P(ventilation | ICU)); discharges chain inward-out so the stays nest by construction. Timings
-are anchored at the infection's `critical_onset`.
+are anchored at the infection's `critical_onset`. Care and mortality are computed independently
+here and reconciled once, downstream, by `compute_health!`.
 
 # Parameters
 - `hospital_probability::Real`: Hospital admission probability (`0.0` by default).
@@ -60,7 +67,7 @@ are anchored at the infection's `critical_onset`.
 - `ventilation_admission_to_ventilation_discharge::Union{Distribution, Real}`: Ventilation length.
 - `ventilation_discharge_to_icu_discharge::Union{Distribution, Real}`: ICU stay after ventilation ends.
 - `icu_discharge_to_hospital_discharge::Union{Distribution, Real}`: Hospital stay after ICU discharge.
-- `death_probability::Real`: Death probability (not gated by hospital or ICU; `0.0` by default).
+- `death_probability::Real`: Death probability (`0.0` by default).
 - `critical_onset_to_death::Union{Distribution, Real}`: Delay from critical onset to death.
 """
 struct CriticalHealthProfile <: HealthProfile
@@ -109,8 +116,14 @@ struct CriticalHealthProfile <: HealthProfile
     end
 end
 
-# care contribution of a single critical-peak infection
-function calculate_health_profile(cc::CriticalHealthProfile, infection::InfectionState, rng::Xoshiro)
+"""
+    calculate_health_profile(cc::CriticalHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro)
+
+Care and mortality contribution of a single `critical`-peak infection, anchored at
+`infection.critical_onset`. Hospital, ICU, and ventilation escalate via nested Bernoulli draws;
+death is drawn independently of them.
+"""
+function calculate_health_profile(cc::CriticalHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro)
     hospital_admission::Int16 = Int16(-1)
     hospital_discharge::Int16 = Int16(-1)
     icu_admission::Int16 = Int16(-1)
@@ -135,21 +148,26 @@ function calculate_health_profile(cc::CriticalHealthProfile, infection::Infectio
             hospital_discharge = round(Int16, hospital_admission + _rand_val(cc.hospital_admission_to_hospital_discharge, rng))
         end
     end
-    # death hangs off critical, ungated by hospital/ICU
+    # death is independent of hospital/ICU here; the ladder and the outcome are reconciled downstream
     if gems_rand(rng) <= Float64(cc.death_probability)
         death = round(Int16, infection.critical_onset + _rand_val(cc.critical_onset_to_death, rng))
     end
-    return HealthTimeline(hospital_admission, hospital_discharge, icu_admission, icu_discharge,
-        ventilation_admission, ventilation_discharge, death, infection.pathogen_id)
+
+    care = CareTimeline(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge,
+        icu_admission = icu_admission, icu_discharge = icu_discharge,
+        ventilation_admission = ventilation_admission, ventilation_discharge = ventilation_discharge)
+    outcome = HealthOutcome(death = death, death_pathogen_id = infection.pathogen_id)
+    return care, outcome
 end
 
 """
     DefaultHealthProgression <: HealthProgression
 
 Default host health policy. Holds a `SevereHealthProfile` and a `CriticalHealthProfile`; each active
-infection contributes care from the profile for its peak tier, and the contributions are folded
-(`_combine_independent`). Ventilation is disabled by default (`CriticalHealthProfile` has zero ventilation
-probability and length).
+infection contributes care and mortality risk from the profile for its peak tier. Care is folded
+via `_combine_care` (interval union) and mortality via `_combine_outcome` (earliest death wins),
+independently of each other. Ventilation is disabled by default (`CriticalHealthProfile` has zero
+ventilation probability and length).
 
 # Example
 
@@ -185,43 +203,58 @@ struct DefaultHealthProgression{S<:HealthProfile, C<:HealthProfile} <: HealthPro
 end
 
 """
-    _combine_independent(a::HealthTimeline, b::HealthTimeline)
+    _combine_care(a::CareTimeline, b::CareTimeline)
 
-The default policy's combination of two independent infections' care: earliest admission,
-latest discharge, and the earlier death (with its attributed pathogen). A custom `HealthProgression` is free
-to combine differently (e.g. coinfection synergy).
+The default policy's combination of two independent infections' care demand: earliest
+admission, latest discharge. A custom `HealthProgression` is free to combine differently
+(e.g. coinfection synergy).
 """
-function _combine_independent(a::HealthTimeline, b::HealthTimeline)
-    if a.death < 0
-        death = b.death; death_pathogen_id = b.death_pathogen_id
-    elseif b.death < 0 || a.death <= b.death
-        death = a.death; death_pathogen_id = a.death_pathogen_id
-    else
-        death = b.death; death_pathogen_id = b.death_pathogen_id
-    end
-    return HealthTimeline(
+function _combine_care(a::CareTimeline, b::CareTimeline)
+    return CareTimeline(
         _min_set(a.hospital_admission, b.hospital_admission),
         _max_set(a.hospital_discharge, b.hospital_discharge),
         _min_set(a.icu_admission, b.icu_admission),
         _max_set(a.icu_discharge, b.icu_discharge),
         _min_set(a.ventilation_admission, b.ventilation_admission),
-        _max_set(a.ventilation_discharge, b.ventilation_discharge),
-        death, death_pathogen_id)
+        _max_set(a.ventilation_discharge, b.ventilation_discharge))
 end
 
+"""
+    _combine_outcome(a::HealthOutcome, b::HealthOutcome)
 
+The default policy's combination of two independent infections' terminal risk: the earlier
+death, with its attributed pathogen. A custom `HealthProgression` is free to combine
+differently (e.g. capacity-constrained mortality that reads the already-combined `CareTimeline`).
+"""
+function _combine_outcome(a::HealthOutcome, b::HealthOutcome)
+    if a.death < 0
+        return HealthOutcome(death = b.death, death_pathogen_id = b.death_pathogen_id)
+    elseif b.death < 0 || a.death <= b.death
+        return HealthOutcome(death = a.death, death_pathogen_id = a.death_pathogen_id)
+    else
+        return HealthOutcome(death = b.death, death_pathogen_id = b.death_pathogen_id)
+    end
+end
 
+"""
+    calculate_health_progression(individual::Individual, infections::InfectionRegistry, hp::DefaultHealthProgression, tick::Int16, rng::Xoshiro)
+
+Folds each active infection's per-tier contribution via `_combine_care`/`_combine_outcome`.
+Infections that haven't reached `severe` contribute nothing.
+"""
 function calculate_health_progression(individual::Individual, infections::InfectionRegistry,
         hp::DefaultHealthProgression, tick::Int16, rng::Xoshiro)
 
-    timeline = HealthTimeline()
+    care = CareTimeline()
+    outcome = HealthOutcome()
     for infection in each_infection(individual, infections)
         # a non-severe infection demands no host care
         infection.severeness_onset < 0 && continue
-        tl = infection.critical_onset < 0 ? calculate_health_profile(hp.severe, infection, rng) : calculate_health_profile(hp.critical, infection, rng)
-        timeline = _combine_independent(timeline, tl)
+        c, o = infection.critical_onset < 0 ? calculate_health_profile(hp.severe, individual, infection, rng) : calculate_health_profile(hp.critical, individual, infection, rng)
+        care = _combine_care(care, c)
+        outcome = _combine_outcome(outcome, o)
     end
-    return timeline
+    return care, outcome
 end
 
 
@@ -234,12 +267,26 @@ if the tier takes no host care. Overridden per category
 """
 _health_profile_type(::Type{<:ProgressionCategory}) = nothing
 
-# the embedded HealthProfile of a category (nothing if its tier takes no care)
+"""
+    _embedded_health_profile(c::ProgressionCategory)
+
+The `HealthProfile` embedded in `c`, or `nothing` if its tier takes no host care.
+"""
 _embedded_health_profile(c::ProgressionCategory) = _health_profile_type(typeof(c)) === nothing ? nothing : c.care
 
+"""
+    _has_embedded_health_profile(p)
+
+`true` if any of pathogen `p`'s progression categories carries an embedded `HealthProfile`.
+"""
 _has_embedded_health_profile(p) = any(c -> _embedded_health_profile(c) !== nothing, p.progressions)
 
-# assemble the global health policy from care embedded across a single pathogen's categories
+"""
+    _harvest_health_progression(pathogens)
+
+Assembles the global `DefaultHealthProgression` from care embedded across a single pathogen's
+categories. Throws if more than one category per tier carries embedded care.
+"""
 function _harvest_health_progression(pathogens)
     severe_profile = nothing
     critical_profile = nothing
