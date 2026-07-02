@@ -4,6 +4,7 @@ export effective_transmission_probability
 export transmission_functions
 export progression_categories
 export progression_assignments
+export health_progressions
 export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
@@ -198,6 +199,13 @@ progression_assignments() = subtypes(ProgressionAssignmentFunction)
 Returns all known transmission functions (subtypes of `TransmissionFunction`).
 """
 transmission_functions() = subtypes(TransmissionFunction)
+
+"""
+    health_progressions()
+
+Returns all known health progressions (subtypes of `HealthProgression`).
+"""
+health_progressions() = subtypes(HealthProgression)
 
 
 

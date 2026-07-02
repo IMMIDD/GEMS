@@ -2,8 +2,8 @@ export compartment_periods, aggregated_compartment_periods
 
 # HELPER FUNCTIONS TO CALCULATE PERIODS
 
-# calculate removed time (max of recovery and death)
-calc_rem(infs) = max.(infs.recovery, infs.death)
+# removed time is recovery; host death is host-level (see _hospital_df), not per-infection
+calc_rem(infs) = infs.recovery
 # calculate asymptomatic, symptomatic and pre-symptomatic periods
 calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : 0).(infs.tick, infs.symptom_onset, rem)
 calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - so : 0).(infs.symptom_onset, rem)
@@ -31,9 +31,9 @@ returns a `DataFrame` containing all additional infectee-related information, pe
 | `pre_symptomatic` | `Int16` | Duration of the pre-symptomatic period in ticks |
 | `symptomatic`     | `Int16` | Duration of the symptomatic period in ticks     |
 | `severe`          | `Int16` | Duration of the severe period in ticks          |
-| `hospitalized`    | `Int16` | Duration of the hospitalized period in ticks    |
-| `icu`             | `Int16` | Duration of the ICU period in ticks             |
-| `ventilated`      | `Int16` | Duration of the ventilated period in ticks      |
+| `critical`        | `Int16` | Duration of the critical period in ticks        |
+
+Host-level care periods (hospital/ICU/ventilation) are no longer per-infection; see `_hospital_df`.
 """
 function compartment_periods(postProcessor::PostProcessor)
 
@@ -55,9 +55,7 @@ function compartment_periods(postProcessor::PostProcessor)
             pre_symptomatic = calc_pre_symp(infs),
             symptomatic = calc_symp(infs, rem),
             severe = infs.severeness_offset .- infs.severeness_onset,
-            hospitalized = infs.hospital_discharge .- infs.hospital_admission,
-            icu = infs.icu_discharge .- infs.icu_admission,
-            ventilated = infs.ventilation_discharge .- infs.ventilation_admission
+            critical = infs.critical_offset .- infs.critical_onset
         ))
 
     # cache dataframe
@@ -92,9 +90,7 @@ just the individuals who were ever in that compartment.
 | `pre_symptomatic` | `Float64` | Fraction of individuals with this pre-symptomatic duration |
 | `symptomatic`     | `Float64` | Fraction of individuals with this symptomatic duration     |
 | `severe`          | `Float64` | Fraction of individuals with this severe duration          |
-| `hospitalized`    | `Float64` | Fraction of individuals with this hospitalized duration    |
-| `icu`             | `Float64` | Fraction of individuals with this ICU duration             |
-| `ventilated`      | `Float64` | Fraction of individuals with this ventilated duration      |
+| `critical`        | `Float64` | Fraction of individuals with this critical duration        |
 """
 function aggregated_compartment_periods(postProcessor::PostProcessor)
     cps = compartment_periods(postProcessor)
@@ -115,9 +111,7 @@ function aggregated_compartment_periods(postProcessor::PostProcessor)
             countmap(cps_p.asymptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), asymptomatic = collect(values(cm))),
             countmap(cps_p.symptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), symptomatic = collect(values(cm))),
             countmap(cps_p.severe) |> cm -> DataFrame(duration = collect(keys(cm)), severe = collect(values(cm))),
-            countmap(cps_p.hospitalized) |> cm -> DataFrame(duration = collect(keys(cm)), hospitalized = collect(values(cm))),
-            countmap(cps_p.icu) |> cm -> DataFrame(duration = collect(keys(cm)), icu = collect(values(cm))),
-            countmap(cps_p.ventilated) |> cm -> DataFrame(duration = collect(keys(cm)), ventilated = collect(values(cm)))
+            countmap(cps_p.critical) |> cm -> DataFrame(duration = collect(keys(cm)), critical = collect(values(cm)))
         ]
 
         # normalizing
@@ -128,9 +122,7 @@ function aggregated_compartment_periods(postProcessor::PostProcessor)
         cps_vector[5].asymptomatic = cps_vector[5].asymptomatic ./ all
         cps_vector[6].symptomatic = cps_vector[6].symptomatic ./ all
         cps_vector[7].severe = cps_vector[7].severe ./ all
-        cps_vector[8].hospitalized = cps_vector[8].hospitalized ./ all
-        cps_vector[9].icu = cps_vector[9].icu ./ all
-        cps_vector[10].ventilated = cps_vector[10].ventilated ./ all
+        cps_vector[8].critical = cps_vector[8].critical ./ all
 
         # empty dataframe with all possible "durations" (in ticks)
         res = DataFrame(

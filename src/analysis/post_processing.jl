@@ -96,8 +96,22 @@ mutable struct PostProcessor
             :household_b => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_b
         )
 
-        # join deaths with additional info from population DF
         deaths = dataframe(deathlogger(simulation))
+
+        # host death is host-level, not logged per infection; reconcile it back so `recovery` reflects what actually happened.
+        # `:killing_pathogen_id` is the actual cause of death
+        host_death = DataFrames.select(deaths, :id, :tick => :host_death, :pathogen_id => :killing_pathogen_id, copycols=false)
+        leftjoin!(infections, host_death, on = [:id_b => :id])
+        transform!(infections,
+            [:recovery, :host_death] => ByRow((r, d) -> !ismissing(d) && d < r ?
+                (death = d, recovery = Int16(-1)) : (death = Int16(-1), recovery = r)) => AsTable,
+            :killing_pathogen_id => ByRow(p -> ismissing(p) ? Int8(-1) : p) => :killing_pathogen_id)
+
+        cols = names(infections, Not([:host_death, :death, :killing_pathogen_id]))
+        i = findfirst(==("recovery"), cols)
+        select!(infections, cols[1:i]..., :death, :killing_pathogen_id, cols[i+1:end]...)
+
+        # join deaths with additional info from population DF
         leftjoin!(deaths, pop, on = :id)
 
         # join tests with population data

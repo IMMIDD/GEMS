@@ -26,7 +26,7 @@ mutable struct BatchProcessor
     dark_figure::Dict{Int, _WelfordState}
     cumulative_cases::Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}
     generation_times::Dict{Int8, Dict{Int, _WelfordState}}
-    hospitalizations::Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}
+    hospitalizations::Dict{String, Dict{Int, _WelfordState}}
     observed_R::Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}
 
     # Scalar Welford accumulators
@@ -67,18 +67,18 @@ mutable struct BatchProcessor
         new(
             0,
             "tick",
-            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{String, Dict{Int, _WelfordState}}(),
-            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{Int, _WelfordState}(),
-            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{Int8, Dict{Int, _WelfordState}}(),
-            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),
-            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),
+            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # tick_cases
+            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # effectiveR
+            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # compartments
+            Dict{String, Dict{Int, _WelfordState}}(),               # quarantines
+            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(), # tests
+            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(), # pool_tests
+            Dict{String, Dict{String, Dict{Int, _WelfordState}}}(), # sero_tests
+            Dict{Int, _WelfordState}(),                             # dark_figure
+            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # cumulative_cases
+            Dict{Int8, Dict{Int, _WelfordState}}(),                 # generation_times
+            Dict{String, Dict{Int, _WelfordState}}(),               # hospitalizations
+            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # observed_R
             _WelfordState(), Dict{Int8, _WelfordState}(), Dict{Int8, _WelfordState}(), _WelfordState(),
             Dict{String, _WelfordState}(),
             _WelfordState(), _WelfordState(),
@@ -196,7 +196,7 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     end
 
     # Hospitalizations and observed R per tick (pathogen-keyed)
-    _update_multicol_grouped!(bp.hospitalizations, _hospital_df(pp), :tick, :pathogen_id)
+    _update_multicol!(bp.hospitalizations, _hospital_df(pp), :tick)
     _update_multicol_grouped!(bp.observed_R, observed_R(pp), :tick, :pathogen_id)
 
     # Pool and serology tests per tick
@@ -423,12 +423,12 @@ end
 """
     hospitalizations(bp::BatchProcessor)
 
-Returns aggregated hospitalization metrics per tick across all runs, per pathogen.
-Returns a `Dict{Int8, Dict{String, DataFrame}}` keyed by pathogen id then column name
+Returns aggregated hospitalization metrics per tick across all runs..
+Returns a `Dict{String, DataFrame}` keyed by column name
 (e.g. `current_hospitalized`, `current_icu`, `hospital_admissions`).
 """
 function hospitalizations(bp::BatchProcessor)
-    return Dict(pid => _welford_df_to_stats_df_multicol(inner, :tick) for (pid, inner) in bp.hospitalizations)
+    return _welford_df_to_stats_df_multicol(bp.hospitalizations, :tick)
 end
 
 """

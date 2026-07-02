@@ -56,7 +56,8 @@ module GEMS
 
     # CORE SIMULATION - TYPE DEFINITIONS 
     include("pathogen/disease_progression.jl")
-    include("registries/infection_registry.jl") 
+    include("pathogen/health_progression/health_progression.jl")
+    include("registries/infection_registry.jl")
     include("registries/immunity_registry.jl") 
     include("registries/test_registry.jl")
     include("pathogen/pathogens.jl") 
@@ -84,6 +85,8 @@ module GEMS
     include("simulation/calibration.jl")
     include("registries/registry_methods.jl")
     include("population/individual_methods.jl")
+    include("pathogen/health_progression/health_timeline.jl")
+    include("pathogen/health_progression/default_health_progression.jl")
 
     # PATHOGEN IMPLEMENTATIONS
     include("pathogen/pathogen_components.jl")

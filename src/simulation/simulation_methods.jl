@@ -100,7 +100,7 @@ function log_stepinfo(simulation::Simulation)
                 loc_st_unab += size(s)
             else
                 for i in individuals(s)
-                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    if is_severe(i) || is_hospitalized(i, tick(simulation)) || isquarantined(i)
                         loc_st_unab += 1
                     end
                 end
@@ -121,7 +121,7 @@ function log_stepinfo(simulation::Simulation)
                 loc_wo_unab += size(o)
             else
                 for i in individuals(o)
-                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                    if is_severe(i) || is_hospitalized(i, tick(simulation)) || isquarantined(i)
                         loc_wo_unab += 1
                     end
                 end
@@ -409,6 +409,8 @@ function flush_pending_infections!(sim::Simulation)
             for p in buf
                 ind = get_individual_by_id(pop, p.host_id)
                 push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp)
+                # recompute the host health timeline now that the new infection's demand is visible
+                compute_health!(ind, infections, health_progression(sim), tick(sim), sim.rngs[shard_id])
                 if p.dp.recovery >= 0
                     push_immunity!(immunities, ind, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
                     ind.needs_immunity_update = true
@@ -460,6 +462,21 @@ end
 
 
 """
+    log_health_events!(healthlogger::HealthLogger, indiv::Individual, tick::Int16)
+
+Logs any host care events that become realized for `indiv` at `tick`.
+"""
+@inline function log_health_events!(healthlogger::HealthLogger, indiv::Individual, tick::Int16)
+    indiv.hospital_admission == tick && log!(healthlogger, id(indiv), :hospital_admission, tick)
+    indiv.hospital_discharge == tick && log!(healthlogger, id(indiv), :hospital_discharge, tick)
+    indiv.icu_admission == tick && log!(healthlogger, id(indiv), :icu_admission, tick)
+    indiv.icu_discharge == tick && log!(healthlogger, id(indiv), :icu_discharge, tick)
+    indiv.ventilation_admission == tick && log!(healthlogger, id(indiv), :ventilation_admission, tick)
+    indiv.ventilation_discharge == tick && log!(healthlogger, id(indiv), :ventilation_discharge, tick)
+    return nothing
+end
+
+"""
     update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
 Update the individual disease progression, handle its recovery and log its possible death.
@@ -468,17 +485,17 @@ If the individual is not infected, this function will just return.
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_dead = dead(indiv)
     was_symptomatic = symptomatic(indiv)
-    was_hospitalized = is_hospitalized(indiv)
 
     # update immunity levels
     if indiv.needs_immunity_update
         update_immunity!(indiv, immunity_registry(sim, id(indiv)), sim.pathogens, tick, rng(sim))
     end
 
-    # progress disease for currently infected individuals
-    if infected(indiv)
+    # progress disease while infected, or while a host death/care episode is still pending
+    # (care can outlive the infection, so we cannot gate purely on `infected`)
+    if infected(indiv) || (Int16(0) <= indiv.death && !was_dead)
         shard_id = _owner_shard(id(indiv))
-        
+
         progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, rng(sim))
 
         if !was_dead && dead(indiv)
@@ -486,12 +503,16 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         end
     end
 
+    # log host care events realized at this tick
+    log_health_events!(healthlogger(sim), indiv, tick)
+
     if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim, staged = true)
         end
     end
-    if !was_hospitalized && is_hospitalized(indiv)
+    # hospital admission edge: the host timeline schedules admission exactly at this tick
+    if indiv.hospital_admission == tick
         for ht in sim |> hospitalization_triggers
             trigger(ht, indiv, sim, staged = true)
         end
