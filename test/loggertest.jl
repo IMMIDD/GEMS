@@ -263,7 +263,7 @@
 
     @testset "Saving Loggerfiles" begin
         # Create logger and log a known infection
-        loggers = [InfectionLogger(), VaccinationLogger(), DeathLogger(), PoolTestLogger(), GEMS.TestLogger(), SeroprevalenceLogger()]
+        loggers = [InfectionLogger(), VaccinationLogger(), DeathLogger(), GEMS.HealthLogger(), PoolTestLogger(), GEMS.TestLogger(), SeroprevalenceLogger()]
 
         for logger in loggers
             # Save to a temp file

@@ -1,6 +1,7 @@
 import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_care, _min_set, _max_set,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
-    create_progression, create_health_progression, each_infection
+    create_progression, create_health_progression, create_health_profile,
+    determine_health_progression, each_infection
 
 @testset "Health Progression" begin
 
@@ -58,7 +59,7 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
             critical_offset = Int16(15), severeness_offset = Int16(16), recovery = Int16(20))
         inf_crit = InfectionState(Int8(1), Int32(-1), dp_crit)
         # death is set well after the care ladder resolves, so it doesn't cap those ticks
-        # (HealthTimeline's constructor caps ongoing care at death; that's covered separately)
+        # (_cap_care caps ongoing care at death; that's covered separately)
         cc = CriticalHealthProfile(hospital_probability = 1.0, critical_onset_to_hospital_admission = 0,
             icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5, icu_discharge_to_hospital_discharge = 3,
@@ -70,6 +71,20 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test care2.hospital_discharge == 16
         @test outcome2.death == 28
         @test care2.ventilation_admission == -1
+
+        # full critical ladder: guaranteed ventilation nests inside ICU which nests inside the ward.
+        # discharges chain inward-out, so ventilation ends first, then ICU, then hospital.
+        cc_vent = CriticalHealthProfile(hospital_probability = 1.0, critical_onset_to_hospital_admission = 0,
+            icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
+            ventilation_probability = 1.0, icu_admission_to_ventilation_admission = 0,
+            ventilation_admission_to_ventilation_discharge = 4, ventilation_discharge_to_icu_discharge = 2,
+            icu_discharge_to_hospital_discharge = 3)
+        care_vent, outcome_vent = calculate_health_profile(cc_vent, ind, inf_crit, rng)
+        @test care_vent.ventilation_admission == 8
+        @test care_vent.ventilation_discharge == 12
+        @test care_vent.icu_discharge == 14        # 2 days of ICU after ventilation ends
+        @test care_vent.hospital_discharge == 17   # 3 days of ward after ICU ends
+        @test outcome_vent.death == -1             # death is off for this profile
 
         # cascading-off caveat: icu_probability set without hospital_probability is a no-op,
         # since ICU is gated behind a hospital admission that never happens
@@ -125,6 +140,25 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test dropped.hospital_discharge == -1
         @test dropped.icu_admission == -1
         @test dropped.icu_discharge == -1
+    end
+
+    @testset "show" begin
+        # a full care timeline prints every realized part of the ladder
+        ct = CareTimeline(hospital_admission = 1, hospital_discharge = 40, icu_admission = 5,
+            icu_discharge = 30, ventilation_admission = 8, ventilation_discharge = 20)
+        out = @capture_out show(ct)
+        @test occursin("hospital_admission", out)
+        @test occursin("ventilation_admission", out)
+        @test occursin("hospital_discharge", out)
+
+        # an empty timeline prints only the header, no event rows
+        empty_out = @capture_out show(CareTimeline())
+        @test occursin("Care Timeline", empty_out)
+        @test !occursin("hospital_admission", empty_out)
+
+        # the outcome distinguishes a scheduled death from survival
+        @test occursin("death", @capture_out show(HealthOutcome(death = 5, death_pathogen_id = 2)))
+        @test occursin("alive", @capture_out show(HealthOutcome()))
     end
 
     @testset "DefaultHealthProgression folds across a host's infections" begin
@@ -267,6 +301,10 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         p2 = Pathogen(id = 2, name = "Flu", progressions = [Critical(; dkw..., hospital_probability = 0.9)])
         @test_throws ArgumentError Simulation(pop_size = 1000, pathogens = (p, p2), seed = 1)
 
+        # no embedded care, no explicit policy, no [HealthProgression] section -> the plain default
+        @test determine_health_progression(Dict{String, Any}(), nothing,
+            ((progressions = [crit_bare],),), true) isa DefaultHealthProgression
+
         # config-side split (a Dict, as parsed from TOML) produces the same result as the flat-kwarg code path
         cfg = Dict(
             "exposure_to_infectiousness_onset" => Dict("distribution" => "Poisson", "parameters" => [1]),
@@ -300,5 +338,22 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test hp isa DefaultHealthProgression
         @test hp.severe.hospital_probability == 0.1
         @test hp.critical.icu_probability == 0.6
+
+        # a failed profile construction is rewrapped as an ErrorException carrying the type name
+        @test_throws ErrorException create_health_profile(SevereHealthProfile, Dict("hospital_probability" => 1.5))
+
+        # a non-default HealthProgression is built through the generic (non-Default) branch
+        struct ConfigurableHealthProgression <: GEMS.HealthProgression
+            death_probability::Float64
+            ConfigurableHealthProgression(; death_probability = 0.0) = new(death_probability)
+        end
+        hp_custom = create_health_progression(Dict("type" => "ConfigurableHealthProgression",
+            "parameters" => Dict("death_probability" => 0.2)))
+        @test hp_custom isa ConfigurableHealthProgression
+        @test hp_custom.death_probability == 0.2
+
+        # an unknown parameter on that same branch is rewrapped as an ErrorException too
+        @test_throws ErrorException create_health_progression(Dict("type" => "ConfigurableHealthProgression",
+            "parameters" => Dict("bogus" => 1)))
     end
 end

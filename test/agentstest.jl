@@ -1,4 +1,4 @@
-import GEMS: infected!, infectious!, symptomatic!, severe!, dead!, detected!, progress_disease!,
+import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, detected!, progress_disease!,
     inc_number_of_infections!,
     quarantine_release_tick!, quarantine_tick!, quarantined!,
     mandate_compliance!, social_factor!, setting_id!,
@@ -307,6 +307,11 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, dead!, detected!, pr
             severe!(i, true)
             @test issevere(i)
             @test severe(i)
+
+            critical!(i, true)
+            @test is_critical(i)
+            @test iscritical(i)
+            @test critical(i)
 
             i.hospital_admission = Int16(0); i.hospital_discharge = Int16(100)
             @test ishospitalized(i, Int16(50))
