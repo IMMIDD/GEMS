@@ -1,4 +1,4 @@
-import GEMS: _rand_val, push_infection!, _combine_independent, _min_set, _max_set,
+import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_care, _min_set, _max_set,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
     create_progression, create_health_progression, each_infection
 
@@ -37,6 +37,7 @@ import GEMS: _rand_val, push_infection!, _combine_independent, _min_set, _max_se
 
     @testset "calculate_health_profile per tier" begin
         rng = Xoshiro(1)
+        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
 
         # severe-peak infection
         dp_sev = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1),
@@ -45,11 +46,11 @@ import GEMS: _rand_val, push_infection!, _combine_independent, _min_set, _max_se
         inf_sev = InfectionState(Int8(1), Int32(-1), dp_sev)
         sc = SevereHealthProfile(hospital_probability = 1.0,
             severeness_onset_to_hospital_admission = 2, hospital_admission_to_hospital_discharge = 10)
-        tl = calculate_health_profile(sc, inf_sev, rng)
-        @test tl.hospital_admission == 7  # severeness_onset(5) + 2
-        @test tl.hospital_discharge == 17 # + 10
-        @test tl.icu_admission == -1
-        @test tl.death == -1
+        care_sev, outcome_sev = calculate_health_profile(sc, ind, inf_sev, rng)
+        @test care_sev.hospital_admission == 7
+        @test care_sev.hospital_discharge == 17
+        @test care_sev.icu_admission == -1
+        @test outcome_sev.death == -1
 
         # critical-peak infection: guaranteed hospital + ICU + death, ventilation off
         dp_crit = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1),
@@ -62,37 +63,68 @@ import GEMS: _rand_val, push_infection!, _combine_independent, _min_set, _max_se
             icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5, icu_discharge_to_hospital_discharge = 3,
             death_probability = 1.0, critical_onset_to_death = 20)
-        tl2 = calculate_health_profile(cc, inf_crit, rng)
-        @test tl2.hospital_admission == 8
-        @test tl2.icu_admission == 8
-        @test tl2.icu_discharge == 13      # icu_admission(8) + 5
-        @test tl2.hospital_discharge == 16 # icu_discharge(13) + 3
-        @test tl2.death == 28              # critical_onset(8) + 20
-        @test tl2.ventilation_admission == -1
+        care2, outcome2 = calculate_health_profile(cc, ind, inf_crit, rng)
+        @test care2.hospital_admission == 8
+        @test care2.icu_admission == 8
+        @test care2.icu_discharge == 13
+        @test care2.hospital_discharge == 16
+        @test outcome2.death == 28
+        @test care2.ventilation_admission == -1
 
         # cascading-off caveat: icu_probability set without hospital_probability is a no-op,
         # since ICU is gated behind a hospital admission that never happens
         cc2 = CriticalHealthProfile(icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5)
-        tl3 = calculate_health_profile(cc2, inf_crit, rng)
-        @test tl3.hospital_admission == -1
-        @test tl3.icu_admission == -1
+        care3, _ = calculate_health_profile(cc2, ind, inf_crit, rng)
+        @test care3.hospital_admission == -1
+        @test care3.icu_admission == -1
     end
 
-    @testset "_combine_independent" begin
-        empty_tl = HealthTimeline()
-        a = HealthTimeline(hospital_admission = 3, hospital_discharge = 10, death = 20, death_pathogen_id = 1)
-        b = HealthTimeline(hospital_admission = 5, hospital_discharge = 12, death = 15, death_pathogen_id = 2)
+    @testset "_combine_care / _combine_outcome" begin
+        empty_care = CareTimeline()
+        empty_outcome = HealthOutcome()
 
-        c = _combine_independent(a, b)
-        @test c.hospital_admission == 3  # earliest admission
-        @test c.hospital_discharge == 12 # latest discharge
-        @test c.death == 15              # earliest death
-        @test c.death_pathogen_id == 2   # attributed to whichever infection died first
+        care_a = CareTimeline(hospital_admission = 3, hospital_discharge = 10)
+        outcome_a = HealthOutcome(death = 20, death_pathogen_id = 1)
 
-        # combining with the empty timeline leaves the other side unchanged
-        @test _combine_independent(empty_tl, a).hospital_admission == 3
-        @test _combine_independent(a, empty_tl).death == 20
+        care_b = CareTimeline(hospital_admission = 5, hospital_discharge = 12)
+        outcome_b = HealthOutcome(death = 15, death_pathogen_id = 2)
+
+        care_c = _combine_care(care_a, care_b)
+        outcome_c = _combine_outcome(outcome_a, outcome_b)
+
+        @test care_c.hospital_admission == 3     # earliest admission
+        @test care_c.hospital_discharge == 12    # latest discharge
+        @test outcome_c.death == 15              # earliest death
+        @test outcome_c.death_pathogen_id == 2   # attributed to whichever infection died first
+
+        # combining with the empty side leaves the other side unchanged
+        @test _combine_care(empty_care, care_a).hospital_admission == 3
+        @test _combine_outcome(outcome_a, empty_outcome).death == 20
+    end
+
+    @testset "_cap_care" begin
+        care = CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+            icu_admission = 8, icu_discharge = 15)
+
+        # no scheduled death -> unchanged
+        @test _cap_care(care, HealthOutcome()) == care
+
+        # death after discharge -> no effect
+        @test _cap_care(care, HealthOutcome(death = 25)) == care
+
+        # death mid-ICU-stay -> both discharges pulled back to the death tick
+        capped = _cap_care(care, HealthOutcome(death = 12))
+        @test capped.icu_discharge == 12
+        @test capped.hospital_discharge == 12
+        @test capped.hospital_admission == 5 # admission itself untouched
+
+        # death at or before admission -> the episode is dropped, not clamped
+        dropped = _cap_care(care, HealthOutcome(death = 5))
+        @test dropped.hospital_admission == -1
+        @test dropped.hospital_discharge == -1
+        @test dropped.icu_admission == -1
+        @test dropped.icu_discharge == -1
     end
 
     @testset "DefaultHealthProgression folds across a host's infections" begin
@@ -114,11 +146,11 @@ import GEMS: _rand_val, push_infection!, _combine_independent, _min_set, _max_se
         push_infection!(reg, ind, Int8(1), Int32(-1), dp1)
         push_infection!(reg, ind, Int8(2), Int32(-1), dp2)
 
-        tl = calculate_health_progression(ind, reg, hp, Int16(0), rng)
+        care, outcome = calculate_health_progression(ind, reg, hp, Int16(0), rng)
         # earliest admission/death come from pathogen 1's earlier critical_onset (4 vs 20)
-        @test tl.hospital_admission == 4
-        @test tl.death == 13 # critical_onset(4) + 9
-        @test tl.death_pathogen_id == 1
+        @test care.hospital_admission == 4
+        @test outcome.death == 13
+        @test outcome.death_pathogen_id == 1
     end
 
     @testset "compute_health! preserves the realized past" begin
@@ -143,11 +175,12 @@ import GEMS: _rand_val, push_infection!, _combine_independent, _min_set, _max_se
     end
 
     @testset "Custom HealthProfile static dispatch" begin
+        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
         struct WardOnlyCritical <: GEMS.HealthProfile end
-        GEMS.calculate_health_profile(::WardOnlyCritical, infection, rng) =
-            HealthTimeline(hospital_admission = infection.critical_onset,
-                           hospital_discharge = Int16(infection.critical_onset + 5),
-                           death_pathogen_id = infection.pathogen_id)
+        GEMS.calculate_health_profile(::WardOnlyCritical, individual, infection, rng) =
+            CareTimeline(hospital_admission = infection.critical_onset,
+                        hospital_discharge = Int16(infection.critical_onset + 5)),
+            HealthOutcome(death_pathogen_id = infection.pathogen_id)
 
         hp = DefaultHealthProgression(critical = WardOnlyCritical())
         @test isconcretetype(typeof(hp)) # the care type is inferred, not an abstract field
@@ -160,22 +193,22 @@ import GEMS: _rand_val, push_infection!, _combine_independent, _min_set, _max_se
         push_infection!(reg, ind, Int8(1), Int32(-1), dp)
 
         rt = Base.return_types(calculate_health_progression, (typeof(ind), typeof(reg), typeof(hp), Int16, Xoshiro))[1]
-        @test rt == HealthTimeline # statically inferred even through the custom Care
+        @test rt == Tuple{CareTimeline, HealthOutcome} # statically inferred even through the custom profile
 
-        tl = calculate_health_progression(ind, reg, hp, Int16(0), Xoshiro(1))
-        @test tl.hospital_admission == 5
+        care, _ = calculate_health_progression(ind, reg, hp, Int16(0), Xoshiro(1))
+        @test care.hospital_admission == 5
     end
 
     @testset "Custom HealthProgression policy" begin
         struct AlwaysHospitalize <: GEMS.HealthProgression end
         function GEMS.calculate_health_progression(ind, infections, hp::AlwaysHospitalize, tick, rng)
             for s in each_infection(ind, infections)
-                s.severeness_onset >= 0 && return HealthTimeline(
-                    hospital_admission = s.severeness_onset,
-                    hospital_discharge = Int16(s.severeness_onset + 7),
-                    death_pathogen_id = s.pathogen_id)
+                if s.severeness_onset >= 0
+                    return CareTimeline(hospital_admission = s.severeness_onset,
+                            hospital_discharge = Int16(s.severeness_onset + 7)), HealthOutcome()
+                end
             end
-            return HealthTimeline()
+            return CareTimeline(), HealthOutcome()
         end
 
         crit = Critical(exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
