@@ -546,11 +546,11 @@ import GEMS: increment!, infected!
 
             # create_pathogen: bad progressions
             @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
-                Dict("progressions" => Dict("Symptomatic" => Dict())),
+                Dict("progressions" => Dict("Mild" => Dict())),
                 "test", Int8(1))
 
             # create_pathogen: bad progression assignment
-            valid_prog = Dict("Symptomatic" => Dict(
+            valid_prog = Dict("Mild" => Dict(
                 "exposure_to_infectiousness_onset" => 3,
                 "infectiousness_onset_to_symptom_onset" => 2,
                 "symptom_onset_to_recovery" => 5))
@@ -565,7 +565,7 @@ import GEMS: increment!, infected!
             # create_pathogen: bad transmission function
             valid_pa = Dict(
                 "type" => "RandomProgressionAssignment",
-                "parameters" => Dict("progression_categories" => ["Symptomatic"]))
+                "parameters" => Dict("progression_categories" => ["Mild"]))
             @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
                 Dict(
                     "progressions" => valid_prog,
@@ -610,7 +610,7 @@ import GEMS: increment!, infected!
 
         @testset "Throw Paths (ErrorException)" begin
             # create_progression: missing required fields
-            @test_throws ErrorException GEMS.create_progression(Dict(), "Symptomatic")
+            @test_throws ErrorException GEMS.create_progression(Dict(), "Mild")
 
             # create_progression_assignment: empty categories
             @test_throws ErrorException GEMS.create_progression_assignment(

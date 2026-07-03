@@ -22,7 +22,7 @@ Pathogen
 
 ```@docs
 Asymptomatic
-Symptomatic
+Mild
 Severe
 Critical
 ```

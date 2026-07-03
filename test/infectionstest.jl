@@ -205,11 +205,11 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             @test infected(i) # should be infected
             @test !infectious(i) # but not infectious yet
 
-            # SYMPTOMATIC PROGRESSION
+            # MILD PROGRESSION
             i = Individual(id = 1, sex = 0, age = 31)
             p = Pathogen(
                 name = "TestPathogen",
-                progressions = [Symptomatic(
+                progressions = [Mild(
                     exposure_to_infectiousness_onset = Poisson(3),
                     infectiousness_onset_to_symptom_onset = Poisson(2),
                     symptom_onset_to_recovery = Poisson(7)

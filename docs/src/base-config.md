@@ -19,11 +19,11 @@ This list shows the parameters that are applied when spawning a simulation witho
 | **Pathogen** | |
 | Name | `Covid19` |
 | Transmission rate | `20%` infection chance for each contact (Constant Transmission Rate) |
-| Progression assignment | Stratified by age groups (`-14`, `15-65`, `66-`) across 4 categories (`Asymptomatic`, `Symptomatic`, `Severe`, `Critical`) |
+| Progression assignment | Stratified by age groups (`-14`, `15-65`, `66-`) across 4 categories (`Asymptomatic`, `Mild`, `Severe`, `Critical`) |
 | **Asymptomatic Progression** | |
 | Time to infectiousness | `1` day after exposure (Poisson-distributed) |
 | Time to recovery | `8` days after infectiousness onset (Poisson-distributed) |
-| **Symptomatic Progression** | |
+| **Mild Progression** | |
 | Time to infectiousness | `1` day after exposure (Poisson-distributed) |
 | Time to symptom onset | `1` day after infectiousness onset (Poisson-distributed) |
 | Time to recovery | `7` days after symptom onset (Poisson-distributed) |

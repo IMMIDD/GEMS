@@ -270,7 +270,7 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 
 ## Custom Disease Progression
 
-Beyond the default progression categories (`Asymptomatic`, `Symptomatic`, `Severe`, and `Critical`), GEMS allows you to specify custom disese progressions.
+Beyond the default progression categories (`Asymptomatic`, `Mild`, `Severe`, and `Critical`), GEMS allows you to specify custom disese progressions.
 To do that, you need to define two things:
 - A struct for your new progression that inherits from `ProgressionCategory` and
 - A `calculate_progression()` function that defines the actual progression for an individual
@@ -459,20 +459,20 @@ using Parameters, Random
 end
 ```
 
-Next, extend the `GEMS.assign` function. This function takes the individual, your custom assignment struct, and a random number generator. It must return the `DataType` of the progression category the individual should be assigned to (e.g., returning the type `Symptomatic`, not an instance of it).
+Next, extend the `GEMS.assign` function. This function takes the individual, your custom assignment struct, and a random number generator. It must return the `DataType` of the progression category the individual should be assigned to (e.g., returning the type `Mild`, not an instance of it).
 
 ```julia
 function GEMS.assign(individual::Individual, pa::VaccBasedAssignment, rng::AbstractRNG)
     
     # Check the custom attribute we might have assigned during population creation
     if individual.number_of_vaccinations > 0
-        return Symptomatic # Vaccinated individuals always get a mild/symptomatic track
+        return Mild # Vaccinated individuals always get a mild track
     else
         # Unvaccinated individuals have a risk of severe progression
         if rand(rng) < pa.prob_severe_unvaxxed
             return Severe
         else
-            return Symptomatic
+            return Mild
         end
     end
 end

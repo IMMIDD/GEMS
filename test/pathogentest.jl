@@ -22,7 +22,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         infectiousness_onset_to_recovery = poi5
     )
 
-    pr_sympt = Symptomatic(
+    pr_mild = Mild(
         exposure_to_infectiousness_onset = poi2,
         infectiousness_onset_to_symptom_onset = poi1,
         symptom_onset_to_recovery = poi7
@@ -47,7 +47,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
     )
 
     # progression assignment
-    paf = RandomProgressionAssignment([Asymptomatic, Symptomatic, Severe, Critical])
+    paf = RandomProgressionAssignment([Asymptomatic, Mild, Severe, Critical])
 
     # transmission function
     ctf = ConstantTransmissionRate(transmission_rate = 0.25)
@@ -57,7 +57,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         p = Pathogen(
             name = "TestPathogen",
             id = 5,
-            progressions = [pr_asymp, pr_sympt, pr_sev, pr_crit],
+            progressions = [pr_asymp, pr_mild, pr_sev, pr_crit],
             progression_assignment = paf,
             transmission_function = ctf,
         )
@@ -65,7 +65,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         @test id(p) == 5
         @test length(progressions(p)) == 4
         @test get_progression(p, Asymptomatic) === pr_asymp
-        @test get_progression(p, Symptomatic) === pr_sympt
+        @test get_progression(p, Mild) === pr_mild
         @test get_progression(p, Severe) === pr_sev
         @test get_progression(p, Critical) === pr_crit
         @test progression_assignment(p) === paf
@@ -115,10 +115,10 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         @test pr_asymp.exposure_to_infectiousness_onset === poi2
         @test pr_asymp.infectiousness_onset_to_recovery === poi5
 
-        # symptomatic
-        @test pr_sympt.exposure_to_infectiousness_onset === poi2
-        @test pr_sympt.infectiousness_onset_to_symptom_onset === poi1
-        @test pr_sympt.symptom_onset_to_recovery === poi7
+        # mild
+        @test pr_mild.exposure_to_infectiousness_onset === poi2
+        @test pr_mild.infectiousness_onset_to_symptom_onset === poi1
+        @test pr_mild.symptom_onset_to_recovery === poi7
 
         # severe
         @test pr_sev.exposure_to_infectiousness_onset === poi2
@@ -186,7 +186,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
 
     @testset "Custom Progression Category" begin
         # define custom progression category
-        # similar to Symptomatic but with an extra custom parameter
+        # similar to Mild but with an extra custom parameter
         mutable struct TestProgression <: GEMS.ProgressionCategory
             exposure_to_infectiousness_onset::Distribution
             infectiousness_onset_to_symptom_onset::Distribution
@@ -251,7 +251,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
     @testset "Progression Assignment" begin
         ### RANDOM PROGRESSION ASSIGNMENT
         # THINGS THAT SHOULD WORK
-        pgrs = [Asymptomatic, Symptomatic, Severe, Critical]
+        pgrs = [Asymptomatic, Mild, Severe, Critical]
         rpa = RandomProgressionAssignment(pgrs) 
         i = individuals(sim)[1]
 
@@ -262,15 +262,15 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         # empty progression categories
         @test_throws ArgumentError RandomProgressionAssignment(DataType[])
         # non-existing progression category
-        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Household])
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Mild, Household])
         # duplicate progression category
-        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Symptomatic])
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Mild, Mild])
         
 
         ### AGE-BASED PROGRESSION ASSIGNMENT
         # THINGS THAT SHOULD WORK
         age_groups = ["0-19", "20-39", "40-59", "60-"]
-        progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Critical"]
+        progression_categories = ["Asymptomatic", "Mild", "Severe", "Critical"]
         stratification_matrix = [
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -289,7 +289,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             if age(ind) <= 19
                 @test pc == Asymptomatic
             elseif age(ind) <= 39
-                @test pc == Symptomatic
+                @test pc == Mild
             elseif age(ind) <= 59
                 @test pc == Severe
             else
@@ -340,13 +340,13 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         # non-existing progression category
         @test_throws ArgumentError AgeBasedProgressionAssignment(
             age_groups = age_groups,
-            progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "NonExistingProgression"],
+            progression_categories = ["Asymptomatic", "Mild", "Severe", "NonExistingProgression"],
             stratification_matrix = stratification_matrix
         )
         # duplicate progression category
         @test_throws ArgumentError AgeBasedProgressionAssignment(
             age_groups = age_groups,
-            progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Symptomatic"],
+            progression_categories = ["Asymptomatic", "Mild", "Severe", "Mild"],
             stratification_matrix = stratification_matrix
         )
 
@@ -402,13 +402,13 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         end
 
         # create instance
-        eo_pa = EvenOddProgressionAssignment(Symptomatic, Asymptomatic)
+        eo_pa = EvenOddProgressionAssignment(Mild, Asymptomatic)
 
         # create pathogen with custom progression assignment
         p_eo = Pathogen(
             name = "EvenOddPathogen",
             id = 20,
-            progressions = [pr_asymp, pr_sympt],
+            progressions = [pr_asymp, pr_mild],
             progression_assignment = eo_pa,
             transmission_function = ctf,
         )
@@ -422,10 +422,10 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         # make sure that there were infections
         @test length(flat_id_b) > 0 
 
-        # check if even IDs got Symptomatic and odd IDs got Asymptomatic
+        # check if even IDs got Mild and odd IDs got Asymptomatic
         for (ind_id, pc) in zip(flat_id_b, flat_pc)
             if iseven(ind_id)
-                @test pc == :Symptomatic
+                @test pc == :Mild
             else
                 @test pc == :Asymptomatic
             end

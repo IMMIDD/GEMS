@@ -59,15 +59,15 @@ If you want to set up a custom config file, you can copy this one into your own 
                     distribution = "Poisson"
                     parameters = [8]
 
-            # SYMPTOMATIC PROGRESSION [TOTAL DURATION ~ 10 DAYS]
-            [Pathogens.Covid19.progressions.Symptomatic]
-                [Pathogens.Covid19.progressions.Symptomatic.exposure_to_infectiousness_onset]
+            # MILD PROGRESSION [TOTAL DURATION ~ 10 DAYS]
+            [Pathogens.Covid19.progressions.Mild]
+                [Pathogens.Covid19.progressions.Mild.exposure_to_infectiousness_onset]
                     distribution = "Poisson"
                     parameters = [1]
-                [Pathogens.Covid19.progressions.Symptomatic.infectiousness_onset_to_symptom_onset]
+                [Pathogens.Covid19.progressions.Mild.infectiousness_onset_to_symptom_onset]
                     distribution = "Poisson"
                     parameters = [1]
-                [Pathogens.Covid19.progressions.Symptomatic.symptom_onset_to_recovery]
+                [Pathogens.Covid19.progressions.Mild.symptom_onset_to_recovery]
                     distribution = "Poisson"
                     parameters = [7]
 
@@ -118,7 +118,7 @@ If you want to set up a custom config file, you can copy this one into your own 
             type = "AgeBasedProgressionAssignment"
             [Pathogens.Covid19.progression_assignment.parameters]
                 age_groups = ["-14", "15-65", "66-"]
-                progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Critical"]
+                progression_categories = ["Asymptomatic", "Mild", "Severe", "Critical"]
                 stratification_matrix = [[0.400, 0.580, 0.017, 0.003],
                                          [0.250, 0.600, 0.140, 0.010],
                                          [0.150, 0.400, 0.370, 0.080]]
@@ -328,15 +328,15 @@ The `type` argument specifies the `TransmissionFunction` that conditions the dis
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `TransmissionFunction` struct upon initialization.
 
 #### `progressions`
-Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Symptomatic`, `Severe`, and `Critical`. `Severe` and `Critical` may also carry host-care parameters (see [`HealthProgression`](#healthprogression) below) directly inline, as a single-pathogen convenience.
+Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Mild`, `Severe`, and `Critical`. `Severe` and `Critical` may also carry host-care parameters (see [`HealthProgression`](#healthprogression) below) directly inline, as a single-pathogen convenience.
 
 Within each category, you must define the intervals between state transitions (e.g., `exposure_to_infectiousness_onset`, `symptom_onset_to_recovery`). Every interval requires two arguments to initialize the underlying random distribution:
 * **`distribution`**: A string representing the statistical distribution (e.g., `"Poisson"`, `"Binomial"`).
 * **`parameters`**: An array of numerical values required by the chosen distribution (e.g., `[7]` for a Poisson distribution with $\lambda = 7$).
 
 ```toml
-[Pathogens.Covid19.progressions.Symptomatic]
-    [Pathogens.Covid19.progressions.Symptomatic.symptom_onset_to_recovery]
+[Pathogens.Covid19.progressions.Mild]
+    [Pathogens.Covid19.progressions.Mild.symptom_onset_to_recovery]
         distribution = "Poisson"
         parameters = [7]
 ```
@@ -350,7 +350,7 @@ Determines how the distinct disease tracks defined above are distributed among t
     type = "AgeBasedProgressionAssignment"
     [Pathogens.Covid19.progression_assignment.parameters]
         age_groups = ["-14", "15-65", "66-"]
-        progression_categories = ["Asymptomatic", "Symptomatic", "Severe", "Critical"]
+        progression_categories = ["Asymptomatic", "Mild", "Severe", "Critical"]
         stratification_matrix = [[0.400, 0.580, 0.017, 0.003],
                                  [0.250, 0.600, 0.140, 0.010],
                                  [0.150, 0.400, 0.370, 0.080]]

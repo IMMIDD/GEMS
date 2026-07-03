@@ -17,12 +17,12 @@ An infected person will be considered exposed until they become infectious.
 After this, they can stay without symptoms (resulting in asymptomatic cases) or progress through a disease pathway until recovering.
 
 Throughout GEMS we use the term "removed" for the state of an individual leaving a disease progression, either by recovering or by dying.
-GEMS categorizes disease states internally using symbols (e.g., `:Symptomatic`, `:Critical`). Depending on the peak severity an individual reaches, we can categorize the infected individuals into the following progression tracks:
+GEMS categorizes disease states internally using symbols (e.g., `:Mild`, `:Critical`). Depending on the peak severity an individual reaches, we can categorize the infected individuals into the following progression tracks:
 
 | **Symptoms Category** | **Terminal State** |
 | :-------------------- | :----------------- |
 | Asymptomatic          | Presymptomatic     |
-| Symptomatic           | Symptomatic        |
+| Mild                  | Symptomatic        |
 | Severe                | Severe             |
 | Critical              | Critical           |
 
@@ -58,7 +58,7 @@ A possible age stratification matrix is given by the following $3 \times 4$ matr
 \end{bmatrix}
 ```
 
-In this example, the first row contains the probability of an individual up to 14 years of age ending up in the progression categories "Asymptomatic", "Symptomatic", "Severe", or "Critical" in this order.
+In this example, the first row contains the probability of an individual up to 14 years of age ending up in the progression categories "Asymptomatic", "Mild", "Severe", or "Critical" in this order.
 
 ## True- vs. Observed Cases
 
