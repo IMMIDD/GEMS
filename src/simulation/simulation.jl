@@ -751,15 +751,25 @@ function determine_health_progression(configfile_params::Dict, health_progressio
         embedded && throw(ArgumentError("embedded care parameters conflict with an explicit `health_progression`; remove one."))
         return health_progression
     end
+    
     _harvest() = (length(pathogens) > 1 &&
         throw(ArgumentError("embedded care parameters are only supported for a single pathogen; use an explicit [HealthProgression].")); _harvest_health_progression(pathogens))
+
     # embedded care from explicitly-passed pathogens wins over the (possibly default) config section
-    embedded && pathogens_explicit && return _harvest()
+    if embedded && pathogens_explicit
+        _haspath(configfile_params, ["HealthProgression"]) &&
+            @warn "Embedded care parameters were found on explicitly-passed pathogens, therefore the [HealthProgression] config section will be ignored."
+        return _harvest()
+    end
+
     if _haspath(configfile_params, ["HealthProgression"])
         embedded && throw(ArgumentError("embedded care parameters conflict with a [HealthProgression] config section; remove one."))
         return create_health_progression(configfile_params["HealthProgression"])
     end
+
     embedded && return _harvest()
+
+    @warn "No health_progression, [HealthProgression] config section, or embedded care parameters were provided; defaulting to a no-op HealthProgression (no hospitalization, ICU admission, or health-related death will occur)."
     return DefaultHealthProgression()
 end
 

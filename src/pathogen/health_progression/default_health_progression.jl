@@ -183,20 +183,9 @@ struct DefaultHealthProgression{S<:HealthProfile, C<:HealthProfile} <: HealthPro
 
     # the canonical default policy; type parameters are inferred from the profiles
     function DefaultHealthProgression(;
-        severe::HealthProfile = SevereHealthProfile(
-            hospital_probability = 0.05,
-            severeness_onset_to_hospital_admission = Poisson(2),
-            hospital_admission_to_hospital_discharge = Poisson(10)),
-        critical::HealthProfile = CriticalHealthProfile(
-            hospital_probability = 0.95,
-            critical_onset_to_hospital_admission = Poisson(1),
-            hospital_admission_to_hospital_discharge = Poisson(10),
-            hospital_to_icu_probability = 0.5,
-            hospital_admission_to_icu_admission = Poisson(1),
-            icu_admission_to_icu_discharge = Poisson(8),
-            icu_discharge_to_hospital_discharge = Poisson(5),
-            death_probability = 0.3,
-            critical_onset_to_death = Poisson(7)))
+        severe::HealthProfile = SevereHealthProfile(),
+        critical::HealthProfile = CriticalHealthProfile()
+        )
 
         return new{typeof(severe), typeof(critical)}(severe, critical)
     end
