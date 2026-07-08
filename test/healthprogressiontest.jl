@@ -285,6 +285,18 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test !_has_embedded_health_profile((progressions = [crit_bare],))
         @test _has_embedded_health_profile((progressions = [crit],))
 
+        # Severe embeds a SevereHealthProfile the same way Critical does
+        skw = (exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_severeness_onset = Poisson(1), severeness_onset_to_severeness_offset = Poisson(7),
+            severeness_offset_to_recovery = Poisson(4))
+
+        sev = Severe(; skw..., hospital_probability = 0.3)
+        @test sev.care isa SevereHealthProfile
+        @test sev.care.hospital_probability == 0.3
+        @test _health_profile_type(Severe) == SevereHealthProfile
+        @test_throws ArgumentError Severe(; skw..., care = SevereHealthProfile(), hospital_probability = 0.3)
+        @test_throws ArgumentError Severe(; skw..., hospital_to_icu_probability = 0.5)  # ICU is critical-tier
+
         # harvest at Simulation build (single pathogen, explicit `pathogens` argument)
         p = Pathogen(id = 1, name = "Covid19", progressions = [crit])
         sim = Simulation(pop_size = 3000, pathogens = p, seed = 1)

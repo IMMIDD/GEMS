@@ -81,19 +81,10 @@ mutable struct Critical <: ProgressionCategory
         care::Union{Nothing, HealthProfile} = nothing,
         care_params...)
 
-        if !isnothing(care)
-            isempty(care_params) || throw(ArgumentError("provide either `care` or individual care parameters, not both"))
-        elseif !isempty(care_params)
-            for k in keys(care_params)
-                k in fieldnames(CriticalHealthProfile) || throw(ArgumentError("unknown progression parameter `$k`"))
-            end
-            care = CriticalHealthProfile(; care_params...)
-        end
-
         return new(exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset,
             symptom_onset_to_severeness_onset, severeness_onset_to_critical_onset,
             critical_onset_to_critical_offset, critical_offset_to_severeness_offset,
-            severeness_offset_to_recovery, care)
+            severeness_offset_to_recovery, _embed_care(Critical, care, care_params))
     end
 end
 

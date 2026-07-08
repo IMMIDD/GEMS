@@ -271,6 +271,26 @@ _embedded_health_profile(c::ProgressionCategory) = _health_profile_type(typeof(c
 _has_embedded_health_profile(p) = any(c -> _embedded_health_profile(c) !== nothing, p.progressions)
 
 """
+    _embed_care(::Type{C}, care, care_params) where {C<:ProgressionCategory}
+
+Resolves the embedded `HealthProfile` for category `C` from either a prebuilt `care` object
+or flat, care-only `care_params` (mutually exclusive; `nothing` if neither). Keys are
+validated against `_health_profile_type(C)`.
+"""
+function _embed_care(::Type{C}, care::Union{Nothing,HealthProfile}, care_params) where {C<:ProgressionCategory}
+    profile_type = _health_profile_type(C)
+    if !isnothing(care)
+        isempty(care_params) || throw(ArgumentError("provide either `care` or individual care parameters, not both"))
+        return care
+    end
+    isempty(care_params) && return nothing
+    for k in keys(care_params)
+        k in fieldnames(profile_type) || throw(ArgumentError("unknown care parameter `$k` for $C"))
+    end
+    return profile_type(; care_params...)
+end
+
+"""
     _harvest_health_progression(pathogens)
 
 Assembles the global `DefaultHealthProgression` from care embedded across a single pathogen's
