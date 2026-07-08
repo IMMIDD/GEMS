@@ -1,7 +1,7 @@
 import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_care, _min_set, _max_set,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
     create_progression, create_health_progression, create_health_profile,
-    determine_health_progression, each_infection
+    determine_health_progression, each_infection, progression_index, get_infection_state
 
 @testset "Health Progression" begin
 
@@ -235,7 +235,8 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
 
     @testset "Custom HealthProgression policy" begin
         struct AlwaysHospitalize <: GEMS.HealthProgression end
-        function GEMS.calculate_health_progression(ind, infections, hp::AlwaysHospitalize, tick, rng)
+        function GEMS.calculate_health_progression(ind::Individual, infections::InfectionRegistry,
+                hp::AlwaysHospitalize, tick::Int16, rng::Xoshiro)
             for s in each_infection(ind, infections)
                 if s.severeness_onset >= 0
                     return CareTimeline(hospital_admission = s.severeness_onset,
@@ -367,5 +368,67 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         # an unknown parameter on that same branch is rewrapped as an ErrorException too
         @test_throws ErrorException create_health_progression(Dict("type" => "ConfigurableHealthProgression",
             "parameters" => Dict("bogus" => 1)))
+    end
+
+    @testset "Progression tag + select_health_profile" begin
+        mild_kw = (exposure_to_infectiousness_onset = Poisson(1),
+            infectiousness_onset_to_symptom_onset = Poisson(1), symptom_onset_to_recovery = Poisson(3))
+        sev_kw = (exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_severeness_onset = Poisson(1), severeness_onset_to_severeness_offset = Poisson(3),
+            severeness_offset_to_recovery = Poisson(3))
+
+        # progression_index maps a category type to its 1-based slot in the progressions tuple (0 if absent)
+        progs = (Mild(; mild_kw...), Severe(; sev_kw...))
+        @test progression_index(progs, Mild) == 1
+        @test progression_index(progs, Severe) == 2
+        @test progression_index(progs, Critical) == 0
+
+        # infection-state timelines for each peak tier
+        dp_mild = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1),
+            symptom_onset = Int16(2), recovery = Int16(20))
+        dp_sev = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            severeness_onset = Int16(5), severeness_offset = Int16(15), recovery = Int16(20))
+        dp_crit = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            severeness_onset = Int16(5), critical_onset = Int16(8), critical_offset = Int16(15),
+            severeness_offset = Int16(16), recovery = Int16(20))
+
+        # the from-DiseaseProgression constructor stamps the tag (default 0)
+        @test InfectionState(Int8(1), Int32(-1), dp_sev).progression_id == 0
+        @test InfectionState(Int8(1), Int32(-1), dp_sev, Int8(7)).progression_id == 7
+
+        # infect! stamps the assigned category's index end-to-end (Severe is slot 2 here)
+        reg = InfectionRegistry()
+        ind = Individual(id = 1, sex = 0, age = 31)
+        p = Pathogen(name = "TestPathogen", progressions = [Mild(; mild_kw...), Severe(; sev_kw...)],
+            progression_assignment = RandomProgressionAssignment([Severe]))
+        infect!(ind, Int16(0), p, rng = Xoshiro())
+        @test get_infection_state(ind, reg, id(p)).progression_id == 2
+
+        # DefaultHealthProgression routes by peak tier, ignoring the tag
+        hp = DefaultHealthProgression()
+        @test select_health_profile(hp, InfectionState(Int8(1), Int32(-1), dp_mild)) === nothing
+        @test select_health_profile(hp, InfectionState(Int8(1), Int32(-1), dp_sev)) === hp.severe
+        @test select_health_profile(hp, InfectionState(Int8(1), Int32(-1), dp_crit)) === hp.critical
+
+        # a custom policy composes over the default, routing one tagged category to its own profile
+        struct TaggedHP{D<:DefaultHealthProgression, H<:GEMS.HealthProfile} <: GEMS.HealthProgression
+            default::D
+            profile::H
+            key::NTuple{2,Int8}
+        end
+        function GEMS.select_health_profile(hp::TaggedHP, infection::InfectionState)
+            infection.severeness_onset < 0 && return nothing
+            (infection.pathogen_id, infection.progression_id) == hp.key && return hp.profile
+            select_health_profile(hp.default, infection)
+        end
+
+        custom = SevereHealthProfile(hospital_probability = 1.0)
+        thp = TaggedHP(DefaultHealthProgression(), custom, (Int8(1), Int8(2)))
+        # the tagged severe-peak infection (pathogen 1, slot 2) gets the custom profile 
+        @test select_health_profile(thp, InfectionState(Int8(1), Int32(-1), dp_sev, Int8(2))) === custom
+        # a severe-peak infection with a different tag falls through to the default severe tier
+        @test select_health_profile(thp, InfectionState(Int8(1), Int32(-1), dp_sev, Int8(9))) === thp.default.severe
+        # a critical-peak one (not matching the key) falls through to the default critical tier
+        @test select_health_profile(thp, InfectionState(Int8(1), Int32(-1), dp_crit, Int8(9))) === thp.default.critical
     end
 end

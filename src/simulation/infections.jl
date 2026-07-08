@@ -70,6 +70,7 @@ function infect!(infectee::Individual,
     pc = assign(infectee, paf, rng)
 
     prog = get_progression(pathogen.progressions, pc)
+    tag = progression_index(pathogen.progressions, pc)
     dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
 
     if isnothing(sim)
@@ -78,7 +79,7 @@ function infect!(infectee::Individual,
         any(i -> !infectee.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
-        push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp)
+        push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
         compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), tick, rng)
     else
         # log infection
@@ -105,7 +106,7 @@ function infect!(infectee::Individual,
         )
         # stage for serial flush after the threaded phase
         shard_id = _owner_shard(id(infectee))
-        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
+        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), tag, dp))
     end
 
     # increase lifetime number of infections

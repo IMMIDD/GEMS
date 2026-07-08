@@ -143,15 +143,15 @@ end
 
 
 """
-    push_infection!(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
+    push_infection!(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression, progression_id::Int8 = Int8(0))
 
 Cache-first infection write. Constructs a new `InfectionState` from the given
 arguments and places it in the individual's `infection_cache` if a free slot is
 available; falls back to the overflow linked list via `_link_overflow!` otherwise.
 Called by `flush_pending_infections!` for every new infection event.
 """
-function push_infection!(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
-    state = InfectionState(pathogen_id, infection_id, dp)
+function push_infection!(reg::InfectionRegistry, ind::Individual, pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression, progression_id::Int8 = Int8(0))
+    state = InfectionState(pathogen_id, infection_id, dp, progression_id)
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         if !ind.infection_cache[i].active
             ind.infection_cache = Base.setindex(ind.infection_cache, state, i)

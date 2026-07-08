@@ -179,7 +179,30 @@ Emits a static if/elseif chain at compile time, enabling union-splitting.
     push!(exprs, :(throw(ArgumentError("No progression of type $dp_type found."))))
     return quote $(exprs...) end
 end
-get_progression(p::Pathogen, dp_type::DataType) = get_progression(p.progressions, dp_type) 
+get_progression(p::Pathogen, dp_type::DataType) = get_progression(p.progressions, dp_type)
+
+"""
+
+    progression_index(progressions::PR, dp_type::DataType) where {PR<:Tuple}
+
+
+Retrieves the 1-based index of a progression by its DataType, or `Int8(0)` if not found.
+
+Emits a static if/elseif chain at compile time, enabling union-splitting.
+
+"""
+
+@generated function progression_index(progressions::PR, dp_type::DataType) where {PR<:Tuple}
+    N = fieldcount(PR)
+    exprs = Expr[]
+    for i in 1:N
+        T = fieldtype(PR, i)
+        push!(exprs, :( $T === dp_type && return Int8($i) ))
+    end
+    push!(exprs, :(return Int8(0)))
+    return quote $(exprs...) end
+end
+progression_index(p::Pathogen, dp_type::DataType) = progression_index(p.progressions, dp_type)
 
 
 function Base.show(io::IO, p::Pathogen)

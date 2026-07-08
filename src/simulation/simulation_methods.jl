@@ -408,7 +408,7 @@ function flush_pending_infections!(sim::Simulation)
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
                 ind = get_individual_by_id(pop, p.host_id)
-                push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp)
+                push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
                 # recompute the host health timeline now that the new infection's demand is visible
                 compute_health!(ind, infections, health_progression(sim), tick(sim), sim.rngs[shard_id])
                 if p.dp.recovery >= 0

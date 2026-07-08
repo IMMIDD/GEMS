@@ -1,5 +1,5 @@
 export HealthProgression, HealthProfile
-export calculate_health_progression, calculate_health_profile, compute_health!
+export calculate_health_progression, calculate_health_profile, select_health_profile, compute_health!
 
 """
     HealthProgression
@@ -26,9 +26,10 @@ abstract type HealthProfile end
 """
     calculate_health_progression(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, tick::Int16, rng::Xoshiro)::Tuple{CareTimeline, HealthOutcome}
 
-Overridable combination policy. Maps the `severe`/`critical` demand of `individual`'s active
-infections onto a single `(CareTimeline, HealthOutcome)` pair. Iterate the active infections with
-`each_infection(individual, infections)` and combine their per-infection contributions.
+Combination policy: maps the demand of `individual`'s active infections onto a single
+`(CareTimeline, HealthOutcome)` pair. A generic method folds each active infection's
+`select_health_profile` contribution independently; override this instead of `select_health_profile`
+to define a different combination (e.g. coinfection synergy).
 """
 function calculate_health_progression end
 
@@ -40,6 +41,16 @@ Overridable per-tier policy. Maps a single infection's `severe`/`critical` sched
 condition on host traits (e.g. comorbidities); the built-in profiles ignore it.
 """
 function calculate_health_profile end
+
+"""
+    select_health_profile(hp::HealthProgression, infection::InfectionState)::Union{HealthProfile, Nothing}
+
+Overridable per-infection routing. Returns the `HealthProfile` to apply to `infection`, or
+`nothing` if it demands no host care. The generic `calculate_health_progression` loop calls this
+for each active infection; override it to route infections (e.g. by their `progression_id`) to
+custom profiles while reusing the default combination.
+"""
+function select_health_profile end
 
 """
     compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, tick::Int16, rng::Xoshiro)

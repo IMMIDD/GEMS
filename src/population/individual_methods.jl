@@ -790,7 +790,7 @@ function set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
         DEFAULT_INFECTION_ID, Int32(0),
         DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
         DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
-        Int8(0), pathogen_id, true
+        Int8(0), pathogen_id, Int8(0), true
     )
     ind.infection_cache = Base.setindex(ind.infection_cache, blank, 1)
     infected!(ind, true)

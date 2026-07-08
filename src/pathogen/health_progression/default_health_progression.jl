@@ -226,24 +226,35 @@ function _combine_outcome(a::HealthOutcome, b::HealthOutcome)
 end
 
 """
-    calculate_health_progression(individual::Individual, infections::InfectionRegistry, hp::DefaultHealthProgression, tick::Int16, rng::Xoshiro)
+    calculate_health_progression(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, tick::Int16, rng::Xoshiro)
 
-Folds each active infection's per-tier contribution via `_combine_care`/`_combine_outcome`.
-Infections that haven't reached `severe` contribute nothing.
+Generic combination policy: folds each active infection's `select_health_profile` contribution
+via `_combine_care`/`_combine_outcome`. Infections that select no profile contribute nothing.
 """
 function calculate_health_progression(individual::Individual, infections::InfectionRegistry,
-        hp::DefaultHealthProgression, tick::Int16, rng::Xoshiro)
+        hp::HealthProgression, tick::Int16, rng::Xoshiro)
 
     care = CareTimeline()
     outcome = HealthOutcome()
     for infection in each_infection(individual, infections)
-        # a non-severe infection demands no host care
-        infection.severeness_onset < 0 && continue
-        c, o = infection.critical_onset < 0 ? calculate_health_profile(hp.severe, individual, infection, rng) : calculate_health_profile(hp.critical, individual, infection, rng)
+        profile = select_health_profile(hp, infection)
+        profile === nothing && continue
+        c, o = calculate_health_profile(profile, individual, infection, rng)
         care = _combine_care(care, c)
         outcome = _combine_outcome(outcome, o)
     end
     return care, outcome
+end
+
+"""
+    select_health_profile(hp::DefaultHealthProgression, infection::InfectionState)
+
+Routes by peak tier: `severe` for a severe-peak infection, `critical` for a critical-peak one, and
+`nothing` for an infection that never reached `severe`.
+"""
+function select_health_profile(hp::DefaultHealthProgression, infection::InfectionState)
+    infection.severeness_onset < 0 && return nothing
+    infection.critical_onset < 0 ? hp.severe : hp.critical
 end
 
 
@@ -293,8 +304,9 @@ end
 """
     _harvest_health_progression(pathogens)
 
-Assembles the global `DefaultHealthProgression` from care embedded across a single pathogen's
-categories. Throws if more than one category per tier carries embedded care.
+Assembles the global `DefaultHealthProgression` from care embedded on the built-in `Severe` and
+`Critical` categories. Care embedded on any other category is left for that category's own
+`HealthProgression` to consume. Throws if more than one category per tier carries embedded care.
 """
 function _harvest_health_progression(pathogens)
     severe_profile = nothing
@@ -302,12 +314,11 @@ function _harvest_health_progression(pathogens)
     for p in pathogens, c in p.progressions
         profile = _embedded_health_profile(c)
         profile === nothing && continue
-        tier = _health_profile_type(typeof(c))
-        if tier === SevereHealthProfile
-            isnothing(severe_profile) || throw(ArgumentError("more than one severe-tier category carries embedded care"))
+        if c isa Severe
+            isnothing(severe_profile) || throw(ArgumentError("more than one Severe category carries embedded care"))
             severe_profile = profile
-        elseif tier === CriticalHealthProfile
-            isnothing(critical_profile) || throw(ArgumentError("more than one critical-tier category carries embedded care"))
+        elseif c isa Critical
+            isnothing(critical_profile) || throw(ArgumentError("more than one Critical category carries embedded care"))
             critical_profile = profile
         end
     end

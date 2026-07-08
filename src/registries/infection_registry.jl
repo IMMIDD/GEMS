@@ -13,6 +13,8 @@ and as the on-individual cache (`infection_cache`) and the public snapshot passe
 `infectiousness::Int8` is computed each tick by `progress_disease!` and stored
 here so the spread phase reads it directly from the individual without touching
 the registry.
+`progression_id::Int8` is the infecting category's index in `pathogen.progressions`
+(`0` if unset), letting a `HealthProgression` tell categories apart.
 """
 struct InfectionState
     infection_id::Int32
@@ -27,15 +29,16 @@ struct InfectionState
     recovery::Int16
     infectiousness::Int8
     pathogen_id::Int8
+    progression_id::Int8
     active::Bool
 end
 
 """
-    InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)
+    InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression, progression_id::Int8 = Int8(0))
 
 Constructs a new, active `InfectionState` directly from a `DiseaseProgression`.
 """
-function InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression)::InfectionState
+function InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgression, progression_id::Int8 = Int8(0))::InfectionState
     return InfectionState(
         infection_id, Int32(0),
         exposure(dp),
@@ -48,6 +51,7 @@ function InfectionState(pathogen_id::Int8, infection_id::Int32, dp::DiseaseProgr
         recovery(dp),
         Int8(0),
         pathogen_id,
+        progression_id,
         true
     )
 end
@@ -63,7 +67,7 @@ function InfectionState()::InfectionState
         DEFAULT_INFECTION_ID, Int32(0),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
         Int16(-1), Int16(-1), Int16(-1), Int16(-1),
-        Int8(0), Int8(0), false
+        Int8(0), Int8(0), Int8(0), false
     )
 end
 
@@ -106,6 +110,7 @@ struct _PendingInfection
     host_id::Int32
     infection_id::Int32
     pathogen_id::Int8
+    progression_id::Int8
     dp::DiseaseProgression
 end
 
