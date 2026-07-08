@@ -87,6 +87,7 @@ module GEMS
     include("population/individual_methods.jl")
     include("pathogen/health_progression/health_timeline.jl")
     include("pathogen/health_progression/default_health_progression.jl")
+    include("pathogen/health_progression/care_embedding.jl")
 
     # PATHOGEN IMPLEMENTATIONS
     include("pathogen/pathogen_components.jl")
