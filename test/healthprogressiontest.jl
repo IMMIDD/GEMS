@@ -331,6 +331,17 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         crit_cfg = create_progression(cfg, "Critical")
         @test crit_cfg.care.hospital_probability == 0.9
         @test crit_cfg.care.hospital_to_icu_probability == 0.6
+
+        # end-to-end config path: TestConf.toml embeds care on its Severe/Critical progressions,
+        # so the harvest runs through the config-side branch (pathogens not passed explicitly)
+        conf_path = joinpath(pkgdir(GEMS), "test/testdata/TestConf.toml")
+        sim_cfg = Simulation(configfile = conf_path)
+        hp_cfg = health_progression(sim_cfg)
+        @test hp_cfg isa DefaultHealthProgression
+        @test hp_cfg.severe.hospital_probability == 1.0
+        @test hp_cfg.critical.hospital_probability == 1.0
+        @test hp_cfg.critical.hospital_to_icu_probability == 1.0
+        @test hp_cfg.critical.death_probability == 0.3
     end
 
     @testset "Explicit [HealthProgression] config round-trip" begin
