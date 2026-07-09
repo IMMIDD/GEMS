@@ -1,7 +1,9 @@
 import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_care, _min_set, _max_set,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
     create_progression, create_health_progression, create_health_profile,
-    determine_health_progression, each_infection, progression_index, get_infection_state
+    determine_health_progression, each_infection, progression_index, get_infection_state,
+    calculate_progression, _harvest_legacy_health_progression, _has_legacy_category,
+    _is_legacy_critical, _normalize_legacy_pathogen!
 
 @testset "Health Progression" begin
 
@@ -441,5 +443,103 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test select_health_profile(thp, InfectionState(Int8(1), Int32(-1), dp_sev, Int8(9))) === thp.default.severe
         # a critical-peak one (not matching the key) falls through to the default critical tier
         @test select_health_profile(thp, InfectionState(Int8(1), Int32(-1), dp_crit, Int8(9))) === thp.default.critical
+    end
+
+    @testset "Legacy backwards-compatibility" begin
+        ind = Individual(id = 1, sex = 0, age = 30)
+
+        # Symptomatic delegates to Mild: identical disease progression for the same seed
+        mkw = (exposure_to_infectiousness_onset = Poisson(2),
+            infectiousness_onset_to_symptom_onset = Poisson(1), symptom_onset_to_recovery = Poisson(5))
+        dp_mild = calculate_progression(ind, Int16(0), Mild(; mkw...), Xoshiro(7))
+        dp_symp = calculate_progression(ind, Int16(0), Symptomatic(; mkw...), Xoshiro(7))
+        @test dp_symp == dp_mild
+
+        # Hospitalized -> severe-shaped disease (no critical tier); constants make it deterministic
+        hosp = Hospitalized(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+            symptom_onset_to_severeness_onset = 1, severeness_onset_to_hospital_admission = 2,
+            hospital_admission_to_hospital_discharge = 8, hospital_discharge_to_severeness_offset = 2,
+            severeness_offset_to_recovery = 1)
+        dp_h = calculate_progression(ind, Int16(0), hosp, Xoshiro(1))
+        @test dp_h.severeness_onset >= 0
+        @test dp_h.critical_onset < 0
+
+        # LegacyCritical -> critical-shaped disease
+        lc = LegacyCritical(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+            symptom_onset_to_severeness_onset = 1, severeness_onset_to_hospital_admission = 2,
+            hospital_admission_to_icu_admission = 2, death_probability = 1.0,
+            icu_admission_to_icu_discharge = 7, icu_discharge_to_hospital_discharge = 7,
+            hospital_discharge_to_severeness_offset = 2, severeness_offset_to_recovery = 1,
+            icu_admission_to_death = 10)
+        dp_c = calculate_progression(ind, Int16(0), lc, Xoshiro(1))
+        @test dp_c.critical_onset >= 0
+        @test dp_c.severeness_onset < dp_c.critical_onset < dp_c.critical_offset
+
+        # harvest builds a tag-routing LegacyHealthProgression keyed by (pathogen_id, slot)
+        p1 = Pathogen(id = 1, name = "A", progressions = [hosp, lc])   # slot 1 Hospitalized, slot 2 LegacyCritical
+        p2 = Pathogen(id = 2, name = "B", progressions = [lc])
+        @test _has_legacy_category(p1)
+        hp = _harvest_legacy_health_progression((p1, p2))
+        @test hp isa LegacyHealthProgression
+        @test hp.profiles[(Int8(1), Int8(1))] isa SevereHealthProfile
+        @test hp.profiles[(Int8(1), Int8(1))].hospital_probability == 1.0
+        @test hp.profiles[(Int8(1), Int8(2))] isa LegacyCriticalHealthProfile
+        @test hp.profiles[(Int8(2), Int8(1))] isa LegacyCriticalHealthProfile   # keyed by pathogen 2
+
+        # routing: matching tag -> harvested profile; unmatched severe-peak -> default home tier
+        is_h = InfectionState(Int8(1), Int32(-1), dp_h, Int8(1))
+        @test select_health_profile(hp, is_h) === hp.profiles[(Int8(1), Int8(1))]
+        is_home = InfectionState(Int8(1), Int32(-1), dp_h, Int8(9))
+        @test select_health_profile(hp, is_home) === hp.default.severe
+
+        # legacy categories may not be mixed with modern embedded care (loud error, not a silent drop)
+        sev_embed = Severe(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+            symptom_onset_to_severeness_onset = 1, severeness_onset_to_severeness_offset = 10,
+            severeness_offset_to_recovery = 4, hospital_probability = 0.1)
+        p_mix = Pathogen(id = 1, name = "Mix", progressions = [hosp, sev_embed])
+        @test_throws ArgumentError determine_health_progression(Dict{String,Any}(), nothing, (p_mix,), true)
+
+        # old-format Critical is detected and rerouted to LegacyCritical (assignment list rewritten in place)
+        legacy_params = Dict(
+            "progressions" => Dict(
+                "Symptomatic" => Dict{String,Any}(),
+                "Critical" => Dict{String,Any}("icu_admission_to_death" => 10)),
+            "progression_assignment" => Dict("parameters" => Dict(
+                "progression_categories" => ["Asymptomatic", "Symptomatic", "Critical"])))
+        @test _is_legacy_critical(legacy_params["progressions"]["Critical"])
+        _normalize_legacy_pathogen!(legacy_params)
+        @test haskey(legacy_params["progressions"], "LegacyCritical")
+        @test !haskey(legacy_params["progressions"], "Critical")
+        @test legacy_params["progression_assignment"]["parameters"]["progression_categories"] ==
+            ["Asymptomatic", "Symptomatic", "LegacyCritical"]
+
+        # a modern Critical is NOT rerouted, even when the config uses the old Symptomatic name for its mild tier
+        modern_params = Dict(
+            "progressions" => Dict(
+                "Symptomatic" => Dict{String,Any}(),
+                "Critical" => Dict{String,Any}("severeness_onset_to_critical_onset" => 1)),
+            "progression_assignment" => Dict("parameters" => Dict(
+                "progression_categories" => ["Asymptomatic", "Symptomatic", "Critical"])))
+        @test !_is_legacy_critical(modern_params["progressions"]["Critical"])
+        _normalize_legacy_pathogen!(modern_params)
+        @test haskey(modern_params["progressions"], "Critical")          # modern Critical left intact
+        @test !haskey(modern_params["progressions"], "LegacyCritical")
+        @test modern_params["progression_assignment"]["parameters"]["progression_categories"] ==
+            ["Asymptomatic", "Symptomatic", "Critical"]
+
+        # end-to-end: a pre-decoupling (multipathogen-format) config loads and runs via the compat layer
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+        sim = Simulation(configfile = joinpath(BASE_FOLDER, "test/testdata/TestConf_old.toml"))
+        @test GEMS.health_progression(sim) isa LegacyHealthProgression
+        run!(sim; with_progressbar = false)
+        he = dataframe(healthlogger(sim))
+        n_hosp = count(==(:hospital_admission), he.event)
+        n_icu = count(==(:icu_admission), he.event)
+        n_vent = count(==(:ventilation_admission), he.event)
+        @test n_hosp > 0                 # Hospitalized + LegacyCritical both admit to hospital
+        @test n_icu > 0                  # LegacyCritical escalates to ICU
+        @test n_hosp >= n_icu >= n_vent  # occupancy ladder holds
+        @test n_vent == 0                # legacy categories never ventilate
+        @test size(dataframe(deathlogger(sim)), 1) > 0   # some critical deaths
     end
 end

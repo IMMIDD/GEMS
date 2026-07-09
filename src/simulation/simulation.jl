@@ -747,11 +747,22 @@ section is parsed, else the default. Embedded care with an explicit policy or `>
 """
 function determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
     embedded = any(_has_embedded_health_profile, pathogens)
+    legacy = any(_has_legacy_category, pathogens)
     if !isnothing(health_progression)
         embedded && throw(ArgumentError("embedded care parameters conflict with an explicit `health_progression`; remove one."))
+        legacy && @warn "Legacy progression categories (Hospitalized/LegacyCritical) were found but an explicit `health_progression` was provided; their legacy health behavior will be ignored."
         return health_progression
     end
-    
+
+    # legacy categories carry their own care and are harvested into a tag-routing LegacyHealthProgression
+    if legacy
+        embedded && throw(ArgumentError("legacy progression categories cannot be combined with modern embedded care parameters. " *
+            "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category care, drop the legacy categories and " *
+            "write a `HealthProgression` that routes on `progression_id` (see `LegacyHealthProgression` or the `TaggedHP` test example)."))
+        _haspath(configfile_params, ["HealthProgression"]) && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
+        return _harvest_legacy_health_progression(pathogens)
+    end
+
     _harvest() = (length(pathogens) > 1 &&
         throw(ArgumentError("embedded care parameters are only supported for a single pathogen; use an explicit [HealthProgression].")); _harvest_health_progression(pathogens))
 
@@ -1271,6 +1282,9 @@ The `name` string is the name of the pathogen.
 The `id` integer is the unique identifier for the pathogen.
 """
 function create_pathogen(params::Dict, name, id)
+
+    # reroute old-format `Critical` -> `LegacyCritical` before resolving category names (no-op on new configs)
+    _normalize_legacy_pathogen!(params)
 
     # create progressions
     progressions = try
