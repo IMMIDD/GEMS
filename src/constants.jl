@@ -162,6 +162,9 @@ POST_PROCESSOR_CACHING = false
 PARALLEL_REPORT_GENERATION = false
 
 
+# Free lists of the EventQueue are capped; a vector dropped at the cap is simply left for the GC.
+const EVENT_QUEUE_FREE_LIST_CAP = 32
+
 
 # One seeded, globally available Xoshiro RNG per thread.
 const _DEFAULT_GEMS_RNGS = Random.Xoshiro[]

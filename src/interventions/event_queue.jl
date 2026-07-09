@@ -15,15 +15,17 @@ and setting events (`SMeasureEvent`) are kept in separate, concretely-typed buck
 (ticks are 0-based). `enqueue!` is an `O(1)` `push!` into the relevant bucket; draining a
 tick pops over its buckets, setting events before individual events (each LIFO).
 
-Drained bucket vectors are pushed onto typed free lists (`i_free`/`s_free`) and their
-slot is replaced by a fresh zero-capacity placeholder. `_insert!` draws from the free list
-before allocating, so new tick slots reuse existing capacity rather than repeatedly calling
-`array_new_memory`.
+Once a tick is permanently empty (`_advance_head!` has stepped past it), its bucket vectors
+are pushed onto typed free lists (`i_free`/`s_free`) and replaced by a fresh placeholder.
+`_insert!` draws from the free list before allocating, so new tick slots reuse existing
+capacity. Draining (`_drain_bucket!`) leaves a tick's vector in place rather than recycling it
+immediately, so same-tick re-entrant follow-ups reuse it instead of orphaning it.
 """
 mutable struct EventQueue <: AbstractEventQueue
 
     # i_buckets[t + 1] / s_buckets[t + 1] hold all individual/setting events for tick t.
-    # Drained slots hold a fresh zero-capacity vector until the next event arrives.
+    # Retired slots hold a fresh zero-capacity vector; a tick still being drained keeps its
+    # vector in place across re-entrant refills.
     i_buckets::Vector{Vector{IMeasureEvent}}
     s_buckets::Vector{Vector{SMeasureEvent}}
 
@@ -40,8 +42,8 @@ mutable struct EventQueue <: AbstractEventQueue
     i_staging::Vector{Vector{Tuple{IMeasureEvent, Int16}}}
     s_staging::Vector{Vector{Tuple{SMeasureEvent, Int16}}}
 
-    # Recycled bucket vectors: drained buckets are pushed here so their allocated capacity
-    # can be reused for future tick slots
+    # Recycled bucket vectors: retired (permanently-empty) buckets are pushed here so their
+    # allocated capacity can be reused for future tick slots
     i_free::Vector{Vector{IMeasureEvent}}
     s_free::Vector{Vector{SMeasureEvent}}
 end
@@ -84,11 +86,27 @@ Base.isempty(eq::EventQueue) = eq.count == 0
     return s_empty && i_empty
 end
 
+
+# A tick passed by `_advance_head!` can never receive new events again (events are always
+# scheduled at tick >= current), so this is the safe point to recycle its bucket vectors onto
+# the free lists.
+@inline function _retire_tick!(eq::EventQueue, idx::Int)
+    if idx <= length(eq.i_buckets)
+        length(eq.i_free) < EVENT_QUEUE_FREE_LIST_CAP && push!(eq.i_free, eq.i_buckets[idx])
+        eq.i_buckets[idx] = Vector{IMeasureEvent}()
+    end
+    if idx <= length(eq.s_buckets)
+        length(eq.s_free) < EVENT_QUEUE_FREE_LIST_CAP && push!(eq.s_free, eq.s_buckets[idx])
+        eq.s_buckets[idx] = Vector{SMeasureEvent}()
+    end
+end
+
 # Advance `head` over any leading empty ticks so it points at the earliest tick that still
 # has events. Only ever moves `head` forward; safe to call repeatedly.
 function _advance_head!(eq::EventQueue)
     n = max(length(eq.i_buckets), length(eq.s_buckets))
     while eq.head + 1 <= n && _tick_empty(eq, eq.head + 1)
+        _retire_tick!(eq, eq.head + 1)
         eq.head += 1
     end
     return eq
@@ -234,25 +252,26 @@ Drains and processes every event scheduled for a tick `<= t`, in tick order (set
 before individual events within a tick, each LIFO). Used by `process_events!` instead of
 `dequeue!`: draining the concretely-typed buckets directly keeps `process_event` statically
 dispatched and avoids boxing each event into a `Union{IMeasureEvent, SMeasureEvent}` return.
-Re-entrantly scheduled events (follow-ups) are picked up by the surrounding loop. Drained
-bucket vectors are recycled onto the queue's free lists for reuse by future tick slots.
+Re-entrantly scheduled events (follow-ups) are picked up by the surrounding loop. Bucket
+vectors are only recycled onto the free lists once `_advance_head!` retires a tick, not on
+every drain, so re-entrant refills reuse the existing capacity instead of orphaning it.
 """
 function process_due!(queue::EventQueue, sim, t)
     _advance_head!(queue)
     while !isempty(queue) && queue.head <= t
         idx = queue.head + 1
-        _drain_bucket!(queue.s_buckets, queue.s_free, idx, queue, sim)
-        _drain_bucket!(queue.i_buckets, queue.i_free, idx, queue, sim)
+        _drain_bucket!(queue.s_buckets, idx, queue, sim)
+        _drain_bucket!(queue.i_buckets, idx, queue, sim)
         _advance_head!(queue)
     end
     return nothing
 end
 
-# Drain one tick bucket, specialized per event type via `where {E}` so `pop!` and
-# `process_event` are statically dispatched. After draining, the now-empty but
-# capacity-holding vector is pushed to `free` for reuse and the slot is replaced by a
-# fresh zero-capacity placeholder. Skips immediately if the bucket is already empty.
-@inline function _drain_bucket!(buckets::Vector{Vector{E}}, free::Vector{Vector{E}}, idx::Int, queue::EventQueue, sim) where {E}
+# Drain one tick bucket in place, specialized per event type via `where {E}` so `pop!` and
+# `process_event` are statically dispatched. The vector is left in `buckets[idx]` rather than
+# recycled (see `_advance_head!`), so re-entrant refills reuse its capacity. Skips immediately
+# if the bucket is already empty.
+@inline function _drain_bucket!(buckets::Vector{Vector{E}}, idx::Int, queue::EventQueue, sim) where {E}
     idx <= length(buckets) || return nothing
     b = buckets[idx]
     isempty(b) && return nothing
@@ -260,8 +279,6 @@ end
         process_event(pop!(b), sim)
         queue.count -= 1
     end
-    push!(free, b)
-    buckets[idx] = Vector{E}()
     return nothing
 end
 
