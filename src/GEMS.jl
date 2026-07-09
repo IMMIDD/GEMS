@@ -93,7 +93,7 @@ module GEMS
     include("pathogen/pathogen_components.jl")
 
     # LEGACY BACKWARDS-COMPATIBILITY
-    include("pathogen/legacy/legacy.jl")
+    include("pathogen/legacy_progressions/legacy_progressions.jl")
 
     # INITALIZATION
     include("simulation/initialization/startconditions.jl")
