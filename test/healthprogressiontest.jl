@@ -210,6 +210,25 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test ind.hospital_admission == realized_admission
     end
 
+    @testset "recompute after a completed episode starts fresh" begin
+        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
+        ind.icu_admission = Int16(-1); ind.icu_discharge = Int16(-1)
+        ind.ventilation_admission = Int16(-1); ind.ventilation_discharge = Int16(-1)
+        cand = CareTimeline(hospital_admission = Int16(105), hospital_discharge = Int16(115))
+
+        # a COMPLETED past episode [10, 20] must not swallow a disjoint later one (re-infection)
+        ind.hospital_admission = Int16(10); ind.hospital_discharge = Int16(20)
+        fresh = GEMS._keep_realized_care(cand, ind, Int16(100))
+        @test fresh.hospital_admission == 105        # new episode scheduled fresh, not merged into [10, ...]
+        @test fresh.hospital_discharge == 115
+
+        # an ONGOING episode [10, 200] at tick 100 is still preserved and extended
+        ind.hospital_admission = Int16(10); ind.hospital_discharge = Int16(200)
+        kept = GEMS._keep_realized_care(cand, ind, Int16(100))
+        @test kept.hospital_admission == 10          # realized admission kept
+        @test kept.hospital_discharge == 200         # extended to max(200, 115)
+    end
+
     @testset "Custom HealthProfile static dispatch" begin
         ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
         struct WardOnlyCritical <: GEMS.HealthProfile end

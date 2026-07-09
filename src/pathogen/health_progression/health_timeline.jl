@@ -167,11 +167,13 @@ end
 """
     _resolve(realized_admission, realized_discharge, candidate_admission, candidate_discharge, tick)
 
-Keeps a realized (past) admission; otherwise takes the candidate, never starting before `tick`.
+Keeps and extends an admission that is still ongoing (already admitted and not yet discharged),
+so a recompute never rewrites the past. A fully-completed past episode is not extended. 
+Otherwise takes the candidate, never starting before `tick`.
 """
 @inline function _resolve(realized_admission::Int16, realized_discharge::Int16,
         candidate_admission::Int16, candidate_discharge::Int16, tick::Int16)
-    0 <= realized_admission <= tick && return (realized_admission, _max_set(realized_discharge, candidate_discharge))
+    (0 <= realized_admission <= tick < realized_discharge) && return (realized_admission, _max_set(realized_discharge, candidate_discharge))
     (candidate_admission >= 0 && candidate_admission < tick) && return (tick, _max_set(candidate_discharge, Int16(tick + 1)))
     return (candidate_admission, candidate_discharge)
 end
