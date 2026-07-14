@@ -22,8 +22,7 @@ and inline the entire dispatch chain with no heap allocation.
 tf = CompositeTransmissionRate(
     AgeDependentTransmissionRate(age_groups = ["0-", "60-"], transmission_rates = [0.2, 0.4]),
     ViralInterferenceModifier(
-        pathogen_names = ["Flu", "RSV"],
-        interference_matrix = [1.0 0.4; 0.6 1.0]
+        interferences = [("RSV", 0.4)]
     )
 )
 pathogen = Pathogen(name = "Flu", progressions = [...], transmission_function = tf)

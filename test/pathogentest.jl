@@ -511,11 +511,11 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             pid = Int8(1)
             tf_ci = CrossImmunityTransmissionRate(
                 transmission_rate = 0.5,
-                pathogen_names = ["TestCITR", "PathogenB"],
-                cross_immunity_matrix = [1.0 0.6; 0.6 1.0],
+                cross_immunities = [("PathogenB", 0.6)],
                 default_cross_factor = 0.3
             )
             @test tf_ci.transmission_rate == 0.5
+            @test tf_ci.modifier.cross_immunities["PathogenB"] == 0.6
             @test !isempty(@capture_out show(tf_ci))
 
             # constructor validation
@@ -524,16 +524,16 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = -0.1)
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = 1.5)
             @test_throws ArgumentError CrossImmunityTransmissionRate(
-                pathogen_names = ["A", "B"],
-                cross_immunity_matrix = [1.0 0.5; 0.5 1.0; 0.3 0.3])
+                cross_immunities = [("A", 1.5)])
             @test_throws ArgumentError CrossImmunityTransmissionRate(
-                pathogen_names = ["A", "B"],
-                cross_immunity_matrix = [1.0 1.5; 0.5 1.0])
+                cross_immunities = [("A", 0.5), ("A", 0.3)])   # duplicate name
 
             p_ci = Pathogen(id=1, name="TestCITR",
                 progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
                 transmission_function=tf_ci)
-            sim_ci = Simulation(pop_size=100, pathogens=(p_ci,), infected_fraction=0.0)
+            p_ci2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_ci = Simulation(pop_size=100, pathogens=(p_ci, p_ci2), infected_fraction=0.0)
             infecter_ci = individuals(sim_ci)[1]
             infectee_ci = individuals(sim_ci)[2]
 
@@ -557,27 +557,28 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
                 households(sim_ci)[1], Int16(5), sim_ci)
             @test prob_immune ≈ 0.0
 
-            # Vector{Vector} constructor: TOML-parsed form is converted to Matrix
-            tf_ci_vv = CrossImmunityTransmissionRate(
-                transmission_rate = 0.5,
-                pathogen_names = ["TestCITR", "PathogenB"],
-                cross_immunity_matrix = [[1.0, 0.6], [0.6, 1.0]])
-            @test tf_ci_vv.modifier.cross_immunity_matrix isa Matrix{Float64}
-            @test size(tf_ci_vv.modifier.cross_immunity_matrix) == (2, 2)
-
-            # infectee has immunity to pid_other (NOT in pathogen_ids), uses default_cross_factor
-            infectee3_ci = individuals(sim_ci)[4]
-            push_immunity!(immunity_registry(sim_ci, infectee3_ci), infectee3_ci, Int8(3),
+            # cross-immunity from a listed pathogen (PathogenB → factor 0.6)
+            infectee2_ci = individuals(sim_ci)[3]
+            push_immunity!(immunity_registry(sim_ci, infectee2_ci), infectee2_ci, Int8(2),
                 GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
-            # set level to 100 directly (update_immunity! requires the pathogen in the sim's tuple)
-            let s = infectee3_ci.immunity_cache[1]
-                infectee3_ci.immunity_cache = Base.setindex(infectee3_ci.immunity_cache,
-                    ImmunityState(s.next, s.natural_acquired_tick, s.vaccine_acquired_tick,
-                        Int8(100), s.pathogen_id, s.vaccine_id, s.dose_number), 1)
-            end
-            prob_cross = effective_transmission_probability(tf_ci, pid, infecter_ci, infectee3_ci,
+            update_immunity!(infectee2_ci, immunity_registry(sim_ci, infectee2_ci),
+                GEMS.pathogens(sim_ci), Int16(1), Xoshiro())
+            prob_listed = effective_transmission_probability(tf_ci, pid, infecter_ci, infectee2_ci,
                 households(sim_ci)[1], Int16(1), sim_ci)
-            @test prob_cross ≈ 0.5 * (1.0 - 100/100.0 * 0.3) * (inf_level / 100.0)
+            @test prob_listed ≈ 0.5 * (1.0 - 100/100.0 * 0.6) * (inf_level / 100.0)
+
+            # immunity to a pathogen NOT listed in cross_immunities uses default_cross_factor
+            tf_ci_def = CrossImmunityTransmissionRate(
+                transmission_rate = 0.5, cross_immunities = Tuple{String,Float64}[],
+                default_cross_factor = 0.3)
+            infectee3_ci = individuals(sim_ci)[4]
+            push_immunity!(immunity_registry(sim_ci, infectee3_ci), infectee3_ci, Int8(2),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+            update_immunity!(infectee3_ci, immunity_registry(sim_ci, infectee3_ci),
+                GEMS.pathogens(sim_ci), Int16(1), Xoshiro())
+            prob_default = effective_transmission_probability(tf_ci_def, pid, infecter_ci, infectee3_ci,
+                households(sim_ci)[1], Int16(1), sim_ci)
+            @test prob_default ≈ 0.5 * (1.0 - 100/100.0 * 0.3) * (inf_level / 100.0)
 
             # uninfected infecter raises ArgumentError
             @test_throws ArgumentError effective_transmission_probability(tf_ci, pid, infectee_ci,
@@ -589,11 +590,11 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             pid2 = Int8(2)
             tf_vi = ViralInterferenceTransmissionRate(
                 transmission_rate = 0.5,
-                pathogen_names = ["TestVITR", "PathogenB"],
-                interference_matrix = [1.0 0.4; 0.6 1.0],
+                interferences = [("PathogenB", 0.4)],
                 default_interference_factor = 1.0
             )
             @test tf_vi.transmission_rate == 0.5
+            @test tf_vi.modifier.interferences["PathogenB"] == 0.4
             @test !isempty(@capture_out show(tf_vi))
 
             # constructor validation
@@ -602,11 +603,9 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = -0.1)
             @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = 1.5)
             @test_throws ArgumentError ViralInterferenceTransmissionRate(
-                pathogen_names = ["A", "B"],
-                interference_matrix = [1.0 0.4; 0.6 1.0; 0.3 0.3])
+                interferences = [("A", 1.5)])
             @test_throws ArgumentError ViralInterferenceTransmissionRate(
-                pathogen_names = ["A", "B"],
-                interference_matrix = [1.0 1.5; 0.6 1.0])
+                interferences = [("A", 0.5), ("A", 0.3)])   # duplicate name
 
             p_vi = Pathogen(id=1, name="TestVITR",
                 progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
@@ -627,7 +626,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             @test effective_transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
                 households(sim_vi)[1], Int16(1), sim_vi) ≈ 0.5 * (inf_level / 100.0)
 
-            # concurrent infection with pid2 reduces susceptibility by interference_matrix[1,2] = 0.4
+            # concurrent infection with pid2 (PathogenB) reduces susceptibility by factor 0.4
             push_infection!(infection_registry(sim_vi, infectee_vi), infectee_vi, pid2, Int32(99),
                 DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)))
             @test transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
@@ -635,13 +634,11 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             @test effective_transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
                 households(sim_vi)[1], Int16(1), sim_vi) ≈ 0.5 * 0.4 * (inf_level / 100.0)
 
-            # Vector{Vector} constructor: TOML-parsed form is converted to Matrix
+            # TOML-parsed form: [name, factor] vectors are normalized into the Dict
             tf_vi_vv = ViralInterferenceTransmissionRate(
                 transmission_rate = 0.5,
-                pathogen_names = ["TestVITR", "PathogenB"],
-                interference_matrix = [[1.0, 0.4], [0.6, 1.0]])
-            @test tf_vi_vv.modifier.interference_matrix isa Matrix{Float64}
-            @test size(tf_vi_vv.modifier.interference_matrix) == (2, 2)
+                interferences = [["PathogenB", 0.4]])
+            @test tf_vi_vv.modifier.interferences["PathogenB"] == 0.4
 
             # uninfected infecter raises ArgumentError
             @test_throws ArgumentError effective_transmission_probability(tf_vi, pid1, infectee_vi,
@@ -651,8 +648,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         @testset "CompositeTransmissionRate" begin
             tf_ctr_c = ConstantTransmissionRate(transmission_rate=0.4)
             tf_int_c = ViralInterferenceModifier(
-                pathogen_names=["TestCombined", "PathogenB"],
-                interference_matrix=[1.0 0.5; 0.5 1.0],
+                interferences=[("PathogenB", 0.5)],
                 default_interference_factor=1.0
             )
             combined_tf = CompositeTransmissionRate(tf_ctr_c, tf_int_c)
@@ -678,7 +674,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             @test transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 1.0
             @test effective_transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 1.0 * (inf_level_c / 100.0) * (1.0 - imm_level_c / 100.0)
 
-            # concurrent pid=2 infection: vi factor becomes interference_matrix[1,2] = 0.5
+            # concurrent pid=2 (PathogenB) infection: vi factor becomes 0.5
             push_infection!(infection_registry(sim_c, infectee_c), infectee_c, Int8(2), Int32(99),
                 DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)))
             @test transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 0.5
@@ -693,11 +689,11 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
 
         @testset "CrossImmunityModifier" begin
             m_ci = CrossImmunityModifier(
-                pathogen_names = ["A", "B"],
-                cross_immunity_matrix = [1.0 0.6; 0.6 1.0],
+                cross_immunities = [("PathogenB", 0.6)],
                 default_cross_factor = 0.3
             )
-            @test m_ci.pathogen_names == ["A", "B"]
+            @test m_ci.cross_immunities["PathogenB"] == 0.6
+            @test m_ci.default_cross_factor == 0.3
             @test !isempty(@capture_out show(m_ci))
 
             # transmission_factor returns a pure factor, not rate-scaled
@@ -718,11 +714,10 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
 
         @testset "ViralInterferenceModifier" begin
             m_vi = ViralInterferenceModifier(
-                pathogen_names = ["TestVIM", "PathogenB"],
-                interference_matrix = [1.0 0.4; 0.6 1.0],
+                interferences = [("PathogenB", 0.4)],
                 default_interference_factor = 1.0
             )
-            @test m_vi.pathogen_names == ["TestVIM", "PathogenB"]
+            @test m_vi.interferences["PathogenB"] == 0.4
             @test !isempty(@capture_out show(m_vi))
 
             # transmission_factor returns a pure factor, not rate-scaled
