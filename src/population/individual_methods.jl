@@ -1111,7 +1111,7 @@ end
     reset!(individual::Individual, infections::InfectionRegistry)
 
 Resets all non-static values like the disease progression timing.
-The individual will get back into a infections where it was never infected, vaccinated, tested, etc.
+The individual is returned to a state as if it had never been infected, vaccinated, tested, etc.
 """
 function reset!(individual::Individual, infections::InfectionRegistry, immunities::ImmunityRegistry)
     individual.infected = false
