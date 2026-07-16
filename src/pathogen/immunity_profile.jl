@@ -11,14 +11,11 @@ respective acquired tick is in the past). Never wanes.
 struct FullImmunity <: ImmunityProfile end
 
 @inline function calculate_immunity(profile::FullImmunity, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    has_natural = state.natural_acquired_tick != DEFAULT_TICK && tick >= state.natural_acquired_tick
-    has_vaccine = state.vaccine_acquired_tick != DEFAULT_TICK && tick >= state.vaccine_acquired_tick
-    return (has_natural || has_vaccine) ? Int8(100) : Int8(0)
+    return immunity_active(state, tick) ? Int8(100) : Int8(0)
 end
 
 @inline immunity_is_stable(profile::FullImmunity, state::ImmunityState, individual::Individual, tick::Int16) =
-    (state.natural_acquired_tick != DEFAULT_TICK && tick >= state.natural_acquired_tick) ||
-    (state.vaccine_acquired_tick != DEFAULT_TICK && tick >= state.vaccine_acquired_tick)
+    immunity_active(state, tick)
 
 """
     NoImmunity <: ImmunityProfile
@@ -79,24 +76,24 @@ end
 end
 
 @inline function calculate_immunity(profile::ExponentialWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    nat_level = state.natural_acquired_tick != DEFAULT_TICK ?
+    nat_level = natural_immunity_recorded(state) ?
         _exponential_level(profile, state.natural_acquired_tick, tick) : Int8(0)
-    vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ?
+    vac_level = vaccine_immunity_recorded(state) ?
         _exponential_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
     return Int8(clamp(round(Int, nat_level + vac_level - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
 end
 
 
 @inline function immunity_is_stable(profile::ExponentialWaning, state::ImmunityState, individual::Individual, tick::Int16)
-    nat_pending = state.natural_acquired_tick != DEFAULT_TICK && tick < state.natural_acquired_tick
-    vac_pending = state.vaccine_acquired_tick != DEFAULT_TICK && tick < state.vaccine_acquired_tick
+    nat_pending = natural_immunity_pending(state, tick)
+    vac_pending = vaccine_immunity_pending(state, tick)
     (nat_pending || vac_pending) && return false
-    if state.vaccine_acquired_tick != DEFAULT_TICK
+    if vaccine_immunity_recorded(state)
         vac_elapsed = tick - state.vaccine_acquired_tick
         vac_elapsed >= 0 && vac_elapsed < profile.vaccine_buildup_duration && return false
     end
-    nat_level = state.natural_acquired_tick != DEFAULT_TICK ? _exponential_level(profile, state.natural_acquired_tick, tick) : Int8(0)
-    vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ? _exponential_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
+    nat_level = natural_immunity_recorded(state) ? _exponential_level(profile, state.natural_acquired_tick, tick) : Int8(0)
+    vac_level = vaccine_immunity_recorded(state) ? _exponential_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
     return nat_level <= profile.floor && vac_level <= profile.floor
 end
 
@@ -156,22 +153,22 @@ end
 end
  
 @inline function calculate_immunity(profile::SigmoidalWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    nat_level = state.natural_acquired_tick != DEFAULT_TICK ?
+    nat_level = natural_immunity_recorded(state) ?
         _sigmoidal_level(profile, state.natural_acquired_tick, tick) : Int8(0)
-    vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ?
+    vac_level = vaccine_immunity_recorded(state) ?
         _sigmoidal_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
     return Int8(clamp(round(Int, nat_level + vac_level - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
 end
  
 @inline function immunity_is_stable(profile::SigmoidalWaning, state::ImmunityState, individual::Individual, tick::Int16)
-    nat_pending = state.natural_acquired_tick != DEFAULT_TICK && tick < state.natural_acquired_tick
-    vac_pending = state.vaccine_acquired_tick != DEFAULT_TICK && tick < state.vaccine_acquired_tick
+    nat_pending = natural_immunity_pending(state, tick)
+    vac_pending = vaccine_immunity_pending(state, tick)
     (nat_pending || vac_pending) && return false
-    if state.vaccine_acquired_tick != DEFAULT_TICK
+    if vaccine_immunity_recorded(state)
         vac_elapsed = tick - state.vaccine_acquired_tick
         vac_elapsed >= 0 && vac_elapsed < profile.vaccine_buildup_duration && return false
     end
-    nat_level = state.natural_acquired_tick != DEFAULT_TICK ? _sigmoidal_level(profile, state.natural_acquired_tick, tick) : Int8(0)
-    vac_level = state.vaccine_acquired_tick != DEFAULT_TICK ? _sigmoidal_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
+    nat_level = natural_immunity_recorded(state) ? _sigmoidal_level(profile, state.natural_acquired_tick, tick) : Int8(0)
+    vac_level = vaccine_immunity_recorded(state) ? _sigmoidal_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
     return nat_level <= profile.floor && vac_level <= profile.floor
 end

@@ -202,6 +202,42 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             @test length(reg.free_slots) == 1
         end
 
+        @testset "ImmunityState acquired-tick predicates" begin
+            # natural-only, acquired at tick 10
+            nat = ImmunityState(Int32(0), Int16(10), GEMS.DEFAULT_TICK, Int8(0), Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0))
+            @test natural_immunity_recorded(nat)
+            @test !vaccine_immunity_recorded(nat)
+            @test natural_immunity_pending(nat, Int16(9))
+            @test !natural_immunity_active(nat, Int16(9))
+            @test natural_immunity_active(nat, Int16(10))   # boundary: active at acquired tick
+            @test !natural_immunity_pending(nat, Int16(10))
+            @test natural_immunity_active(nat, Int16(20))
+            @test immunity_active(nat, Int16(10))
+            @test !immunity_active(nat, Int16(9))
+
+            # vaccine-only, acquired at tick 5
+            vac = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(5), Int8(0), Int8(1), Int8(1), Int8(1))
+            @test !natural_immunity_recorded(vac)
+            @test vaccine_immunity_recorded(vac)
+            @test vaccine_immunity_pending(vac, Int16(4))
+            @test vaccine_immunity_active(vac, Int16(5))
+            @test immunity_active(vac, Int16(5))
+            @test !natural_immunity_active(vac, Int16(100))  # no natural record
+
+            # both sources
+            both = ImmunityState(Int32(0), Int16(10), Int16(5), Int8(0), Int8(1), Int8(1), Int8(1))
+            @test natural_immunity_recorded(both) && vaccine_immunity_recorded(both)
+            @test immunity_active(both, Int16(5))            # vaccine active, natural pending
+            @test natural_immunity_pending(both, Int16(5))
+
+            # unset (empty sentinel): nothing recorded or active
+            empty = ImmunityState()
+            @test !natural_immunity_recorded(empty)
+            @test !vaccine_immunity_recorded(empty)
+            @test !immunity_active(empty, Int16(0))
+            @test !natural_immunity_pending(empty, Int16(0))
+        end
+
     end
 
 

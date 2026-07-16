@@ -606,6 +606,15 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
                 interferences = [("A", 1.5)])
             @test_throws ArgumentError ViralInterferenceTransmissionRate(
                 interferences = [("A", 0.5), ("A", 0.3)])   # duplicate name
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_persistence = -1.0)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(persistence = [("A", -1.0)])
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(
+                persistence = [("A", 5.0), ("A", 3.0)])     # duplicate persistence name
+
+            # persistence defaults and TOML [name, ticks] vector parsing
+            @test tf_vi.modifier.default_persistence == 0.0
+            tf_vi_p = ViralInterferenceTransmissionRate(persistence = [["PathogenB", 14.0]])
+            @test tf_vi_p.modifier.persistence["PathogenB"] == 14.0
 
             p_vi = Pathogen(id=1, name="TestVITR",
                 progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
@@ -743,6 +752,55 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             f_vi = transmission_factor(m_vi, pid1, infecter_vim, infectee_vim,
                 households(sim_vim)[1], Int16(1), sim_vim)
             @test f_vi ≈ 0.4
+
+            # --- post-recovery persistence (linear waning) ---
+            m_vip = ViralInterferenceModifier(
+                interferences = [("PathogenB", 0.4)],
+                persistence   = [("PathogenB", 10.0)]
+            )
+            @test m_vip.persistence["PathogenB"] == 10.0
+            @test m_vip.default_persistence == 0.0
+
+            # a recovered (not currently infected) infectee: natural immunity record for
+            # PathogenB with natural_acquired_tick == recovery tick 5, no active infection.
+            recoveree = individuals(sim_vim)[4]
+            push_immunity!(immunity_registry(sim_vim, recoveree), recoveree, pid2,
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(5), GEMS.DEFAULT_VACCINE_ID)
+
+            # elapsed 0 at recovery tick → full active factor
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(5), sim_vim) ≈ 0.4
+            # midpoint (elapsed 5, window 10) → 0.4 + 0.6*0.5 = 0.7
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(10), sim_vim) ≈ 0.7
+            # window elapsed (elapsed 10 >= 10) → no effect
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(15), sim_vim) ≈ 1.0
+            # before recovery (pending) → no post-recovery interference
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(4), sim_vim) ≈ 1.0
+
+            # backwards compatible: default_persistence 0 (m_vi) → recovered infectee unaffected
+            @test transmission_factor(m_vi, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(10), sim_vim) ≈ 1.0
+
+            # vaccine-only immunity does not trigger interference
+            vaccinee = individuals(sim_vim)[5]
+            push_immunity!(immunity_registry(sim_vim, vaccinee), vaccinee, pid2,
+                GEMS.IMMUNITY_SOURCE_VACCINE, Int16(5), Int8(1))
+            @test transmission_factor(m_vip, pid1, infecter_vim, vaccinee,
+                households(sim_vim)[1], Int16(10), sim_vim) ≈ 1.0
+
+            # current pathogen is excluded: recovery from pid1 itself gives no self-interference
+            m_self = ViralInterferenceModifier(
+                interferences = [("TestVIM", 0.3)],
+                persistence   = [("TestVIM", 10.0)]
+            )
+            selfrec = individuals(sim_vim)[6]
+            push_immunity!(immunity_registry(sim_vim, selfrec), selfrec, pid1,
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(5), GEMS.DEFAULT_VACCINE_ID)
+            @test transmission_factor(m_self, pid1, infecter_vim, selfrec,
+                households(sim_vim)[1], Int16(6), sim_vim) ≈ 1.0
         end
 
         @testset "SinusoidalSeasonalModifier" begin

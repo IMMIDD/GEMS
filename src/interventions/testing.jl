@@ -339,7 +339,7 @@ function apply_test!(ind::Individual, testtype::SeroprevalenceTestType, sim::Sim
     # apply test
     # check if individual has ever been infected
     imm = get_immunity_state(ind, immunity_registry(sim, ind), testtype.pathogen_id)
-    was_infected = imm.natural_acquired_tick != DEFAULT_TICK
+    was_infected = natural_immunity_recorded(imm)
 
     # simulate test result with test sensitivity and specificity
     test_pos = was_infected && gems_rand(rng(sim)) <= sensitivity(testtype) ||

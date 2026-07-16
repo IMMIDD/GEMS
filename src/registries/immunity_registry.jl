@@ -1,4 +1,8 @@
 export ImmunityRegistry, ImmunityState
+export natural_immunity_recorded, vaccine_immunity_recorded
+export natural_immunity_active, vaccine_immunity_active
+export natural_immunity_pending, vaccine_immunity_pending
+export immunity_active
 
 
 """
@@ -45,6 +49,65 @@ Used as a safe return value when querying immunity for a pathogen the individual
 function ImmunityState(pathogen_id::Int8)::ImmunityState
     return ImmunityState(Int32(0), DEFAULT_TICK, DEFAULT_TICK, Int8(0), pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
 end
+
+
+
+"""
+    natural_immunity_recorded(s::ImmunityState)::Bool
+
+`true` if a natural (post-recovery) immunity record exists, regardless of whether its
+acquired tick has been reached yet.
+"""
+@inline natural_immunity_recorded(s::ImmunityState)::Bool = s.natural_acquired_tick != DEFAULT_TICK
+
+"""
+    vaccine_immunity_recorded(s::ImmunityState)::Bool
+
+`true` if a vaccine immunity record exists, regardless of whether its acquired tick has
+been reached yet.
+"""
+@inline vaccine_immunity_recorded(s::ImmunityState)::Bool = s.vaccine_acquired_tick != DEFAULT_TICK
+
+"""
+    natural_immunity_active(s::ImmunityState, tick::Int16)::Bool
+
+`true` if natural immunity is recorded and its acquired (recovery) tick is at or before
+`tick`, i.e. the individual has recovered from a natural infection by `tick`.
+"""
+@inline natural_immunity_active(s::ImmunityState, tick::Int16)::Bool =
+    s.natural_acquired_tick != DEFAULT_TICK && tick >= s.natural_acquired_tick
+
+"""
+    vaccine_immunity_active(s::ImmunityState, tick::Int16)::Bool
+
+`true` if vaccine immunity is recorded and its acquired tick is at or before `tick`.
+"""
+@inline vaccine_immunity_active(s::ImmunityState, tick::Int16)::Bool =
+    s.vaccine_acquired_tick != DEFAULT_TICK && tick >= s.vaccine_acquired_tick
+
+"""
+    natural_immunity_pending(s::ImmunityState, tick::Int16)::Bool
+
+`true` if natural immunity is recorded but its acquired tick lies strictly after `tick`.
+"""
+@inline natural_immunity_pending(s::ImmunityState, tick::Int16)::Bool =
+    s.natural_acquired_tick != DEFAULT_TICK && tick < s.natural_acquired_tick
+
+"""
+    vaccine_immunity_pending(s::ImmunityState, tick::Int16)::Bool
+
+`true` if vaccine immunity is recorded but its acquired tick lies strictly after `tick`.
+"""
+@inline vaccine_immunity_pending(s::ImmunityState, tick::Int16)::Bool =
+    s.vaccine_acquired_tick != DEFAULT_TICK && tick < s.vaccine_acquired_tick
+
+"""
+    immunity_active(s::ImmunityState, tick::Int16)::Bool
+
+`true` if either natural or vaccine immunity is active at `tick`.
+"""
+@inline immunity_active(s::ImmunityState, tick::Int16)::Bool =
+    natural_immunity_active(s, tick) || vaccine_immunity_active(s, tick)
 
 """
     ImmunityRegistry
