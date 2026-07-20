@@ -1,4 +1,4 @@
-export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, ags
+export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, individuals_in_ags, ags
 export geolocation, lat, lon, present_individuals, is_open, open!, close!
 export sample_individuals
 export activate!
@@ -185,6 +185,25 @@ function individuals(setting::ContainerSetting, simulation::Simulation)
         individuals!(indivs, stngs[s], simulation)
     end
     return indivs
+end
+
+
+"""
+    individuals_in_ags(simulation::Simulation, target::AGS)
+
+Returns the individuals whose household lies in `target`, resolved by region level: a state
+matches everything within it, a county everything within it, and a municipality matches
+exactly. Filters over the population via each individual's household AGS.
+"""
+function individuals_in_ags(simulation::Simulation, target::AGS)
+    inds = individuals(simulation)
+    if is_state(target)
+        return filter(i -> in_state(ags(household(i, simulation)), target), inds)
+    elseif is_county(target)
+        return filter(i -> in_county(ags(household(i, simulation)), target), inds)
+    else
+        return filter(i -> ags(household(i, simulation)) == target, inds)
+    end
 end
 
 

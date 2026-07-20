@@ -730,6 +730,90 @@ import GEMS: increment!, infected!
         @test count(infected, population(sim_mc)) >= 5
     end
 
+    @testset "Recurring Imports" begin
+        # PERIODIC IMPORT
+        # failing constructors
+        @test_throws ArgumentError PeriodicImport(count = 0, start_tick = 1, stop_tick = 10, interval = 2)
+        @test_throws ArgumentError PeriodicImport(count = 3, start_tick = -1, stop_tick = 10, interval = 2)
+        @test_throws ArgumentError PeriodicImport(count = 3, start_tick = 10, stop_tick = 5, interval = 2)
+        @test_throws ArgumentError PeriodicImport(count = 3, start_tick = 1, stop_tick = 10, interval = 0)
+
+        # initialize! stages the schedule but seeds nothing yet
+        cond = PeriodicImport(count = 5, start_tick = 2, stop_tick = 10, interval = 3)
+        sim = Simulation(pop_size = 2000, seed = 1234, start_condition = cond)
+        @test sort(collect(keys(seeding_schedule(sim)))) == Int16[2, 5, 8]
+        @test all(spec.count == 5 for specs in values(seeding_schedule(sim)) for spec in specs)
+        @test count(infected, population(sim)) == 0
+
+        # stepping through tick 2 fires the first import (5 fresh cases, no spread yet)
+        for _ in 1:3 # process ticks 0, 1, 2
+            step!(sim)
+        end
+        @test count(infected, population(sim)) == 5
+
+        # POISSON IMPORT
+        # failing constructors
+        @test_throws ArgumentError PoissonImport(count = 0, start_tick = 1, stop_tick = 10, rate = 0.5)
+        @test_throws ArgumentError PoissonImport(count = 3, start_tick = 1, stop_tick = 10, rate = 0.0)
+        @test_throws ArgumentError PoissonImport(count = 3, start_tick = 10, stop_tick = 5, rate = 0.5)
+
+        # stochastic ticks stay within the window and are reproducible under a fixed seed
+        pcond = PoissonImport(count = 2, start_tick = 5, stop_tick = 200, rate = 0.1)
+        psim = Simulation(pop_size = 2000, seed = 99, start_condition = pcond)
+        pticks = sort(collect(keys(seeding_schedule(psim))))
+        @test !isempty(pticks)
+        @test all(5 .<= pticks .<= 200)
+        psim2 = Simulation(pop_size = 2000, seed = 99, start_condition = pcond)
+        @test sort(collect(keys(seeding_schedule(psim2)))) == pticks
+
+        # stochastic_count draws a per-firing count from Poisson(count) (so counts vary)
+        scond = PeriodicImport(count = 4, start_tick = 1, stop_tick = 30, interval = 1, stochastic_count = true)
+        ssim = Simulation(pop_size = 2000, seed = 7, start_condition = scond)
+        @test !all(==(4), [spec.count for specs in values(seeding_schedule(ssim)) for spec in specs])
+
+        # regional import: seeded cases land only in the target region
+        rcond = PeriodicImport(count = 3, start_tick = 1, stop_tick = 1, interval = 1, ags = 04011000)
+        rsim = Simulation(population = "HB", seed = 3, start_condition = rcond)
+        step!(rsim); step!(rsim) # process ticks 0, 1 (import fires at tick 1)
+        infs = individuals(rsim)[infected.(individuals(rsim))]
+        @test length(infs) == 3
+        @test all(ags(household(i, rsim)) == AGS(04011000) for i in infs)
+
+        # composes with MultiStartCondition (initial outbreak + ongoing imports)
+        mc = MultiStartCondition([InfectedFraction(fraction = 0.01),
+            PeriodicImport(count = 2, start_tick = 3, stop_tick = 20, interval = 3)])
+        mcsim = Simulation(pop_size = 1000, seed = 5, start_condition = mc)
+        @test count(infected, population(mcsim)) == 10 # 1% seeded at t=0; imports not yet fired
+        @test !isempty(seeding_schedule(mcsim))
+
+        # reinitialize! rebuilds the schedule rather than duplicating it
+        reinitialize!(sim)
+        @test sort(collect(keys(seeding_schedule(sim)))) == Int16[2, 5, 8]
+
+        # individuals_in_ags (promoted helper): correct region membership
+        muni = individuals_in_ags(rsim, AGS(04011000))
+        @test !isempty(muni)
+        @test all(ags(household(i, rsim)) == AGS(04011000) for i in muni)
+        state_pool = individuals_in_ags(rsim, AGS(04000000)) # state-level AGS
+        @test length(state_pool) >= length(muni)
+        @test all(GEMS.in_state(ags(household(i, rsim)), AGS(04000000)) for i in state_pool)
+
+        # CONFIG PARSING: the generic create_start_condition handles the new conditions
+        pc = GEMS.create_start_condition(Dict("type" => "PeriodicImport",
+            "parameters" => Dict("count" => 3, "start_tick" => 5, "stop_tick" => 50, "interval" => 7)))
+        @test pc isa PeriodicImport
+        @test pc.count == 3 && pc.interval == Int16(7)
+
+        poc = GEMS.create_start_condition(Dict("type" => "PoissonImport",
+            "parameters" => Dict("count" => 2, "start_tick" => 5, "stop_tick" => 50, "rate" => 0.2, "ags" => 04011000)))
+        @test poc isa PoissonImport
+        @test poc.rate == 0.2 && poc.ags == 04011000
+
+        # invalid params surface as ErrorException through the factory
+        @test_throws ErrorException GEMS.create_start_condition(Dict("type" => "PeriodicImport",
+            "parameters" => Dict("count" => 0, "start_tick" => 5, "stop_tick" => 50, "interval" => 7)))
+    end
+
     @testset "Parameter Tests" begin
 
         @testset "AGS Test" begin

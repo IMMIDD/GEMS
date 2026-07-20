@@ -22,6 +22,7 @@ export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, c
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
+export SeedSpec, seeding_schedule
 export rng, rngs, seed
 export present_buffers, contact_buffers
 
@@ -29,6 +30,23 @@ export info
 
 "supertype for all start conditions"
 abstract type StartCondition end
+
+"""
+    SeedSpec
+
+Resolved description of a single seeding event: infect `count` individuals with the
+pathogen named `pathogen`, drawn either from the whole population (`ags === nothing`)
+or from the region identified by community identification number `ags`.
+
+`SeedSpec`s are pre-computed by recurring-import start conditions (see `PeriodicImport`
+/ `PoissonImport`) and staged in `simulation.seeding_schedule`, a `Dict` mapping tick to
+its `Vector{SeedSpec}`; `seed_scheduled!` fires the ones due at the current tick.
+"""
+struct SeedSpec
+    pathogen::String
+    count::Int
+    ags::Union{Int64, Nothing}
+end
 
 "supertype for all stop criteria"
 abstract type StopCriterion end
@@ -201,6 +219,9 @@ mutable struct Simulation{P<:Tuple}
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
 
+    # recurring seeding bucketed by tick
+    seeding_schedule::Dict{Int16, Vector{SeedSpec}}
+
     # StepMod
     stepmod::Function
 
@@ -267,6 +288,9 @@ mutable struct Simulation{P<:Tuple}
             EventQueue(),
             [],
             [],
+
+            # recurring seeding schedule (populated by initialize!)
+            Dict{Int16, Vector{SeedSpec}}(),
 
             # StepMod
             stepmod,
@@ -2004,6 +2028,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # Reset NPI triggers and strategies
     simulation.event_queue = EventQueue()
+    # clear the staged seeding schedule; initialize! rebuilds it from the start condition
+    simulation.seeding_schedule = Dict{Int16, Vector{SeedSpec}}()
     if reset_interventions
         simulation.symptom_triggers = []
         simulation.tick_triggers = []
@@ -2069,6 +2095,17 @@ Returns the list of `TickTrigger`s registered in the simulation.
 """
 function tick_triggers(simulation::Simulation)
     return(simulation.tick_triggers)
+end
+
+"""
+    seeding_schedule(simulation)
+
+Returns the staged recurring-seeding schedule: a `Dict` mapping each tick to its
+`Vector{SeedSpec}`. Populated by recurring-import start conditions (`PeriodicImport`,
+`PoissonImport`) during `initialize!` and fired by `seed_scheduled!` at the matching tick.
+"""
+function seeding_schedule(simulation::Simulation)
+    return(simulation.seeding_schedule)
 end
 
 """
