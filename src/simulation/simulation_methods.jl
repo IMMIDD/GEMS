@@ -285,19 +285,19 @@ function seed_scheduled!(simulation::Simulation)
     isnothing(specs) && return nothing
     r = rng(simulation)
     for spec in specs
-        _seed_spec!(simulation, spec, r)
+        _seed_infection!(simulation, spec, r)
     end
     flush_pending_infections!(simulation)
     return nothing
 end
 
 """
-    _seed_spec!(simulation, spec::SeedSpec, rng)
+    _seed_infection!(simulation, spec::InfectionSeed, rng)
 
 Samples and infects the individuals described by `spec` at the current tick, drawing from
 the whole population (`spec.ags === nothing`) or from the region otherwise.
 """
-function _seed_spec!(simulation::Simulation, spec::SeedSpec, rng::Xoshiro)
+function _seed_infection!(simulation::Simulation, spec::InfectionSeed, rng::Xoshiro)
     spec.count <= 0 && return nothing
     pthgn = get_pathogen(simulation, spec.pathogen)
 

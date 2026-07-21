@@ -35,7 +35,7 @@ Base.show(io::IO, c::MultiStartCondition) = write(io, "MultiStartCondition($(joi
 """
     _stage_imports!(simulation, ticks, pathogen, count, ags, stochastic_count)
 
-Stages one `SeedSpec` per tick in `ticks` into `simulation.seeding_schedule` (bucketed by
+Stages one `InfectionSeed` per tick in `ticks` into `simulation.seeding_schedule` (bucketed by
 tick), drawing the per-firing count from `Poisson(count)` when `stochastic_count` is set.
 """
 function _stage_imports!(simulation::Simulation, ticks::Vector{Int16}, pathogen::String,
@@ -43,8 +43,8 @@ function _stage_imports!(simulation::Simulation, ticks::Vector{Int16}, pathogen:
     r = rng(simulation)
     for t in ticks
         c = stochastic_count ? gems_rand(r, Poisson(count)) : count
-        bucket = get!(() -> SeedSpec[], simulation.seeding_schedule, t)
-        push!(bucket, SeedSpec(pathogen, c, ags))
+        bucket = get!(() -> InfectionSeed[], simulation.seeding_schedule, t)
+        push!(bucket, InfectionSeed(pathogen, c, ags))
     end
     return nothing
 end
