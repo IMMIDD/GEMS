@@ -19,7 +19,7 @@ sim = Simulation(start_condition = condition)
 """
 struct InfectedFraction <: StartCondition
     fraction::Float64
-    pathogen::String # if empty, will be applied to all pathogens
+    pathogen::String
 
     function InfectedFraction(;fraction::Float64, pathogen::String = "")
         fraction < 0.0 && throw(ArgumentError("Fraction must be greater than or equal to 0!"))
@@ -55,7 +55,7 @@ end
     initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
 
 Initialize the simulation model with a fraction of infected individuals, provided by the start condition.
-For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default), 
+For sampling the individuals to infect, a new `Xoshiro` RNG is created. If `seed_sample` is `nothing` (default),
 the seed is drawn from `rng(simulation)`. Otherwise, the provided `seed_sample` is used.
 """
 function initialize!(simulation::Simulation, condition::InfectedFraction; seed_sample::Union{Int64,Nothing}=nothing)
@@ -75,6 +75,6 @@ function initialize!(simulation::Simulation, condition::InfectedFraction; seed_s
         activate_memberships!(i, simulation)
     end
 
-    # push pending infections to InfectionRegistry 
+    # push pending infections to InfectionRegistry
     flush_pending_infections!(simulation)
 end

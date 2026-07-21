@@ -358,6 +358,11 @@ function is_dormant(simulation::Simulation)
         end
     end
 
+    # wake up while a host still has a scheduled care/death event pending
+    if current_t <= healthlogger(simulation).latest_pending_tick[]
+        return false
+    end
+
     # wake up if disease or quarantines are active
     sl = statelogger(simulation)
     
@@ -411,6 +416,10 @@ function flush_pending_infections!(sim::Simulation)
                 push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
                 # recompute the host health timeline now that the new infection's demand is visible
                 compute_health!(ind, infections, health_progression(sim), tick(sim), sim.rngs[shard_id])
+                # keep the sim awake until this host's care/death events are realized (they can
+                # outlive active disease); otherwise a dormant fast-forward would drop their logging
+                lht = _latest_health_tick(ind)
+                lht >= 0 && Threads.atomic_max!(healthlogger(sim).latest_pending_tick, lht)
                 if p.dp.recovery >= 0
                     push_immunity!(immunities, ind, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
                     ind.needs_immunity_update = true
@@ -460,6 +469,20 @@ end
 
 
 
+
+"""
+    _latest_health_tick(indiv::Individual)
+
+Latest tick at which `indiv` has a scheduled host-level health event (any care admission/discharge
+or death), or `-1` if none. Used to hold `is_dormant` awake so events that fall after the host's
+disease has cleared are still realized and logged.
+"""
+@inline function _latest_health_tick(indiv::Individual)
+    return max(indiv.hospital_admission, indiv.hospital_discharge,
+        indiv.icu_admission, indiv.icu_discharge,
+        indiv.ventilation_admission, indiv.ventilation_discharge,
+        indiv.death)
+end
 
 """
     log_health_events!(healthlogger::HealthLogger, indiv::Individual, tick::Int16)

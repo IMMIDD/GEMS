@@ -104,6 +104,8 @@ are realized. Each event is `(id, event, tick)` where `event` is a `Symbol` such
 """
 @with_kw mutable struct HealthLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
+    # latest tick at which any host still has a scheduled care/death event
+    latest_pending_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     event::Vector{Vector{Symbol}} = [Vector{Symbol}() for _ in 1:Threads.maxthreadid()]
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]

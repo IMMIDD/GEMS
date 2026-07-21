@@ -347,7 +347,7 @@ obtain personal characteristics about the testees.
 
 | Name                     | Type     | Description                                        |
 | :----------------------- | :------- | :------------------------------------------------- |
-| `tick`              | `Int16`  | Tick of the test event                             |
+| `tick`                   | `Int16`  | Tick of the test event                             |
 | `id`                     | `Int32`  | Individual's id                                    |
 | `test_result`            | `Bool`   | Test result                                        |
 | `infected`               | `Bool`   | Individual's current infection state               |
@@ -379,7 +379,7 @@ Returns the internal flat pool tests `DataFrame`.
 
 | Name                | Type     | Description                                    |
 | :------------------ | :------- | :--------------------------------------------- |
-| `tick`         | `Int16`  | Tick of the test event                         |
+| `tick`              | `Int16`  | Tick of the test event                         |
 | `setting_id`        | `Int32`  | Setting id of the tested pool                  |
 | `setting_type`      | `Int32`  | Setting type                                   |
 | `test_result`       | `Bool`   | Test result (pos./neg.)                        |
@@ -408,7 +408,7 @@ It is based on the data logged by the `SeroprevalenceLogger`.
 | Name           | Type     | Description                                                    |
 | :------------- | :------- | :------------------------------------------------------------- |
 | `test_id`      | `Int32`  | Unique test ID within the logger                               |
-| `tick`    | `Int16`  | Tick at which the test was performed                           |
+| `tick`         | `Int16`  | Tick at which the test was performed                           |
 | `id`           | `Int32`  | ID of the individual tested                                    |
 | `test_result`  | `Bool`   | Result of the test (`true` = positive, `false` = negative)     |
 | `infected`     | `Bool`   | Whether the individual was infected at the time of the test    |
