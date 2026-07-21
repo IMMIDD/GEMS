@@ -31,6 +31,9 @@ export info
 "supertype for all start conditions"
 abstract type StartCondition end
 
+"supertype for all stop criteria"
+abstract type StopCriterion end
+
 """
     InfectionSeed
 
@@ -47,9 +50,6 @@ struct InfectionSeed
     count::Int
     ags::Union{Int64, Nothing}
 end
-
-"supertype for all stop criteria"
-abstract type StopCriterion end
 
 ###
 ### SIMULATION STRUCT

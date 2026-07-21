@@ -40,6 +40,8 @@ struct PeriodicImport <: StartCondition
         start_tick < 0 && throw(ArgumentError("start_tick must be >= 0."))
         stop_tick < start_tick && throw(ArgumentError("stop_tick must be >= start_tick."))
         interval < 1 && throw(ArgumentError("interval must be a positive integer."))
+        stop_tick > start_tick && interval > stop_tick - start_tick &&
+            @warn "PeriodicImport: interval ($interval) exceeds the window ($start_tick-$stop_tick), so only a single import at tick $start_tick will occur."
         return new(pathogen, count, Int16(start_tick), Int16(stop_tick), Int16(interval),
             isnothing(ags) ? nothing : Int64(ags), stochastic_count)
     end

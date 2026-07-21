@@ -737,6 +737,8 @@ import GEMS: increment!, infected!
         @test_throws ArgumentError PeriodicImport(count = 3, start_tick = -1, stop_tick = 10, interval = 2)
         @test_throws ArgumentError PeriodicImport(count = 3, start_tick = 10, stop_tick = 5, interval = 2)
         @test_throws ArgumentError PeriodicImport(count = 3, start_tick = 1, stop_tick = 10, interval = 0)
+        # interval wider than the window warns (likely a typo) but still constructs
+        @test_logs (:warn, r"exceeds the window") PeriodicImport(count = 1, start_tick = 1, stop_tick = 5, interval = 10)
 
         # initialize! stages the schedule but seeds nothing yet
         cond = PeriodicImport(count = 5, start_tick = 2, stop_tick = 10, interval = 3)
@@ -756,6 +758,7 @@ import GEMS: increment!, infected!
         @test_throws ArgumentError PoissonImport(count = 0, start_tick = 1, stop_tick = 10, rate = 0.5)
         @test_throws ArgumentError PoissonImport(count = 3, start_tick = 1, stop_tick = 10, rate = 0.0)
         @test_throws ArgumentError PoissonImport(count = 3, start_tick = 10, stop_tick = 5, rate = 0.5)
+        @test_throws ArgumentError PoissonImport(count = 3, start_tick = -1, stop_tick = 10, rate = 0.5)
 
         # stochastic ticks stay within the window and are reproducible under a fixed seed
         pcond = PoissonImport(count = 2, start_tick = 5, stop_tick = 200, rate = 0.1)
