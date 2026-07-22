@@ -6,7 +6,7 @@ export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
-export tick, label, start_condition, stop_criterion, settingscontainer, settings, population, stepmod
+export tick, label, start_condition, stop_criterion, settingscontainer, settings, population, stepmod, stepmod!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
@@ -2146,6 +2146,16 @@ Returns the defined step mod.
 """
 function stepmod(simulation::Simulation)
     return(simulation.stepmod)
+end
+
+"""
+    stepmod!(simulation::Simulation, stepmod::Function)
+
+Sets the per-tick step mod. The tick loop reads this field fresh each tick, so setting it
+before `run!` (e.g. inside a `Batch` setup) takes effect.
+"""
+function stepmod!(simulation::Simulation, stepmod::Function)
+    simulation.stepmod = stepmod
 end
 
 
