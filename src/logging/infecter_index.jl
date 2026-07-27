@@ -199,12 +199,3 @@ function _walk_infections_between(index::InfecterIndex, infecter::Int32, start_t
     reverse!(result)
     return result
 end
-
-function Base.empty!(index::InfecterIndex)
-    fill!(index.head, Int32(0))
-    empty!(index.infectee)
-    empty!(index.tick)
-    empty!(index.prev)
-    foreach(empty!, index.staging)
-    return index
-end
