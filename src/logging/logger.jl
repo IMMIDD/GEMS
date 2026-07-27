@@ -19,6 +19,7 @@ Supertype for all Loggers, which are logging certain events
 """
 abstract type EventLogger <: Logger end
 
+include("infecter_index.jl")
 include("infection_logger.jl")
 include("event_loggers.jl")
 include("tick_loggers.jl")
