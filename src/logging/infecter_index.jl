@@ -29,7 +29,10 @@ The index is an implementation detail of the `InfectionLogger` and is built lazi
 first `get_infections_between` call.
 """
 mutable struct InfecterIndex
-    # infecter id -> newest entry index, 0 = none
+    # smallest id `head` covers; slot of an id is `id - offset + 1`, as in Population
+    offset::Int32
+
+    # infecter slot -> newest entry index, 0 = none
     head::Vector{Int32}
 
     # entry payload
@@ -40,9 +43,11 @@ mutable struct InfecterIndex
     # per-thread staging, drained by _merge_staged!
     staging::Vector{Vector{_PendingLink}}
 
-    function InfecterIndex()
+    function InfecterIndex(minid::Int32 = Int32(1), maxid::Int32 = Int32(0))
+        slots = maxid >= minid ? Int(maxid) - Int(minid) + 1 : 0
         return new(
-            Vector{Int32}(),
+            minid,
+            zeros(Int32, slots),
             Vector{Int32}(),
             Vector{Int16}(),
             Vector{Int32}(),
@@ -52,24 +57,38 @@ mutable struct InfecterIndex
 end
 
 """
-    InfecterIndex(id_a::Vector{Vector{Int32}}, id_b::Vector{Vector{Int32}}, ticks::Vector{Vector{Int16}})
+    _infecter_id_range(id_a::Vector{Vector{Int32}})
 
-Builds an index over infections already recorded in an `InfectionLogger`'s sharded
-columns. Used to backfill everything logged before the index existed.
+Smallest and largest infecter id present in the sharded column, ignoring seed infections
+(`id < 1`). Returns an empty range when there are none.
 """
-function InfecterIndex(id_a::Vector{Vector{Int32}}, id_b::Vector{Vector{Int32}}, ticks::Vector{Vector{Int16}})
-    index = InfecterIndex()
-
-    # size head once from the largest infecter id, so linking never has to grow it
-    max_id = Int32(0)
+function _infecter_id_range(id_a::Vector{Vector{Int32}})
+    lo = typemax(Int32)
+    hi = Int32(0)
     for shard in id_a
         for a in shard
-            a > max_id && (max_id = a)
+            a < 1 && continue
+            a < lo && (lo = a)
+            a > hi && (hi = a)
         end
     end
-    max_id > 0 && _grow_head!(index, max_id)
+    return hi > 0 ? (lo, hi) : (Int32(1), Int32(0))
+end
 
-    # each shard is in tick order, which is exactly what _link_merged! expects
+"""
+    InfecterIndex(id_a, id_b, ticks; minid, maxid)
+
+Backfills an index from an `InfectionLogger`'s sharded columns. `minid`/`maxid` size
+`head` in one allocation; when unset (`maxid = 0`) they are taken from the infecter ids
+present in the data.
+"""
+function InfecterIndex(id_a::Vector{Vector{Int32}}, id_b::Vector{Vector{Int32}},
+        ticks::Vector{Vector{Int16}}; minid::Int32 = Int32(1), maxid::Int32 = Int32(0))
+
+    maxid < minid && ((minid, maxid) = _infecter_id_range(id_a))
+    index = InfecterIndex(minid, maxid)
+
+    # each shard is in tick order, which is what _link_merged! expects
     buffers = map(eachindex(id_a)) do s
         buf = Vector{_PendingLink}(undef, length(id_a[s]))
         @inbounds for i in eachindex(buf)
@@ -96,18 +115,11 @@ logged concurrently, so this only appends to a thread-local buffer. Seed infecti
 end
 
 """
-    _grow_head!(index::InfecterIndex, needed::Integer)
+    _slot(index::InfecterIndex, id::Int32)
 
-Grows the `head` array to `needed` slots, zeroing the new tail. `head` is indexed by
-individual id, so it converges on the population size after the first few infections and
-this is called rarely.
+Slot of an id in `head`. Callers bounds-check, as `get_individual_by_id` does.
 """
-function _grow_head!(index::InfecterIndex, needed::Integer)
-    old_len = length(index.head)
-    resize!(index.head, needed)
-    fill!(view(index.head, (old_len + 1):Int(needed)), Int32(0))
-    return nothing
-end
+@inline _slot(index::InfecterIndex, id::Int32) = Int(id) - Int(index.offset) + 1
 
 """
     _link!(index::InfecterIndex, link::_PendingLink)
@@ -117,12 +129,19 @@ Appends an entry and splices it to the front of its infecter's chain.
 @inline function _link!(index::InfecterIndex, link::_PendingLink)
     a = link.infecter
     a < 1 && return nothing
-    a > length(index.head) && _grow_head!(index, a)
+
+    slot = _slot(index, a)
+    if slot < 1 || slot > length(index.head)
+        throw(ArgumentError("infecter id $a is outside the index range " *
+            "$(index.offset)..$(index.offset + length(index.head) - 1). The range comes " *
+            "from the population's minid/maxid; a logger built without one covers only " *
+            "the ids it was backfilled from."))
+    end
 
     push!(index.infectee, link.infectee)
     push!(index.tick, link.tick)
-    @inbounds push!(index.prev, index.head[a])
-    @inbounds index.head[a] = Int32(length(index.infectee))
+    @inbounds push!(index.prev, index.head[slot])
+    @inbounds index.head[slot] = Int32(length(index.infectee))
     return nothing
 end
 
@@ -186,9 +205,12 @@ start of the window.
 """
 function _walk_infections_between(index::InfecterIndex, infecter::Int32, start_tick::Int16, end_tick::Int16)
     result = Vector{Int32}()
-    (infecter < 1 || infecter > length(index.head)) && return result
+    infecter < 1 && return result
 
-    @inbounds e = index.head[infecter]
+    slot = _slot(index, infecter)
+    (slot < 1 || slot > length(index.head)) && return result
+
+    @inbounds e = index.head[slot]
     @inbounds while e != 0
         t = index.tick[e]
         t < start_tick && break

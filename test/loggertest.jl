@@ -236,16 +236,31 @@
                 @test query(il, 5, 7, 9) == Int32[]
             end
 
-            @testset "Head Growth" begin
-                il = InfectionLogger()
-                log_infection!(il, 5, 10, 0)
-                @test query(il, 5, 0, 5) == Int32[10]
+            @testset "Head Sizing From Declared Range" begin
+                # a real population model occupies a slice of a national id space, so
+                # minid is far above 1. head must be sized by the range, not by maxid.
+                il = InfectionLogger(minid = Int32(72_780_390), maxid = Int32(72_784_389))
+                log_infection!(il, 72_780_500, 72_781_000, 0)
+                log_infection!(il, 72_780_500, 72_781_001, 1)
 
-                # an infecter far beyond the current head must not disturb existing chains
+                @test query(il, 72_780_500, 0, 5) == Int32[72_781_000, 72_781_001]
+                @test length(il.infecter_index.head) == 4000
+                @test il.infecter_index.offset == Int32(72_780_390)
+
+                # ids outside the declared range return empty rather than erroring
+                @test query(il, 72_780_389, 0, 5) == Int32[]
+                @test query(il, 72_784_390, 0, 5) == Int32[]
+            end
+
+            @testset "Ids Outside The Index Range" begin
+                # a logger with no declared range covers only the ids it was backfilled
+                # from; anything beyond that is a mismatch and must not be dropped silently
+                il = InfectionLogger()
+                log_infection!(il, 5000, 10, 0)
+                @test query(il, 5000, 0, 5) == Int32[10]
+
                 log_infection!(il, 500_000, 20, 1)
-                @test query(il, 500_000, 0, 5) == Int32[20]
-                @test query(il, 5, 0, 5) == Int32[10]
-                @test query(il, 499_999, 0, 5) == Int32[]
+                @test_throws ArgumentError query(il, 5000, 0, 5)
             end
 
             @testset "Invalid Infecters" begin

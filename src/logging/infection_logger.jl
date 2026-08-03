@@ -45,6 +45,10 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     ags::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     source_infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
 
+    # Individual id range of the logged population
+    minid::Int32 = Int32(1)
+    maxid::Int32 = Int32(0)
+
     # Inverted infecter -> infectee index, built lazily on the first get_infections_between
     # call. Stays `nothing` in runs that never trace infectious contacts.
     infecter_index::Union{Nothing, InfecterIndex} = nothing
@@ -164,10 +168,12 @@ end
 """
     _build_infecter_index!(logger::InfectionLogger)
 
-Creates the logger's `InfecterIndex`, backfilled from everything logged so far.
+Creates the logger's `InfecterIndex`, backfilled from everything logged so far and sized
+from the population's declared id range.
 """
 function _build_infecter_index!(logger::InfectionLogger)
-    idx = InfecterIndex(logger.id_a, logger.id_b, logger.tick)
+    idx = InfecterIndex(logger.id_a, logger.id_b, logger.tick;
+        minid = logger.minid, maxid = logger.maxid)
     logger.infecter_index = idx
     return idx
 end
