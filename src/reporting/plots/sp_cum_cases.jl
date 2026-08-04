@@ -66,10 +66,10 @@ function generate(plt::CumulativeCases, rd::ResultData; pathogen = nothing, plot
         pfx = multi ? pnames[pid] * " — " : ""
         plot!(plot_cum, sub.tick, sub[!, "exposed_cum"],
             label = pfx * "Infections",
-            color = c, linestyle = styles["exposed_cum"])
+            color = multi ? c : :blue, linestyle = styles["exposed_cum"])
         plot!(plot_cum, sub.tick, sub[!, "recovered_cum"],
             label = pfx * "Recoveries",
-            color = c, linestyle = styles["recovered_cum"])
+            color = multi ? c : :green, linestyle = styles["recovered_cum"])
         plot!(plot_cum, sub.tick, sub[!, "deaths_cum"],
             label = pfx * "Deaths",
             color = multi ? c : :black,

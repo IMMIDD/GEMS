@@ -1052,7 +1052,7 @@ end
             # 10*14 total quarantine days should be recorded
             p = Pathogen(
                 name = "COVID19",
-                progressions = [Symptomatic(
+                progressions = [Mild(
                     exposure_to_infectiousness_onset = 1,
                     infectiousness_onset_to_symptom_onset = 0,
                     symptom_onset_to_recovery = 7

@@ -10,23 +10,36 @@ For a given pathogen we assume a disease progression that branches out depending
 </p>
 ```
 
-An infected person will be considered exposed until they become infectious.
-After this, they can stay without symptoms (resulting in asymptomatic cases) or progress through a disease pathway until leaving to the recovered or dead state.
+!!! warning "Diagram pending update"
+    The diagram above still depicts the pre-decoupling model, where hospitalization, ICU, ventilation, and death appear as part of the disease path. These are now host-level outcomes decided by a separate `HealthProgression` (see below) and are no longer part of the disease progression. The diagram is pending regeneration.
 
-Throughout GEMS we use the term "removed" for the state of an individual leaving this disease progression by either recovering from the disease or dying.
-GEMS categorizes disease states internally using symbols (e.g., `:Symptomatic`, `:Critical`). Depending on the terminal state an individual reaches before being removed, we can categorize the infected individuals into the following progression tracks:
+An infected person will be considered exposed until they become infectious.
+After this, they can stay without symptoms (resulting in asymptomatic cases) or progress through a disease pathway until recovering.
+
+Throughout GEMS we use the term "removed" for the state of an individual leaving a disease progression, either by recovering or by dying.
+GEMS categorizes disease states internally using symbols (e.g., `:Mild`, `:Critical`). Depending on the peak severity an individual reaches, we can categorize the infected individuals into the following progression tracks:
 
 | **Symptoms Category** | **Terminal State** |
 | :-------------------- | :----------------- |
 | Asymptomatic          | Presymptomatic     |
-| Symptomatic           | Symptomatic        |
+| Mild                  | Symptomatic        |
 | Severe                | Severe             |
-| Hospitalized          | Hospitalized       |
 | Critical              | Critical           |
 
 As the symptom category and terminal state are closely related, the terms "exposed" and "asymptomatic" might be used synonymously, as well as "mild" and "symptomatic".
-Furthermore, the progression for some symptom categories includes the need for hospitalization. Severe cases do not require hospitalization in the default config, but `Hospitalized` cases do. `Critical` cases will additionally require ICU admission (intensive care unit).
-While asymptotic, symptomatic, severe, and hospitalized cases can't die by means of the disease in the default setup, critical cases are assigned a `30%` death probability.
+
+Host-level care and mortality (hospitalization, ICU, ventilation, death) are **not** part of the
+disease progression: they are decided by a separate `HealthProgression`, which folds the demand of
+*all* of a host's currently active infections into one host-level care timeline. This is what lets a
+host who is concurrently infected with multiple pathogens have their hospitalization or death
+decided jointly, rather than by whichever single infection happens to "win". In the default
+configuration, only `Severe` and `Critical` infections demand any host care: a `Severe`-peak
+infection may lead to a ward admission; a `Critical`-peak infection may additionally require ICU
+admission (and, optionally, ventilation), and carries an ungated `30%` death probability. In the
+default configuration, all care and timing offsets (admission delays and stay lengths) are drawn
+from Poisson distributions; see the `[HealthProgression]` block in `DefaultConf.toml` for the
+concrete parameters. See the "Health Progression" section of the pathogen API reference for the
+extension API.
 
 ## Infectiousness
 
@@ -37,18 +50,18 @@ In asymptomatic cases, the individual will become infectious between becoming ex
 ## Age Stratification
 
 To estimate the disease progression, we make use of age-stratified stochastic matrices passed to the `AgeBasedProgressionAssignment`.
-As an example, consider three distinct age groups (`-14`, `15-65`, `66-`) as well as the five symptom categories mentioned above.
-A possible age stratification matrix is given by the following $3 \times 5$ matrix:
+As an example, consider three distinct age groups (`-14`, `15-65`, `66-`) as well as the four symptom categories mentioned above.
+A possible age stratification matrix is given by the following $3 \times 4$ matrix:
 
 ```math
 \begin{bmatrix}
-    0.400 & 0.580 & 0.010 & 0.007 & 0.003 \\ 
-    0.250 & 0.600 & 0.110 & 0.030 & 0.010 \\
-    0.150 & 0.400 & 0.250 & 0.120 & 0.080
+    0.400 & 0.580 & 0.017 & 0.003 \\ 
+    0.250 & 0.600 & 0.140 & 0.010 \\
+    0.150 & 0.400 & 0.370 & 0.080
 \end{bmatrix}
 ```
 
-In this example, the first row contains the probability of an individual up to 14 years of age ending up in the progression categories "Asymptomatic", "Symptomatic", "Severe", "Hospitalized", or "Critical" in this order.
+In this example, the first row contains the probability of an individual up to 14 years of age ending up in the progression categories "Asymptomatic", "Mild", "Severe", or "Critical" in this order.
 
 ## True- vs. Observed Cases
 

@@ -96,8 +96,22 @@ mutable struct PostProcessor
             :household_b => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_b
         )
 
-        # join deaths with additional info from population DF
         deaths = dataframe(deathlogger(simulation))
+
+        # host death is host-level, not logged per infection; reconcile it back so `recovery` reflects what actually happened.
+        # `:killing_pathogen_id` is the actual cause of death
+        host_death = DataFrames.select(deaths, :id, :tick => :host_death, :pathogen_id => :killing_pathogen_id, copycols=false)
+        leftjoin!(infections, host_death, on = [:id_b => :id])
+        transform!(infections,
+            [:recovery, :host_death] => ByRow((r, d) -> !ismissing(d) && d < r ?
+                (death = d, recovery = Int16(-1)) : (death = Int16(-1), recovery = r)) => AsTable,
+            :killing_pathogen_id => ByRow(p -> ismissing(p) ? Int8(-1) : p) => :killing_pathogen_id)
+
+        cols = names(infections, Not([:host_death, :death, :killing_pathogen_id]))
+        i = findfirst(==("recovery"), cols)
+        select!(infections, cols[1:i]..., :death, :killing_pathogen_id, cols[i+1:end]...)
+
+        # join deaths with additional info from population DF
         leftjoin!(deaths, pop, on = :id)
 
         # join tests with population data
@@ -333,7 +347,7 @@ obtain personal characteristics about the testees.
 
 | Name                     | Type     | Description                                        |
 | :----------------------- | :------- | :------------------------------------------------- |
-| `tick`              | `Int16`  | Tick of the test event                             |
+| `tick`                   | `Int16`  | Tick of the test event                             |
 | `id`                     | `Int32`  | Individual's id                                    |
 | `test_result`            | `Bool`   | Test result                                        |
 | `infected`               | `Bool`   | Individual's current infection state               |
@@ -365,7 +379,7 @@ Returns the internal flat pool tests `DataFrame`.
 
 | Name                | Type     | Description                                    |
 | :------------------ | :------- | :--------------------------------------------- |
-| `tick`         | `Int16`  | Tick of the test event                         |
+| `tick`              | `Int16`  | Tick of the test event                         |
 | `setting_id`        | `Int32`  | Setting id of the tested pool                  |
 | `setting_type`      | `Int32`  | Setting type                                   |
 | `test_result`       | `Bool`   | Test result (pos./neg.)                        |
@@ -394,7 +408,7 @@ It is based on the data logged by the `SeroprevalenceLogger`.
 | Name           | Type     | Description                                                    |
 | :------------- | :------- | :------------------------------------------------------------- |
 | `test_id`      | `Int32`  | Unique test ID within the logger                               |
-| `tick`    | `Int16`  | Tick at which the test was performed                           |
+| `tick`         | `Int16`  | Tick at which the test was performed                           |
 | `id`           | `Int32`  | ID of the individual tested                                    |
 | `test_result`  | `Bool`   | Result of the test (`true` = positive, `false` = negative)     |
 | `infected`     | `Bool`   | Whether the individual was infected at the time of the test    |

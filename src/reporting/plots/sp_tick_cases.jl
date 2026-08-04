@@ -83,13 +83,13 @@ function generate(plt::TickCases, rd::ResultData; series::Union{Symbol, Vector{S
 
         :infectious in sers && plot!(plot_ticks, sub.tick, sub[!, "infectious_cnt"],
             label = pfx * "Became Infectious",
-            color = c,
+            color = multi ? c : :red,
             linestyle = multi ? styles[:infectious] : :solid,
             linewidth = linewidth)
 
         :removed in sers && plot!(plot_ticks, sub.tick, sub[!, "recovered_cnt"],
             label = pfx * "Recovered",
-            color = c,
+            color = multi ? c : :green,
             linestyle = multi ? styles[:removed] : :solid,
             linewidth = linewidth)
 

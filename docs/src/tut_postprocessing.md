@@ -6,7 +6,7 @@ This tutorial teaches you how to access the data and customize how data is being
 ## Internal Loggers
 
 Accessing a simulation's internal loggers is easy.
-They can be accessed via `infectionlogger(sim)`,  `deathlogger(sim)`,  `testlogger(sim)`,  `pooltestlogger(sim)`,  `quarantinelogger(sim)`,  or `customlogger(sim)`.
+They can be accessed via `infectionlogger(sim)`,  `deathlogger(sim)`,  `healthlogger(sim)`,  `testlogger(sim)`,  `pooltestlogger(sim)`,  `quarantinelogger(sim)`,  or `customlogger(sim)`.
 Here's the data that is being logged for all infections:
 
 ```julia
@@ -32,8 +32,8 @@ dataframe(inf_logger)
      1 │            1      0     -1  81435  Critical                                 1 ⋯
      2 │            2      0     -1  37134  Asymptomatic                             2  
    ⋮   │      ⋮          ⋮      ⋮      ⋮             ⋮                     ⋮           ⋱
- 74077 │        74077    183  20556  41661  Hospitalized                           184  
- 74078 │        74078    190  81857  73144  Symptomatic                            191  
+ 74077 │        74077    183  20556  41661  Severe                                184  
+ 74078 │        74078    190  81857  73144  Mild                                   191  
                                                        17 columns and 74031 rows omitted                                                     
 ```
 
@@ -69,11 +69,11 @@ infectionsDF(pp)
    Row │ infection_id  tick   id_a   id_b    progression_category  infectiousness_onse ⋯
        │ Int32         Int16  Int32  Int32   Symbol                Int16               ⋯
 ───────┼────────────────────────────────────────────────────────────────────────────────
-     1 │        37305     55  99752       1  Symptomatic                             5 ⋯
+     1 │        37305     55  99752       1  Mild                                    5 ⋯
      2 │        68257     81  57862       2  Severe                                  8  
    ⋮   │      ⋮          ⋮      ⋮      ⋮              ⋮                     ⋮          ⋱
- 74548 │        20815     45  38327   99999  Symptomatic                             4  
- 74549 │        74126    113  16508  100000  Hospitalized                           11  
+ 74548 │        20815     45  38327   99999  Mild                                    4  
+ 74549 │        74126    113  16508  100000  Severe                                11  
                                                        47 columns and 74502 rows omitted
 ```
 
