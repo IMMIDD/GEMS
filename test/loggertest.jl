@@ -155,7 +155,6 @@
             function log_infection!(il, a, b, t)
                 log!(il, Int32(a), Int32(b), Int8(1), :Asymptomatic, Int16(t),
                     Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
-                    Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
                     Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
             end
 
