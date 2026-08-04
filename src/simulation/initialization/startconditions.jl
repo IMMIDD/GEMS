@@ -26,6 +26,30 @@ end
 Base.show(io::IO, c::MultiStartCondition) = write(io, "MultiStartCondition($(join(c.conditions, ", ")))")
 
 ###
+### RECURRING SEEDING (staging)
+###
+# The recurring-import start conditions (`PeriodicImport`, `PoissonImport`) stage their
+# schedule here via `_stage_imports!`; `seed_scheduled!` (in `simulation_methods.jl`)
+# executes the imports due at the current tick.
+
+"""
+    _stage_imports!(simulation, ticks, pathogen, count, ags, stochastic_count)
+
+Stages one `InfectionSeed` per tick in `ticks` into `simulation.seeding_schedule` (bucketed by
+tick), drawing the per-firing count from `Poisson(count)` when `stochastic_count` is set.
+"""
+function _stage_imports!(simulation::Simulation, ticks::Vector{Int16}, pathogen::String,
+        count::Int, ags::Union{Int64, Nothing}, stochastic_count::Bool)
+    r = rng(simulation)
+    for t in ticks
+        c = stochastic_count ? gems_rand(r, Poisson(count)) : count
+        bucket = get!(() -> InfectionSeed[], simulation.seeding_schedule, t)
+        push!(bucket, InfectionSeed(pathogen, c, ags))
+    end
+    return nothing
+end
+
+###
 ### INCLUDE START CONDITIONS
 ###
 

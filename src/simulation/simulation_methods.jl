@@ -271,6 +271,48 @@ end
 
 
 
+# RECURRING SEEDING
+
+"""
+    seed_scheduled!(simulation::Simulation)
+
+Executes the imports staged for the current tick in `simulation.seeding_schedule` (a
+`Dict` keyed by tick). Called at the top of `step!`, before transmission, so imported
+cases can spread the same tick. `O(1)` when nothing is due today.
+"""
+function seed_scheduled!(simulation::Simulation)
+    specs = get(simulation.seeding_schedule, tick(simulation), nothing)
+    isnothing(specs) && return nothing
+    r = rng(simulation)
+    for spec in specs
+        _seed_infection!(simulation, spec, r)
+    end
+    flush_pending_infections!(simulation)
+    return nothing
+end
+
+"""
+    _seed_infection!(simulation, spec::InfectionSeed, rng)
+
+Samples and infects the individuals described by `spec` at the current tick, drawing from
+the whole population (`spec.ags === nothing`) or from the region otherwise.
+"""
+function _seed_infection!(simulation::Simulation, spec::InfectionSeed, rng::Xoshiro)
+    spec.count <= 0 && return nothing
+    pthgn = get_pathogen(simulation, spec.pathogen)
+
+    pool = isnothing(spec.ags) ? individuals(simulation) : individuals_in_ags(simulation, AGS(spec.ags))
+    isempty(pool) && return nothing
+
+    to_infect = gems_sample(rng, pool, min(spec.count, length(pool)), replace=false)
+    for i in to_infect
+        infect!(i, tick(simulation), pthgn, sim = simulation, rng = rng)
+        activate_memberships!(i, simulation)
+    end
+    return nothing
+end
+
+
 # RUN STEP
 
 """
@@ -280,6 +322,9 @@ Increments the simulation status by one tick and executes all events that shall 
 """
 function step!(simulation::Simulation)
     dormant = is_dormant(simulation)
+
+    # seed scheduled imports before transmission so a fresh import can spread this tick
+    seed_scheduled!(simulation)
 
     # update disease state
     if !dormant
@@ -358,6 +403,11 @@ function is_dormant(simulation::Simulation)
         end
     end
 
+    # wake up if a scheduled import seeds today
+    if haskey(simulation.seeding_schedule, current_t)
+        return false
+    end
+    
     # wake up while a host still has a scheduled care/death event pending
     if current_t <= healthlogger(simulation).latest_pending_tick[]
         return false
