@@ -270,96 +270,174 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 
 ## Custom Disease Progression
 
-Beyond the default progression categories (`Asymptomatic`, `Symptomatic`, `Severe`, `Hospitalized`, and `Critical`), GEMS allows you to specify custom disese progressions.
+Beyond the default progression categories (`Asymptomatic`, `Mild`, `Severe`, and `Critical`), GEMS allows you to specify custom disese progressions.
 To do that, you need to define two things:
 - A struct for your new progression that inherits from `ProgressionCategory` and
 - A `calculate_progression()` function that defines the actual progression for an individual
 
-In this example, we want to define a disease that always ends in a symptomatic progression.
-A certain percentage of infections should result in death.
-If individuals die, death should occur ~3 days after symptom onset.
-If individuals recover, it should take ~20 days after symptom onset.
+A disease progression only describes the *disease* timeline (when an individual becomes infectious, symptomatic, severe, and so on).
+Host-level care and mortality (hospitalization, ICU, ventilation, death) are decided separately by a [`HealthProgression`](@ref custom-health-progression), covered in the next section.
 
-Here's the code:
+A custom progression is useful when the timeline itself needs logic the built-in tracks can't express, such as correlated transition times. Below, a single incubation draw drives both symptom onset *and* recovery, so individuals who start slowly are also ill for longer.
 
 ```julia
 using GEMS, Distributions, Random, Parameters
 import GEMS.calculate_progression
 
 # define disease progression category struct
-@with_kw mutable struct MyProgression <: GEMS.ProgressionCategory
-    death_probability::Float64
+@with_kw mutable struct CorrelatedProgression <: GEMS.ProgressionCategory
     exposure_to_symptom_onset::Distribution
-    symptom_onset_to_death::Distribution
-    symptom_onset_to_recovery::Distribution
+    illness_length_factor::Float64
 end
 
 # define progression calculation function
-function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::MyProgression;
+function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::CorrelatedProgression;
     rng::AbstractRNG = Random.default_rng())
 
-    # Calculate the time to symptom onset
-    symptom_onset =  tick + Int16(1) + gems_rand(rng, dp.exposure_to_symptom_onset)
-    # decide if individual will die
-    should_die = gems_rand(rng) <= dp.death_probability
+    # draw the incubation period once ...
+    incubation = gems_rand(rng, dp.exposure_to_symptom_onset)
+    symptom_onset = tick + Int16(1) + incubation
+    # ... and let it drive the illness length too: a slow start means a long illness
+    recovery = symptom_onset + Int16(1) + round(Int16, dp.illness_length_factor * incubation)
 
-    if should_die
-        # Calculate the time to death
-        death = symptom_onset + gems_rand(rng, dp.symptom_onset_to_death)
-        # return disease progression with death
-        return DiseaseProgression(
-            exposure = tick,
-            infectiousness_onset = symptom_onset, # let infectiousness begin with symptoms
-            symptom_onset = symptom_onset,
-            death = death
-        )
-    else
-        # Calculate the time to recovery
-        recovery = symptom_onset + gems_rand(rng, dp.symptom_onset_to_recovery)
-        return DiseaseProgression(
-            exposure = tick,
-            infectiousness_onset = symptom_onset, # let infectiousness begin with symptoms
-            symptom_onset = symptom_onset,
-            recovery = recovery
-        )
-    end
+    return DiseaseProgression(
+        exposure = tick,
+        infectiousness_onset = symptom_onset, # infectiousness begins with symptoms
+        symptom_onset = symptom_onset,
+        recovery = recovery)
 end
 
 # set up a disease progression instance
-my_prog = MyProgression(
-    death_probability = 0.2, # 20% will die
-    exposure_to_symptom_onset = Poisson(1),
-    symptom_onset_to_death = Poisson(3), # if people die, it will happen after ~3 days
-    symptom_onset_to_recovery = Poisson(20) # if people recover, it will take ~20 days
-)
+my_prog = CorrelatedProgression(
+    exposure_to_symptom_onset = Poisson(4),
+    illness_length_factor = 3.0) # each incubation day adds ~3 days of illness
 
-# set up a pathogen with the new progression category
-p = Pathogen(
-    name = "TestProgression",
-    progressions = [my_prog]
-)
-
-# run a simulation with the new progression type
+p = Pathogen(name = "TestProgression", progressions = [my_prog])
 sim = Simulation(pathogen = p)
 run!(sim)
+```
+
+Every infection now follows this custom timeline, with illness length tied to each individual's incubation period rather than drawn independently.
+
+!!! info "DiseaseProgression struct"
+    The `calculate_progression()` needs to return a `DiseaseProgression` struct. This struct contains discrete values for the time points when an individual transitions from one disease state into another. These events are: `exposure`, `infectiousness_onset`, `symptom_onset`, `severeness_onset`, `critical_onset`, `critical_offset`, `severeness_offset`, and `recovery`. The `DiseaseProgression` struct does internal validity checks (e.g., to prevent an individual from reaching critical severity without first passing through severeness onset). Please look up the `DiseaseProgression` documentation.
+
+## [Custom Health Progression](@id custom-health-progression)
+
+Hospitalization, ICU, ventilation, and death are decided separately from the disease timeline, by a `HealthProgression`. Unlike a disease progression, it sees *all* of a host's active infections at once and folds them into one host-level care timeline, so a co-infected host's outcome is decided jointly rather than by whichever infection "wins".
+
+By default, GEMS applies a `DefaultHealthProgression`: `Severe` cases may be hospitalized, and `Critical` cases may escalate to ICU or ventilation and carry a death risk.
+
+!!! tip "Single-pathogen convenience: inline care parameters"
+    For a single pathogen you don't need a custom policy. Write the care parameters straight into the `Severe`/`Critical` progression and they are routed into the default policy automatically:
+    ```julia
+    Critical(...; hospital_probability = 0.9, hospital_to_icu_probability = 0.6, death_probability = 0.25)
+    ```
+    See the [config reference](@ref config-files) for the config-file form and the exact rules.
+
+To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression()` method: it inspects the host's active infections with `each_infection()` and returns a `(CareTimeline, HealthOutcome)` pair.
+
+```julia
+using GEMS, Distributions, Random, Parameters
+import GEMS.calculate_health_progression
+
+# define custom health progression struct
+@with_kw struct SevereWithDeathProgression <: GEMS.HealthProgression
+    hospital_probability::Float64
+    severeness_onset_to_hospital_admission::Union{Distribution, Real}
+    hospital_admission_to_hospital_discharge::Union{Distribution, Real}
+    death_probability::Float64
+    severeness_onset_to_death::Union{Distribution, Real}
+end
+
+# override the health progression function for your struct
+function GEMS.calculate_health_progression(individual::Individual, infections::InfectionRegistry,
+    hp::SevereWithDeathProgression, tick::Int16, rng::Xoshiro)
+
+    # inspect every active infection of this host
+    for infection in each_infection(individual, infections)
+        # a non-severe infection demands no host care
+        infection.severeness_onset < 0 && continue
+
+        # a share of severe cases die (without any hospitalization) ...
+        if gems_rand(rng) <= hp.death_probability
+            death = round(Int16, infection.severeness_onset +
+                GEMS._rand_val(hp.severeness_onset_to_death, rng))
+            return CareTimeline(), HealthOutcome(death = death, death_pathogen_id = infection.pathogen_id)
+
+        # ... and a share are admitted to a normal ward
+        elseif gems_rand(rng) <= hp.hospital_probability
+            admission = round(Int16, infection.severeness_onset +
+                GEMS._rand_val(hp.severeness_onset_to_hospital_admission, rng))
+            discharge = round(Int16, admission +
+                GEMS._rand_val(hp.hospital_admission_to_hospital_discharge, rng))
+            return CareTimeline(hospital_admission = admission, hospital_discharge = discharge), HealthOutcome()
+        end
+    end
+
+    # nobody demands care -> empty timeline, no death
+    return CareTimeline(), HealthOutcome()
+end
+```
+
+Now pass your policy to the `Simulation` via `health_progression`, reusing the built-in `Severe` progression so infections reach the severe state it reacts to:
+
+```julia
+sev = Severe(
+    exposure_to_infectiousness_onset = Poisson(1),
+    infectiousness_onset_to_symptom_onset = Poisson(1),
+    symptom_onset_to_severeness_onset = Poisson(1),
+    severeness_onset_to_severeness_offset = Poisson(7),
+    severeness_offset_to_recovery = Poisson(4))
+
+p = Pathogen(name = "SevereDisease", progressions = [sev])
+
+hp = SevereWithDeathProgression(
+    hospital_probability = 0.5, # 50% of severe cases are hospitalized
+    severeness_onset_to_hospital_admission = Poisson(2),
+    hospital_admission_to_hospital_discharge = Poisson(10),
+    death_probability = 0.15,   # 15% of severe cases die, without hospitalization
+    severeness_onset_to_death = Poisson(5))
+
+sim = Simulation(pathogen = p, health_progression = hp)
+run!(sim)
 rd = ResultData(sim)
-gemsplot(rd, type = (:TickCases, :InfectionDuration, :ProgressionCategories))
+gemsplot(rd, type = :TickCases)
 ```
 
 **Plot**
 
 ```@raw html
 <p align="center">
-    <img src="../assets/tutorials/tut_advanced_progression.png" width="60%"/>
+    <img src="../assets/tutorials/tut_advanced_health-progression.png" width="60%"/>
 </p>
 ```
 
-The plots show that all progressions now follow your new custom `MyProgression` type.
-The middle plot suggests two peaks in disease durations.
-The lower (left) peak is caused by the dying individuals and the higher (right) peak by the recovering individuals.
+The `deaths` series of the `:TickCases` plot now shows deaths from `severe` cases that never pass through the ICU. The `CareTimeline` and `HealthOutcome` types are documented in the [Health Progression](@ref) API section.
 
-!!! info "DiseaseProgression struct"
-    The `calculate_progression()` needs to return a `DiseaseProgression` struct. This struct contains discrete values for time points when an individual transitions from one disease state into another. These events are: `exposure`,  `infectiousness_onset`, `symptom_onset`, `severeness_onset`, `hospital_admission`, `icu_admission`, `icu_discharge`, `ventilation_admission`, `ventilation_discharge`, `hospital_discharge`, `severeness_offset`, `recovery`, `death`. The `DiseaseProgression` struct does internal validity checks (e.g., to prevent individuals from being released from hospital without being admitted). Please look up the `DiseaseProgression` documentation.
+As with the other custom types, you can also configure the policy from a config file via the top-level `[HealthProgression]` section:
+
+```@TOML
+### top-level HealthProgression section of the config file ###
+
+[HealthProgression]
+    type = "SevereWithDeathProgression"
+    [HealthProgression.parameters]
+        hospital_probability = 0.5
+        death_probability = 0.15
+        [HealthProgression.parameters.severeness_onset_to_hospital_admission]
+            distribution = "Poisson"
+            parameters = [2]
+        [HealthProgression.parameters.hospital_admission_to_hospital_discharge]
+            distribution = "Poisson"
+            parameters = [10]
+        [HealthProgression.parameters.severeness_onset_to_death]
+            distribution = "Poisson"
+            parameters = [5]
+```
+
+!!! warning "Module Visibility"
+    As with custom transmission functions and progressions, if you define `SevereWithDeathProgression` in an external script or module, make sure it is loaded into your Julia environment *before* you initialize `Simulation("config.toml")`. The TOML parser needs the struct definition to exist in the global scope to build it.
 
 ## Custom Progression Assignment
 
@@ -381,20 +459,20 @@ using Parameters, Random
 end
 ```
 
-Next, extend the `GEMS.assign` function. This function takes the individual, your custom assignment struct, and a random number generator. It must return the `DataType` of the progression category the individual should be assigned to (e.g., returning the type `Symptomatic`, not an instance of it).
+Next, extend the `GEMS.assign` function. This function takes the individual, your custom assignment struct, and a random number generator. It must return the `DataType` of the progression category the individual should be assigned to (e.g., returning the type `Mild`, not an instance of it).
 
 ```julia
 function GEMS.assign(individual::Individual, pa::VaccBasedAssignment, rng::AbstractRNG)
     
     # Check the custom attribute we might have assigned during population creation
     if individual.number_of_vaccinations > 0
-        return Symptomatic # Vaccinated individuals always get a mild/symptomatic track
+        return Mild # Vaccinated individuals always get a mild track
     else
         # Unvaccinated individuals have a risk of severe progression
         if rand(rng) < pa.prob_severe_unvaxxed
             return Severe
         else
-            return Symptomatic
+            return Mild
         end
     end
 end

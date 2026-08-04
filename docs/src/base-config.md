@@ -19,11 +19,11 @@ This list shows the parameters that are applied when spawning a simulation witho
 | **Pathogen** | |
 | Name | `Covid19` |
 | Transmission rate | `20%` infection chance for each contact (Constant Transmission Rate) |
-| Progression assignment | Stratified by age groups (`-14`, `15-65`, `66-`) across 5 categories (`Asymptomatic`, `Symptomatic`, `Severe`, `Hospitalized`, `Critical`) |
+| Progression assignment | Stratified by age groups (`-14`, `15-65`, `66-`) across 4 categories (`Asymptomatic`, `Mild`, `Severe`, `Critical`) |
 | **Asymptomatic Progression** | |
 | Time to infectiousness | `1` day after exposure (Poisson-distributed) |
 | Time to recovery | `8` days after infectiousness onset (Poisson-distributed) |
-| **Symptomatic Progression** | |
+| **Mild Progression** | |
 | Time to infectiousness | `1` day after exposure (Poisson-distributed) |
 | Time to symptom onset | `1` day after infectiousness onset (Poisson-distributed) |
 | Time to recovery | `7` days after symptom onset (Poisson-distributed) |
@@ -33,26 +33,21 @@ This list shows the parameters that are applied when spawning a simulation witho
 | Time to severeness onset | `1` day after symptom onset (Poisson-distributed) |
 | Time to severeness offset | `7` days after severeness onset (Poisson-distributed) |
 | Time to recovery | `4` days after severeness offset (Poisson-distributed) |
-| **Hospitalized Progression** | |
+| **Critical Progression** (disease tier only; hospital/ICU/death are decided by the `HealthProgression`, below) | |
 | Time to infectiousness | `1` day after exposure (Poisson-distributed) |
 | Time to symptom onset | `1` day after infectiousness onset (Poisson-distributed) |
 | Time to severeness onset | `1` day after symptom onset (Poisson-distributed) |
-| Time to hospital admission | `2` days after severeness onset (Poisson-distributed) |
-| Time to hospital discharge | `7` days after hospital admission (Poisson-distributed) |
-| Time to severeness offset | `3` days after hospital discharge (Poisson-distributed) |
+| Time to critical onset | `2` days after severeness onset (Poisson-distributed) |
+| Time to critical offset | `7` days after critical onset (Poisson-distributed) |
+| Time to severeness offset | `3` days after critical offset (Poisson-distributed) |
 | Time to recovery | `4` days after severeness offset (Poisson-distributed) |
-| **Critical Progression** | |
-| Critical Death Rate | `30%` for cases hitting the critical ICU pathway |
-| Time to infectiousness | `1` day after exposure (Poisson-distributed) |
-| Time to symptom onset | `1` day after infectiousness onset (Poisson-distributed) |
-| Time to severeness onset | `1` day after symptom onset (Poisson-distributed) |
-| Time to hospital admission | `2` days after severeness onset (Poisson-distributed) |
-| Time to ICU admission | `2` days after hospital admission (Poisson-distributed) |
-| Time to ICU discharge | `7` days after ICU admission (Poisson-distributed, if recovering) |
-| Time to hospital discharge | `7` days after ICU discharge (Poisson-distributed, if recovering) |
-| Time to severeness offset | `3` days after hospital discharge (Poisson-distributed, if recovering) |
-| Time to recovery | `4` days after severeness offset (Poisson-distributed, if recovering) |
-| Time to death | `10` days after ICU admission (Poisson-distributed, if dying) |
+| **Health Progression** (host-level care/death; folds all of a host's active infections) | |
+| Severe-tier hospital probability | `5%`; admitted `2` days after severeness onset, ward stay `10` days (Poisson-distributed) |
+| Critical-tier hospital probability | `95%`; admitted `1` day after critical onset |
+| Critical-tier ICU probability | `50%` of hospitalized; admitted `1` day after hospital admission, ICU stay `8` days if not ventilated |
+| Critical-tier ventilation probability | `0%` (disabled by default) |
+| Critical-tier death probability | `30%`, ungated by hospital/ICU; `7` days after critical onset |
+| Ward stay after ICU discharge | `5` days (Poisson-distributed) |
 | **Contacts** | |
 | Household contact rate | `1` contact per day (poisson distributed), randomly drawn from member list |
 | School contact rate | `1` contact per day (poisson distributed), randomly drawn from member list |

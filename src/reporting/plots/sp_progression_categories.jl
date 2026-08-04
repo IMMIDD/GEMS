@@ -30,7 +30,7 @@ end
 ###
 
 function _progression_categories_subplot(infs_sub; plotargs...)
-    target_order = ["Asymptomatic", "Symptomatic", "Severe", "Hospitalized", "Critical"]
+    target_order = ["Asymptomatic", "Mild", "Severe", "Critical"]
     order_dict = Dict(val => i for (i, val) in enumerate(target_order))
     sort_cats(cats) = sort(cats, by = x -> (get(order_dict, string(x), typemax(Int)), string(x)))
     bin_age(vec) = (vec .÷ 5) .* 5

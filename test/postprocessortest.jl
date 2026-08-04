@@ -211,4 +211,46 @@ import GEMS: _mean_contacts_per_age_group,
         @test _weighted_error_sum(pp, Household, cm_bounded; fit_to_reference_matrix=true) >= 0.0
 
     end
+
+    @testset "Health episodes" begin
+        # a pre-decoupling config that reliably produces hospital + ICU stays (and deaths)
+        hsim = Simulation(configfile = joinpath(basef, "test/testdata/TestConf_old.toml"))
+        run!(hsim)
+        hpp = PostProcessor(hsim)
+
+        ep = health_episodes(hpp)
+        @test ep isa DataFrame
+        @test names(ep) == ["host_id", "care_level", "admission_tick", "discharge_tick"]
+        @test nrow(ep) > 0
+        @test all(ep.discharge_tick .>= ep.admission_tick)                    # valid intervals
+        @test issubset(Set(ep.care_level), Set([:hospital, :icu, :ventilation]))
+
+        hosp_ep = subset(ep, :care_level => ByRow(==(:hospital)))
+        icu_ep = subset(ep, :care_level => ByRow(==(:icu)))
+        @test nrow(hosp_ep) > 0                                               # Hospitalized + LegacyCritical
+        @test nrow(icu_ep) > 0                                                # LegacyCritical escalates to ICU
+        @test !(:ventilation in ep.care_level)                               # legacy never ventilates
+
+        # one episode per discharge event reconciles with the per-tick occupancy report
+        hdf = GEMS._hospital_df(hpp)
+        @test nrow(hosp_ep) == sum(hdf.hospital_discharges)
+        @test nrow(icu_ep) == sum(hdf.icu_discharges)
+
+        # ladder: each ICU episode sits inside a hospital episode of the same host
+        for g in groupby(ep, :host_id)
+            h = subset(g, :care_level => ByRow(==(:hospital)), view = true)
+            ic = subset(g, :care_level => ByRow(==(:icu)), view = true)
+            for i in 1:nrow(ic)
+                @test any((h.admission_tick .<= ic.admission_tick[i]) .&
+                          (h.discharge_tick .>= ic.discharge_tick[i]))
+            end
+        end
+
+        # ResultData: stored in default, omitted from light (raw per-episode data, like `infections`)
+        rd = ResultData(hpp)
+        @test health_episodes(rd) isa DataFrame
+        @test nrow(health_episodes(rd)) == nrow(ep)
+        rd_light = ResultData(hpp, style = "LightRD")
+        @test isempty(health_episodes(rd_light))
+    end
 end

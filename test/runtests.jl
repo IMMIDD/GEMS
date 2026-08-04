@@ -25,6 +25,7 @@ using Suppressor
         "populationstest.jl",
         "pathogentest.jl",
         "diseaseprogressiontest.jl",
+        "healthprogressiontest.jl",
         "settingstest.jl",
         "simulationtest.jl",
         "infectionstest.jl",

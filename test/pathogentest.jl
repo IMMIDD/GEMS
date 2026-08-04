@@ -22,7 +22,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         infectiousness_onset_to_recovery = poi5
     )
 
-    pr_sympt = Symptomatic(
+    pr_mild = Mild(
         exposure_to_infectiousness_onset = poi2,
         infectiousness_onset_to_symptom_onset = poi1,
         symptom_onset_to_recovery = poi7
@@ -36,32 +36,18 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         severeness_offset_to_recovery = poi4
     )
 
-    pr_hosp = Hospitalized(
-        exposure_to_infectiousness_onset = poi1,
-        infectiousness_onset_to_symptom_onset = poi1,
-        symptom_onset_to_severeness_onset = poi1,
-        severeness_onset_to_hospital_admission = poi2,
-        hospital_admission_to_hospital_discharge = poi7,
-        hospital_discharge_to_severeness_offset = poi3,
-        severeness_offset_to_recovery = poi4
-    )
-
     pr_crit = Critical(
         exposure_to_infectiousness_onset = poi1,
         infectiousness_onset_to_symptom_onset = poi1,
         symptom_onset_to_severeness_onset = poi1,
-        severeness_onset_to_hospital_admission = poi2,
-        hospital_admission_to_icu_admission = poi2,
-        icu_admission_to_icu_discharge = poi7,
-        icu_discharge_to_hospital_discharge = poi7,
-        hospital_discharge_to_severeness_offset = poi3,
-        severeness_offset_to_recovery = poi4,
-        icu_admission_to_death = poi10,
-        death_probability = 0.3
+        severeness_onset_to_critical_onset = poi2,
+        critical_onset_to_critical_offset = poi7,
+        critical_offset_to_severeness_offset = poi3,
+        severeness_offset_to_recovery = poi4
     )
 
     # progression assignment
-    paf = RandomProgressionAssignment([Asymptomatic, Symptomatic, Severe, Hospitalized, Critical])
+    paf = RandomProgressionAssignment([Asymptomatic, Mild, Severe, Critical])
 
     # transmission function
     ctf = ConstantTransmissionRate(transmission_rate = 0.25)
@@ -71,17 +57,16 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         p = Pathogen(
             name = "TestPathogen",
             id = 5,
-            progressions = [pr_asymp, pr_sympt, pr_sev, pr_hosp, pr_crit],
+            progressions = [pr_asymp, pr_mild, pr_sev, pr_crit],
             progression_assignment = paf,
             transmission_function = ctf,
         )
         @test name(p) == "TestPathogen"
         @test id(p) == 5
-        @test length(progressions(p)) == 5
+        @test length(progressions(p)) == 4
         @test get_progression(p, Asymptomatic) === pr_asymp
-        @test get_progression(p, Symptomatic) === pr_sympt
+        @test get_progression(p, Mild) === pr_mild
         @test get_progression(p, Severe) === pr_sev
-        @test get_progression(p, Hospitalized) === pr_hosp
         @test get_progression(p, Critical) === pr_crit
         @test progression_assignment(p) === paf
         @test transmission_function(p) === ctf
@@ -130,10 +115,10 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         @test pr_asymp.exposure_to_infectiousness_onset === poi2
         @test pr_asymp.infectiousness_onset_to_recovery === poi5
 
-        # symptomatic
-        @test pr_sympt.exposure_to_infectiousness_onset === poi2
-        @test pr_sympt.infectiousness_onset_to_symptom_onset === poi1
-        @test pr_sympt.symptom_onset_to_recovery === poi7
+        # mild
+        @test pr_mild.exposure_to_infectiousness_onset === poi2
+        @test pr_mild.infectiousness_onset_to_symptom_onset === poi1
+        @test pr_mild.symptom_onset_to_recovery === poi7
 
         # severe
         @test pr_sev.exposure_to_infectiousness_onset === poi2
@@ -142,32 +127,66 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         @test pr_sev.severeness_onset_to_severeness_offset === poi3
         @test pr_sev.severeness_offset_to_recovery === poi4
 
-        # hospitalized
-        @test pr_hosp.exposure_to_infectiousness_onset === poi1
-        @test pr_hosp.infectiousness_onset_to_symptom_onset === poi1
-        @test pr_hosp.symptom_onset_to_severeness_onset === poi1
-        @test pr_hosp.severeness_onset_to_hospital_admission === poi2
-        @test pr_hosp.hospital_admission_to_hospital_discharge === poi7
-        @test pr_hosp.hospital_discharge_to_severeness_offset === poi3
-        @test pr_hosp.severeness_offset_to_recovery === poi4
-
         # critical
         @test pr_crit.exposure_to_infectiousness_onset === poi1
         @test pr_crit.infectiousness_onset_to_symptom_onset === poi1
         @test pr_crit.symptom_onset_to_severeness_onset === poi1
-        @test pr_crit.severeness_onset_to_hospital_admission === poi2
-        @test pr_crit.hospital_admission_to_icu_admission === poi2
-        @test pr_crit.icu_admission_to_icu_discharge === poi7
-        @test pr_crit.icu_discharge_to_hospital_discharge === poi7
-        @test pr_crit.hospital_discharge_to_severeness_offset === poi3
+        @test pr_crit.severeness_onset_to_critical_onset === poi2
+        @test pr_crit.critical_onset_to_critical_offset === poi7
+        @test pr_crit.critical_offset_to_severeness_offset === poi3
         @test pr_crit.severeness_offset_to_recovery === poi4
-        @test pr_crit.icu_admission_to_death === poi10
-        @test pr_crit.death_probability == 0.3
+        @test isnothing(pr_crit.care)
+    end
+
+    @testset "Embedded Health Profile" begin
+        # flat health profile parameters embedded directly in a Critical progression
+        crit_with_care = Critical(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi7,
+            critical_offset_to_severeness_offset = poi3,
+            severeness_offset_to_recovery = poi4,
+            hospital_probability = 0.9,
+            hospital_to_icu_probability = 0.5
+        )
+        @test crit_with_care.care isa CriticalHealthProfile
+        @test crit_with_care.care.hospital_probability == 0.9
+        @test crit_with_care.care.hospital_to_icu_probability == 0.5
+
+        # care= object and flat kwargs are mutually exclusive
+        @test_throws ArgumentError Critical(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi7,
+            critical_offset_to_severeness_offset = poi3,
+            severeness_offset_to_recovery = poi4,
+            care = CriticalHealthProfile(),
+            hospital_probability = 0.9
+        )
+
+        # unknown embedded parameter errors
+        @test_throws ArgumentError Critical(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi7,
+            critical_offset_to_severeness_offset = poi3,
+            severeness_offset_to_recovery = poi4,
+            bogus_param = 3
+        )
+
+        # a Severe tier with no embedded care leaves `.care` as nothing
+        @test isnothing(pr_sev.care)
     end
 
     @testset "Custom Progression Category" begin
         # define custom progression category
-        # similar to Symptomatic but with an extra custom parameter
+        # similar to Mild but with an extra custom parameter
         mutable struct TestProgression <: GEMS.ProgressionCategory
             exposure_to_infectiousness_onset::Distribution
             infectiousness_onset_to_symptom_onset::Distribution
@@ -232,7 +251,7 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
     @testset "Progression Assignment" begin
         ### RANDOM PROGRESSION ASSIGNMENT
         # THINGS THAT SHOULD WORK
-        pgrs = [Asymptomatic, Symptomatic, Severe, Hospitalized, Critical]
+        pgrs = [Asymptomatic, Mild, Severe, Critical]
         rpa = RandomProgressionAssignment(pgrs) 
         i = individuals(sim)[1]
 
@@ -243,15 +262,15 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         # empty progression categories
         @test_throws ArgumentError RandomProgressionAssignment(DataType[])
         # non-existing progression category
-        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Household])
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Mild, Household])
         # duplicate progression category
-        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Symptomatic])
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Mild, Mild])
         
 
         ### AGE-BASED PROGRESSION ASSIGNMENT
         # THINGS THAT SHOULD WORK
         age_groups = ["0-19", "20-39", "40-59", "60-"]
-        progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Critical"]
+        progression_categories = ["Asymptomatic", "Mild", "Severe", "Critical"]
         stratification_matrix = [
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -270,9 +289,9 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             if age(ind) <= 19
                 @test pc == Asymptomatic
             elseif age(ind) <= 39
-                @test pc == Symptomatic
+                @test pc == Mild
             elseif age(ind) <= 59
-                @test pc == Hospitalized
+                @test pc == Severe
             else
                 @test pc == Critical
             end
@@ -321,13 +340,13 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         # non-existing progression category
         @test_throws ArgumentError AgeBasedProgressionAssignment(
             age_groups = age_groups,
-            progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "NonExistingProgression"],
+            progression_categories = ["Asymptomatic", "Mild", "Severe", "NonExistingProgression"],
             stratification_matrix = stratification_matrix
         )
         # duplicate progression category
         @test_throws ArgumentError AgeBasedProgressionAssignment(
             age_groups = age_groups,
-            progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Symptomatic"],
+            progression_categories = ["Asymptomatic", "Mild", "Severe", "Mild"],
             stratification_matrix = stratification_matrix
         )
 
@@ -383,13 +402,13 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         end
 
         # create instance
-        eo_pa = EvenOddProgressionAssignment(Symptomatic, Asymptomatic)
+        eo_pa = EvenOddProgressionAssignment(Mild, Asymptomatic)
 
         # create pathogen with custom progression assignment
         p_eo = Pathogen(
             name = "EvenOddPathogen",
             id = 20,
-            progressions = [pr_asymp, pr_sympt],
+            progressions = [pr_asymp, pr_mild],
             progression_assignment = eo_pa,
             transmission_function = ctf,
         )
@@ -403,10 +422,10 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
         # make sure that there were infections
         @test length(flat_id_b) > 0 
 
-        # check if even IDs got Symptomatic and odd IDs got Asymptomatic
+        # check if even IDs got Mild and odd IDs got Asymptomatic
         for (ind_id, pc) in zip(flat_id_b, flat_pc)
             if iseven(ind_id)
-                @test pc == :Symptomatic
+                @test pc == :Mild
             else
                 @test pc == :Asymptomatic
             end
@@ -1109,12 +1128,11 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
                 severeness_onset=Int16(8), severeness_offset=Int16(20), recovery=Int16(25)))
             @test calculate_infectiousness(p, state_sev, ind, Int16(10), rng) == Int8(90)
 
-            # critical: in ICU window
+            # critical: in critical window
             state_crit = mk_state(DiseaseProgression(
                 exposure=Int16(1), infectiousness_onset=Int16(3), symptom_onset=Int16(5),
                 severeness_onset=Int16(8), severeness_offset=Int16(25),
-                hospital_admission=Int16(9), icu_admission=Int16(10), icu_discharge=Int16(20),
-                hospital_discharge=Int16(25), recovery=Int16(30)))
+                critical_onset=Int16(10), critical_offset=Int16(20), recovery=Int16(30)))
             @test calculate_infectiousness(p, state_crit, ind, Int16(12), rng) == Int8(100)
         end
 
