@@ -39,6 +39,14 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     lon::Vector{Vector{Float32}} = [Vector{Float32}() for _ in 1:Threads.maxthreadid()]
     ags::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     source_infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+
+    # Individual id range of the logged population
+    minid::Int32 = Int32(1)
+    maxid::Int32 = Int32(0)
+
+    # Inverted infecter -> infectee index, built lazily on the first get_infections_between
+    # call. Stays `nothing` in runs that never trace infectious contacts.
+    infecter_index::Union{Nothing, InfecterIndex} = nothing
 end
 
 function log!(
@@ -89,6 +97,10 @@ function log!(
     push!(logger.ags[tid], ags)
     push!(logger.source_infection_id[tid], source_infection_id)
 
+    # keep the infecter index up to date once it exists (see get_infections_between)
+    idx = logger.infecter_index
+    idx === nothing || register!(idx, a, b, tick)
+
     Threads.atomic_xchg!(logger.last_modified_tick, tick)
 
     return(new_infection_id)
@@ -131,21 +143,36 @@ function ticks(logger::InfectionLogger)
     return vcat(logger.tick...)
 end
 
+
+"""
+    _build_infecter_index!(logger::InfectionLogger)
+
+Creates the logger's `InfecterIndex`, backfilled from everything logged so far and sized
+from the population's declared id range.
+"""
+function _build_infecter_index!(logger::InfectionLogger)
+    idx = InfecterIndex(logger.id_a, logger.id_b, logger.tick;
+        minid = logger.minid, maxid = logger.maxid)
+    logger.infecter_index = idx
+    return idx
+end
+
+"""
+    get_infections_between(logger::InfectionLogger, infecter::Int32, start_tick::Int16, end_tick::Int16)
+
+Returns the ids of all individuals `infecter` infected in `[start_tick, end_tick]`, in
+chronological order.
+
+The first call builds an `InfecterIndex` over the infections logged so far, which `log!`
+then maintains incrementally. Runs that never call this carry no index and pay nothing.
+Not thread-safe: call it from a serial phase, as `process_events!` does.
+"""
 function get_infections_between(logger::InfectionLogger, infecter::Int32, start_tick::Int16, end_tick::Int16)
-    result = Vector{Int32}()
+    idx = logger.infecter_index
+    idx === nothing && (idx = _build_infecter_index!(logger))
 
-    for tid in 1:Threads.maxthreadid()
-        start_idx = searchsortedfirst(logger.tick[tid], start_tick)
-        end_idx = searchsortedlast(logger.tick[tid], end_tick)
-
-        @inbounds for i in start_idx:end_idx
-            if logger.id_a[tid][i] == infecter
-                push!(result, logger.id_b[tid][i])
-            end
-        end
-    end
-
-    return result
+    _merge_staged!(idx)
+    return _walk_infections_between(idx, infecter, start_tick, end_tick)
 end
 
 function save(logger::InfectionLogger, path::AbstractString)

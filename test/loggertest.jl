@@ -149,6 +149,163 @@
 
         end
 
+        @testset "Infecter Index" begin
+
+            # minimal infection record; only a, b and tick matter for the index
+            function log_infection!(il, a, b, t)
+                log!(il, Int32(a), Int32(b), Int8(1), :Asymptomatic, Int16(t),
+                    Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
+                    Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
+                    Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
+            end
+
+            query(il, a, t0, t1) = get_infections_between(il, Int32(a), Int16(t0), Int16(t1))
+
+            # independent reference implementation: binary-search the tick window in every
+            # shard and scan it. This is what the logger did before the index existed and
+            # it is deliberately kept here rather than in src, so the indexed path is
+            # checked against something that shares none of its code.
+            function scan(il, a, t0, t1)
+                infecter, start_tick, end_tick = Int32(a), Int16(t0), Int16(t1)
+                result = Vector{Int32}()
+                for tid in 1:Threads.maxthreadid()
+                    first_idx = searchsortedfirst(il.tick[tid], start_tick)
+                    last_idx = searchsortedlast(il.tick[tid], end_tick)
+                    for i in first_idx:last_idx
+                        il.id_a[tid][i] == infecter && push!(result, il.id_b[tid][i])
+                    end
+                end
+                return result
+            end
+
+            @testset "Lazy Construction and Backfill" begin
+                il = InfectionLogger()
+
+                # infections logged before the first query must still be found
+                log_infection!(il, 5, 10, 0)
+                log_infection!(il, 5, 11, 1)
+                log_infection!(il, 7, 12, 1)
+                @test il.infecter_index === nothing
+
+                @test query(il, 5, 0, 5) == Int32[10, 11]
+                @test il.infecter_index isa GEMS.InfecterIndex
+                @test query(il, 7, 0, 5) == Int32[12]
+                @test query(il, 9, 0, 5) == Int32[]
+            end
+
+            @testset "Incremental Updates" begin
+                il = InfectionLogger()
+                log_infection!(il, 5, 10, 0)
+                @test query(il, 5, 0, 5) == Int32[10]
+
+                # logged after the index exists, so this goes through register!/_merge_staged!
+                log_infection!(il, 5, 11, 2)
+                log_infection!(il, 5, 12, 3)
+                @test query(il, 5, 0, 5) == Int32[10, 11, 12]
+            end
+
+            @testset "Tick Window Boundaries" begin
+                il = InfectionLogger()
+                for (b, t) in [(10, 0), (11, 2), (12, 4), (13, 6)]
+                    log_infection!(il, 5, b, t)
+                end
+
+                @test query(il, 5, 2, 4) == Int32[11, 12]     # inclusive both ends
+                @test query(il, 5, 3, 3) == Int32[]
+                @test query(il, 5, 0, 6) == Int32[10, 11, 12, 13]
+                @test query(il, 5, 7, 9) == Int32[]
+            end
+
+            @testset "Head Sizing From Declared Range" begin
+                # a real population model occupies a slice of a national id space, so
+                # minid is far above 1. head must be sized by the range, not by maxid.
+                il = InfectionLogger(minid = Int32(72_780_390), maxid = Int32(72_784_389))
+                log_infection!(il, 72_780_500, 72_781_000, 0)
+                log_infection!(il, 72_780_500, 72_781_001, 1)
+
+                @test query(il, 72_780_500, 0, 5) == Int32[72_781_000, 72_781_001]
+                @test length(il.infecter_index.head) == 4000
+                @test il.infecter_index.offset == Int32(72_780_390)
+
+                # ids outside the declared range return empty rather than erroring
+                @test query(il, 72_780_389, 0, 5) == Int32[]
+                @test query(il, 72_784_390, 0, 5) == Int32[]
+            end
+
+            @testset "Ids Outside The Index Range" begin
+                # a logger with no declared range covers only the ids it was backfilled
+                # from; anything beyond that is a mismatch and must not be dropped silently
+                il = InfectionLogger()
+                log_infection!(il, 5000, 10, 0)
+                @test query(il, 5000, 0, 5) == Int32[10]
+
+                log_infection!(il, 500_000, 20, 1)
+                @test_throws ArgumentError query(il, 5000, 0, 5)
+            end
+
+            @testset "Invalid Infecters" begin
+                il = InfectionLogger()
+                log_infection!(il, -1, 10, 0)    # seed infection, no infecter
+                log_infection!(il, 5, 11, 0)
+
+                @test query(il, -1, 0, 5) == Int32[]
+                @test query(il, 0, 0, 5) == Int32[]
+                @test query(il, 10_000_000, 0, 5) == Int32[]
+                @test query(il, 5, 0, 5) == Int32[11]
+            end
+
+            @testset "Equivalence With Reference Scan" begin
+                il = InfectionLogger()
+                rng = Xoshiro(42)
+                next_infectee = 1000
+                for t in 0:30
+                    for _ in 1:20
+                        # unique infectee ids, so tick can be recovered from an id below
+                        next_infectee += 1
+                        log_infection!(il, rand(rng, 1:50), next_infectee, t)
+                    end
+                end
+
+                # the indexed path and the full scan must agree on every query
+                for a in 1:50, t0 in 0:5:30, t1 in t0:5:30
+                    @test sort(query(il, a, t0, t1)) == sort(scan(il, a, t0, t1))
+                end
+
+                # and the indexed path returns them in chronological order
+                df = dataframe(il)
+                ticks = Dict(df.id_b[i] => df.tick[i] for i in eachindex(df.id_b))
+                for a in 1:50
+                    @test issorted([ticks[b] for b in query(il, a, 0, 30)])
+                end
+            end
+
+            @testset "Untraced Runs Carry No Index" begin
+                sim = Simulation(pop_size = 1000, seed = 7)
+                run!(sim, with_progressbar = false)
+                @test infectionlogger(sim).infecter_index === nothing
+            end
+
+            @testset "Reset Drops The Index" begin
+                sim = Simulation(pop_size = 1000, seed = 7)
+                run!(sim, with_progressbar = false)
+
+                il = infectionlogger(sim)
+                infecter = first(a for a in dataframe(il).id_a if a > 0)
+                before = query(il, infecter, -1, tick(sim))
+                @test il.infecter_index isa GEMS.InfecterIndex
+
+                GEMS.reset!(sim)
+                @test infectionlogger(sim).infecter_index === nothing
+
+                # the rebuilt index on the fresh logger must agree with the fresh scan
+                run!(sim, with_progressbar = false)
+                il2 = infectionlogger(sim)
+                @test sort(query(il2, infecter, -1, tick(sim))) ==
+                    sort(scan(il2, Int32(infecter), Int16(-1), tick(sim)))
+                @test !isempty(before)
+            end
+        end
+
     end
 
     @testset "VaccinationLogger" begin

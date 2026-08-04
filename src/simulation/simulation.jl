@@ -277,7 +277,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             [TestRegistry() for _ in 1:num_shards],
 
             # logger
-            InfectionLogger(),
+            InfectionLogger(minid = population.minid, maxid = population.maxid),
             DeathLogger(),
             HealthLogger(),
             TestLogger(),
@@ -2138,7 +2138,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     reset_tick!(simulation)
 
     # Reset all loggers
-    simulation.infectionlogger = InfectionLogger()
+    pop = population(simulation)
+    simulation.infectionlogger = InfectionLogger(minid = pop.minid, maxid = pop.maxid)
     simulation.deathlogger = DeathLogger()
     simulation.healthlogger = HealthLogger()
     simulation.testlogger = TestLogger()
