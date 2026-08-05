@@ -730,22 +730,32 @@ import GEMS: increment!, infected!
         @test count(infected, population(sim_mc)) >= 5
     end
 
-    @testset "Recurring Imports" begin
-        # PERIODIC IMPORT
-        # failing constructors
-        @test_throws ArgumentError PeriodicImport(count = 0, start_tick = 1, stop_tick = 10, interval = 2)
-        @test_throws ArgumentError PeriodicImport(count = 3, start_tick = -1, stop_tick = 10, interval = 2)
-        @test_throws ArgumentError PeriodicImport(count = 3, start_tick = 10, stop_tick = 5, interval = 2)
-        @test_throws ArgumentError PeriodicImport(count = 3, start_tick = 1, stop_tick = 10, interval = 0)
-        # interval wider than the window warns (likely a typo) but still constructs
-        @test_logs (:warn, r"exceeds the window") PeriodicImport(count = 1, start_tick = 1, stop_tick = 5, interval = 10)
+    @testset "Imported Cases" begin
+        # FAILING CONSTRUCTORS
+        @test_throws ArgumentError ImportedCases(count = 0, ticks = 5)
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = -1)
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = Int[])
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = "every week")
+        # window form: missing, unknown and invalid keys
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 1, stop_tick = 10))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 1, stop_tick = 10, interval = 2, rate = 0.5))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = -1, stop_tick = 10, interval = 2))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 10, stop_tick = 5, interval = 2))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 1, stop_tick = 10, interval = 0))
+        # per-import vectors must line up with a schedule that is known upfront
+        @test_throws ArgumentError ImportedCases(count = [1, 2], ticks = [1, 2, 3])
+        @test_throws ArgumentError ImportedCases(count = 2, ticks = [1, 2, 3], ags = [04011000])
+        # a fixed interval wider than the window warns (likely a typo) but still constructs
+        @test_logs (:warn, r"exceeds the window") ImportedCases(count = 1, ticks = (start_tick = 1, stop_tick = 5, interval = 10))
 
+        # WINDOW FORM
         # initialize! stages the schedule but seeds nothing yet
-        cond = PeriodicImport(count = 5, start_tick = 2, stop_tick = 10, interval = 3)
+        cond = ImportedCases(count = 5, ticks = (start_tick = 2, stop_tick = 10, interval = 3))
         sim = Simulation(pop_size = 2000, seed = 1234, start_condition = cond)
         @test sort(collect(keys(seeding_schedule(sim)))) == Int16[2, 5, 8]
         @test all(spec.count == 5 for specs in values(seeding_schedule(sim)) for spec in specs)
         @test count(infected, population(sim)) == 0
+        @test !isempty(@capture_out show(cond))
 
         # stepping through tick 2 fires the first import (5 fresh cases, no spread yet)
         for _ in 1:3 # process ticks 0, 1, 2
@@ -753,45 +763,98 @@ import GEMS: increment!, infected!
         end
         @test count(infected, population(sim)) == 5
 
-        # POISSON IMPORT
-        # failing constructors
-        @test_throws ArgumentError PoissonImport(count = 0, start_tick = 1, stop_tick = 10, rate = 0.5)
-        @test_throws ArgumentError PoissonImport(count = 3, start_tick = 1, stop_tick = 10, rate = 0.0)
-        @test_throws ArgumentError PoissonImport(count = 3, start_tick = 10, stop_tick = 5, rate = 0.5)
-        @test_throws ArgumentError PoissonImport(count = 3, start_tick = -1, stop_tick = 10, rate = 0.5)
+        # reinitialize! rebuilds the schedule rather than duplicating it
+        reinitialize!(sim)
+        @test sort(collect(keys(seeding_schedule(sim)))) == Int16[2, 5, 8]
 
-        # stochastic ticks stay within the window and are reproducible under a fixed seed
-        pcond = PoissonImport(count = 2, start_tick = 5, stop_tick = 200, rate = 0.1)
+        # EXPLICIT TICKS
+        # a range says the same thing as the window above
+        rngsim = Simulation(pop_size = 500, seed = 1234, start_condition = ImportedCases(count = 5, ticks = 2:3:10))
+        @test sort(collect(keys(seeding_schedule(rngsim)))) == Int16[2, 5, 8]
+        # a single tick
+        onesim = Simulation(pop_size = 500, seed = 1, start_condition = ImportedCases(count = 2, ticks = 7))
+        @test collect(keys(seeding_schedule(onesim))) == Int16[7]
+        # a repeated tick schedules two separate imports on it
+        dupsim = Simulation(pop_size = 500, seed = 1,
+            start_condition = ImportedCases(ticks = [3, 3], count = [2, 4]))
+        @test length(seeding_schedule(dupsim)[Int16(3)]) == 2
+        @test sort([s.count for s in seeding_schedule(dupsim)[Int16(3)]]) == [2, 4]
+
+        # OFFSET
+        # a fixed offset shifts the whole schedule
+        offsim = Simulation(pop_size = 500, seed = 1234,
+            start_condition = ImportedCases(count = 5, ticks = (start_tick = 2, stop_tick = 10, interval = 3, offset = 1)))
+        @test sort(collect(keys(seeding_schedule(offsim)))) == Int16[3, 6, 9]
+
+        # STOCHASTIC TIMING
+        # without an offset the first import is pinned to start_tick
+        pcond = ImportedCases(count = 2, ticks = (start_tick = 5, stop_tick = 200, interval = Exponential(10)))
         psim = Simulation(pop_size = 2000, seed = 99, start_condition = pcond)
         pticks = sort(collect(keys(seeding_schedule(psim))))
         @test !isempty(pticks)
         @test all(5 .<= pticks .<= 200)
+        @test minimum(pticks) == Int16(5)
+        # ticks stay reproducible under a fixed seed
         psim2 = Simulation(pop_size = 2000, seed = 99, start_condition = pcond)
         @test sort(collect(keys(seeding_schedule(psim2)))) == pticks
 
-        # stochastic_count draws a per-firing count from Poisson(count) (so counts vary)
-        scond = PeriodicImport(count = 4, start_tick = 1, stop_tick = 30, interval = 1, stochastic_count = true)
+        # drawing the offset too gives a process with nothing pinned to start_tick
+        qcond = ImportedCases(count = 2, ticks = (start_tick = 5, stop_tick = 200, interval = Exponential(10), offset = Exponential(10)))
+        qsim = Simulation(pop_size = 2000, seed = 99, start_condition = qcond)
+        qticks = sort(collect(keys(seeding_schedule(qsim))))
+        @test !isempty(qticks)
+        @test all(5 .< qticks .<= 200)
+
+        # TICKS AS A FUNCTION
+        fcond = ImportedCases(count = 1, ticks = sim -> Int16[gems_rand(rng(sim), 1:20) for _ in 1:5])
+        fsim = Simulation(pop_size = 500, seed = 42, start_condition = fcond)
+        fticks = sort(collect(keys(seeding_schedule(fsim))))
+        @test !isempty(fticks)
+        @test all(1 .<= fticks .<= 20)
+        fsim2 = Simulation(pop_size = 500, seed = 42, start_condition = fcond)
+        @test sort(collect(keys(seeding_schedule(fsim2)))) == fticks
+
+        # COUNT FORMS
+        # a distribution draws a per-import count (so counts vary)
+        scond = ImportedCases(count = Poisson(4), ticks = (start_tick = 1, stop_tick = 30, interval = 1))
         ssim = Simulation(pop_size = 2000, seed = 7, start_condition = scond)
         @test !all(==(4), [spec.count for specs in values(seeding_schedule(ssim)) for spec in specs])
+        # a 0 entry keeps the vector aligned with its ticks but seeds nothing
+        zcond = ImportedCases(count = [0, 6], ticks = [4, 9])
+        zsim = Simulation(pop_size = 500, seed = 1, start_condition = zcond)
+        @test collect(keys(seeding_schedule(zsim))) == Int16[9]
+        @test only(seeding_schedule(zsim)[Int16(9)]).count == 6
+        @test_throws ArgumentError ImportedCases(count = [-1, 6], ticks = [4, 9])
+        # a scalar count of 0 would make the whole condition a no-op and stays rejected
+        @test_throws ArgumentError ImportedCases(count = 0, ticks = [4, 9])
 
-        # regional import: seeded cases land only in the target region
-        rcond = PeriodicImport(count = 3, start_tick = 1, stop_tick = 1, interval = 1, ags = 04011000)
+        # a function sees the tick it is sizing
+        ccond = ImportedCases(count = (sim, t) -> Int(t), ticks = [4, 9])
+        csim = Simulation(pop_size = 500, seed = 1, start_condition = ccond)
+        @test only(seeding_schedule(csim)[Int16(4)]).count == 4
+        @test only(seeding_schedule(csim)[Int16(9)]).count == 9
+
+        # REGIONAL IMPORTS
+        # seeded cases land only in the target region
+        rcond = ImportedCases(count = 3, ticks = 1, ags = 04011000)
         rsim = Simulation(population = "HB", seed = 3, start_condition = rcond)
         step!(rsim); step!(rsim) # process ticks 0, 1 (import fires at tick 1)
         infs = individuals(rsim)[infected.(individuals(rsim))]
         @test length(infs) == 3
         @test all(ags(household(i, rsim)) == AGS(04011000) for i in infs)
 
+        # a per-import region vector is staged entry by entry
+        vcond = ImportedCases(count = 1, ticks = [1, 2], ags = [04011000, 04012000])
+        vsim = Simulation(population = "HB", seed = 3, start_condition = vcond)
+        @test only(seeding_schedule(vsim)[Int16(1)]).ags == 04011000
+        @test only(seeding_schedule(vsim)[Int16(2)]).ags == 04012000
+
         # composes with MultiStartCondition (initial outbreak + ongoing imports)
         mc = MultiStartCondition([InfectedFraction(fraction = 0.01),
-            PeriodicImport(count = 2, start_tick = 3, stop_tick = 20, interval = 3)])
+            ImportedCases(count = 2, ticks = (start_tick = 3, stop_tick = 20, interval = 3))])
         mcsim = Simulation(pop_size = 1000, seed = 5, start_condition = mc)
         @test count(infected, population(mcsim)) == 10 # 1% seeded at t=0; imports not yet fired
         @test !isempty(seeding_schedule(mcsim))
-
-        # reinitialize! rebuilds the schedule rather than duplicating it
-        reinitialize!(sim)
-        @test sort(collect(keys(seeding_schedule(sim)))) == Int16[2, 5, 8]
 
         # individuals_in_ags (promoted helper): correct region membership
         muni = individuals_in_ags(rsim, AGS(04011000))
@@ -801,20 +864,37 @@ import GEMS: increment!, infected!
         @test length(state_pool) >= length(muni)
         @test all(GEMS.in_state(ags(household(i, rsim)), AGS(04000000)) for i in state_pool)
 
-        # CONFIG PARSING: the generic create_start_condition handles the new conditions
-        pc = GEMS.create_start_condition(Dict("type" => "PeriodicImport",
-            "parameters" => Dict("count" => 3, "start_tick" => 5, "stop_tick" => 50, "interval" => 7)))
-        @test pc isa PeriodicImport
-        @test pc.count == 3 && pc.interval == Int16(7)
+        # CONFIG PARSING: explicit ticks as a plain array
+        ec = GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => 3, "ticks" => [5, 12, 19], "ags" => 04011000)))
+        @test ec isa ImportedCases
+        @test ec.ticks == Int16[5, 12, 19]
+        @test ec.count == 3 && ec.ags == 04011000
 
-        poc = GEMS.create_start_condition(Dict("type" => "PoissonImport",
-            "parameters" => Dict("count" => 2, "start_tick" => 5, "stop_tick" => 50, "rate" => 0.2, "ags" => 04011000)))
-        @test poc isa PoissonImport
-        @test poc.rate == 0.2 && poc.ags == 04011000
+        # the window sub-table reaches the constructor with its keys intact
+        wc = GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => 3,
+                "ticks" => Dict("start_tick" => 5, "stop_tick" => 50, "interval" => 7))))
+        @test wc.ticks isa GEMS._ImportWindow
+        @test wc.ticks.start_tick == Int16(5) && wc.ticks.interval == 7.0
+
+        # a distribution nested inside the window sub-table is built by _config_value
+        dc = GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => Dict("distribution" => "Poisson", "parameters" => [3]),
+                "ticks" => Dict("start_tick" => 5, "stop_tick" => 50,
+                    "interval" => Dict("distribution" => "Exponential", "parameters" => [10])))))
+        @test dc.count isa Poisson
+        @test dc.ticks.interval isa Exponential
 
         # invalid params surface as ErrorException through the factory
-        @test_throws ErrorException GEMS.create_start_condition(Dict("type" => "PeriodicImport",
-            "parameters" => Dict("count" => 0, "start_tick" => 5, "stop_tick" => 50, "interval" => 7)))
+        @test_throws ErrorException GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => 0, "ticks" => [5, 12])))
+
+        # a genuine dictionary argument is not mistaken for a distribution
+        rc = GEMS.create_start_condition(Dict("type" => "RegionalSeeds",
+            "parameters" => Dict("seeds" => Dict("13003000" => 5, "13076033" => 7))))
+        @test rc isa RegionalSeeds
+        @test seeds(rc) == Dict(13003000 => 5, 13076033 => 7)
     end
 
     @testset "Parameter Tests" begin

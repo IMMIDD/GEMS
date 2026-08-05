@@ -42,9 +42,9 @@ Resolved description of a single seeding event: infect `count` individuals with 
 pathogen named `pathogen`, drawn either from the whole population (`ags === nothing`)
 or from the region identified by community identification number `ags`.
 
-`InfectionSeed`s are pre-computed by recurring-import start conditions (see `PeriodicImport`
-/ `PoissonImport`) and staged in `simulation.seeding_schedule`, a `Dict` mapping tick to
-its `Vector{InfectionSeed}`; `seed_scheduled!` fires the ones due at the current tick.
+`InfectionSeed`s are pre-computed by the `ImportedCases` start condition and staged in
+`simulation.seeding_schedule`, a `Dict` mapping tick to its `Vector{InfectionSeed}`;
+`seed_scheduled!` fires the ones due at the current tick.
 """
 struct InfectionSeed
     pathogen::String
@@ -1152,6 +1152,18 @@ function create_distribution(params::Dict)
 end
 
 """
+    _config_value(value)
+
+Converts a config file value into the argument a constructor expects. Sub-tables carrying a
+`distribution` key become `Distribution`s; any other sub-table keeps its keys and has its
+own values converted the same way, so that a distribution can sit inside a nested table.
+"""
+_config_value(value) = value
+_config_value(value::Dict) = haskey(value, "distribution") ?
+    create_distribution(value) :
+    Dict(k => _config_value(v) for (k, v) in value)
+
+"""
     create_progression_parameter(params::Union{Dict, Real})
 
 Creates a progression parameter based on the provided parameters.
@@ -1368,10 +1380,12 @@ end
 Creates a start condition based on the provided parameters.
 The `params` dictionary must contain a `type` key with the name of the start condition type
 and a `parameters` key with a list of parameters for the start condition constructor.
+Nested tables are passed on with `Symbol` keys and any sub-table carrying a `distribution`
+key is turned into a `Distribution` (see `_config_value`).
 """
 function create_start_condition(params::Dict)
     sc_type = get_subtype(params["type"], StartCondition)
-    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    kw_args = Dict(Symbol(k) => _config_value(v) for (k, v) in params["parameters"])
     return try
         sc_type(;kw_args...)
     catch e
@@ -2226,8 +2240,8 @@ end
     seeding_schedule(simulation)
 
 Returns the staged recurring-seeding schedule: a `Dict` mapping each tick to its
-`Vector{InfectionSeed}`. Populated by recurring-import start conditions (`PeriodicImport`,
-`PoissonImport`) during `initialize!` and fired by `seed_scheduled!` at the matching tick.
+`Vector{InfectionSeed}`. Populated by the `ImportedCases` start condition during
+`initialize!` and fired by `seed_scheduled!` at the matching tick.
 """
 function seeding_schedule(simulation::Simulation)
     return(simulation.seeding_schedule)
