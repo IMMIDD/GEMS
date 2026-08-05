@@ -361,6 +361,23 @@ The nested `[.parameters]` block requires three lists:
 * **`progression_categories`**: An array of strings defining the available progression structs. These must exactly match the names defined in your `[Pathogens.<Name>.progressions]` block.
 * **`stratification_matrix`**: A 2D array mapping the age groups (rows) to the progression categories (columns). The sum of probabilities in each row must equal `1.0`.
 
+#### `immunity_profile`
+Defines how immunity acquired through recovery or vaccination builds up, combines, and wanes over time.
+This section is optional; if omitted, the pathogen uses `FullImmunity` (sterilising immunity from the
+moment of recovery or vaccination onwards, never waning).
+
+```toml
+[Pathogens.Covid19.immunity_profile]
+    type = "ExponentialWaning"
+    [Pathogens.Covid19.immunity_profile.parameters]
+        halflife = 180
+        floor = 10
+```
+The `type` argument specifies the `ImmunityProfile` that conditions the dispatching to the respective
+`calculate_immunity(...)` function when running GEMS. The subsequent `[.parameters]` section holds the
+arguments passed to the `ImmunityProfile` struct upon initialization, and can be omitted entirely for
+profiles that take no arguments (such as `FullImmunity` and `NoImmunity`).
+
 ### HealthProgression
 
 Host-level care and mortality (hospitalization, ICU, ventilation, death) are decided independently

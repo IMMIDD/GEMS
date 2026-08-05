@@ -1271,6 +1271,23 @@ function create_infectiousness_profile(params::Dict)
 end
 
 """
+    create_immunity_profile(params::Dict)
+
+Creates an immunity profile based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the immunity profile.
+The `parameters` key is optional, as profiles like `FullImmunity` take no arguments.
+"""
+function create_immunity_profile(params::Dict)
+    im_type = GEMS.get_subtype(params["type"], ImmunityProfile)
+    kw_args = Dict(Symbol(k) => v for (k, v) in get(params, "parameters", Dict()))
+    return try
+        im_type(;kw_args...)
+    catch e
+        throw(ErrorException("ImmunityProfile of type '$im_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
     create_health_profile(profile_type, params::Dict)
 
 Creates a tier health profile (`SevereHealthProfile`/`CriticalHealthProfile`) from a nested config table, turning
@@ -1351,13 +1368,23 @@ function create_pathogen(params::Dict, name, id)
         end :
         ConstantInfectiousness()
 
+    # create immunity profile
+    im = haskey(params, "immunity_profile") ?
+        try
+            create_immunity_profile(params["immunity_profile"])
+        catch e
+            throw(ConfigfileError("immunity_profile for pathogen '$name' could not be created from config file.", e))
+        end :
+        FullImmunity()
+
     return Pathogen(
         id = id,
         name = name,
         progressions = progressions,
         progression_assignment = pa,
         transmission_function = tf,
-        infectiousness_profile = ip
+        infectiousness_profile = ip,
+        immunity_profile = im
     )
 end
 
