@@ -1271,6 +1271,72 @@ end
             @test_throws ErrorException calculate_infectiousness(p, state, ind, Int16(5), rng)
         end
 
+        @testset "BetaInfectiousness" begin
+            # infectious window is [1, 1+dur)
+            beta_state(dur; sym=-1, sev_on=-1, sev_off=-1, crit_on=-1, crit_off=-1) =
+                mk_state(DiseaseProgression(
+                    exposure=Int16(0), infectiousness_onset=Int16(1),
+                    symptom_onset=Int16(sym),
+                    severeness_onset=Int16(sev_on), severeness_offset=Int16(sev_off),
+                    critical_onset=Int16(crit_on), critical_offset=Int16(crit_off),
+                    recovery=Int16(1 + dur)))
+            beta_curve(p, st, dur) = [Int(calculate_infectiousness(p, st, ind, Int16(t), rng)) for t in 1:dur]
+
+            bp = BetaInfectiousness(time_to_peak=2.0, concentration=7.0)
+
+            # validation
+            @test_throws ArgumentError BetaInfectiousness(time_to_peak=0.0)
+            @test_throws ArgumentError BetaInfectiousness(concentration=2.0)
+            @test_throws ArgumentError BetaInfectiousness(level=Int8(101))
+            @test_throws ArgumentError BetaInfectiousness(severe_factor=-1.0)
+
+            # the defining property: the peak sits at the same tick whatever the duration,
+            # while the decay stretches to fill the window
+            tail_ends = Int[]
+            for dur in (10, 20, 40, 100)
+                c = beta_curve(bp, beta_state(dur), dur)
+                @test argmax(c) - 1 == 2          # peak 2 ticks after infectiousness onset
+                @test maximum(c) == 100           # scaled so the peak is `level`
+                push!(tail_ends, maximum([i for i in eachindex(c) if c[i] >= 5]; init=0))
+            end
+            @test issorted(tail_ends)
+            @test tail_ends[end] > 3 * tail_ends[1]
+
+            # shape within one window
+            c = beta_curve(bp, beta_state(10), 10)
+            @test c[1] == 0                        # zero at the onset tick itself
+            @test issorted(c[1:3])                 # rises to the peak
+            @test issorted(c[3:end], rev=true)     # and decays after it
+            @test c[end] <= 2                      # ~zero approaching recovery
+
+            # outside the infectious window
+            st = beta_state(10)
+            @test calculate_infectiousness(bp, st, ind, Int16(0), rng) == Int8(0)
+            @test calculate_infectiousness(bp, st, ind, Int16(11), rng) == Int8(0)
+            no_onset = mk_state(DiseaseProgression(
+                exposure=Int16(0), infectiousness_onset=Int16(5), recovery=Int16(20)))
+            @test calculate_infectiousness(bp, no_onset, ind, Int16(1), rng) == Int8(0)
+
+            # an infection that ends before the peak still rises monotonically
+            short = beta_curve(BetaInfectiousness(time_to_peak=20.0), beta_state(5), 5)
+            @test issorted(short)
+            @test maximum(short) > 0
+
+            # stage factors scale the curve, and 1.0 everywhere leaves it untouched
+            staged = beta_state(10, sym=4, sev_on=6, sev_off=9)
+            base = beta_curve(bp, staged, 10)
+            @test beta_curve(BetaInfectiousness(time_to_peak=2.0, severe_factor=1.0), staged, 10) == base
+            halved = beta_curve(BetaInfectiousness(time_to_peak=2.0, severe_factor=0.5), staged, 10)
+            @test all(halved[i] == base[i] for i in 1:5)          # before severeness onset
+            @test all(halved[i] <= base[i] ÷ 2 + 1 for i in 7:9)  # during it
+
+            # the default parameters are Beta(2, 5) for a 10-tick window
+            let m = 2.0 / 10.0, spread = 7.0 - 2.0
+                @test m * spread + 1 ≈ 2.0
+                @test (1 - m) * spread + 1 ≈ 5.0
+            end
+        end
+
     end
 
 end

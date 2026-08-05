@@ -361,6 +361,23 @@ The nested `[.parameters]` block requires three lists:
 * **`progression_categories`**: An array of strings defining the available progression structs. These must exactly match the names defined in your `[Pathogens.<Name>.progressions]` block.
 * **`stratification_matrix`**: A 2D array mapping the age groups (rows) to the progression categories (columns). The sum of probabilities in each row must equal `1.0`.
 
+#### `infectiousness_profile`
+Defines how infectious an individual is at each tick of their infection. This section is optional;
+if omitted, the pathogen uses `ConstantInfectiousness` (one fixed level for the whole infectious
+window).
+
+```toml
+[Pathogens.Covid19.infectiousness_profile]
+    type = "BetaInfectiousness"
+    [Pathogens.Covid19.infectiousness_profile.parameters]
+        time_to_peak = 2
+        concentration = 7
+```
+`StagedInfectiousness` sets a level per disease stage. `BetaInfectiousness` gives a shedding curve
+that rises to a peak `time_to_peak` ticks after infectiousness onset and declines to zero at
+recovery — the peak stays at that tick however long the infection lasts, while a longer infection
+stretches the decay. Both accept optional per-stage arguments; see the pathogen API reference.
+
 #### `immunity_profile`
 Defines how immunity acquired through recovery or vaccination builds up, combines, and wanes over time.
 This section is optional; if omitted, the pathogen uses `FullImmunity` (sterilising immunity from the
