@@ -28,9 +28,11 @@ struct _OverflowNode; node::Int32; end # registry overflow linked-list node inde
 @inline _clear_slot!(ind, reg::InfectionRegistry, l::_CacheSlot) = _set_slot!(ind, reg, l, InfectionState())
 @inline _clear_slot!(ind, reg::InfectionRegistry, l::_OverflowNode) = nothing
 
-# Stage an ended slot into the removal buffer as a tagged _SlotRemoval.
-@inline _stage_slot_removal!(buf, ind, l::_CacheSlot) = push!(buf, _SlotRemoval(ind.id, false, l.i))
-@inline _stage_slot_removal!(buf, ind, l::_OverflowNode) = push!(buf, _SlotRemoval(ind.id, true, l.node))
+# Stage an ended infection; the defaults grant no immunity (death path).
+@inline _stage_ended_infection!(buf, ind, l::_CacheSlot, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
+    push!(buf, _EndedInfection(ind.id, l.i, recovery, pathogen_id, false))
+@inline _stage_ended_infection!(buf, ind, l::_OverflowNode, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
+    push!(buf, _EndedInfection(ind.id, l.node, recovery, pathogen_id, true))
 
 
 
@@ -164,7 +166,7 @@ end
 
 
 """
-    remove_infection!(reg::InfectionRegistry, ind::Individual, r::_SlotRemoval)
+    remove_infection!(reg::InfectionRegistry, ind::Individual, r::_EndedInfection)
 
 Remove a single infection that has ended, as tagged by `r`:
 - `r.is_overflow == false`: the infection lived in cache slot `r.index`; promotes the
@@ -173,7 +175,7 @@ Remove a single infection that has ended, as tagged by `r`:
 
 Called by `flush_ended_infections!` after the threaded disease-update phase.
 """
-function remove_infection!(reg::InfectionRegistry, ind::Individual, r::_SlotRemoval)
+function remove_infection!(reg::InfectionRegistry, ind::Individual, r::_EndedInfection)
     if r.is_overflow
         _unlink_overflow!(reg, ind, r.index)
     else

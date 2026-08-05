@@ -115,14 +115,17 @@ struct _PendingInfection
 end
 
 """
-    _SlotRemoval
+    _EndedInfection
 
 Per-thread transfer struct staged in `removal_buffers` when an infection ends, then drained
-by `flush_ended_infections!`. `index` is the cache slot index (`is_overflow == false`) or 
-the overflow node index (`is_overflow == true`) within the individual's `InfectionRegistry`.
+by `flush_ended_infections!`. `index` is the cache slot index (`is_overflow == false`) or the
+overflow node index (`is_overflow == true`). `pathogen_id == DEFAULT_PATHOGEN_ID` grants no
+immunity (the death path).
 """
-struct _SlotRemoval
+struct _EndedInfection
     host_id::Int32
-    is_overflow::Bool
     index::Int32
+    recovery::Int16
+    pathogen_id::Int8
+    is_overflow::Bool
 end

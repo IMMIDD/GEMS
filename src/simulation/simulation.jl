@@ -236,7 +236,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
     infection_buffers::Matrix{Vector{_PendingInfection}}
-    removal_buffers::Matrix{Vector{_SlotRemoval}}
+    removal_buffers::Matrix{Vector{_EndedInfection}}
 
     # inner default constructor
     function Simulation(
@@ -309,7 +309,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             [Vector{Individual}() for _ in 1:num_shards], # present_buffers
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
             [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
-            [sizehint!(Vector{_SlotRemoval}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
+            [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
         )
 
         # increase simulation counter

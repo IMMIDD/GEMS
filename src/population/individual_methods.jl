@@ -881,11 +881,11 @@ function _infectiousness_level(pathogen, state::InfectionState, individual::Indi
 end
 
 """
-    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_SlotRemoval})
+    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
 
 Handles the health flags and memory-management when an individual dies.
 """
-@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_SlotRemoval})
+@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
     individual.disease_flags = DiseaseFlags(FLAG_DEAD)
 
     individual.killing_pathogen_id = pathogen_id
@@ -895,7 +895,7 @@ Handles the health flags and memory-management when an individual dies.
     # stage all active cache memory for removal
     @inbounds for c in 1:INFECTIONS_CACHE_SIZE
         if individual.infection_cache[c].active
-            _stage_slot_removal!(removal_buf, individual, _CacheSlot(Int32(c)))
+            _stage_ended_infection!(removal_buf, individual, _CacheSlot(Int32(c)))
             # Clear it AFTER pushing to the buffer
             individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), c)
         end
@@ -905,7 +905,7 @@ Handles the health flags and memory-management when an individual dies.
     if individual.infection_head != 0
         node_idx = individual.infection_head
         while node_idx != 0
-            _stage_slot_removal!(removal_buf, individual, _OverflowNode(node_idx))
+            _stage_ended_infection!(removal_buf, individual, _OverflowNode(node_idx))
             node_idx = infections.states[node_idx].next
         end
     end
@@ -944,7 +944,7 @@ branches of `progress_disease!`. Returns the record's `DiseaseFlags` contributio
         infected!(ind, state.pathogen_id, false)
         detected!(ind, state.pathogen_id, false)
         _clear_slot!(ind, infections, loc)
-        _stage_slot_removal!(removal_buf, ind, loc)
+        _stage_ended_infection!(removal_buf, ind, loc, state.pathogen_id, state.recovery)
         return DiseaseFlags()
     end
 
@@ -978,7 +978,7 @@ function progress_disease!(
     individual::Individual, 
     infections::InfectionRegistry, 
     pathogens::P, 
-    removal_buf::Vector{_SlotRemoval},
+    removal_buf::Vector{_EndedInfection},
     tick::Int16, 
     rng::Xoshiro
 ) where {P<:Tuple}

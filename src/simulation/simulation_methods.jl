@@ -456,8 +456,7 @@ function flush_pending_infections!(sim::Simulation)
  
     Threads.@threads :static for shard_id in 1:num_shards
         infections = sim.infection_registries[shard_id]
-        immunities = sim.immunity_registries[shard_id]
- 
+
         # drain all buffers destined for this shard
         @inbounds for producer_id in 1:num_shards
             buf = sim.infection_buffers[producer_id, shard_id]
@@ -470,10 +469,6 @@ function flush_pending_infections!(sim::Simulation)
                 # outlive active disease); otherwise a dormant fast-forward would drop their logging
                 lht = _latest_health_tick(ind)
                 lht >= 0 && Threads.atomic_max!(healthlogger(sim).latest_pending_tick, lht)
-                if p.dp.recovery >= 0
-                    push_immunity!(immunities, ind, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
-                    ind.needs_immunity_update = true
-                end
             end
             empty!(buf)
         end
@@ -486,19 +481,27 @@ end
 """
     flush_ended_infections!(sim)
  
-Drains `removal_buffers` after the threaded update phase: clears `slot_to_row`
-entries for infections that ended during this tick and returns their indices to
-the free list so they can be reused.
+Drains `removal_buffers` after the threaded update phase: grants the natural immunity each
+ended infection leaves behind, clears `slot_to_row` entries for infections that ended during
+this tick, and returns their indices to the free list so they can be reused.
 """
 function flush_ended_infections!(sim::Simulation)
     pop = population(sim)
     num_shards = Threads.maxthreadid()
- 
+
     Threads.@threads :static for shard_id in 1:num_shards
         reg = sim.infection_registries[shard_id]
+        immunities = sim.immunity_registries[shard_id]
 
         @inbounds for producer_id in 1:num_shards
             buf = sim.removal_buffers[producer_id, shard_id]
+            for r in buf
+                r.pathogen_id == DEFAULT_PATHOGEN_ID && continue
+                ind = get_individual_by_id(pop, r.host_id)
+                push_immunity!(immunities, ind, r.pathogen_id, IMMUNITY_SOURCE_NATURAL, r.recovery, DEFAULT_VACCINE_ID)
+                # refresh now: this runs before the spread phase, so the level must be current
+                update_immunity!(ind, immunities, sim.pathogens, tick(sim), sim.rngs[shard_id])
+            end
             # overflow unlinks before cache-slot promotions, so a just-ended overflow head
             # is unlinked before any promotion can pull it into cache
             for r in buf

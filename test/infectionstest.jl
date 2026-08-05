@@ -1,5 +1,5 @@
 import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containers!, dead!,
-    push_infection!, push_immunity!, update_immunity!, _SlotRemoval
+    push_infection!, push_immunity!, update_immunity!, _EndedInfection
 
 @testset "Infections" begin
     test_rng = Xoshiro()
@@ -130,7 +130,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(20)))
                 push_infection!(reg_a, i_a, Int8(2), Int32(2),
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(20)))
-                buf_a = _SlotRemoval[]
+                buf_a = _EndedInfection[]
                 progress_disease!(i_a, reg_a, pths, buf_a, Int16(5), test_rng)
                 @test isinfected(i_a)
                 @test isinfectious(i_a)
@@ -142,7 +142,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(5)))
                 push_infection!(reg_r, i_r, Int8(2), Int32(4),
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(5)))
-                buf_r = _SlotRemoval[]
+                buf_r = _EndedInfection[]
                 progress_disease!(i_r, reg_r, pths, buf_r, Int16(10), test_rng)
                 @test !isinfected(i_r)
                 @test !isempty(buf_r) # overflow node staged for removal
@@ -157,7 +157,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(30)))
                 i_d.death = Int16(5)
                 i_d.killing_pathogen_id = Int8(2)
-                buf_d = _SlotRemoval[]
+                buf_d = _EndedInfection[]
                 progress_disease!(i_d, reg_d, pths, buf_d, Int16(10), test_rng)
                 @test isdead(i_d)
                 @test !isempty(buf_d) # both cache and overflow nodes staged for removal
