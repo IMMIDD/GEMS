@@ -88,6 +88,15 @@ function assign(individual::Individual, pa_func::ProgressionAssignmentFunction, 
     error("The assign function is not defined for the provided ProgressionAssignmentFunction struct $(typeof(pa_func)).")
 end
 
+"""
+    assign(individual::Individual, pa_func::ProgressionAssignmentFunction, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro)
+
+Entry point called by `infect!`, giving the assignment function access to the infectee's
+pre-exposure immunity. Falls through to the three-argument `assign`.
+"""
+assign(individual::Individual, pa_func::ProgressionAssignmentFunction, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro) =
+    assign(individual, pa_func, rng)
+
 
 
 

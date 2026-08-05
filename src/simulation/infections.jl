@@ -67,7 +67,8 @@ function infect!(infectee::Individual,
 
     # calculate disease progression
     paf = progression_assignment(pathogen)
-    pc = assign(infectee, paf, rng)
+    immunities = isnothing(sim) ? ImmunityRegistry() : immunity_registry(sim, infectee)
+    pc = assign(infectee, paf, immunities, id(pathogen), rng)
 
     prog = get_progression(pathogen.progressions, pc)
     tag = progression_index(pathogen.progressions, pc)
