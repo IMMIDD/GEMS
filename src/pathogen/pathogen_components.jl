@@ -8,6 +8,7 @@ export health_progressions
 export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
+export susceptibility_factor
 
 # the main defintion of pathogens is in src/pathogen/pathogens.jl
 
@@ -117,19 +118,24 @@ end
 
 Framework entry point called by the simulation loop. Applies infectiousness and standard
 immunity exactly once around the base rate from `transmission_probability`:
-`base_rate × infectiousness/100 × (1 − immunity/100)`.
+`base_rate × infectiousness/100 × susceptibility_factor(immunity_profile, immunity_level)`.
+
+How much the infectee's immunity reduces the probability is decided by the pathogen's
+`ImmunityProfile` via `susceptibility_factor`, which defaults to `1 − immunity/100`.
 
 Throws an `ArgumentError` if the infecter has zero infectiousness for `pathogen_id`.
 
 Override this (instead of `transmission_probability`) only when full control is needed,
-e.g. to bypass the standard immunity model or handle infectiousness differently.
+e.g. to handle infectiousness differently. To change only how immunity acts on transmission,
+override `susceptibility_factor` instead.
 """
 function effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
     inf = infectiousness(infecter, sim, pathogen_id)
     inf == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
+    profile = immunity_profile(get_pathogen(sim, pathogen_id))
     return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
            inf / 100.0 *
-           (1.0 - immunity_level(infectee, sim, pathogen_id) / 100.0)
+           susceptibility_factor(profile, immunity_level(infectee, sim, pathogen_id))
 end
 
 """
@@ -176,6 +182,16 @@ to skip recomputation. Falls back to `false` for any profile that does not provi
 concrete method, which is always safe.
 """
 immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool = false
+
+"""
+    susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64
+
+Returns the factor in `[0, 1]` by which an immunity `level` (0-100) scales the per-contact
+transmission probability. Defaults to `1 - level/100`. Override it to have immunity act
+elsewhere than on transmission: `1.0` leaves the level readable by the rest of the model
+(e.g. a progression assignment that attenuates severity) without affecting transmission.
+"""
+susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64 = 1.0 - level / 100.0
 
 
 """
