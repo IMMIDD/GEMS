@@ -1,5 +1,39 @@
 import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update_immunity!
 
+# immunity that is fully readable but does not act on transmission, and one that acts at half
+# strength. Defined here so their methods are visible to the testsets that call them directly.
+struct SeverityOnlyImmunity <: GEMS.ImmunityProfile end
+GEMS.calculate_immunity(::SeverityOnlyImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+    GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+GEMS.immunity_is_stable(::SeverityOnlyImmunity, s::ImmunityState, i::Individual, t::Int16) =
+    GEMS.immunity_active(s, t)
+GEMS.susceptibility_factor(::SeverityOnlyImmunity, level::Int8) = 1.0
+
+struct HalfImmunity <: GEMS.ImmunityProfile end
+GEMS.calculate_immunity(::HalfImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+    GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+GEMS.immunity_is_stable(::HalfImmunity, s::ImmunityState, i::Individual, t::Int16) =
+    GEMS.immunity_active(s, t)
+GEMS.susceptibility_factor(::HalfImmunity, level::Int8) = 1.0 - 0.5 * level / 100.0
+
+# an assignment function that reads immunity, recording what it saw so tests can assert on it
+const SEEN_OWN = Ref(Int8(-1))
+const SEEN_OTHER = Ref(Int8(-1))
+
+struct ImmunityAwareAssignment <: GEMS.ProgressionAssignmentFunction end
+
+function GEMS.assign(ind::Individual, paf::ImmunityAwareAssignment,
+        immunities::GEMS.ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro)
+    SEEN_OWN[] = immunity_level(ind, immunities, pathogen_id)
+    other = Int8(0)
+    for s in GEMS.each_immunity(ind, immunities)
+        s.pathogen_id == pathogen_id && continue
+        other = max(other, s.immunity_level)
+    end
+    SEEN_OTHER[] = other
+    return SEEN_OWN[] >= 50 || other >= 50 ? Asymptomatic : Mild
+end
+
 @testset "Pathogens" begin
 
     # building blocks for tests
@@ -431,10 +465,59 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             end
         end
 
-        # assign fallback: unimplemented ProgressionAssignmentFunction throws
+        # assign fallback: unimplemented ProgressionAssignmentFunction throws, through either arity
         struct UnimplementedPA <: GEMS.ProgressionAssignmentFunction end
         @test_throws ErrorException GEMS.assign(individuals(sim)[1], UnimplementedPA(), Xoshiro())
+        @test_throws ErrorException GEMS.assign(individuals(sim)[1], UnimplementedPA(),
+            ImmunityRegistry(), Int8(1), Xoshiro())
 
+        # a three-argument implementation is reached through the forwarding method
+        @test GEMS.assign(individuals(sim)[2], eo_pa, ImmunityRegistry(), Int8(1), Xoshiro()) == Mild
+        @test GEMS.assign(individuals(sim)[3], eo_pa, ImmunityRegistry(), Int8(1), Xoshiro()) == Asymptomatic
+    end
+
+    @testset "Immunity-Aware Progression Assignment" begin
+        mkpath_ia(pid, nm) = Pathogen(id = pid, name = nm, progressions = [pr_asymp, pr_mild],
+            progression_assignment = ImmunityAwareAssignment(), transmission_function = ctf)
+
+        function immunize!(s, ind, pid, acquired, at)
+            push_immunity!(GEMS.immunity_registry(s, ind), ind, Int8(pid),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(acquired), GEMS.DEFAULT_VACCINE_ID)
+            ind.needs_immunity_update = true
+            update_immunity!(ind, GEMS.immunity_registry(s, ind), s.pathogens, Int16(at), Xoshiro())
+        end
+
+        s = Simulation(pop_size = 500, pathogens = (mkpath_ia(1, "IA"),), infected_fraction = 0.0)
+
+        # a naive host: assign sees no immunity
+        SEEN_OWN[] = Int8(-1)
+        infect!(individuals(s)[1], Int16(10), first_pathogen(s), sim = s, rng = Xoshiro(1))
+        @test SEEN_OWN[] == Int8(0)
+
+        # an immune host: assign sees the level held *before* this infection is recorded
+        immune = individuals(s)[2]
+        immunize!(s, immune, 1, 0, 10)
+        pre = immunity_level(immune, s, Int8(1))
+        SEEN_OWN[] = Int8(-1)
+        infect!(immune, Int16(10), first_pathogen(s), sim = s, rng = Xoshiro(1))
+        @test pre == Int8(100)
+        @test SEEN_OWN[] == pre
+
+        # immunity to a *different* pathogen is reachable via each_immunity
+        s2 = Simulation(pop_size = 500, pathogens = (mkpath_ia(1, "PA"), mkpath_ia(2, "PB")),
+            infected_fraction = 0.0)
+        host = individuals(s2)[1]
+        immunize!(s2, host, 2, 0, 10)
+        SEEN_OWN[] = Int8(-1); SEEN_OTHER[] = Int8(-1)
+        infect!(host, Int16(10), GEMS.get_pathogen(s2, Int8(1)), sim = s2, rng = Xoshiro(1))
+        @test SEEN_OWN[] == Int8(0)
+        @test SEEN_OTHER[] == Int8(100)
+
+        # without a Simulation an empty registry is passed rather than erroring
+        lone = Individual(id = 1, age = 30, sex = 1, household = 1)
+        SEEN_OWN[] = Int8(-1)
+        infect!(lone, Int16(0), mkpath_ia(1, "Lone"), rng = Xoshiro(1))
+        @test SEEN_OWN[] == Int8(0)
     end
 
 
@@ -1058,6 +1141,50 @@ import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update
             @test_throws ErrorException calculate_immunity(p, state, ind, Int16(1))
             # immunity_is_stable returns false as a safe default
             @test !immunity_is_stable(p, state, ind, Int16(1))
+        end
+
+        @testset "susceptibility_factor" begin
+            # default is a proportional reduction, for every built-in profile
+            for prof in (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning())
+                @test all(l -> susceptibility_factor(prof, Int8(l)) ≈ 1.0 - l / 100.0, 0:10:100)
+            end
+
+            # a profile can decouple immunity from transmission, or scale it partially
+            @test susceptibility_factor(SeverityOnlyImmunity(), Int8(100)) == 1.0
+            @test susceptibility_factor(HalfImmunity(), Int8(100)) == 0.5
+            @test susceptibility_factor(HalfImmunity(), Int8(50)) == 0.75
+
+            # end to end: the level stays readable while its effect on transmission changes
+            function etp_with(profile)
+                tf = ConstantTransmissionRate(transmission_rate = 0.3)
+                p = Pathogen(id = 1, name = "SF", progressions = [pr_asymp],
+                    progression_assignment = RandomProgressionAssignment([Asymptomatic]),
+                    transmission_function = tf, immunity_profile = profile)
+                s = Simulation(pop_size = 500, pathogens = (p,), infected_fraction = 0.0)
+                infctr, trgt = individuals(s)[1], individuals(s)[2]
+                infect!(infctr, Int16(0), first_pathogen(s), sim = s, rng = Xoshiro(1))
+                GEMS.flush_pending_infections!(s)
+                GEMS.update_individual!(infctr, Int16(1), s)
+                push_immunity!(GEMS.immunity_registry(s, trgt), trgt, Int8(1),
+                    GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+                trgt.needs_immunity_update = true
+                update_immunity!(trgt, GEMS.immunity_registry(s, trgt), s.pathogens, Int16(1), Xoshiro())
+                lvl = immunity_level(trgt, s, Int8(1))
+                inf = infectiousness(infctr, s, Int8(1))
+                p_eff = effective_transmission_probability(tf, Int8(1), infctr, trgt,
+                    households(s)[1], Int16(1), s, Xoshiro())
+                return lvl, p_eff, 0.3 * inf / 100.0
+            end
+
+            lvl, p_eff, base = etp_with(FullImmunity())
+            @test lvl == Int8(100) && p_eff ≈ 0.0
+
+            # nonzero immunity, no effect on transmission
+            lvl, p_eff, base = etp_with(SeverityOnlyImmunity())
+            @test lvl == Int8(100) && p_eff ≈ base
+
+            lvl, p_eff, base = etp_with(HalfImmunity())
+            @test lvl == Int8(100) && p_eff ≈ 0.5 * base
         end
 
     end

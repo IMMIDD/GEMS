@@ -264,6 +264,129 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
         end
 
     end
+
+    @testset "Natural Immunity at Recovery" begin
+        # natural immunity is granted when an infection ends, not when it is scheduled, so an
+        # earlier acquisition keeps waning for the whole infection instead of reading 0.
+
+        asymp7 = Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 7)
+        mkpath_im(pid, nm, prof) = Pathogen(id = pid, name = nm, progressions = [asymp7],
+            progression_assignment = RandomProgressionAssignment([Asymptomatic]),
+            immunity_profile = prof,
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.0))
+
+        # replicates the phase order of `step!`: progression, then the ended-infection drain
+        function run_tick!(s, ind)
+            update_individual!(ind, GEMS.tick(s), s)
+            GEMS.flush_ended_infections!(s)
+            GEMS.increment!(s)
+        end
+
+        function infect_now!(s, ind)
+            infect!(ind, GEMS.tick(s), GEMS.first_pathogen(s), sim = s, rng = Xoshiro(1))
+            GEMS.flush_pending_infections!(s)
+        end
+
+        @testset "prior immunity wanes through a reinfection" begin
+            s = Simulation(pop_size = 300, infected_fraction = 0.0,
+                pathogens = (mkpath_im(1, "P1", ExponentialWaning(halflife = 60.0)),))
+            ind = individuals(s)[1]
+            push_immunity!(GEMS.immunity_registry(s, ind), ind, Int8(1),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+            ind.needs_immunity_update = true
+
+            levels = Dict{Int,Int}()
+            while GEMS.tick(s) <= Int16(60)
+                GEMS.tick(s) == Int16(40) && infect_now!(s, ind)
+                t = Int(GEMS.tick(s))
+                run_tick!(s, ind)
+                levels[t] = Int(immunity_level(ind, s, Int8(1)))
+            end
+
+            during = [levels[t] for t in 40:47]   # recovery lands at 48
+            @test minimum(during) > 0             # never drops to 0
+            @test during[1] > during[end]         # and keeps waning
+            @test levels[48] == 100               # fresh immunity on the recovery tick itself
+            @test levels[49] < 100                # then wanes again
+
+            st = GEMS.get_immunity_state(ind, GEMS.immunity_registry(s, ind), Int8(1))
+            @test st.natural_acquired_tick == Int16(48)
+
+            # the record still stabilises, so the individual stops being recomputed every tick
+            while GEMS.tick(s) <= Int16(600)
+                run_tick!(s, ind)
+            end
+            @test !ind.needs_immunity_update
+        end
+
+        @testset "first infection is unchanged" begin
+            s = Simulation(pop_size = 300, infected_fraction = 0.0,
+                pathogens = (mkpath_im(1, "P1", ExponentialWaning(halflife = 60.0)),))
+            ind = individuals(s)[2]
+
+            levels = Dict{Int,Int}()
+            while GEMS.tick(s) <= Int16(15)
+                GEMS.tick(s) == Int16(1) && infect_now!(s, ind)
+                t = Int(GEMS.tick(s))
+                run_tick!(s, ind)
+                levels[t] = Int(immunity_level(ind, s, Int8(1)))
+            end
+
+            @test all(t -> levels[t] == 0, 0:8)   # nothing to carry, so 0 while infected
+            @test levels[9] == 100                # and full immunity on its recovery tick
+        end
+
+        @testset "a host who dies acquires nothing" begin
+            s = Simulation(pop_size = 300, infected_fraction = 0.0,
+                pathogens = (mkpath_im(1, "P1", ExponentialWaning(halflife = 60.0)),))
+            ind = individuals(s)[3]
+
+            while GEMS.tick(s) <= Int16(12)
+                if GEMS.tick(s) == Int16(1)
+                    infect_now!(s, ind)
+                    ind.death = Int16(5)
+                    ind.killing_pathogen_id = Int8(1)
+                end
+                run_tick!(s, ind)
+            end
+
+            @test isdead(ind)
+            st = GEMS.get_immunity_state(ind, GEMS.immunity_registry(s, ind), Int8(1))
+            @test st.natural_acquired_tick == GEMS.DEFAULT_TICK
+        end
+
+        @testset "cross-immunity survives an active infection" begin
+            pA = mkpath_im(1, "PA", ExponentialWaning(halflife = 60.0))
+            pB = Pathogen(id = 2, name = "PB", progressions = [asymp7],
+                progression_assignment = RandomProgressionAssignment([Asymptomatic]),
+                transmission_function = CompositeTransmissionRate(
+                    ConstantTransmissionRate(transmission_rate = 0.5),
+                    CrossImmunityModifier(cross_immunities = [("PA", 1.0)])))
+            s = Simulation(pop_size = 300, pathogens = (pA, pB), infected_fraction = 0.0)
+            host = individuals(s)[1]
+            push_immunity!(GEMS.immunity_registry(s, host), host, Int8(1),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+            host.needs_immunity_update = true
+
+            factor() = GEMS.transmission_factor(pB.transmission_function.modifiers[1], Int8(2),
+                individuals(s)[2], host, households(s)[1], GEMS.tick(s), s, Xoshiro())
+
+            before = 0.0
+            while GEMS.tick(s) <= Int16(41)
+                if GEMS.tick(s) == Int16(40)
+                    before = factor()
+                    infect!(host, GEMS.tick(s), pA, sim = s, rng = Xoshiro(1))
+                    GEMS.flush_pending_infections!(s)
+                end
+                run_tick!(s, host)
+            end
+
+            # cross-protection is still substantial while PA is active, not switched off
+            @test before < 0.5
+            @test isapprox(factor(), before, atol = 0.05)
+        end
+    end
+
     @testset "Infection Dynamics" begin
 
         @testset "Try to Infect" begin

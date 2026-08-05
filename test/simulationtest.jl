@@ -606,6 +606,38 @@ import GEMS: increment!, infected!
                 "type" => "SinusoidalSeasonalModifier",
                 "parameters" => Dict("amplitude" => 0.3, "peak_day" => 15)))
             @test mod isa SinusoidalSeasonalModifier
+
+            # create_immunity_profile: with parameters
+            im = GEMS.create_immunity_profile(Dict(
+                "type" => "ExponentialWaning",
+                "parameters" => Dict("halflife" => 30.0, "floor" => 10)))
+            @test im isa ExponentialWaning
+            @test im.halflife == 30.0f0
+            @test im.floor == Int8(10)
+
+            # create_immunity_profile: the parameters table is optional
+            @test GEMS.create_immunity_profile(Dict("type" => "FullImmunity")) isa FullImmunity
+
+            # a pathogen's immunity_profile section is actually wired up
+            pathogen_params = Dict(
+                "progressions" => Dict("Asymptomatic" => Dict(
+                    "exposure_to_infectiousness_onset" => 1,
+                    "infectiousness_onset_to_recovery" => 7)),
+                "progression_assignment" => Dict(
+                    "type" => "RandomProgressionAssignment",
+                    "parameters" => Dict("progression_categories" => ["Asymptomatic"])),
+                "transmission_function" => Dict(
+                    "type" => "ConstantTransmissionRate",
+                    "parameters" => Dict("transmission_rate" => 0.2)))
+
+            # absent section falls back to the default
+            @test GEMS.immunity_profile(GEMS.create_pathogen(deepcopy(pathogen_params), "P", 1)) isa FullImmunity
+
+            with_profile = merge(deepcopy(pathogen_params), Dict("immunity_profile" => Dict(
+                "type" => "ExponentialWaning", "parameters" => Dict("halflife" => 45.0))))
+            p_im = GEMS.create_pathogen(with_profile, "P", 1)
+            @test GEMS.immunity_profile(p_im) isa ExponentialWaning
+            @test GEMS.immunity_profile(p_im).halflife == 45.0f0
         end
 
         @testset "Throw Paths (ErrorException)" begin
@@ -636,6 +668,14 @@ import GEMS: increment!, infected!
             @test_throws ErrorException GEMS.create_stop_criterion(
                 Dict("type" => "TimesUp",
                     "parameters" => Dict("limit" => 0)))
+
+            # create_immunity_profile: invalid params
+            @test_throws ErrorException GEMS.create_immunity_profile(
+                Dict("type" => "ExponentialWaning",
+                    "parameters" => Dict("halflife" => -1.0)))
+
+            # create_immunity_profile: unknown profile type is rejected, not ignored
+            @test_throws ArgumentError GEMS.create_immunity_profile(Dict("type" => "NotAProfile"))
         end
 
         @testset "global_setting non-Bool throws" begin
