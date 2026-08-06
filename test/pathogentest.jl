@@ -1325,8 +1325,8 @@ end
             # stage factors scale the curve, and 1.0 everywhere leaves it untouched
             staged = beta_state(10, sym=4, sev_on=6, sev_off=9)
             base = beta_curve(bp, staged, 10)
-            @test beta_curve(BetaInfectiousness(time_to_peak=2.0, severe_factor=1.0), staged, 10) == base
-            halved = beta_curve(BetaInfectiousness(time_to_peak=2.0, severe_factor=0.5), staged, 10)
+            @test beta_curve(BetaInfectiousness(time_to_peak=2.0, concentration=7.0, severe_factor=1.0), staged, 10) == base
+            halved = beta_curve(BetaInfectiousness(time_to_peak=2.0, concentration=7.0, severe_factor=0.5), staged, 10)
             @test all(halved[i] == base[i] for i in 1:5)          # before severeness onset
             @test all(halved[i] <= base[i] ÷ 2 + 1 for i in 7:9)  # during it
 
