@@ -111,7 +111,7 @@ infection stretches the decay. Stage factors scale the curve by the highest acti
 """
 @with_kw struct BetaInfectiousness <: InfectiousnessProfile
     time_to_peak::Float64 = 2.0
-    concentration::Float64 = 7.0
+    concentration::Float64 = 5.0
     level::Int8 = Int8(100)
     asymptomatic_factor::Float64 = 1.0
     presymptomatic_factor::Float64 = 1.0
