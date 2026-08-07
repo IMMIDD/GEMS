@@ -108,11 +108,13 @@ function generate(plt::CumulativeCases, rds::Vector{ResultData}; pathogen = noth
     p = plot(xlabel=upper_ticks, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
 
     pid_filter = _resolve_pathogen_id(rds[1], pathogen)
+    pids = sort(unique(vcat([unique(cumulative_cases(rd).pathogen_id) for rd in rds]...)))
 
-    if !isnothing(pid_filter)
-        p = plotseries!(p, rd -> filter(row -> row.pathogen_id == pid_filter, cumulative_cases(rd))[!, "exposed_cum"], rds; plotargs...)
+    # nothing to break down by pathogen, color by rd label instead
+    if !isnothing(pid_filter) || length(pids) == 1
+        pid = isnothing(pid_filter) ? pids[1] : pid_filter
+        p = plotseries!(p, rd -> filter(row -> row.pathogen_id == pid, cumulative_cases(rd))[!, "exposed_cum"], rds; plotargs...)
     else
-        pids = sort(unique(vcat([unique(cumulative_cases(rd).pathogen_id) for rd in rds]...)))
         pnames = pathogen_names(rds[1])
         colors = Dict(zip(pids, gemscolors(length(pids))))
         n = length(rds)
