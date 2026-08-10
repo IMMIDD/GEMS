@@ -291,6 +291,10 @@ function seed_scheduled!(simulation::Simulation)
     return nothing
 end
 
+# an import can only land on a host that is alive, not in hospital, and not already carrying the pathogen
+@inline _can_be_seeded(individual::Individual, pathogen_id::Int8, t::Int16) =
+    !dead(individual) && !hospitalized(individual, t) && !infected(individual, pathogen_id)
+
 """
     _seed_infection!(simulation, spec::InfectionSeed, rng)
 
@@ -300,13 +304,28 @@ the whole population (`spec.ags === nothing`) or from the region otherwise.
 function _seed_infection!(simulation::Simulation, spec::InfectionSeed, rng::Xoshiro)
     spec.count <= 0 && return nothing
     pthgn = get_pathogen(simulation, spec.pathogen)
+    pid = id(pthgn)
+    t = tick(simulation)
 
     pool = isnothing(spec.ags) ? individuals(simulation) : individuals_in_ags(simulation, AGS(spec.ags))
-    isempty(pool) && return nothing
 
-    to_infect = gems_sample(rng, pool, min(spec.count, length(pool)), replace=false)
-    for i in to_infect
-        infect!(i, tick(simulation), pthgn, sim = simulation, rng = rng)
+    # reservoir sampling: one pass over the pool, holding a uniform sample of `spec.count` of the eligible hosts seen so far
+    picked = sizehint!(Individual[], spec.count)
+    seen = 0
+    for i in pool
+        _can_be_seeded(i, pid, t) || continue
+        seen += 1
+        if seen <= spec.count
+            push!(picked, i)
+        else
+            # the seen-th host takes a random slot with probability count/seen
+            j = gems_rand(rng, 1:seen)
+            j <= spec.count && (picked[j] = i)
+        end
+    end
+
+    for i in picked
+        infect!(i, t, pthgn, sim = simulation, rng = rng)
         activate_memberships!(i, simulation)
     end
     return nothing
