@@ -98,6 +98,24 @@ assign(individual::Individual, pa_func::ProgressionAssignmentFunction, immunitie
     assign(individual, pa_func, rng)
 
 
+# Fallback translating internal positional calls into the keyword form used by
+# user-defined ProgressionCategories.
+function calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, rng::Xoshiro)
+    return calculate_progression(individual, tick, dp; rng=rng)
+end
+
+"""
+    calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro)
+
+Entry point called by `infect!`, giving the progression category access to the infectee's
+pre-exposure immunity via `immunity_level(individual, immunities, pathogen_id)`, or to
+cross-pathogen immunity via `each_immunity(individual, immunities)`. Falls through to the
+four-argument `calculate_progression`.
+"""
+calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro) =
+    calculate_progression(individual, tick, dp, rng)
+
+
 
 
 

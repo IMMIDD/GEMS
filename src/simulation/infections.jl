@@ -72,7 +72,7 @@ function infect!(infectee::Individual,
 
     prog = get_progression(pathogen.progressions, pc)
     tag = progression_index(pathogen.progressions, pc)
-    dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
+    dp = calculate_progression(infectee, tick, prog, immunities, id(pathogen), rng)::DiseaseProgression
 
     if isnothing(sim)
         # no simulation context — store InfectionState directly in the individual's cache.
