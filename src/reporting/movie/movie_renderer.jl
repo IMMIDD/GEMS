@@ -32,7 +32,7 @@ Throws if no geolocated infections are present.
 # Parameters
 
 - `infections::DataFrame`: Raw infections dataframe from `ResultData`.
-    Must contain `:infection_id`, `:tick`, `:recovery`, `:death`, `:lat`, `:lon`.
+    Must contain `:infection_id`, `:tick`, `:removed`, `:lat`, `:lon`.
 - `max_points::Int`: Maximum number of infections to render on the map.
     Excess points are randomly excluded via the `:show` flag.
 
@@ -44,8 +44,7 @@ Throws if no geolocated infections are present.
 function prepare_frame_data(infections::DataFrame, max_points::Int)
 
     data = infections |>
-        x -> transform(x, [:recovery, :death] => ((r, d) -> max.(r, d)) => :removed_tick) |>
-        x -> DataFrames.select(x, :infection_id, :tick, :removed_tick, :lat, :lon)
+        x -> DataFrames.select(x, :infection_id, :tick, :removed => :removed_tick, :lat, :lon)
 
     selection = data |>
         x -> filter(row -> !any(isnan, row), x) |>

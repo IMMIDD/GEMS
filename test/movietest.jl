@@ -29,12 +29,11 @@
     @testset "prepare_frame_data" begin
 
         # 3 geolocated rows, 1 without coords
-        # infection 3: death > recovery to verify max.(r,d) takes death
+        # `removed` is the tick each infection ended, already reconciled by the PostProcessor
         infections = DataFrame(
             infection_id = [1, 2, 3, 4],
             tick = Int16[1, 1, 2, 3],
-            recovery = Int16[5, 6, 4, 8],
-            death = Int16[0, 0, 9, 0],
+            removed = Int16[5, 6, 9, 8],
             lat = [52.5, 51.0, 53.0, NaN],
             lon = [13.4, 12.0, 14.0, NaN]
         )
@@ -46,12 +45,10 @@
             @test col in propertynames(result)
         end
 
-        # removed_tick is max(recovery, death)
-        # infection 3: death=9 > recovery=4, so removed_tick should be 9
+        # removed_tick carries `removed` straight through
         row3 = filter(row -> !isnan(row.lat) && row.lat == 53.0, result)[1, :]
         @test row3.removed_tick == 9
 
-        # infection 1: recovery=5 > death=0
         row1 = filter(row -> !isnan(row.lat) && row.lat == 52.5, result)[1, :]
         @test row1.removed_tick == 5
 
@@ -89,8 +86,7 @@
         no_geo = DataFrame(
             infection_id = [1],
             tick = Int16[1],
-            recovery = Int16[5],
-            death = Int16[0],
+            removed = Int16[5],
             lat = [NaN],
             lon = [NaN]
         )

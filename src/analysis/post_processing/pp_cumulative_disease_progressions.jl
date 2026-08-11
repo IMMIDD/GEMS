@@ -68,7 +68,7 @@ function cumulative_disease_progressions(postProcessor::PostProcessor)
         df = DataFrame(
             symptom_onset = p_infs.symptom_onset .- p_infs.tick,
             infectiousness_onset = p_infs.infectiousness_onset .- p_infs.tick,
-            removed = max.(p_infs.recovery, p_infs.death) .- p_infs.tick
+            removed = p_infs.removed .- p_infs.tick
         )
         res = calc_cum_dis_values(df)
         res.pathogen_id .= pid

@@ -149,6 +149,48 @@ import GEMS: _mean_contacts_per_age_group,
         @test pp |> cumulative_cases |> nrow > 0
     end
 
+    @testset "Co-Infection Death Accounting" begin
+        # a host death ends every co-active infection and is credited to one pathogen
+        dkw = (exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_severeness_onset = Poisson(1), severeness_onset_to_critical_onset = Poisson(2),
+            critical_onset_to_critical_offset = Poisson(5), critical_offset_to_severeness_offset = Poisson(3),
+            severeness_offset_to_recovery = Poisson(10))
+        crit = Critical(; dkw...)
+        hp = DefaultHealthProgression(critical = CriticalHealthProfile(
+            hospital_probability = 0.4, critical_onset_to_hospital_admission = Poisson(1),
+            hospital_admission_to_hospital_discharge = Poisson(8),
+            death_probability = 0.15, critical_onset_to_death = Poisson(6)))
+        mkp(i, nm) = Pathogen(id = i, name = nm, progressions = [crit],
+            progression_assignment = RandomProgressionAssignment([Critical]),
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
+        sim_ci = Simulation(pop_size = 4000, pathogens = (mkp(1, "A"), mkp(2, "B")),
+            health_progression = hp, infected_fraction = 0.01, seed = 42, tickunit = 'd')
+        run!(sim_ci, with_progressbar = false)
+        pp_ci = PostProcessor(sim_ci)
+
+        n_deaths = nrow(deathsDF(pp_ci))
+        @test n_deaths > 0
+        # the death tick is deliberately not on the infection rows
+        @test !(:death in propertynames(infectionsDF(pp_ci)))
+        @test !(:killing_pathogen_id in propertynames(infectionsDF(pp_ci)))
+        @test sum(tick_deaths(pp_ci).death_cnt) == n_deaths
+        @test sum(tick_cases(pp_ci).dead_cnt) == n_deaths
+        @test sum(combine(groupby(cumulative_deaths(pp_ci), :pathogen_id),
+            :deaths_cum => maximum)[!, 2]) == n_deaths
+
+        # a truncated infection still ended at a real tick
+        cp = compartment_periods(pp_ci)
+        @test all(>=(0), cp.total)
+        @test all(>=(0), cp.infectious)
+        @test all(>=(0), cp.symptomatic)
+
+        # the normalized distribution still accounts for every infection
+        acp = aggregated_compartment_periods(pp_ci)
+        for p in unique(acp.pathogen_id)
+            @test isapprox(sum(subset(acp, :pathogen_id => ByRow(==(p))).total), 1.0, atol = 1e-9)
+        end
+    end
+
     @testset "Contact Matrices" begin
 
         simulation_contact_matrix_data = setting_age_contacts(pp, Household)

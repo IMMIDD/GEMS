@@ -2,12 +2,15 @@ export compartment_periods, aggregated_compartment_periods
 
 # HELPER FUNCTIONS TO CALCULATE PERIODS
 
-# removed time is recovery; host death is host-level (see _hospital_df), not per-infection
-calc_rem(infs) = infs.recovery
+calc_rem(infs) = infs.removed
+# phase boundaries are capped at `rem`: another pathogen's death can end this infection before its
+# own onsets, and a phase it never reached lasts 0 ticks, not a negative number
+calc_exposed(infs, rem) = min.(infs.infectiousness_onset, rem) .- infs.tick
+calc_infectious(infs, rem) = rem .- min.(infs.infectiousness_onset, rem)
 # calculate asymptomatic, symptomatic and pre-symptomatic periods
 calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : 0).(infs.tick, infs.symptom_onset, rem)
-calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - so : 0).(infs.symptom_onset, rem)
-calc_pre_symp(infs) = ((so, t) -> so >= 0 ? so - t : 0).(infs.symptom_onset, infs.tick)
+calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - min(so, r) : 0).(infs.symptom_onset, rem)
+calc_pre_symp(infs, rem) = ((so, t, r) -> so >= 0 ? min(so, r) - t : 0).(infs.symptom_onset, infs.tick, rem)
 
 
 """
@@ -43,16 +46,16 @@ function compartment_periods(postProcessor::PostProcessor)
     end
 
     res = infectionsDF(postProcessor) |>
-        # calculate max of recovery and death time (as removed (rem))
+        # tick each infection ended, recovery or death (as removed (rem))
         infs -> (infs, calc_rem(infs)) |>
         splat((infs, rem) -> DataFrame(
             infection_id = infs.infection_id,
             pathogen_id = infs.pathogen_id,
             total = rem .- infs.tick,
-            exposed = infs.infectiousness_onset .- infs.tick,
-            infectious = rem .- infs.infectiousness_onset,
+            exposed = calc_exposed(infs, rem),
+            infectious = calc_infectious(infs, rem),
             asymptomatic = calc_asymp(infs, rem),
-            pre_symptomatic = calc_pre_symp(infs),
+            pre_symptomatic = calc_pre_symp(infs, rem),
             symptomatic = calc_symp(infs, rem),
             severe = infs.severeness_offset .- infs.severeness_onset,
             critical = infs.critical_offset .- infs.critical_onset

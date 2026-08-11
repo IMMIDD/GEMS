@@ -53,6 +53,12 @@ function generate(plt::CaseFatalityMap, rd::ResultData; level::Int = 3, plotargs
         return emptyplot("Required data not in ResultData object.")
     end
 
+    # if no raw deaths data is in RD object
+    if rd |> deaths |> isempty
+        @warn "This ResultData oject does not contain the raw deaths data which is necessary to geneate this map. Generate the RD-object using e.g., the 'DefaultResultData' style."
+        return emptyplot("Required data not in ResultData object.")
+    end
+
     # if no raw infections data is in RD object
     if rd |> region_info |> isempty
         @warn "This ResultData oject does not contain geodata. The reason might be that you're using a model that isn't geolocalized or an RD-Style that doesn't contain the 'region_info' dataframe,. In that case, try using the 'DefaultResultData' style."
@@ -68,13 +74,22 @@ function generate(plt::CaseFatalityMap, rd::ResultData; level::Int = 3, plotargs
     # for now, we can only do this on level 3
     #level != 3 ? (@warn "This map can only be generated on municipality level (3). Your input ($level) will be ignored.") : nothing
 
-    # build map (level 3)
-    return rd |> infections |>
-        x -> DataFrames.select(x, :household_ags_b => :ags, :death) |>
+    # distinct hosts on both sides: a per-host case fatality rate
+    infected_hosts = rd |> infections |>
+        x -> DataFrames.select(x, :household_ags_b => :ags, :id_b) |>
         x -> prepare_map_df(x, level = level) |>
         x -> groupby(x, :ags) |>
-        x -> combine(x, nrow => :reg_infs, :death => (d -> length(d[d .>= 0])) => :reg_deaths) |>
-        #x -> transform(x, :ags => ByRow(AGS) => :ags) |>
+        x -> combine(x, :id_b => (h -> length(unique(h))) => :reg_infs)
+
+    dead_hosts = rd |> deaths |>
+        x -> DataFrames.select(x, :household_ags => :ags, :id) |>
+        x -> prepare_map_df(x, level = level) |>
+        x -> groupby(x, :ags) |>
+        x -> combine(x, :id => (h -> length(unique(h))) => :reg_deaths)
+
+    # build map (level 3)
+    return leftjoin(infected_hosts, dead_hosts, on = :ags) |>
+        x -> transform(x, :reg_deaths => ByRow(d -> coalesce(d, 0)) => :reg_deaths) |>
         x -> transform(x, [:reg_deaths, :reg_infs] => ByRow((d, i) -> 100 * d/i) => :case_fatality_rate) |>
         x -> DataFrames.select(x, :ags, :case_fatality_rate) |>
         x -> agsmap(x,
