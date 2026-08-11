@@ -80,7 +80,7 @@ end
         _exponential_level(profile, state.natural_acquired_tick, tick) : Int8(0)
     vac_level = vaccine_immunity_recorded(state) ?
         _exponential_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
-    return Int8(clamp(round(Int, nat_level + vac_level - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
+    return Int8(clamp(round(Int, Int(nat_level) + Int(vac_level) - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
 end
 
 
@@ -157,7 +157,7 @@ end
         _sigmoidal_level(profile, state.natural_acquired_tick, tick) : Int8(0)
     vac_level = vaccine_immunity_recorded(state) ?
         _sigmoidal_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
-    return Int8(clamp(round(Int, nat_level + vac_level - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
+    return Int8(clamp(round(Int, Int(nat_level) + Int(vac_level) - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
 end
  
 @inline function immunity_is_stable(profile::SigmoidalWaning, state::ImmunityState, individual::Individual, tick::Int16)
