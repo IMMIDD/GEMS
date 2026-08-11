@@ -325,7 +325,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             ind = individuals(s)[2]
 
             levels = Dict{Int,Int}()
-            while GEMS.tick(s) <= Int16(15)
+            while GEMS.tick(s) <= Int16(69)
                 GEMS.tick(s) == Int16(1) && infect_now!(s, ind)
                 t = Int(GEMS.tick(s))
                 run_tick!(s, ind)
@@ -334,6 +334,8 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
 
             @test all(t -> levels[t] == 0, 0:8)   # nothing to carry, so 0 while infected
             @test levels[9] == 100                # and full immunity on its recovery tick
+            @test levels[10] < 100                # wanes from the next tick on
+            @test levels[69] == 50                # exactly one half-life after acquisition
         end
 
         @testset "a host who dies acquires nothing" begin

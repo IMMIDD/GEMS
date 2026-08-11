@@ -519,6 +519,7 @@ function flush_ended_infections!(sim::Simulation)
                 r.pathogen_id == DEFAULT_PATHOGEN_ID && continue
                 ind = get_individual_by_id(pop, r.host_id)
                 push_immunity!(immunities, ind, r.pathogen_id, IMMUNITY_SOURCE_NATURAL, r.recovery, DEFAULT_VACCINE_ID)
+                ind.needs_immunity_update = true
                 # refresh now: this runs before the spread phase, so the level must be current
                 update_immunity!(ind, immunities, sim.pathogens, tick(sim), sim.rngs[shard_id])
             end

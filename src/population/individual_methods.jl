@@ -27,7 +27,6 @@ export vaccinate!
 export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 # disease progression engine
 export progress_disease!
-export set_progression!
 
 
 
@@ -745,59 +744,6 @@ end
 Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
 """
 number_of_vaccinations(individual::Individual, sim::Simulation, pathogen_id::Int8) = number_of_vaccinations(individual, immunity_registry(sim, individual), pathogen_id)
-
-
-"""
-    set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
-
-Applies `dp` directly to `ind` by writing an active `InfectionState` into the individual's
-infection cache, bypassing the normal simulation buffer and flush cycle.
-The individual is immediately visible as infected for `pathogen_id` without needing a running
-`Simulation` or a call to `step!`.
-
-If `ind` is already actively infected with `pathogen_id`, this is a no-op (with a warning):
-at most one active infection per pathogen is allowed.
-"""
-function set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
-    # at most one active infection per pathogen; skip a duplicate rather than corrupt the invariant
-    if infected(ind, pathogen_id)
-        @warn "set_progression!: individual $(id(ind)) is already infected with pathogen $pathogen_id; skipping to preserve the one-active-infection-per-pathogen invariant."
-        return nothing
-    end
-    # without a persistent registry, an overflow would dangle, so require a free cache slot
-    any(i -> !ind.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
-        throw(ArgumentError("set_progression! cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual without a Simulation context."))
-    push_infection!(InfectionRegistry(), ind, pathogen_id, DEFAULT_INFECTION_ID, dp)
-    infected!(ind, true)
-    infected!(ind, pathogen_id, true)
-    return nothing
-end
-
-"""
-    set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
-
-Seeds an active `InfectionState` with all fields set to `DEFAULT_TICK` (i.e. -1).
-Useful when you need an active infection slot for a specific pathogen without
-constraining any timeline values.
-"""
-function set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
-    # at most one active infection per pathogen; skip a duplicate rather than corrupt the invariant
-    if infected(ind, pathogen_id)
-        @warn "set_progression!: individual $(id(ind)) is already infected with pathogen $pathogen_id; skipping to preserve the one-active-infection-per-pathogen invariant."
-        return nothing
-    end
-    blank = InfectionState(
-        DEFAULT_INFECTION_ID, Int32(0),
-        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
-        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
-        Int8(0), pathogen_id, Int8(0), true
-    )
-    ind.infection_cache = Base.setindex(ind.infection_cache, blank, 1)
-    infected!(ind, true)
-    infected!(ind, pathogen_id, true)
-    return nothing
-end
-
 
 
 """

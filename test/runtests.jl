@@ -19,6 +19,9 @@ using Parameters
 using StatsBase
 using Suppressor
 
+# shared fixtures used across several test files (not part of the GEMS API)
+include("testutils.jl")
+
 @testset "GEMS" begin
     testfiles = [
         "agentstest.jl",
