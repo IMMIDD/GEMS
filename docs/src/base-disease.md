@@ -32,7 +32,9 @@ Host-level care and mortality (hospitalization, ICU, ventilation, death) are **n
 disease progression: they are decided by a separate `HealthProgression`, which folds the demand of
 *all* of a host's currently active infections into one host-level care timeline. This is what lets a
 host who is concurrently infected with multiple pathogens have their hospitalization or death
-decided jointly, rather than by whichever single infection happens to "win". In the default
+decided jointly, rather than by whichever single infection happens to "win". Each infection
+contributes when it arrives, and the policy is told what the host is already committed to, so an
+infection whose contribution has been decided is never re-decided by a later co-infection. In the default
 configuration, only `Severe` and `Critical` infections demand any host care: a `Severe`-peak
 infection may lead to a ward admission; a `Critical`-peak infection may additionally require ICU
 admission (and, optionally, ventilation), and carries an ungated `30%` death probability. In the

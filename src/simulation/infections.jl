@@ -80,8 +80,8 @@ function infect!(infectee::Individual,
         any(i -> !infectee.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
-        push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
-        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), tick, rng)
+        state = push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
+        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), state, tick, rng)
     else
         # log infection
         new_infection_id = log!(

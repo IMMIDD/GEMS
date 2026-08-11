@@ -481,9 +481,10 @@ function flush_pending_infections!(sim::Simulation)
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
                 ind = get_individual_by_id(pop, p.host_id)
-                push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
-                # recompute the host health timeline now that the new infection's demand is visible
-                compute_health!(ind, infections, health_progression(sim), tick(sim), sim.rngs[shard_id])
+                state = push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
+                # fold the new infection's demand into the host health timeline
+                compute_health!(ind, infections, health_progression(sim), state, tick(sim), sim.rngs[shard_id])
+                
                 # keep the sim awake until this host's care/death events are realized (they can
                 # outlive active disease); otherwise a dormant fast-forward would drop their logging
                 lht = _latest_health_tick(ind)

@@ -1,4 +1,4 @@
-import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_care, _min_set, _max_set,
+import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_outcome, _cap_care, _min_set, _max_set,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
     create_progression, create_health_progression, create_health_profile,
     determine_health_progression, each_infection, progression_index, get_infection_state,
@@ -97,27 +97,29 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         @test care3.icu_admission == -1
     end
 
-    @testset "_combine_care / _combine_outcome" begin
+    @testset "_merge_care / _combine_outcome" begin
         empty_care = CareTimeline()
         empty_outcome = HealthOutcome()
 
-        care_a = CareTimeline(hospital_admission = 3, hospital_discharge = 10)
         outcome_a = HealthOutcome(death = 20, death_pathogen_id = 1)
-
-        care_b = CareTimeline(hospital_admission = 5, hospital_discharge = 12)
         outcome_b = HealthOutcome(death = 15, death_pathogen_id = 2)
 
-        care_c = _combine_care(care_a, care_b)
         outcome_c = _combine_outcome(outcome_a, outcome_b)
-
-        @test care_c.hospital_admission == 3     # earliest admission
-        @test care_c.hospital_discharge == 12    # latest discharge
         @test outcome_c.death == 15              # earliest death
         @test outcome_c.death_pathogen_id == 2   # attributed to whichever infection died first
-
-        # combining with the empty side leaves the other side unchanged
-        @test _combine_care(empty_care, care_a).hospital_admission == 3
         @test _combine_outcome(outcome_a, empty_outcome).death == 20
+
+        # union of two contributions: earliest admission, latest discharge
+        committed = CareTimeline(hospital_admission = 3, hospital_discharge = 10)
+        added = CareTimeline(hospital_admission = 5, hospital_discharge = 12)
+        merged = _merge_care(committed, added, Int16(6))
+        @test merged.hospital_admission == 3
+        @test merged.hospital_discharge == 12
+
+        # merging into an empty committed timeline just takes the contribution
+        @test _merge_care(empty_care, added, Int16(0)).hospital_admission == 5
+        # ... and a contribution of nothing leaves the committed timeline alone
+        @test _merge_care(committed, empty_care, Int16(6)).hospital_admission == 3
     end
 
     @testset "_cap_care" begin
@@ -179,52 +181,57 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         dp2 = DiseaseProgression(exposure = Int16(3), infectiousness_onset = Int16(4), symptom_onset = Int16(5),
             severeness_onset = Int16(6), critical_onset = Int16(20), critical_offset = Int16(25),
             severeness_offset = Int16(26), recovery = Int16(30))
-        push_infection!(reg, ind, Int8(1), Int32(-1), dp1)
-        push_infection!(reg, ind, Int8(2), Int32(-1), dp2)
+        # each infection folds into the host timeline as it arrives
+        s1 = push_infection!(reg, ind, Int8(1), Int32(-1), dp1)
+        compute_health!(ind, reg, hp, s1, Int16(0), rng)
+        s2 = push_infection!(reg, ind, Int8(2), Int32(-1), dp2)
+        compute_health!(ind, reg, hp, s2, Int16(3), rng)
 
-        care, outcome = calculate_health_progression(ind, reg, hp, Int16(0), rng)
         # earliest admission/death come from pathogen 1's earlier critical_onset (4 vs 20)
-        @test care.hospital_admission == 4
-        @test outcome.death == 13
-        @test outcome.death_pathogen_id == 1
+        @test ind.hospital_admission == 4
+        @test ind.death == 13
+        @test ind.killing_pathogen_id == 1
+        @test ind.hospital_discharge == 13   # capped at the scheduled death
     end
 
     @testset "compute_health! preserves the realized past" begin
         ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
         reg = InfectionRegistry()
-        dp = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
-            severeness_onset = Int16(3), critical_onset = Int16(4), critical_offset = Int16(15),
-            severeness_offset = Int16(16), recovery = Int16(20))
-        push_infection!(reg, ind, Int8(1), Int32(-1), dp)
         cc = CriticalHealthProfile(hospital_probability = 1.0,
-            critical_onset_to_hospital_admission = Poisson(5),
-            hospital_admission_to_hospital_discharge = Poisson(20))
+            critical_onset_to_hospital_admission = 1,
+            hospital_admission_to_hospital_discharge = 20)
         hp = DefaultHealthProgression(critical = cc)
 
-        compute_health!(ind, reg, hp, Int16(4), Xoshiro(1))
-        realized_admission = ind.hospital_admission
-        @test realized_admission >= 4
+        dp1 = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            severeness_onset = Int16(3), critical_onset = Int16(4), critical_offset = Int16(15),
+            severeness_offset = Int16(16), recovery = Int16(60))
+        s1 = push_infection!(reg, ind, Int8(1), Int32(-1), dp1)
+        compute_health!(ind, reg, hp, s1, Int16(4), Xoshiro(1))
+        @test ind.hospital_admission == 5    # critical_onset 4 + 1
+        @test ind.hospital_discharge == 25
 
-        # a later recompute (different rng draw) must not rewrite the already-realized admission
-        compute_health!(ind, reg, hp, realized_admission, Xoshiro(99))
-        @test ind.hospital_admission == realized_admission
+        # a second infection arriving mid-stay must not rewrite the already-realized admission
+        dp2 = DiseaseProgression(exposure = Int16(10), infectiousness_onset = Int16(11), symptom_onset = Int16(12),
+            severeness_onset = Int16(13), critical_onset = Int16(30), critical_offset = Int16(40),
+            severeness_offset = Int16(41), recovery = Int16(70))
+        s2 = push_infection!(reg, ind, Int8(2), Int32(-1), dp2)
+        compute_health!(ind, reg, hp, s2, Int16(10), Xoshiro(99))
+        @test ind.hospital_admission == 5    # realized admission kept
+        @test ind.hospital_discharge == 51   # ongoing stay extended to the later discharge (30 + 1 + 20)
     end
 
     @testset "recompute after a completed episode starts fresh" begin
-        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
-        ind.icu_admission = Int16(-1); ind.icu_discharge = Int16(-1)
-        ind.ventilation_admission = Int16(-1); ind.ventilation_discharge = Int16(-1)
         cand = CareTimeline(hospital_admission = Int16(105), hospital_discharge = Int16(115))
 
         # a COMPLETED past episode [10, 20] must not swallow a disjoint later one (re-infection)
-        ind.hospital_admission = Int16(10); ind.hospital_discharge = Int16(20)
-        fresh = GEMS._keep_realized_care(cand, ind, Int16(100))
+        closed = CareTimeline(hospital_admission = Int16(10), hospital_discharge = Int16(20))
+        fresh = _merge_care(closed, cand, Int16(100))
         @test fresh.hospital_admission == 105        # new episode scheduled fresh, not merged into [10, ...]
         @test fresh.hospital_discharge == 115
 
         # an ONGOING episode [10, 200] at tick 100 is still preserved and extended
-        ind.hospital_admission = Int16(10); ind.hospital_discharge = Int16(200)
-        kept = GEMS._keep_realized_care(cand, ind, Int16(100))
+        open = CareTimeline(hospital_admission = Int16(10), hospital_discharge = Int16(200))
+        kept = _merge_care(open, cand, Int16(100))
         @test kept.hospital_admission == 10          # realized admission kept
         @test kept.hospital_discharge == 200         # extended to max(200, 115)
     end
@@ -245,26 +252,27 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         dp = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
             severeness_onset = Int16(3), critical_onset = Int16(5), critical_offset = Int16(10),
             severeness_offset = Int16(11), recovery = Int16(20))
-        push_infection!(reg, ind, Int8(1), Int32(-1), dp)
+        s = push_infection!(reg, ind, Int8(1), Int32(-1), dp)
+        ctx = HealthContext(CareTimeline(), HealthOutcome(), s, Int16(0))
 
-        rt = Base.return_types(calculate_health_progression, (typeof(ind), typeof(reg), typeof(hp), Int16, Xoshiro))[1]
+        rt = Base.return_types(calculate_health_progression, (typeof(ind), typeof(reg), typeof(hp), HealthContext, Xoshiro))[1]
         @test rt == Tuple{CareTimeline, HealthOutcome} # statically inferred even through the custom profile
 
-        care, _ = calculate_health_progression(ind, reg, hp, Int16(0), Xoshiro(1))
+        care, _ = calculate_health_progression(ind, reg, hp, ctx, Xoshiro(1))
         @test care.hospital_admission == 5
     end
 
     @testset "Custom HealthProgression policy" begin
         struct AlwaysHospitalize <: GEMS.HealthProgression end
         function GEMS.calculate_health_progression(ind::Individual, infections::InfectionRegistry,
-                hp::AlwaysHospitalize, tick::Int16, rng::Xoshiro)
-            for s in each_infection(ind, infections)
-                if s.severeness_onset >= 0
-                    return CareTimeline(hospital_admission = s.severeness_onset,
-                            hospital_discharge = Int16(s.severeness_onset + 7)), HealthOutcome()
-                end
-            end
-            return CareTimeline(), HealthOutcome()
+                hp::AlwaysHospitalize, ctx::HealthContext, rng::Xoshiro)
+            s = ctx.new_infection
+            s.severeness_onset < 0 && return ctx.committed_care, ctx.committed_outcome
+            added = CareTimeline(hospital_admission = s.severeness_onset,
+                    hospital_discharge = Int16(s.severeness_onset + 7))
+            # a custom policy folds its contribution in itself; _merge_care keeps an open episode's
+            # already-logged admission, which the forward-plan contract requires
+            return _merge_care(ctx.committed_care, added, ctx.tick), ctx.committed_outcome
         end
 
         crit = Critical(exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
@@ -277,6 +285,131 @@ import GEMS: _rand_val, push_infection!, _combine_care, _combine_outcome, _cap_c
         he = dataframe(healthlogger(sim))
         @test count(==(:hospital_admission), he.event) > 0
         @test count(==(:icu_admission), he.event) == 0 # the custom policy never schedules ICU
+    end
+
+    @testset "a co-infection with no care demand does not change incidence" begin
+        # infection A reaches critical; its window (5..15) has long closed by the time B arrives
+        dpA = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            severeness_onset = Int16(3), critical_onset = Int16(5), critical_offset = Int16(15),
+            severeness_offset = Int16(16), recovery = Int16(100))
+        # infection B never reaches severe, so select_health_profile returns nothing for it and it
+        # demands no care at all -- it must therefore not perturb A's contribution in any way
+        dpB = DiseaseProgression(exposure = Int16(40), infectiousness_onset = Int16(41), symptom_onset = Int16(42),
+            severeness_onset = Int16(-1), critical_onset = Int16(-1), critical_offset = Int16(-1),
+            severeness_offset = Int16(-1), recovery = Int16(80))
+        hp = DefaultHealthProgression(critical = CriticalHealthProfile(hospital_probability = 0.4,
+            critical_onset_to_hospital_admission = 1, hospital_admission_to_hospital_discharge = 3))
+
+        function stays(n, coinfect::Bool)
+            rng = Xoshiro(1234); episodes = 0
+            for k in 1:n
+                ind = Individual(id = Int32(k), sex = Int8(1), age = Int8(70))
+                reg = InfectionRegistry()
+                sA = push_infection!(reg, ind, Int8(1), Int32(-1), dpA)
+                compute_health!(ind, reg, hp, sA, Int16(0), rng)
+                ind.hospital_admission >= 0 && (episodes += 1)
+                if coinfect
+                    before = ind.hospital_admission
+                    sB = push_infection!(reg, ind, Int8(2), Int32(-1), dpB)
+                    compute_health!(ind, reg, hp, sB, Int16(40), rng)
+                    # a second, distinct stay appearing at/after the recompute tick
+                    (ind.hospital_admission >= 40 && ind.hospital_admission != before) && (episodes += 1)
+                end
+            end
+            return episodes / n
+        end
+
+        n = 20_000
+        solo = stays(n, false)
+        @test isapprox(solo, 0.4, atol = 0.02)     # matches the nominal hospital_probability
+        # exactly equal, not merely close: the null co-infection draws nothing, so it cannot
+        # consume rng or re-decide A. Previously this doubled to ~0.8.
+        @test stays(n, true) == solo
+    end
+
+    @testset "host health invariants hold over a two-pathogen run" begin
+        dkw = (exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_severeness_onset = Poisson(1), severeness_onset_to_critical_onset = Poisson(2),
+            critical_onset_to_critical_offset = Poisson(5), critical_offset_to_severeness_offset = Poisson(3),
+            severeness_offset_to_recovery = Poisson(10))
+        crit = Critical(; dkw...)
+        hp = DefaultHealthProgression(critical = CriticalHealthProfile(
+            hospital_probability = 0.4, critical_onset_to_hospital_admission = Poisson(1),
+            hospital_admission_to_hospital_discharge = Poisson(8),
+            hospital_to_icu_probability = 0.3, hospital_admission_to_icu_admission = Poisson(1),
+            icu_admission_to_icu_discharge = Poisson(5), icu_discharge_to_hospital_discharge = Poisson(2),
+            death_probability = 0.15, critical_onset_to_death = Poisson(6)))
+        pA = Pathogen(id = 1, name = "A", progressions = [crit],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
+        pB = Pathogen(id = 2, name = "B", progressions = [crit],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
+        sim = Simulation(pop_size = 10_000, pathogens = (pA, pB), health_progression = hp,
+            infected_fraction = 0.005, seed = 42, tickunit = 'd')
+        run!(sim; with_progressbar = false)
+
+        hdf = GEMS._hospital_df(PostProcessor(sim))
+        @test sum(hdf.hospital_admissions) > 0            # the scenario actually exercises care
+        @test sum(hdf.icu_admissions) > 0
+
+        # every admission is eventually discharged, so occupancy never goes negative. A care event
+        # scheduled at the current tick would be written after that tick's logging pass and could
+        # never be emitted, leaving its discharge orphaned.
+        @test sum(hdf.hospital_admissions) == sum(hdf.hospital_discharges)
+        @test sum(hdf.icu_admissions) == sum(hdf.icu_discharges)
+        @test minimum(hdf.current_hospitalized) >= 0
+        @test minimum(hdf.current_icu) >= 0
+
+        # care never outlives the host, and a death is realized at the tick it was scheduled for
+        # (a death drawn into the past would be logged late, on the next update)
+        scheduled = Dict{Int32, Int16}()
+        n_dead = 0
+        care_after_death = 0
+        for i in individuals(sim)
+            i.death < 0 && continue
+            n_dead += 1
+            scheduled[id(i)] = i.death
+            (i.hospital_discharge > i.death || i.icu_discharge > i.death) && (care_after_death += 1)
+        end
+        @test n_dead > 0
+        @test care_after_death == 0
+        dd = dataframe(deathlogger(sim))
+        @test all(r -> !haskey(scheduled, r.id) || r.tick == scheduled[r.id], eachrow(dd))
+    end
+
+    @testset "the forward-plan contract is enforced" begin
+        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
+        reg = InfectionRegistry()
+        dp = DiseaseProgression(exposure = Int16(20), infectiousness_onset = Int16(21), symptom_onset = Int16(22),
+            severeness_onset = Int16(23), critical_onset = Int16(24), critical_offset = Int16(30),
+            severeness_offset = Int16(31), recovery = Int16(60))
+        s = push_infection!(reg, ind, Int8(1), Int32(-1), dp)
+
+        # care anchored before the current tick: already logged, cannot be rewritten
+        struct PastCare <: GEMS.HealthProgression end
+        GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::PastCare, ctx::HealthContext, ::Xoshiro) =
+            (CareTimeline(hospital_admission = Int16(5), hospital_discharge = Int16(9)), HealthOutcome())
+        @test_throws ArgumentError compute_health!(ind, reg, PastCare(), s, Int16(20), Xoshiro(1))
+
+        # a death drawn into the past would kill the host on the next update, not at its latency
+        struct PastDeath <: GEMS.HealthProgression end
+        GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::PastDeath, ctx::HealthContext, ::Xoshiro) =
+            (CareTimeline(), HealthOutcome(death = Int16(12), death_pathogen_id = Int8(1)))
+        @test_throws ArgumentError compute_health!(ind, reg, PastDeath(), s, Int16(20), Xoshiro(1))
+
+        # dropping an episode the host is still in orphans its already-logged admission
+        struct DropsOpenEpisode <: GEMS.HealthProgression end
+        GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::DropsOpenEpisode, ctx::HealthContext, ::Xoshiro) =
+            (CareTimeline(hospital_admission = Int16(50), hospital_discharge = Int16(57)), HealthOutcome())
+        ind.hospital_admission = Int16(10); ind.hospital_discharge = Int16(30)   # open at tick 20
+        @test_throws ArgumentError compute_health!(ind, reg, DropsOpenEpisode(), s, Int16(20), Xoshiro(1))
+
+        # ... but keeping that admission and extending the discharge is allowed
+        struct ExtendsOpenEpisode <: GEMS.HealthProgression end
+        GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::ExtendsOpenEpisode, ctx::HealthContext, ::Xoshiro) =
+            (CareTimeline(hospital_admission = Int16(10), hospital_discharge = Int16(45)), HealthOutcome())
+        compute_health!(ind, reg, ExtendsOpenEpisode(), s, Int16(20), Xoshiro(1))
+        @test ind.hospital_admission == 10
+        @test ind.hospital_discharge == 45
     end
 
     @testset "Embedded-care router" begin

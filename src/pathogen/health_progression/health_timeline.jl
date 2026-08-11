@@ -1,4 +1,4 @@
-export CareTimeline, HealthOutcome
+export CareTimeline, HealthOutcome, HealthContext
 
 """
     CareTimeline
@@ -78,6 +78,26 @@ struct HealthOutcome
     end
 end
 
+"""
+    HealthContext
+
+Isbits value type handed to `calculate_health_progression`, telling the policy what the host is
+already committed to so it can plan forward instead of re-deciding the past.
+
+# Fields
+- `committed_care::CareTimeline`: current care timeline. Ticks `<= tick` are realized and already
+  logged; ticks `> tick` are scheduled and may be revised.
+- `committed_outcome::HealthOutcome`: currently scheduled death, if any. Always `> tick` when set.
+- `new_infection::InfectionState`: the infection that triggered this recompute.
+- `tick::Int16`: the current tick.
+"""
+struct HealthContext
+    committed_care::CareTimeline
+    committed_outcome::HealthOutcome
+    new_infection::InfectionState
+    tick::Int16
+end
+
 function Base.show(io::IO, ct::CareTimeline)
     max_val = ct.hospital_discharge
     max_width = max(4, length("$max_val")) # max width of tick column
@@ -151,31 +171,69 @@ function _cap_care(care::CareTimeline, outcome::HealthOutcome)
 end
 
 """
-    _keep_realized_care(care::CareTimeline, individual::Individual, tick::Int16)
+    _committed_care(individual::Individual)
 
-Merges freshly computed `care` with the individual's already-realized care events, so a
-recompute never rewrites the past.
+The host's current care timeline, read off the individual into a `CareTimeline`.
 """
-@inline function _keep_realized_care(care::CareTimeline, individual::Individual, tick::Int16)
-    hospital_admission, hospital_discharge = _resolve(individual.hospital_admission, individual.hospital_discharge, care.hospital_admission, care.hospital_discharge, tick)
-    icu_admission, icu_discharge = _resolve(individual.icu_admission, individual.icu_discharge, care.icu_admission, care.icu_discharge, tick)
-    ventilation_admission, ventilation_discharge = _resolve(individual.ventilation_admission, individual.ventilation_discharge, care.ventilation_admission, care.ventilation_discharge, tick)
-    return CareTimeline(hospital_admission, hospital_discharge, icu_admission, icu_discharge,
-        ventilation_admission, ventilation_discharge)
+@inline _committed_care(individual::Individual) = CareTimeline(
+    individual.hospital_admission, individual.hospital_discharge,
+    individual.icu_admission, individual.icu_discharge,
+    individual.ventilation_admission, individual.ventilation_discharge)
+
+"""
+    _committed_outcome(individual::Individual)
+
+The host's currently scheduled death, read off the individual into a `HealthOutcome`.
+"""
+@inline _committed_outcome(individual::Individual) =
+    HealthOutcome(death = individual.death, death_pathogen_id = individual.killing_pathogen_id)
+
+"""
+    _check_plan_tick(level::Symbol, field::Symbol, planned::Int16, committed::Int16, tick::Int16)
+
+Enforces one field of the forward-plan contract: a planned tick must be unset, after `tick`, or
+equal to the committed value it replaces (echoing a realized event).
+"""
+@inline function _check_plan_tick(level::Symbol, field::Symbol, planned::Int16, committed::Int16, tick::Int16)
+    (planned < 0 || planned > tick || planned == committed) && return nothing
+    throw(ArgumentError("calculate_health_progression returned $(level)_$(field) = $planned at tick $tick: a plan may only schedule events after the current tick, or echo an already-realized one (committed $planned vs $committed). Events at or before the current tick have already been logged and cannot be changed."))
 end
 
 """
-    _resolve(realized_admission, realized_discharge, candidate_admission, candidate_discharge, tick)
+    _check_episode(level::Symbol, planned_admission::Int16, planned_discharge::Int16, committed_admission::Int16, committed_discharge::Int16, tick::Int16)
 
-Keeps and extends an admission that is still ongoing (already admitted and not yet discharged),
-so a recompute never rewrites the past. A fully-completed past episode is not extended. 
-Otherwise takes the candidate, never starting before `tick`.
+Validates one care level's planned episode: both ticks must satisfy the forward-plan contract, and
+an episode still open at `tick` must keep its admission. That admission has already been logged,
+and only one episode per level is representable, so dropping it orphans the logged admission and
+its discharge is never emitted.
 """
-@inline function _resolve(realized_admission::Int16, realized_discharge::Int16,
-        candidate_admission::Int16, candidate_discharge::Int16, tick::Int16)
-    (0 <= realized_admission <= tick < realized_discharge) && return (realized_admission, _max_set(realized_discharge, candidate_discharge))
-    (candidate_admission >= 0 && candidate_admission < tick) && return (tick, _max_set(candidate_discharge, Int16(tick + 1)))
-    return (candidate_admission, candidate_discharge)
+@inline function _check_episode(level::Symbol, planned_admission::Int16, planned_discharge::Int16,
+        committed_admission::Int16, committed_discharge::Int16, tick::Int16)
+    _check_plan_tick(level, :admission, planned_admission, committed_admission, tick)
+    _check_plan_tick(level, :discharge, planned_discharge, committed_discharge, tick)
+    (0 <= committed_admission <= tick < committed_discharge) || return nothing
+    planned_admission == committed_admission && return nothing
+    throw(ArgumentError("calculate_health_progression returned $(level)_admission = $planned_admission at tick $tick while the host is still in that care level (admitted $committed_admission, discharge $committed_discharge). An open episode must keep its admission; its discharge may be moved, but only to a tick after $tick."))
+end
+
+"""
+    _validate_health_plan(care::CareTimeline, outcome::HealthOutcome, ctx::HealthContext)
+
+Checks a policy's returned plan against the forward-plan contract documented on
+`calculate_health_progression`. Throws on a violation rather than clamping, because clamping a
+past-anchored event into the present produces care that no infection's clinical course supports
+and that the tick's already-completed logging pass can never emit.
+"""
+function _validate_health_plan(care::CareTimeline, outcome::HealthOutcome, ctx::HealthContext)
+    tick = ctx.tick
+    c = ctx.committed_care
+    _check_episode(:hospital, care.hospital_admission, care.hospital_discharge, c.hospital_admission, c.hospital_discharge, tick)
+    _check_episode(:icu, care.icu_admission, care.icu_discharge, c.icu_admission, c.icu_discharge, tick)
+    _check_episode(:ventilation, care.ventilation_admission, care.ventilation_discharge, c.ventilation_admission, c.ventilation_discharge, tick)
+
+    outcome.death >= 0 && outcome.death <= tick && throw(ArgumentError(
+        "calculate_health_progression returned death = $(outcome.death) at tick $tick: a plan may only schedule a death after the current tick. A death drawn into the past kills the host on the next update instead of at the drawn latency."))
+    return nothing
 end
 
 """
@@ -196,18 +254,19 @@ Commits `care` and `outcome` onto the individual, crediting `killing_pathogen_id
 end
 
 """
-    compute_health!(individual, infections, hp, tick, rng)
+    compute_health!(individual, infections, hp, new_infection, tick, rng)
 
-Framework wrapper around the `calculate_health_progression` policy: skips the dead, caps care
-at a scheduled death, preserves already-realized care episodes, and commits the result onto
+Framework wrapper around the `calculate_health_progression` policy: skips the dead, builds the
+`HealthContext`, validates the returned plan, caps care at a scheduled death, and commits it onto
 the individual.
 """
 function compute_health!(individual::Individual, infections::InfectionRegistry,
-        hp::HealthProgression, tick::Int16, rng::Xoshiro)
+        hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro)
     dead(individual) && return nothing
-    care, outcome = calculate_health_progression(individual, infections, hp, tick, rng)
+    ctx = HealthContext(_committed_care(individual), _committed_outcome(individual), new_infection, tick)
+    care, outcome = calculate_health_progression(individual, infections, hp, ctx, rng)
+    _validate_health_plan(care, outcome, ctx)
     care = _cap_care(care, outcome)
-    care = _keep_realized_care(care, individual, tick)
     _write_health_timeline!(individual, care, outcome)
     return nothing
 end

@@ -35,13 +35,10 @@ Critical
 
 ## Health Progression
 
-Host-level care and mortality (hospital, ICU, ventilation, death) are decided independently of the
-disease progression, by a `HealthProgression` that folds the demand of all of a host's active
-infections into one timeline.
-
 ```@docs
 HealthProgression
 HealthProfile
+HealthContext
 DefaultHealthProgression
 SevereHealthProfile
 CriticalHealthProfile
