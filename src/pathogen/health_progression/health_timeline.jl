@@ -33,12 +33,14 @@ struct CareTimeline
         icu_admission >= 0 && icu_discharge < 0 && throw(ArgumentError("ICU admission requires an ICU discharge (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
         icu_discharge >= 0 && icu_admission < 0 && throw(ArgumentError("ICU discharge requires an ICU admission (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
         icu_discharge >= 0 && icu_discharge < icu_admission && throw(ArgumentError("ICU discharge cannot happen before ICU admission (icu_admission: $icu_admission, icu_discharge: $icu_discharge)."))
+        icu_discharge >= 0 && icu_discharge > hospital_discharge && throw(ArgumentError("ICU discharge cannot happen after hospital discharge (icu_discharge: $icu_discharge, hospital_discharge: $hospital_discharge)."))
         # ventilation (gated behind ICU)
         ventilation_admission >= 0 && icu_admission < 0 && throw(ArgumentError("Ventilation admission requires an ICU admission (icu_admission: $icu_admission, ventilation_admission: $ventilation_admission)."))
         ventilation_admission >= 0 && ventilation_admission < icu_admission && throw(ArgumentError("Ventilation admission cannot happen before ICU admission (icu_admission: $icu_admission, ventilation_admission: $ventilation_admission)."))
         ventilation_admission >= 0 && ventilation_discharge < 0 && throw(ArgumentError("Ventilation admission requires a ventilation discharge (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
         ventilation_discharge >= 0 && ventilation_admission < 0 && throw(ArgumentError("Ventilation discharge requires a ventilation admission (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
         ventilation_discharge >= 0 && ventilation_discharge < ventilation_admission && throw(ArgumentError("Ventilation discharge cannot happen before ventilation admission (ventilation_admission: $ventilation_admission, ventilation_discharge: $ventilation_discharge)."))
+        ventilation_discharge >= 0 && ventilation_discharge > icu_discharge && throw(ArgumentError("Ventilation discharge cannot happen after ICU discharge (ventilation_discharge: $ventilation_discharge, icu_discharge: $icu_discharge)."))
 
         return new(hospital_admission, hospital_discharge, icu_admission, icu_discharge,
             ventilation_admission, ventilation_discharge)

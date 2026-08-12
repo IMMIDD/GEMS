@@ -371,7 +371,7 @@ window).
     type = "BetaInfectiousness"
     [Pathogens.Covid19.infectiousness_profile.parameters]
         time_to_peak = 2
-        concentration = 7
+        concentration = 5
 ```
 `StagedInfectiousness` sets a level per disease stage. `BetaInfectiousness` gives a shedding curve
 that rises to a peak `time_to_peak` ticks after infectiousness onset and declines to zero at

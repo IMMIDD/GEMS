@@ -38,6 +38,29 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
         @test_throws ArgumentError CriticalHealthProfile(death_probability = 1.1)
     end
 
+    @testset "CareTimeline" begin
+        # admissions nest
+        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+            icu_admission = 3, icu_discharge = 10)
+        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+            icu_admission = 6, icu_discharge = 14, ventilation_admission = 4, ventilation_discharge = 10)
+        # discharges nest too
+        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 8,
+            icu_admission = 6, icu_discharge = 12)
+        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+            icu_admission = 6, icu_discharge = 10, ventilation_admission = 7, ventilation_discharge = 14)
+        # each admission requires its discharge, and cannot follow it
+        @test_throws ArgumentError CareTimeline(hospital_admission = 5)
+        @test_throws ArgumentError CareTimeline(hospital_admission = 10, hospital_discharge = 5)
+        @test_throws ArgumentError CareTimeline(icu_admission = 5, icu_discharge = 10)
+
+        nested = CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+            icu_admission = 6, icu_discharge = 14,
+            ventilation_admission = 7, ventilation_discharge = 10)
+        @test nested.icu_discharge <= nested.hospital_discharge
+        @test nested.ventilation_discharge <= nested.icu_discharge
+    end
+
     @testset "calculate_health_profile per tier" begin
         rng = Xoshiro(1)
         ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
