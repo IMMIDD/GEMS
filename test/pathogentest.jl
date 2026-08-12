@@ -1304,7 +1304,7 @@ end
 
             # shape within one window
             c = beta_curve(bp, beta_state(10), 10)
-            @test c[1] == 0                        # zero at the onset tick itself
+            @test c[1] > 0                         # sheds from the onset tick on
             @test issorted(c[1:3])                 # rises to the peak
             @test issorted(c[3:end], rev=true)     # and decays after it
             @test c[end] <= 2                      # ~zero approaching recovery
