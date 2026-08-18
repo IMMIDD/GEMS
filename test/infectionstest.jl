@@ -444,7 +444,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             sim = custom_test_sim()
             infecter = individuals(sim)[1]
             infectee = individuals(sim)[2]
-            infectee.hospital_admission = Int16(0); infectee.hospital_discharge = Int16(100)
+            infectee.hospital_demands = Int16(1)
             infect!(infecter, Int16(0), first_pathogen(sim), rng = Xoshiro())
             GEMS.update_individual!(infecter, Int16(1), sim)
             @test !try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
@@ -466,7 +466,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             infectee = individuals(sim)[2]
             infect!(infecter, Int16(0), first_pathogen(sim), rng = Xoshiro())
             GEMS.update_individual!(infecter, Int16(1), sim)
-            infecter.hospital_admission = Int16(0); infecter.hospital_discharge = Int16(100)
+            infecter.hospital_demands = Int16(1)
             @test !try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
 
             # TRY TO INFECT INFECTER-INFECTEE (should NOT work - infecter not infected

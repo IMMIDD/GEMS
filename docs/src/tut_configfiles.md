@@ -324,7 +324,9 @@ Every infection now follows this custom timeline, with illness length tied to ea
 
 ## [Custom Health Progression](@id custom-health-progression)
 
-Hospitalization, ICU, ventilation, and death are decided separately from the disease timeline, by a `HealthProgression`. Unlike a disease progression, it sees *all* of a host's active infections at once and folds them into one host-level care timeline, so a co-infected host's outcome is decided jointly rather than by whichever infection "wins".
+Hospitalization, ICU, ventilation, and death are decided separately from the disease timeline, by a `HealthProgression`. Unlike a disease progression, it sees *all* of a host's active infections at once, so a co-infected host's outcome can be decided jointly rather than by whichever infection "wins".
+
+A policy does not write the host's care directly. It contributes `CareContribution`s — intervals of demand — and the host occupies a care level for as long as any contribution demands it. Overlapping contributions therefore produce one continuous stay, and contributions separated by a gap produce two separate episodes.
 
 By default, GEMS applies a `DefaultHealthProgression`: `Severe` cases may be hospitalized, and `Critical` cases may escalate to ICU or ventilation and carry a death risk.
 
@@ -335,11 +337,16 @@ By default, GEMS applies a `DefaultHealthProgression`: `Severe` cases may be hos
     ```
     See the [config reference](@ref config-files) for the config-file form and the exact rules.
 
-To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression()` method: it inspects the host's active infections with `each_infection()` and returns a `(CareContribution, HealthOutcome)` pair.
+To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression!()` method: it `push!`es its care demand onto `contributions` and returns the death it proposes.
+
+The method is invoked once per arriving infection, and `new_infection` is the one that triggered it.
+
+!!! warning "Contribute only the increment"
+    Contributions superpose and are never retracted, so a policy must contribute only what previous calls did not. Re-deriving the whole active set and contributing all of it again on every call leaves the host admitted for the rest of the run, and nothing detects it. The returned `HealthOutcome` is likewise this call's own contribution: GEMS folds it with the host's committed death (earliest wins), so returning an empty `HealthOutcome()` means "no mortality from this infection", not "cancel the scheduled death".
 
 ```julia
 using GEMS, Distributions, Random, Parameters
-import GEMS.calculate_health_progression
+import GEMS.calculate_health_progression!
 
 # define custom health progression struct
 @with_kw struct SevereWithDeathProgression <: GEMS.HealthProgression
@@ -350,35 +357,39 @@ import GEMS.calculate_health_progression
     severeness_onset_to_death::Union{Distribution, Real}
 end
 
-# override the health progression function for your struct
-function GEMS.calculate_health_progression(individual::Individual, infections::InfectionRegistry,
-    hp::SevereWithDeathProgression, tick::Int16, rng::Xoshiro)
+# override the health progression function for your struct. Every argument must be annotated:
+# differing from the generic method only in `hp` is what keeps the override unambiguous
+function GEMS.calculate_health_progression!(contributions::Vector{CareContribution},
+    individual::Individual, infections::InfectionRegistry, hp::SevereWithDeathProgression,
+    new_infection::InfectionState, tick::Int16, rng::Xoshiro)
 
-    # inspect every active infection of this host
-    for infection in each_infection(individual, infections)
-        # a non-severe infection demands no host care
-        infection.severeness_onset < 0 && continue
+    # a non-severe infection demands no host care
+    new_infection.severeness_onset < 0 && return HealthOutcome()
 
-        # a share of severe cases die (without any hospitalization) ...
-        if gems_rand(rng) <= hp.death_probability
-            death = round(Int16, infection.severeness_onset +
-                GEMS._rand_val(hp.severeness_onset_to_death, rng))
-            return CareContribution(), HealthOutcome(death = death, death_pathogen_id = infection.pathogen_id)
+    # nothing may be scheduled at or before the current tick
+    onset = max(new_infection.severeness_onset, Int16(tick + 1))
 
-        # ... and a share are admitted to a normal ward
-        elseif gems_rand(rng) <= hp.hospital_probability
-            admission = round(Int16, infection.severeness_onset +
-                GEMS._rand_val(hp.severeness_onset_to_hospital_admission, rng))
-            discharge = round(Int16, admission +
-                GEMS._rand_val(hp.hospital_admission_to_hospital_discharge, rng))
-            return CareContribution(hospital_admission = admission, hospital_discharge = discharge), HealthOutcome()
-        end
+    # a share of severe cases die (without any hospitalization) ...
+    if gems_rand(rng) <= hp.death_probability
+        death = round(Int16, onset + GEMS._rand_val(hp.severeness_onset_to_death, rng))
+        return HealthOutcome(death = death, death_pathogen_id = new_infection.pathogen_id)
+
+    # ... and a share are admitted to a normal ward
+    elseif gems_rand(rng) <= hp.hospital_probability
+        admission = round(Int16, onset +
+            GEMS._rand_val(hp.severeness_onset_to_hospital_admission, rng))
+        discharge = round(Int16, admission +
+            GEMS._rand_val(hp.hospital_admission_to_hospital_discharge, rng))
+        push!(contributions, CareContribution(CARE_HOSPITAL, admission, discharge))
     end
 
-    # nobody demands care -> empty timeline, no death
-    return CareContribution(), HealthOutcome()
+    return HealthOutcome()
 end
 ```
+
+`CareContribution(CARE_HOSPITAL, admission, discharge)` fills in every care level below the one you name, so contributing at `CARE_ICU` carries its ward cover automatically. To nest a short ICU stay inside a longer ward stay, use the keyword constructor instead.
+
+To reason across a host's infections — coinfection synergy, say — iterate `each_infection(individual, infections)`. Two things to know when you do: it already includes `new_infection`, and a co-active infection's window may have started at or before `tick`, so clamp any overlap to `tick + 1` as above.
 
 Now pass your policy to the `Simulation` via `health_progression`, reusing the built-in `Severe` progression so infections reach the severe state it reacts to:
 
