@@ -9,7 +9,7 @@
         type = "InfectedFraction"
         [Simulation.StartCondition.parameters]
             fraction = 0.001
-            pathogen = "Covid19"
+            pathogen = "" #kept empty so that both config and programmatic paths resolve to the first pathogen
 
     [Simulation.StopCriterion]
         type = "TimesUp"
