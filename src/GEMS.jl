@@ -67,6 +67,8 @@ module GEMS
     include("contacts/contact_matrix.jl")
     include("contacts/contact_sampling.jl")
     include("population/individuals.jl")
+    include("pathogen/health_progression/host_health.jl")
+    include("simulation/health_schedule.jl")
     include("population/populations.jl")
     include("settings/settings.jl") 
     include("settings/settingscontainers.jl")
@@ -85,7 +87,6 @@ module GEMS
     include("simulation/calibration.jl")
     include("registries/registry_methods.jl")
     include("population/individual_methods.jl")
-    include("pathogen/health_progression/health_timeline.jl")
     include("pathogen/health_progression/default_health_progression.jl")
     include("pathogen/health_progression/care_embedding.jl")
 

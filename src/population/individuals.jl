@@ -117,13 +117,10 @@ A type to represent individuals that act as agents inside the simulation.
     - `quarantine_release_tick::Int16`: End tick of quarantine
     - `quarantine_status::Int8`: Status indicator (none, household, etc.)
 
-- Host Health Timeline (precomputed by the `HealthProgression`; `hospitalized`/`icu`/`ventilated` derived on the fly)
-    - `hospital_admission::Int16`: Tick of hospital admission
-    - `hospital_discharge::Int16`: Tick of hospital discharge
-    - `icu_admission::Int16`: Tick of ICU admission
-    - `icu_discharge::Int16`: Tick of ICU discharge
-    - `ventilation_admission::Int16`: Tick of ventilation admission
-    - `ventilation_discharge::Int16`: Tick of ventilation discharge
+- Host Care State (current occupancy only; pending transitions live in the `Simulation`'s `HealthSchedule`)
+    - `hospital_demands::Int16`: Count of active care contributions demanding a hospital bed. The host occupies the level while the count is above zero.
+    - `icu_demands::Int16`: Count of active care contributions demanding ICU.
+    - `ventilation_demands::Int16`: Count of active care contributions demanding ventilation.
     - `death::Int16`: Tick of host death
 
 - Pathogen
@@ -171,28 +168,26 @@ A type to represent individuals that act as agents inside the simulation.
     quarantine_release_tick::Int16 = DEFAULT_TICK   # off 46,  2B,  line 0
     quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 48, 1B, line 0
 
-    # HOST HEALTH TIMELINE
-    hospital_admission::Int16 = DEFAULT_TICK        # off 50,  2B,  line 0
-    hospital_discharge::Int16 = DEFAULT_TICK        # off 52,  2B,  line 0
-    icu_admission::Int16 = DEFAULT_TICK             # off 54,  2B,  line 0
-    icu_discharge::Int16 = DEFAULT_TICK             # off 56,  2B,  line 0
-    ventilation_admission::Int16 = DEFAULT_TICK     # off 58,  2B,  line 0
-    ventilation_discharge::Int16 = DEFAULT_TICK     # off 60,  2B,  line 0
-    death::Int16 = DEFAULT_TICK                     # off 62,  2B,  line 0
+    # HOST CARE STATE (current only; pending transitions live in the Simulation's HealthSchedule)
+    hospital_demands::Int16 = 0                     # off 50,  2B,  line 0
+    icu_demands::Int16 = 0                          # off 52,  2B,  line 0
+    ventilation_demands::Int16 = 0                  # off 54,  2B,  line 0
+    death::Int16 = DEFAULT_TICK                     # off 56,  2B,  line 0
+    #                                                 off 58-59, 2B free (alignment)
 
     # PATHOGEN
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} =
-        ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)  # off 64,  28B, line 1
-    infection_head::Int32 = 0                       # off 92,  4B,  line 1
-    active_pathogens_mask::UInt32 = 0               # off 96,  4B,  line 1
+        ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)  # off 60,  28B, line 0/1
+    infection_head::Int32 = 0                       # off 88,  4B,  line 1
+    active_pathogens_mask::UInt32 = 0               # off 92,  4B,  line 1
 
     # IMMUNITY
     immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} =
-        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 100, 12B, line 1
-    immunity_head::Int32 = 0                        # off 112, 4B,  line 1
+        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 96,  12B, line 1
+    immunity_head::Int32 = 0                        # off 108, 4B,  line 1
 
     # EXTENSIONS
-    extensions::Any = nothing                       # off 120, 8B,  line 1
+    extensions::Any = nothing                       # off 112, 8B,  line 1
 end
 
 # CONSTRUCTOR
@@ -523,37 +518,38 @@ Sets the `critical` flag of the individual.
 critical!(individual::Individual, critical::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_CRITICAL, critical))
 
 """
-    is_hospitalized(individual::Individual, t::Int16)
-    ishospitalized(individual::Individual, t::Int16)
-    hospitalized(individual::Individual, t::Int16)
+    is_hospitalized(individual::Individual)
+    ishospitalized(individual::Individual)
+    hospitalized(individual::Individual)
 
-Returns `true` if the individual is in hospital at tick `t`, derived from the precomputed host timeline.
+Returns `true` if the individual is currently in hospital. Care state is realized as the simulation
+runs, so there is no timeline to query at an arbitrary tick; use `health_episodes` for past occupancy.
 """
-is_hospitalized(individual::Individual, t::Int16) = 0 <= individual.hospital_admission <= t < individual.hospital_discharge
-ishospitalized(individual::Individual, t::Int16) = is_hospitalized(individual, t)
-hospitalized(individual::Individual, t::Int16) = is_hospitalized(individual, t)
-
-"""
-    is_icu(individual::Individual, t::Int16)
-    isicu(individual::Individual, t::Int16)
-    icu(individual::Individual, t::Int16)
-
-Returns `true` if the individual is in the ICU at tick `t`, derived from the precomputed host timeline.
-"""
-is_icu(individual::Individual, t::Int16) = 0 <= individual.icu_admission <= t < individual.icu_discharge
-isicu(individual::Individual, t::Int16) = is_icu(individual, t)
-icu(individual::Individual, t::Int16) = is_icu(individual, t)
+is_hospitalized(individual::Individual) = individual.hospital_demands > 0
+ishospitalized(individual::Individual) = is_hospitalized(individual)
+hospitalized(individual::Individual) = is_hospitalized(individual)
 
 """
-    is_ventilated(individual::Individual, t::Int16)
-    isventilated(individual::Individual, t::Int16)
-    ventilated(individual::Individual, t::Int16)
+    is_icu(individual::Individual)
+    isicu(individual::Individual)
+    icu(individual::Individual)
 
-Returns `true` if the individual is on a ventilator at tick `t`, derived from the precomputed host timeline.
+Returns `true` if the individual is currently in the ICU.
 """
-is_ventilated(individual::Individual, t::Int16) = 0 <= individual.ventilation_admission <= t < individual.ventilation_discharge
-isventilated(individual::Individual, t::Int16) = is_ventilated(individual, t)
-ventilated(individual::Individual, t::Int16) = is_ventilated(individual, t)
+is_icu(individual::Individual) = individual.icu_demands > 0
+isicu(individual::Individual) = is_icu(individual)
+icu(individual::Individual) = is_icu(individual)
+
+"""
+    is_ventilated(individual::Individual)
+    isventilated(individual::Individual)
+    ventilated(individual::Individual)
+
+Returns `true` if the individual is currently on a ventilator.
+"""
+is_ventilated(individual::Individual) = individual.ventilation_demands > 0
+isventilated(individual::Individual) = is_ventilated(individual)
+ventilated(individual::Individual) = is_ventilated(individual)
 
 """
     is_dead(individual::Individual)
@@ -780,19 +776,27 @@ end
 """
     individual_base_fieldnames()
 
-Return the field names of `Individual` excluding `:extensions`.
+Return the field names of `Individual` that a constructor may populate from external data,
+excluding `:extensions` and the three `*_demands` counters.
 Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
 they don't accidentally try to populate the extension slot from a column that doesn't exist.
+
+The demand counters are realized state, not input: a count set from a population file would have no
+matching discharge scheduled, stranding the host as permanently admitted.
 """
-individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual))
+individual_base_fieldnames() = filter(f -> f !== :extensions && f !== :hospital_demands && f !== :icu_demands && f !== :ventilation_demands, fieldnames(Individual))
 
 """
     assert_no_core_collision(names)
 
 Throw an error if any of `names` of extension fields collides with a core `Individual` field name.
+
+Checks every field, not `individual_base_fieldnames()`: that list answers "settable from external
+data", and a field excluded from it is still shadowed by the real one, so an extension sharing its
+name would be silently unreachable.
 """
 function assert_no_core_collision(names)
-    clash = intersect(Symbol.(collect(names)), individual_base_fieldnames())
+    clash = intersect(Symbol.(collect(names)), fieldnames(Individual))
     isempty(clash) || error(
         "ind_extension field(s) $(collect(clash)) collide with core Individual fields. " *
         "Extension fields must use distinct names. Rename the offending column(s).")
@@ -858,9 +862,9 @@ function Base.show(io::IO, individual::Individual)
         "Is Symptomatic" => is_symptomatic(individual),
         "Is Severe" => is_severe(individual),
         "Is Critical" => is_critical(individual),
-        "Hospital Admission" => individual.hospital_admission >= 0 ? individual.hospital_admission : "n/a",
-        "ICU Admission" => individual.icu_admission >= 0 ? individual.icu_admission : "n/a",
-        "Ventilation Admission" => individual.ventilation_admission >= 0 ? individual.ventilation_admission : "n/a",
+        "Hospital Demands" => individual.hospital_demands,
+        "ICU Demands" => individual.icu_demands,
+        "Ventilation Demands" => individual.ventilation_demands,
         "Is Dead" => is_dead(individual),
 
         "Household ID" => individual.household,

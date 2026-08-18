@@ -100,7 +100,7 @@ function log_stepinfo(simulation::Simulation)
                 loc_st_unab += size(s)
             else
                 for i in individuals(s)
-                    if is_severe(i) || is_hospitalized(i, tick(simulation)) || isquarantined(i)
+                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
                         loc_st_unab += 1
                     end
                 end
@@ -121,7 +121,7 @@ function log_stepinfo(simulation::Simulation)
                 loc_wo_unab += size(o)
             else
                 for i in individuals(o)
-                    if is_severe(i) || is_hospitalized(i, tick(simulation)) || isquarantined(i)
+                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
                         loc_wo_unab += 1
                     end
                 end
@@ -291,9 +291,11 @@ function seed_scheduled!(simulation::Simulation)
     return nothing
 end
 
-# an import can only land on a host that is alive, not in hospital, and not already carrying the pathogen
+# An import can only land on a host that is alive, not in hospital, and not already carrying the
+# pathogen. Seeding runs before the individual loop, so a host due to die at `t` still looks alive.
 @inline _can_be_seeded(individual::Individual, pathogen_id::Int8, t::Int16) =
-    !dead(individual) && !hospitalized(individual, t) && !infected(individual, pathogen_id)
+    !dead(individual) && !(Int16(0) <= individual.death <= t) &&
+    !hospitalized(individual) && !infected(individual, pathogen_id)
 
 """
     _seed_infection!(simulation, spec::InfectionSeed, rng)
@@ -342,6 +344,10 @@ Increments the simulation status by one tick and executes all events that shall 
 function step!(simulation::Simulation)
     dormant = is_dormant(simulation)
 
+    # realize scheduled care before anything reads hospitalization state. Unconditional, so a
+    # mis-judged dormant tick cannot strand a host mid-episode; dormancy makes it a no-op anyway
+    drain_health_schedule!(simulation)
+
     # seed scheduled imports before transmission so a fresh import can spread this tick
     seed_scheduled!(simulation)
 
@@ -351,9 +357,12 @@ function step!(simulation::Simulation)
             update_individual!(i, tick(simulation), simulation)
         end
         flush_ended_infections!(simulation)
-        # merge per-thread staged trigger events into the queue before processing
-        flush_staging!(event_queue(simulation))
     end
+
+    # after the individual loop, so trigger conditions see this tick's disease flags
+    fire_hospitalization_triggers!(simulation)
+    # merge per-thread staged trigger events into the queue before processing
+    flush_staging!(event_queue(simulation))
 
     # infect individuals in settings
     if !dormant
@@ -427,8 +436,9 @@ function is_dormant(simulation::Simulation)
         return false
     end
     
-    # wake up while a host still has a scheduled care/death event pending
-    if current_t <= healthlogger(simulation).latest_pending_tick[]
+    # wake up if a care transition or a death is due today. Deliberately not an "anything outstanding"
+    # test, which would hold the simulation awake up to the last scheduled event
+    if any(s -> due_now(s, current_t), simulation.health_schedules)
         return false
     end
 
@@ -482,13 +492,9 @@ function flush_pending_infections!(sim::Simulation)
             for p in buf
                 ind = get_individual_by_id(pop, p.host_id)
                 state = push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
-                # fold the new infection's demand into the host health timeline
-                compute_health!(ind, infections, health_progression(sim), state, tick(sim), sim.rngs[shard_id])
-                
-                # keep the sim awake until this host's care/death events are realized (they can
-                # outlive active disease); otherwise a dormant fast-forward would drop their logging
-                lht = _latest_health_tick(ind)
-                lht >= 0 && Threads.atomic_max!(healthlogger(sim).latest_pending_tick, lht)
+                # contribute the new infection's care demand
+                compute_health!(ind, infections, health_progression(sim), state, tick(sim),
+                    sim.rngs[shard_id], sim.health_schedules[shard_id])
             end
             empty!(buf)
         end
@@ -545,31 +551,106 @@ end
 
 
 """
-    _latest_health_tick(indiv::Individual)
+    _apply_transition!(indiv::Individual, hl::HealthLogger, tr::CareTransition, tick::Int16)
 
-Latest tick at which `indiv` has a scheduled host-level health event (any care admission/discharge
-or death), or `-1` if none. Used to hold `is_dormant` awake so events that fall after the host's
-disease has cleared are still realized and logged.
+Applies one transition to the host's demand counter, logging only if it crossed zero — a second
+overlapping contribution neither re-admits nor discharges.
+
+Returns `true` if an admission edge fired, for the trigger phase.
 """
-@inline function _latest_health_tick(indiv::Individual)
-    return max(indiv.hospital_admission, indiv.hospital_discharge,
-        indiv.icu_admission, indiv.icu_discharge,
-        indiv.ventilation_admission, indiv.ventilation_discharge,
-        indiv.death)
+@inline function _apply_transition!(indiv::Individual, hl::HealthLogger, tr::CareTransition, tick::Int16)
+    if tr.is_admission
+        _adjust_demand!(indiv, tr.level, Int16(1)) == 1 || return false
+        log!(hl, id(indiv), _care_event(tr.level, true), tick)
+        return true
+    end
+    _adjust_demand!(indiv, tr.level, Int16(-1)) == 0 &&
+        log!(hl, id(indiv), _care_event(tr.level, false), tick)
+    return false
 end
 
 """
-    log_health_events!(healthlogger::HealthLogger, indiv::Individual, tick::Int16)
+    drain_health_schedule!(sim::Simulation)
 
-Logs any host care events that become realized for `indiv` at `tick`.
+Realizes every care transition due at or before the current tick.
+
+Admissions first, then discharges, each in ladder order (reversed for discharges). That split is what
+lets one stay end exactly where another begins without logging a spurious discharge and re-admission,
+while still logging both events of a zero-length stay.
+
+Sweeps `<= tick`, so a bucket missed for any reason drains late rather than never, and logs at the
+bucket's own tick to keep occupancy aligned.
+
+Hosts due to die at or before this tick are skipped; `_close_care_at_death!` closes their open levels.
 """
-@inline function log_health_events!(healthlogger::HealthLogger, indiv::Individual, tick::Int16)
-    indiv.hospital_admission == tick && log!(healthlogger, id(indiv), :hospital_admission, tick)
-    indiv.hospital_discharge == tick && log!(healthlogger, id(indiv), :hospital_discharge, tick)
-    indiv.icu_admission == tick && log!(healthlogger, id(indiv), :icu_admission, tick)
-    indiv.icu_discharge == tick && log!(healthlogger, id(indiv), :icu_discharge, tick)
-    indiv.ventilation_admission == tick && log!(healthlogger, id(indiv), :ventilation_admission, tick)
-    indiv.ventilation_discharge == tick && log!(healthlogger, id(indiv), :ventilation_discharge, tick)
+function drain_health_schedule!(sim::Simulation)
+    t = tick(sim)
+    hl = healthlogger(sim)
+    pop = population(sim)
+
+    Threads.@threads :static for shard_id in 1:Threads.maxthreadid()
+        sched = sim.health_schedules[shard_id]
+        empty!(sched.admitted)
+        while sched.head <= Int(t)
+            bucket_tick = Int16(sched.head)
+            sched.head += 1
+            bucket = get(sched.buckets, bucket_tick, nothing)
+            bucket === nothing && continue
+
+            for level in instances(CareLevel), tr in bucket
+                (tr.is_admission && tr.level === level) || continue
+                indiv = get_individual_by_id(pop, tr.host_id)
+                (Int16(0) <= indiv.death <= t) && continue
+                _apply_transition!(indiv, hl, tr, bucket_tick) &&
+                    level === CARE_HOSPITAL && push!(sched.admitted, tr.host_id)
+            end
+            for level in reverse(instances(CareLevel)), tr in bucket
+                (!tr.is_admission && tr.level === level) || continue
+                indiv = get_individual_by_id(pop, tr.host_id)
+                (Int16(0) <= indiv.death <= t) && continue
+                _apply_transition!(indiv, hl, tr, bucket_tick)
+            end
+
+            delete!(sched.buckets, bucket_tick)
+        end
+    end
+    return nothing
+end
+
+"""
+    fire_hospitalization_triggers!(sim::Simulation)
+
+Fires the hospitalization triggers for every host admitted by this tick's drain.
+
+Separate from the drain, and after the individual loop, so a trigger's `condition` and `delay` see
+this tick's disease flags as well as the finished care counters.
+"""
+function fire_hospitalization_triggers!(sim::Simulation)
+    triggers = hospitalization_triggers(sim)
+    isempty(triggers) && return nothing
+    pop = population(sim)
+    for sched in sim.health_schedules, host_id in sched.admitted
+        indiv = get_individual_by_id(pop, host_id)
+        for ht in triggers
+            trigger(ht, indiv, sim, staged = true)
+        end
+    end
+    return nothing
+end
+
+"""
+    _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
+
+Closes every open care level when a host dies, logging one discharge per level in reverse ladder
+order. Counters are zeroed rather than decremented, so a stale queued discharge cannot drive one
+negative.
+"""
+@inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
+    for level in reverse(instances(CareLevel))
+        _demand(indiv, level) > 0 || continue
+        _set_demand!(indiv, level, Int16(0))
+        log!(hl, id(indiv), _care_event(level, false), tick)
+    end
     return nothing
 end
 
@@ -588,8 +669,8 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         update_immunity!(indiv, immunity_registry(sim, id(indiv)), sim.pathogens, tick, rng(sim))
     end
 
-    # progress disease while infected, or while a host death/care episode is still pending
-    # (care can outlive the infection, so we cannot gate purely on `infected`)
+    # progress disease while infected, or while a scheduled death is still pending: a death can fall
+    # after every infection has cleared, and the drain does not realize deaths
     if infected(indiv) || (Int16(0) <= indiv.death && !was_dead)
         shard_id = _owner_shard(id(indiv))
 
@@ -597,21 +678,13 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
+            _close_care_at_death!(indiv, healthlogger(sim), tick)
         end
     end
-
-    # log host care events realized at this tick
-    log_health_events!(healthlogger(sim), indiv, tick)
 
     if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim, staged = true)
-        end
-    end
-    # hospital admission edge: the host timeline schedules admission exactly at this tick
-    if indiv.hospital_admission == tick
-        for ht in sim |> hospitalization_triggers
-            trigger(ht, indiv, sim, staged = true)
         end
     end
 end

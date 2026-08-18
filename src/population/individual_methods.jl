@@ -14,8 +14,7 @@ export infectiousness
 export immunity_level
 # disease progression timeline
 export exposure, infectiousness_onset, symptom_onset, severeness_onset, severeness_offset
-export hospital_admission, icu_admission, icu_discharge, ventilation_admission
-export ventilation_discharge, hospital_discharge, recovery, death
+export recovery
 # testing
 export get_test_state
 export last_test
@@ -971,17 +970,17 @@ end
 
 Resets all non-static values like the disease progression timing.
 The individual is returned to a state as if it had never been infected, vaccinated, tested, etc.
+
+Only safe as part of simulation-level `reset!`, which also clears the `HealthSchedule`s. Called alone,
+the host's queued transitions remain and the next to drain throws on a cleared counter.
 """
 function reset!(individual::Individual, infections::InfectionRegistry, immunities::ImmunityRegistry)
     individual.disease_flags = DiseaseFlags()
 
-    # reset host health timeline
-    individual.hospital_admission = DEFAULT_TICK
-    individual.hospital_discharge = DEFAULT_TICK
-    individual.icu_admission = DEFAULT_TICK
-    individual.icu_discharge = DEFAULT_TICK
-    individual.ventilation_admission = DEFAULT_TICK
-    individual.ventilation_discharge = DEFAULT_TICK
+    # reset host care state
+    individual.hospital_demands = 0
+    individual.icu_demands = 0
+    individual.ventilation_demands = 0
     individual.death = DEFAULT_TICK
 
     # Clean overflow before clearing flags

@@ -11,7 +11,7 @@ export municipalities, households, schoolclasses, schoolyears, schools, schoolco
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
 export health_progression
-export infection_registry, immunity_registry, test_registry
+export infection_registry, immunity_registry, test_registry, health_schedule
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
@@ -201,6 +201,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     infection_registries::Vector{InfectionRegistry}
     immunity_registries::Vector{ImmunityRegistry}
     test_registries::Vector{TestRegistry}
+    health_schedules::Vector{HealthSchedule}
 
     # logger
     infectionlogger::InfectionLogger
@@ -275,6 +276,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [TestRegistry() for _ in 1:num_shards],
+            [HealthSchedule() for _ in 1:num_shards],
 
             # logger
             InfectionLogger(minid = population.minid, maxid = population.maxid),
@@ -1858,6 +1860,24 @@ Returns the shard index (1 to `Threads.maxthreadid()`) assigned to the given `in
 @inline _owner_shard(ind_id::Int32) = mod(ind_id - Int32(1), Int32(Threads.maxthreadid())) + 1
 
 """
+    health_schedule(simulation, ind_id::Int32)::HealthSchedule
+
+Returns the specific `HealthSchedule` shard that owns the given individual id.
+"""
+function health_schedule(simulation::Simulation, ind_id::Int32)::HealthSchedule
+    return simulation.health_schedules[_owner_shard(ind_id)]
+end
+
+"""
+    health_schedule(simulation, individual::Individual)::HealthSchedule
+
+Returns the specific `HealthSchedule` shard that owns the given individual.
+"""
+function health_schedule(simulation::Simulation, individual::Individual)::HealthSchedule
+    return health_schedule(simulation, id(individual))
+end
+
+"""
     infection_registry(simulation, ind_id::Int32)::InfectionRegistry
 
 Returns the specific `InfectionRegistry` shard that owns the given individual id.
@@ -2191,6 +2211,10 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     simulation.customlogger = CustomLogger()
 
     simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
+
+    # before initialize! below, which infects and schedules care again. Must stay paired with the
+    # per-individual reset! above; clearing one alone leaves the two disagreeing
+    foreach(reset_care!, simulation.health_schedules)
 
     # Reset NPI triggers and strategies
     simulation.event_queue = EventQueue()

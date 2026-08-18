@@ -41,7 +41,7 @@ function calculate_health_profile(sc::SevereHealthProfile, individual::Individua
         hospital_admission = round(Int16, infection.severeness_onset + _rand_val(sc.severeness_onset_to_hospital_admission, rng))
         hospital_discharge = round(Int16, hospital_admission + _rand_val(sc.hospital_admission_to_hospital_discharge, rng))
     end
-    care = CareTimeline(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge)
+    care = CareContribution(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge)
     return care, HealthOutcome()
 end
 
@@ -153,7 +153,7 @@ function calculate_health_profile(cc::CriticalHealthProfile, individual::Individ
         death = round(Int16, infection.critical_onset + _rand_val(cc.critical_onset_to_death, rng))
     end
 
-    care = CareTimeline(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge,
+    care = CareContribution(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge,
         icu_admission = icu_admission, icu_discharge = icu_discharge,
         ventilation_admission = ventilation_admission, ventilation_discharge = ventilation_discharge)
     outcome = HealthOutcome(death = death, death_pathogen_id = infection.pathogen_id)
@@ -165,13 +165,13 @@ end
 
 Default host health policy. Holds a `SevereHealthProfile` and a `CriticalHealthProfile`; each
 infection contributes care and mortality risk from the profile for its peak tier once, when it
-arrives. Care is folded into the host's committed timeline via `_merge_care` and mortality via
-`_combine_outcome` (earliest death wins), independently of each other. Ventilation is disabled by
-default (`CriticalHealthProfile` has zero ventilation probability and length).
+arrives. Care contributions superpose into the host's occupancy and mortality folds by earliest death;
+the two are independent. Ventilation is disabled by default (`CriticalHealthProfile` has zero
+ventilation probability and length).
 
-Contributions are independent, not synergistic: a host's care demand is the union of what each
-infection demanded on its own. Override `calculate_health_progression` to model interaction
-between co-active infections.
+Contributions are independent, not synergistic: a host's occupancy is the union of what each infection
+demanded on its own, so two infections that each demand a ward bed never escalate to ICU. Override
+`calculate_health_progression!` to model interaction between co-active infections.
 
 # Example
 
@@ -196,68 +196,25 @@ struct DefaultHealthProgression{S<:HealthProfile, C<:HealthProfile} <: HealthPro
 end
 
 """
-    _combine_outcome(a::HealthOutcome, b::HealthOutcome)
+    calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual, infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro)
 
-The default policy's combination of two independent infections' terminal risk: the earlier
-death, with its attributed pathogen. A custom `HealthProgression` is free to combine
-differently (e.g. capacity-constrained mortality that reads the already-combined `CareTimeline`).
+Generic combination policy: contributes for `new_infection` only. An infection that selects no profile
+contributes nothing.
+
+Non-synergy is structural here rather than documented — a contribution is drawn without reference to
+any other, so two infections that each demand a ward bed produce a host in a ward, never an
+escalation. Override this method to model interaction between co-active infections; it receives every
+active infection via `infections`.
 """
-function _combine_outcome(a::HealthOutcome, b::HealthOutcome)
-    if a.death < 0
-        return HealthOutcome(death = b.death, death_pathogen_id = b.death_pathogen_id)
-    elseif b.death < 0 || a.death <= b.death
-        return HealthOutcome(death = a.death, death_pathogen_id = a.death_pathogen_id)
-    else
-        return HealthOutcome(death = b.death, death_pathogen_id = b.death_pathogen_id)
-    end
-end
+function calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual,
+        infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState,
+        tick::Int16, rng::Xoshiro)
 
-"""
-    _merge_episode(committed_admission, committed_discharge, added_admission, added_discharge, tick)
-
-Merges one care tier's committed episode with a newly drawn contribution.
-
-An episode still open at `tick` keeps its realized admission and extends to the later discharge.
-A committed episode that has already closed is left alone and replaced by the new contribution.
-"""
-@inline function _merge_episode(committed_admission::Int16, committed_discharge::Int16,
-        added_admission::Int16, added_discharge::Int16, tick::Int16)
-    (0 <= committed_admission <= tick < committed_discharge) &&
-        return (committed_admission, _max_set(committed_discharge, added_discharge))
-    (committed_discharge >= 0 && committed_discharge <= tick) && return (added_admission, added_discharge)
-    return (_min_set(committed_admission, added_admission), _max_set(committed_discharge, added_discharge))
-end
-
-"""
-    _merge_care(committed::CareTimeline, added::CareTimeline, tick::Int16)
-
-Folds a new contribution into the host's committed care timeline, per tier, via `_merge_episode`.
-"""
-@inline function _merge_care(committed::CareTimeline, added::CareTimeline, tick::Int16)
-    hospital_admission, hospital_discharge = _merge_episode(committed.hospital_admission, committed.hospital_discharge, added.hospital_admission, added.hospital_discharge, tick)
-    icu_admission, icu_discharge = _merge_episode(committed.icu_admission, committed.icu_discharge, added.icu_admission, added.icu_discharge, tick)
-    ventilation_admission, ventilation_discharge = _merge_episode(committed.ventilation_admission, committed.ventilation_discharge, added.ventilation_admission, added.ventilation_discharge, tick)
-    return CareTimeline(hospital_admission, hospital_discharge, icu_admission, icu_discharge,
-        ventilation_admission, ventilation_discharge)
-end
-
-"""
-    calculate_health_progression(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, ctx::HealthContext, rng::Xoshiro)
-
-Generic combination policy: draws the contribution of `ctx.new_infection` only and folds it into
-what the host is already committed to, via `_merge_care`/`_combine_outcome`. An infection that
-selects no profile leaves the committed timeline untouched.
-
-Override this method to model coinfection synergy; it receives every active infection via
-`infections`, and must return a plan anchored after `ctx.tick`.
-"""
-function calculate_health_progression(individual::Individual, infections::InfectionRegistry,
-        hp::HealthProgression, ctx::HealthContext, rng::Xoshiro)
-
-    profile = select_health_profile(hp, ctx.new_infection)
-    profile === nothing && return ctx.committed_care, ctx.committed_outcome
-    c, o = calculate_health_profile(profile, individual, ctx.new_infection, rng)
-    return _merge_care(ctx.committed_care, c, ctx.tick), _combine_outcome(ctx.committed_outcome, o)
+    profile = select_health_profile(hp, new_infection)
+    profile === nothing && return HealthOutcome()
+    care, outcome = calculate_health_profile(profile, individual, new_infection, rng)
+    care.hospital_admission >= 0 && push!(contributions, care)
+    return outcome
 end
 
 """

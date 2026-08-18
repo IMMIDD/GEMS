@@ -55,7 +55,7 @@ function calculate_health_profile(cc::LegacyCriticalHealthProfile, individual::I
         death = round(Int16, icu_admission + _rand_val(cc.icu_admission_to_death, rng))
     end
 
-    care = CareTimeline(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge,
+    care = CareContribution(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge,
         icu_admission = icu_admission, icu_discharge = icu_discharge)
     outcome = HealthOutcome(death = death, death_pathogen_id = infection.pathogen_id)
     return care, outcome

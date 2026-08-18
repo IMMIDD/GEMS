@@ -1,4 +1,4 @@
-import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_outcome, _cap_care, _min_set, _max_set,
+import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, combine_outcome, _cap_care, _min_set, _max_set,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
     create_progression, create_health_progression, create_health_profile,
     determine_health_progression, each_infection, progression_index, get_infection_state,
@@ -38,23 +38,23 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
         @test_throws ArgumentError CriticalHealthProfile(death_probability = 1.1)
     end
 
-    @testset "CareTimeline" begin
+    @testset "CareContribution" begin
         # admissions nest
-        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+        @test_throws ArgumentError CareContribution(hospital_admission = 5, hospital_discharge = 20,
             icu_admission = 3, icu_discharge = 10)
-        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+        @test_throws ArgumentError CareContribution(hospital_admission = 5, hospital_discharge = 20,
             icu_admission = 6, icu_discharge = 14, ventilation_admission = 4, ventilation_discharge = 10)
         # discharges nest too
-        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 8,
+        @test_throws ArgumentError CareContribution(hospital_admission = 5, hospital_discharge = 8,
             icu_admission = 6, icu_discharge = 12)
-        @test_throws ArgumentError CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+        @test_throws ArgumentError CareContribution(hospital_admission = 5, hospital_discharge = 20,
             icu_admission = 6, icu_discharge = 10, ventilation_admission = 7, ventilation_discharge = 14)
         # each admission requires its discharge, and cannot follow it
-        @test_throws ArgumentError CareTimeline(hospital_admission = 5)
-        @test_throws ArgumentError CareTimeline(hospital_admission = 10, hospital_discharge = 5)
-        @test_throws ArgumentError CareTimeline(icu_admission = 5, icu_discharge = 10)
+        @test_throws ArgumentError CareContribution(hospital_admission = 5)
+        @test_throws ArgumentError CareContribution(hospital_admission = 10, hospital_discharge = 5)
+        @test_throws ArgumentError CareContribution(icu_admission = 5, icu_discharge = 10)
 
-        nested = CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+        nested = CareContribution(hospital_admission = 5, hospital_discharge = 20,
             icu_admission = 6, icu_discharge = 14,
             ventilation_admission = 7, ventilation_discharge = 10)
         @test nested.icu_discharge <= nested.hospital_discharge
@@ -120,21 +120,21 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
         @test care3.icu_admission == -1
     end
 
-    @testset "_merge_care / _combine_outcome" begin
-        empty_care = CareTimeline()
+    @testset "_merge_care / combine_outcome" begin
+        empty_care = CareContribution()
         empty_outcome = HealthOutcome()
 
         outcome_a = HealthOutcome(death = 20, death_pathogen_id = 1)
         outcome_b = HealthOutcome(death = 15, death_pathogen_id = 2)
 
-        outcome_c = _combine_outcome(outcome_a, outcome_b)
+        outcome_c = combine_outcome(outcome_a, outcome_b)
         @test outcome_c.death == 15              # earliest death
         @test outcome_c.death_pathogen_id == 2   # attributed to whichever infection died first
-        @test _combine_outcome(outcome_a, empty_outcome).death == 20
+        @test combine_outcome(outcome_a, empty_outcome).death == 20
 
         # union of two contributions: earliest admission, latest discharge
-        committed = CareTimeline(hospital_admission = 3, hospital_discharge = 10)
-        added = CareTimeline(hospital_admission = 5, hospital_discharge = 12)
+        committed = CareContribution(hospital_admission = 3, hospital_discharge = 10)
+        added = CareContribution(hospital_admission = 5, hospital_discharge = 12)
         merged = _merge_care(committed, added, Int16(6))
         @test merged.hospital_admission == 3
         @test merged.hospital_discharge == 12
@@ -146,7 +146,7 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
     end
 
     @testset "_cap_care" begin
-        care = CareTimeline(hospital_admission = 5, hospital_discharge = 20,
+        care = CareContribution(hospital_admission = 5, hospital_discharge = 20,
             icu_admission = 8, icu_discharge = 15)
 
         # no scheduled death -> unchanged
@@ -171,7 +171,7 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
 
     @testset "show" begin
         # a full care timeline prints every realized part of the ladder
-        ct = CareTimeline(hospital_admission = 1, hospital_discharge = 40, icu_admission = 5,
+        ct = CareContribution(hospital_admission = 1, hospital_discharge = 40, icu_admission = 5,
             icu_discharge = 30, ventilation_admission = 8, ventilation_discharge = 20)
         out = @capture_out show(ct)
         @test occursin("hospital_admission", out)
@@ -179,8 +179,8 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
         @test occursin("hospital_discharge", out)
 
         # an empty timeline prints only the header, no event rows
-        empty_out = @capture_out show(CareTimeline())
-        @test occursin("Care Timeline", empty_out)
+        empty_out = @capture_out show(CareContribution())
+        @test occursin("Care Contribution", empty_out)
         @test !occursin("hospital_admission", empty_out)
 
         # the outcome distinguishes a scheduled death from survival
@@ -244,16 +244,16 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
     end
 
     @testset "recompute after a completed episode starts fresh" begin
-        cand = CareTimeline(hospital_admission = Int16(105), hospital_discharge = Int16(115))
+        cand = CareContribution(hospital_admission = Int16(105), hospital_discharge = Int16(115))
 
         # a COMPLETED past episode [10, 20] must not swallow a disjoint later one (re-infection)
-        closed = CareTimeline(hospital_admission = Int16(10), hospital_discharge = Int16(20))
+        closed = CareContribution(hospital_admission = Int16(10), hospital_discharge = Int16(20))
         fresh = _merge_care(closed, cand, Int16(100))
         @test fresh.hospital_admission == 105        # new episode scheduled fresh, not merged into [10, ...]
         @test fresh.hospital_discharge == 115
 
         # an ONGOING episode [10, 200] at tick 100 is still preserved and extended
-        open = CareTimeline(hospital_admission = Int16(10), hospital_discharge = Int16(200))
+        open = CareContribution(hospital_admission = Int16(10), hospital_discharge = Int16(200))
         kept = _merge_care(open, cand, Int16(100))
         @test kept.hospital_admission == 10          # realized admission kept
         @test kept.hospital_discharge == 200         # extended to max(200, 115)
@@ -263,7 +263,7 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
         ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
         struct WardOnlyCritical <: GEMS.HealthProfile end
         GEMS.calculate_health_profile(::WardOnlyCritical, individual, infection, rng) =
-            CareTimeline(hospital_admission = infection.critical_onset,
+            CareContribution(hospital_admission = infection.critical_onset,
                         hospital_discharge = Int16(infection.critical_onset + 5)),
             HealthOutcome(death_pathogen_id = infection.pathogen_id)
 
@@ -276,10 +276,10 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
             severeness_onset = Int16(3), critical_onset = Int16(5), critical_offset = Int16(10),
             severeness_offset = Int16(11), recovery = Int16(20))
         s = push_infection!(reg, ind, Int8(1), Int32(-1), dp)
-        ctx = HealthContext(CareTimeline(), HealthOutcome(), s, Int16(0))
+        ctx = HealthContext(CareContribution(), HealthOutcome(), s, Int16(0))
 
         rt = Base.return_types(calculate_health_progression, (typeof(ind), typeof(reg), typeof(hp), HealthContext, Xoshiro))[1]
-        @test rt == Tuple{CareTimeline, HealthOutcome} # statically inferred even through the custom profile
+        @test rt == Tuple{CareContribution, HealthOutcome} # statically inferred even through the custom profile
 
         care, _ = calculate_health_progression(ind, reg, hp, ctx, Xoshiro(1))
         @test care.hospital_admission == 5
@@ -291,7 +291,7 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
                 hp::AlwaysHospitalize, ctx::HealthContext, rng::Xoshiro)
             s = ctx.new_infection
             s.severeness_onset < 0 && return ctx.committed_care, ctx.committed_outcome
-            added = CareTimeline(hospital_admission = s.severeness_onset,
+            added = CareContribution(hospital_admission = s.severeness_onset,
                     hospital_discharge = Int16(s.severeness_onset + 7))
             # a custom policy folds its contribution in itself; _merge_care keeps an open episode's
             # already-logged admission, which the forward-plan contract requires
@@ -410,26 +410,26 @@ import GEMS: _rand_val, push_infection!, _merge_care, _merge_episode, _combine_o
         # care anchored before the current tick: already logged, cannot be rewritten
         struct PastCare <: GEMS.HealthProgression end
         GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::PastCare, ctx::HealthContext, ::Xoshiro) =
-            (CareTimeline(hospital_admission = Int16(5), hospital_discharge = Int16(9)), HealthOutcome())
+            (CareContribution(hospital_admission = Int16(5), hospital_discharge = Int16(9)), HealthOutcome())
         @test_throws ArgumentError compute_health!(ind, reg, PastCare(), s, Int16(20), Xoshiro(1))
 
         # a death drawn into the past would kill the host on the next update, not at its latency
         struct PastDeath <: GEMS.HealthProgression end
         GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::PastDeath, ctx::HealthContext, ::Xoshiro) =
-            (CareTimeline(), HealthOutcome(death = Int16(12), death_pathogen_id = Int8(1)))
+            (CareContribution(), HealthOutcome(death = Int16(12), death_pathogen_id = Int8(1)))
         @test_throws ArgumentError compute_health!(ind, reg, PastDeath(), s, Int16(20), Xoshiro(1))
 
         # dropping an episode the host is still in orphans its already-logged admission
         struct DropsOpenEpisode <: GEMS.HealthProgression end
         GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::DropsOpenEpisode, ctx::HealthContext, ::Xoshiro) =
-            (CareTimeline(hospital_admission = Int16(50), hospital_discharge = Int16(57)), HealthOutcome())
+            (CareContribution(hospital_admission = Int16(50), hospital_discharge = Int16(57)), HealthOutcome())
         ind.hospital_admission = Int16(10); ind.hospital_discharge = Int16(30)   # open at tick 20
         @test_throws ArgumentError compute_health!(ind, reg, DropsOpenEpisode(), s, Int16(20), Xoshiro(1))
 
         # ... but keeping that admission and extending the discharge is allowed
         struct ExtendsOpenEpisode <: GEMS.HealthProgression end
         GEMS.calculate_health_progression(::Individual, ::InfectionRegistry, ::ExtendsOpenEpisode, ctx::HealthContext, ::Xoshiro) =
-            (CareTimeline(hospital_admission = Int16(10), hospital_discharge = Int16(45)), HealthOutcome())
+            (CareContribution(hospital_admission = Int16(10), hospital_discharge = Int16(45)), HealthOutcome())
         compute_health!(ind, reg, ExtendsOpenEpisode(), s, Int16(20), Xoshiro(1))
         @test ind.hospital_admission == 10
         @test ind.hospital_discharge == 45

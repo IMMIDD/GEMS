@@ -81,7 +81,9 @@ function infect!(infectee::Individual,
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
         state = push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
-        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), state, tick, rng)
+        # throwaway schedule: with no tick loop nothing would drain it, and the hardcoded
+        # DefaultHealthProgression() has zero admission and death probabilities anyway
+        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), state, tick, rng, HealthSchedule())
     else
         # log infection
         new_infection_id = log!(
@@ -221,7 +223,7 @@ function try_to_infect!(infctr::Individual,
     end
 
     # if one of both is hospitalized
-    if hospitalized(infctr, tick(sim)) || hospitalized(infctd, tick(sim))
+    if hospitalized(infctr) || hospitalized(infctd)
         return false
     end
 
@@ -316,7 +318,7 @@ function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
     end
 
     # if individual is hospitalized
-    if is_hospitalized(ind, tick)
+    if is_hospitalized(ind)
         return false
     end
 
@@ -361,7 +363,7 @@ function can_be_contacted(ind::Individual, setting::Setting, tick::Int16)::Bool
     end
 
     # if individual is hospitalized
-    if is_hospitalized(ind, tick)
+    if is_hospitalized(ind)
         return false
     end
 

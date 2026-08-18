@@ -254,9 +254,6 @@ Returns the internal flat infections `DataFrame`.
 | `removed`                  | `Int16`   | Tick at which the infection ended (recovery, or the host death that cut it short) |
 | `symptoms_tick`            | `Int16`   | Tick at which infectee develops symptoms                        |
 | `severeness_tick`          | `Int16`   | Tick at which infectee's symptoms become severe                 |
-| `hospital_tick`            | `Int16`   | Tick at which infectee is hospitalized                          |
-| `icu_tick`                 | `Int16`   | Tick at which infectee is admitted to ICU                       |
-| `ventilation_tick`         | `Int16`   | Tick at which infectee requires ventilation                     |
 | `symptom_category`         | `Int8`    | Disease progression category (asymp., mild, severe, critical)   |
 | `setting_id`               | `Int32`   | Id of setting in which infection happens                        |
 | `setting_type`             | `Char`    | Setting type of the infection setting                           |

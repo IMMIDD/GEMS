@@ -38,14 +38,14 @@ Critical
 ```@docs
 HealthProgression
 HealthProfile
-HealthContext
 DefaultHealthProgression
 SevereHealthProfile
 CriticalHealthProfile
-calculate_health_progression
+calculate_health_progression!
 calculate_health_profile
+select_health_profile
 compute_health!
-CareTimeline
+CareContribution
 HealthOutcome
 ```
 

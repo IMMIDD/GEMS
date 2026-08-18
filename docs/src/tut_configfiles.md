@@ -335,7 +335,7 @@ By default, GEMS applies a `DefaultHealthProgression`: `Severe` cases may be hos
     ```
     See the [config reference](@ref config-files) for the config-file form and the exact rules.
 
-To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression()` method: it inspects the host's active infections with `each_infection()` and returns a `(CareTimeline, HealthOutcome)` pair.
+To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression()` method: it inspects the host's active infections with `each_infection()` and returns a `(CareContribution, HealthOutcome)` pair.
 
 ```julia
 using GEMS, Distributions, Random, Parameters
@@ -363,7 +363,7 @@ function GEMS.calculate_health_progression(individual::Individual, infections::I
         if gems_rand(rng) <= hp.death_probability
             death = round(Int16, infection.severeness_onset +
                 GEMS._rand_val(hp.severeness_onset_to_death, rng))
-            return CareTimeline(), HealthOutcome(death = death, death_pathogen_id = infection.pathogen_id)
+            return CareContribution(), HealthOutcome(death = death, death_pathogen_id = infection.pathogen_id)
 
         # ... and a share are admitted to a normal ward
         elseif gems_rand(rng) <= hp.hospital_probability
@@ -371,12 +371,12 @@ function GEMS.calculate_health_progression(individual::Individual, infections::I
                 GEMS._rand_val(hp.severeness_onset_to_hospital_admission, rng))
             discharge = round(Int16, admission +
                 GEMS._rand_val(hp.hospital_admission_to_hospital_discharge, rng))
-            return CareTimeline(hospital_admission = admission, hospital_discharge = discharge), HealthOutcome()
+            return CareContribution(hospital_admission = admission, hospital_discharge = discharge), HealthOutcome()
         end
     end
 
     # nobody demands care -> empty timeline, no death
-    return CareTimeline(), HealthOutcome()
+    return CareContribution(), HealthOutcome()
 end
 ```
 
@@ -413,7 +413,7 @@ gemsplot(rd, type = :TickCases)
 </p>
 ```
 
-The `deaths` series of the `:TickCases` plot now shows deaths from `severe` cases that never pass through the ICU. The `CareTimeline` and `HealthOutcome` types are documented in the [Health Progression](@ref) API section.
+The `deaths` series of the `:TickCases` plot now shows deaths from `severe` cases that never pass through the ICU. The `CareContribution` and `HealthOutcome` types are documented in the [Health Progression](@ref) API section.
 
 As with the other custom types, you can also configure the policy from a config file via the top-level `[HealthProgression]` section:
 
