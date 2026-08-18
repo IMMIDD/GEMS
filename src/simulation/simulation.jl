@@ -616,11 +616,12 @@ end
 
 Determines the start condition for the simulation based on the provided parameters.
 If a `start_condition` is provided, it will be used.
-If not, it will check for an `infected_fraction`.
-If `infected_fraction` is provided and `pathogens_tuple` contains more than one pathogen,
-a `MultiStartCondition` is returned with one `InfectedFraction` per pathogen (each seeded
-at `infected_fraction`). For a single pathogen, a plain `InfectedFraction` is returned.
+If not, it will check for an `infected_fraction`, which seeds every pathogen.
 If neither is provided, it will return the default start condition from the config file.
+
+Whichever way the condition was built, its pathogen selection is resolved against
+`pathogens_tuple`: a name must exist, `ALL_PATHOGENS` expands into one condition per pathogen,
+and an empty name is only allowed for a single-pathogen simulation (see `_expand_pathogens`).
 """
 function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
     # return configfile start condition if nothing else provided
@@ -635,35 +636,33 @@ function determine_start_condition(configfile_params::Dict, start_condition, inf
             catch e
                 throw(ConfigfileError("'[[Simulation.StartConditions]]' could not be read from config file.", e))
             end
-            return length(conditions) == 1 ? conditions[1] : MultiStartCondition(conditions)
+            return _expand_pathogens(length(conditions) == 1 ? conditions[1] : MultiStartCondition(conditions), pathogens_tuple)
         end
 
         # single [Simulation.StartCondition]
         !_haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' or '[[Simulation.StartConditions]]' section must be specified in the config file."))
-        return try
+        cnd = try
             create_start_condition(configfile_params["Simulation"]["StartCondition"])
         catch e
             throw(ConfigfileError("'[Simulation.StartCondition]' could not be read from config file.", e))
         end
+        return _expand_pathogens(cnd, pathogens_tuple)
     end
 
     # if start_condition is provided, use it
     if !isnothing(start_condition)
         !isa(start_condition, StartCondition) && throw(ArgumentError("Provided start_condition must be an object of type StartCondition! Try any of $(join(subtypes(StartCondition), ", "))"))
         !isnothing(infected_fraction) && @warn "A start_condition was provided, therefore infected_fraction will be ignored."
-        return start_condition
+        return _expand_pathogens(start_condition, pathogens_tuple)
     end
 
-    # if infected_fraction is provided, use it
-    if length(pathogens_tuple) > 1
-        conditions = [InfectedFraction(fraction = infected_fraction, pathogen = p.name)
-                      for p in pathogens_tuple]
-        return MultiStartCondition(conditions)
-    end
-    return InfectedFraction(
-        fraction = infected_fraction,
-        pathogen = ""
-    )
+    # if infected_fraction is provided, use it. It has no pathogen argument, so it seeds all
+    return _expand_pathogens(
+        InfectedFraction(
+            fraction = infected_fraction,
+            pathogen = ALL_PATHOGENS
+        ),
+        pathogens_tuple)
 end
 
 """
@@ -820,10 +819,14 @@ mutating it in place leaves each pathogen's type and the tuple type unchanged.
 - all ids set: validate each is in `[1, MAX_PATHOGENS]` and unique
 - mixed: error (ambiguous)
 
+Names must be unique either way, because start conditions select pathogens by name.
+
 The id ceiling (`MAX_PATHOGENS`) comes from the `UInt32` pathogen masks (`1 << (id - 1)`) and `_test_key`.
 """
 function _finalize_pathogen_ids!(raw::Tuple)
     n = length(raw)
+    names = map(p -> p.name, raw)
+    length(unique(names)) == n || throw(ArgumentError("Pathogen names must be unique (got $(collect(names)))."))
     ids = map(id, raw)
     n_unset = count(==(DEFAULT_PATHOGEN_ID), ids)
     if n_unset == n
@@ -1968,12 +1971,12 @@ end
 """
     get_pathogen(sim::Simulation, pid::Int8)
 
-Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name. 
-Returns the only pathogen is `pname` is empty for backwards compatibility.
+Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name.
+An empty `pname` returns the only pathogen and throws if the simulation has more than one.
 """
 function get_pathogen(simulation::Simulation, pname::String)
     if isempty(pname)
-        return first_pathogen(simulation)
+        return pathogen(simulation)
     end
     for p in pathogens(simulation)
         p.name == pname && return p

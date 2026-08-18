@@ -9,7 +9,7 @@ A `StartCondition` that specifies a fraction of infected individuals (drawn at r
 
 # Fields
 - `fraction::Float64`: A fraction of the whole population that has to be infected
-- `pathogen::Pathogen`: The pathogen with which the fraction has to be infected
+- `pathogen::String`: Pathogen to infect the fraction with; empty string = the only pathogen, `ALL_PATHOGENS` = every pathogen (each infecting its own `fraction`)
 
 Example
 ```julia

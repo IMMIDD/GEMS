@@ -11,6 +11,9 @@ const DEFAULT_INFECTION_ID = Int32(-1)
 const DEFAULT_AGS = Int32(-1)
 const GLOBAL_SETTING_ID = Int32(1)
 
+# start condition pathogen name meaning "every pathogen in the simulation"
+const ALL_PATHOGENS = "all"
+
 #################
 # DATA ANALYSIS #
 #################

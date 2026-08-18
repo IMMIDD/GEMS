@@ -36,7 +36,7 @@ each import at its tick.
 The three dimensions of an import schedule are independent, and each accepts several forms:
 
 # Fields
-- `pathogen::String`: Pathogen to seed with (empty string = default pathogen)
+- `pathogen::String`: Pathogen to seed with; empty string = the only pathogen, `ALL_PATHOGENS` = every pathogen
 - `ticks`: *when* imports happen
     - `Integer`: a single import at that tick
     - `AbstractVector{<:Integer}`: exactly these ticks (ranges included); a repeated tick
@@ -118,6 +118,15 @@ _label(t::Vector{Int16}) = "$(length(t)) tick$(length(t) == 1 ? "" : "s")"
 _label(c::Vector{Int}) = "$(sum(c)) in total"
 _label(w::_ImportWindow) = "ticks $(w.start_tick)-$(w.stop_tick)"
 _label(::FunctionWrapper) = "custom"
+
+"""
+    pathogen(importedCases::ImportedCases)
+
+Returns the pathogen used to seed the imported cases.
+"""
+function pathogen(importedCases::ImportedCases)
+    return importedCases.pathogen
+end
 
 ###
 ### INITIALIZATION
@@ -223,6 +232,7 @@ end
 
 _ticks_spec(t::Function) = ImportSchedule(t)
 _ticks_spec(t::Union{NamedTuple, AbstractDict}) = _import_window(t)
+_ticks_spec(t::Union{ImportSchedule, _ImportWindow}) = t # already normalized
 _ticks_spec(t) = throw(ArgumentError("ticks must be an integer, a vector of integers, a function of the simulation, or a window NamedTuple; got $(typeof(t))."))
 
 """
@@ -281,6 +291,7 @@ function _count_spec(c::Distribution)
 end
 
 _count_spec(c::Function) = ImportCount(c)
+_count_spec(c::ImportCount) = c # already normalized
 _count_spec(c) = throw(ArgumentError("count must be an integer, a vector of integers, a Distribution, or a function of the simulation and tick; got $(typeof(c))."))
 
 """
@@ -321,6 +332,7 @@ function _region_spec(a::AbstractVector{<:Integer})
 end
 
 _region_spec(a::Function) = ImportRegion(a)
+_region_spec(a::ImportRegion) = a # already normalized
 _region_spec(a) = throw(ArgumentError("ags must be an integer, a vector of integers, a function of the simulation and tick, or nothing; got $(typeof(a))."))
 
 """

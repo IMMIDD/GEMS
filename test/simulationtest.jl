@@ -768,6 +768,88 @@ import GEMS: increment!, infected!
         sim_mc = Simulation(pop_size=100, start_condition=mc, seed=1)
         # PatientZero seeds 1 + InfectedFraction(0.05) seeds 5 → at least 5 infected
         @test count(infected, population(sim_mc)) >= 5
+
+        # PATHOGEN SELECTION
+        pa = Pathogen(id=1, name="PA")
+        pb = Pathogen(id=2, name="PB")
+
+        # ALL_PATHOGENS expands into one condition per pathogen
+        sim_all = Simulation(pathogens=(pa, pb), pop_size=100, seed=1,
+            start_condition=InfectedFraction(fraction=0.3, pathogen=ALL_PATHOGENS))
+        @test start_condition(sim_all) isa MultiStartCondition
+        @test length(start_condition(sim_all).conditions) == 2
+        @test count(i -> infected(i, Int8(1)), individuals(sim_all)) == 30
+        @test count(i -> infected(i, Int8(2)), individuals(sim_all)) == 30
+
+        # a single pathogen keeps a plain condition carrying the concrete name
+        sim_one = Simulation(pathogen=Pathogen(id=1, name="PA"), pop_size=100,
+            start_condition=InfectedFraction(fraction=0.1, pathogen=ALL_PATHOGENS))
+        @test !isa(start_condition(sim_one), MultiStartCondition)
+        @test pathogen(start_condition(sim_one)) == "PA"
+
+        # a condition provided as an argument is expanded just like a config one
+        sim_pz = Simulation(pathogens=(pa, pb), pop_size=100, seed=1,
+            start_condition=PatientZero(pathogen=ALL_PATHOGENS))
+        @test count(infected, population(sim_pz)) == 2
+
+        # sub-conditions of a MultiStartCondition are expanded
+        sim_sub = Simulation(pathogens=(pa, pb), pop_size=100, seed=1,
+            start_condition=MultiStartCondition([InfectedFraction(fraction=0.1, pathogen=ALL_PATHOGENS)]))
+        @test count(i -> infected(i, Int8(1)), individuals(sim_sub)) == 10
+        @test count(i -> infected(i, Int8(2)), individuals(sim_sub)) == 10
+
+        # an empty pathogen name is a single-pathogen convenience
+        @test_throws ArgumentError Simulation(pathogens=(pa, pb), pop_size=100,
+            start_condition=InfectedFraction(fraction=0.3))
+        sim_empty = Simulation(pathogen=Pathogen(id=1, name="PA"), pop_size=100,
+            start_condition=InfectedFraction(fraction=0.1))
+        @test count(infected, population(sim_empty)) == 10
+
+        # an unknown pathogen name is rejected at construction, not at seeding time
+        @test_throws ArgumentError Simulation(pathogens=(pa, pb), pop_size=100,
+            start_condition=PatientZero(pathogen="Typo"))
+        @test_throws ArgumentError Simulation(pathogens=(pa, pb), pop_size=100,
+            start_condition=ImportedCases(count=2, ticks=300, pathogen="Typo"))
+
+        # get_pathogen resolves an empty name only when there is one pathogen
+        @test_throws ArgumentError get_pathogen(sim_all, "")
+        @test get_pathogen(sim_one, "").name == "PA"
+
+        # a pathogen must not be named like the ALL_PATHOGENS marker
+        @test_throws ArgumentError Pathogen(name = ALL_PATHOGENS)
+
+        # names are the selection key, so they must be unique
+        @test_throws ArgumentError Simulation(pop_size = 100,
+            pathogens = (Pathogen(id=1, name="DUP"), Pathogen(id=2, name="DUP")))
+
+        # conditions from the [[Simulation.StartConditions]] array form are expanded too
+        cfg_multi = Dict("Simulation" => Dict("StartConditions" => [
+            Dict("type" => "PatientZero", "parameters" => Dict("pathogen" => "PA")),
+            Dict("type" => "InfectedFraction", "parameters" => Dict("fraction" => 0.1, "pathogen" => ALL_PATHOGENS))]))
+        sc_multi = GEMS.determine_start_condition(cfg_multi, nothing, nothing, (pa, pb))
+        @test sc_multi isa MultiStartCondition
+        @test length(sc_multi.conditions) == 2
+        @test pathogen(sc_multi.conditions[1]) == "PA"
+        @test length(sc_multi.conditions[2].conditions) == 2
+
+        # a single entry stays a plain condition
+        cfg_single = Dict("Simulation" => Dict("StartConditions" => [
+            Dict("type" => "PatientZero", "parameters" => Dict("pathogen" => ALL_PATHOGENS))]))
+        sc_single = GEMS.determine_start_condition(cfg_single, nothing, nothing, (pa,))
+        @test !isa(sc_single, MultiStartCondition)
+        @test pathogen(sc_single) == "PA"
+
+        # without pathogens there is nothing to resolve against
+        @test pathogen(GEMS._expand_pathogens(PatientZero(pathogen = "Unknown"), ())) == "Unknown"
+        @test pathogen(GEMS._expand_pathogens(PatientZero(pathogen = ALL_PATHOGENS), ())) == ALL_PATHOGENS
+
+        # _with_pathogen rebuilds every normalized ImportedCases form
+        for ic in [ImportedCases(count=2, ticks=5),
+                   ImportedCases(count=[1, 2], ticks=[3, 4]),
+                   ImportedCases(count=Poisson(3), ticks=(start_tick=3, stop_tick=20, interval=3)),
+                   ImportedCases(count=(s, t) -> 2, ticks=s -> Int16[1, 2], ags=(s, t) -> 04011000)]
+            @test pathogen(GEMS._with_pathogen(ic, "PA")) == "PA"
+        end
     end
 
     @testset "Imported Cases" begin
@@ -1252,10 +1334,9 @@ import GEMS: increment!, infected!
     end
 
     @testset "Multipathogen run!" begin
-        # infected_fraction only seeds the first pathogen — use MultiStartCondition
-        # to seed both so ~9% of individuals start with both pathogens simultaneously
-        # (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow block
-        # in _process_infections!
+        # both pathogens are seeded at 30% so that ~9% of individuals start with both
+        # simultaneously (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow
+        # block in _process_infections!
         p1 = Pathogen(id=1, name="PathA")
         p2 = Pathogen(id=2, name="PathB")
         mc = MultiStartCondition([

@@ -26,7 +26,7 @@ If you want to set up a custom config file, you can copy this one into your own 
         type = "InfectedFraction"
         [Simulation.StartCondition.parameters]
             fraction = 0.001
-            #pathogen = "Covid19"
+            pathogen = "all"
 
     [Simulation.StopCriterion]
         type = "TimesUp"
@@ -241,6 +241,38 @@ Start date in a `YYYY-MM-DD` format (e.g. `2024-01-01`).
 
 #### `enddate`
 End date in a `YYYY-MM-DD` format (e.g. `2024-12-31`).
+
+#### `StartCondition`
+The initial infections of the simulation. The `type` is any of the available start conditions (`InfectedFraction`, `PatientZero`, `PatientZeros`, `RegionalSeeds`, `ImportedCases`) and `parameters` are passed to its constructor.
+
+```toml
+[Simulation.StartCondition]
+    type = "InfectedFraction"
+    [Simulation.StartCondition.parameters]
+        fraction = 0.001
+        pathogen = "all"
+```
+
+Every start condition takes a `pathogen` parameter with three possible values:
+
+- a pathogen name (e.g. `"Covid19"`): seeds that pathogen. The name must exist in `[Pathogens]`.
+- `"all"`: seeds every pathogen of the simulation. Each pathogen gets its own copy of the condition, so the example above infects 0.1% of the population *per pathogen* rather than splitting 0.1% between them.
+- `""` (or omitting the parameter): seeds the only pathogen. This is a convenience for single-pathogen simulations and throws if the simulation has more than one pathogen.
+
+To seed pathogens differently from one another, use the `[[Simulation.StartConditions]]` array of tables instead, which takes one entry per condition.
+
+```toml
+[[Simulation.StartConditions]]
+    type = "InfectedFraction"
+    [Simulation.StartConditions.parameters]
+        fraction = 0.001
+        pathogen = "Covid19"
+
+[[Simulation.StartConditions]]
+    type = "PatientZero"
+    [Simulation.StartConditions.parameters]
+        pathogen = "Influenza"
+```
 
 ### Population
 

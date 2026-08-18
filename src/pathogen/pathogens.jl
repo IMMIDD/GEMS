@@ -99,6 +99,7 @@ mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:Trans
 
         # exception handling
         length(name) <= 0 && throw(ArgumentError("Pathogen name must not be empty!"))
+        name == ALL_PATHOGENS && throw(ArgumentError("Pathogen name must not be '$ALL_PATHOGENS'!"))
         length(unique(typeof.(progressions))) < length(progressions) && throw(ArgumentError("Pathogen must not have multiple progressions of the same type!"))
 
         if isempty(progressions)

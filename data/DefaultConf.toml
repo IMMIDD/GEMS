@@ -9,7 +9,7 @@
         type = "InfectedFraction"
         [Simulation.StartCondition.parameters]
             fraction = 0.001
-            pathogen = "" #kept empty so that both config and programmatic paths resolve to the first pathogen
+            pathogen = "all" # every pathogen; use a name to seed just one
 
     [Simulation.StopCriterion]
         type = "TimesUp"

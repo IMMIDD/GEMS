@@ -9,7 +9,7 @@ A `StartCondition` that infects the provided number of individual at the beginni
 the regions provided by their AGS (community identification number).
 
 # Fields
-- `pathogen::Pathogen`: The pathogen with which the individual(s) has to be infected
+- `pathogen::String`: Pathogen to infect the individual(s) with; empty string = the only pathogen, `ALL_PATHOGENS` = every pathogen
 - `seeds::Dict{Int64, Int64}`: Dict that holds {AGS, NUMBER} pairs specifying the regions and the respective number of individuals that shall be infected at initialization. 
 
 Example
