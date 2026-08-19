@@ -30,7 +30,7 @@ is infected and the former applies a separate test to all individuals.
 # Example
 
 ```julia
-pcr_test = TestType("PCR Test", pathogen(sim), sim)
+pcr_test = TestType("PCR Test", first_pathogen(sim), sim)
 
 my_str = SStrategy("test-household-members", sim)
 add_measure!(my_str, TestAll("pcr-test", pcr_test, positive_followup = my_isolate_household_str))

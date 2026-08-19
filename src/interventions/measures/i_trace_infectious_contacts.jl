@@ -81,7 +81,7 @@ The `follow_up` strategy of the `TraceInfectiousContacts` measure is handed over
 function process_measure(sim::Simulation, ind::Individual, measure::TraceInfectiousContacts)
 
     now = sim |> tick
-    infectious_at = ind |> infectiousness_onset
+    infectious_at = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
     sr = measure |> success_rate
 
     # get infectee IDs from logger

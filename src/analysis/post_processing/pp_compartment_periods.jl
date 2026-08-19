@@ -1,0 +1,146 @@
+export compartment_periods, aggregated_compartment_periods
+
+# HELPER FUNCTIONS TO CALCULATE PERIODS
+
+calc_rem(infs) = infs.removed
+# phase boundaries are capped at `rem`: another pathogen's death can end this infection before its
+# own onsets, and a phase it never reached lasts 0 ticks, not a negative number
+calc_exposed(infs, rem) = min.(infs.infectiousness_onset, rem) .- infs.tick
+calc_infectious(infs, rem) = rem .- min.(infs.infectiousness_onset, rem)
+# calculate asymptomatic, symptomatic and pre-symptomatic periods
+calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : 0).(infs.tick, infs.symptom_onset, rem)
+calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - min(so, r) : 0).(infs.symptom_onset, rem)
+calc_pre_symp(infs, rem) = ((so, t, r) -> so >= 0 ? min(so, r) - t : 0).(infs.symptom_onset, infs.tick, rem)
+
+
+"""
+    compartment_periods(postProcessor::PostProcessor)
+
+Calculates the durations of the disease compartments of all infections and
+returns a `DataFrame` containing all additional infectee-related information, per pathogen.
+
+# Returns
+
+- `DataFrame` with the following columns:
+
+| Name              | Type    | Description                                     |
+| :---------------- | :------ | :---------------------------------------------- |
+| `infection_id`    | `Int32` | Infectee id                                     |
+| `pathogen_id`     | `Int8`  | Pathogen identifier                             |
+| `total`           | `Int16` | Total duration of infection in ticks            |
+| `exposed`         | `Int16` | Duration of the exposed period in ticks         |
+| `infectious`      | `Int16` | Duration of the infectious period in ticks      |
+| `asymptomatic`    | `Int16` | Duration of the asymptomatic period in ticks    |
+| `pre_symptomatic` | `Int16` | Duration of the pre-symptomatic period in ticks |
+| `symptomatic`     | `Int16` | Duration of the symptomatic period in ticks     |
+| `severe`          | `Int16` | Duration of the severe period in ticks          |
+| `critical`        | `Int16` | Duration of the critical period in ticks        |
+
+Host-level care periods (hospital/ICU/ventilation) are no longer per-infection; see `_hospital_df`.
+"""
+function compartment_periods(postProcessor::PostProcessor)
+
+    # load cached DF if available
+    if in_cache(postProcessor, "compartment_periods")
+        return(load_cache(postProcessor, "compartment_periods"))
+    end
+
+    res = infectionsDF(postProcessor) |>
+        # tick each infection ended, recovery or death (as removed (rem))
+        infs -> (infs, calc_rem(infs)) |>
+        splat((infs, rem) -> DataFrame(
+            infection_id = infs.infection_id,
+            pathogen_id = infs.pathogen_id,
+            total = rem .- infs.tick,
+            exposed = calc_exposed(infs, rem),
+            infectious = calc_infectious(infs, rem),
+            asymptomatic = calc_asymp(infs, rem),
+            pre_symptomatic = calc_pre_symp(infs, rem),
+            symptomatic = calc_symp(infs, rem),
+            severe = infs.severeness_offset .- infs.severeness_onset,
+            critical = infs.critical_offset .- infs.critical_onset
+        ))
+
+    # cache dataframe
+    store_cache(postProcessor, "compartment_periods", res)
+
+    return res
+end
+
+"""
+    aggregated_compartment_periods(postProcessor::PostProcessor)
+
+Calculates the aggregated durations of the disease compartments of all infections
+and returns a `DataFrame` containing the normalized counts of durations in each compartment,
+per pathogen.
+
+The values are normalized by the total number of infections per pathogen to represent the fraction
+of individuals that spent a certain amount of time in the respective compartment and not
+just the individuals who were ever in that compartment.
+
+# Returns
+
+- `DataFrame` with the following columns:
+
+| Name              | Type      | Description                                                |
+| :---------------- | :-------- | :--------------------------------------------------------- |
+| `pathogen_id`     | `Int8`    | Pathogen identifier                                        |
+| `duration`        | `Int16`   | Duration in ticks                                          |
+| `total`           | `Float64` | Fraction of individuals with this total duration           |
+| `exposed`         | `Float64` | Fraction of individuals with this exposed duration         |
+| `infectious`      | `Float64` | Fraction of individuals with this infectious duration      |
+| `asymptomatic`    | `Float64` | Fraction of individuals with this asymptomatic duration    |
+| `pre_symptomatic` | `Float64` | Fraction of individuals with this pre-symptomatic duration |
+| `symptomatic`     | `Float64` | Fraction of individuals with this symptomatic duration     |
+| `severe`          | `Float64` | Fraction of individuals with this severe duration          |
+| `critical`        | `Float64` | Fraction of individuals with this critical duration        |
+"""
+function aggregated_compartment_periods(postProcessor::PostProcessor)
+    cps = compartment_periods(postProcessor)
+    results = DataFrame[]
+    for p in pathogens(simulation(postProcessor))
+        pid = id(p)
+        cps_p = subset(cps, :pathogen_id => ByRow(==(pid)), view=true)
+        nrow(cps_p) == 0 && continue
+        all = nrow(cps_p)
+
+        # group compartment periods by each compartment type and put result
+        # dataframes into an array for easier joining later
+        cps_vector = [
+            countmap(cps_p.total) |> cm -> DataFrame(duration = collect(keys(cm)), total = collect(values(cm))),
+            countmap(cps_p.exposed) |> cm -> DataFrame(duration = collect(keys(cm)), exposed = collect(values(cm))),
+            countmap(cps_p.infectious) |> cm -> DataFrame(duration = collect(keys(cm)), infectious = collect(values(cm))),
+            countmap(cps_p.pre_symptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), pre_symptomatic = collect(values(cm))),
+            countmap(cps_p.asymptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), asymptomatic = collect(values(cm))),
+            countmap(cps_p.symptomatic) |> cm -> DataFrame(duration = collect(keys(cm)), symptomatic = collect(values(cm))),
+            countmap(cps_p.severe) |> cm -> DataFrame(duration = collect(keys(cm)), severe = collect(values(cm))),
+            countmap(cps_p.critical) |> cm -> DataFrame(duration = collect(keys(cm)), critical = collect(values(cm)))
+        ]
+
+        # normalizing
+        cps_vector[1].total = cps_vector[1].total ./ all
+        cps_vector[2].exposed = cps_vector[2].exposed ./ all
+        cps_vector[3].infectious = cps_vector[3].infectious ./ all
+        cps_vector[4].pre_symptomatic = cps_vector[4].pre_symptomatic ./ all
+        cps_vector[5].asymptomatic = cps_vector[5].asymptomatic ./ all
+        cps_vector[6].symptomatic = cps_vector[6].symptomatic ./ all
+        cps_vector[7].severe = cps_vector[7].severe ./ all
+        cps_vector[8].critical = cps_vector[8].critical ./ all
+
+        # empty dataframe with all possible "durations" (in ticks)
+        res = DataFrame(
+            duration = Int16(0):Int16(maximum(map(cps -> isempty(cps.duration) ? 0 : maximum(cps.duration), cps_vector)))
+        )
+
+        # join each previously generated dataframe
+        for item in cps_vector
+            res = leftjoin(res, item, on = :duration)
+        end
+
+        # fill up missing values with 0
+        res = coalesce.(res, 0)
+        res.pathogen_id .= pid
+        push!(results, res)
+    end
+    return isempty(results) ? DataFrame() : vcat(results...)
+end

@@ -97,6 +97,7 @@ InfectedFraction
 PatientZero
 PatientZeros
 RegionalSeeds
+ImportedCases
 ```
 
 ### Functions

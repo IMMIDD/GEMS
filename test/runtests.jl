@@ -19,15 +19,20 @@ using Parameters
 using StatsBase
 using Suppressor
 
+# shared fixtures used across several test files (not part of the GEMS API)
+include("testutils.jl")
+
 @testset "GEMS" begin
     testfiles = [
         "agentstest.jl",
         "populationstest.jl",
         "pathogentest.jl",
         "diseaseprogressiontest.jl",
+        "healthprogressiontest.jl",
         "settingstest.jl",
         "simulationtest.jl",
         "infectionstest.jl",
+        "registriestest.jl",
         "reportingtest.jl",
         "loggertest.jl",
         "postprocessortest.jl",
@@ -41,7 +46,7 @@ using Suppressor
         "interventionstest.jl",
         "vaccinetest.jl",
         "codevalidationtest.jl",
-        "movietest.jl"
+        "movietest.jl",
     ]
 
     println("Begin to run test cases.")

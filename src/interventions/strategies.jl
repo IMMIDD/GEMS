@@ -13,11 +13,12 @@ const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
 
 # Per-measure process callbacks. Built once at `add_measure!` time, where the concrete measure
-# type is statically known, so the wrapped closure resolves `process_measure` statically. The
-# wrapper type-erases the closure to a single concrete type, turning the intervention-hot-path
-# call into a fixed indirect call instead of a dynamic `process_measure` dispatch.
-const IProcessFn = FunctionWrapper{Any, Tuple{Simulation, Individual}}
-const SProcessFn = FunctionWrapper{Any, Tuple{Simulation, Setting}}
+# type and the `Simulation` are statically known, so the wrapped closure captures both and resolves
+# `process_measure` statically. The wrapper takes only the focal object; `Simulation` is kept out of
+# the argument tuple because it is a parametric (abstract) type and an abstract argument type would
+# make the call a dynamic dispatch.
+const IProcessFn = FunctionWrapper{Any, Tuple{Individual}}
+const SProcessFn = FunctionWrapper{Any, Tuple{Setting}}
 
 """
     MeasureEntry{O}
@@ -37,7 +38,7 @@ struct MeasureEntry{O}
     delay::FunctionWrapper{Int, Tuple{O}}
     condition::FunctionWrapper{Bool, Tuple{O}}
     # type-erased `process_measure` callback for this measure (see IProcessFn/SProcessFn above)
-    process_fn::FunctionWrapper{Any, Tuple{Simulation, O}}
+    process_fn::FunctionWrapper{Any, Tuple{O}}
 end
 
 
@@ -90,7 +91,7 @@ must be a one-argument function returning a boolean value.
 The function is called once the strategy was triggered and can
 condition its execution. The argument is the respective individual.
 """
-struct IStrategy <: Strategy
+struct IStrategy{S<:Simulation} <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
     measures::Vector{MeasureEntry{Individual}}
@@ -98,6 +99,10 @@ struct IStrategy <: Strategy
     # One-Argument boolean function used to condition the execution of
     # this strategy. The argument will be the focal individual
     condition::IPredicate
+
+    # the simulation this strategy is bound to; captured by the per-measure process callbacks
+    # (see IProcessFn) so `sim` is concretely typed at `add_measure!` time
+    sim::S
 
     # this inner constructor requires the simulation object
     # to register the new strategy with it. Otherwise it will
@@ -147,8 +152,8 @@ struct IStrategy <: Strategy
     individuals who experience symptoms and are 65 or older.
 
     """
-    function IStrategy(name::String, sim::Simulation; condition::Function = x -> true)
-        str = new(name, MeasureEntry{Individual}[], IPredicate(condition))
+    function IStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
     end
@@ -167,7 +172,7 @@ must be a one-argument function returning a boolean value.
 The function is called once the strategy was triggered and can
 condition its execution. The argument is the respective individual.
 """
-struct SStrategy <: Strategy
+struct SStrategy{S<:Simulation} <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
     measures::Vector{MeasureEntry{Setting}}
@@ -175,6 +180,10 @@ struct SStrategy <: Strategy
     # One-Argument boolean function used to condition the execution of
     # this strategy. The argument will be the focal setting
     condition::SPredicate
+
+    # the simulation this strategy is bound to; captured by the per-measure process callbacks
+    # (see SProcessFn) so `sim` is concretely typed at `add_measure!` time
+    sim::S
 
     # this inner constructor requires the simulation object
     # to register the new strategy with it. Otherwise it will
@@ -225,8 +234,8 @@ struct SStrategy <: Strategy
     settings that have more than 10 individuals associated.
 
     """
-    function SStrategy(name::String, sim::Simulation; condition::Function = x -> true)
-        str = new(name, MeasureEntry{Setting}[], SPredicate(condition))
+    function SStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
     end
@@ -303,14 +312,18 @@ This example only lets individuals go into self-isolation who are 65 and above.
 All these optional arguments and predicate functions can be combined. The
 calculated `delay` is added to the `offset` (if specified).
 """
-function add_measure!(str::IStrategy, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
-    fn = IProcessFn((sim, ind) -> process_measure(sim, ind, measure))
+# `where {S}` forces specialization on the strategy type so `str.sim` is concretely typed and the
+# closure captures `sim` concretely.
+function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
+    sim = str.sim
+    fn = IProcessFn(ind -> process_measure(sim, ind, measure))
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
     return str
 end
 
-function add_measure!(str::SStrategy, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
-    fn = SProcessFn((sim, s) -> process_measure(sim, s, measure))
+function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
+    sim = str.sim
+    fn = SProcessFn(s -> process_measure(sim, s, measure))
     push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
     return str
 end

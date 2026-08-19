@@ -529,9 +529,9 @@ function Section(rd::ResultData, ::Type{sec_Overview})
         content = "" *
             "| Property                | Value                                                            |\n" *
             "| ----------------------- | -----------------------------------------------------------------|\n" *
-            "| Initial Infections      | $(format(rd |> initial_infections, commas=true))                 |\n" *
-            "| Total Infections[^tinf] | $(format(rd |> total_infections, commas=true))                   |\n" *
-            "| Attack Rate[^atr]       | $(round((rd |> attack_rate) * 100, digits = 2))%                 |\n" *
+            "| Initial Infections      | $(format(sum((rd |> initial_infections).initial_infections), commas=true))                 |\n" *
+            "| Total Infections[^tinf] | $(format(sum((rd |> total_infections).total_infections), commas=true))                   |\n" *
+            "| Attack Rate[^atr]       | $(round(sum((rd |> attack_rate).attack_rate) / nrow(rd |> attack_rate) * 100, digits = 2))%                 |\n" *
             "Table: Simulation Results Overview\n\n" *
             "[^tinf]: Initially infected individuals and infections that happened during the simulation\n\n" *
             "[^atr]: Total infections divided by number of individuals")
@@ -544,8 +544,8 @@ function Section(rd::ResultData, ::Type{sec_Observations})
         content = "" *
             "| Property                   | Value                                                            |\n" *
             "| -------------------------- | -----------------------------------------------------------------|\n" *
-            "| Total Detection Rate[^dtr] | $(round((rd |> detection_rate) * 100, digits = 2))%              |\n" *
-            "| Total Dark Figure[^tdf]    | $(round((1 - (rd |> detection_rate)) * 100, digits = 2))%        |\n" *
+            "| Total Detection Rate[^dtr] | $(round(sum((rd |> detection_rate).detection_rate) / nrow(rd |> detection_rate) * 100, digits = 2))%              |\n" *
+            "| Total Dark Figure[^tdf]    | $(round((1 - sum((rd |> detection_rate).detection_rate) / nrow(rd |> detection_rate)) * 100, digits = 2))%        |\n" *
             "Table: Observed Simulation Results Overview\n\n" *
             "[^dtr]: Total of detected infections divided by total number of infections\n\n" *
             "[^tdf]: Total of un-detected infections divided by total number of infections")

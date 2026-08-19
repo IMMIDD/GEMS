@@ -333,8 +333,22 @@ end
 Triggers the execution of the `IStrategy` associated with an `ITickTrigger` for all individuals in the model.
 """
 function trigger(itt::ITickTrigger, sim::Simulation)
-    for i in sim |> population |> individuals 
-        trigger_strategy(itt |> strategy, i, sim)
+    _trigger_individuals!(itt |> strategy, sim |> population |> individuals, sim)
+end
+
+"""
+    _trigger_individuals!(str::IStrategy, indivs, sim::Simulation)
+
+Function barrier for `trigger(::ITickTrigger, ::Simulation)`.
+
+`strategy(itt)` returns an abstractly-typed `IStrategy` (the trigger stores it in an abstract
+field). Passing it through this function causes Julia to dispatch on its runtime type once and
+compile a specialization in which `str` is concretely typed, so the `trigger_strategy` call inside
+the loop is statically resolved instead of dispatching per individual.
+"""
+function _trigger_individuals!(str::IStrategy, indivs, sim::Simulation)
+    for i in indivs
+        trigger_strategy(str, i, sim)
     end
 end
 

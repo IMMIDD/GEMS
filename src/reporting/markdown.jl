@@ -116,14 +116,14 @@ end
 
 Returns a markdown string with all parameters (mainly for documentation purposes).
 """
-function markdown(pathogen::Pathogen)
-    # encapsule in array to use function that dispatches on arrays 
+function markdown(pathogen::P) where {P<:Pathogen}
+    # encapsule in array to use function that dispatches on arrays
     # (to not have basically the same function twice)
-    return([pathogen] |> markdown)
+    return(markdown([pathogen]))
 end
 
 
-function markdown(arr::Vector{Pathogen})
+function markdown(arr::Vector{<:Pathogen})
 
     if arr |> Base.isempty
         return ""
@@ -321,7 +321,7 @@ function markdown(ttypes::Vector{AbstractTestType})
         "| ----------------------- | ------------------------ | ----------------- |\n"
 
     for tt in ttypes
-        res *= "| $(tt |> name) | $(tt |> pathogen |> name) | $(100 * (tt |> sensitivity))% |\n"
+        res *= "| $(tt |> name) | pathogen $(pathogen_id(tt)) | $(100 * (tt |> sensitivity))% |\n"
     end
 
     res *= "Table: TestTypes\n\n"

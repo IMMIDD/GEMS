@@ -1,7 +1,5 @@
 # this file defines constant global variables used throughout the GEMS package
 
-# !!! for the LookUp Table of Terminal states, see structs/parameters/age_strat.jl !!! #
-
 ##################
 # DEFAULT VALUES #
 ##################
@@ -12,6 +10,9 @@ const DEFAULT_TICK = Int16(-1)
 const DEFAULT_INFECTION_ID = Int32(-1)
 const DEFAULT_AGS = Int32(-1)
 const GLOBAL_SETTING_ID = Int32(1)
+
+# start condition pathogen name meaning "every pathogen in the simulation"
+const ALL_PATHOGENS = "all"
 
 #################
 # DATA ANALYSIS #
@@ -65,12 +66,6 @@ const R0_CALCULATION_SAMPLE_FRACTION = 0.05
 const FEMALE = Int8(1)
 const MALE = Int8(2)
 
-# hospital_status
-const HOSPITAL_STATUS_NO_HOSPITAL = Int8(0)
-const HOSPITAL_STATUS_HOSPITALIZED = Int8(1)
-const HOSPITAL_STATUS_VENTILATION = Int8(2)
-const HOSPITAL_STATUS_ICU = Int8(3)
-
 # disease_state
 const DISEASE_STATE_NOT_INFECTED = Int8(0)
 const DISEASE_STATE_PRESYMPTOMATIC = Int8(1)
@@ -97,6 +92,21 @@ const SYMPTOM_CATEGORIES = Dict(
 const QUARANTINE_STATE_NO_QUARANTINE = Int8(0)
 const QUARANTINE_STATE_HOUSEHOLD_QUARANTINE = Int8(1)
 const QUARANTINE_STATE_HOSPITAL = Int8(2)
+
+# Maximum number of distinct pathogens a simulation can track. Bounded by the per-individual
+# UInt32 pathogen bitmasks (`active_pathogens_mask`/`detected_mask`, bit `id - 1`) and the
+# `_test_key` packing. Raising this requires widening those mask fields.
+const MAX_PATHOGENS = 32
+
+# Maximum number of cached infections
+const INFECTIONS_CACHE_SIZE = 1
+# Maximum number cached immunizations
+const IMMUNITY_CACHE_SIZE = 1
+
+# Source flags stored in ImmunityRow / ImmunityState.
+const IMMUNITY_SOURCE_NATURAL = Int8(1)
+const IMMUNITY_SOURCE_VACCINE = Int8(2)
+
 
 
 ##########################

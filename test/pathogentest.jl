@@ -1,4 +1,38 @@
-import GEMS: _rand_val as rand_val
+import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update_immunity!
+
+# immunity that is fully readable but does not act on transmission, and one that acts at half
+# strength. Defined here so their methods are visible to the testsets that call them directly.
+struct SeverityOnlyImmunity <: GEMS.ImmunityProfile end
+GEMS.calculate_immunity(::SeverityOnlyImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+    GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+GEMS.immunity_is_stable(::SeverityOnlyImmunity, s::ImmunityState, i::Individual, t::Int16) =
+    GEMS.immunity_active(s, t)
+GEMS.susceptibility_factor(::SeverityOnlyImmunity, level::Int8) = 1.0
+
+struct HalfImmunity <: GEMS.ImmunityProfile end
+GEMS.calculate_immunity(::HalfImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+    GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+GEMS.immunity_is_stable(::HalfImmunity, s::ImmunityState, i::Individual, t::Int16) =
+    GEMS.immunity_active(s, t)
+GEMS.susceptibility_factor(::HalfImmunity, level::Int8) = 1.0 - 0.5 * level / 100.0
+
+# an assignment function that reads immunity, recording what it saw so tests can assert on it
+const SEEN_OWN = Ref(Int8(-1))
+const SEEN_OTHER = Ref(Int8(-1))
+
+struct ImmunityAwareAssignment <: GEMS.ProgressionAssignmentFunction end
+
+function GEMS.assign(ind::Individual, paf::ImmunityAwareAssignment,
+        immunities::GEMS.ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro)
+    SEEN_OWN[] = immunity_level(ind, immunities, pathogen_id)
+    other = Int8(0)
+    for s in GEMS.each_immunity(ind, immunities)
+        s.pathogen_id == pathogen_id && continue
+        other = max(other, s.immunity_level)
+    end
+    SEEN_OTHER[] = other
+    return SEEN_OWN[] >= 50 || other >= 50 ? Asymptomatic : Mild
+end
 
 @testset "Pathogens" begin
 
@@ -22,7 +56,7 @@ import GEMS: _rand_val as rand_val
         infectiousness_onset_to_recovery = poi5
     )
 
-    pr_sympt = Symptomatic(
+    pr_mild = Mild(
         exposure_to_infectiousness_onset = poi2,
         infectiousness_onset_to_symptom_onset = poi1,
         symptom_onset_to_recovery = poi7
@@ -36,32 +70,18 @@ import GEMS: _rand_val as rand_val
         severeness_offset_to_recovery = poi4
     )
 
-    pr_hosp = Hospitalized(
-        exposure_to_infectiousness_onset = poi1,
-        infectiousness_onset_to_symptom_onset = poi1,
-        symptom_onset_to_severeness_onset = poi1,
-        severeness_onset_to_hospital_admission = poi2,
-        hospital_admission_to_hospital_discharge = poi7,
-        hospital_discharge_to_severeness_offset = poi3,
-        severeness_offset_to_recovery = poi4
-    )
-
     pr_crit = Critical(
         exposure_to_infectiousness_onset = poi1,
         infectiousness_onset_to_symptom_onset = poi1,
         symptom_onset_to_severeness_onset = poi1,
-        severeness_onset_to_hospital_admission = poi2,
-        hospital_admission_to_icu_admission = poi2,
-        icu_admission_to_icu_discharge = poi7,
-        icu_discharge_to_hospital_discharge = poi7,
-        hospital_discharge_to_severeness_offset = poi3,
-        severeness_offset_to_recovery = poi4,
-        icu_admission_to_death = poi10,
-        death_probability = 0.3
+        severeness_onset_to_critical_onset = poi2,
+        critical_onset_to_critical_offset = poi7,
+        critical_offset_to_severeness_offset = poi3,
+        severeness_offset_to_recovery = poi4
     )
 
     # progression assignment
-    paf = RandomProgressionAssignment([Asymptomatic, Symptomatic, Severe, Hospitalized, Critical])
+    paf = RandomProgressionAssignment([Asymptomatic, Mild, Severe, Critical])
 
     # transmission function
     ctf = ConstantTransmissionRate(transmission_rate = 0.25)
@@ -71,20 +91,51 @@ import GEMS: _rand_val as rand_val
         p = Pathogen(
             name = "TestPathogen",
             id = 5,
-            progressions = [pr_asymp, pr_sympt, pr_sev, pr_hosp, pr_crit],
+            progressions = [pr_asymp, pr_mild, pr_sev, pr_crit],
             progression_assignment = paf,
             transmission_function = ctf,
         )
         @test name(p) == "TestPathogen"
         @test id(p) == 5
-        @test length(progressions(p)) == 5
-        @test progressions(p)[Asymptomatic] === pr_asymp
-        @test progressions(p)[Symptomatic] === pr_sympt
-        @test progressions(p)[Severe] === pr_sev
-        @test progressions(p)[Hospitalized] === pr_hosp
-        @test progressions(p)[Critical] === pr_crit
+        @test length(progressions(p)) == 4
+        @test get_progression(p, Asymptomatic) === pr_asymp
+        @test get_progression(p, Mild) === pr_mild
+        @test get_progression(p, Severe) === pr_sev
+        @test get_progression(p, Critical) === pr_crit
         @test progression_assignment(p) === paf
         @test transmission_function(p) === ctf
+
+        @testset "Pathogen type stability" begin
+            base_prgs = [Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=7)]
+
+            for tf_ts in [
+                ConstantTransmissionRate(transmission_rate=0.2),
+                AgeDependentTransmissionRate(age_groups=["0-59", "60-"], transmission_rates=[0.2, 0.4]),
+                CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), ViralInterferenceModifier())
+            ]
+                p_ts = Pathogen(id=1, name="TypeTest", progressions=base_prgs, transmission_function=tf_ts)
+                @test isconcretetype(fieldtype(typeof(p_ts), :transmission_function))
+            end
+
+            tf_comb_ts = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), ViralInterferenceModifier())
+            @test isconcretetype(fieldtype(typeof(tf_comb_ts), :base))
+            @test all(isconcretetype, fieldtype(typeof(tf_comb_ts), :modifiers).parameters)
+
+            for ip_ts in [ConstantInfectiousness(), StagedInfectiousness()]
+                p_ts = Pathogen(id=1, name="TypeTest", progressions=base_prgs, infectiousness_profile=ip_ts)
+                @test isconcretetype(fieldtype(typeof(p_ts), :infectiousness_profile))
+            end
+
+            for im_ts in [FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning()]
+                p_ts = Pathogen(id=1, name="TypeTest", progressions=base_prgs, immunity_profile=im_ts)
+                @test isconcretetype(fieldtype(typeof(p_ts), :immunity_profile))
+            end
+
+            p_single_ts = Pathogen(id=1, name="TypeTest",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=7)])
+            prg_type_ts = fieldtype(typeof(p_single_ts), :progressions)
+            @test all(isconcretetype, prg_type_ts.parameters)
+        end
 
         # failing
         @test_throws ArgumentError Pathogen(name = "", id = 1)
@@ -98,10 +149,10 @@ import GEMS: _rand_val as rand_val
         @test pr_asymp.exposure_to_infectiousness_onset === poi2
         @test pr_asymp.infectiousness_onset_to_recovery === poi5
 
-        # symptomatic
-        @test pr_sympt.exposure_to_infectiousness_onset === poi2
-        @test pr_sympt.infectiousness_onset_to_symptom_onset === poi1
-        @test pr_sympt.symptom_onset_to_recovery === poi7
+        # mild
+        @test pr_mild.exposure_to_infectiousness_onset === poi2
+        @test pr_mild.infectiousness_onset_to_symptom_onset === poi1
+        @test pr_mild.symptom_onset_to_recovery === poi7
 
         # severe
         @test pr_sev.exposure_to_infectiousness_onset === poi2
@@ -110,32 +161,66 @@ import GEMS: _rand_val as rand_val
         @test pr_sev.severeness_onset_to_severeness_offset === poi3
         @test pr_sev.severeness_offset_to_recovery === poi4
 
-        # hospitalized
-        @test pr_hosp.exposure_to_infectiousness_onset === poi1
-        @test pr_hosp.infectiousness_onset_to_symptom_onset === poi1
-        @test pr_hosp.symptom_onset_to_severeness_onset === poi1
-        @test pr_hosp.severeness_onset_to_hospital_admission === poi2
-        @test pr_hosp.hospital_admission_to_hospital_discharge === poi7
-        @test pr_hosp.hospital_discharge_to_severeness_offset === poi3
-        @test pr_hosp.severeness_offset_to_recovery === poi4
-
         # critical
         @test pr_crit.exposure_to_infectiousness_onset === poi1
         @test pr_crit.infectiousness_onset_to_symptom_onset === poi1
         @test pr_crit.symptom_onset_to_severeness_onset === poi1
-        @test pr_crit.severeness_onset_to_hospital_admission === poi2
-        @test pr_crit.hospital_admission_to_icu_admission === poi2
-        @test pr_crit.icu_admission_to_icu_discharge === poi7
-        @test pr_crit.icu_discharge_to_hospital_discharge === poi7
-        @test pr_crit.hospital_discharge_to_severeness_offset === poi3
+        @test pr_crit.severeness_onset_to_critical_onset === poi2
+        @test pr_crit.critical_onset_to_critical_offset === poi7
+        @test pr_crit.critical_offset_to_severeness_offset === poi3
         @test pr_crit.severeness_offset_to_recovery === poi4
-        @test pr_crit.icu_admission_to_death === poi10
-        @test pr_crit.death_probability == 0.3
+        @test isnothing(pr_crit.care)
+    end
+
+    @testset "Embedded Health Profile" begin
+        # flat health profile parameters embedded directly in a Critical progression
+        crit_with_care = Critical(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi7,
+            critical_offset_to_severeness_offset = poi3,
+            severeness_offset_to_recovery = poi4,
+            hospital_probability = 0.9,
+            hospital_to_icu_probability = 0.5
+        )
+        @test crit_with_care.care isa CriticalHealthProfile
+        @test crit_with_care.care.hospital_probability == 0.9
+        @test crit_with_care.care.hospital_to_icu_probability == 0.5
+
+        # care= object and flat kwargs are mutually exclusive
+        @test_throws ArgumentError Critical(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi7,
+            critical_offset_to_severeness_offset = poi3,
+            severeness_offset_to_recovery = poi4,
+            care = CriticalHealthProfile(),
+            hospital_probability = 0.9
+        )
+
+        # unknown embedded parameter errors
+        @test_throws ArgumentError Critical(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi7,
+            critical_offset_to_severeness_offset = poi3,
+            severeness_offset_to_recovery = poi4,
+            bogus_param = 3
+        )
+
+        # a Severe tier with no embedded care leaves `.care` as nothing
+        @test isnothing(pr_sev.care)
     end
 
     @testset "Custom Progression Category" begin
         # define custom progression category
-        # similar to Symptomatic but with an extra custom parameter
+        # similar to Mild but with an extra custom parameter
         mutable struct TestProgression <: GEMS.ProgressionCategory
             exposure_to_infectiousness_onset::Distribution
             infectiousness_onset_to_symptom_onset::Distribution
@@ -147,13 +232,13 @@ import GEMS: _rand_val as rand_val
         function GEMS.calculate_progression(individual::Individual, tick::Int16, dp::TestProgression, rng::Xoshiro )
             
             # Calculate the time to infectiousness
-            infectiousness_onset = tick + Int16(1) + rand_val(dp.exposure_to_infectiousness_onset, rng)
+            infectiousness_onset = tick + Int16(1) + _rand_val(dp.exposure_to_infectiousness_onset, rng)
 
             # Calculate the time to symptom onset
-            symptom_onset = infectiousness_onset + rand_val(dp.infectiousness_onset_to_symptom_onset, rng)
+            symptom_onset = infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng)
 
             # Calculate the time to recovery
-            recovery = symptom_onset + rand_val(dp.symptom_onset_to_recovery, rng)
+            recovery = symptom_onset + _rand_val(dp.symptom_onset_to_recovery, rng)
 
             return DiseaseProgression(
                 exposure = Int16(tick),
@@ -182,7 +267,7 @@ import GEMS: _rand_val as rand_val
         )
 
         @test length(progressions(p_custom)) == 1
-        @test progressions(p_custom)[TestProgression] === tp
+        @test get_progression(p_custom, TestProgression) === tp
         @test tp.custom_parameter == 0.75
 
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
@@ -200,7 +285,7 @@ import GEMS: _rand_val as rand_val
     @testset "Progression Assignment" begin
         ### RANDOM PROGRESSION ASSIGNMENT
         # THINGS THAT SHOULD WORK
-        pgrs = [Asymptomatic, Symptomatic, Severe, Hospitalized, Critical]
+        pgrs = [Asymptomatic, Mild, Severe, Critical]
         rpa = RandomProgressionAssignment(pgrs) 
         i = individuals(sim)[1]
 
@@ -211,15 +296,15 @@ import GEMS: _rand_val as rand_val
         # empty progression categories
         @test_throws ArgumentError RandomProgressionAssignment(DataType[])
         # non-existing progression category
-        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Household])
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Mild, Household])
         # duplicate progression category
-        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Symptomatic, Symptomatic])
+        @test_throws ArgumentError RandomProgressionAssignment([Asymptomatic, Mild, Mild])
         
 
         ### AGE-BASED PROGRESSION ASSIGNMENT
         # THINGS THAT SHOULD WORK
         age_groups = ["0-19", "20-39", "40-59", "60-"]
-        progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Critical"]
+        progression_categories = ["Asymptomatic", "Mild", "Severe", "Critical"]
         stratification_matrix = [
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -238,9 +323,9 @@ import GEMS: _rand_val as rand_val
             if age(ind) <= 19
                 @test pc == Asymptomatic
             elseif age(ind) <= 39
-                @test pc == Symptomatic
+                @test pc == Mild
             elseif age(ind) <= 59
-                @test pc == Hospitalized
+                @test pc == Severe
             else
                 @test pc == Critical
             end
@@ -289,13 +374,13 @@ import GEMS: _rand_val as rand_val
         # non-existing progression category
         @test_throws ArgumentError AgeBasedProgressionAssignment(
             age_groups = age_groups,
-            progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "NonExistingProgression"],
+            progression_categories = ["Asymptomatic", "Mild", "Severe", "NonExistingProgression"],
             stratification_matrix = stratification_matrix
         )
         # duplicate progression category
         @test_throws ArgumentError AgeBasedProgressionAssignment(
             age_groups = age_groups,
-            progression_categories = ["Asymptomatic", "Symptomatic", "Hospitalized", "Symptomatic"],
+            progression_categories = ["Asymptomatic", "Mild", "Severe", "Mild"],
             stratification_matrix = stratification_matrix
         )
 
@@ -351,13 +436,13 @@ import GEMS: _rand_val as rand_val
         end
 
         # create instance
-        eo_pa = EvenOddProgressionAssignment(Symptomatic, Asymptomatic)
+        eo_pa = EvenOddProgressionAssignment(Mild, Asymptomatic)
 
         # create pathogen with custom progression assignment
         p_eo = Pathogen(
             name = "EvenOddPathogen",
             id = 20,
-            progressions = [pr_asymp, pr_sympt],
+            progressions = [pr_asymp, pr_mild],
             progression_assignment = eo_pa,
             transmission_function = ctf,
         )
@@ -371,112 +456,503 @@ import GEMS: _rand_val as rand_val
         # make sure that there were infections
         @test length(flat_id_b) > 0 
 
-        # check if even IDs got Symptomatic and odd IDs got Asymptomatic
+        # check if even IDs got Mild and odd IDs got Asymptomatic
         for (ind_id, pc) in zip(flat_id_b, flat_pc)
             if iseven(ind_id)
-                @test pc == :Symptomatic
+                @test pc == :Mild
             else
                 @test pc == :Asymptomatic
             end
         end
 
+        # assign fallback: unimplemented ProgressionAssignmentFunction throws, through either arity
+        struct UnimplementedPA <: GEMS.ProgressionAssignmentFunction end
+        @test_throws ErrorException GEMS.assign(individuals(sim)[1], UnimplementedPA(), Xoshiro())
+        @test_throws ErrorException GEMS.assign(individuals(sim)[1], UnimplementedPA(),
+            ImmunityRegistry(), Int8(1), Xoshiro())
+
+        # a three-argument implementation is reached through the forwarding method
+        @test GEMS.assign(individuals(sim)[2], eo_pa, ImmunityRegistry(), Int8(1), Xoshiro()) == Mild
+        @test GEMS.assign(individuals(sim)[3], eo_pa, ImmunityRegistry(), Int8(1), Xoshiro()) == Asymptomatic
+    end
+
+    @testset "Immunity-Aware Progression Assignment" begin
+        mkpath_ia(pid, nm) = Pathogen(id = pid, name = nm, progressions = [pr_asymp, pr_mild],
+            progression_assignment = ImmunityAwareAssignment(), transmission_function = ctf)
+
+        function immunize!(s, ind, pid, acquired, at)
+            push_immunity!(GEMS.immunity_registry(s, ind), ind, Int8(pid),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(acquired), GEMS.DEFAULT_VACCINE_ID)
+            ind.needs_immunity_update = true
+            update_immunity!(ind, GEMS.immunity_registry(s, ind), s.pathogens, Int16(at), Xoshiro())
+        end
+
+        s = Simulation(pop_size = 500, pathogens = (mkpath_ia(1, "IA"),), infected_fraction = 0.0)
+
+        # a naive host: assign sees no immunity
+        SEEN_OWN[] = Int8(-1)
+        infect!(individuals(s)[1], Int16(10), first_pathogen(s), sim = s, rng = Xoshiro(1))
+        @test SEEN_OWN[] == Int8(0)
+
+        # an immune host: assign sees the level held *before* this infection is recorded
+        immune = individuals(s)[2]
+        immunize!(s, immune, 1, 0, 10)
+        pre = immunity_level(immune, s, Int8(1))
+        SEEN_OWN[] = Int8(-1)
+        infect!(immune, Int16(10), first_pathogen(s), sim = s, rng = Xoshiro(1))
+        @test pre == Int8(100)
+        @test SEEN_OWN[] == pre
+
+        # immunity to a *different* pathogen is reachable via each_immunity
+        s2 = Simulation(pop_size = 500, pathogens = (mkpath_ia(1, "PA"), mkpath_ia(2, "PB")),
+            infected_fraction = 0.0)
+        host = individuals(s2)[1]
+        immunize!(s2, host, 2, 0, 10)
+        SEEN_OWN[] = Int8(-1); SEEN_OTHER[] = Int8(-1)
+        infect!(host, Int16(10), GEMS.get_pathogen(s2, Int8(1)), sim = s2, rng = Xoshiro(1))
+        @test SEEN_OWN[] == Int8(0)
+        @test SEEN_OTHER[] == Int8(100)
+
+        # without a Simulation an empty registry is passed rather than erroring
+        lone = Individual(id = 1, age = 30, sex = 1, household = 1)
+        SEEN_OWN[] = Int8(-1)
+        infect!(lone, Int16(0), mkpath_ia(1, "Lone"), rng = Xoshiro(1))
+        @test SEEN_OWN[] == Int8(0)
     end
 
 
 
     @testset "Transmission Function" begin
-        # CONSTANT TRANSMISSION RATE
-        # THINGS THAT SHOULD WORK
-        test_ctr = ConstantTransmissionRate(transmission_rate = 0.3)
-        @test test_ctr.transmission_rate == 0.3
 
-        sim = Simulation(pop_size = 1000)
+        @testset "ConstantTransmissionRate" begin
+            test_ctr = ConstantTransmissionRate(transmission_rate = 0.3)
+            @test test_ctr.transmission_rate == 0.3
 
-        # infected individuals
-        infctd = individuals(sim) |>
-            i -> i[infected.(i)]
+            # single-pathogen sim with explicit setup to ensure infecter is infectious
+            p_ctr = Pathogen(id=1, name="TestCTR",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=7)],
+                transmission_function=test_ctr)
+            sim = Simulation(pop_size=1000, pathogens=(p_ctr,), infected_fraction=0.0)
+            infecter = individuals(sim)[1]
+            suscpt_ind = individuals(sim)[2]
+            # infect and advance disease to make infectious
+            infect!(infecter, Int16(0), first_pathogen(sim), rng=Xoshiro())
+            GEMS.update_individual!(infecter, Int16(1), sim)
 
-        # susceptible individuals
-        suscpt = individuals(sim) |>
-            i -> i[.!infected.(i)]
+            @test transmission_probability(test_ctr, id(first_pathogen(sim)), infecter, suscpt_ind, households(sim)[1], Int16(1), sim) == 0.3
+            let inf_l = infectiousness(infecter, sim, id(first_pathogen(sim)))
+                imm_l = immunity_level(suscpt_ind, sim, id(first_pathogen(sim)))
+                @test effective_transmission_probability(test_ctr, id(first_pathogen(sim)), infecter, suscpt_ind, households(sim)[1], Int16(1), sim) ≈ 0.3 * (inf_l / 100.0) * (1.0 - imm_l / 100.0)
+            end
 
-        @test transmission_probability(test_ctr, infctd[1], suscpt[1], households(sim)[1], Int16(1)) == 0.3
+            @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = -0.1)
+            @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = 1.5)
 
-        # THINGS THAT SHOULD NOT WORK
-        @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = -0.1)
-        @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = 1.5)
+            # effective_transmission_probability throws when infecter has zero infectiousness
+            @test_throws ArgumentError effective_transmission_probability(test_ctr, id(first_pathogen(sim)), suscpt_ind, individuals(sim)[3], households(sim)[1], Int16(1), sim)
+        end
 
-        # call with uninfected infecter
-        @test_throws ArgumentError transmission_probability(test_ctr, suscpt[1], suscpt[2], households(sim)[1], Int16(1))
+        @testset "AgeDependentTransmissionRate" begin
+            age_groups = ["0-19", "20-39", "40-59", "60-"]
+            age_transmissions = [0.0, 0.0, 0.0, 0.4]
+            abtr = AgeDependentTransmissionRate(
+                age_groups = age_groups,
+                transmission_rates = age_transmissions
+            )
 
-        # AGE BASED TRANSMISSION RATE
-        # THINGS THAT SHOULD WORK
-        age_groups = ["0-19", "20-39", "40-59", "60-"]
-        age_transmissions = [0.0, 0.0, 0.0, 0.4]
-        abtr = AgeDependentTransmissionRate(
-            age_groups = age_groups,
-            transmission_rates = age_transmissions
-        )
+            @test abtr.age_transmission_rates == age_transmissions
 
-        @test abtr.age_transmission_rates == age_transmissions
-        # infecter age 25 -> transmission rate 0.0
+            sim = Simulation(pop_size = 1000, transmission_function = abtr)
+            run!(sim)
+            rd = ResultData(sim)
 
-        sim = Simulation(pop_size = 1000, transmission_function = abtr)
-        run!(sim)
-        rd = ResultData(sim)
+            # check if all infectees are older than 60
+            @test infections(rd) |>
+                df -> df[df.tick .>= 1 .&& df.age_b .< 60, :] |> nrow == 0
 
-        # check if all infectees are older than 60
-        @test infections(rd) |>
-            df -> df[df.tick .>= 1 .&& df.age_b .< 60, :] |> nrow == 0
+            # transmission_probability returns only the age-specific base rate
+            pid_adtr = id(first_pathogen(sim))
+            dummy_adtr = individuals(sim)[1]
+            young_adtr = findfirst(i -> age(i) < 20, individuals(sim))
+            old_adtr = findfirst(i -> age(i) >= 60, individuals(sim))
+            if young_adtr !== nothing
+                @test transmission_probability(abtr, pid_adtr, dummy_adtr, individuals(sim)[young_adtr], households(sim)[1], Int16(1), sim) ≈ 0.0
+            end
+            if old_adtr !== nothing
+                @test transmission_probability(abtr, pid_adtr, dummy_adtr, individuals(sim)[old_adtr], households(sim)[1], Int16(1), sim) ≈ 0.4
+            end
 
-        # THINGS THAT SHOULD NOT WORK
-        # empty age groups
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = String[],
-            transmission_rates = Real[]
-        )
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = String[], transmission_rates = Real[])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "21-39", "40-59", "60-"],
+                transmission_rates = [0.1, 0.2, 0.3, 0.4])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["10-19", "20-39", "40-59", "60-"],
+                transmission_rates = [0.1, 0.2, 0.3, 0.4])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "20-39", "40-59", "60-79"],
+                transmission_rates = [0.1, 0.2, 0.3, 0.4])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "20-39", "forty-59", "60-"],
+                transmission_rates = [0.1, 0.2, 0.3, 0.4])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "20-39", "40-59", "60-"],
+                transmission_rates = [0.1, 0.2, 0.3])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "20-39", "40-59", "60-"],
+                transmission_rates = [0.1, -0.2, 0.3, 0.4])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "20-39", "40-59", "60-"],
+                transmission_rates = [0.1, 1.2, 0.3, 0.4])
 
-        # non-continuous age groups
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = ["0-19", "21-39", "40-59", "60-"],
-            transmission_rates = [0.1, 0.2, 0.3, 0.4]
-        )
-        # not starting at 0
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = ["10-19", "20-39", "40-59", "60-"],
-            transmission_rates = [0.1, 0.2, 0.3, 0.4]
-        )
+            @test !isempty(@capture_out show(abtr))
+        end
 
-        # non-open ended age groups
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = ["0-19", "20-39", "40-59", "60-79"],
-            transmission_rates = [0.1, 0.2, 0.3, 0.4]
-        )
+        @testset "CrossImmunityTransmissionRate" begin
+            pid = Int8(1)
+            tf_ci = CrossImmunityTransmissionRate(
+                transmission_rate = 0.5,
+                cross_immunities = [("PathogenB", 0.6)],
+                default_cross_factor = 0.3
+            )
+            @test tf_ci.transmission_rate == 0.5
+            @test tf_ci.modifier.cross_immunities["PathogenB"] == 0.6
+            @test !isempty(@capture_out show(tf_ci))
 
-        # non-numeric age group
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = ["0-19", "20-39", "forty-59", "60-"],
-            transmission_rates = [0.1, 0.2, 0.3, 0.4]
-        )
+            # constructor validation
+            @test_throws ArgumentError CrossImmunityTransmissionRate(transmission_rate = -0.1)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(transmission_rate = 1.5)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = -0.1)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = 1.5)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(
+                cross_immunities = [("A", 1.5)])
+            @test_throws ArgumentError CrossImmunityTransmissionRate(
+                cross_immunities = [("A", 0.5), ("A", 0.3)])   # duplicate name
 
-        # mismatched lengths
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = ["0-19", "20-39", "40-59", "60-"],
-            transmission_rates = [0.1, 0.2, 0.3]
-        )
+            p_ci = Pathogen(id=1, name="TestCITR",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=tf_ci)
+            p_ci2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_ci = Simulation(pop_size=100, pathogens=(p_ci, p_ci2), infected_fraction=0.0)
+            infecter_ci = individuals(sim_ci)[1]
+            infectee_ci = individuals(sim_ci)[2]
 
-        # transmission rates out of bounds
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = ["0-19", "20-39", "40-59", "60-"],
-            transmission_rates = [0.1, -0.2, 0.3, 0.4]
-        )
+            infect!(infecter_ci, Int16(0), first_pathogen(sim_ci), rng=Xoshiro())
+            GEMS.update_individual!(infecter_ci, Int16(1), sim_ci)
+            inf_level = infectiousness(infecter_ci, sim_ci, pid)
 
-        @test_throws ArgumentError AgeDependentTransmissionRate(
-            age_groups = ["0-19", "20-39", "40-59", "60-"],
-            transmission_rates = [0.1, 1.2, 0.3, 0.4]
-        )
+            # no other pathogens: base rate = 0.5 (cross product = 1.0; own immunity excluded)
+            prob_none = transmission_probability(tf_ci, pid, infecter_ci, infectee_ci,
+                households(sim_ci)[1], Int16(1), sim_ci)
+            @test prob_none ≈ 0.5
+            @test effective_transmission_probability(tf_ci, pid, infecter_ci, infectee_ci,
+                households(sim_ci)[1], Int16(1), sim_ci) ≈ 0.5 * (inf_level / 100.0)
 
-        @test !isempty(@capture_out show(abtr))
+            # full self-immunity: effective probability becomes 0
+            push_immunity!(immunity_registry(sim_ci, infectee_ci), infectee_ci, pid,
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+            update_immunity!(infectee_ci, immunity_registry(sim_ci, infectee_ci),
+                GEMS.pathogens(sim_ci), Int16(5), Xoshiro())
+            prob_immune = effective_transmission_probability(tf_ci, pid, infecter_ci, infectee_ci,
+                households(sim_ci)[1], Int16(5), sim_ci)
+            @test prob_immune ≈ 0.0
+
+            # cross-immunity from a listed pathogen (PathogenB → factor 0.6)
+            infectee2_ci = individuals(sim_ci)[3]
+            push_immunity!(immunity_registry(sim_ci, infectee2_ci), infectee2_ci, Int8(2),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+            update_immunity!(infectee2_ci, immunity_registry(sim_ci, infectee2_ci),
+                GEMS.pathogens(sim_ci), Int16(1), Xoshiro())
+            prob_listed = effective_transmission_probability(tf_ci, pid, infecter_ci, infectee2_ci,
+                households(sim_ci)[1], Int16(1), sim_ci)
+            @test prob_listed ≈ 0.5 * (1.0 - 100/100.0 * 0.6) * (inf_level / 100.0)
+
+            # immunity to a pathogen NOT listed in cross_immunities uses default_cross_factor
+            tf_ci_def = CrossImmunityTransmissionRate(
+                transmission_rate = 0.5, cross_immunities = Tuple{String,Float64}[],
+                default_cross_factor = 0.3)
+            infectee3_ci = individuals(sim_ci)[4]
+            push_immunity!(immunity_registry(sim_ci, infectee3_ci), infectee3_ci, Int8(2),
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+            update_immunity!(infectee3_ci, immunity_registry(sim_ci, infectee3_ci),
+                GEMS.pathogens(sim_ci), Int16(1), Xoshiro())
+            prob_default = effective_transmission_probability(tf_ci_def, pid, infecter_ci, infectee3_ci,
+                households(sim_ci)[1], Int16(1), sim_ci)
+            @test prob_default ≈ 0.5 * (1.0 - 100/100.0 * 0.3) * (inf_level / 100.0)
+
+            # uninfected infecter raises ArgumentError
+            @test_throws ArgumentError effective_transmission_probability(tf_ci, pid, infectee_ci,
+                individuals(sim_ci)[3], households(sim_ci)[1], Int16(1), sim_ci)
+        end
+
+        @testset "ViralInterferenceTransmissionRate" begin
+            pid1 = Int8(1)
+            pid2 = Int8(2)
+            tf_vi = ViralInterferenceTransmissionRate(
+                transmission_rate = 0.5,
+                interferences = [("PathogenB", 0.4)],
+                default_interference_factor = 1.0
+            )
+            @test tf_vi.transmission_rate == 0.5
+            @test tf_vi.modifier.interferences["PathogenB"] == 0.4
+            @test !isempty(@capture_out show(tf_vi))
+
+            # constructor validation
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(transmission_rate = -0.1)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(transmission_rate = 1.5)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = -0.1)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = 1.5)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(
+                interferences = [("A", 1.5)])
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(
+                interferences = [("A", 0.5), ("A", 0.3)])   # duplicate name
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_persistence = -1.0)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(persistence = [("A", -1.0)])
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(
+                persistence = [("A", 5.0), ("A", 3.0)])     # duplicate persistence name
+
+            # persistence defaults and TOML [name, ticks] vector parsing
+            @test tf_vi.modifier.default_persistence == 0.0
+            tf_vi_p = ViralInterferenceTransmissionRate(persistence = [["PathogenB", 14.0]])
+            @test tf_vi_p.modifier.persistence["PathogenB"] == 14.0
+
+            p_vi = Pathogen(id=1, name="TestVITR",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=tf_vi)
+            p_vi2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_vi = Simulation(pop_size=100, pathogens=(p_vi, p_vi2), infected_fraction=0.0)
+            infecter_vi = individuals(sim_vi)[1]
+            infectee_vi = individuals(sim_vi)[2]
+
+            infect!(infecter_vi, Int16(0), first_pathogen(sim_vi), rng=Xoshiro())
+            GEMS.update_individual!(infecter_vi, Int16(1), sim_vi)
+            inf_level = infectiousness(infecter_vi, sim_vi, pid1)
+
+            # no concurrent infections: base rate = 0.5
+            @test transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
+                households(sim_vi)[1], Int16(1), sim_vi) ≈ 0.5
+            @test effective_transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
+                households(sim_vi)[1], Int16(1), sim_vi) ≈ 0.5 * (inf_level / 100.0)
+
+            # concurrent infection with pid2 (PathogenB) reduces susceptibility by factor 0.4
+            push_infection!(infection_registry(sim_vi, infectee_vi), infectee_vi, pid2, Int32(99),
+                DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)))
+            @test transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
+                households(sim_vi)[1], Int16(1), sim_vi) ≈ 0.5 * 0.4
+            @test effective_transmission_probability(tf_vi, pid1, infecter_vi, infectee_vi,
+                households(sim_vi)[1], Int16(1), sim_vi) ≈ 0.5 * 0.4 * (inf_level / 100.0)
+
+            # TOML-parsed form: [name, factor] vectors are normalized into the Dict
+            tf_vi_vv = ViralInterferenceTransmissionRate(
+                transmission_rate = 0.5,
+                interferences = [["PathogenB", 0.4]])
+            @test tf_vi_vv.modifier.interferences["PathogenB"] == 0.4
+
+            # uninfected infecter raises ArgumentError
+            @test_throws ArgumentError effective_transmission_probability(tf_vi, pid1, infectee_vi,
+                individuals(sim_vi)[3], households(sim_vi)[1], Int16(1), sim_vi)
+        end
+
+        @testset "CompositeTransmissionRate" begin
+            tf_ctr_c = ConstantTransmissionRate(transmission_rate=0.4)
+            tf_int_c = ViralInterferenceModifier(
+                interferences=[("PathogenB", 0.5)],
+                default_interference_factor=1.0
+            )
+            combined_tf = CompositeTransmissionRate(tf_ctr_c, tf_int_c)
+            @test combined_tf.base === tf_ctr_c
+            @test combined_tf.modifiers === (tf_int_c,)
+
+            p_c = Pathogen(id=1, name="TestCombined",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=combined_tf)
+            p_c2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_c = Simulation(pop_size=100, pathogens=(p_c, p_c2), infected_fraction=0.0)
+            infecter_c = individuals(sim_c)[1]
+            infectee_c = individuals(sim_c)[2]
+            infect!(infecter_c, Int16(0), first_pathogen(sim_c), rng=Xoshiro())
+            GEMS.update_individual!(infecter_c, Int16(1), sim_c)
+
+            pid_c = id(first_pathogen(sim_c))
+            inf_level_c = infectiousness(infecter_c, sim_c, pid_c)
+            imm_level_c = immunity_level(infectee_c, sim_c, pid_c)
+
+            # no concurrent infections: combined base rate = const_rate * vi_rate
+            @test transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 1.0
+            @test effective_transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 1.0 * (inf_level_c / 100.0) * (1.0 - imm_level_c / 100.0)
+
+            # concurrent pid=2 (PathogenB) infection: vi factor becomes 0.5
+            push_infection!(infection_registry(sim_c, infectee_c), infectee_c, Int8(2), Int32(99),
+                DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)))
+            @test transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 0.5
+            @test effective_transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c) ≈ 0.4 * 0.5 * (inf_level_c / 100.0) * (1.0 - imm_level_c / 100.0)
+
+            # type stability
+            @test @inferred(transmission_probability(combined_tf, pid_c, infecter_c, infectee_c, households(sim_c)[1], Int16(1), sim_c)) isa Float64
+
+            # modifier-as-base is rejected by dispatch
+            @test_throws MethodError CompositeTransmissionRate(ViralInterferenceModifier())
+        end
+
+        @testset "CrossImmunityModifier" begin
+            m_ci = CrossImmunityModifier(
+                cross_immunities = [("PathogenB", 0.6)],
+                default_cross_factor = 0.3
+            )
+            @test m_ci.cross_immunities["PathogenB"] == 0.6
+            @test m_ci.default_cross_factor == 0.3
+            @test !isempty(@capture_out show(m_ci))
+
+            # transmission_factor returns a pure factor, not rate-scaled
+            pid = Int8(1)
+            p_cim = Pathogen(id=1, name="TestCIM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.5), m_ci))
+            sim_cim = Simulation(pop_size=100, pathogens=(p_cim,), infected_fraction=0.0)
+            infecter_cim = individuals(sim_cim)[1]
+            infectee_cim = individuals(sim_cim)[2]
+            infect!(infecter_cim, Int16(0), first_pathogen(sim_cim), rng=Xoshiro())
+            GEMS.update_individual!(infecter_cim, Int16(1), sim_cim)
+
+            f_none = transmission_factor(m_ci, pid, infecter_cim, infectee_cim,
+                households(sim_cim)[1], Int16(1), sim_cim)
+            @test f_none ≈ 1.0
+        end
+
+        @testset "ViralInterferenceModifier" begin
+            m_vi = ViralInterferenceModifier(
+                interferences = [("PathogenB", 0.4)],
+                default_interference_factor = 1.0
+            )
+            @test m_vi.interferences["PathogenB"] == 0.4
+            @test !isempty(@capture_out show(m_vi))
+
+            # transmission_factor returns a pure factor, not rate-scaled
+            pid1 = Int8(1)
+            pid2 = Int8(2)
+            p_vim = Pathogen(id=1, name="TestVIM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.5), m_vi))
+            p_vim2 = Pathogen(id=2, name="PathogenB",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)])
+            sim_vim = Simulation(pop_size=100, pathogens=(p_vim, p_vim2), infected_fraction=0.0)
+            infecter_vim = individuals(sim_vim)[1]
+            infectee_vim = individuals(sim_vim)[2]
+            infect!(infecter_vim, Int16(0), first_pathogen(sim_vim), rng=Xoshiro())
+            GEMS.update_individual!(infecter_vim, Int16(1), sim_vim)
+
+            f_none = transmission_factor(m_vi, pid1, infecter_vim, infectee_vim,
+                households(sim_vim)[1], Int16(1), sim_vim)
+            @test f_none ≈ 1.0
+
+            push_infection!(infection_registry(sim_vim, infectee_vim), infectee_vim, pid2, Int32(99),
+                DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)))
+            f_vi = transmission_factor(m_vi, pid1, infecter_vim, infectee_vim,
+                households(sim_vim)[1], Int16(1), sim_vim)
+            @test f_vi ≈ 0.4
+
+            # --- post-recovery persistence (linear waning) ---
+            m_vip = ViralInterferenceModifier(
+                interferences = [("PathogenB", 0.4)],
+                persistence   = [("PathogenB", 10.0)]
+            )
+            @test m_vip.persistence["PathogenB"] == 10.0
+            @test m_vip.default_persistence == 0.0
+
+            # a recovered (not currently infected) infectee: natural immunity record for
+            # PathogenB with natural_acquired_tick == recovery tick 5, no active infection.
+            recoveree = individuals(sim_vim)[4]
+            push_immunity!(immunity_registry(sim_vim, recoveree), recoveree, pid2,
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(5), GEMS.DEFAULT_VACCINE_ID)
+
+            # elapsed 0 at recovery tick → full active factor
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(5), sim_vim) ≈ 0.4
+            # midpoint (elapsed 5, window 10) → 0.4 + 0.6*0.5 = 0.7
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(10), sim_vim) ≈ 0.7
+            # window elapsed (elapsed 10 >= 10) → no effect
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(15), sim_vim) ≈ 1.0
+            # before recovery (pending) → no post-recovery interference
+            @test transmission_factor(m_vip, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(4), sim_vim) ≈ 1.0
+
+            # backwards compatible: default_persistence 0 (m_vi) → recovered infectee unaffected
+            @test transmission_factor(m_vi, pid1, infecter_vim, recoveree,
+                households(sim_vim)[1], Int16(10), sim_vim) ≈ 1.0
+
+            # vaccine-only immunity does not trigger interference
+            vaccinee = individuals(sim_vim)[5]
+            push_immunity!(immunity_registry(sim_vim, vaccinee), vaccinee, pid2,
+                GEMS.IMMUNITY_SOURCE_VACCINE, Int16(5), Int8(1))
+            @test transmission_factor(m_vip, pid1, infecter_vim, vaccinee,
+                households(sim_vim)[1], Int16(10), sim_vim) ≈ 1.0
+
+            # current pathogen is excluded: recovery from pid1 itself gives no self-interference
+            m_self = ViralInterferenceModifier(
+                interferences = [("TestVIM", 0.3)],
+                persistence   = [("TestVIM", 10.0)]
+            )
+            selfrec = individuals(sim_vim)[6]
+            push_immunity!(immunity_registry(sim_vim, selfrec), selfrec, pid1,
+                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(5), GEMS.DEFAULT_VACCINE_ID)
+            @test transmission_factor(m_self, pid1, infecter_vim, selfrec,
+                households(sim_vim)[1], Int16(6), sim_vim) ≈ 1.0
+        end
+
+        @testset "SinusoidalSeasonalModifier" begin
+            mod = SinusoidalSeasonalModifier(amplitude=0.5, peak_day=1)
+            @test mod.amplitude == 0.5
+            @test mod.peak_day == 1
+            @test !isempty(@capture_out show(mod))
+
+            # constructor validation
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=-0.1, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=1.5, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=0)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=366)
+
+            # minimal simulation with controlled start_date (Jan 1 = day 1)
+            start = Date(2024, 1, 1)
+            p_ssm = Pathogen(id=1, name="TestSSM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.5), mod))
+            sim_ssm = Simulation(pop_size=100, pathogens=(p_ssm,), infected_fraction=0.0, start_date=start)
+            ind1 = individuals(sim_ssm)[1]
+            ind2 = individuals(sim_ssm)[2]
+            hh   = households(sim_ssm)[1]
+            pid  = Int8(1)
+
+            # tick=0, peak_day=1 → doy=1 → cos(0)=1 → factor = 1.0 + 0.5 = 1.5
+            @test transmission_factor(mod, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 1.5
+
+            # tick=182 → Date(2024,1,1)+Day(182) = July 1, doy=183 → near trough
+            expected_trough = 1.0 + 0.5 * cos(2π * (183 - 1) / 365.0)
+            @test transmission_factor(mod, pid, ind1, ind2, hh, Int16(182), sim_ssm) ≈ expected_trough
+
+            # amplitude=0 → flat factor of 1.0 for any tick
+            mod_flat = SinusoidalSeasonalModifier(amplitude=0.0, peak_day=180)
+            @test transmission_factor(mod_flat, pid, ind1, ind2, hh, Int16(0),   sim_ssm) ≈ 1.0
+            @test transmission_factor(mod_flat, pid, ind1, ind2, hh, Int16(182), sim_ssm) ≈ 1.0
+
+            # SinusoidalSeasonalTransmissionRate struct
+            tf_ssm = SinusoidalSeasonalTransmissionRate(transmission_rate=0.4, amplitude=0.5, peak_day=1)
+            @test tf_ssm.transmission_rate == 0.4
+            @test !isempty(@capture_out show(tf_ssm))
+
+            # constructor validation
+            @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=-0.1, amplitude=0.3, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=1.5, amplitude=0.3, peak_day=1)
+
+            # transmission_probability = base_rate × seasonal_factor
+            @test transmission_probability(tf_ssm, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 0.4 * 1.5
+        end
+
     end
 
     @testset "Custom Transmission Function" begin
@@ -488,12 +964,15 @@ import GEMS: _rand_val as rand_val
 
         function GEMS.transmission_probability(
                 transFunc::KidsOnlyTransmission,
+                pathogen_id::Int8,
                 infecter::Individual,
                 infectee::Individual,
                 setting::Setting,
-                tick::Int16
+                tick::Int16,
+                sim::GEMS.Simulation,
+                rng::Xoshiro
             )::Float64
-            
+
             if age(infecter) < 15 && age(infectee) < 15
                 return transFunc.base_rate
             else
@@ -512,5 +991,352 @@ import GEMS: _rand_val as rand_val
         @test infections(rd) |>
             df -> df[df.tick .>= 1 .&& (df.age_a .>= 15 .|| df.age_b .>= 15), :] |> nrow == 0
 
+        @testset "Abstract TransmissionFunction fallbacks" begin
+            sim_k = Simulation(pop_size=100, transmission_function=KidsOnlyTransmission(0.5),
+                               infected_fraction=0.0)
+            infecter_k = individuals(sim_k)[1]
+            infectee_k = individuals(sim_k)[2]
+            infect!(infecter_k, Int16(0), first_pathogen(sim_k), rng=Xoshiro())
+            GEMS.update_individual!(infecter_k, Int16(1), sim_k)
+
+            # no-rng wrapper: KidsOnlyTransmission only defines the rng overload, so calling
+            # without rng goes through the abstract convenience wrapper in pathogen_components.jl
+            @test transmission_probability(KidsOnlyTransmission(0.5), Int8(1), infecter_k,
+                infectee_k, households(sim_k)[1], Int16(1), sim_k) isa Float64
+
+            # fallback for a type with no implementation throws
+            struct UnimplementedTF <: GEMS.TransmissionFunction end
+            @test_throws ErrorException transmission_probability(UnimplementedTF(), Int8(1),
+                infecter_k, infectee_k, households(sim_k)[1], Int16(1), sim_k, Xoshiro())
+        end
+
     end
+
+    ###
+    ### ImmunityProfile
+    ###
+    @testset "ImmunityProfile" begin
+
+        ind = Individual(id=1, sex=0, age=30)
+        rng = Xoshiro()
+        pid = Int8(1)
+
+        # helper: build an ImmunityState from tick values
+        nat_state(t) = ImmunityState(Int32(0), Int16(t), GEMS.DEFAULT_TICK, Int8(0), pid, GEMS.DEFAULT_VACCINE_ID, Int8(0))
+        vac_state(t) = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(t), Int8(0), pid, Int8(1), Int8(1))
+        both_state(nt, vt) = ImmunityState(Int32(0), Int16(nt), Int16(vt), Int8(0), pid, Int8(1), Int8(1))
+        empty_state = ImmunityState()
+
+        @testset "FullImmunity" begin
+            p = FullImmunity()
+
+            # no acquisition: level 0, not stable
+            @test calculate_immunity(p, empty_state, ind, Int16(10), rng) == Int8(0)
+            @test !immunity_is_stable(p, empty_state, ind, Int16(10))
+
+            # natural acquired in the past: level 100, stable
+            @test calculate_immunity(p, nat_state(5), ind, Int16(5), rng) == Int8(100)
+            @test calculate_immunity(p, nat_state(5), ind, Int16(10), rng) == Int8(100)
+            @test immunity_is_stable(p, nat_state(5), ind, Int16(10))
+
+            # vaccine acquired: level 100
+            @test calculate_immunity(p, vac_state(3), ind, Int16(3), rng) == Int8(100)
+
+            # not yet acquired (future tick): level 0
+            @test calculate_immunity(p, nat_state(10), ind, Int16(5), rng) == Int8(0)
+        end
+
+        @testset "NoImmunity" begin
+            p = NoImmunity()
+
+            # always returns 0 regardless of acquisition
+            @test calculate_immunity(p, empty_state, ind, Int16(10), rng) == Int8(0)
+            @test calculate_immunity(p, nat_state(5), ind, Int16(10), rng) == Int8(0)
+            @test calculate_immunity(p, vac_state(3), ind, Int16(10), rng) == Int8(0)
+
+            # always stable
+            @test immunity_is_stable(p, empty_state, ind, Int16(10))
+            @test immunity_is_stable(p, nat_state(5), ind, Int16(10))
+        end
+
+        @testset "ExponentialWaning" begin
+            # validation
+            @test_throws ArgumentError ExponentialWaning(halflife=-1.0)
+            @test_throws ArgumentError ExponentialWaning(floor=Int8(-1))
+            @test_throws ArgumentError ExponentialWaning(floor=Int8(101))
+            @test_throws ArgumentError ExponentialWaning(vaccine_buildup_duration=Int16(-1))
+
+            p = ExponentialWaning(halflife=180.0)
+
+            # at acquisition tick: full immunity
+            @test calculate_immunity(p, nat_state(0), ind, Int16(0), rng) == Int8(100)
+
+            # after one halflife: ~50
+            @test calculate_immunity(p, nat_state(0), ind, Int16(180), rng) == Int8(50)
+
+            # floor clamping
+            p_floor = ExponentialWaning(halflife=1.0, floor=Int8(30))
+            @test calculate_immunity(p_floor, nat_state(0), ind, Int16(1000), rng) >= Int8(30)
+
+            # vaccine buildup: during buildup window immunity rises, not yet at peak
+            p_buildup = ExponentialWaning(halflife=180.0, vaccine_buildup_duration=Int16(10))
+            mid_buildup = calculate_immunity(p_buildup, vac_state(0), ind, Int16(5), rng)
+            @test 0 < mid_buildup < 100
+            @test !immunity_is_stable(p_buildup, vac_state(0), ind, Int16(5))
+
+            # combined natural + vaccine: higher than either alone (independent barriers)
+            nat_only = calculate_immunity(p, nat_state(0), ind, Int16(180), rng)
+            both = calculate_immunity(p, both_state(0, 0), ind, Int16(180), rng)
+            @test both > nat_only
+
+            # stability: once waned to floor (level <= floor) the profile is stable
+            p_stable = ExponentialWaning(halflife=0.5, floor=Int8(0))
+            @test immunity_is_stable(p_stable, nat_state(0), ind, Int16(100))
+        end
+
+        @testset "SigmoidalWaning" begin
+            # validation
+            @test_throws ArgumentError SigmoidalWaning(halflife=-1.0)
+            @test_throws ArgumentError SigmoidalWaning(hill=-1.0)
+            @test_throws ArgumentError SigmoidalWaning(floor=Int8(-1))
+            @test_throws ArgumentError SigmoidalWaning(vaccine_buildup_duration=Int16(-1))
+
+            p = SigmoidalWaning(halflife=180.0, hill=3.0)
+
+            # at acquisition: full immunity
+            @test calculate_immunity(p, nat_state(0), ind, Int16(0), rng) == Int8(100)
+
+            # at halflife: ~50
+            @test calculate_immunity(p, nat_state(0), ind, Int16(180), rng) == Int8(50)
+
+            # floor clamping
+            p_floor = SigmoidalWaning(halflife=1.0, floor=Int8(20))
+            @test calculate_immunity(p_floor, nat_state(0), ind, Int16(10000), rng) >= Int8(20)
+
+            # combined sources: higher than single source
+            single = calculate_immunity(p, nat_state(0), ind, Int16(180), rng)
+            combined = calculate_immunity(p, both_state(0, 0), ind, Int16(180), rng)
+            @test combined > single
+
+            # vaccine buildup ramp for SigmoidalWaning
+            p_sig_buildup = SigmoidalWaning(halflife=180.0, vaccine_buildup_duration=Int16(10))
+            mid_buildup_sig = calculate_immunity(p_sig_buildup, vac_state(0), ind, Int16(5), rng)
+            @test 0 < mid_buildup_sig < 100
+            @test !immunity_is_stable(p_sig_buildup, vac_state(0), ind, Int16(5))
+
+            # stability: once waned to floor the profile is stable
+            p_sig_stable = SigmoidalWaning(halflife=0.5, floor=Int8(0))
+            @test immunity_is_stable(p_sig_stable, nat_state(0), ind, Int16(100))
+        end
+
+        @testset "Abstract ImmunityProfile fallbacks" begin
+            struct UnimplementedImmunityProfile <: GEMS.ImmunityProfile end
+            p = UnimplementedImmunityProfile()
+            state = ImmunityState(Int32(0), Int16(0), GEMS.DEFAULT_TICK, Int8(0), Int8(1),
+                                  GEMS.DEFAULT_VACCINE_ID, Int8(0))
+
+            # calculate_immunity with rng throws
+            @test_throws ErrorException calculate_immunity(p, state, ind, Int16(1), rng)
+            # calculate_immunity without rng delegates through the wrapper, also throws
+            @test_throws ErrorException calculate_immunity(p, state, ind, Int16(1))
+            # immunity_is_stable returns false as a safe default
+            @test !immunity_is_stable(p, state, ind, Int16(1))
+        end
+
+        @testset "susceptibility_factor" begin
+            # default is a proportional reduction, for every built-in profile
+            for prof in (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning())
+                @test all(l -> susceptibility_factor(prof, Int8(l)) ≈ 1.0 - l / 100.0, 0:10:100)
+            end
+
+            # a profile can decouple immunity from transmission, or scale it partially
+            @test susceptibility_factor(SeverityOnlyImmunity(), Int8(100)) == 1.0
+            @test susceptibility_factor(HalfImmunity(), Int8(100)) == 0.5
+            @test susceptibility_factor(HalfImmunity(), Int8(50)) == 0.75
+
+            # end to end: the level stays readable while its effect on transmission changes
+            function etp_with(profile)
+                tf = ConstantTransmissionRate(transmission_rate = 0.3)
+                p = Pathogen(id = 1, name = "SF", progressions = [pr_asymp],
+                    progression_assignment = RandomProgressionAssignment([Asymptomatic]),
+                    transmission_function = tf, immunity_profile = profile)
+                s = Simulation(pop_size = 500, pathogens = (p,), infected_fraction = 0.0)
+                infctr, trgt = individuals(s)[1], individuals(s)[2]
+                infect!(infctr, Int16(0), first_pathogen(s), sim = s, rng = Xoshiro(1))
+                GEMS.flush_pending_infections!(s)
+                GEMS.update_individual!(infctr, Int16(1), s)
+                push_immunity!(GEMS.immunity_registry(s, trgt), trgt, Int8(1),
+                    GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+                trgt.needs_immunity_update = true
+                update_immunity!(trgt, GEMS.immunity_registry(s, trgt), s.pathogens, Int16(1), Xoshiro())
+                lvl = immunity_level(trgt, s, Int8(1))
+                inf = infectiousness(infctr, s, Int8(1))
+                p_eff = effective_transmission_probability(tf, Int8(1), infctr, trgt,
+                    households(s)[1], Int16(1), s, Xoshiro())
+                return lvl, p_eff, 0.3 * inf / 100.0
+            end
+
+            lvl, p_eff, base = etp_with(FullImmunity())
+            @test lvl == Int8(100) && p_eff ≈ 0.0
+
+            # nonzero immunity, no effect on transmission
+            lvl, p_eff, base = etp_with(SeverityOnlyImmunity())
+            @test lvl == Int8(100) && p_eff ≈ base
+
+            lvl, p_eff, base = etp_with(HalfImmunity())
+            @test lvl == Int8(100) && p_eff ≈ 0.5 * base
+        end
+
+    end
+
+
+    ###
+    ### InfectiousnessProfile
+    ###
+    @testset "InfectiousnessProfile" begin
+
+        ind = Individual(id=1, sex=0, age=30)
+        rng = Xoshiro()
+
+        # helper: InfectionState from a DiseaseProgression
+        mk_state(dp) = InfectionState(Int8(1), Int32(1), dp)
+
+        @testset "ConstantInfectiousness" begin
+            p = ConstantInfectiousness()
+            @test p.level == Int8(100)
+
+            p50 = ConstantInfectiousness(level=50)
+            @test p50.level == Int8(50)
+
+            state = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+
+            # before onset: 0
+            @test calculate_infectiousness(p, state, ind, Int16(2), rng) == Int8(0)
+
+            # inside window: returns level
+            @test calculate_infectiousness(p, state, ind, Int16(5), rng) == Int8(100)
+            @test calculate_infectiousness(p50, state, ind, Int16(5), rng) == Int8(50)
+
+            # at or after recovery: 0
+            @test calculate_infectiousness(p, state, ind, Int16(20), rng) == Int8(0)
+        end
+
+        @testset "StagedInfectiousness" begin
+            # validation: negative values rejected
+            @test_throws ArgumentError StagedInfectiousness(asymptomatic=-1)
+
+            p = StagedInfectiousness(asymptomatic=Int8(10), presymptomatic=Int8(30),
+                                     symptomatic=Int8(70), severe=Int8(90), critical=Int8(100))
+
+            # outside window: 0
+            state_out = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+            @test calculate_infectiousness(p, state_out, ind, Int16(2), rng) == Int8(0)
+            @test calculate_infectiousness(p, state_out, ind, Int16(20), rng) == Int8(0)
+
+            # asymptomatic: symptom_onset stays DEFAULT_TICK
+            state_asymp = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+            @test calculate_infectiousness(p, state_asymp, ind, Int16(5), rng) == Int8(10)
+
+            # presymptomatic: past onset, before symptom_onset
+            state_pre = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3),
+                symptom_onset=Int16(10), recovery=Int16(20)))
+            @test calculate_infectiousness(p, state_pre, ind, Int16(5), rng) == Int8(30)
+
+            # symptomatic: past symptom_onset, not severe
+            @test calculate_infectiousness(p, state_pre, ind, Int16(12), rng) == Int8(70)
+
+            # severe: past severeness_onset, before offset
+            state_sev = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), symptom_onset=Int16(5),
+                severeness_onset=Int16(8), severeness_offset=Int16(20), recovery=Int16(25)))
+            @test calculate_infectiousness(p, state_sev, ind, Int16(10), rng) == Int8(90)
+
+            # critical: in critical window
+            state_crit = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), symptom_onset=Int16(5),
+                severeness_onset=Int16(8), severeness_offset=Int16(25),
+                critical_onset=Int16(10), critical_offset=Int16(20), recovery=Int16(30)))
+            @test calculate_infectiousness(p, state_crit, ind, Int16(12), rng) == Int8(100)
+        end
+
+        @testset "Abstract InfectiousnessProfile fallback" begin
+            struct UnimplementedInfectiousnessProfile <: GEMS.InfectiousnessProfile end
+            p = UnimplementedInfectiousnessProfile()
+            state = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), recovery=Int16(20)))
+            @test_throws ErrorException calculate_infectiousness(p, state, ind, Int16(5), rng)
+        end
+
+        @testset "BetaInfectiousness" begin
+            # infectious window is [1, 1+dur)
+            beta_state(dur; sym=-1, sev_on=-1, sev_off=-1, crit_on=-1, crit_off=-1) =
+                mk_state(DiseaseProgression(
+                    exposure=Int16(0), infectiousness_onset=Int16(1),
+                    symptom_onset=Int16(sym),
+                    severeness_onset=Int16(sev_on), severeness_offset=Int16(sev_off),
+                    critical_onset=Int16(crit_on), critical_offset=Int16(crit_off),
+                    recovery=Int16(1 + dur)))
+            beta_curve(p, st, dur) = [Int(calculate_infectiousness(p, st, ind, Int16(t), rng)) for t in 1:dur]
+
+            bp = BetaInfectiousness(time_to_peak=2.0, concentration=7.0)
+
+            # validation
+            @test_throws ArgumentError BetaInfectiousness(time_to_peak=0.0)
+            @test_throws ArgumentError BetaInfectiousness(concentration=2.0)
+            @test_throws ArgumentError BetaInfectiousness(level=Int8(101))
+            @test_throws ArgumentError BetaInfectiousness(severe_factor=-1.0)
+
+            # the defining property: the peak sits at the same tick whatever the duration,
+            # while the decay stretches to fill the window
+            tail_ends = Int[]
+            for dur in (10, 20, 40, 100)
+                c = beta_curve(bp, beta_state(dur), dur)
+                @test argmax(c) - 1 == 2          # peak 2 ticks after infectiousness onset
+                @test maximum(c) == 100           # scaled so the peak is `level`
+                push!(tail_ends, maximum([i for i in eachindex(c) if c[i] >= 5]; init=0))
+            end
+            @test issorted(tail_ends)
+            @test tail_ends[end] > 3 * tail_ends[1]
+
+            # shape within one window
+            c = beta_curve(bp, beta_state(10), 10)
+            @test c[1] > 0                         # sheds from the onset tick on
+            @test issorted(c[1:3])                 # rises to the peak
+            @test issorted(c[3:end], rev=true)     # and decays after it
+            @test c[end] <= 2                      # ~zero approaching recovery
+
+            # outside the infectious window
+            st = beta_state(10)
+            @test calculate_infectiousness(bp, st, ind, Int16(0), rng) == Int8(0)
+            @test calculate_infectiousness(bp, st, ind, Int16(11), rng) == Int8(0)
+            no_onset = mk_state(DiseaseProgression(
+                exposure=Int16(0), infectiousness_onset=Int16(5), recovery=Int16(20)))
+            @test calculate_infectiousness(bp, no_onset, ind, Int16(1), rng) == Int8(0)
+
+            # an infection that ends before the peak still rises monotonically
+            short = beta_curve(BetaInfectiousness(time_to_peak=20.0), beta_state(5), 5)
+            @test issorted(short)
+            @test maximum(short) > 0
+
+            # stage factors scale the curve, and 1.0 everywhere leaves it untouched
+            staged = beta_state(10, sym=4, sev_on=6, sev_off=9)
+            base = beta_curve(bp, staged, 10)
+            @test beta_curve(BetaInfectiousness(time_to_peak=2.0, concentration=7.0, severe_factor=1.0), staged, 10) == base
+            halved = beta_curve(BetaInfectiousness(time_to_peak=2.0, concentration=7.0, severe_factor=0.5), staged, 10)
+            @test all(halved[i] == base[i] for i in 1:5)          # before severeness onset
+            @test all(halved[i] <= base[i] ÷ 2 + 1 for i in 7:9)  # during it
+
+            # the default parameters are Beta(2, 5) for a 10-tick window
+            let m = 2.0 / 10.0, spread = 7.0 - 2.0
+                @test m * spread + 1 ≈ 2.0
+                @test (1 - m) * spread + 1 ≈ 5.0
+            end
+        end
+
+    end
+
 end

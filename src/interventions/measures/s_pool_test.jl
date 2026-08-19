@@ -28,7 +28,7 @@ is infected and the latter applies a separate test to all individuals.
 # Example
 
 ```julia
-pcr_test = TestType("PCR Test", pathogen(sim), sim)
+pcr_test = TestType("PCR Test", first_pathogen(sim), sim)
 
 my_str = SStrategy("school-pool-test", sim)
 add_measure!(my_str, PoolTest("pool-test", pcr_test, positive_followup = my_close_school_str))

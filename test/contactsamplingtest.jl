@@ -104,20 +104,17 @@
         # AgeBasedContactSampling should return vectors of individuals 
         @test typeof(sample_contacts(abcs_null, hnull, i_index, individuals(hnull), GEMS.DEFAULT_TICK, rng = Xoshiro())) == Vector{Individual}
 
-        # AgeBasedContactSampling should only sample with poisson distribution with mean value of contact parameter
-        # here we arbitrarly test the mean for various contact parameters
-        # expected count equal 1
-        @test mean([length(sample_contacts(abcs1, h1, i_index, individuals(h1), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) < 2
-        @test mean([length(sample_contacts(abcs1, h1, i_index, individuals(h1), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) > 0
-        # expected count equal 2
-        @test mean([length(sample_contacts(abcs2, h2, i_index, individuals(h2), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) < 3
-        @test mean([length(sample_contacts(abcs2, h2, i_index, individuals(h2), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) > 1
-        # expected count equal 3
-        @test mean([length(sample_contacts(abcs3, h3, i_index, individuals(h3), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) < 4
-        @test mean([length(sample_contacts(abcs3, h3, i_index, individuals(h3), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) > 2
-        # expected count equal 100
-        @test mean([length(sample_contacts(abcs100, h100, i_index, individuals(h100), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) < 101
-        @test mean([length(sample_contacts(abcs100, h100, i_index, individuals(h100), GEMS.DEFAULT_TICK, rng = Xoshiro())) for _ = 1:1000]) > 99
+        # Contact counts are Poisson(λ), so the mean of `n` draws has standard error √(λ/n).
+        # The tolerance scales with λ: a flat ±1 would be only 3.2 SE at λ = 100.
+        n = 1000
+        rng = Xoshiro(42)
+        tol(λ) = 5 * sqrt(λ / n)
+        mean_contacts(abcs, h) = mean(length(sample_contacts(abcs, h, i_index, individuals(h), GEMS.DEFAULT_TICK, rng = rng)) for _ = 1:n)
+
+        @test abs(mean_contacts(abcs1, h1) - 1.0) < tol(1.0)
+        @test abs(mean_contacts(abcs2, h2) - 2.0) < tol(2.0)
+        @test abs(mean_contacts(abcs3, h3) - 3.0) < tol(3.0)
+        @test abs(mean_contacts(abcs100, h100) - 100.0) < tol(100.0)
 
         # create empty setting
         empty_h = Household(id = 2, individuals = Vector{Individual}(), contact_sampling_method = abcs1)
