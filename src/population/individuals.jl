@@ -27,7 +27,7 @@ export is_hospitalized, ishospitalized, hospitalized
 export is_icu, isicu, icu
 export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
-export is_dead, isdead, dead
+export is_dead, isdead, dead, death
 export is_detected, isdetected, detected
 export active_pathogens_mask
 export number_of_infections
@@ -569,6 +569,14 @@ dead(individual::Individual) = is_dead(individual)
 Set the `dead` flag of the individual.
 """
 dead!(individual::Individual, dead::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_DEAD, dead))
+
+"""
+    death(individual::Individual)
+
+Returns the tick the individual is scheduled to die at, `DEFAULT_TICK` if none. Can name a future
+tick; use `is_dead` for whether the individual has already died.
+"""
+death(individual::Individual)::Int16 = individual.death
 
 """
     is_detected(individual::Individual)

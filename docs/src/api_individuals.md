@@ -30,6 +30,7 @@ age
 class_id
 comorbidities
 dead!(::Individual, ::Bool)
+death(::Individual)
 detected!(::Individual, ::Bool)
 education(::Individual)
 end_quarantine!(::Individual)
