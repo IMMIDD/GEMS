@@ -269,7 +269,7 @@ function compute_health!(individual::Individual, infections::InfectionRegistry,
     for care in contributions
         _emit_contribution!(sched, host_id, care)
     end
-    wake_at!(sched, outcome.death, individual.death)
+    wake_at!(sched, outcome.death)
     individual.death = outcome.death
     individual.killing_pathogen_id = outcome.death >= 0 ? outcome.death_pathogen_id : DEFAULT_PATHOGEN_ID
     empty!(contributions)

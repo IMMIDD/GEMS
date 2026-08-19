@@ -75,14 +75,13 @@ Files one care transition for `tick`.
 end
 
 """
-    wake_at!(schedule::HealthSchedule, tick::Int16, superseded::Int16)
+    wake_at!(schedule::HealthSchedule, tick::Int16)
 
-Registers `tick` as one the simulation must stay awake for, dropping `superseded` if replaced.
+Registers `tick` as one the simulation must stay awake for.
 
 An index over `individual.death`, which stays authoritative; `compute_health!` is the only writer.
 """
-@inline function wake_at!(schedule::HealthSchedule, tick::Int16, superseded::Int16)
-    superseded >= 0 && superseded != tick && delete!(schedule.wake_ticks, superseded)
+@inline function wake_at!(schedule::HealthSchedule, tick::Int16)
     tick >= 0 && push!(schedule.wake_ticks, tick)
     return nothing
 end
