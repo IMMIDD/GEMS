@@ -573,8 +573,7 @@ dead!(individual::Individual, dead::Bool) = (individual.disease_flags = _set_fla
 """
     death(individual::Individual)
 
-Returns the tick the individual is scheduled to die at, `DEFAULT_TICK` if none. Can name a future
-tick; use `is_dead` for whether the individual has already died.
+Returns the tick the individual is scheduled to die at, `DEFAULT_TICK` if none.
 """
 death(individual::Individual)::Int16 = individual.death
 
