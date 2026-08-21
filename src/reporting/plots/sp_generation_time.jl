@@ -109,14 +109,16 @@ function generate(plt::GenerationTime, rds::Vector{ResultData}; pathogen = nothi
     p = plot(xlabel=upper_ticks, ylabel="Mean Gen. Time ($(upper_ticks)s)", dpi=300, fontfamily = "Times Roman", xlims = (0, rds[1] |> final_tick))
 
     pid_filter = _resolve_pathogen_id(rds[1], pathogen)
+    pids = sort(unique(vcat([unique(tick_generation_times(rd).pathogen_id) for rd in rds]...)))
 
-    if !isnothing(pid_filter)
+    # nothing to break down by pathogen, color by rd label instead
+    if !isnothing(pid_filter) || length(pids) == 1
+        pid = isnothing(pid_filter) ? pids[1] : pid_filter
         p = plotseries!(p, rd -> begin
-            sub = filter(row -> row.pathogen_id == pid_filter, tick_generation_times(rd)) |> dropmissing
+            sub = filter(row -> row.pathogen_id == pid, tick_generation_times(rd)) |> dropmissing
             sub[!, "mean_generation_time"]
         end, rds; plotargs...)
     else
-        pids = sort(unique(vcat([unique(tick_generation_times(rd).pathogen_id) for rd in rds]...)))
         pnames = pathogen_names(rds[1])
         colors = Dict(zip(pids, gemscolors(length(pids))))
         n = length(rds)

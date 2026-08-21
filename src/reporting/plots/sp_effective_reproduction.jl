@@ -109,11 +109,13 @@ function generate(plt::EffectiveReproduction, rds::Vector{ResultData}; pathogen 
     p = plot(xlabel=upper_ticks, ylabel="(7-$uticks Rolling) Effective R", dpi=300, fontfamily = "Times Roman")
 
     pid_filter = _resolve_pathogen_id(rds[1], pathogen)
+    pids = sort(unique(vcat([unique(effectiveR(rd).pathogen_id) for rd in rds]...)))
 
-    if !isnothing(pid_filter)
-        plotseries!(p, rd -> filter(row -> row.pathogen_id == pid_filter, effectiveR(rd))[!, "rolling_R"], rds; plotargs...)
+    # nothing to break down by pathogen, color by rd label instead
+    if !isnothing(pid_filter) || length(pids) == 1
+        pid = isnothing(pid_filter) ? pids[1] : pid_filter
+        plotseries!(p, rd -> filter(row -> row.pathogen_id == pid, effectiveR(rd))[!, "rolling_R"], rds; plotargs...)
     else
-        pids = sort(unique(vcat([unique(effectiveR(rd).pathogen_id) for rd in rds]...)))
         pnames = pathogen_names(rds[1])
         colors = Dict(zip(pids, gemscolors(length(pids))))
         n = length(rds)

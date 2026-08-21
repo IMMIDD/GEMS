@@ -106,7 +106,7 @@ and one custom parameter.
 false
 ```
 
-Other useful status check functions are `exposed()`, `infectious()`, `isquarantined()`, `quarantine_status()`, `hospital_status()`, `hospitalized()`, `ventilated()`, `dead()`, `isdetected()`, and `isvaccinated()`.
+Other useful status check functions are `exposed()`, `infectious()`, `isquarantined()`, `quarantine_status()`, `hospitalized()`, `icu()`, `ventilated()`, `dead()`, `isdetected()`, and `isvaccinated()`.
 For a full list, please look up the Individuals section of the API documentation.
 
 Individuals are associated with at least one setting (the household).

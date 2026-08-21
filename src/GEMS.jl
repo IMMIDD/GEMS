@@ -56,7 +56,8 @@ module GEMS
 
     # CORE SIMULATION - TYPE DEFINITIONS 
     include("pathogen/disease_progression.jl")
-    include("registries/infection_registry.jl") 
+    include("pathogen/health_progression/health_progression.jl")
+    include("registries/infection_registry.jl")
     include("registries/immunity_registry.jl") 
     include("registries/test_registry.jl")
     include("pathogen/pathogens.jl") 
@@ -66,6 +67,8 @@ module GEMS
     include("contacts/contact_matrix.jl")
     include("contacts/contact_sampling.jl")
     include("population/individuals.jl")
+    include("pathogen/health_progression/host_health.jl")
+    include("simulation/health_schedule.jl")
     include("population/populations.jl")
     include("settings/settings.jl") 
     include("settings/settingscontainers.jl")
@@ -84,9 +87,14 @@ module GEMS
     include("simulation/calibration.jl")
     include("registries/registry_methods.jl")
     include("population/individual_methods.jl")
+    include("pathogen/health_progression/default_health_progression.jl")
+    include("pathogen/health_progression/care_embedding.jl")
 
     # PATHOGEN IMPLEMENTATIONS
     include("pathogen/pathogen_components.jl")
+
+    # LEGACY BACKWARDS-COMPATIBILITY
+    include("pathogen/legacy_progressions/legacy_progressions.jl")
 
     # INITALIZATION
     include("simulation/initialization/startconditions.jl")

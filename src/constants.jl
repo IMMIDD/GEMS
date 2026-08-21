@@ -11,6 +11,9 @@ const DEFAULT_INFECTION_ID = Int32(-1)
 const DEFAULT_AGS = Int32(-1)
 const GLOBAL_SETTING_ID = Int32(1)
 
+# start condition pathogen name meaning "every pathogen in the simulation"
+const ALL_PATHOGENS = "all"
+
 #################
 # DATA ANALYSIS #
 #################
@@ -62,12 +65,6 @@ const R0_CALCULATION_SAMPLE_FRACTION = 0.05
 # sex
 const FEMALE = Int8(1)
 const MALE = Int8(2)
-
-# hospital_status
-const HOSPITAL_STATUS_NO_HOSPITAL = Int8(0)
-const HOSPITAL_STATUS_HOSPITALIZED = Int8(1)
-const HOSPITAL_STATUS_VENTILATION = Int8(2)
-const HOSPITAL_STATUS_ICU = Int8(3)
 
 # disease_state
 const DISEASE_STATE_NOT_INFECTED = Int8(0)
@@ -174,6 +171,9 @@ POST_PROCESSOR_CACHING = false
 # memory available.
 PARALLEL_REPORT_GENERATION = false
 
+
+# Free lists of the EventQueue are capped; a vector dropped at the cap is simply left for the GC.
+const EVENT_QUEUE_FREE_LIST_CAP = 32
 
 
 # One seeded, globally available Xoshiro RNG per thread.

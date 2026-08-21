@@ -47,16 +47,3 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Asymptom
         recovery = recovery
     )
 end
-
-"""
-Fallback: Translates internal positional calls to user-defined keyword calls 
-for custom ProgressionCategories.
-"""
-function calculate_progression(
-    individual::Individual, 
-    tick::Int16, 
-    dp::ProgressionCategory, 
-    rng::Xoshiro
-)
-    return calculate_progression(individual, tick, dp; rng=rng)
-end

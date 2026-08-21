@@ -1,7 +1,7 @@
 import GEMS: push_infection!, remove_infection!, remove_infections!,
     push_immunity!, remove_immunities!,
     set_test_state!, _test_key,
-    _SlotRemoval
+    _EndedInfection
 
 @testset "Registries" begin
 
@@ -47,7 +47,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(2), Int32(2), dp2)  # overflow node 1
 
             # remove cache slot 1; should promote overflow node into cache
-            remove_infection!(reg, i, _SlotRemoval(i.id, false, Int32(1)))
+            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, false))
             @test i.infection_cache[1].pathogen_id == Int8(2)
             @test i.infection_head == Int32(0)
             @test length(reg.free_slots) == 1  # freed overflow slot returned to pool
@@ -63,7 +63,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(2), Int32(2), dp2)
 
             # remove the overflow node (index 1 in reg.states)
-            remove_infection!(reg, i, _SlotRemoval(i.id, true, Int32(1)))
+            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))
             @test i.infection_head == Int32(0)
             @test !isempty(reg.free_slots)  # slot returned to pool
         end
@@ -79,7 +79,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(2), Int32(2), dp)  # overflow node 1
             push_infection!(reg, i, Int8(3), Int32(3), dp)  # overflow node 2 (new head)
 
-            remove_infection!(reg, i, _SlotRemoval(i.id, true, Int32(1)))  # remove non-head node (pid2)
+            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))  # remove non-head node (pid2)
             @test i.infection_head == Int32(2)   # head still points to pid3's node
             @test length(reg.free_slots) == 1
         end
@@ -91,7 +91,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
 
             push_infection!(reg, i, Int8(1), Int32(1), dp)
             push_infection!(reg, i, Int8(2), Int32(2), dp)
-            remove_infection!(reg, i, _SlotRemoval(i.id, true, Int32(1)))  # free overflow slot 1
+            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))  # free overflow slot 1
             push_infection!(reg, i, Int8(3), Int32(3), dp)  # should reuse slot 1
 
             @test length(reg.states) == 1  # no new allocation, reused existing slot
@@ -109,6 +109,48 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             remove_infections!(reg, i)
             @test i.infection_head == Int32(0)
             @test length(reg.free_slots) == 1  # overflow slot returned
+        end
+
+        @testset "_EndedInfection staging" begin
+            ind = Individual(id=1, sex=0, age=30)
+            buf = _EndedInfection[]
+
+            # by default an ended infection grants no immunity
+            GEMS._stage_ended_infection!(buf, ind, GEMS._CacheSlot(Int32(1)))
+            @test buf[1].index == Int32(1)
+            @test !buf[1].is_overflow
+            @test buf[1].pathogen_id == GEMS.DEFAULT_PATHOGEN_ID
+            @test buf[1].recovery == GEMS.DEFAULT_TICK
+
+            # a recovery carries the pathogen and the tick its immunity is acquired at
+            GEMS._stage_ended_infection!(buf, ind, GEMS._OverflowNode(Int32(7)), Int8(2), Int16(33))
+            @test buf[2].index == Int32(7)
+            @test buf[2].is_overflow
+            @test buf[2].pathogen_id == Int8(2)
+            @test buf[2].recovery == Int16(33)
+        end
+
+        @testset "recovery and death stage differently" begin
+            dp_r = DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(5))
+
+            # a recovery hands the drain what it needs to grant immunity
+            reg_r = InfectionRegistry()
+            i_r = Individual(id=1, sex=0, age=30)
+            push_infection!(reg_r, i_r, Int8(1), Int32(1), dp_r)
+            buf_r = _EndedInfection[]
+            progress_disease!(i_r, reg_r, (Pathogen(id=1, name="P1"),), buf_r, Int16(10), Xoshiro())
+            @test length(buf_r) == 1
+            @test buf_r[1].pathogen_id == Int8(1)
+            @test buf_r[1].recovery == Int16(5)
+
+            # a death stages the same slots, but grants nothing
+            reg_d = InfectionRegistry()
+            i_d = Individual(id=2, sex=0, age=30)
+            push_infection!(reg_d, i_d, Int8(1), Int32(1), dp_r)
+            buf_d = _EndedInfection[]
+            GEMS._process_death!(i_d, Int8(1), reg_d, buf_d)
+            @test !isempty(buf_d)
+            @test all(r -> r.pathogen_id == GEMS.DEFAULT_PATHOGEN_ID, buf_d)
         end
 
     end

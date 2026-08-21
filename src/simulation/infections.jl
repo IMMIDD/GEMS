@@ -67,10 +67,12 @@ function infect!(infectee::Individual,
 
     # calculate disease progression
     paf = progression_assignment(pathogen)
-    pc = assign(infectee, paf, rng)
+    immunities = isnothing(sim) ? ImmunityRegistry() : immunity_registry(sim, infectee)
+    pc = assign(infectee, paf, immunities, id(pathogen), rng)
 
     prog = get_progression(pathogen.progressions, pc)
-    dp = calculate_progression(infectee, tick, prog, rng)::DiseaseProgression
+    tag = progression_index(pathogen.progressions, pc)
+    dp = calculate_progression(infectee, tick, prog, immunities, id(pathogen), rng)::DiseaseProgression
 
     if isnothing(sim)
         # no simulation context — store InfectionState directly in the individual's cache.
@@ -78,7 +80,10 @@ function infect!(infectee::Individual,
         any(i -> !infectee.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
-        push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp)
+        state = push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
+        # throwaway schedule: with no tick loop nothing would drain it, and the hardcoded
+        # DefaultHealthProgression() has zero admission and death probabilities anyway
+        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), state, tick, rng, HealthSchedule())
     else
         # log infection
         new_infection_id = log!(
@@ -91,15 +96,10 @@ function infect!(infectee::Individual,
             infectiousness_onset(dp),
             symptom_onset(dp),
             severeness_onset(dp),
-            hospital_admission(dp),
-            hospital_discharge(dp),
-            icu_admission(dp),
-            icu_discharge(dp),
-            ventilation_admission(dp),
-            ventilation_discharge(dp),
+            critical_onset(dp),
+            critical_offset(dp),
             severeness_offset(dp),
             recovery(dp),
-            death(dp),
             setting_id,
             setting_type,
             lat,
@@ -109,7 +109,7 @@ function infect!(infectee::Individual,
         )
         # stage for serial flush after the threaded phase
         shard_id = _owner_shard(id(infectee))
-        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), dp))
+        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), tag, dp))
     end
 
     # increase lifetime number of infections
@@ -311,7 +311,7 @@ Checks for infectiousness, setting openness, and quarantine status.
 # Returns
 - `Bool`: True if the individual can infect others in the setting, false otherwise
 """
-function can_infect(ind::Individual, setting::Setting)::Bool
+function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
     # if individual is not infectious
     if !infectious(ind)
         return false
@@ -356,7 +356,7 @@ Checks for death and quarantine status.
 # Returns
 - `Bool`: True if the individual can be contacted in the setting, false otherwise
 """
-function can_be_contacted(ind::Individual, setting::Setting)::Bool
+function can_be_contacted(ind::Individual, setting::Setting, tick::Int16)::Bool
     # if individual is dead
     if dead(ind)
         return false
@@ -420,7 +420,7 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
         ind = p_buffer[ind_index]
         if infected(ind)
             num_infected += 1
-            if can_infect(ind, setting)
+            if can_infect(ind, setting, current_tick)
                 empty!(c_buffer)
                 sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
 
@@ -428,7 +428,7 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
                 # only resolves the shard registry if the individual has overflow infections
                 for state in each_infection(ind, sim)
                     state.infectiousness == 0 && continue
-                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id)
+                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id, current_tick)
                 end
             end
         end
@@ -437,9 +437,9 @@ function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
     return num_infected
 end
 
-function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id)
+function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick::Int16)
     for c in c_buffer
-        if can_be_contacted(c, setting)
+        if can_be_contacted(c, setting, tick)
             if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
                 activate_memberships!(c, sim)
             end

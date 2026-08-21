@@ -271,6 +271,71 @@ end
 
 
 
+# RECURRING SEEDING
+
+"""
+    seed_scheduled!(simulation::Simulation)
+
+Executes the imports staged for the current tick in `simulation.seeding_schedule` (a
+`Dict` keyed by tick). Called at the top of `step!`, before transmission, so imported
+cases can spread the same tick. `O(1)` when nothing is due today.
+"""
+function seed_scheduled!(simulation::Simulation)
+    specs = get(simulation.seeding_schedule, tick(simulation), nothing)
+    isnothing(specs) && return nothing
+    r = rng(simulation)
+    for spec in specs
+        _seed_infection!(simulation, spec, r)
+    end
+    flush_pending_infections!(simulation)
+    return nothing
+end
+
+# An import can only land on a host that is alive, not in hospital, not self-isolating, and not
+# already carrying the pathogen. Seeding runs before the individual loop and before the tick's
+# quarantine refresh, so death and quarantine are read off their ticks rather than their flags.
+@inline _can_be_seeded(individual::Individual, pathogen_id::Int8, t::Int16) =
+    !dead(individual) && !(Int16(0) <= individual.death <= t) &&
+    !hospitalized(individual) && !is_quarantined(individual, t) &&
+    !infected(individual, pathogen_id)
+
+"""
+    _seed_infection!(simulation, spec::InfectionSeed, rng)
+
+Samples and infects the individuals described by `spec` at the current tick, drawing from
+the whole population (`spec.ags === nothing`) or from the region otherwise.
+"""
+function _seed_infection!(simulation::Simulation, spec::InfectionSeed, rng::Xoshiro)
+    spec.count <= 0 && return nothing
+    pthgn = get_pathogen(simulation, spec.pathogen)
+    pid = id(pthgn)
+    t = tick(simulation)
+
+    pool = isnothing(spec.ags) ? individuals(simulation) : individuals_in_ags(simulation, AGS(spec.ags))
+
+    # reservoir sampling: one pass over the pool, holding a uniform sample of `spec.count` of the eligible hosts seen so far
+    picked = sizehint!(Individual[], spec.count)
+    seen = 0
+    for i in pool
+        _can_be_seeded(i, pid, t) || continue
+        seen += 1
+        if seen <= spec.count
+            push!(picked, i)
+        else
+            # the seen-th host takes a random slot with probability count/seen
+            j = gems_rand(rng, 1:seen)
+            j <= spec.count && (picked[j] = i)
+        end
+    end
+
+    for i in picked
+        infect!(i, t, pthgn, sim = simulation, rng = rng)
+        activate_memberships!(i, simulation)
+    end
+    return nothing
+end
+
+
 # RUN STEP
 
 """
@@ -281,15 +346,25 @@ Increments the simulation status by one tick and executes all events that shall 
 function step!(simulation::Simulation)
     dormant = is_dormant(simulation)
 
+    # realize scheduled care before anything reads hospitalization state. Unconditional, so a
+    # mis-judged dormant tick cannot strand a host mid-episode; dormancy makes it a no-op anyway
+    drain_health_schedule!(simulation)
+
+    # seed scheduled imports before transmission so a fresh import can spread this tick
+    seed_scheduled!(simulation)
+
     # update disease state
     if !dormant
         Threads.@threads :static for i in simulation |> population |> individuals
             update_individual!(i, tick(simulation), simulation)
         end
         flush_ended_infections!(simulation)
-        # merge per-thread staged trigger events into the queue before processing
-        flush_staging!(event_queue(simulation))
     end
+
+    # after the individual loop, so trigger conditions see this tick's disease flags
+    fire_hospitalization_triggers!(simulation)
+    # merge per-thread staged trigger events into the queue before processing
+    flush_staging!(event_queue(simulation))
 
     # infect individuals in settings
     if !dormant
@@ -358,6 +433,17 @@ function is_dormant(simulation::Simulation)
         end
     end
 
+    # wake up if a scheduled import seeds today
+    if haskey(simulation.seeding_schedule, current_t)
+        return false
+    end
+    
+    # wake up if a care transition or a death is due today. Deliberately not an "anything outstanding"
+    # test, which would hold the simulation awake up to the last scheduled event
+    if any(s -> due_now(s, current_t), simulation.health_schedules)
+        return false
+    end
+
     # wake up if disease or quarantines are active
     sl = statelogger(simulation)
     
@@ -401,18 +487,16 @@ function flush_pending_infections!(sim::Simulation)
  
     Threads.@threads :static for shard_id in 1:num_shards
         infections = sim.infection_registries[shard_id]
-        immunities = sim.immunity_registries[shard_id]
- 
+
         # drain all buffers destined for this shard
         @inbounds for producer_id in 1:num_shards
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
                 ind = get_individual_by_id(pop, p.host_id)
-                push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp)
-                if p.dp.recovery >= 0
-                    push_immunity!(immunities, ind, p.pathogen_id, IMMUNITY_SOURCE_NATURAL, p.dp.recovery, DEFAULT_VACCINE_ID)
-                    ind.needs_immunity_update = true
-                end
+                state = push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
+                # contribute the new infection's care demand
+                compute_health!(ind, infections, health_progression(sim), state, tick(sim),
+                    sim.rngs[shard_id], sim.health_schedules[shard_id])
             end
             empty!(buf)
         end
@@ -425,19 +509,28 @@ end
 """
     flush_ended_infections!(sim)
  
-Drains `removal_buffers` after the threaded update phase: clears `slot_to_row`
-entries for infections that ended during this tick and returns their indices to
-the free list so they can be reused.
+Drains `removal_buffers` after the threaded update phase: grants the natural immunity each
+ended infection leaves behind, clears `slot_to_row` entries for infections that ended during
+this tick, and returns their indices to the free list so they can be reused.
 """
 function flush_ended_infections!(sim::Simulation)
     pop = population(sim)
     num_shards = Threads.maxthreadid()
- 
+
     Threads.@threads :static for shard_id in 1:num_shards
         reg = sim.infection_registries[shard_id]
+        immunities = sim.immunity_registries[shard_id]
 
         @inbounds for producer_id in 1:num_shards
             buf = sim.removal_buffers[producer_id, shard_id]
+            for r in buf
+                r.pathogen_id == DEFAULT_PATHOGEN_ID && continue
+                ind = get_individual_by_id(pop, r.host_id)
+                push_immunity!(immunities, ind, r.pathogen_id, IMMUNITY_SOURCE_NATURAL, r.recovery, DEFAULT_VACCINE_ID)
+                ind.needs_immunity_update = true
+                # refresh now: this runs before the spread phase, so the level must be current
+                update_immunity!(ind, immunities, sim.pathogens, tick(sim), sim.rngs[shard_id])
+            end
             # overflow unlinks before cache-slot promotions, so a just-ended overflow head
             # is unlinked before any promotion can pull it into cache
             for r in buf
@@ -460,6 +553,110 @@ end
 
 
 """
+    _apply_transition!(indiv::Individual, hl::HealthLogger, tr::CareTransition, tick::Int16)
+
+Applies one transition to the host's demand counter, logging only if it crossed zero — a second
+overlapping contribution neither re-admits nor discharges.
+
+Returns `true` if an admission edge fired, for the trigger phase.
+"""
+@inline function _apply_transition!(indiv::Individual, hl::HealthLogger, tr::CareTransition, tick::Int16)
+    if tr.is_admission
+        _adjust_demand!(indiv, tr.level, Int16(1)) == 1 || return false
+        log!(hl, id(indiv), _care_event(tr.level, true), tick)
+        return true
+    end
+    _adjust_demand!(indiv, tr.level, Int16(-1)) == 0 &&
+        log!(hl, id(indiv), _care_event(tr.level, false), tick)
+    return false
+end
+
+"""
+    drain_health_schedule!(sim::Simulation)
+
+Realizes every care transition due at or before the current tick.
+
+Admissions first, then discharges, each in ladder order (reversed for discharges). That split is what
+lets one stay end exactly where another begins without logging a spurious discharge and re-admission,
+while still logging both events of a zero-length stay.
+
+Sweeps `<= tick`, so a bucket missed for any reason drains late rather than never, and logs at the
+bucket's own tick to keep occupancy aligned.
+
+Hosts due to die at or before this tick are skipped; `_close_care_at_death!` closes their open levels.
+"""
+function drain_health_schedule!(sim::Simulation)
+    t = tick(sim)
+    hl = healthlogger(sim)
+    pop = population(sim)
+
+    Threads.@threads :static for shard_id in 1:Threads.maxthreadid()
+        sched = sim.health_schedules[shard_id]
+        empty!(sched.admitted)
+        while sched.head <= Int(t)
+            bucket_tick = Int16(sched.head)
+            sched.head += 1
+            bucket = get(sched.buckets, bucket_tick, nothing)
+            bucket === nothing && continue
+
+            for level in instances(CareLevel), tr in bucket
+                (tr.is_admission && tr.level === level) || continue
+                indiv = get_individual_by_id(pop, tr.host_id)
+                (Int16(0) <= indiv.death <= t) && continue
+                _apply_transition!(indiv, hl, tr, bucket_tick) &&
+                    level === CARE_HOSPITAL && push!(sched.admitted, tr.host_id)
+            end
+            for level in reverse(instances(CareLevel)), tr in bucket
+                (!tr.is_admission && tr.level === level) || continue
+                indiv = get_individual_by_id(pop, tr.host_id)
+                (Int16(0) <= indiv.death <= t) && continue
+                _apply_transition!(indiv, hl, tr, bucket_tick)
+            end
+
+            delete!(sched.buckets, bucket_tick)
+        end
+    end
+    return nothing
+end
+
+"""
+    fire_hospitalization_triggers!(sim::Simulation)
+
+Fires the hospitalization triggers for every host admitted by this tick's drain.
+
+Separate from the drain, and after the individual loop, so a trigger's `condition` and `delay` see
+this tick's disease flags as well as the finished care counters.
+"""
+function fire_hospitalization_triggers!(sim::Simulation)
+    triggers = hospitalization_triggers(sim)
+    isempty(triggers) && return nothing
+    pop = population(sim)
+    for sched in sim.health_schedules, host_id in sched.admitted
+        indiv = get_individual_by_id(pop, host_id)
+        for ht in triggers
+            trigger(ht, indiv, sim, staged = true)
+        end
+    end
+    return nothing
+end
+
+"""
+    _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
+
+Closes every open care level when a host dies, logging one discharge per level in reverse ladder
+order. Counters are zeroed rather than decremented, so a stale queued discharge cannot drive one
+negative.
+"""
+@inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
+    for level in reverse(instances(CareLevel))
+        _demand(indiv, level) > 0 || continue
+        _set_demand!(indiv, level, Int16(0))
+        log!(hl, id(indiv), _care_event(level, false), tick)
+    end
+    return nothing
+end
+
+"""
     update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
 Update the individual disease progression, handle its recovery and log its possible death.
@@ -468,32 +665,28 @@ If the individual is not infected, this function will just return.
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_dead = dead(indiv)
     was_symptomatic = symptomatic(indiv)
-    was_hospitalized = is_hospitalized(indiv)
 
     # update immunity levels
     if indiv.needs_immunity_update
         update_immunity!(indiv, immunity_registry(sim, id(indiv)), sim.pathogens, tick, rng(sim))
     end
 
-    # progress disease for currently infected individuals
-    if infected(indiv)
+    # progress disease while infected, or while a scheduled death is still pending: a death can fall
+    # after every infection has cleared, and the drain does not realize deaths
+    if infected(indiv) || (Int16(0) <= indiv.death && !was_dead)
         shard_id = _owner_shard(id(indiv))
-        
+
         progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, rng(sim))
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
+            _close_care_at_death!(indiv, healthlogger(sim), tick)
         end
     end
 
     if !was_symptomatic && symptomatic(indiv)
         for st in sim |> symptom_triggers
             trigger(st, indiv, sim, staged = true)
-        end
-    end
-    if !was_hospitalized && is_hospitalized(indiv)
-        for ht in sim |> hospitalization_triggers
-            trigger(ht, indiv, sim, staged = true)
         end
     end
 end

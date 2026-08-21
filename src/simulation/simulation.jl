@@ -10,18 +10,20 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
-export infection_registry, immunity_registry, test_registry
+export health_progression
+export infection_registry, immunity_registry, test_registry, health_schedule
 export configfile, populationfile
 export evaluate
 export initialize!, reinitialize!
 export reset!
 export tickunit
-export infectionlogger, deathlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export infectionlogger, deathlogger, healthlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
 export statelogger, states
 export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
+export InfectionSeed, seeding_schedule
 export rng, rngs, seed
 export present_buffers, contact_buffers
 
@@ -32,6 +34,23 @@ abstract type StartCondition end
 
 "supertype for all stop criteria"
 abstract type StopCriterion end
+
+"""
+    InfectionSeed
+
+Resolved description of a single seeding event: infect `count` individuals with the
+pathogen named `pathogen`, drawn either from the whole population (`ags === nothing`)
+or from the region identified by community identification number `ags`.
+
+`InfectionSeed`s are pre-computed by the `ImportedCases` start condition and staged in
+`simulation.seeding_schedule`, a `Dict` mapping tick to its `Vector{InfectionSeed}`;
+`seed_scheduled!` fires the ones due at the current tick.
+"""
+struct InfectionSeed
+    pathogen::String
+    count::Int
+    ags::Union{Int64, Nothing}
+end
 
 ###
 ### SIMULATION STRUCT
@@ -160,7 +179,7 @@ sim = Simulation(params)
     - `rngs::Vector{Xoshiro}`: RNG instances for each thread
 
 """
-mutable struct Simulation{P<:Tuple}
+mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
 
     # data TODO check if config file needs to be adapted actually
     configfile::String
@@ -178,13 +197,16 @@ mutable struct Simulation{P<:Tuple}
     population::Population
     settings::SettingsContainer
     pathogens::P
+    health_progression::HP
     infection_registries::Vector{InfectionRegistry}
     immunity_registries::Vector{ImmunityRegistry}
     test_registries::Vector{TestRegistry}
+    health_schedules::Vector{HealthSchedule}
 
     # logger
     infectionlogger::InfectionLogger
     deathlogger::DeathLogger
+    healthlogger::HealthLogger
     testlogger::TestLogger
     pooltestlogger::PoolTestLogger
     seroprevalencelogger::SeroprevalenceLogger
@@ -201,6 +223,9 @@ mutable struct Simulation{P<:Tuple}
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
 
+    # recurring seeding bucketed by tick
+    seeding_schedule::Dict{Int16, Vector{InfectionSeed}}
+
     # StepMod
     stepmod::Function
 
@@ -212,7 +237,7 @@ mutable struct Simulation{P<:Tuple}
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
     infection_buffers::Matrix{Vector{_PendingInfection}}
-    removal_buffers::Matrix{Vector{_SlotRemoval}}
+    removal_buffers::Matrix{Vector{_EndedInfection}}
 
     # inner default constructor
     function Simulation(
@@ -225,13 +250,14 @@ mutable struct Simulation{P<:Tuple}
         population::Population,
         settings::SettingsContainer,
         pathogens::P,
+        health_progression::HP,
         stepmod::Function,
         seed::Int64,
         rngs::Vector{<:Xoshiro}
-    ) where {P<:Tuple} 
+    ) where {P<:Tuple, HP<:HealthProgression}
     num_shards = Threads.maxthreadid()
     matrix_size_hint = ceil(Int, (length(population.individuals) * 0.1) / (num_shards^2))
-        sim = new{P}(
+        sim = new{P, HP}(
             # config
             configfile,
             Int16(0), # tick
@@ -246,13 +272,16 @@ mutable struct Simulation{P<:Tuple}
             population,
             settings,
             pathogens,
+            health_progression,
             [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [TestRegistry() for _ in 1:num_shards],
+            [HealthSchedule() for _ in 1:num_shards],
 
             # logger
-            InfectionLogger(),
+            InfectionLogger(minid = population.minid, maxid = population.maxid),
             DeathLogger(),
+            HealthLogger(),
             TestLogger(),
             PoolTestLogger(),
             SeroprevalenceLogger(),
@@ -268,6 +297,9 @@ mutable struct Simulation{P<:Tuple}
             [],
             [],
 
+            # recurring seeding schedule (populated by initialize!)
+            Dict{Int16, Vector{InfectionSeed}}(),
+
             # StepMod
             stepmod,
 
@@ -279,7 +311,7 @@ mutable struct Simulation{P<:Tuple}
             [Vector{Individual}() for _ in 1:num_shards], # present_buffers
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
             [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
-            [sizehint!(Vector{_SlotRemoval}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
+            [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
         )
 
         # increase simulation counter
@@ -365,6 +397,9 @@ function _BUILD_Simulation(;
         transmission_function = nothing,
         transmission_rate = nothing,
 
+        # health progression
+        health_progression = nothing,
+
         # stepmod
         stepmod::Function = x -> x,
 
@@ -442,6 +477,9 @@ function _BUILD_Simulation(;
             transmission_rate
         )
 
+        # HEALTH PROGRESSION
+        hp = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
+
         # START CONDITION
         start_condition = determine_start_condition(
             config,
@@ -462,6 +500,7 @@ function _BUILD_Simulation(;
             pop,
             settings,
             pathogen_tuple,
+            hp,
             stepmod,
             rng_seed,
             rngs
@@ -577,11 +616,12 @@ end
 
 Determines the start condition for the simulation based on the provided parameters.
 If a `start_condition` is provided, it will be used.
-If not, it will check for an `infected_fraction`.
-If `infected_fraction` is provided and `pathogens_tuple` contains more than one pathogen,
-a `MultiStartCondition` is returned with one `InfectedFraction` per pathogen (each seeded
-at `infected_fraction`). For a single pathogen, a plain `InfectedFraction` is returned.
+If not, it will check for an `infected_fraction`, which seeds every pathogen.
 If neither is provided, it will return the default start condition from the config file.
+
+Whichever way the condition was built, its pathogen selection is resolved against
+`pathogens_tuple`: a name must exist, `ALL_PATHOGENS` expands into one condition per pathogen,
+and an empty name is only allowed for a single-pathogen simulation (see `_expand_pathogens`).
 """
 function determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
     # return configfile start condition if nothing else provided
@@ -596,35 +636,33 @@ function determine_start_condition(configfile_params::Dict, start_condition, inf
             catch e
                 throw(ConfigfileError("'[[Simulation.StartConditions]]' could not be read from config file.", e))
             end
-            return length(conditions) == 1 ? conditions[1] : MultiStartCondition(conditions)
+            return _expand_pathogens(length(conditions) == 1 ? conditions[1] : MultiStartCondition(conditions), pathogens_tuple)
         end
 
         # single [Simulation.StartCondition]
         !_haspath(configfile_params, ["Simulation", "StartCondition"]) && throw(ConfigfileError("No start condition found in config file! Without a provided 'start_condition' or 'infected_fraction' argument, a '[Simulation.StartCondition]' or '[[Simulation.StartConditions]]' section must be specified in the config file."))
-        return try
+        cnd = try
             create_start_condition(configfile_params["Simulation"]["StartCondition"])
         catch e
             throw(ConfigfileError("'[Simulation.StartCondition]' could not be read from config file.", e))
         end
+        return _expand_pathogens(cnd, pathogens_tuple)
     end
 
     # if start_condition is provided, use it
     if !isnothing(start_condition)
         !isa(start_condition, StartCondition) && throw(ArgumentError("Provided start_condition must be an object of type StartCondition! Try any of $(join(subtypes(StartCondition), ", "))"))
         !isnothing(infected_fraction) && @warn "A start_condition was provided, therefore infected_fraction will be ignored."
-        return start_condition
+        return _expand_pathogens(start_condition, pathogens_tuple)
     end
 
-    # if infected_fraction is provided, use it
-    if length(pathogens_tuple) > 1
-        conditions = [InfectedFraction(fraction = infected_fraction, pathogen = p.name)
-                      for p in pathogens_tuple]
-        return MultiStartCondition(conditions)
-    end
-    return InfectedFraction(
-        fraction = infected_fraction,
-        pathogen = ""
-    )
+    # if infected_fraction is provided, use it. It has no pathogen argument, so it seeds all
+    return _expand_pathogens(
+        InfectedFraction(
+            fraction = infected_fraction,
+            pathogen = ALL_PATHOGENS
+        ),
+        pathogens_tuple)
 end
 
 """
@@ -724,6 +762,54 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
 end
 
 """
+    determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
+
+Resolves the simulation's `HealthProgression`. An explicit `health_progression` argument wins. Then,
+if any progression carries embedded care (the single-pathogen convenience): when the pathogens were
+passed explicitly it is harvested (taking precedence over the default config section); when they came
+from the config it conflicts with a `[HealthProgression]` section. Otherwise a `[HealthProgression]`
+section is parsed, else the default. Embedded care with an explicit policy or `>1` pathogen errors.
+"""
+function determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
+    embedded = any(_has_embedded_health_profile, pathogens)
+    legacy = any(_has_legacy_category, pathogens)
+    if !isnothing(health_progression)
+        embedded && throw(ArgumentError("embedded care parameters conflict with an explicit `health_progression`; remove one."))
+        legacy && @warn "Legacy progression categories (Hospitalized/LegacyCritical) were found but an explicit `health_progression` was provided; their legacy health behavior will be ignored."
+        return health_progression
+    end
+
+    # legacy categories carry their own care and are harvested into a tag-routing LegacyHealthProgression
+    if legacy
+        embedded && throw(ArgumentError("legacy progression categories cannot be combined with modern embedded care parameters. " *
+            "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category care, drop the legacy categories and " *
+            "write a `HealthProgression` that routes on `progression_id` (see `LegacyHealthProgression` or the `TaggedHP` test example)."))
+        _haspath(configfile_params, ["HealthProgression"]) && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
+        return _harvest_legacy_health_progression(pathogens)
+    end
+
+    _harvest() = (length(pathogens) > 1 &&
+        throw(ArgumentError("embedded care parameters are only supported for a single pathogen; use an explicit [HealthProgression].")); _harvest_health_progression(pathogens))
+
+    # embedded care from explicitly-passed pathogens wins over the (possibly default) config section
+    if embedded && pathogens_explicit
+        _haspath(configfile_params, ["HealthProgression"]) &&
+            @warn "Embedded care parameters were found on explicitly-passed pathogens, therefore the [HealthProgression] config section will be ignored."
+        return _harvest()
+    end
+
+    if _haspath(configfile_params, ["HealthProgression"])
+        embedded && throw(ArgumentError("embedded care parameters conflict with a [HealthProgression] config section; remove one."))
+        return create_health_progression(configfile_params["HealthProgression"])
+    end
+
+    embedded && return _harvest()
+
+    @warn "No health_progression, [HealthProgression] config section, or embedded care parameters were provided; defaulting to a no-op HealthProgression (no hospitalization, ICU admission, or health-related death will occur)."
+    return DefaultHealthProgression()
+end
+
+"""
     _finalize_pathogen_ids!(raw::Tuple)
 
 Assigns or validates pathogen ids. `id` is a plain `Int8` field (not a type parameter), so
@@ -733,10 +819,14 @@ mutating it in place leaves each pathogen's type and the tuple type unchanged.
 - all ids set: validate each is in `[1, MAX_PATHOGENS]` and unique
 - mixed: error (ambiguous)
 
+Names must be unique either way, because start conditions select pathogens by name.
+
 The id ceiling (`MAX_PATHOGENS`) comes from the `UInt32` pathogen masks (`1 << (id - 1)`) and `_test_key`.
 """
 function _finalize_pathogen_ids!(raw::Tuple)
     n = length(raw)
+    names = map(p -> p.name, raw)
+    length(unique(names)) == n || throw(ArgumentError("Pathogen names must be unique (got $(collect(names)))."))
     ids = map(id, raw)
     n_unset = count(==(DEFAULT_PATHOGEN_ID), ids)
     if n_unset == n
@@ -1067,6 +1157,18 @@ function create_distribution(params::Dict)
 end
 
 """
+    _config_value(value)
+
+Converts a config file value into the argument a constructor expects. Sub-tables carrying a
+`distribution` key become `Distribution`s; any other sub-table keeps its keys and has its
+own values converted the same way, so that a distribution can sit inside a nested table.
+"""
+_config_value(value) = value
+_config_value(value::Dict) = haskey(value, "distribution") ?
+    create_distribution(value) :
+    Dict(k => _config_value(v) for (k, v) in value)
+
+"""
     create_progression_parameter(params::Union{Dict, Real})
 
 Creates a progression parameter based on the provided parameters.
@@ -1083,7 +1185,9 @@ end
     create_progression(params::Dict, category::String)
 
 Creates a progression of the specified category based on the provided parameters.
-The `params` dictionary must contain the parameters for the progression constructor.
+The `params` dictionary must contain the parameters for the progression constructor. For
+`Severe`/`Critical`, `params` may also carry that tier's `HealthProfile` parameters directly (the
+convenience embedding); the category constructor splits them out itself.
 The `category` string must be the name of a subtype of `ProgressionCategory`.
 """
 function create_progression(params::Dict, category::String)
@@ -1172,6 +1276,62 @@ function create_infectiousness_profile(params::Dict)
 end
 
 """
+    create_immunity_profile(params::Dict)
+
+Creates an immunity profile based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the immunity profile.
+The `parameters` key is optional, as profiles like `FullImmunity` take no arguments.
+"""
+function create_immunity_profile(params::Dict)
+    im_type = GEMS.get_subtype(params["type"], ImmunityProfile)
+    kw_args = Dict(Symbol(k) => v for (k, v) in get(params, "parameters", Dict()))
+    return try
+        im_type(;kw_args...)
+    catch e
+        throw(ErrorException("ImmunityProfile of type '$im_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_health_profile(profile_type, params::Dict)
+
+Creates a tier health profile (`SevereHealthProfile`/`CriticalHealthProfile`) from a nested config table, turning
+each leaf value into a distribution or real.
+"""
+function create_health_profile(profile_type, params::Dict)
+    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
+    return try
+        profile_type(;kw_args...)
+    catch e
+        throw(ErrorException("$profile_type could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_health_progression(params::Dict)
+
+Creates a `HealthProgression` based on the provided parameters.
+The `params` dictionary must contain a `type` key with the name of the health progression
+and a `parameters` key. For `DefaultHealthProgression` the parameters hold `severe` and
+`critical` sub-tables; other types receive their parameters as distributions or reals.
+"""
+function create_health_progression(params::Dict)
+    hp_type = get_subtype(params["type"], HealthProgression)
+    if hp_type == DefaultHealthProgression
+        p = params["parameters"]
+        return DefaultHealthProgression(
+            severe = create_health_profile(SevereHealthProfile, p["severe"]),
+            critical = create_health_profile(CriticalHealthProfile, p["critical"]))
+    end
+    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params["parameters"])
+    return try
+        hp_type(;kw_args...)
+    catch e
+        throw(ErrorException("HealthProgression of type '$hp_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
     create_pathogen(params::Dict, name, id)
 
 Creates a pathogen based on the provided parameters.
@@ -1180,6 +1340,9 @@ The `name` string is the name of the pathogen.
 The `id` integer is the unique identifier for the pathogen.
 """
 function create_pathogen(params::Dict, name, id)
+
+    # reroute old-format `Critical` -> `LegacyCritical` before resolving category names (no-op on new configs)
+    _normalize_legacy_pathogen!(params)
 
     # create progressions
     progressions = try
@@ -1210,13 +1373,23 @@ function create_pathogen(params::Dict, name, id)
         end :
         ConstantInfectiousness()
 
+    # create immunity profile
+    im = haskey(params, "immunity_profile") ?
+        try
+            create_immunity_profile(params["immunity_profile"])
+        catch e
+            throw(ConfigfileError("immunity_profile for pathogen '$name' could not be created from config file.", e))
+        end :
+        FullImmunity()
+
     return Pathogen(
         id = id,
         name = name,
         progressions = progressions,
         progression_assignment = pa,
         transmission_function = tf,
-        infectiousness_profile = ip
+        infectiousness_profile = ip,
+        immunity_profile = im
     )
 end
 
@@ -1239,10 +1412,12 @@ end
 Creates a start condition based on the provided parameters.
 The `params` dictionary must contain a `type` key with the name of the start condition type
 and a `parameters` key with a list of parameters for the start condition constructor.
+Nested tables are passed on with `Symbol` keys and any sub-table carrying a `distribution`
+key is turned into a `Distribution` (see `_config_value`).
 """
 function create_start_condition(params::Dict)
     sc_type = get_subtype(params["type"], StartCondition)
-    kw_args = Dict(Symbol(k) => v for (k, v) in params["parameters"])
+    kw_args = Dict(Symbol(k) => _config_value(v) for (k, v) in params["parameters"])
     return try
         sc_type(;kw_args...)
     catch e
@@ -1672,11 +1847,38 @@ function pathogens(simulation::Simulation)
 end
 
 """
+    health_progression(simulation)
+
+Returns the host `HealthProgression` of the simulation.
+"""
+function health_progression(simulation::Simulation)
+    return simulation.health_progression
+end
+
+"""
     _owner_shard(ind_id::Int32)
 
 Returns the shard index (1 to `Threads.maxthreadid()`) assigned to the given `ind_id`.
 """
 @inline _owner_shard(ind_id::Int32) = mod(ind_id - Int32(1), Int32(Threads.maxthreadid())) + 1
+
+"""
+    health_schedule(simulation, ind_id::Int32)::HealthSchedule
+
+Returns the specific `HealthSchedule` shard that owns the given individual id.
+"""
+function health_schedule(simulation::Simulation, ind_id::Int32)::HealthSchedule
+    return simulation.health_schedules[_owner_shard(ind_id)]
+end
+
+"""
+    health_schedule(simulation, individual::Individual)::HealthSchedule
+
+Returns the specific `HealthSchedule` shard that owns the given individual.
+"""
+function health_schedule(simulation::Simulation, individual::Individual)::HealthSchedule
+    return health_schedule(simulation, id(individual))
+end
 
 """
     infection_registry(simulation, ind_id::Int32)::InfectionRegistry
@@ -1769,12 +1971,12 @@ end
 """
     get_pathogen(sim::Simulation, pid::Int8)
 
-Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name. 
-Returns the only pathogen is `pname` is empty for backwards compatibility.
+Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name.
+An empty `pname` returns the only pathogen and throws if the simulation has more than one.
 """
 function get_pathogen(simulation::Simulation, pname::String)
     if isempty(pname)
-        return first_pathogen(simulation)
+        return pathogen(simulation)
     end
     for p in pathogens(simulation)
         p.name == pname && return p
@@ -1837,6 +2039,15 @@ end
 Calls the `dataframe()` function on the internal simulation's `DeathLogger`.
 """
 deaths(simulation::Simulation) = simulation |> deathlogger |> dataframe
+
+"""
+    healthlogger(simulation)
+
+Returns the `HealthLogger` of the simulation.
+"""
+function healthlogger(simulation::Simulation)::HealthLogger
+    return simulation.healthlogger
+end
 
 """
     testlogger(simulation)
@@ -1991,8 +2202,10 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     reset_tick!(simulation)
 
     # Reset all loggers
-    simulation.infectionlogger = InfectionLogger()
+    pop = population(simulation)
+    simulation.infectionlogger = InfectionLogger(minid = pop.minid, maxid = pop.maxid)
     simulation.deathlogger = DeathLogger()
+    simulation.healthlogger = HealthLogger()
     simulation.testlogger = TestLogger()
     simulation.pooltestlogger = PoolTestLogger()
     simulation.seroprevalencelogger = SeroprevalenceLogger()
@@ -2002,8 +2215,14 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
 
+    # before initialize! below, which infects and schedules care again. Must stay paired with the
+    # per-individual reset! above; clearing one alone leaves the two disagreeing
+    foreach(reset_care!, simulation.health_schedules)
+
     # Reset NPI triggers and strategies
     simulation.event_queue = EventQueue()
+    # clear the staged seeding schedule; initialize! rebuilds it from the start condition
+    simulation.seeding_schedule = Dict{Int16, Vector{InfectionSeed}}()
     if reset_interventions
         simulation.symptom_triggers = []
         simulation.tick_triggers = []
@@ -2069,6 +2288,17 @@ Returns the list of `TickTrigger`s registered in the simulation.
 """
 function tick_triggers(simulation::Simulation)
     return(simulation.tick_triggers)
+end
+
+"""
+    seeding_schedule(simulation)
+
+Returns the staged recurring-seeding schedule: a `Dict` mapping each tick to its
+`Vector{InfectionSeed}`. Populated by the `ImportedCases` start condition during
+`initialize!` and fired by `seed_scheduled!` at the matching tick.
+"""
+function seeding_schedule(simulation::Simulation)
+    return(simulation.seeding_schedule)
 end
 
 """

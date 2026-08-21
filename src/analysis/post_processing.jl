@@ -96,9 +96,25 @@ mutable struct PostProcessor
             :household_b => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_b
         )
 
-        # join deaths with additional info from population DF
         deaths = dataframe(deathlogger(simulation))
+
+        # a host death ends every co-active infection: clear `:recovery` and record `:removed`
+        host_death = DataFrames.select(deaths, :id, :tick => :host_death, copycols=false)
+        leftjoin!(infections, host_death, on = [:id_b => :id])
+        transform!(infections,
+            [:recovery, :host_death] => ByRow((r, d) -> !ismissing(d) && d < r ?
+                (recovery = Int16(-1), removed = d) : (recovery = r, removed = r)) => AsTable)
+
+        cols = names(infections, Not([:host_death, :removed]))
+        i = findfirst(==("recovery"), cols)
+        select!(infections, cols[1:i]..., :removed, cols[i+1:end]...)
+
+        # join deaths with additional info from population DF
         leftjoin!(deaths, pop, on = :id)
+
+        # region of each death, for regional rates that don't go via the infection rows
+        transform!(deaths,
+            :household => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags)
 
         # join tests with population data
         leftjoin!(tests, pop, on = :id)
@@ -228,49 +244,48 @@ Returns the internal flat infections `DataFrame`.
 
 # Columns
 
-| Name                       | Type      | Description                                                     |
-| :------------------------- | :-------- | :-------------------------------------------------------------- |
-| `infection_id`             | `Int32`   | Unique identifier of an infection                               |
-| `tick`                     | `Int16`   | Tick of the infection event                                     |
-| `id_a`                     | `Int32`   | Infecter id                                                     |
-| `id_b`                     | `Int32`   | Infectee id                                                     |
-| `infectious_tick`          | `Int16`   | Tick at which infectee becomes infectious                       |
-| `removed_tick`             | `Int16`   | Tick at which infectee becomes removed (recovers)               |
-| `symptoms_tick`            | `Int16`   | Tick at which infectee develops symptoms                        |
-| `severeness_tick`          | `Int16`   | Tick at which infectee's symptoms become severe                 |
-| `hospital_tick`            | `Int16`   | Tick at which infectee is hospitalized                          |
-| `icu_tick`                 | `Int16`   | Tick at which infectee is admitted to ICU                       |
-| `ventilation_tick`         | `Int16`   | Tick at which infectee requires ventilation                     |
-| `symptom_category`         | `Int8`    | Disease progression category (asymp., mild, severe, critical)   |
-| `setting_id`               | `Int32`   | Id of setting in which infection happens                        |
-| `setting_type`             | `Char`    | Setting type of the infection setting                           |
-| `lat`                      | `Float32` | Latitude of infection location                                  |
-| `lon`                      | `Float32` | Longitude of infection location                                 |
-| `ags`                      | `Int32`   | German Community Identification Number of infection             |
-| `source_infection_id`      | `Int32`   | ID of the infection even that caused this infection (chain)     |
-| `generation_time`          | `Int16`   | Time between preceeding infection and this exposure             |
-| `serial_interval`          | `Int16`   | Time between onset of symptoms of this and preceeding infection |
-| `test_type`                | `String`  | Type of test which detected this infection                      |
-| `first_detected_tick`      | `Int16`   | Tick of (reportable) test that first detected this infection    |
-| `sex_a`                    | `Int8`    | Infecter sex                                                    |
-| `age_a`                    | `Int8`    | Infecter age                                                    |
-| `number_of_vaccinations_a` | `Int8`    | Infecter number of previous vaccinations                        |
-| `vaccination_tick_a`       | `Int16`   | Infecter last time of vaccination                               |
-| `education_a`              | `Int8`    | Infecter education level                                        |
-| `occupation_a`             | `Int16`   | Infecter occupation group                                       |
-| `household_a`              | `Int32`   | Infecter associated household                                   |
-| `office_a`                 | `Int32`   | Infecter associated office                                      |
-| `schoolclass_a`            | `Int32`   | Infecter associated school                                      |
-| `sex_b`                    | `Int8`    | Infectee sex                                                    |
-| `age_b`                    | `Int8`    | Infectee age                                                    |
-| `number_of_vaccinations_a` | `Int8`    | Infecter number of previous vaccinations                        |
-| `vaccination_tick_a`       | `Int16`   | Infecter last time of vaccination                               |
-| `education_b`              | `Int8`    | Infectee education level                                        |
-| `occupation_b`             | `Int16`   | Infectee occupation group                                       |
-| `household_b`              | `Int32`   | Infectee associated household                                   |
-| `office_b`                 | `Int32`   | Infectee associated office                                      |
-| `schoolclass_b`            | `Int32`   | Infectee associated schoolclass                                 |
-| `household_ags_b`          | `Int32`   | Infectee household German Community Identification Number       |
+| Name                   | Type      | Description                                                                          |
+| :--------------------- | :-------- | :----------------------------------------------------------------------------------- |
+| `infection_id`         | `Int32`   | Unique identifier of an infection                                                    |
+| `tick`                 | `Int16`   | Tick of the infection event                                                          |
+| `id_a`                 | `Int32`   | Infecter id                                                                          |
+| `id_b`                 | `Int32`   | Infectee id                                                                          |
+| `pathogen_id`          | `Int8`    | Pathogen of this infection                                                           |
+| `progression_category` | `Symbol`  | Disease progression category (e.g. `:Asymptomatic`, `:Mild`, `:Severe`, `:Critical`) |
+| `infectiousness_onset` | `Int16`   | Tick at which infectee becomes infectious                                            |
+| `symptom_onset`        | `Int16`   | Tick at which infectee develops symptoms                                             |
+| `severeness_onset`     | `Int16`   | Tick at which infectee's symptoms become severe                                      |
+| `critical_onset`       | `Int16`   | Tick at which infectee's symptoms become critical                                    |
+| `critical_offset`      | `Int16`   | Tick at which infectee's symptoms stop being critical                                |
+| `severeness_offset`    | `Int16`   | Tick at which infectee's symptoms stop being severe                                  |
+| `recovery`             | `Int16`   | Tick of recovery, or `-1` if a host death cut the infection short                    |
+| `removed`              | `Int16`   | Tick at which the infection ended (recovery, or the host death that cut it short)    |
+| `setting_id`           | `Int32`   | Id of setting in which infection happens                                             |
+| `setting_type`         | `Char`    | Setting type of the infection setting                                                |
+| `lat`                  | `Float32` | Latitude of infection location                                                       |
+| `lon`                  | `Float32` | Longitude of infection location                                                      |
+| `ags`                  | `Int32`   | German Community Identification Number of infection                                  |
+| `source_infection_id`  | `Int32`   | ID of the infection even that caused this infection (chain)                          |
+| `generation_time`      | `Int16`   | Time between preceeding infection and this exposure                                  |
+| `serial_interval`      | `Int16`   | Time between onset of symptoms of this and preceeding infection                      |
+| `test_type`            | `String`  | Type of test which detected this infection                                           |
+| `first_detected_tick`  | `Int16`   | Tick of (reportable) test that first detected this infection                         |
+| `sex_a`                | `Int8`    | Infecter sex                                                                         |
+| `age_a`                | `Int8`    | Infecter age                                                                         |
+| `education_a`          | `Int8`    | Infecter education level                                                             |
+| `occupation_a`         | `Int16`   | Infecter occupation group                                                            |
+| `household_a`          | `Int32`   | Infecter associated household                                                        |
+| `office_a`             | `Int32`   | Infecter associated office                                                           |
+| `schoolclass_a`        | `Int32`   | Infecter associated schoolclass                                                      |
+| `sex_b`                | `Int8`    | Infectee sex                                                                         |
+| `age_b`                | `Int8`    | Infectee age                                                                         |
+| `education_b`          | `Int8`    | Infectee education level                                                             |
+| `occupation_b`         | `Int16`   | Infectee occupation group                                                            |
+| `household_b`          | `Int32`   | Infectee associated household                                                        |
+| `office_b`             | `Int32`   | Infectee associated office                                                           |
+| `schoolclass_b`        | `Int32`   | Infectee associated schoolclass                                                      |
+| `household_ags_a`      | `AGS`     | Infecter household German Community Identification Number                            |
+| `household_ags_b`      | `AGS`     | Infectee household German Community Identification Number                            |
 """
 function infections(postProcessor::PostProcessor)
     return postProcessor.infectionsDF
@@ -283,16 +298,16 @@ Returns the internal flat population `DataFrame`.
 
 # Columns
 
-| Name         | Type    | Description                     |
-| :----------- | :------ | :------------------------------ |
-| `id`         | `Int32` | Individual id                   |
-| `sex`        | `Int8`  | Individual sex                  |
-| `age`        | `Int8`  | Individual age                  |
-| `education`  | `Int8`  | Individual education level      |
-| `occupation` | `Int16` | Individual occupation group     |
-| `household`  | `Int32` | Individual associated household |
-| `office`     | `Int32` | Individual associated office    |
-| `school`     | `Int32` | Individual associated school    |
+| Name          | Type    | Description                       |
+| :------------ | :------ | :-------------------------------- |
+| `id`          | `Int32` | Individual id                     |
+| `sex`         | `Int8`  | Individual sex                    |
+| `age`         | `Int8`  | Individual age                    |
+| `education`   | `Int8`  | Individual education level        |
+| `occupation`  | `Int16` | Individual occupation group       |
+| `household`   | `Int32` | Individual associated household   |
+| `office`      | `Int32` | Individual associated office      |
+| `schoolclass` | `Int32` | Individual associated schoolclass |
 """
 function populationDF(postProcessor::PostProcessor)
     return postProcessor.populationDF
@@ -305,17 +320,19 @@ Returns the internal flat deaths `DataFrame`.
 
 # Columns
 
-| Name              | Type    | Description                                       |
-| :---------------- | :------ | :------------------------------------------------ |
-| `tick`            | `Int16` | Tick of the death event                           |
-| `id`              | `Int32` | Individual's id                                   |
-| `sex`             | `Int8`  | Individual's sex                                  |
-| `age`             | `Int8`  | Individual's age                                  |
-| `education`       | `Int8`  | Individual's education level                      |
-| `occupation`      | `Int16` | Individual's occupation group                     |
-| `household`       | `Int32` | Individual's associated household                 |
-| `office`          | `Int32` | Individual's associated office                    |
-| `school`          | `Int32` | Individual's associated school                    |
+| Name            | Type    | Description                                            |
+| :-------------- | :------ | :----------------------------------------------------- |
+| `tick`          | `Int16` | Tick of the death event                                |
+| `id`            | `Int32` | Individual's id                                        |
+| `pathogen_id`   | `Int8`  | Pathogen credited for the death                        |
+| `sex`           | `Int8`  | Individual's sex                                       |
+| `age`           | `Int8`  | Individual's age                                       |
+| `education`     | `Int8`  | Individual's education level                           |
+| `occupation`    | `Int16` | Individual's occupation group                          |
+| `household`     | `Int32` | Individual's associated household                      |
+| `office`        | `Int32` | Individual's associated office                         |
+| `schoolclass`   | `Int32` | Individual's associated schoolclass                    |
+| `household_ags` | `AGS`   | Individual's household community identification number |
 """
 function deathsDF(postProcessor::PostProcessor)
     return postProcessor.deathsDF
@@ -331,24 +348,24 @@ obtain personal characteristics about the testees.
 
 # Columns
 
-| Name                     | Type     | Description                                        |
-| :----------------------- | :------- | :------------------------------------------------- |
-| `tick`              | `Int16`  | Tick of the test event                             |
-| `id`                     | `Int32`  | Individual's id                                    |
-| `test_result`            | `Bool`   | Test result                                        |
-| `infected`               | `Bool`   | Individual's current infection state               |
-| `infection_id`           | `Int32`  | Individual's infection id                          |
-| `test_type`              | `String` | Test name                                          |
-| `reportable`             | `Bool`   | If true, a positive test result will be "reported" |
-| `sex`                    | `Int8`   | Individual's sex                                   |
-| `age`                    | `Int8`   | Individual's age                                   |
-| `number_of_vaccinations` | `Int8`   | Individual's number of vaccinations                |
-| `vaccination_tick`       | `Int16`  | Tick when the individual was last vaccinated       |
-| `education`              | `Int8`   | Individual's education level                       |
-| `occupation`             | `Int16`  | Individual's occupation group                      |
-| `household`              | `Int32`  | Individual's associated household                  |
-| `office`                 | `Int32`  | Individual's associated office                     |
-| `school`                 | `Int32`  | Individual's associated school                     |
+| Name           | Type     | Description                                        |
+| :------------- | :------- | :------------------------------------------------- |
+| `test_id`      | `Int32`  | Unique test id within the logger                   |
+| `tick`         | `Int16`  | Tick of the test event                             |
+| `id`           | `Int32`  | Individual's id                                    |
+| `test_result`  | `Bool`   | Test result                                        |
+| `infected`     | `Bool`   | Individual's current infection state               |
+| `infection_id` | `Int32`  | Individual's infection id                          |
+| `pathogen_id`  | `Int8`   | Pathogen the test detects                          |
+| `test_type`    | `String` | Test name                                          |
+| `reportable`   | `Bool`   | If true, a positive test result will be "reported" |
+| `sex`          | `Int8`   | Individual's sex                                   |
+| `age`          | `Int8`   | Individual's age                                   |
+| `education`    | `Int8`   | Individual's education level                       |
+| `occupation`   | `Int16`  | Individual's occupation group                      |
+| `household`    | `Int32`  | Individual's associated household                  |
+| `office`       | `Int32`  | Individual's associated office                     |
+| `schoolclass`  | `Int32`  | Individual's associated schoolclass                |
 
 """
 function testsDF(postProcessor::PostProcessor)
@@ -363,15 +380,16 @@ Returns the internal flat pool tests `DataFrame`.
 
 # Columns
 
-| Name                | Type     | Description                                    |
-| :------------------ | :------- | :--------------------------------------------- |
-| `tick`         | `Int16`  | Tick of the test event                         |
-| `setting_id`        | `Int32`  | Setting id of the tested pool                  |
-| `setting_type`      | `Int32`  | Setting type                                   |
-| `test_result`       | `Bool`   | Test result (pos./neg.)                        |
-| `no_of_individuals` | `Int32`  | Number of tested individuals                   |
-| `no_of_infected`    | `Int32`  | Number of actually infected individuals        |
-| `test_type`         | `String` | Name of test type                              |
+| Name                | Type     | Description                             |
+| :------------------ | :------- | :-------------------------------------- |
+| `tick`              | `Int16`  | Tick of the test event                  |
+| `setting_id`        | `Int32`  | Setting id of the tested pool           |
+| `setting_type`      | `Char`   | Setting type                            |
+| `test_result`       | `Bool`   | Test result (pos./neg.)                 |
+| `no_of_individuals` | `Int16`  | Number of tested individuals            |
+| `no_of_infected`    | `Int16`  | Number of actually infected individuals |
+| `pathogen_id`       | `Int8`   | Pathogen the test detects               |
+| `test_type`         | `String` | Name of test type                       |
 
 """
 function pooltestsDF(postProcessor::PostProcessor)
@@ -394,12 +412,13 @@ It is based on the data logged by the `SeroprevalenceLogger`.
 | Name           | Type     | Description                                                    |
 | :------------- | :------- | :------------------------------------------------------------- |
 | `test_id`      | `Int32`  | Unique test ID within the logger                               |
-| `tick`    | `Int16`  | Tick at which the test was performed                           |
+| `tick`         | `Int16`  | Tick at which the test was performed                           |
 | `id`           | `Int32`  | ID of the individual tested                                    |
 | `test_result`  | `Bool`   | Result of the test (`true` = positive, `false` = negative)     |
 | `infected`     | `Bool`   | Whether the individual was infected at the time of the test    |
 | `was_infected` | `Bool`   | Whether the individual was ever infected (IgG assumed present) |
 | `infection_id` | `Int32`  | ID of infection event (or -1 if never infected)                |
+| `pathogen_id`  | `Int8`   | Pathogen the test detects                                      |
 | `test_type`    | `String` | Type of test performed (e.g. ELISA)                            |
 """
 function serotestsDF(postProcessor::PostProcessor)
@@ -414,7 +433,7 @@ Returns a `DataFrame` containing cumulative information about days spent in isol
 # Columns
 
 | Name          | Type    | Description                                                             |
-| :-------------| :------ | :---------------------------------------------------------------------- |
+| :------------ | :------ | :---------------------------------------------------------------------- |
 | `tick`        | `Int16` | Simulation tick (time)                                                  |
 | `quarantined` | `Int64` | Total number of individuals in isolation during that tick               |
 | `students`    | `Int64` | Total number of students in isolation during that tick                  |
@@ -431,13 +450,20 @@ end
 
 Returns the internal flat compartments `DataFrame`.
 # Columns
-| Name               | Type    | Description                                         |
-| :----------------- | :------ | :-------------------------------------------------- |
-| `tick`             | `Int16` | Simulation tick (time)                              |
-| `exposed_cnt`      | `Int64` | Total number of individuals in the exposed state    |
-| `infectious_cnt`   | `Int64` | Total number of individuals in the infectious state |
-| `detected_cnt`     | `Int64` | Total number of detected infectious individuals     |
-| `deaths_cnt`       | `Int64` | Total number of individuals in the deceased state   |
+| Name                        | Type    | Description                                                                    |
+| :-------------------------- | :------ | :----------------------------------------------------------------------------- |
+| `tick`                      | `Int16` | Simulation tick (time)                                                         |
+| `exposed_cnt`               | `Int64` | Total number of individuals in the exposed state                               |
+| `infectious_cnt`            | `Int64` | Total number of individuals in the infectious state                            |
+| `dead_cnt`                  | `Int64` | Total number of individuals in the deceased state                              |
+| `detected_cnt`              | `Int64` | Total number of detected individuals                                           |
+| `quarantined`               | `Int64` | Total number of individuals in quarantine                                      |
+| `quarantined_students`      | `Int64` | Students in quarantine                                                         |
+| `isolated_students`         | `Int64` | Students in quarantine who are infected                                        |
+| `unable_to_attend_students` | `Int64` | Students unable to attend (closed class, severe, hospitalized, or quarantined) |
+| `quarantined_workers`       | `Int64` | Workers in quarantine                                                          |
+| `isolated_workers`          | `Int64` | Workers in quarantine who are infected                                         |
+| `unable_to_attend_workers`  | `Int64` | Workers unable to attend (closed office, severe, hospitalized, or quarantined) |
 """
 function compartmentsDF(postProcessor::PostProcessor)
     return(postProcessor.compartmentsDF)

@@ -546,11 +546,11 @@ import GEMS: increment!, infected!
 
             # create_pathogen: bad progressions
             @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
-                Dict("progressions" => Dict("Symptomatic" => Dict())),
+                Dict("progressions" => Dict("Mild" => Dict())),
                 "test", Int8(1))
 
             # create_pathogen: bad progression assignment
-            valid_prog = Dict("Symptomatic" => Dict(
+            valid_prog = Dict("Mild" => Dict(
                 "exposure_to_infectiousness_onset" => 3,
                 "infectiousness_onset_to_symptom_onset" => 2,
                 "symptom_onset_to_recovery" => 5))
@@ -565,7 +565,7 @@ import GEMS: increment!, infected!
             # create_pathogen: bad transmission function
             valid_pa = Dict(
                 "type" => "RandomProgressionAssignment",
-                "parameters" => Dict("progression_categories" => ["Symptomatic"]))
+                "parameters" => Dict("progression_categories" => ["Mild"]))
             @test_throws GEMS.ConfigfileError GEMS.create_pathogen(
                 Dict(
                     "progressions" => valid_prog,
@@ -606,11 +606,43 @@ import GEMS: increment!, infected!
                 "type" => "SinusoidalSeasonalModifier",
                 "parameters" => Dict("amplitude" => 0.3, "peak_day" => 15)))
             @test mod isa SinusoidalSeasonalModifier
+
+            # create_immunity_profile: with parameters
+            im = GEMS.create_immunity_profile(Dict(
+                "type" => "ExponentialWaning",
+                "parameters" => Dict("halflife" => 30.0, "floor" => 10)))
+            @test im isa ExponentialWaning
+            @test im.halflife == 30.0f0
+            @test im.floor == Int8(10)
+
+            # create_immunity_profile: the parameters table is optional
+            @test GEMS.create_immunity_profile(Dict("type" => "FullImmunity")) isa FullImmunity
+
+            # a pathogen's immunity_profile section is actually wired up
+            pathogen_params = Dict(
+                "progressions" => Dict("Asymptomatic" => Dict(
+                    "exposure_to_infectiousness_onset" => 1,
+                    "infectiousness_onset_to_recovery" => 7)),
+                "progression_assignment" => Dict(
+                    "type" => "RandomProgressionAssignment",
+                    "parameters" => Dict("progression_categories" => ["Asymptomatic"])),
+                "transmission_function" => Dict(
+                    "type" => "ConstantTransmissionRate",
+                    "parameters" => Dict("transmission_rate" => 0.2)))
+
+            # absent section falls back to the default
+            @test GEMS.immunity_profile(GEMS.create_pathogen(deepcopy(pathogen_params), "P", 1)) isa FullImmunity
+
+            with_profile = merge(deepcopy(pathogen_params), Dict("immunity_profile" => Dict(
+                "type" => "ExponentialWaning", "parameters" => Dict("halflife" => 45.0))))
+            p_im = GEMS.create_pathogen(with_profile, "P", 1)
+            @test GEMS.immunity_profile(p_im) isa ExponentialWaning
+            @test GEMS.immunity_profile(p_im).halflife == 45.0f0
         end
 
         @testset "Throw Paths (ErrorException)" begin
             # create_progression: missing required fields
-            @test_throws ErrorException GEMS.create_progression(Dict(), "Symptomatic")
+            @test_throws ErrorException GEMS.create_progression(Dict(), "Mild")
 
             # create_progression_assignment: empty categories
             @test_throws ErrorException GEMS.create_progression_assignment(
@@ -636,6 +668,14 @@ import GEMS: increment!, infected!
             @test_throws ErrorException GEMS.create_stop_criterion(
                 Dict("type" => "TimesUp",
                     "parameters" => Dict("limit" => 0)))
+
+            # create_immunity_profile: invalid params
+            @test_throws ErrorException GEMS.create_immunity_profile(
+                Dict("type" => "ExponentialWaning",
+                    "parameters" => Dict("halflife" => -1.0)))
+
+            # create_immunity_profile: unknown profile type is rejected, not ignored
+            @test_throws ArgumentError GEMS.create_immunity_profile(Dict("type" => "NotAProfile"))
         end
 
         @testset "global_setting non-Bool throws" begin
@@ -728,6 +768,255 @@ import GEMS: increment!, infected!
         sim_mc = Simulation(pop_size=100, start_condition=mc, seed=1)
         # PatientZero seeds 1 + InfectedFraction(0.05) seeds 5 → at least 5 infected
         @test count(infected, population(sim_mc)) >= 5
+
+        # PATHOGEN SELECTION
+        pa = Pathogen(id=1, name="PA")
+        pb = Pathogen(id=2, name="PB")
+
+        # ALL_PATHOGENS expands into one condition per pathogen
+        sim_all = Simulation(pathogens=(pa, pb), pop_size=100, seed=1,
+            start_condition=InfectedFraction(fraction=0.3, pathogen=ALL_PATHOGENS))
+        @test start_condition(sim_all) isa MultiStartCondition
+        @test length(start_condition(sim_all).conditions) == 2
+        @test count(i -> infected(i, Int8(1)), individuals(sim_all)) == 30
+        @test count(i -> infected(i, Int8(2)), individuals(sim_all)) == 30
+
+        # a single pathogen keeps a plain condition carrying the concrete name
+        sim_one = Simulation(pathogen=Pathogen(id=1, name="PA"), pop_size=100,
+            start_condition=InfectedFraction(fraction=0.1, pathogen=ALL_PATHOGENS))
+        @test !isa(start_condition(sim_one), MultiStartCondition)
+        @test pathogen(start_condition(sim_one)) == "PA"
+
+        # a condition provided as an argument is expanded just like a config one
+        sim_pz = Simulation(pathogens=(pa, pb), pop_size=100, seed=1,
+            start_condition=PatientZero(pathogen=ALL_PATHOGENS))
+        @test count(infected, population(sim_pz)) == 2
+
+        # sub-conditions of a MultiStartCondition are expanded
+        sim_sub = Simulation(pathogens=(pa, pb), pop_size=100, seed=1,
+            start_condition=MultiStartCondition([InfectedFraction(fraction=0.1, pathogen=ALL_PATHOGENS)]))
+        @test count(i -> infected(i, Int8(1)), individuals(sim_sub)) == 10
+        @test count(i -> infected(i, Int8(2)), individuals(sim_sub)) == 10
+
+        # an empty pathogen name is a single-pathogen convenience
+        @test_throws ArgumentError Simulation(pathogens=(pa, pb), pop_size=100,
+            start_condition=InfectedFraction(fraction=0.3))
+        sim_empty = Simulation(pathogen=Pathogen(id=1, name="PA"), pop_size=100,
+            start_condition=InfectedFraction(fraction=0.1))
+        @test count(infected, population(sim_empty)) == 10
+
+        # an unknown pathogen name is rejected at construction, not at seeding time
+        @test_throws ArgumentError Simulation(pathogens=(pa, pb), pop_size=100,
+            start_condition=PatientZero(pathogen="Typo"))
+        @test_throws ArgumentError Simulation(pathogens=(pa, pb), pop_size=100,
+            start_condition=ImportedCases(count=2, ticks=300, pathogen="Typo"))
+
+        # get_pathogen resolves an empty name only when there is one pathogen
+        @test_throws ArgumentError get_pathogen(sim_all, "")
+        @test get_pathogen(sim_one, "").name == "PA"
+
+        # a pathogen must not be named like the ALL_PATHOGENS marker
+        @test_throws ArgumentError Pathogen(name = ALL_PATHOGENS)
+
+        # names are the selection key, so they must be unique
+        @test_throws ArgumentError Simulation(pop_size = 100,
+            pathogens = (Pathogen(id=1, name="DUP"), Pathogen(id=2, name="DUP")))
+
+        # conditions from the [[Simulation.StartConditions]] array form are expanded too
+        cfg_multi = Dict("Simulation" => Dict("StartConditions" => [
+            Dict("type" => "PatientZero", "parameters" => Dict("pathogen" => "PA")),
+            Dict("type" => "InfectedFraction", "parameters" => Dict("fraction" => 0.1, "pathogen" => ALL_PATHOGENS))]))
+        sc_multi = GEMS.determine_start_condition(cfg_multi, nothing, nothing, (pa, pb))
+        @test sc_multi isa MultiStartCondition
+        @test length(sc_multi.conditions) == 2
+        @test pathogen(sc_multi.conditions[1]) == "PA"
+        @test length(sc_multi.conditions[2].conditions) == 2
+
+        # a single entry stays a plain condition
+        cfg_single = Dict("Simulation" => Dict("StartConditions" => [
+            Dict("type" => "PatientZero", "parameters" => Dict("pathogen" => ALL_PATHOGENS))]))
+        sc_single = GEMS.determine_start_condition(cfg_single, nothing, nothing, (pa,))
+        @test !isa(sc_single, MultiStartCondition)
+        @test pathogen(sc_single) == "PA"
+
+        # without pathogens there is nothing to resolve against
+        @test pathogen(GEMS._expand_pathogens(PatientZero(pathogen = "Unknown"), ())) == "Unknown"
+        @test pathogen(GEMS._expand_pathogens(PatientZero(pathogen = ALL_PATHOGENS), ())) == ALL_PATHOGENS
+
+        # _with_pathogen rebuilds every normalized ImportedCases form
+        for ic in [ImportedCases(count=2, ticks=5),
+                   ImportedCases(count=[1, 2], ticks=[3, 4]),
+                   ImportedCases(count=Poisson(3), ticks=(start_tick=3, stop_tick=20, interval=3)),
+                   ImportedCases(count=(s, t) -> 2, ticks=s -> Int16[1, 2], ags=(s, t) -> 04011000)]
+            @test pathogen(GEMS._with_pathogen(ic, "PA")) == "PA"
+        end
+    end
+
+    @testset "Imported Cases" begin
+        # FAILING CONSTRUCTORS
+        @test_throws ArgumentError ImportedCases(count = 0, ticks = 5)
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = -1)
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = Int[])
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = "every week")
+        # window form: missing, unknown and invalid keys
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 1, stop_tick = 10))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 1, stop_tick = 10, interval = 2, rate = 0.5))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = -1, stop_tick = 10, interval = 2))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 10, stop_tick = 5, interval = 2))
+        @test_throws ArgumentError ImportedCases(count = 3, ticks = (start_tick = 1, stop_tick = 10, interval = 0))
+        # per-import vectors must line up with a schedule that is known upfront
+        @test_throws ArgumentError ImportedCases(count = [1, 2], ticks = [1, 2, 3])
+        @test_throws ArgumentError ImportedCases(count = 2, ticks = [1, 2, 3], ags = [04011000])
+        # a fixed interval wider than the window warns (likely a typo) but still constructs
+        @test_logs (:warn, r"exceeds the window") ImportedCases(count = 1, ticks = (start_tick = 1, stop_tick = 5, interval = 10))
+
+        # WINDOW FORM
+        # initialize! stages the schedule but seeds nothing yet
+        cond = ImportedCases(count = 5, ticks = (start_tick = 2, stop_tick = 10, interval = 3))
+        sim = Simulation(pop_size = 2000, seed = 1234, start_condition = cond)
+        @test sort(collect(keys(seeding_schedule(sim)))) == Int16[2, 5, 8]
+        @test all(spec.count == 5 for specs in values(seeding_schedule(sim)) for spec in specs)
+        @test count(infected, population(sim)) == 0
+        @test !isempty(@capture_out show(cond))
+
+        # stepping through tick 2 fires the first import (5 fresh cases, no spread yet)
+        for _ in 1:3 # process ticks 0, 1, 2
+            step!(sim)
+        end
+        @test count(infected, population(sim)) == 5
+
+        # reinitialize! rebuilds the schedule rather than duplicating it
+        reinitialize!(sim)
+        @test sort(collect(keys(seeding_schedule(sim)))) == Int16[2, 5, 8]
+
+        # EXPLICIT TICKS
+        # a range says the same thing as the window above
+        rngsim = Simulation(pop_size = 500, seed = 1234, start_condition = ImportedCases(count = 5, ticks = 2:3:10))
+        @test sort(collect(keys(seeding_schedule(rngsim)))) == Int16[2, 5, 8]
+        # a single tick
+        onesim = Simulation(pop_size = 500, seed = 1, start_condition = ImportedCases(count = 2, ticks = 7))
+        @test collect(keys(seeding_schedule(onesim))) == Int16[7]
+        # a repeated tick schedules two separate imports on it
+        dupsim = Simulation(pop_size = 500, seed = 1,
+            start_condition = ImportedCases(ticks = [3, 3], count = [2, 4]))
+        @test length(seeding_schedule(dupsim)[Int16(3)]) == 2
+        @test sort([s.count for s in seeding_schedule(dupsim)[Int16(3)]]) == [2, 4]
+
+        # OFFSET
+        # a fixed offset shifts the whole schedule
+        offsim = Simulation(pop_size = 500, seed = 1234,
+            start_condition = ImportedCases(count = 5, ticks = (start_tick = 2, stop_tick = 10, interval = 3, offset = 1)))
+        @test sort(collect(keys(seeding_schedule(offsim)))) == Int16[3, 6, 9]
+
+        # STOCHASTIC TIMING
+        # without an offset the first import is pinned to start_tick
+        pcond = ImportedCases(count = 2, ticks = (start_tick = 5, stop_tick = 200, interval = Exponential(10)))
+        psim = Simulation(pop_size = 2000, seed = 99, start_condition = pcond)
+        pticks = sort(collect(keys(seeding_schedule(psim))))
+        @test !isempty(pticks)
+        @test all(5 .<= pticks .<= 200)
+        @test minimum(pticks) == Int16(5)
+        # ticks stay reproducible under a fixed seed
+        psim2 = Simulation(pop_size = 2000, seed = 99, start_condition = pcond)
+        @test sort(collect(keys(seeding_schedule(psim2)))) == pticks
+
+        # drawing the offset too gives a process with nothing pinned to start_tick
+        qcond = ImportedCases(count = 2, ticks = (start_tick = 5, stop_tick = 200, interval = Exponential(10), offset = Exponential(10)))
+        qsim = Simulation(pop_size = 2000, seed = 99, start_condition = qcond)
+        qticks = sort(collect(keys(seeding_schedule(qsim))))
+        @test !isempty(qticks)
+        @test all(5 .< qticks .<= 200)
+
+        # TICKS AS A FUNCTION
+        fcond = ImportedCases(count = 1, ticks = sim -> Int16[gems_rand(rng(sim), 1:20) for _ in 1:5])
+        fsim = Simulation(pop_size = 500, seed = 42, start_condition = fcond)
+        fticks = sort(collect(keys(seeding_schedule(fsim))))
+        @test !isempty(fticks)
+        @test all(1 .<= fticks .<= 20)
+        fsim2 = Simulation(pop_size = 500, seed = 42, start_condition = fcond)
+        @test sort(collect(keys(seeding_schedule(fsim2)))) == fticks
+
+        # COUNT FORMS
+        # a distribution draws a per-import count (so counts vary)
+        scond = ImportedCases(count = Poisson(4), ticks = (start_tick = 1, stop_tick = 30, interval = 1))
+        ssim = Simulation(pop_size = 2000, seed = 7, start_condition = scond)
+        @test !all(==(4), [spec.count for specs in values(seeding_schedule(ssim)) for spec in specs])
+        # a 0 entry keeps the vector aligned with its ticks but seeds nothing
+        zcond = ImportedCases(count = [0, 6], ticks = [4, 9])
+        zsim = Simulation(pop_size = 500, seed = 1, start_condition = zcond)
+        @test collect(keys(seeding_schedule(zsim))) == Int16[9]
+        @test only(seeding_schedule(zsim)[Int16(9)]).count == 6
+        @test_throws ArgumentError ImportedCases(count = [-1, 6], ticks = [4, 9])
+        # a scalar count of 0 would make the whole condition a no-op and stays rejected
+        @test_throws ArgumentError ImportedCases(count = 0, ticks = [4, 9])
+
+        # a function sees the tick it is sizing
+        ccond = ImportedCases(count = (sim, t) -> Int(t), ticks = [4, 9])
+        csim = Simulation(pop_size = 500, seed = 1, start_condition = ccond)
+        @test only(seeding_schedule(csim)[Int16(4)]).count == 4
+        @test only(seeding_schedule(csim)[Int16(9)]).count == 9
+
+        # REGIONAL IMPORTS
+        # seeded cases land only in the target region
+        rcond = ImportedCases(count = 3, ticks = 1, ags = 04011000)
+        rsim = Simulation(population = "HB", seed = 3, start_condition = rcond)
+        step!(rsim); step!(rsim) # process ticks 0, 1 (import fires at tick 1)
+        infs = individuals(rsim)[infected.(individuals(rsim))]
+        @test length(infs) == 3
+        @test all(ags(household(i, rsim)) == AGS(04011000) for i in infs)
+
+        # a per-import region vector is staged entry by entry
+        vcond = ImportedCases(count = 1, ticks = [1, 2], ags = [04011000, 04012000])
+        vsim = Simulation(population = "HB", seed = 3, start_condition = vcond)
+        @test only(seeding_schedule(vsim)[Int16(1)]).ags == 04011000
+        @test only(seeding_schedule(vsim)[Int16(2)]).ags == 04012000
+
+        # composes with MultiStartCondition (initial outbreak + ongoing imports)
+        mc = MultiStartCondition([InfectedFraction(fraction = 0.01),
+            ImportedCases(count = 2, ticks = (start_tick = 3, stop_tick = 20, interval = 3))])
+        mcsim = Simulation(pop_size = 1000, seed = 5, start_condition = mc)
+        @test count(infected, population(mcsim)) == 10 # 1% seeded at t=0; imports not yet fired
+        @test !isempty(seeding_schedule(mcsim))
+
+        # individuals_in_ags (promoted helper): correct region membership
+        muni = individuals_in_ags(rsim, AGS(04011000))
+        @test !isempty(muni)
+        @test all(ags(household(i, rsim)) == AGS(04011000) for i in muni)
+        state_pool = individuals_in_ags(rsim, AGS(04000000)) # state-level AGS
+        @test length(state_pool) >= length(muni)
+        @test all(GEMS.in_state(ags(household(i, rsim)), AGS(04000000)) for i in state_pool)
+
+        # CONFIG PARSING: explicit ticks as a plain array
+        ec = GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => 3, "ticks" => [5, 12, 19], "ags" => 04011000)))
+        @test ec isa ImportedCases
+        @test ec.ticks == Int16[5, 12, 19]
+        @test ec.count == 3 && ec.ags == 04011000
+
+        # the window sub-table reaches the constructor with its keys intact
+        wc = GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => 3,
+                "ticks" => Dict("start_tick" => 5, "stop_tick" => 50, "interval" => 7))))
+        @test wc.ticks isa GEMS._ImportWindow
+        @test wc.ticks.start_tick == Int16(5) && wc.ticks.interval == 7.0
+
+        # a distribution nested inside the window sub-table is built by _config_value
+        dc = GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => Dict("distribution" => "Poisson", "parameters" => [3]),
+                "ticks" => Dict("start_tick" => 5, "stop_tick" => 50,
+                    "interval" => Dict("distribution" => "Exponential", "parameters" => [10])))))
+        @test dc.count isa Poisson
+        @test dc.ticks.interval isa Exponential
+
+        # invalid params surface as ErrorException through the factory
+        @test_throws ErrorException GEMS.create_start_condition(Dict("type" => "ImportedCases",
+            "parameters" => Dict("count" => 0, "ticks" => [5, 12])))
+
+        # a genuine dictionary argument is not mistaken for a distribution
+        rc = GEMS.create_start_condition(Dict("type" => "RegionalSeeds",
+            "parameters" => Dict("seeds" => Dict("13003000" => 5, "13076033" => 7))))
+        @test rc isa RegionalSeeds
+        @test seeds(rc) == Dict(13003000 => 5, 13076033 => 7)
     end
 
     @testset "Parameter Tests" begin
@@ -1059,10 +1348,9 @@ import GEMS: increment!, infected!
     end
 
     @testset "Multipathogen run!" begin
-        # infected_fraction only seeds the first pathogen — use MultiStartCondition
-        # to seed both so ~9% of individuals start with both pathogens simultaneously
-        # (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow block
-        # in _process_infections!
+        # both pathogens are seeded at 30% so that ~9% of individuals start with both
+        # simultaneously (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow
+        # block in _process_infections!
         p1 = Pathogen(id=1, name="PathA")
         p2 = Pathogen(id=2, name="PathB")
         mc = MultiStartCondition([

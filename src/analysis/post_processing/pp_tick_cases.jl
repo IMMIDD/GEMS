@@ -17,7 +17,10 @@ respective disease states exposed, infectious, recovered, and deceased, per path
 | `exposed_cnt`    | `Int64` | Number of individuals entering the exposed state    |
 | `infectious_cnt` | `Int64` | Number of individuals entering the infectious state |
 | `recovered_cnt`  | `Int64` | Number of individuals recovering                    |
-| `dead_cnt`       | `Int64` | Number of individuals dying                         |
+| `dead_cnt`       | `Int64` | Number of individuals dying, attributed to this pathogen |
+
+A host death is credited to exactly one pathogen (the one the `HealthProgression` drew it from),
+so `dead_cnt` summed over pathogens is the total number of deaths.
 """
 function tick_cases(postProcessor::PostProcessor)::DataFrame
 
@@ -42,9 +45,11 @@ function tick_cases(postProcessor::PostProcessor)::DataFrame
         x -> combine(x, nrow => :recovered_cnt) |>
         x -> DataFrames.select(x, :recovery => :tick, :pathogen_id, :recovered_cnt)
 
-    dead = groupby(infs, [:death, :pathogen_id]) |>
+    # a host death is one event attributed to one pathogen, so it comes from the death log
+    dead = deathsDF(postProcessor) |>
+        x -> groupby(x, [:tick, :pathogen_id]) |>
         x -> combine(x, nrow => :dead_cnt) |>
-        x -> DataFrames.select(x, :death => :tick, :pathogen_id, :dead_cnt)
+        x -> DataFrames.select(x, :tick, :pathogen_id, :dead_cnt)
 
     res = leftjoin!(base, exposed, on = [:tick, :pathogen_id])
     leftjoin!(res, infectious, on = [:tick, :pathogen_id])

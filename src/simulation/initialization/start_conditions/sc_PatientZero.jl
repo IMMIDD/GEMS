@@ -8,7 +8,7 @@ export initialize!
 A `StartCondition` that infects a single individual at random at the beginning of the simulation.
 
 # Fields
-- `pathogen::String`: The pathogen with which the individual has to be infected
+- `pathogen::String`: Pathogen to infect the individual with; empty string = the only pathogen, `ALL_PATHOGENS` = every pathogen (one individual each)
 
 Example
 ```julia

@@ -45,13 +45,14 @@ after exposure, 20 individuals were latent, 47 were presymptomatic
 
 - `DataFrame` with the following columns:
 
-| Name             | Type    | Description                                                  |
-| :--------------- | :------ | :----------------------------------------------------------- |
-| `pathogen_id`    | `Int8`  | Pathogen identifier                                          |
-| `latent`         | `Int64` | Number of latent individuals X ticks after exposure          |
-| `pre_symptomatic`| `Int64` | Number of pre-symptomatic individuals X ticks after exposure |
-| `symptomatic`    | `Int64` | Number of symptomatic individuals X ticks after exposure     |
-| `asymptomatic`   | `Int64` | Number of asymptomatic individuals X ticks after exposure    |
+| Name              | Type    | Description                                                  |
+| :---------------- | :------ | :----------------------------------------------------------- |
+| `tick`            | `Int64` | Ticks since exposure                                         |
+| `latent`          | `Int64` | Number of latent individuals X ticks after exposure          |
+| `pre_symptomatic` | `Int64` | Number of pre-symptomatic individuals X ticks after exposure |
+| `symptomatic`     | `Int64` | Number of symptomatic individuals X ticks after exposure     |
+| `asymptomatic`    | `Int64` | Number of asymptomatic individuals X ticks after exposure    |
+| `pathogen_id`     | `Int8`  | Pathogen identifier                                          |
 """
 function cumulative_disease_progressions(postProcessor::PostProcessor)
     infs = infectionsDF(postProcessor)
@@ -68,7 +69,7 @@ function cumulative_disease_progressions(postProcessor::PostProcessor)
         df = DataFrame(
             symptom_onset = p_infs.symptom_onset .- p_infs.tick,
             infectiousness_onset = p_infs.infectiousness_onset .- p_infs.tick,
-            removed = max.(p_infs.recovery, p_infs.death) .- p_infs.tick
+            removed = p_infs.removed .- p_infs.tick
         )
         res = calc_cum_dis_values(df)
         res.pathogen_id .= pid

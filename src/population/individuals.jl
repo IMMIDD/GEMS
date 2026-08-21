@@ -4,7 +4,7 @@
 
 # EXPORTS
 # types
-export Individual
+export Individual, DiseaseFlags
 # basic attributes
 export age, id, education, occupation, sex
 # behaviour
@@ -21,12 +21,13 @@ export is_presymptomatic, ispresymptomatic, presymptomatic
 export is_symptomatic, issymptomatic, symptomatic
 export is_asymptomatic, isasymptomatic, asymptomatic
 export is_severe, issevere, severe
+export is_critical, iscritical, critical
 export is_mild, ismild, mild
 export is_hospitalized, ishospitalized, hospitalized
 export is_icu, isicu, icu
 export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
-export is_dead, isdead, dead
+export is_dead, isdead, dead, death
 export is_detected, isdetected, detected
 export active_pathogens_mask
 export number_of_infections
@@ -38,6 +39,42 @@ export is_quarantined, isquarantined, quarantined
 export AutoExtension
 
 
+
+###
+### DISEASE FLAGS
+###
+"""
+    DiseaseFlags
+
+Bit-packed per-pathogen disease state of a host (`infected`/`infectious`/`symptomatic`/`severe`/
+`critical`/`dead`). Read with the `is_*` accessors and combine with `|`. Stored on the
+`Individual` and rebuilt each tick by `progress_disease!`.
+"""
+struct DiseaseFlags
+    bits::UInt8
+end
+
+const FLAG_INFECTED = UInt8(1) << 0
+const FLAG_INFECTIOUS = UInt8(1) << 1
+const FLAG_SYMPTOMATIC = UInt8(1) << 2
+const FLAG_SEVERE = UInt8(1) << 3
+const FLAG_CRITICAL = UInt8(1) << 4
+const FLAG_DEAD = UInt8(1) << 5
+
+DiseaseFlags() = DiseaseFlags(UInt8(0))
+
+is_infected(f::DiseaseFlags) = (f.bits & FLAG_INFECTED) != 0
+is_infectious(f::DiseaseFlags) = (f.bits & FLAG_INFECTIOUS) != 0
+is_symptomatic(f::DiseaseFlags) = (f.bits & FLAG_SYMPTOMATIC) != 0
+is_severe(f::DiseaseFlags) = (f.bits & FLAG_SEVERE) != 0
+is_critical(f::DiseaseFlags) = (f.bits & FLAG_CRITICAL) != 0
+is_dead(f::DiseaseFlags) = (f.bits & FLAG_DEAD) != 0
+
+# functional single-flag update (returns a new value)
+@inline _set_flag(f::DiseaseFlags, mask::UInt8, val::Bool) = DiseaseFlags(val ? (f.bits | mask) : (f.bits & ~mask))
+
+# union, used to fold an individual's active infections each tick
+@inline Base.:|(a::DiseaseFlags, b::DiseaseFlags) = DiseaseFlags(a.bits | b.bits)
 
 ###
 ### INDIVIDUALS
@@ -55,6 +92,9 @@ A type to represent individuals that act as agents inside the simulation.
     - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
     - `education::Int8`: Education class (i.e. highest degree)
 
+- Comorbidities
+    - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
+
 - Behaviour
     - `social_factor::Float32`: Parameter for risk-willingness (-1 to 1)
     - `mandate_compliance::Float32`: Probability of complying to mandates (-1 to 1)
@@ -65,17 +105,11 @@ A type to represent individuals that act as agents inside the simulation.
     - `schoolclass::Int32`: Reference to schoolclass id
     - `municipality::Int32`: Reference to municipality id
 
-- Health Status
-    - `killing_pathogen_id::Int8`: Pathogen that killed the agent
-    - `infected::Bool`: Flag indicating individual's infection status
-    - `infectious::Bool`: Flag indicating if individual is infectious with any pathogen
-    - `symptomatic::Bool`: Flag indicating individual is showing symptoms
-    - `severe::Bool`: Flag indicating individual is experiencing severe symptoms
-    - `hospitalized::Bool`: Flag indicating individual is in the hospital
-    - `icu::Bool`: Flag indicating individual is in the ICU
-    - `ventilated::Bool`: Flag indicating individual is on a ventilator
-    - `dead::Bool`: Flag indicating individual's decease
-    - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
+- Bookkeeping
+    - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
+    - `number_of_infections::Int8`: Lifetime infection count
+    - `disease_flags::UInt8`: Bitpacked disease-state flags (`infected`/`infectious`/`symptomatic`/`severe`/`critical`/`dead`), accessed via the `is_*`/`*!` accessors
+    - `killing_pathogen_id::Int8`: Pathogen credited for the host death (set when death is scheduled, read by the death logger)
 
 - Interventions
     - `detected_mask::UInt32`: Bitmask of pathogens for which an infection is detected
@@ -83,9 +117,11 @@ A type to represent individuals that act as agents inside the simulation.
     - `quarantine_release_tick::Int16`: End tick of quarantine
     - `quarantine_status::Int8`: Status indicator (none, household, etc.)
 
-- Bookkeeping
-    - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
-    - `number_of_infections::Int8`: Lifetime infection count
+- Host Care State (current occupancy only; pending transitions live in the `Simulation`'s `HealthSchedule`)
+    - `hospital_demands::Int16`: Count of active care contributions demanding a hospital bed. The host occupies the level while the count is above zero.
+    - `icu_demands::Int16`: Count of active care contributions demanding ICU.
+    - `ventilation_demands::Int16`: Count of active care contributions demanding ventilation.
+    - `death::Int16`: Tick of host death
 
 - Pathogen
     - `infection_cache::NTuple{N, InfectionState}`: Fixed-size cache of current infections
@@ -101,57 +137,57 @@ A type to represent individuals that act as agents inside the simulation.
 """
 @with_kw_noshow mutable struct Individual
     # GENERAL
-    id::Int32                               # off 0,   4B,  line 0
-    sex::Int8                               # off 4,   1B,  line 0
-    age::Int8                               # off 5,   1B,  line 0
-    occupation::Int16 = DEFAULT_SETTING_ID  # off 6,   2B,  line 0
-    education::Int8 = DEFAULT_SETTING_ID    # off 8,   1B,  line 0   (then 3B padding)
+    id::Int32                                       # off 0,   4B,  line 0
+    sex::Int8                                       # off 4,   1B,  line 0
+    age::Int8                                       # off 5,   1B,  line 0
+    occupation::Int16 = DEFAULT_SETTING_ID          # off 6,   2B,  line 0
+    education::Int8 = DEFAULT_SETTING_ID            # off 8,   1B,  line 0
+
+    # COMORBIDITIES
+    comorbidities::UInt16 = 0                       # off 10,  2B,  line 0
 
     # BEHAVIOR
-    social_factor::Float32 = 0              # off 12,  4B,  line 0
-    mandate_compliance::Float32 = 0         # off 16,  4B,  line 0
+    social_factor::Float32 = 0                      # off 12,  4B,  line 0
+    mandate_compliance::Float32 = 0                 # off 16,  4B,  line 0
 
     # ASSIGNED SETTINGS
-    household::Int32 = DEFAULT_SETTING_ID    # off 20,  4B,  line 0
-    office::Int32 = DEFAULT_SETTING_ID       # off 24,  4B,  line 0
-    schoolclass::Int32 = DEFAULT_SETTING_ID  # off 28,  4B,  line 0
-    municipality::Int32 = DEFAULT_SETTING_ID # off 32,  4B,  line 0
-
-    # HEALTH STATUS
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 36,  1B,  line 0
-    infected::Bool = false                  # off 37,  1B,  line 0
-    infectious::Bool = false                # off 38,  1B,  line 0
-    symptomatic::Bool = false               # off 39,  1B,  line 0
-    severe::Bool = false                    # off 40,  1B,  line 0
-    hospitalized::Bool = false              # off 41,  1B,  line 0
-    icu::Bool = false                       # off 42,  1B,  line 0
-    ventilated::Bool = false                # off 43,  1B,  line 0
-    dead::Bool = false                      # off 44,  1B,  line 0   (then 1B padding)
-    comorbidities::UInt16 = 0               # off 46,  2B,  line 0
-
-    # INTERVENTIONS
-    detected_mask::UInt32 = 0                       # off 48,  4B,  line 0
-    quarantine_tick::Int16 = DEFAULT_TICK           # off 52,  2B,  line 0
-    quarantine_release_tick::Int16 = DEFAULT_TICK   # off 54,  2B,  line 0
-    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 56,  1B,  line 0
+    household::Int32 = DEFAULT_SETTING_ID           # off 20,  4B,  line 0
+    office::Int32 = DEFAULT_SETTING_ID              # off 24,  4B,  line 0
+    schoolclass::Int32 = DEFAULT_SETTING_ID         # off 28,  4B,  line 0
+    municipality::Int32 = DEFAULT_SETTING_ID        # off 32,  4B,  line 0
 
     # BOOKKEEPING
-    needs_immunity_update::Bool = false     # off 57,  1B,  line 0
-    number_of_infections::Int8 = 0          # off 58,  1B,  line 0   (then 1B padding)
+    needs_immunity_update::Bool = false             # off 36,  1B,  line 0
+    number_of_infections::Int8 = 0                  # off 37,  1B,  line 0
+    disease_flags::DiseaseFlags = DiseaseFlags()    # off 38,  1B,  line 0
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 39,  1B,  line 0
+
+    # INTERVENTIONS
+    detected_mask::UInt32 = 0                       # off 40,  4B,  line 0
+    quarantine_tick::Int16 = DEFAULT_TICK           # off 44,  2B,  line 0
+    quarantine_release_tick::Int16 = DEFAULT_TICK   # off 46,  2B,  line 0
+    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 48, 1B, line 0
+
+    # HOST CARE STATE (current only; pending transitions live in the Simulation's HealthSchedule)
+    hospital_demands::Int16 = 0                     # off 50,  2B,  line 0
+    icu_demands::Int16 = 0                          # off 52,  2B,  line 0
+    ventilation_demands::Int16 = 0                  # off 54,  2B,  line 0
+    death::Int16 = DEFAULT_TICK                     # off 56,  2B,  line 0
+    #                                                 off 58-59, 2B free (alignment)
 
     # PATHOGEN
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} =
-        ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)  # off 60,  40B,  lines 0–1 (crosses the 64-byte boundary)
-    infection_head::Int32 = 0               # off 100, 4B,  line 1
-    active_pathogens_mask::UInt32 = 0       # off 104, 4B,  line 1
+        ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)  # off 60,  28B, line 0/1
+    infection_head::Int32 = 0                       # off 88,  4B,  line 1
+    active_pathogens_mask::UInt32 = 0               # off 92,  4B,  line 1
 
     # IMMUNITY
     immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} =
-        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 108, 12B,  line 1
-    immunity_head::Int32 = 0                # off 120, 4B,  line 1   (then 4B padding)
+        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 96,  12B, line 1
+    immunity_head::Int32 = 0                        # off 108, 4B,  line 1
 
     # EXTENSIONS
-    extensions::Any = nothing               # off 128, 8B,  line 2
+    extensions::Any = nothing                       # off 112, 8B,  line 1
 end
 
 # CONSTRUCTOR
@@ -370,7 +406,7 @@ end
 
 Returns the `infected` flag of the individual.
 """
-is_infected(individual::Individual) = individual.infected
+is_infected(individual::Individual) = is_infected(individual.disease_flags)
 isinfected(individual::Individual) = is_infected(individual)
 infected(individual::Individual) = is_infected(individual)
 
@@ -379,7 +415,7 @@ infected(individual::Individual) = is_infected(individual)
 
 Sets the `infected` flag of the individual.
 """
-infected!(individual::Individual, infected::Bool) = (individual.infected = infected)
+infected!(individual::Individual, infected::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_INFECTED, infected))
 
 """
     infected!(individual::Individual, pathogen_id::Int8, val::Bool)
@@ -402,7 +438,7 @@ end
 
 Returns `true` iff the individual currently has nonzero shedding for at least one of their active pathogens.
 """
-is_infectious(individual::Individual) = individual.infectious
+is_infectious(individual::Individual) = is_infectious(individual.disease_flags)
 isinfectious(individual::Individual) = is_infectious(individual)
 infectious(individual::Individual) = is_infectious(individual)
 
@@ -411,7 +447,7 @@ infectious(individual::Individual) = is_infectious(individual)
 
 Sets the `infectious` flag of the individual.
 """
-infectious!(individual::Individual, infectious::Bool) = (individual.infectious = infectious)
+infectious!(individual::Individual, infectious::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_INFECTIOUS, infectious))
 
 """
     is_exposed(individual::Individual)
@@ -434,7 +470,7 @@ exposed(individual::Individual) = is_exposed(individual)
 
 Returns the `symptomatic` flag of the individual.
 """
-is_symptomatic(individual::Individual) = individual.symptomatic
+is_symptomatic(individual::Individual) = is_symptomatic(individual.disease_flags)
 issymptomatic(individual::Individual) = is_symptomatic(individual)
 symptomatic(individual::Individual) = is_symptomatic(individual)
 
@@ -443,7 +479,7 @@ symptomatic(individual::Individual) = is_symptomatic(individual)
 
 Sets the `symptomatic` flag of the individual.
 """
-symptomatic!(individual::Individual, symptomatic::Bool) = (individual.symptomatic = symptomatic)
+symptomatic!(individual::Individual, symptomatic::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_SYMPTOMATIC, symptomatic))
 
 """
     is_severe(individual::Individual)
@@ -452,7 +488,7 @@ symptomatic!(individual::Individual, symptomatic::Bool) = (individual.symptomati
 
 Returns the `severe` flag of the individual.
 """
-is_severe(individual::Individual) = individual.severe
+is_severe(individual::Individual) = is_severe(individual.disease_flags)
 issevere(individual::Individual) = is_severe(individual)
 severe(individual::Individual) = is_severe(individual)
 
@@ -461,61 +497,59 @@ severe(individual::Individual) = is_severe(individual)
 
 Sets the `severe` flag of the individual.
 """
-severe!(individual::Individual, severe::Bool) = (individual.severe = severe)
+severe!(individual::Individual, severe::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_SEVERE, severe))
+
+"""
+    is_critical(individual::Individual)
+    iscritical(individual::Individual)
+    critical(individual::Individual)
+
+Returns the `critical` flag of the individual.
+"""
+is_critical(individual::Individual) = is_critical(individual.disease_flags)
+iscritical(individual::Individual) = is_critical(individual)
+critical(individual::Individual) = is_critical(individual)
+
+"""
+    critical!(individual::Individual, critical::Bool)
+
+Sets the `critical` flag of the individual.
+"""
+critical!(individual::Individual, critical::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_CRITICAL, critical))
 
 """
     is_hospitalized(individual::Individual)
     ishospitalized(individual::Individual)
     hospitalized(individual::Individual)
 
-Returns the `hospitalized` flag of the individual.
+Returns `true` if the individual is currently in hospital. Care state is realized as the simulation
+runs, so there is no timeline to query at an arbitrary tick; use `health_episodes` for past occupancy.
 """
-is_hospitalized(individual::Individual) = individual.hospitalized
+is_hospitalized(individual::Individual) = individual.hospital_demands > 0
 ishospitalized(individual::Individual) = is_hospitalized(individual)
 hospitalized(individual::Individual) = is_hospitalized(individual)
 
 """
-    hospitalized!(individual::Individual, hospitalized::Bool)
-
-Sets the `hospitalized` flag of the individual.
-"""
-hospitalized!(individual::Individual, hospitalized::Bool) = (individual.hospitalized = hospitalized)
-
-"""
     is_icu(individual::Individual)
     isicu(individual::Individual)
-    isicu(individual::Individual)
+    icu(individual::Individual)
 
-Returns the `icu` flag of the individual.
+Returns `true` if the individual is currently in the ICU.
 """
-is_icu(individual::Individual) = individual.icu
+is_icu(individual::Individual) = individual.icu_demands > 0
 isicu(individual::Individual) = is_icu(individual)
 icu(individual::Individual) = is_icu(individual)
-
-"""
-    icu!(individual::Individual, isicu::Bool)
-
-Sets the `icu` flag of the individual.
-"""
-icu!(individual::Individual, icu::Bool) = (individual.icu = icu)
 
 """
     is_ventilated(individual::Individual)
     isventilated(individual::Individual)
     ventilated(individual::Individual)
 
-Returns the `ventilated` flag of the individual.
+Returns `true` if the individual is currently on a ventilator.
 """
-is_ventilated(individual::Individual) = individual.ventilated
+is_ventilated(individual::Individual) = individual.ventilation_demands > 0
 isventilated(individual::Individual) = is_ventilated(individual)
 ventilated(individual::Individual) = is_ventilated(individual)
-
-"""
-    ventilated!(individual::Individual, ventilated::Bool)
-
-Sets the `ventilated` flag of the individual.
-"""
-ventilated!(individual::Individual, ventilated::Bool) = (individual.ventilated = ventilated)
 
 """
     is_dead(individual::Individual)
@@ -524,7 +558,7 @@ ventilated!(individual::Individual, ventilated::Bool) = (individual.ventilated =
 
 Returns `true` if the individual is dead.
 """
-is_dead(individual::Individual) = individual.dead
+is_dead(individual::Individual) = is_dead(individual.disease_flags)
 isdead(individual::Individual) = is_dead(individual)
 dead(individual::Individual) = is_dead(individual)
 
@@ -534,7 +568,14 @@ dead(individual::Individual) = is_dead(individual)
 
 Set the `dead` flag of the individual.
 """
-dead!(individual::Individual, dead::Bool) = (individual.dead = dead)
+dead!(individual::Individual, dead::Bool) = (individual.disease_flags = _set_flag(individual.disease_flags, FLAG_DEAD, dead))
+
+"""
+    death(individual::Individual)
+
+Returns the tick the individual is scheduled to die at, `DEFAULT_TICK` if none.
+"""
+death(individual::Individual)::Int16 = individual.death
 
 """
     is_detected(individual::Individual)
@@ -742,19 +783,27 @@ end
 """
     individual_base_fieldnames()
 
-Return the field names of `Individual` excluding `:extensions`.
+Return the field names of `Individual` that a constructor may populate from external data,
+excluding `:extensions` and the three `*_demands` counters.
 Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
 they don't accidentally try to populate the extension slot from a column that doesn't exist.
+
+The demand counters are realized state, not input: a count set from a population file would have no
+matching discharge scheduled, stranding the host as permanently admitted.
 """
-individual_base_fieldnames() = filter(!=(:extensions), fieldnames(Individual))
+individual_base_fieldnames() = filter(f -> f !== :extensions && f !== :hospital_demands && f !== :icu_demands && f !== :ventilation_demands, fieldnames(Individual))
 
 """
     assert_no_core_collision(names)
 
 Throw an error if any of `names` of extension fields collides with a core `Individual` field name.
+
+Checks every field, not `individual_base_fieldnames()`: that list answers "settable from external
+data", and a field excluded from it is still shadowed by the real one, so an extension sharing its
+name would be silently unreachable.
 """
 function assert_no_core_collision(names)
-    clash = intersect(Symbol.(collect(names)), individual_base_fieldnames())
+    clash = intersect(Symbol.(collect(names)), fieldnames(Individual))
     isempty(clash) || error(
         "ind_extension field(s) $(collect(clash)) collide with core Individual fields. " *
         "Extension fields must use distinct names. Rename the offending column(s).")
@@ -815,14 +864,15 @@ function Base.show(io::IO, individual::Individual)
         "Social Factor" => individual.social_factor,
         "Mandate Compliance" => individual.mandate_compliance,
         
-        "Is Infected" => individual.infected,
-        "Is Infectious" => individual.infectious,
-        "Is Symptomatic" => individual.symptomatic,
-        "Is Severe" => individual.severe,
-        "Is Hospitalized" => individual.hospitalized,
-        "Is ICU'd" => individual.icu,
-        "Is Ventilated" => individual.ventilated,
-        "Is Dead" => individual.dead,
+        "Is Infected" => is_infected(individual),
+        "Is Infectious" => is_infectious(individual),
+        "Is Symptomatic" => is_symptomatic(individual),
+        "Is Severe" => is_severe(individual),
+        "Is Critical" => is_critical(individual),
+        "Hospital Demands" => individual.hospital_demands,
+        "ICU Demands" => individual.icu_demands,
+        "Ventilation Demands" => individual.ventilation_demands,
+        "Is Dead" => is_dead(individual),
 
         "Household ID" => individual.household,
         "Office ID" => individual.office != DEFAULT_SETTING_ID ? individual.office : "n/a",

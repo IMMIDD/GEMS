@@ -14,8 +14,7 @@ export infectiousness
 export immunity_level
 # disease progression timeline
 export exposure, infectiousness_onset, symptom_onset, severeness_onset, severeness_offset
-export hospital_admission, icu_admission, icu_discharge, ventilation_admission
-export ventilation_discharge, hospital_discharge, recovery, death
+export recovery
 # testing
 export get_test_state
 export last_test
@@ -27,7 +26,6 @@ export vaccinate!
 export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
 # disease progression engine
 export progress_disease!
-export set_progression!
 
 
 
@@ -383,14 +381,9 @@ infectiousness_onset(ind::Individual, infections::InfectionRegistry, pid::Int8) 
 symptom_onset(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).symptom_onset
 severeness_onset(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).severeness_onset
 severeness_offset(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).severeness_offset
-hospital_admission(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).hospital_admission
-icu_admission(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).icu_admission
-icu_discharge(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).icu_discharge
-ventilation_admission(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).ventilation_admission
-ventilation_discharge(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).ventilation_discharge
-hospital_discharge(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).hospital_discharge
+critical_onset(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).critical_onset
+critical_offset(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).critical_offset
 recovery(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).recovery
-death(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).death
 
 
 ### DISEASE STATUS ###
@@ -405,7 +398,7 @@ Returns `true` if the individual is infected with the given pathogen at tick `t`
 function is_infected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    return state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)
+    return state.exposure >= 0 && state.exposure <= t < state.recovery
 end
 isinfected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t)
 infected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t)
@@ -420,7 +413,7 @@ Returns `true` if the individual is infectious with the given pathogen at tick `
 function is_infectious(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    max_rec_dea = max(state.recovery, state.death)
+    max_rec_dea = state.recovery
     !(state.exposure >= 0 && state.exposure <= t < max_rec_dea) && return false
     return state.infectiousness_onset <= t < max_rec_dea
 end
@@ -438,7 +431,7 @@ Exposed means infected but not yet infectious.
 function is_exposed(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
+    !(state.exposure >= 0 && state.exposure <= t < state.recovery) && return false
     return state.exposure <= t < state.infectiousness_onset
 end
 isexposed(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_exposed(individual, infections, pathogen_id, t)
@@ -455,7 +448,7 @@ Presymptomatic means infected, will develop symptoms, but is not yet symptomatic
 function is_presymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
+    !(state.exposure >= 0 && state.exposure <= t < state.recovery) && return false
     return t < state.symptom_onset
 end
 ispresymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, infections, pathogen_id, t)
@@ -471,7 +464,7 @@ Returns `true` if the individual is symptomatic with the given pathogen at tick 
 function is_symptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    max_rec_dea = max(state.recovery, state.death)
+    max_rec_dea = state.recovery
     !(state.exposure >= 0 && state.exposure <= t < max_rec_dea) && return false
     return 0 <= state.symptom_onset <= t < max_rec_dea
 end
@@ -489,7 +482,7 @@ Asymptomatic means infected and will not develop symptoms.
 function is_asymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    max_rec_dea = max(state.recovery, state.death)
+    max_rec_dea = state.recovery
     !(state.exposure >= 0 && state.exposure <= t < max_rec_dea) && return false
     is_symp = 0 <= state.symptom_onset <= t < max_rec_dea
     return !is_symp && state.symptom_onset < state.exposure
@@ -507,7 +500,7 @@ Returns `true` if the individual is in a severe infections with the given pathog
 function is_severe(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
+    !(state.exposure >= 0 && state.exposure <= t < state.recovery) && return false
     return 0 <= state.severeness_onset <= t < state.severeness_offset
 end
 issevere(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_severe(individual, infections, pathogen_id, t)
@@ -524,7 +517,7 @@ Mild means symptomatic but not severe.
 function is_mild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    max_rec_dea = max(state.recovery, state.death)
+    max_rec_dea = state.recovery
     !(state.exposure >= 0 && state.exposure <= t < max_rec_dea) && return false
     is_symp = 0 <= state.symptom_onset <= t < max_rec_dea
     !is_symp && return false
@@ -534,54 +527,20 @@ ismild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8,
 mild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_mild(individual, infections, pathogen_id, t)
 
 """
-    is_hospitalized(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    ishospitalized(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    hospitalized(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_critical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    iscritical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    critical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
 
-Returns `true` if the individual is hospitalized with the given pathogen at tick `t`.
+Returns `true` if the individual is in a critical infection with the given pathogen at tick `t`.
 """
-function is_hospitalized(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+function is_critical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
-    return 0 <= state.hospital_admission <= t < state.hospital_discharge
+    !(state.exposure >= 0 && state.exposure <= t < state.recovery) && return false
+    return 0 <= state.critical_onset <= t < state.critical_offset
 end
-ishospitalized(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_hospitalized(individual, infections, pathogen_id, t)
-hospitalized(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_hospitalized(individual, infections, pathogen_id, t)
-
-"""
-    is_icu(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    isicu(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    icu(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-
-Returns `true` if the individual is in ICU with the given pathogen at tick `t`.
-"""
-function is_icu(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    state = get_infection_state(individual, infections, pathogen_id)
-    !state.active && return false
-    !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
-    !(0 <= state.hospital_admission <= t < state.hospital_discharge) && return false
-    return 0 <= state.icu_admission <= t < state.icu_discharge
-end
-isicu(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_icu(individual, infections, pathogen_id, t)
-icu(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_icu(individual, infections, pathogen_id, t)
-
-"""
-    is_ventilated(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    isventilated(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    ventilated(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-
-Returns `true` if the individual is ventilated with the given pathogen at tick `t`.
-"""
-function is_ventilated(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    state = get_infection_state(individual, infections, pathogen_id)
-    !state.active && return false
-    !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
-    !(0 <= state.hospital_admission <= t < state.hospital_discharge) && return false
-    return 0 <= state.ventilation_admission <= t < state.ventilation_discharge
-end
-isventilated(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_ventilated(individual, infections, pathogen_id, t)
-ventilated(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_ventilated(individual, infections, pathogen_id, t)
+iscritical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_critical(individual, infections, pathogen_id, t)
+critical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_critical(individual, infections, pathogen_id, t)
 
 """
     is_recovered(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
@@ -599,21 +558,6 @@ isrecovered(individual::Individual, infections::InfectionRegistry, pathogen_id::
 recovered(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_recovered(individual, infections, pathogen_id, t)
 
 """
-    is_dead(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    isdead(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    dead(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-
-Returns `true` if the individual is dead from the given pathogen at tick `t`.
-"""
-function is_dead(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
-    state = get_infection_state(individual, infections, pathogen_id)
-    !state.active && return false
-    return 0 <= state.death <= t
-end
-isdead(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_dead(individual, infections, pathogen_id, t)
-dead(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_dead(individual, infections, pathogen_id, t)
-
-"""
     is_detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is currently infected with the given pathogen and has been detected at any point during this infection.
@@ -621,7 +565,7 @@ Returns `true` if the individual is currently infected with the given pathogen a
 function is_detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     state = get_infection_state(individual, infections, pathogen_id)
     !state.active && return false
-    !(state.exposure >= 0 && state.exposure <= t < max(state.recovery, state.death)) && return false
+    !(state.exposure >= 0 && state.exposure <= t < state.recovery) && return false
     return is_detected(individual, pathogen_id)
 end
 isdetected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
@@ -802,60 +746,6 @@ number_of_vaccinations(individual::Individual, sim::Simulation, pathogen_id::Int
 
 
 """
-    set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
-
-Applies `dp` directly to `ind` by writing an active `InfectionState` into the individual's
-infection cache, bypassing the normal simulation buffer and flush cycle.
-The individual is immediately visible as infected for `pathogen_id` without needing a running
-`Simulation` or a call to `step!`.
-
-If `ind` is already actively infected with `pathogen_id`, this is a no-op (with a warning):
-at most one active infection per pathogen is allowed.
-"""
-function set_progression!(ind::Individual, dp::DiseaseProgression, pathogen_id::Int8 = Int8(1))
-    # at most one active infection per pathogen; skip a duplicate rather than corrupt the invariant
-    if infected(ind, pathogen_id)
-        @warn "set_progression!: individual $(id(ind)) is already infected with pathogen $pathogen_id; skipping to preserve the one-active-infection-per-pathogen invariant."
-        return nothing
-    end
-    # without a persistent registry, an overflow would dangle, so require a free cache slot
-    any(i -> !ind.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
-        throw(ArgumentError("set_progression! cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual without a Simulation context."))
-    push_infection!(InfectionRegistry(), ind, pathogen_id, DEFAULT_INFECTION_ID, dp)
-    infected!(ind, true)
-    infected!(ind, pathogen_id, true)
-    return nothing
-end
-
-"""
-    set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
-
-Seeds an active `InfectionState` with all fields set to `DEFAULT_TICK` (i.e. -1).
-Useful when you need an active infection slot for a specific pathogen without
-constraining any timeline values.
-"""
-function set_progression!(ind::Individual, pathogen_id::Int8 = Int8(1))
-    # at most one active infection per pathogen; skip a duplicate rather than corrupt the invariant
-    if infected(ind, pathogen_id)
-        @warn "set_progression!: individual $(id(ind)) is already infected with pathogen $pathogen_id; skipping to preserve the one-active-infection-per-pathogen invariant."
-        return nothing
-    end
-    blank = InfectionState(
-        DEFAULT_INFECTION_ID, Int32(0),
-        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
-        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
-        DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK, DEFAULT_TICK,
-        Int8(0), pathogen_id, true
-    )
-    ind.infection_cache = Base.setindex(ind.infection_cache, blank, 1)
-    infected!(ind, true)
-    infected!(ind, pathogen_id, true)
-    return nothing
-end
-
-
-
-"""
     _immunity_level_and_stable(pathogen, state, individual, tick, rng)
 
 Function barrier that extracts the `ImmunityProfile` from `pathogen` and calls `calculate_immunity` and `immunity_is_stable`.
@@ -936,29 +826,21 @@ function _infectiousness_level(pathogen, state::InfectionState, individual::Indi
 end
 
 """
-    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_SlotRemoval})
+    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
 
 Handles the health flags and memory-management when an individual dies.
 """
-@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_SlotRemoval})
-    individual.dead = true
+@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
+    individual.disease_flags = DiseaseFlags(FLAG_DEAD)
 
     individual.killing_pathogen_id = pathogen_id
     individual.active_pathogens_mask = 0
-
-    individual.infected = false
-    individual.infectious = false
-    individual.symptomatic = false
-    individual.severe = false
-    individual.hospitalized = false
-    individual.icu = false
-    individual.ventilated = false
     individual.detected_mask = 0
 
     # stage all active cache memory for removal
     @inbounds for c in 1:INFECTIONS_CACHE_SIZE
         if individual.infection_cache[c].active
-            _stage_slot_removal!(removal_buf, individual, _CacheSlot(Int32(c)))
+            _stage_ended_infection!(removal_buf, individual, _CacheSlot(Int32(c)))
             # Clear it AFTER pushing to the buffer
             individual.infection_cache = Base.setindex(individual.infection_cache, InfectionState(), c)
         end
@@ -968,7 +850,7 @@ Handles the health flags and memory-management when an individual dies.
     if individual.infection_head != 0
         node_idx = individual.infection_head
         while node_idx != 0
-            _stage_slot_removal!(removal_buf, individual, _OverflowNode(node_idx))
+            _stage_ended_infection!(removal_buf, individual, _OverflowNode(node_idx))
             node_idx = infections.states[node_idx].next
         end
     end
@@ -977,63 +859,42 @@ Handles the health flags and memory-management when an individual dies.
 end
 
 """
-    HealthFlags
+    _disease_flags(s::InfectionState, tick::Int16, end_tick::Int16)::DiseaseFlags
 
-Private accumulator mirroring the individual's seven boolean health-status fields
-(`infected`/`infectious`/`symptomatic`/`severe`/`hospitalized`/`icu`/`ventilated`). OR-ed
-across an individual's active infections in `progress_disease!`, then unpacked once into
-those fields. Ephemeral fold result — not stored on the individual.
+Single source of truth for the per-tick disease-state predicates of one active infection.
 """
-struct HealthFlags
-    inf::Bool; infectious::Bool; symp::Bool; sev::Bool; hosp::Bool; icu::Bool; vent::Bool
+@inline function _disease_flags(s::InfectionState, tick::Int16, end_tick::Int16)
+    bits = UInt8(0)
+    s.exposure <= tick < end_tick && (bits |= FLAG_INFECTED)
+    s.infectiousness_onset <= tick < end_tick && (bits |= FLAG_INFECTIOUS)
+    Int16(0) <= s.symptom_onset <= tick < end_tick && (bits |= FLAG_SYMPTOMATIC)
+    Int16(0) <= s.severeness_onset <= tick < s.severeness_offset && (bits |= FLAG_SEVERE)
+    Int16(0) <= s.critical_onset <= tick < s.critical_offset && (bits |= FLAG_CRITICAL)
+    return DiseaseFlags(bits)
 end
-HealthFlags() = HealthFlags(false, false, false, false, false, false, false)
-@inline Base.:|(a::HealthFlags, b::HealthFlags) = HealthFlags(
-    a.inf|b.inf, a.infectious|b.infectious, a.symp|b.symp, a.sev|b.sev, a.hosp|b.hosp, a.icu|b.icu, a.vent|b.vent)
-
-"""
-    _health_flags(s::InfectionState, tick::Int16, end_tick::Int16)::HealthFlags
-
-Single source of truth for the per-tick health-state predicates of one active infection.
-"""
-@inline _health_flags(s::InfectionState, tick::Int16, end_tick::Int16) = HealthFlags(
-    s.exposure <= tick < end_tick,
-    s.infectiousness_onset <= tick < end_tick,
-    Int16(0) <= s.symptom_onset <= tick < end_tick,
-    Int16(0) <= s.severeness_onset <= tick < s.severeness_offset,
-    Int16(0) <= s.hospital_admission <= tick < s.hospital_discharge,
-    Int16(0) <= s.icu_admission <= tick < s.icu_discharge,
-    Int16(0) <= s.ventilation_admission <= tick < s.ventilation_discharge)
 
 """
     _step_infection!(ind, infections, pathogens, removal_buf, loc, tick, rng)
 
 Processes the single infection at slot `loc` (a `_CacheSlot` or `_OverflowNode`) for `tick`:
-handles death, recovery, and the per-tick infectiousness recompute, reading/writing/clearing
+handles recovery and the per-tick infectiousness recompute, reading/writing/clearing
 the slot through `_slot_state` / `_set_slot!` / `_clear_slot!` dispatch. Shared by both
-branches of `progress_disease!`. Returns `(died, flags)`: when `died` is true the caller must
-return immediately; otherwise `flags` are the record's `HealthFlags` contribution.
+branches of `progress_disease!`. Returns the record's `DiseaseFlags` contribution.
 """
 @inline function _step_infection!(ind::Individual, infections::InfectionRegistry, pathogens::P, removal_buf, loc, tick::Int16, rng::Xoshiro) where {P<:Tuple}
     state = _slot_state(ind, infections, loc)
-
-    # check death
-    if Int16(0) < state.death <= tick
-        _process_death!(ind, state.pathogen_id, infections, removal_buf)
-        return (true, HealthFlags())
-    end
 
     # check recovery
     if Int16(0) < state.recovery <= tick
         infected!(ind, state.pathogen_id, false)
         detected!(ind, state.pathogen_id, false)
         _clear_slot!(ind, infections, loc)
-        _stage_slot_removal!(removal_buf, ind, loc)
-        return (false, HealthFlags())
+        _stage_ended_infection!(removal_buf, ind, loc, state.pathogen_id, state.recovery)
+        return DiseaseFlags()
     end
 
     # update infectiousness while active
-    end_tick = max(state.recovery, state.death)
+    end_tick = state.recovery
     if state.exposure <= tick < end_tick
         level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, rng)
         if level != state.infectiousness
@@ -1042,7 +903,7 @@ return immediately; otherwise `flags` are the record's `HealthFlags` contributio
         end
     end
 
-    return (false, _health_flags(state, tick, end_tick))
+    return _disease_flags(state, tick, end_tick)
 end
 
 """
@@ -1062,22 +923,26 @@ function progress_disease!(
     individual::Individual, 
     infections::InfectionRegistry, 
     pathogens::P, 
-    removal_buf::Vector{_SlotRemoval},
+    removal_buf::Vector{_EndedInfection},
     tick::Int16, 
     rng::Xoshiro
 ) where {P<:Tuple}
 
-    individual.dead && return nothing
+    dead(individual) && return nothing
 
-    # OR-accumulated health flags across all active infections
-    acc = HealthFlags()
+    # host death is driven by the precomputed host timeline, not per-infection
+    if Int16(0) <= individual.death <= tick
+        _process_death!(individual, individual.killing_pathogen_id, infections, removal_buf)
+        return nothing
+    end
+
+    # OR-accumulated disease flags across all active infections
+    acc = DiseaseFlags()
 
     # process cache slots
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         individual.infection_cache[i].active || continue
-        died, f = _step_infection!(individual, infections, pathogens, removal_buf, _CacheSlot(Int32(i)), tick, rng)
-        died && return nothing
-        acc |= f
+        acc |= _step_infection!(individual, infections, pathogens, removal_buf, _CacheSlot(Int32(i)), tick, rng)
     end
 
     # process overflow nodes
@@ -1085,21 +950,14 @@ function progress_disease!(
         node = individual.infection_head
         while node != 0
             next_node = (@inbounds infections.states[node].next)   # capture before any mutation
-            died, f = _step_infection!(individual, infections, pathogens, removal_buf, _OverflowNode(node), tick, rng)
-            died && return nothing
-            acc |= f
+            acc |= _step_infection!(individual, infections, pathogens, removal_buf, _OverflowNode(node), tick, rng)
             node = next_node
         end
     end
 
-    # commit accumulated flags
-    infected!(individual, acc.inf)
-    infectious!(individual, acc.infectious)
-    symptomatic!(individual, acc.symp)
-    severe!(individual, acc.sev)
-    hospitalized!(individual, acc.hosp)
-    icu!(individual, acc.icu)
-    ventilated!(individual, acc.vent)
+    # commit accumulated disease flags in one store (host care states are derived on the fly;
+    # the dead bit is 0 here since a dead individual would have returned above)
+    individual.disease_flags = acc
 
     return nothing
 end
@@ -1112,16 +970,18 @@ end
 
 Resets all non-static values like the disease progression timing.
 The individual is returned to a state as if it had never been infected, vaccinated, tested, etc.
+
+Only safe as part of simulation-level `reset!`, which also clears the `HealthSchedule`s. Called alone,
+the host's queued transitions remain and the next to drain throws on a cleared counter.
 """
 function reset!(individual::Individual, infections::InfectionRegistry, immunities::ImmunityRegistry)
-    individual.infected = false
-    individual.infectious = false
-    individual.symptomatic = false
-    individual.severe = false
-    individual.hospitalized = false
-    individual.icu = false
-    individual.ventilated = false
-    individual.dead = false
+    individual.disease_flags = DiseaseFlags()
+
+    # reset host care state
+    individual.hospital_demands = 0
+    individual.icu_demands = 0
+    individual.ventilation_demands = 0
+    individual.death = DEFAULT_TICK
 
     # Clean overflow before clearing flags
     individual.infection_head != 0 && remove_infections!(infections, individual)

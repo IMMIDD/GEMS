@@ -1,9 +1,9 @@
-export Symptomatic
+export Mild
 
 """
-    Symptomatic <: ProgressionCategory
+    Mild <: ProgressionCategory
 
-A disease progression category for individuals who develop (mild) symptoms.
+A disease progression category for individuals who develop mild symptoms.
 They do not require hospitalization and continue their daily activities but are aware of their illness.
 
 **IMPORTANT**: The infectiousness onset must be at least 1 tick after exposure to avoid issues with immediate transmission.
@@ -20,23 +20,23 @@ Providing, for example a Poisson(2) distribution would result in an average of 3
 - `symptom_onset_to_recovery::Union{Distribution, Real}`: Time from symptom onset to recovery.
 
 # Example
-The code below instantiates a `Symptomatic` progression category with specific distributions for the time intervals.
+The code below instantiates a `Mild` progression category with specific distributions for the time intervals.
 
 ```julia
-dp = Symptomatic(
+dp = Mild(
     exposure_to_infectiousness_onset = Poisson(3),
     infectiousness_onset_to_symptom_onset = Poisson(1),
     symptom_onset_to_recovery = Poisson(7)
 )
 ```
 """
-@with_kw mutable struct Symptomatic <: ProgressionCategory
+@with_kw mutable struct Mild <: ProgressionCategory
     exposure_to_infectiousness_onset::Union{Distribution, Real}
     infectiousness_onset_to_symptom_onset::Union{Distribution, Real}
     symptom_onset_to_recovery::Union{Distribution, Real}
 end
 
-function calculate_progression(individual::Individual, tick::Int16, dp::Symptomatic, rng::Xoshiro)
+function calculate_progression(individual::Individual, tick::Int16, dp::Mild, rng::Xoshiro)
 
     # Calculate the time to infectiousness
     infectiousness_onset::Int16 = round(Int16, tick + 1 + _rand_val(dp.exposure_to_infectiousness_onset, rng))

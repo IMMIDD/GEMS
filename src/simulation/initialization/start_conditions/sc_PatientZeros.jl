@@ -9,7 +9,7 @@ export initialize!
 A `StartCondition` that infects a single individual in each of the given AGS (community identification numbers) at the beginning of the simulation.
 
 # Fields
-- `pathogen::String`: The pathogen with which the individual has to be infected
+- `pathogen::String`: Pathogen to infect the individuals with; empty string = the only pathogen, `ALL_PATHOGENS` = every pathogen
 - `ags::Vector{Int64}`: A vector of AGS (community identification number) where the initial seeds should be planted
 
 Example

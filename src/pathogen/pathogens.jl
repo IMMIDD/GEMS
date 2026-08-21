@@ -45,14 +45,14 @@ dp_a = Asymptomatic(
     exposure_to_infectiousness_onset = Poisson(2),
     symptom_onset_to_recovery = Poisson(5)
 )
-dp_s = Symptomatic(
+dp_s = Mild(
     exposure_to_infectiousness_onset = Poisson(3),
     infectiousness_onset_to_symptom_onset = Poisson(1),
     symptom_onset_to_recovery = Poisson(7)
 )
 
 # Define progression assignment function
-pa = RandomProgressionAssignment([Asymptomatic, Symptomatic])
+pa = RandomProgressionAssignment([Asymptomatic, Mild])
 
 # Define transmission function
 tf = ConstantTransmissionRate(transmission_rate = 0.3)
@@ -99,11 +99,12 @@ mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:Trans
 
         # exception handling
         length(name) <= 0 && throw(ArgumentError("Pathogen name must not be empty!"))
+        name == ALL_PATHOGENS && throw(ArgumentError("Pathogen name must not be '$ALL_PATHOGENS'!"))
         length(unique(typeof.(progressions))) < length(progressions) && throw(ArgumentError("Pathogen must not have multiple progressions of the same type!"))
 
         if isempty(progressions)
-            @warn "Pathogen $name ($id) has no progressions defined. Defining a default Symptomatic progression."
-            progressions = [Symptomatic(
+            @warn "Pathogen $name ($id) has no progressions defined. Defining a default Mild progression."
+            progressions = [Mild(
                 exposure_to_infectiousness_onset = Poisson(2),
                 infectiousness_onset_to_symptom_onset = Poisson(1),
                 symptom_onset_to_recovery = Poisson(7)
@@ -179,7 +180,30 @@ Emits a static if/elseif chain at compile time, enabling union-splitting.
     push!(exprs, :(throw(ArgumentError("No progression of type $dp_type found."))))
     return quote $(exprs...) end
 end
-get_progression(p::Pathogen, dp_type::DataType) = get_progression(p.progressions, dp_type) 
+get_progression(p::Pathogen, dp_type::DataType) = get_progression(p.progressions, dp_type)
+
+"""
+
+    progression_index(progressions::PR, dp_type::DataType) where {PR<:Tuple}
+
+
+Retrieves the 1-based index of a progression by its DataType, or `Int8(0)` if not found.
+
+Emits a static if/elseif chain at compile time, enabling union-splitting.
+
+"""
+
+@generated function progression_index(progressions::PR, dp_type::DataType) where {PR<:Tuple}
+    N = fieldcount(PR)
+    exprs = Expr[]
+    for i in 1:N
+        T = fieldtype(PR, i)
+        push!(exprs, :( $T === dp_type && return Int8($i) ))
+    end
+    push!(exprs, :(return Int8(0)))
+    return quote $(exprs...) end
+end
+progression_index(p::Pathogen, dp_type::DataType) = progression_index(p.progressions, dp_type)
 
 
 function Base.show(io::IO, p::Pathogen)
