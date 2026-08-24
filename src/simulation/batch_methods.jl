@@ -1,7 +1,7 @@
 export process!, run!
 
 """
-    process!(batch::Batch; keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing)
+    process!(batch::Batch; keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing, on_run=nothing)
 
 Processes all simulation configurations in `batch` sequentially, accumulating
 results into a `BatchProcessor`.

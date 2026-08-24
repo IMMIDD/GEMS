@@ -90,6 +90,7 @@ gemsplot(runs(bd), type = :TickCases)
 | `keep_rundata` | `true` | When `false`, individual `ResultData` objects are not stored, reducing RAM usage. |
 | `rd_style` | `"LightRD"` | `ResultData` style used when storing individual and median runs. |
 | `customlogger` | `nothing` | A `CustomLogger` attached to every simulation run. |
+| `on_run` | `nothing` | Callback `(rd, i) -> ...` invoked as each run finishes, receiving that run's `ResultData`. Lets you consume runs in a streaming fashion without retaining them all (used internally by [`evaluate`](@ref)). |
 
 All of these can also be passed directly to the `BatchData(b; ...)` shorthand, which forwards them to `process!` internally.
 
