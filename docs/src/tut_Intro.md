@@ -12,14 +12,8 @@ Pages = [
     "tut_pops.md",
     "tut_configfiles.md",
     "tut_postprocessing.md",
-    #"tut_reporting.md",
     "tut_npi.md",
     "tut_calibration.md",
-    #"tut_behavior.md",
-    #"tut_contacts.md",
-    #"tut_infections.md",
-    #"tut_custom_progressions.md",
-    "cheat-sheet.md"
     ]
 Depth = 2
 ```
