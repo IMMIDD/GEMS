@@ -52,6 +52,41 @@
         @test base_row.scenario_label[1] == "baseline"
     end
 
+    @testset "ConstantCriterionKeptAsIs" begin
+        # a numeric criterion that is constant within every scenario keeps its plain name
+        # and its type (no _mean / _std, no Int -> Float64 coercion)
+        crit = (nr = rd -> number_of_individuals(rd), infections = infections)
+        result = evaluate(make_scenarios(), crit; seed = 1)
+        @test "nr" in names(result.summary)
+        @test !("nr_mean" in names(result.summary))
+        @test eltype(result.summary.nr) <: Integer
+        # the varying criterion is still aggregated
+        @test "infections_mean" in names(result.summary)
+    end
+
+    @testset "UnsummarizableCriterionOmitted" begin
+        # a criterion returning a varying non-scalar (a whole DataFrame) can't be reduced;
+        # it must be omitted from the summary (with a warning) but present in runs
+        crit = (frame = rd -> total_infections(rd), infections = infections)
+        result = @test_logs (:warn,) match_mode=:any evaluate(make_scenarios(), crit; seed = 1)
+        @test !("frame" in names(result.summary))
+        @test "frame" in names(result.runs)
+        @test "infections_mean" in names(result.summary)
+    end
+
+    @testset "SingleRunShapeStable" begin
+        # n_runs = 1 must not collapse every criterion to "constant": numeric criteria still
+        # aggregate (so the summary schema matches a multi-run run), and the label is kept
+        single = [
+            Batch(n_runs = 1, pop_size = 1000, label = "baseline"),
+            Batch(n_runs = 1, pop_size = 1000, label = "masks", setup = sim -> nothing),
+        ]
+        result = evaluate(single, criteria; seed = 1)
+        @test "infections_mean" in names(result.summary)
+        @test "infections_std" in names(result.summary)
+        @test "scenario_label" in names(result.summary)   # constant non-numeric kept, not omitted
+    end
+
     @testset "KeepRuns" begin
         result = evaluate(make_scenarios(), criteria; keep_runs = false, seed = 1)
         @test result.runs === nothing

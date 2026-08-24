@@ -6,9 +6,13 @@ export evaluate, EvaluationResult
 Result of an `evaluate` call over a set of scenarios and criteria.
 
 # Fields
-- `summary`: one row per scenario. Numeric criteria are aggregated into one column per
-  aggregator (named `"<criterion>_<aggregator>"`); non-numeric criteria are collapsed with
-  `first` into a single `"<criterion>"` column.
+- `summary`: one row per scenario. Each criterion contributes columns based on how its value
+  behaves across a scenario's runs:
+    - constant across runs (population size, label, ...): kept as-is, column `<criterion>`
+    - numeric and varying: one column per aggregator, `<criterion>_<aggregator>`
+    - non-numeric and varying: omitted with a warning; read it from `runs`
+  Constancy is only detectable with more than one run per scenario, so with a single run
+  numeric criteria are always aggregated.
 - `runs`: one row per simulation run (columns `scenario`, `run`, and one per criterion), or
   `nothing` if `evaluate` was called with `keep_runs = false`.
 - `rundata`: the retained `ResultData` objects, or `nothing` unless `evaluate` was called with
@@ -48,8 +52,8 @@ returning an [`EvaluationResult`](@ref).
   criteria. Default `(mean = mean, std = std)`.
 - `keep_runs`: keep the per-run table in `runs`. Default `true`. It is always computed
   internally to build the summary; set `false` only to drop it from the result.
-- `keep_rundata`: retain the batch's `ResultData` objects in `rundata`. Default `false`
-  (they are dropped once the criteria have been evaluated).
+- `keep_rundata`: retain the batch's `ResultData` objects in `rundata`. Default `false` —
+  criteria are evaluated as each run lands, so only one `ResultData` is held at a time.
 - `rd_style`: `ResultData` style used per run. Default `"LightRD"`.
 - `seed`: seed for reproducibility. Passing the same value produces the same results.
 
@@ -88,16 +92,14 @@ function evaluate(scenarios, criteria;
     crit_pairs = _named_pairs(criteria)
     crit_names = Symbol[name for (name, _) in crit_pairs]
 
-    # let the batch run itself; we only need each run's ResultData back
-    bp = process!(batch; keep_rundata = true, rd_style = rd_style, seed = seed, customlogger = customlogger)
-    rds = rundata(bp)
-
     scenario_col = String[]
     run_col = Int[]
     value_cols = [Vector{Any}() for _ in crit_pairs]
     run_counter = Dict{String, Int}()
+    retained = keep_rundata ? ResultData[] : nothing
 
-    for rd in rds
+    # evaluate criteria as each run lands, so only one ResultData is held at a time
+    on_run = (rd, _) -> begin
         scen = string(label(rd))
         run_idx = get(run_counter, scen, 0) + 1
         run_counter[scen] = run_idx
@@ -112,7 +114,13 @@ function evaluate(scenarios, criteria;
             end
             push!(value_cols[j], val)
         end
+
+        keep_rundata && push!(retained, rd)
     end
+
+    # process! runs the batch; keep_rundata=false so it doesn't also hold every ResultData
+    process!(batch; keep_rundata = false, rd_style = rd_style, seed = seed,
+        customlogger = customlogger, on_run = on_run)
 
     # per-run table; identity.() narrows each Any-typed column to a concrete eltype where uniform
     runs_df = DataFrame(scenario = scenario_col, run = run_col)
@@ -124,23 +132,39 @@ function evaluate(scenarios, criteria;
 
     return EvaluationResult(summary_df,
         keep_runs ? runs_df : nothing,
-        keep_rundata ? rds : nothing,
+        retained,
         crit_names)
 end
 
 # aggregates the per-run table into one row per scenario, preserving scenario order
 function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::Vector)
     gdf = groupby(runs_df, :scenario)
+    # a single run per scenario can't distinguish "constant" from "one sample", so numeric
+    # criteria only skip aggregation when we can actually observe them being constant
+    multi_run = any(sub -> nrow(sub) > 1, gdf)
     transforms = Any[]
+    unsummarizable = Symbol[]
     for name in crit_names
-        if eltype(runs_df[!, name]) <: Number
-            for (aggname, aggf) in agg_pairs
-                out = Symbol(name, "_", aggname)
-                push!(transforms, name => aggf => out)
+        col = runs_df[!, name]
+        observed_constant = all(sub -> allequal(sub[!, name]), gdf)
+        if eltype(col) <: Number
+            if multi_run && observed_constant
+                # constant numeric (population size, ...): keep name and type
+                push!(transforms, name => first => name)
+            else
+                for (aggname, aggf) in agg_pairs
+                    push!(transforms, name => aggf => Symbol(name, "_", aggname))
+                end
             end
-        else
+        elseif observed_constant
+            # constant non-numeric attribute (label, region, ...): keep as-is
             push!(transforms, name => first => name)
+        else
+            # non-numeric and varying: can't reduce, omit rather than report a wrong value
+            push!(unsummarizable, name)
         end
     end
+    isempty(unsummarizable) ||
+        @warn "Criteria vary within scenarios but are not numeric; omitted from summary (see `result.runs`): $(join(unsummarizable, ", "))"
     return isempty(transforms) ? combine(gdf, nrow => :n) : combine(gdf, transforms...)
 end
