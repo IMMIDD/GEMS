@@ -30,6 +30,17 @@ end
 _named_pairs(nt::NamedTuple) = [k => nt[k] for k in keys(nt)]
 _named_pairs(d::AbstractDict) = [Symbol(k) => v for (k, v) in d]
 
+# resolve `aggregators` into a lookup `criterion name -> [(aggname => reducer)]`. A flat set
+# (aggname => reducer) applies to every criterion; a per-criterion map (criterion => set)
+# looks each up, falling back to its `:default` entry or to mean/std.
+function _agg_lookup(aggregators)
+    pairs = _named_pairs(aggregators)
+    all(p -> last(p) isa Function, pairs) && return _ -> pairs
+    by_name = Dict(name => _named_pairs(set) for (name, set) in pairs)
+    default = get(by_name, :default, [:mean => mean, :std => std])
+    return name -> get(by_name, name, default)
+end
+
 """
     evaluate(scenarios, criteria; aggregators=(mean=mean, std=std), constants=(), keep_runs=true, keep_rundata=false, rd_style="LightRD", seed=nothing)
 
@@ -44,8 +55,9 @@ returning an [`EvaluationResult`](@ref).
   a column in the output.
 
 # Keyword Arguments
-- `aggregators`: a `NamedTuple` (or `Dict`) of `values -> scalar` reducers applied to numeric
-  criteria. Default `(mean = mean, std = std)`.
+- `aggregators`: reducers for numeric criteria. Either a flat `NamedTuple`/`Dict` of
+  `aggname => reducer` applied to all, or a per-criterion map `criterion => reducer-set` (with
+  an optional `:default`). Default `(mean = mean, std = std)`.
 - `constants`: criterion names (a collection of `Symbol`s) to keep verbatim in the summary
   instead of aggregating — for per-scenario attributes like a population size. Each must exist
   and be constant within every scenario, else an `ArgumentError` is thrown. Default `()`.
@@ -131,7 +143,7 @@ function evaluate(scenarios, criteria;
         runs_df[!, name] = identity.(value_cols[j])
     end
 
-    summary_df = _summarize(runs_df, crit_names, _named_pairs(aggregators), constants)
+    summary_df = _summarize(runs_df, crit_names, _agg_lookup(aggregators), constants)
 
     return EvaluationResult(summary_df,
         keep_runs ? runs_df : nothing,
@@ -140,7 +152,7 @@ function evaluate(scenarios, criteria;
 end
 
 # aggregates the per-run table into one row per scenario, preserving scenario order
-function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::Vector, constants)
+function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_lookup, constants)
     gdf = groupby(runs_df, :scenario)
     multi_run = any(sub -> nrow(sub) > 1, gdf)
     transforms = Any[]
@@ -154,7 +166,7 @@ function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::V
             push!(transforms, name => first => name)
         elseif eltype(col) <: Number
             # a number is a metric: always aggregate, even if it happens to be constant
-            for (aggname, aggf) in agg_pairs
+            for (aggname, aggf) in agg_lookup(name)
                 push!(transforms, name => aggf => Symbol(name, "_", aggname))
             end
         elseif multi_run && all(sub -> allequal(sub[!, name]), gdf)

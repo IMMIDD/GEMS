@@ -43,6 +43,17 @@
         @test !("infections_std" in names(result.summary))
     end
 
+    @testset "PerCriterionAggregators" begin
+        # a per-criterion map: `nr` gets median only, everything else the :default set
+        crit = (infections = infections, nr = rd -> number_of_individuals(rd))
+        result = evaluate(make_scenarios(), crit;
+            aggregators = (default = (mean = mean, std = std), nr = (median = median,)), seed = 1)
+        @test "infections_mean" in names(result.summary)
+        @test "infections_std" in names(result.summary)
+        @test "nr_median" in names(result.summary)
+        @test !("nr_mean" in names(result.summary))
+    end
+
     @testset "NonNumericCriterion" begin
         result = evaluate(make_scenarios(), criteria; seed = 1)
         # non-numeric criterion collapses to a single column (no _mean / _std)
