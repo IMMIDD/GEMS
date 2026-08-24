@@ -15,16 +15,20 @@ We recommend using [Visual Studio Code](https://code.visualstudio.com/) as an ID
 
 #### What are the system requirements to run GEMS?
 
-GEMS needs roughly ~1GB of system memory per million individuals.
+GEMS needs roughly ~500MB of system memory per million individuals, without post-processing.
+Adding on post-processing roughly doubles the required system memory.
 The default model contains 100,000 individuals which should only take a couple megabytes.
-Post-processing takes half of the required memory.
-If you do not need post-processing, GEMS requires only ~500mb/million individuals.
 
 
 #### Can I add my own populations to GEMS?
 
 Yes. There are many ways to load your own population model via CSV- and JLD2 files or passing a dataframe that contains your model.
 Look up the [tutorial on creating populations](@ref tut_pops).
+
+
+#### Is GEMS still being developed?
+
+Yes. As part of the [ADAPTI-M project](https://monid.net/forschungsverbuende/optimagent-2/) new features are constantly developed.
 
 
 #### Can I use GEMS in my research project?
