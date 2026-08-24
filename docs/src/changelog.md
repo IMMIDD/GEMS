@@ -1,3 +1,3 @@
 # Changelog
 
-Current changes are documented in the release notes found under https://github.com/IMMIDD/GEMS/releases/.
+Current changes are documented in the [release notes on GitHub](https://github.com/IMMIDD/GEMS/releases/).
