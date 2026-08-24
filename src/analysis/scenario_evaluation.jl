@@ -9,8 +9,8 @@ Result of an `evaluate` call over a set of scenarios and criteria.
 - `summary`: one row per scenario. Each criterion contributes columns based on its type:
     - numeric: aggregated, one column per aggregator (`<criterion>_<aggregator>`)
     - listed in `constants`: kept verbatim under its own name (`<criterion>`)
-    - non-numeric and constant within a scenario (label, ...): kept as-is (`<criterion>`)
-    - non-numeric and varying: omitted with a warning; read it from `runs`
+    - non-numeric, constant across more than one run: kept as-is (`<criterion>`)
+    - otherwise non-numeric: dropped with a warning; read from `runs` or list in `constants`
 - `runs`: one row per simulation run (columns `scenario`, `run`, and one per criterion), or
   `nothing` if `evaluate` was called with `keep_runs = false`.
 - `rundata`: the retained `ResultData` objects, or `nothing` unless `evaluate` was called with
@@ -144,6 +144,7 @@ end
 # aggregates the per-run table into one row per scenario, preserving scenario order
 function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::Vector, constants)
     gdf = groupby(runs_df, :scenario)
+    multi_run = any(sub -> nrow(sub) > 1, gdf)
     transforms = Any[]
     unsummarizable = Symbol[]
     for name in crit_names
@@ -158,15 +159,15 @@ function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::V
             for (aggname, aggf) in agg_pairs
                 push!(transforms, name => aggf => Symbol(name, "_", aggname))
             end
-        elseif all(sub -> allequal(sub[!, name]), gdf)
-            # constant non-numeric attribute (label, region, ...): keep as-is
+        elseif multi_run && all(sub -> allequal(sub[!, name]), gdf)
+            # constant non-numeric (label, ...) confirmed across runs: keep as-is
             push!(transforms, name => first => name)
         else
-            # non-numeric and varying: can't reduce, omit rather than report a wrong value
+            # varying, or unverifiable from a single run: drop rather than keep a wrong value
             push!(unsummarizable, name)
         end
     end
     isempty(unsummarizable) ||
-        @warn "Criteria vary within scenarios but are not numeric; omitted from summary (see `result.runs`): $(join(unsummarizable, ", "))"
+        @warn "Non-numeric criteria dropped from summary (varying, or unverifiable from a single run); read them from `result.runs`, or list them in `constants` to keep: $(join(unsummarizable, ", "))"
     return isempty(transforms) ? combine(gdf, nrow => :n) : combine(gdf, transforms...)
 end

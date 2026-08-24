@@ -93,17 +93,20 @@
         @test "infections_mean" in names(result.summary)
     end
 
-    @testset "SingleRunShapeStable" begin
-        # with n_runs = 1 the schema still matches a multi-run run: numeric criteria aggregate
-        # and the label is kept
+    @testset "SingleRunNonNumericDropped" begin
+        # at n_runs = 1 constancy can't be confirmed, so an undeclared non-numeric is dropped
+        # (with a warning); numeric criteria still aggregate, and declaring keeps it
         single = [
             Batch(n_runs = 1, pop_size = 1000, label = "baseline"),
             Batch(n_runs = 1, pop_size = 1000, label = "masks", setup = sim -> nothing),
         ]
-        result = evaluate(single, criteria; seed = 1)
+        result = @test_logs (:warn,) match_mode=:any evaluate(single, criteria; seed = 1)
         @test "infections_mean" in names(result.summary)
-        @test "infections_std" in names(result.summary)
-        @test "scenario_label" in names(result.summary)   # constant non-numeric kept, not omitted
+        @test !("scenario_label" in names(result.summary))
+        @test "scenario_label" in names(result.runs)
+
+        declared = evaluate(single, criteria; constants = (:scenario_label,), seed = 1)
+        @test "scenario_label" in names(declared.summary)
     end
 
     @testset "KeepRuns" begin
