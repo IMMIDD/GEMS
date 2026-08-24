@@ -49,7 +49,8 @@ returning an [`EvaluationResult`](@ref).
 - `aggregators`: a `NamedTuple` (or `Dict`) of `values -> scalar` reducers applied to numeric
   criteria. Default `(mean = mean, std = std)`.
 - `constants`: criterion names (a collection of `Symbol`s) to keep verbatim in the summary
-  instead of aggregating — for per-scenario attributes like a population size. Default `()`.
+  instead of aggregating — for per-scenario attributes like a population size. Each must exist
+  and be constant within every scenario, else an `ArgumentError` is thrown. Default `()`.
 - `keep_runs`: keep the per-run table in `runs`. Default `true`. It is always computed
   internally to build the summary; set `false` only to drop it from the result.
 - `keep_rundata`: retain the batch's `ResultData` objects in `rundata`. Default `false` —
@@ -92,6 +93,9 @@ function evaluate(scenarios, criteria;
 
     crit_pairs = _named_pairs(criteria)
     crit_names = Symbol[name for (name, _) in crit_pairs]
+
+    unknown = setdiff(constants, crit_names)
+    isempty(unknown) || throw(ArgumentError("`constants` names unknown criteria: $(join(unknown, ", "))"))
 
     scenario_col = String[]
     run_col = Int[]
@@ -145,7 +149,9 @@ function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::V
     for name in crit_names
         col = runs_df[!, name]
         if name in constants
-            # explicitly declared per-scenario attribute: keep verbatim
+            # declared attribute: keep verbatim, but verify it's actually constant
+            all(sub -> allequal(sub[!, name]), gdf) ||
+                throw(ArgumentError("Criterion :$name is listed in `constants` but varies within a scenario."))
             push!(transforms, name => first => name)
         elseif eltype(col) <: Number
             # a number is a metric: always aggregate, even if it happens to be constant

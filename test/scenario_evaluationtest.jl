@@ -72,6 +72,17 @@
         @test "infections_mean" in names(result.summary)   # non-constant still aggregates
     end
 
+    @testset "ConstantsUnknownNameThrows" begin
+        @test_throws ArgumentError evaluate(make_scenarios(), (infections = infections,);
+            constants = (:typo,), seed = 1)
+    end
+
+    @testset "ConstantsVaryingThrows" begin
+        # pop_size = 1000 does not saturate, so infections differ between runs
+        @test_throws ArgumentError evaluate(Batch(n_runs = 3, pop_size = 1000, label = "s"),
+            (infections = infections,); constants = (:infections,), seed = 1)
+    end
+
     @testset "UnsummarizableCriterionOmitted" begin
         # a criterion returning a varying non-scalar (a whole DataFrame) can't be reduced;
         # it must be omitted from the summary (with a warning) but present in runs
