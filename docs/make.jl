@@ -26,22 +26,21 @@ makedocs(
             "Contacts" => "base-contacts.md",
             "Disease" => "base-disease.md",
             "Interventions" => "TriSM.md",
-            "Default Parameters" => "base-config.md"
+            "Default Parameters" => "base-config.md",
+            "Tutorials" => "tut_Intro.md"
         ],
         # running simulations - step by step guide, tutorials
         "Running Simulations" => [ #cf Wiki
-            "Tutorials" => "tut_Intro.md",
             "1 - Getting Started" => "tut_gettingstarted.md",
             "2 - Exploring Models" => "tut_exploring.md",
-            "3 - Plotting" =>"tut_plotting.md",
+            "3 - Creating Populations" => "tut_pops.md",
             "4 - Configuring Diseases" =>"tut_diseases.md",
-            "5 - Running Batches" => "tut_batches.md",
-            "6 - Creating Populations" => "tut_pops.md",
-            "7 - Advanced Parameterization" => "tut_configfiles.md",
+            "5 - Modeling Interventions" => "tut_npi.md",
+            "6 - Running Batches" => "tut_batches.md",
+            "7 - Calibration" => "tut_calibration.md",
             "8 - Logging & Post-Processing" => "tut_postprocessing.md",
-            "9 - Modeling Interventions" => "tut_npi.md",
-            "10 - Calibration" => "tut_calibration.md",
-            "Cheat Sheet" =>"cheat-sheet.md"
+            "9 - Plotting" =>"tut_plotting.md",
+            "10 - Advanced Parameterization" => "tut_configfiles.md"
         ],
         "Config Files" => "config-files.md",
         # modules/API - docstrings and functions
@@ -66,7 +65,6 @@ makedocs(
             "Simulation" => "api_simulation.md",
         ],
         # Folders in repo
-        #"Package Structure" => "package-structure.md", #TODO add markdowns from READMEs in Repo?
         # Contribution - style guides, working with git, change log, license
         "Contributing to GEMS" => "contributing-guide.md",
         # Changelog
