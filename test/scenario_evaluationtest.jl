@@ -54,6 +54,25 @@
         @test !("nr_mean" in names(result.summary))
     end
 
+    @testset "MalformedAggregatorsThrows" begin
+        # per-criterion values must be reducer-sets, not bare functions (fails fast)
+        @test_throws ArgumentError evaluate(make_scenarios(),
+            (infections = infections, nr = rd -> number_of_individuals(rd));
+            aggregators = (infections = (median = median,), nr = mean), seed = 1)
+    end
+
+    @testset "AggregatorsAmbiguousNameThrows" begin
+        # a flat aggregator whose name is also a criterion is ambiguous
+        @test_throws ArgumentError evaluate(make_scenarios(), (infections = infections,);
+            aggregators = (infections = mean,), seed = 1)
+    end
+
+    @testset "AggregatorsUnknownNameThrows" begin
+        # a typo'd per-criterion name (not `:default`) throws, like `constants` does
+        @test_throws ArgumentError evaluate(make_scenarios(), (infections = infections,);
+            aggregators = (infectons = (median = median,), default = (mean = mean,)), seed = 1)
+    end
+
     @testset "NonNumericCriterion" begin
         result = evaluate(make_scenarios(), criteria; seed = 1)
         # non-numeric criterion collapses to a single column (no _mean / _std)

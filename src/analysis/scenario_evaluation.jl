@@ -33,9 +33,21 @@ _named_pairs(d::AbstractDict) = [Symbol(k) => v for (k, v) in d]
 # resolve `aggregators` into a lookup `criterion name -> [(aggname => reducer)]`. A flat set
 # (aggname => reducer) applies to every criterion; a per-criterion map (criterion => set)
 # looks each up, falling back to its `:default` entry or to mean/std.
-function _agg_lookup(aggregators)
+function _agg_lookup(aggregators, crit_names)
     pairs = _named_pairs(aggregators)
-    all(p -> last(p) isa Function, pairs) && return _ -> pairs
+    if all(p -> last(p) isa Function, pairs)   # flat: same reducers for all criteria
+        clash = intersect(first.(pairs), crit_names)
+        isempty(clash) || throw(ArgumentError(
+            "`aggregators` is ambiguous: $(join(clash, ", ")) names both an aggregator and a criterion; " *
+            "for a per-criterion set write `$(first(clash)) = (mean = mean,)`, else rename the aggregator."))
+        return _ -> pairs
+    end
+    for (name, set) in pairs
+        set isa Union{NamedTuple, AbstractDict} || throw(ArgumentError(
+            "per-criterion `aggregators` entry :$name must be a reducer-set like `(mean = mean,)`, not a bare function"))
+    end
+    unknown = setdiff(first.(pairs), [crit_names; :default])
+    isempty(unknown) || throw(ArgumentError("`aggregators` names unknown criteria: $(join(unknown, ", "))"))
     by_name = Dict(name => _named_pairs(set) for (name, set) in pairs)
     default = get(by_name, :default, [:mean => mean, :std => std])
     return name -> get(by_name, name, default)
@@ -107,6 +119,8 @@ function evaluate(scenarios, criteria;
     unknown = setdiff(constants, crit_names)
     isempty(unknown) || throw(ArgumentError("`constants` names unknown criteria: $(join(unknown, ", "))"))
 
+    agg_lookup = _agg_lookup(aggregators, crit_names)   # validates the aggregators shape and names
+
     scenario_col = String[]
     run_col = Int[]
     value_cols = [Vector{Any}() for _ in crit_pairs]
@@ -143,7 +157,7 @@ function evaluate(scenarios, criteria;
         runs_df[!, name] = identity.(value_cols[j])
     end
 
-    summary_df = _summarize(runs_df, crit_names, _agg_lookup(aggregators), constants)
+    summary_df = _summarize(runs_df, crit_names, agg_lookup, constants)
 
     return EvaluationResult(summary_df,
         keep_runs ? runs_df : nothing,
