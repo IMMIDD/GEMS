@@ -31,7 +31,7 @@ GEMS' core architecture and the integrated intervention modeling framework are d
 
 GEMS requires [Julia](https://julialang.org/downloads/) v1.11.3+.
 
-You will need roughly 1GB of system memory for every million agents.
+You will need roughly 1GB of system memory for every million agents. This includes post-processing.
 
 
 ## Quick Installation
