@@ -39,28 +39,21 @@ makedocs(
             "6 - Creating Populations" => "tut_pops.md",
             "7 - Advanced Parameterization" => "tut_configfiles.md",
             "8 - Logging & Post-Processing" => "tut_postprocessing.md",
-            #"8 - Reporting" => "tut_reporting.md",
             "9 - Modeling Interventions" => "tut_npi.md",
             "10 - Calibration" => "tut_calibration.md",
-            #"10 - Custom Disease Progressions" => "tut_custom_progressions.md",
-            #"10 - Modeling Behavior" =>"tut_behavior.md",
-            #"11 - Contact Structures" =>"tut_contacts.md",
-            #"12 - Infections & Immunity" =>"tut_infections.md",
             "Cheat Sheet" =>"cheat-sheet.md"
         ],
         "Config Files" => "config-files.md",
         # modules/API - docstrings and functions
         "API" => [
             "Overview" => "docstrings-overview.md",
-            #"Analysis" => "api_analysis.md", #TODO delete?
             "Batches" => "api_batch.md",
-            #"Constants" => "api_constants.md", #TODO delete?
             "Contacts" => "api_contacts.md",
             "Individuals" => "api_individuals.md",
-            "Infections and Immunity" => "api_infections.md", #TODO I would merge this with the simulation or the pathogen section
+            "Infections and Immunity" => "api_infections.md",
             "Interventions" => "api_interventions.md",
             "Logger" => "api_logger.md",
-            "Mapping" => "api_mapping.md", #TODO merge mapping and movie?
+            "Mapping" => "api_mapping.md",
             "Misc" => "api_misc.md",
             "Movie" => "api_movie.md",
             "Pathogens" => "api_pathogens.md",

@@ -31,7 +31,7 @@ GEMS' core architecture and the integrated intervention modeling framework are d
 
 GEMS requires [Julia](https://julialang.org/downloads/) v1.11.3+.
 
-You will need roughly 1GB of system memory for every million agents.
+You will need roughly 1GB of system memory for every million agents. This includes post-processing.
 
 
 ## Quick Installation
@@ -57,6 +57,11 @@ gemsplot(rd)
     GEMS allows to generate PDF-reports of simulation experiments. These features require [Pandoc](https://pandoc.org/installing.html) and [MiKTeX](https://miktex.org/download) (or any other distribution containing xelatex) to be installed on your machine. If you're happy using GEMS without its PDF-reporting features, installing the Julia package is all you need and you can skip this part!
 
 If you need support with the installation, have a look at this more detailed [installation guide](@ref installation).
+
+
+## Changelogs
+
+Changelogs for newer versions of GEMS can be found here: https://github.com/IMMIDD/GEMS/releases/.
 
 
 ## License

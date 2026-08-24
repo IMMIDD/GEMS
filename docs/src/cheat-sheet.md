@@ -1,3 +1,0 @@
-# Cheat Sheet
-
-Coming soon ...

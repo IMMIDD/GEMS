@@ -12,7 +12,7 @@ In order to run the framework, please install the following.
 ### 1. Installing Julia
 The GEMS framework was developed under Julia v.1.11.3. 
  
-1. Download the Windows installer for version v.1.11.3 of [Julia](https://julialang.org/downloads/) from the JuliaLang website.
+1. Download the Windows installer forthe current version of [Julia](https://julialang.org/downloads/) from the JuliaLang website.
 2. Run the installer and follow the on-screen instructions. You can generally accept the default settings. However, make sure to check the option to add the PATH variable automatically, which is NOT selected by default. Otherwise, you'll have to configure it manually as explained below. Setting the PATH variable for all users requires administration rights, so the installation of the software packages might need to be done by your IT department. If you're installing the software just for yourself, user rights are sufficient.
 
 !!! info "Note"
@@ -78,7 +78,7 @@ Congratulations! You successfully set up the coding environment to use GEMS.
 The GEMS framework was developed under Julia v.1.11.3. 
 
 1. Visit the [Julia](https://julialang.org/downloads/) website.
-2. Download the MacOS installer (usually a .dmg file) for your MacOS system for version v.1.11.3, i.e., the newest version, of Julia.
+2. Download the MacOS installer (usually a .dmg file) for your MacOS system for the newest version of Julia.
 3. Locate the downloaded '.dmg' file and double click on it to mount the disk image. The julia application icon should now be visible, drag the icon to the "Applications" folder to install it. Setting the PATH variable for all users requires administration rights, so the installation of the software packages might need to be done by your IT department. If you're installing the software just for yourself, user rights are sufficient.
 
 !!! info "Note"
