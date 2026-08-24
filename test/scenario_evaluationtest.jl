@@ -52,16 +52,24 @@
         @test base_row.scenario_label[1] == "baseline"
     end
 
-    @testset "ConstantCriterionKeptAsIs" begin
-        # a numeric criterion that is constant within every scenario keeps its plain name
-        # and its type (no _mean / _std, no Int -> Float64 coercion)
-        crit = (nr = rd -> number_of_individuals(rd), infections = infections)
+    @testset "ConstantNumericAggregatesByDefault" begin
+        # a numeric criterion always aggregates, even when it happens to be constant across
+        # runs (e.g. a fixed population, or 100% attack rate) — the schema is data-independent
+        crit = (nr = rd -> number_of_individuals(rd), const_val = rd -> 42)
         result = evaluate(make_scenarios(), crit; seed = 1)
+        @test "nr_mean" in names(result.summary)
+        @test !("nr" in names(result.summary))
+        @test "const_val_mean" in names(result.summary)
+    end
+
+    @testset "ConstantsKwargKeepsVerbatim" begin
+        # a numeric attribute named in `constants` keeps its plain name and its type
+        crit = (nr = rd -> number_of_individuals(rd), infections = infections)
+        result = evaluate(make_scenarios(), crit; constants = (:nr,), seed = 1)
         @test "nr" in names(result.summary)
         @test !("nr_mean" in names(result.summary))
         @test eltype(result.summary.nr) <: Integer
-        # the varying criterion is still aggregated
-        @test "infections_mean" in names(result.summary)
+        @test "infections_mean" in names(result.summary)   # non-constant still aggregates
     end
 
     @testset "UnsummarizableCriterionOmitted" begin
@@ -75,8 +83,8 @@
     end
 
     @testset "SingleRunShapeStable" begin
-        # n_runs = 1 must not collapse every criterion to "constant": numeric criteria still
-        # aggregate (so the summary schema matches a multi-run run), and the label is kept
+        # with n_runs = 1 the schema still matches a multi-run run: numeric criteria aggregate
+        # and the label is kept
         single = [
             Batch(n_runs = 1, pop_size = 1000, label = "baseline"),
             Batch(n_runs = 1, pop_size = 1000, label = "masks", setup = sim -> nothing),

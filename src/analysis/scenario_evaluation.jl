@@ -6,13 +6,11 @@ export evaluate, EvaluationResult
 Result of an `evaluate` call over a set of scenarios and criteria.
 
 # Fields
-- `summary`: one row per scenario. Each criterion contributes columns based on how its value
-  behaves across a scenario's runs:
-    - constant across runs (population size, label, ...): kept as-is, column `<criterion>`
-    - numeric and varying: one column per aggregator, `<criterion>_<aggregator>`
+- `summary`: one row per scenario. Each criterion contributes columns based on its type:
+    - numeric: aggregated, one column per aggregator (`<criterion>_<aggregator>`)
+    - listed in `constants`: kept verbatim under its own name (`<criterion>`)
+    - non-numeric and constant within a scenario (label, ...): kept as-is (`<criterion>`)
     - non-numeric and varying: omitted with a warning; read it from `runs`
-  Constancy is only detectable with more than one run per scenario, so with a single run
-  numeric criteria are always aggregated.
 - `runs`: one row per simulation run (columns `scenario`, `run`, and one per criterion), or
   `nothing` if `evaluate` was called with `keep_runs = false`.
 - `rundata`: the retained `ResultData` objects, or `nothing` unless `evaluate` was called with
@@ -35,7 +33,7 @@ _named_pairs(nt::NamedTuple) = [k => nt[k] for k in keys(nt)]
 _named_pairs(d::AbstractDict) = [Symbol(k) => v for (k, v) in d]
 
 """
-    evaluate(scenarios, criteria; aggregators=(mean=mean, std=std), keep_runs=true, keep_rundata=false, rd_style="LightRD", seed=nothing)
+    evaluate(scenarios, criteria; aggregators=(mean=mean, std=std), constants=(), keep_runs=true, keep_rundata=false, rd_style="LightRD", seed=nothing)
 
 Run a set of `scenarios` and evaluate a set of pluggable `criteria` against each run,
 returning an [`EvaluationResult`](@ref).
@@ -50,6 +48,8 @@ returning an [`EvaluationResult`](@ref).
 # Keyword Arguments
 - `aggregators`: a `NamedTuple` (or `Dict`) of `values -> scalar` reducers applied to numeric
   criteria. Default `(mean = mean, std = std)`.
+- `constants`: criterion names (a collection of `Symbol`s) to keep verbatim in the summary
+  instead of aggregating — for per-scenario attributes like a population size. Default `()`.
 - `keep_runs`: keep the per-run table in `runs`. Default `true`. It is always computed
   internally to build the summary; set `false` only to drop it from the result.
 - `keep_rundata`: retain the batch's `ResultData` objects in `rundata`. Default `false` —
@@ -81,6 +81,7 @@ result.runs      # one row per run
 """
 function evaluate(scenarios, criteria;
     aggregators = (mean = mean, std = std),
+    constants = (),
     keep_runs::Bool = true,
     keep_rundata::Bool = false,
     rd_style::String = "LightRD",
@@ -128,7 +129,7 @@ function evaluate(scenarios, criteria;
         runs_df[!, name] = identity.(value_cols[j])
     end
 
-    summary_df = _summarize(runs_df, crit_names, _named_pairs(aggregators))
+    summary_df = _summarize(runs_df, crit_names, _named_pairs(aggregators), constants)
 
     return EvaluationResult(summary_df,
         keep_runs ? runs_df : nothing,
@@ -137,26 +138,21 @@ function evaluate(scenarios, criteria;
 end
 
 # aggregates the per-run table into one row per scenario, preserving scenario order
-function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::Vector)
+function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::Vector, constants)
     gdf = groupby(runs_df, :scenario)
-    # a single run per scenario can't distinguish "constant" from "one sample", so numeric
-    # criteria only skip aggregation when we can actually observe them being constant
-    multi_run = any(sub -> nrow(sub) > 1, gdf)
     transforms = Any[]
     unsummarizable = Symbol[]
     for name in crit_names
         col = runs_df[!, name]
-        observed_constant = all(sub -> allequal(sub[!, name]), gdf)
-        if eltype(col) <: Number
-            if multi_run && observed_constant
-                # constant numeric (population size, ...): keep name and type
-                push!(transforms, name => first => name)
-            else
-                for (aggname, aggf) in agg_pairs
-                    push!(transforms, name => aggf => Symbol(name, "_", aggname))
-                end
+        if name in constants
+            # explicitly declared per-scenario attribute: keep verbatim
+            push!(transforms, name => first => name)
+        elseif eltype(col) <: Number
+            # a number is a metric: always aggregate, even if it happens to be constant
+            for (aggname, aggf) in agg_pairs
+                push!(transforms, name => aggf => Symbol(name, "_", aggname))
             end
-        elseif observed_constant
+        elseif all(sub -> allequal(sub[!, name]), gdf)
             # constant non-numeric attribute (label, region, ...): keep as-is
             push!(transforms, name => first => name)
         else
