@@ -59,6 +59,11 @@ gemsplot(rd)
 If you need support with the installation, have a look at this more detailed [installation guide](@ref installation).
 
 
+## Changelogs
+
+Changelogs for newer versions of GEMS can be found here: https://github.com/IMMIDD/GEMS/releases/.
+
+
 ## License
 
 All files that belong to the GEMS are available under GPL-3.0 license.
