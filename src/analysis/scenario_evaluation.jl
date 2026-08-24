@@ -6,11 +6,9 @@ export evaluate, EvaluationResult
 Result of an `evaluate` call over a set of scenarios and criteria.
 
 # Fields
-- `summary`: one row per scenario. Each criterion contributes columns based on its type:
-    - numeric: aggregated, one column per aggregator (`<criterion>_<aggregator>`)
-    - listed in `constants`: kept verbatim under its own name (`<criterion>`)
-    - non-numeric, constant across more than one run: kept as-is (`<criterion>`)
-    - otherwise non-numeric: dropped with a warning; read from `runs` or list in `constants`
+- `summary`: one row per scenario. Numeric criteria are aggregated (`<criterion>_<aggregator>`);
+  non-numeric criteria are kept verbatim when constant (or named in `constants`), otherwise
+  dropped with a warning (read them from `runs`).
 - `runs`: one row per simulation run (columns `scenario`, `run`, and one per criterion), or
   `nothing` if `evaluate` was called with `keep_runs = false`.
 - `rundata`: the retained `ResultData` objects, or `nothing` unless `evaluate` was called with
@@ -167,7 +165,11 @@ function _summarize(runs_df::DataFrame, crit_names::Vector{Symbol}, agg_pairs::V
             push!(unsummarizable, name)
         end
     end
-    isempty(unsummarizable) ||
-        @warn "Non-numeric criteria dropped from summary (varying, or unverifiable from a single run); read them from `result.runs`, or list them in `constants` to keep: $(join(unsummarizable, ", "))"
+    if !isempty(unsummarizable)
+        cols = join(unsummarizable, ", ")
+        @warn multi_run ?
+            "Non-numeric criteria vary within scenarios; dropped from summary (read from `result.runs`): $cols" :
+            "Non-numeric criteria unverifiable from a single run; dropped from summary (read from `result.runs`, or list in `constants` to keep): $cols"
+    end
     return isempty(transforms) ? combine(gdf, nrow => :n) : combine(gdf, transforms...)
 end
