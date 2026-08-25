@@ -110,6 +110,7 @@ module GEMS
     include("analysis/result_data.jl")
     include("analysis/batch_processing.jl")
     include("analysis/batch_data.jl")
+    include("analysis/scenario_evaluation.jl")
     include("analysis/contact_structure_analysis/contact_survey.jl")
     include("analysis/contact_structure_analysis/contact_distributions.jl")
     include("analysis/contact_structure_analysis/contact_distribution_plots.jl")

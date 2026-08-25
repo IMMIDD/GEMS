@@ -38,6 +38,7 @@ include("testutils.jl")
         "postprocessortest.jl",
         "resultdatatest.jl",
         "batchtest.jl",
+        "scenario_evaluationtest.jl",
         "rngtest.jl",
         "utilstest.jl",
         "contactsamplingtest.jl",
