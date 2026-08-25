@@ -8,7 +8,7 @@ export SchoolComplex, School, SchoolYear, SchoolClass
 export Department, Office, WorkplaceSite, Workplace
 export settingchar, settingstring
 export contact_sampling_method, contact_sampling_method!
-export add!
+export add!, remove!
 export id, individuals
 export activate!, deactivate!, isactive
 export open!, close!
@@ -639,12 +639,40 @@ function contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
 end
 
 """
-    add!(setting::Setting, individual::Individual)
+    add!(setting::IndividualSetting, individual::Individual)
 
-Adds the given individual to the setting.
+Adds the given individual to the setting and records the membership on the individual.
+`setting_id!` is a no-op for setting types without an id field on `Individual` (`GlobalSetting`).
+
+Must not be called while the threaded transmission phase is running.
 """
-function add!(setting::Setting, individual::Individual)
+function add!(setting::IndividualSetting, individual::Individual)
     push!(setting.individuals, individual)
+    setting_id!(individual, typeof(setting), id(setting))
+    membership_changed!(contact_sampling_method(setting), setting)
+    return nothing
+end
+
+"""
+    remove!(setting::IndividualSetting, individual::Individual)
+
+Removes the given individual from the setting and clears the membership on the individual.
+Does nothing if it is not a member.
+
+The member is swapped with the last element, so member order is not preserved.
+
+Must not be called while the threaded transmission phase is running.
+"""
+function remove!(setting::IndividualSetting, individual::Individual)
+    inds = setting.individuals
+    idx = findfirst(i -> i === individual, inds)
+    isnothing(idx) && return nothing
+
+    @inbounds inds[idx] = inds[end]
+    pop!(inds)
+    setting_id!(individual, typeof(setting), DEFAULT_SETTING_ID)
+    membership_changed!(contact_sampling_method(setting), setting)
+    return nothing
 end
 
 """

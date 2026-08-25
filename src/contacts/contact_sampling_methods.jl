@@ -1,5 +1,6 @@
 export sample_contacts!, sample_contacts
 export create_contact_sampling_method
+export membership_changed!
 
 """
     sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::Vector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
@@ -270,4 +271,22 @@ function sample_contacts(
     indivs = Vector{Individual}()
     sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
     return indivs
+end
+
+"""
+    membership_changed!(csm::ContactSamplingMethod, setting::Setting)
+
+Signals that `setting`'s member list changed, so a sampling method can drop state derived
+from it. Called by `add!` and `remove!`. No-op by default.
+"""
+membership_changed!(csm::ContactSamplingMethod, setting::Setting) = nothing
+
+"""
+    membership_changed!(csm::AgeBasedContactSampling, setting::Setting)
+
+Drops the cached age pyramid; `sample_contacts!` refills it lazily.
+"""
+function membership_changed!(csm::AgeBasedContactSampling, setting::Setting)
+    empty!(csm.age_pyramid)
+    return nothing
 end
