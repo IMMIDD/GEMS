@@ -32,7 +32,7 @@ function assign_values_to_parameters!(sim; x, arg)
                 if !isempty(instances)
                     csm_type = typeof(first(instances).contact_sampling_method)
                     new_csm  = csm_type(value)
-                    # assing rate to all settings of specified type
+                    # assign rate to all settings of specified type
                     for s in instances
                         contact_sampling_method!(s, new_csm)
                     end

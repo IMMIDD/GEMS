@@ -634,7 +634,8 @@ end
 Sets the `ContactSamplingMethod` of this setting to the provided method.
 """
 function contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
-    setting.contact_sampling_method = csm
+    # deepcopy: settings must not share a mutable sampling-method cache
+    setting.contact_sampling_method = deepcopy(csm)
 end
 
 """
