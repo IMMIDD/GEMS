@@ -75,7 +75,8 @@ function process!(batch::Batch;
             accumulate!(bp.per_group[sim_group], pp; rd_style)
         end
 
-        on_run !== nothing && on_run(ResultData(pp; style = rd_style), i)
+        # reuse the ResultData accumulate! just built when keeping rundata; only build here otherwise
+        on_run !== nothing && on_run(keep_rundata ? bp.rundata[end] : ResultData(pp; style = rd_style), i)
 
         if collect_median
             val = Float64(median_by(pp))
