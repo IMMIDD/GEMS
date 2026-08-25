@@ -33,9 +33,9 @@ WorkplaceSite
 ## Functions
 ```@docs
 activate!
-add!(::Setting, ::Individual)
 add!(::IndividualSetting, ::Individual)
 add!(::SettingsContainer, ::Setting)
+remove!(::IndividualSetting, ::Individual)
 add_type!
 add_types!
 ags(::ContainerSetting, ::Simulation)

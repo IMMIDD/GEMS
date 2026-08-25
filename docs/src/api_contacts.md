@@ -47,6 +47,7 @@ get_age_contact_distribution
 get_age_contact_distribution_matrix
 get_contacts
 mean_contacts_per_age_group
+membership_changed!
 sample_contacts!
 setting_age_contacts
 ```
