@@ -1,7 +1,7 @@
 export process!, run!
 
 """
-    process!(batch::Batch; keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing)
+    process!(batch::Batch; keep_rundata=true, rd_style="LightRD", median_by=nothing, group_by=nothing, seed=nothing, customlogger=nothing, on_run=nothing)
 
 Processes all simulation configurations in `batch` sequentially, accumulating
 results into a `BatchProcessor`.
@@ -22,6 +22,9 @@ results into a `BatchProcessor`.
   If `nothing`, a random seed is generated. Retrieve the used seed via `seed(bp)`.
 - `customlogger`: a `CustomLogger` to attach to each simulation. An independent copy
   is created per run so data is not mixed across runs. Default: `nothing`.
+- `on_run`: a callback `(rd::ResultData, i::Integer) -> ...` invoked as each run finishes,
+  receiving that run's `ResultData`. Lets callers consume runs in a streaming fashion without
+  retaining them all. Default: `nothing`.
 """
 function process!(batch::Batch;
     keep_rundata::Bool = true,
@@ -29,11 +32,16 @@ function process!(batch::Batch;
     median_by::Union{Nothing, Function} = nothing,
     group_by::Union{Nothing, Symbol} = nothing,
     seed::Union{Nothing, Integer} = nothing,
-    customlogger::Union{Nothing, CustomLogger} = nothing
+    customlogger::Union{Nothing, CustomLogger} = nothing,
+    on_run::Union{Nothing, Function} = nothing
 )
     configs = simconfigs(batch)
     setups = simsetups(batch)
     n = length(configs)
+
+    # per-run seeds are controlled here, so a `seed` baked into a simconfig would be ignored
+    any(cfg -> haskey(cfg, :seed), configs) &&
+        @warn "A `seed` in a Batch simconfig is ignored; `process!` sets per-run seeds. Pass `seed` to `process!` instead."
 
     master_seed = seed !== nothing ? Int64(seed) : gems_rand(Xoshiro(), 0:typemax(Int64))
     sim_seeds = let rng = Xoshiro(master_seed)
@@ -66,6 +74,10 @@ function process!(batch::Batch;
             end
             accumulate!(bp.per_group[sim_group], pp; rd_style)
         end
+
+        # reuse the ResultData accumulate! just built when keeping rundata; only build here otherwise
+        on_run !== nothing && on_run(keep_rundata ? bp.rundata[end] : ResultData(pp; style = rd_style), i)
+
         if collect_median
             val = Float64(median_by(pp))
             criterion_values !== nothing && push!(criterion_values, val)
