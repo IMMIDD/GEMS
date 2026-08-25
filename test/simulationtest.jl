@@ -1180,6 +1180,20 @@ import GEMS: increment!, infected!
         @test stepmod(sim_custom) === my_fn
     end
 
+    @testset "stepmod! Setter" begin
+        sim = Simulation(pop_size=100)
+        new_fn = s -> nothing
+        stepmod!(sim, new_fn)
+        @test stepmod(sim) === new_fn
+
+        # a stepmod set before run! is executed each tick
+        cntr = Ref(0)
+        sim_run = Simulation(pop_size=100, stop_criterion = TimesUp(limit = 5))
+        stepmod!(sim_run, s -> cntr[] += 1)
+        run!(sim_run)
+        @test cntr[] == 5
+    end
+
     @testset "Base.show" begin
         sim = Simulation(pop_size=100)
         output = @capture_out show(sim)
