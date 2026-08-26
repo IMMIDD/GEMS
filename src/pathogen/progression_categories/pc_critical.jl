@@ -111,7 +111,7 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Critical
     severeness_offset::Int16 = rand_round(critical_offset + _rand_val(dp.critical_offset_to_severeness_offset, rng), rng)
 
     # Calculate the time to recovery
-    recovery::Int16 = round(Int16, severeness_offset + _rand_val(dp.severeness_offset_to_recovery, rng))
+    recovery::Int16 = rand_round(severeness_offset + _rand_val(dp.severeness_offset_to_recovery, rng), rng)
 
     return DiseaseProgression(
         exposure = tick,
