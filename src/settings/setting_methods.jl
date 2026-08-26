@@ -510,7 +510,7 @@ function min_max_avg_individuals(stngs::Vector{<:Setting}, simulation::Simulatio
         return (nothing, nothing, nothing)
     end
 
-    indivs = simulation.present_buffers[Threads.threadid()]
+    indivs = Vector{Individual}()
 
     min_val = typemax(Int)
     max_val = -1
@@ -542,7 +542,10 @@ end
 Opens the setting.
 """
 function open!(setting::Setting)
+    setting.isopen && return nothing
     setting.isopen = true
+    _count_closed!(setting, -1)
+    return nothing
 end
 """
     open!(setting::Setting, simulation::Simulation)
@@ -550,7 +553,7 @@ end
 Sets the setting and all settings contained by it as open.
 """
 function open!(setting::Setting, simulation::Simulation)
-    setting.isopen = true
+    open!(setting)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
@@ -567,7 +570,10 @@ end
 Closes the setting.
 """
 function close!(setting::Setting)
+    setting.isopen || return nothing
     setting.isopen = false
+    _count_closed!(setting, +1)
+    return nothing
 end
 
 """
@@ -576,7 +582,7 @@ end
 Sets the setting and all settings contained by it as closed (not open).
 """
 function close!(setting::Setting, simulation::Simulation)
-    setting.isopen = false
+    close!(setting)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d

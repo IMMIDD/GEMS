@@ -946,4 +946,175 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         end
     end
 
+    @testset "Pooled hierarchy storage" begin
+
+        # three classes over two years over one school, wired by hand so the test does not
+        # depend on a population file
+        make_school() = begin
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = inds[4:6], contained = Int32(1)),
+                  SchoolClass(id = Int32(3), individuals = inds[7:9], contained = Int32(2))]
+            ys = [SchoolYear(id = Int32(1), contains = Int32[1, 2], contained = Int32(1)),
+                  SchoolYear(id = Int32(2), contains = Int32[3], contained = Int32(1))]
+            sch = School(id = Int32(1), contains = Int32[1, 2])
+            for x in vcat(cs, ys, [sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc)
+            (sc, cs, ys, sch, inds)
+        end
+        ids(f) = [id(x) for x in f]
+
+        @testset "build relocates members into one pool" begin
+            sc, cs, ys, sch, _ = make_school()
+            pool = sc.pools[SchoolClass]
+            @test length(pool.members) == 9
+            @test all(c -> c.individuals isa GEMS.MemberSlice, cs)
+            @test all(c -> parent(c.individuals) === pool.members, cs)
+
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3]
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            # nothing closed and no gaps, so every container is a contiguous view
+            @test GEMS.present_members(sch, sc) isa GEMS.MemberSlice
+        end
+
+        @testset "adding repacks the hierarchy" begin
+            sc, cs, ys, sch, _ = make_school()
+            before1, before3 = ids(GEMS.present_members(cs[1], sc)), ids(GEMS.present_members(cs[3], sc))
+            newcomer = Individual(id = Int32(42), age = 10, sex = 1)
+
+            add_member!(cs[2], newcomer)
+            GEMS.repack_dirty_pools!(sc)
+            @test newcomer.schoolclass == id(cs[2])
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 42]
+            # the untouched leaves must survive the pool being resized underneath them
+            @test ids(GEMS.present_members(cs[1], sc)) == before1
+            @test ids(GEMS.present_members(cs[3], sc)) == before3
+            # the pool is repacked, so the container still reports every member AND stays
+            # contiguous - an edit costs no lasting fast-path degradation
+            @test sort(ids(GEMS.present_members(sch, sc))) == sort(vcat(collect(1:9), 42))
+            @test GEMS.present_members(sch, sc) isa GEMS.MemberSlice
+        end
+
+        @testset "removing swaps with last inside the leaf" begin
+            sc, cs, ys, sch, inds = make_school()
+            victim = cs[1].individuals[2]
+
+            remove_member!(cs[1], victim)
+            GEMS.repack_dirty_pools!(sc)
+            @test length(GEMS.present_members(cs[1], sc)) == 2
+            @test !(victim in GEMS.present_members(cs[1], sc))
+            @test victim.schoolclass == GEMS.DEFAULT_SETTING_ID
+            @test sort(ids(GEMS.present_members(sch, sc))) == sort([1, 3, 4, 5, 6, 7, 8, 9])
+
+            # a non-member leaves everything alone
+            stranger = Individual(id = Int32(77), age = 10, sex = 1)
+            remove_member!(cs[1], stranger)
+            GEMS.repack_dirty_pools!(sc)
+            @test length(GEMS.present_members(cs[1], sc)) == 2
+        end
+
+        @testset "a leaf can be drained and refilled" begin
+            sc, cs, ys, sch, _ = make_school()
+            while length(cs[3].individuals) > 0
+                remove_member!(cs[3], cs[3].individuals[1])
+            end
+            GEMS.repack_dirty_pools!(sc)
+            @test isempty(GEMS.present_members(cs[3], sc))
+            @test sort(ids(GEMS.present_members(sch, sc))) == collect(1:6)
+
+            back = Individual(id = Int32(50), age = 10, sex = 1)
+            add_member!(cs[3], back)
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(cs[3], sc)) == [50]
+            @test sort(ids(GEMS.present_members(sch, sc))) == vcat(collect(1:6), 50)
+        end
+
+        @testset "empty leaves do not corrupt run indexing" begin
+            # a zero-length run would leave `prefix` non-increasing and make
+            # `searchsortedlast` return members from the wrong run, silently
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = Individual[], contained = Int32(1)),
+                  SchoolClass(id = Int32(3), individuals = inds[4:6], contained = Int32(1)),
+                  SchoolClass(id = Int32(4), individuals = inds[7:9], contained = Int32(1))]
+            y = SchoolYear(id = Int32(1), contains = Int32[1, 2, 3, 4], contained = Int32(1))
+            sch = School(id = Int32(1), contains = Int32[1])
+            for x in vcat(cs, [y, sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc)
+            ids(f) = [id(x) for x in f]
+
+            @test isempty(GEMS.present_members(cs[2], sc))
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+
+            # closing a middle class forces two runs with an empty leaf inside the first
+            close!(cs[3])
+            f = GEMS.present_members(sch, sc)
+            @test f isa GEMS.RunView
+            @test ids(f) == [1, 2, 3, 7, 8, 9]
+            # every index, not just the ends: a bad prefix shows up in the middle
+            @test [id(f[i]) for i in eachindex(f)] == [1, 2, 3, 7, 8, 9]
+            open!(cs[3])
+
+            # a container whose leaves are all empty is empty, not malformed
+            for c in cs; while !isempty(c.individuals); remove_member!(c, c.individuals[1]); end; end
+            GEMS.repack_dirty_pools!(sc)
+            @test isempty(GEMS.present_members(sch, sc))
+            @test isempty(GEMS.present_members(y, sc))
+        end
+
+        @testset "reading a pool with pending edits is refused" begin
+            sc, cs, ys, sch, _ = make_school()
+            newcomer = Individual(id = Int32(43), age = 10, sex = 1)
+            add_member!(cs[1], newcomer)
+
+            # every offset in the hierarchy is stale until the repack, so reading would
+            # silently return the wrong members
+            err = try; GEMS.present_members(sch, sc); nothing; catch e; e; end
+            @test err isa ErrorException
+            @test occursin("repack_dirty_pools!", sprint(showerror, err))
+            @test (try; GEMS.present_members(cs[1], sc); false; catch; true; end)
+
+            # the member vector itself is correct throughout, so anything reading it
+            # directly - `individuals`, and `present_individuals!` through it - still works
+            @test length(individuals(cs[1])) == 4
+            @test newcomer in individuals(cs[1])
+
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 43]
+        end
+
+        @testset "sparse setting ids are rejected with a clear message" begin
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear])
+            GEMS.add!(sc, SchoolClass(id = Int32(1), individuals = Individual[], contained = Int32(1)))
+            GEMS.add!(sc, SchoolClass(id = Int32(7), individuals = Individual[], contained = Int32(1)))
+            GEMS.add!(sc, SchoolYear(id = Int32(1), contains = Int32[1]))
+            err = try; GEMS.build_pools!(sc); nothing; catch e; e; end
+            @test err isa ErrorException
+            @test occursin("must be 1..", sprint(showerror, err))
+            @test occursin("new_setting_ids!", sprint(showerror, err))
+        end
+
+        @testset "closed descendants drop out of a container frame" begin
+            sc, cs, ys, sch, _ = make_school()
+            close!(ys[2])
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:6)
+            @test isempty(GEMS.present_members(ys[2], sc))
+            open!(ys[2])
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test GEMS.present_members(sch, sc) isa GEMS.MemberSlice
+
+            # a closed leaf in the middle leaves two runs, and must not leak its members
+            close!(cs[2])
+            f = GEMS.present_members(sch, sc)
+            @test ids(f) == [1, 2, 3, 7, 8, 9]
+            @test f isa GEMS.RunView
+        end
+    end
+
 end

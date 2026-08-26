@@ -72,6 +72,7 @@ module GEMS
     include("population/populations.jl")
     include("settings/settings.jl") 
     include("settings/settingscontainers.jl")
+    include("settings/setting_pool.jl")
     include("simulation/simulation.jl")
     include("registries/registry_iterators.jl")
     include("simulation/batch.jl")

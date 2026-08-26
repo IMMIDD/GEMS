@@ -394,16 +394,12 @@ infection is successful.
 
 """
 function spread_infection!(setting::Setting, sim::Simulation)
-    tid = Threads.threadid()
-    p_buffer = sim.present_buffers[tid]
-    c_buffer = sim.contact_buffers[tid]
-
-    empty!(p_buffer)
-    present_individuals!(p_buffer, setting, sim)
-
+    c_buffer = sim.contact_buffers[Threads.threadid()]
     csm = setting.contact_sampling_method
 
-    num_infected = _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    # zero-copy: `present_members` dispatches on setting kind and hands back a view, so a closed
+    # setting yields an empty frame and falls through to `deactivate!` like any other
+    num_infected = _process_infections!(present_members(setting, settingscontainer(sim)), c_buffer, csm, setting, sim)
 
     if num_infected == 0
         deactivate!(setting)

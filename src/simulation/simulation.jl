@@ -25,7 +25,7 @@ export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export InfectionSeed, seeding_schedule
 export rng, rngs, seed
-export present_buffers, contact_buffers
+export contact_buffers
 
 export info
 
@@ -234,7 +234,6 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     rngs::Vector{Xoshiro} # rng for each thread
 
     # THREAD-LOCAL BUFFERS
-    present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
     infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{_EndedInfection}}
@@ -308,7 +307,6 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             rngs,
             
             # INITIALIZE BUFFERS
-            [Vector{Individual}() for _ in 1:num_shards], # present_buffers
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
             [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
             [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
@@ -507,6 +505,7 @@ function _BUILD_Simulation(;
         )
 
         precompute_ags!(sim)
+        build_pools!(settingscontainer(sim))
         
         # update label
         sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
@@ -1688,14 +1687,6 @@ function seed(simulation::Simulation)
     return simulation.seed
 end
 
-"""
-    present_buffers(simulation::Simulation)
-
-Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
-"""
-function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
-    return simulation.present_buffers
-end
 
 """
     contact_buffers(simulation::Simulation)
