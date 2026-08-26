@@ -5,6 +5,7 @@ export gems_sample!
 export gems_shuffle
 export gems_shuffle!
 export gems_randn
+export rand_round
 
 ### RANDOM NUMBER GENERATORS
 # Reproducibility-safe random number generation methods for GEMS simulations
@@ -140,4 +141,28 @@ end
 function gems_randn(args...)
     @warn "Calling `gems_randn` without a specific RNG is discouraged. Using the global RNG, which may break simulation reproducibility."
     return Random.randn(args...)
+end
+
+
+"""
+    _rand_val(val::Real, rng::Xoshiro)
+    _rand_val(dist::Distribution, rng::Xoshiro)
+
+If the input is a real number, it is returned as is.
+If the input is a distribution, a random value is drawn from it.
+"""
+_rand_val(val::Real, rng::Xoshiro) = val
+_rand_val(dist::Distribution, rng::Xoshiro) = gems_rand(rng, dist)
+
+
+"""
+    rand_round(val::Real, rng::Xoshiro)
+
+If the input is a real number, it is stochastically rounded to an Integer.
+"""
+function rand_round(val::Real, rng::Xoshiro)
+    lower = floor(val)
+    frac = val - lower
+
+    return rand(rng) < frac ? Int(lower) + 1 : Int(lower)
 end
