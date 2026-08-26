@@ -94,4 +94,14 @@
         @test_logs (:warn,) gems_randn()
     end
 
+    @testset "rand_round" begin
+        @test rand_round(3.7) isa Int64
+        @test gems_randn(3.7, Xoshiro(42)) == gems_randn(3.7, Xoshiro(42))
+
+        results = [rand_round(3.7 Xoshiro(42) for _ in 1:100]
+        @test all(3 .<= results .<= 4)
+
+        @test_throws ArgumentError rand_round(3.7, Xoshiro(42))
+        @test_logs (:warn,) rand_round()
+    end
 end
