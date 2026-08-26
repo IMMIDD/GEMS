@@ -79,6 +79,8 @@ Here's a list of all available parameters:
 | `end_date`                | `Date`                                 | End date of the simulation.                                                                                                                                                       |
 | `label`                   | `String`                               | Label used for plot visualizations and aggregating simulations into batches.                                                                                                      |
 | `population`              | `String`, `Population`, or `DataFrame` | Path to a population file, a population identifier (e.g., 'DE'), a `Population` object, or a `DataFrame`.                                                                         |
+| `population_injection`    | `PopulationInjection.Injector` or `String` | An injector holding staged population changes (attribute updates, births, deaths) that are injected into the population during the run, or a path to a `.jld2` file saved with `PopulationInjection.save`. |
+| `population_snapshot`     | `Int`                                  | The day of the staged changes to bake into the initial population (must be `>= 0` and fit in `Int16`). Simulation tick `0` equals that day; changes staged at day `t > population_snapshot` happen at tick `t - population_snapshot`. |
 | `pop_size`                | `Int`                                  | Size of the population to be created. Will be ignored if a `population` is provided.                                                                                              |
 | `avg_household_size`      | `Float`                                | Average household size for the population to be created. Will be ignored if a `population` is provided.                                                                           |
 | `avg_office_size`         | `Float`                                | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
@@ -195,6 +197,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
 
     # model
     population::Population
+    population_injection::Union{PopulationInjectionState, Nothing}   # attached injector + staged population changes (nothing = no injection)
     settings::SettingsContainer
     pathogens::P
     health_progression::HP
@@ -253,7 +256,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
         health_progression::HP,
         stepmod::Function,
         seed::Int64,
-        rngs::Vector{<:Xoshiro}
+        rngs::Vector{<:Xoshiro},
+        population_injection::Union{PopulationInjectionState, Nothing} = nothing
     ) where {P<:Tuple, HP<:HealthProgression}
     num_shards = Threads.maxthreadid()
     matrix_size_hint = ceil(Int, (length(population.individuals) * 0.1) / (num_shards^2))
@@ -270,6 +274,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
 
             # model
             population,
+            population_injection,
             settings,
             pathogens,
             health_progression,
@@ -407,7 +412,11 @@ function _BUILD_Simulation(;
         seed = nothing,
 
         # individual extensions
-        ind_extension = nothing
+        ind_extension = nothing,
+
+        # population injection (staged population changes)
+        population_injection = nothing,    # PopulationInjection.Injector or path (.jld2) to a saved injector
+        population_snapshot = 0            # day baked into the initial population; sim tick 0 == day `population_snapshot` of the staged changes
     )
 
         # parse the config file (or default to default.toml)
@@ -435,6 +444,46 @@ function _BUILD_Simulation(;
             rngs[1],
             ind_extension
         )
+
+        # POPULATION INJECTION (staged population changes)
+        population_snapshot < 0 &&
+            throw(ArgumentError("population_snapshot must be >= 0 (got $population_snapshot)."))
+        population_snapshot > typemax(Int16) &&
+            throw(ArgumentError("population_snapshot must fit in Int16 (got $population_snapshot)."))
+        population_snapshot > 0 && isnothing(population_injection) &&
+            throw(ArgumentError("population_snapshot requires population_injection to be set."))
+
+        inj_state = isnothing(population_injection) ? nothing : (() -> begin
+            injector = population_injection isa AbstractString ?
+                PopulationInjection.Injector(population_injection) :     # like Population(path)
+                population_injection
+            injector isa PopulationInjection.Injector ||
+                throw(ArgumentError("population_injection must be a PopulationInjection.Injector or a path to a .jld2 file saved with PopulationInjection.save."))
+
+            # hash-check against the staged base BEFORE anything is baked in
+            validate_injection_base!(pop, injector)
+
+            events = injector.events
+            # stable sort: equal timestamps keep staging order (later-staged wins per field)
+            order = sortperm(events, by = e -> e.timestamp, alg = MergeSort)
+
+            offset = Int16(population_snapshot)
+            prefix = Int32(0)
+            @inbounds while prefix < length(events) && events[order[prefix + 1]].timestamp <= offset
+                prefix += 1
+            end
+            if prefix > 0
+                # bake in days <= snapshot (deaths at tick 0); the settings container is passed so that
+                # staged setting moves (household/office/schoolclass/municipality) update membership,
+                # not only the individual's id field
+                apply_injection_events!(pop, injector, events[order[1:prefix]], Int16(0), settings)
+            end
+            PopulationInjectionState(injector, Vector{Int}(order), Int(prefix), Int(prefix), offset)
+        end)()
+
+        if !isnothing(inj_state)
+            @info "population injection: attached injector with $(length(inj_state.injector.events)) event(s), snapshot at day $(inj_state.offset)"
+        end
 
         # everything after this is just generating, not loading from disk
         _printinfo("\u2514 Creating simulation object")
@@ -503,7 +552,8 @@ function _BUILD_Simulation(;
             hp,
             stepmod,
             rng_seed,
-            rngs
+            rngs,
+            inj_state
         )
 
         precompute_ags!(sim)
@@ -2203,6 +2253,10 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
         reset!(ind, infection_registry(simulation, id(ind)), immunity_registry(simulation, id(ind)))
     end
     reset_tick!(simulation)
+
+    # re-realize baked-in injection state (births are idempotent, deaths re-marked) after the
+    # per-individual reset! above cleared the death state of all individuals
+    reset_injection!(simulation)
 
     # Reset all loggers
     pop = population(simulation)

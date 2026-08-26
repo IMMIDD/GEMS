@@ -26,6 +26,7 @@ include("testutils.jl")
     testfiles = [
         "agentstest.jl",
         "populationstest.jl",
+        "population_injectiontest.jl",
         "pathogentest.jl",
         "diseaseprogressiontest.jl",
         "healthprogressiontest.jl",

@@ -26,22 +26,8 @@ mutable struct Population
     minid::Int32 # smallest id of any individual.
     maxid::Int32 # largest id of any individual.
     id_map::Vector{Int32} # Maps (id - minid + 1) to the individual's index in the `individuals` array. Needed for O(1) lookups.
-    
 
-    @doc """
-        make_id_map!(population::Population)
 
-    Creates an `id_map` for the given Population to avoid missmatches later.
-    """
-    function make_id_map!(pop::Population)
-        map_size = isempty(pop.individuals) ? 0 : pop.maxid - pop.minid + 1
-        pop.id_map = zeros(Int32, map_size)
-
-        for (i, ind) in enumerate(pop.individuals)
-            pop.id_map[ind.id - pop.minid + 1] = i 
-        end
-    end
-    
     @doc """
         Population(individuals::Vector{Individual})
 
@@ -293,6 +279,20 @@ mutable struct Population
 
         make_id_map!(pop)
         return pop
+    end
+end
+
+"""
+    make_id_map!(population::Population)
+
+Creates an `id_map` for the given Population to avoid missmatches later.
+"""
+function make_id_map!(pop::Population)
+    map_size = isempty(pop.individuals) ? 0 : pop.maxid - pop.minid + 1
+    pop.id_map = zeros(Int32, map_size)
+
+    for (i, ind) in enumerate(pop.individuals)
+        pop.id_map[ind.id - pop.minid + 1] = i
     end
 end
 

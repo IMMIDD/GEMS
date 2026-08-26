@@ -344,6 +344,9 @@ end
 Increments the simulation status by one tick and executes all events that shall be handled during this tick.
 """
 function step!(simulation::Simulation)
+    # inject staged population changes due at this tick (O(1) no-op when no injector is attached or none are due)
+    inject_population_changes!(simulation)
+
     dormant = is_dormant(simulation)
 
     # realize scheduled care before anything reads hospitalization state. Unconditional, so a
