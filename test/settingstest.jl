@@ -14,7 +14,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
             @test Set(individuals(gs)) == Set(indis)
 
-            add!(gs, i)
+            add_member!(gs, i)
             @test Set(individuals(gs)) == Set(push!(indis, i))
         end
     end
@@ -187,7 +187,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test Set(individuals(h)) == Set(indis)
             @test !isactive(h)
 
-            add!(h, i)
+            add_member!(h, i)
             @test Set(individuals(h)) == Set(push!(indis, i))
             @test !isactive(h)
 
@@ -854,7 +854,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             newcomer = Individual(id = Int32(99), age = 5, sex = 0)
             @test newcomer.household == GEMS.DEFAULT_SETTING_ID
 
-            add!(h, newcomer)
+            add_member!(h, newcomer)
             @test length(individuals(h)) == 6
             @test newcomer in individuals(h)
             @test newcomer.household == id(h)
@@ -862,7 +862,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
         @testset "remove! clears membership on both sides" begin
             h, inds = make_household(5)
-            remove!(h, inds[3])
+            remove_member!(h, inds[3])
             @test length(individuals(h)) == 4
             @test !(inds[3] in individuals(h))
             @test inds[3].household == GEMS.DEFAULT_SETTING_ID
@@ -873,7 +873,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @testset "remove! is a no-op for a non-member" begin
             h, inds = make_household(3)
             stranger = Individual(id = Int32(99), age = 40, sex = 1, household = Int32(7))
-            remove!(h, stranger)
+            remove_member!(h, stranger)
             @test length(individuals(h)) == 3
             # a non-member's own membership must not be touched
             @test stranger.household == Int32(7)
@@ -882,7 +882,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @testset "remove! at every position, and the last member" begin
             for pos in 1:5
                 h, inds = make_household(5)
-                remove!(h, inds[pos])
+                remove_member!(h, inds[pos])
                 @test length(individuals(h)) == 4
                 @test !(inds[pos] in individuals(h))
                 # every other member survives exactly once
@@ -892,7 +892,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             end
 
             h, inds = make_household(1)
-            remove!(h, inds[1])
+            remove_member!(h, inds[1])
             @test isempty(individuals(h))
         end
 
@@ -900,8 +900,8 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             h, inds = make_household(5)
             before = Set(id.(individuals(h)))
             newcomer = Individual(id = Int32(99), age = 5, sex = 0)
-            add!(h, newcomer)
-            remove!(h, newcomer)
+            add_member!(h, newcomer)
+            remove_member!(h, newcomer)
             @test Set(id.(individuals(h))) == before
         end
 
@@ -916,19 +916,19 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             sample_contacts(contact_sampling_method(h), h, 1, individuals(h), GEMS.DEFAULT_TICK, rng = Xoshiro(1))
             @test !isempty(contact_sampling_method(h).age_pyramid)
 
-            add!(h, Individual(id = Int32(99), age = 5, sex = 0))
+            add_member!(h, Individual(id = Int32(99), age = 5, sex = 0))
             @test isempty(contact_sampling_method(h).age_pyramid)
 
             sample_contacts(contact_sampling_method(h), h, 1, individuals(h), GEMS.DEFAULT_TICK, rng = Xoshiro(1))
             @test !isempty(contact_sampling_method(h).age_pyramid)
 
-            remove!(h, inds[3])
+            remove_member!(h, inds[3])
             @test isempty(contact_sampling_method(h).age_pyramid)
 
             # samplers that cache nothing use the no-op default
             h2 = Household(id = Int32(2), individuals = copy(inds),
                 contact_sampling_method = ContactparameterSampling(1.0))
-            add!(h2, Individual(id = Int32(98), age = 5, sex = 0))
+            add_member!(h2, Individual(id = Int32(98), age = 5, sex = 0))
             @test length(individuals(h2)) == length(inds) + 1
         end
 
@@ -937,10 +937,10 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             gs = GlobalSetting(id = Int32(1), individuals = Individual[],
                 contact_sampling_method = ContactparameterSampling(1.0))
             i = Individual(id = Int32(1), age = 30, sex = 1, household = Int32(4))
-            add!(gs, i)
+            add_member!(gs, i)
             @test i in individuals(gs)
             @test i.household == Int32(4)
-            remove!(gs, i)
+            remove_member!(gs, i)
             @test isempty(individuals(gs))
             @test i.household == Int32(4)
         end
