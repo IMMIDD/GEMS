@@ -9,6 +9,10 @@ export AgeBasedContactSampling
     ContactSamplingMethod
 
 Supertype for all contact sampling methods. This type is intended to be extended by providing different sampling methods suitable for the structure of the simulation model.
+
+Implement `sample_contacts!` for your subtype. Its `present_inds` argument is an
+`AbstractVector{Individual}` view of the setting's members and must be treated as read-only;
+write results into `indivs`.
 """
 abstract type ContactSamplingMethod end
 
