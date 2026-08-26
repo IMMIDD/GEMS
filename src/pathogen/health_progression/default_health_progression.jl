@@ -38,8 +38,8 @@ function calculate_health_profile(sc::SevereHealthProfile, individual::Individua
     hospital_admission::Int16 = Int16(-1)
     hospital_discharge::Int16 = Int16(-1)
     if gems_rand(rng) <= Float64(sc.hospital_probability)
-        hospital_admission = round(Int16, infection.severeness_onset + _rand_val(sc.severeness_onset_to_hospital_admission, rng))
-        hospital_discharge = round(Int16, hospital_admission + _rand_val(sc.hospital_admission_to_hospital_discharge, rng))
+        hospital_admission = rand_round(infection.severeness_onset + _rand_val(sc.severeness_onset_to_hospital_admission, rng), rng)
+        hospital_discharge = rand_round(hospital_admission + _rand_val(sc.hospital_admission_to_hospital_discharge, rng), rng)
     end
     care = CareContribution(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge)
     return care, HealthOutcome()

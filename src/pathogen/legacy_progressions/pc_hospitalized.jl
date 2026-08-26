@@ -32,22 +32,22 @@ end
 function calculate_progression(individual::Individual, tick::Int16, dp::Hospitalized, rng::Xoshiro)
 
     # Calculate the time to infectiousness
-    infectiousness_onset::Int16 = round(Int16, tick + 1 + _rand_val(dp.exposure_to_infectiousness_onset, rng))
+    infectiousness_onset::Int16 = rand_round(tick + 1 + _rand_val(dp.exposure_to_infectiousness_onset, rng), rng)
 
     # Calculate the time to symptom onset
-    symptom_onset::Int16 = round(Int16, infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng))
+    symptom_onset::Int16 = rand_round(infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng), rng)
 
     # Calculate the time to severeness onset
-    severeness_onset::Int16 = round(Int16, symptom_onset + _rand_val(dp.symptom_onset_to_severeness_onset, rng))
+    severeness_onset::Int16 = rand_round(symptom_onset + _rand_val(dp.symptom_onset_to_severeness_onset, rng), rng)
 
     # the severeness window spans the old ward stay: admission delay + ward stay + discharge-to-offset
-    severeness_offset::Int16 = round(Int16, severeness_onset +
+    severeness_offset::Int16 = rand_round( severeness_onset +
         _rand_val(dp.severeness_onset_to_hospital_admission, rng) +
         _rand_val(dp.hospital_admission_to_hospital_discharge, rng) +
-        _rand_val(dp.hospital_discharge_to_severeness_offset, rng))
+        _rand_val(dp.hospital_discharge_to_severeness_offset, rng), rng)
 
     # Calculate the time to recovery
-    recovery::Int16 = round(Int16, severeness_offset + _rand_val(dp.severeness_offset_to_recovery, rng))
+    recovery::Int16 = rand_round(severeness_offset + _rand_val(dp.severeness_offset_to_recovery, rng), rng)
 
     return DiseaseProgression(
         exposure = tick,
