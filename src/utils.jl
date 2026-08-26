@@ -1165,16 +1165,6 @@ end
 
 
 """
-    _rand_val(val::Real, rng::Xoshiro)
-    _rand_val(dist::Distribution, rng::Xoshiro)
-
-If the input is a real number, it is returned as is.
-If the input is a distribution, a random value is drawn from it.
-"""
-_rand_val(val::Real, rng::Xoshiro) = val
-_rand_val(dist::Distribution, rng::Xoshiro) = gems_rand(rng, dist)
-
-"""
     state_data()
 
 Returns a dataframe with AGS and string-names of German states.
