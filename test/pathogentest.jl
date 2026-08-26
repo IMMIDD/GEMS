@@ -1143,7 +1143,7 @@ end
             @test !immunity_is_stable(p, state, ind, Int16(1))
         end
 
-        @testset "susceptibility_factor" begin
+        @testset "Susceptibility Factor" begin
             # default is a proportional reduction, for every built-in profile
             for prof in (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning())
                 @test all(l -> susceptibility_factor(prof, Int8(l)) ≈ 1.0 - l / 100.0, 0:10:100)
@@ -1157,7 +1157,11 @@ end
             # end to end: the level stays readable while its effect on transmission changes
             function etp_with(profile)
                 tf = ConstantTransmissionRate(transmission_rate = 0.3)
-                p = Pathogen(id = 1, name = "SF", progressions = [pr_asymp],
+                pr_asymp_det = Asymptomatic(
+                    exposure_to_infectiousness_onset = 0,
+                    infectiousness_onset_to_recovery = 5
+                )
+                p = Pathogen(id = 1, name = "SF", progressions = [pr_asymp_det],
                     progression_assignment = RandomProgressionAssignment([Asymptomatic]),
                     transmission_function = tf, immunity_profile = profile)
                 s = Simulation(pop_size = 500, pathogens = (p,), infected_fraction = 0.0)
