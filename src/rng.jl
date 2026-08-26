@@ -160,7 +160,7 @@ _rand_val(dist::Distribution, rng::Xoshiro) = gems_rand(rng, dist)
 
 If the input is a real number, it is stochastically rounded to an Integer.
 """
-function rand_round(val::Real, rng::Xoshiro)
+function rand_round(val::Real, rng::Xoshiro)::Int16
     lower = floor(val)
     frac = val - lower
 
