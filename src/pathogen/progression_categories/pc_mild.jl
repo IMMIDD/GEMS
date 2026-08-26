@@ -45,7 +45,7 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Mild, rn
     symptom_onset::Int16 = rand_round(infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng))
 
     # Calculate the time to recovery
-    recovery::Int16 = rand_round(symptom_onset + _rand_val(dp.symptom_onset_to_recovery, rng))
+    recovery::Int16 = round(Int16, symptom_onset + _rand_val(dp.symptom_onset_to_recovery, rng))
 
     return DiseaseProgression(
         exposure = tick,
