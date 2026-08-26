@@ -133,24 +133,24 @@ function calculate_health_profile(cc::CriticalHealthProfile, individual::Individ
     death::Int16 = Int16(-1)
 
     if gems_rand(rng) <= Float64(cc.hospital_probability)
-        hospital_admission = round(Int16, infection.critical_onset + _rand_val(cc.critical_onset_to_hospital_admission, rng))
+        hospital_admission = rand_round(infection.critical_onset + _rand_val(cc.critical_onset_to_hospital_admission, rng), rng)
         if gems_rand(rng) <= Float64(cc.hospital_to_icu_probability)
-            icu_admission = round(Int16, hospital_admission + _rand_val(cc.hospital_admission_to_icu_admission, rng))
+            icu_admission = rand_round(hospital_admission + _rand_val(cc.hospital_admission_to_icu_admission, rng), rng)
             if gems_rand(rng) <= Float64(cc.icu_to_ventilation_probability)
-                ventilation_admission = round(Int16, icu_admission + _rand_val(cc.icu_admission_to_ventilation_admission, rng))
-                ventilation_discharge = round(Int16, ventilation_admission + _rand_val(cc.ventilation_admission_to_ventilation_discharge, rng))
-                icu_discharge = round(Int16, ventilation_discharge + _rand_val(cc.ventilation_discharge_to_icu_discharge, rng))
+                ventilation_admission = rand_round(icu_admission + _rand_val(cc.icu_admission_to_ventilation_admission, rng), rng)
+                ventilation_discharge = rand_round(ventilation_admission + _rand_val(cc.ventilation_admission_to_ventilation_discharge, rng), rng)
+                icu_discharge = rand_round(ventilation_discharge + _rand_val(cc.ventilation_discharge_to_icu_discharge, rng), rng)
             else
-                icu_discharge = round(Int16, icu_admission + _rand_val(cc.icu_admission_to_icu_discharge, rng))
+                icu_discharge = rand_round(icu_admission + _rand_val(cc.icu_admission_to_icu_discharge, rng), rng)
             end
-            hospital_discharge = round(Int16, icu_discharge + _rand_val(cc.icu_discharge_to_hospital_discharge, rng))
+            hospital_discharge = rand_round(icu_discharge + _rand_val(cc.icu_discharge_to_hospital_discharge, rng), rng)
         else
-            hospital_discharge = round(Int16, hospital_admission + _rand_val(cc.hospital_admission_to_hospital_discharge, rng))
+            hospital_discharge = rand_round(hospital_admission + _rand_val(cc.hospital_admission_to_hospital_discharge, rng), rng)
         end
     end
     # death is independent of hospital/ICU here; the ladder and the outcome are reconciled downstream
     if gems_rand(rng) <= Float64(cc.death_probability)
-        death = round(Int16, infection.critical_onset + _rand_val(cc.critical_onset_to_death, rng))
+        death = rand_round(infection.critical_onset + _rand_val(cc.critical_onset_to_death, rng), rng)
     end
 
     care = CareContribution(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge,
