@@ -39,13 +39,13 @@ end
 function calculate_progression(individual::Individual, tick::Int16, dp::Mild, rng::Xoshiro)
 
     # Calculate the time to infectiousness
-    infectiousness_onset::Int16 = round(Int16, tick + 1 + _rand_val(dp.exposure_to_infectiousness_onset, rng))
+    infectiousness_onset::Int16 = rand_round(tick + 1 + _rand_val(dp.exposure_to_infectiousness_onset, rng), rng)
 
     # Calculate the time to symptom onset
-    symptom_onset::Int16 = round(Int16, infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng))
+    symptom_onset::Int16 = rand_round(infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng), rng)
 
     # Calculate the time to recovery
-    recovery::Int16 = round(Int16, symptom_onset + _rand_val(dp.symptom_onset_to_recovery, rng))
+    recovery::Int16 = rand_round(symptom_onset + _rand_val(dp.symptom_onset_to_recovery, rng), rng)
 
     return DiseaseProgression(
         exposure = tick,
