@@ -1,3 +1,38 @@
+# samplers for the `sample_contacts!` fallback, which built-in ones never reach because they
+# define the positional method. Each defines one of the shapes the fallback probes for.
+
+# mutating keyword method
+struct KwMutatingSampler <: ContactSamplingMethod end
+
+function GEMS.sample_contacts!(indivs::Vector{Individual}, csm::KwMutatingSampler,
+        setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual},
+        tick::Int16; replace::Bool = true, rng::Xoshiro = Xoshiro(1))
+    push!(indivs, present_inds[1])
+    return indivs
+end
+
+# non-mutating keyword method, sharing a signature with GEMS' own generic wrapper
+struct KwNonMutatingSampler <: ContactSamplingMethod end
+
+function GEMS.sample_contacts(csm::KwNonMutatingSampler, setting::Setting,
+        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16;
+        replace::Bool = true, rng::Xoshiro = Xoshiro(1))
+    return [present_inds[1], present_inds[end]]
+end
+
+# still types present_inds as Vector, so a pooled setting's view reaches it only by copying
+struct VectorOnlySampler <: ContactSamplingMethod end
+
+function GEMS.sample_contacts!(indivs::Vector{Individual}, csm::VectorOnlySampler,
+        setting::Setting, individual_index::Int, present_inds::Vector{Individual},
+        tick::Int16; replace::Bool = true, rng::Xoshiro = Xoshiro(1))
+    append!(indivs, present_inds)
+    return indivs
+end
+
+# defines neither shape
+struct NoMethodSampler <: ContactSamplingMethod end
+
 @testset "Contact Sampling" begin
            
     # create testsets for each ContactSamplingMethod known in GEMS
@@ -151,9 +186,111 @@
         
         # Call the new ! version
         sample_contacts!(buffer, rs, h, 1, indis, Int16(1), true, Xoshiro(42))
-        
+
         @test length(buffer) == 1
         @test buffer[1] isa Individual
         @test buffer[1].id != indis[1].id # Should not sample self
+    end
+
+    @testset "sample_contacts! dispatch fallback" begin
+        inds = [Individual(id = j, age = 20, sex = 1, household = 1) for j in 1:5]
+        h = Household(id = 1, individuals = copy(inds),
+            contact_sampling_method = ContactparameterSampling(1.0))
+        # what a pooled setting hands out, as opposed to a plain Vector
+        slice = view(inds, 1:length(inds))
+        tick = GEMS.DEFAULT_TICK
+        ids(f) = [i.id for i in f]
+
+        @testset "mutating keyword method" begin
+            csm = KwMutatingSampler()
+            buf = Individual[]
+            sample_contacts!(buf, csm, h, 1, inds, tick, true, Xoshiro(1))
+            @test ids(buf) == [inds[1].id]
+
+            # the view reaches the sampler as it is, with nothing copied on the way
+            buf = Individual[]
+            sample_contacts!(buf, csm, h, 1, slice, tick, true, Xoshiro(1))
+            @test ids(buf) == [inds[1].id]
+        end
+
+        @testset "non-mutating keyword method" begin
+            csm = KwNonMutatingSampler()
+            buf = Individual[]
+            sample_contacts!(buf, csm, h, 1, inds, tick, true, Xoshiro(1))
+            @test ids(buf) == [inds[1].id, inds[end].id]
+
+            # results are appended to the buffer, not swapped in for it
+            buf = [inds[3]]
+            sample_contacts!(buf, csm, h, 1, slice, tick, true, Xoshiro(1))
+            @test ids(buf) == [inds[3].id, inds[1].id, inds[end].id]
+
+            # and the non-mutating entry point reaches the same method
+            @test ids(sample_contacts(csm, h, 1, slice, tick, true, Xoshiro(1))) ==
+                [inds[1].id, inds[end].id]
+        end
+
+        @testset "Vector-typed sampler" begin
+            csm = VectorOnlySampler()
+
+            # already a Vector, so it is handed over directly
+            buf = Individual[]
+            sample_contacts!(buf, csm, h, 1, inds, tick, true, Xoshiro(1))
+            @test ids(buf) == ids(inds)
+
+            # a view has to be materialised first - the deprecated path, which warns
+            buf = Individual[]
+            with_logger(NullLogger()) do
+                sample_contacts!(buf, csm, h, 1, slice, tick, true, Xoshiro(1))
+            end
+            @test ids(buf) == ids(inds)
+        end
+
+        @testset "no method defined" begin
+            csm = NoMethodSampler()
+            err = try
+                sample_contacts!(Individual[], csm, h, 1, inds, tick, true, Xoshiro(1))
+                nothing
+            catch e
+                e
+            end
+            @test err isa ErrorException
+            @test occursin("NoMethodSampler", sprint(showerror, err))
+
+            # a view gets the same answer rather than falling into the copying path
+            @test_throws ErrorException sample_contacts!(Individual[], csm, h, 1, slice,
+                tick, true, Xoshiro(1))
+        end
+    end
+
+    @testset "too few members" begin
+        m = hcat([[rand(Xoshiro(7 + i)) for i = 1:10] for i = 1:10]...)
+        m = m .* hcat([vec(1 ./ sum(m, dims = 2)) for _ = 1:10]...)
+        lone = [Individual(id = 1, age = 30, sex = 1, household = 1)]
+
+        # a member on their own has nobody to meet, which is not an error the way an
+        # empty setting is
+        cps = ContactparameterSampling(2.0)
+        h = Household(id = 1, individuals = copy(lone), contact_sampling_method = cps)
+        @test isempty(sample_contacts(cps, h, 1, lone, GEMS.DEFAULT_TICK, rng = Xoshiro(1)))
+
+        abcs = AgeBasedContactSampling(2.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
+        h2 = Household(id = 2, individuals = copy(lone), contact_sampling_method = abcs)
+        @test isempty(sample_contacts(abcs, h2, 1, lone, GEMS.DEFAULT_TICK, rng = Xoshiro(1)))
+
+        # with exactly one other member, `replace = false` draws from everyone but the last
+        # slot, so the individual can only reach a valid contact via the self-swap
+        pair = [Individual(id = 1, age = 30, sex = 1, household = 1),
+                Individual(id = 2, age = 30, sex = 1, household = 1)]
+        abcs2 = AgeBasedContactSampling(100.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
+        h3 = Household(id = 3, individuals = copy(pair), contact_sampling_method = abcs2)
+
+        drew = false
+        for s in 1:20
+            contacts = sample_contacts(abcs2, h3, 1, pair, GEMS.DEFAULT_TICK,
+                replace = false, rng = Xoshiro(s))
+            @test all(c -> c.id == pair[2].id, contacts) # never themselves
+            drew |= !isempty(contacts)
+        end
+        @test drew # the assertion above is only worth anything if something was sampled
     end
 end
