@@ -67,8 +67,9 @@ in DFS order over `contains`, so any container's members form a contiguous range
     common case and lets a container hand over its range without any walk.
 - `dirty::Bool`: Set by a member edit and cleared by `repack_dirty_pools!`. While set, every
     offset and length in the hierarchy is stale, so `present_members` refuses to read it.
-- `leaves::Vector{IndividualSetting}`: Every leaf in the hierarchy, in the order their
-    members are laid out in `members`. A repack walks this to rebuild that layout.
+- `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
+    `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
+    typed vector of the pool's one leaf type, which `_repack!` reaches behind a barrier.
 - `containers::Vector{ContainerSetting}`: Every container in the hierarchy, so a repack can
     refresh their offsets and lengths without walking the setting tree again.
 - `leaf_ranges::Vector{UnitRange{Int}}`: For each entry of `containers`, which slice of
@@ -82,7 +83,7 @@ mutable struct SettingPool
     # set by a member edit, cleared by the repack that follows it
     dirty::Bool
     # everything a repack needs, so a member edit does not have to find the hierarchy again
-    leaves::Vector{IndividualSetting}
+    leaves::Vector # widened: holds a Vector{SchoolClass} / Vector{Office}
     containers::Vector{ContainerSetting}
     # containers[i] covers leaves[leaf_ranges[i]]
     leaf_ranges::Vector{UnitRange{Int}}

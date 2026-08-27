@@ -87,16 +87,18 @@ end
 function _build_pool!(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualSetting}
     leaves = _dfs_leaves(cntnr, L)
 
-    # a container's leaves are consecutive in DFS order, so its span is one index range
-    pos = IdDict{IndividualSetting, Int}(l => i for (i, l) in enumerate(leaves))
+    # a container's leaves are consecutive in DFS order, so its span is one index range.
+    # ids are contiguous 1..n by now, so a leaf's position is an array index
+    pos = Vector{Int32}(undef, length(leaves))
+    for (i, l) in enumerate(leaves)
+        pos[id(l)] = Int32(i)
+    end
     containers = ContainerSetting[]
     ranges = UnitRange{Int}[]
-    idxs = Int[]
     for C in container_chain(L), c in settings(cntnr, C)
-        empty!(idxs)
-        _leaf_positions!(idxs, pos, cntnr, c)
+        lo, hi = _leaf_span(pos, cntnr, c)
         push!(containers, c)
-        push!(ranges, isempty(idxs) ? (1:0) : (minimum(idxs):maximum(idxs)))
+        push!(ranges, hi == 0 ? (1:0) : (lo:hi))
     end
 
     pool = SettingPool(Individual[], 0, false, leaves, containers, ranges)
@@ -109,17 +111,22 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualS
     return pool
 end
 
-function _leaf_positions!(idxs, pos, ::SettingsContainer, s::IndividualSetting)
-    haskey(pos, s) && push!(idxs, pos[s])
-    return nothing
+# Lowest and highest layout position `s` covers, `(typemax(Int), 0)` for none. Min/max, not
+# first/last reached, so a leaf under two parents still spans both.
+function _leaf_span(pos, ::SettingsContainer, s::IndividualSetting)
+    p = Int(pos[id(s)])
+    return (p, p)
 end
 
-function _leaf_positions!(idxs, pos, cntnr::SettingsContainer, s::ContainerSetting)
+function _leaf_span(pos, cntnr::SettingsContainer, s::ContainerSetting)
     kids = settings(cntnr, contains_type(typeof(s)))
+    lo, hi = typemax(Int), 0
     for cid in s.contains
-        _leaf_positions!(idxs, pos, cntnr, kids[cid])
+        l, h = _leaf_span(pos, cntnr, kids[cid])
+        lo = min(lo, l)
+        hi = max(hi, h)
     end
-    return nothing
+    return (lo, hi)
 end
 
 """
@@ -150,8 +157,14 @@ Invalidates any previously handed-out member view, which is safe because member 
 forbidden inside the threaded transmission phase.
 """
 function _repack!(pool::SettingPool)
+    pool.members = _repack_leaves!(pool.leaves)
+    _repack_containers!(pool.containers, pool.leaf_ranges, pool.leaves)
+    return nothing
+end
+
+function _repack_leaves!(leaves::Vector{T}) where {T<:IndividualSetting}
     total = 0
-    for l in pool.leaves
+    for l in leaves
         total += length(l.individuals)
     end
     # a repack cannot pack in place: a leaf that grew would overwrite the next leaf before
@@ -159,29 +172,37 @@ function _repack!(pool::SettingPool)
     members = Vector{Individual}(undef, total)
 
     off = 1
-    for l in pool.leaves
+    for l in leaves
         n = length(l.individuals)
         copyto!(members, off, l.individuals, 1, n)
         l.pool_offset = Int32(off)
         l.pool_length = Int32(n)
         off += n
     end
-    pool.members = members
 
     # repoint only after all copying, so no leaf is read after its storage was replaced
-    for l in pool.leaves
+    for l in leaves
         lo = Int(l.pool_offset)
         l.individuals = view(members, lo:(lo + Int(l.pool_length) - 1))
     end
+    return members
+end
 
-    for (i, c) in enumerate(pool.containers)
-        r = pool.leaf_ranges[i]
-        len = 0
-        for j in r
-            len += Int(pool.leaves[j].pool_length)
+function _repack_containers!(containers, leaf_ranges, leaves::Vector{T}) where {T<:IndividualSetting}
+    for (i, c) in enumerate(containers)
+        r = leaf_ranges[i]
+        if isempty(r)
+            c.pool_offset = Int32(0)
+            c.pool_length = Int32(0)
+            continue
         end
-        c.pool_offset = (isempty(r) || len == 0) ? Int32(0) : pool.leaves[first(r)].pool_offset
-        c.pool_length = Int32(len)
+        # the leaf pass left no gaps, so the span runs from the first leaf's start to the
+        # end of the last one
+        lo = leaves[first(r)]
+        hi = leaves[last(r)]
+        len = hi.pool_offset + hi.pool_length - lo.pool_offset
+        c.pool_offset = len == 0 ? Int32(0) : lo.pool_offset # 0 means "no members here"
+        c.pool_length = len
     end
     return nothing
 end
@@ -192,7 +213,7 @@ end
 function _dfs_leaves(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualSetting}
     leaves = settings(cntnr, L)
     order = Vector{L}()
-    taken = Set{Int32}()
+    taken = falses(length(leaves)) # ids are contiguous 1..n by now
 
     for C in reverse(container_chain(L)), s in settings(cntnr, C)
         _take_leaf!(order, taken, cntnr, s)
@@ -204,8 +225,8 @@ function _dfs_leaves(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualSe
 end
 
 _take_leaf!(order, taken, ::SettingsContainer, s::IndividualSetting) = begin
-    s.id in taken && return nothing
-    push!(taken, s.id)
+    taken[s.id] && return nothing
+    taken[s.id] = true
     push!(order, s)
     return nothing
 end
