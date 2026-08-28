@@ -353,9 +353,7 @@ function step!(simulation::Simulation)
     # seed scheduled imports before transmission so a fresh import can spread this tick
     seed_scheduled!(simulation)
 
-    # a member edit leaves its pool stale until this runs. The transmission phase is the only
-    # reader of pooled members inside a tick, so the repack only has to precede it - an
-    # intervention editing membership late in the previous tick is picked up here.
+    # repack stale pools
     repack_dirty_pools!(settingscontainer(simulation))
 
     # update disease state
