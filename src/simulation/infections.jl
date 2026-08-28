@@ -402,8 +402,16 @@ function spread_infection!(setting::Setting, sim::Simulation)
     present_individuals!(p_buffer, setting, sim)
 
     csm = setting.contact_sampling_method
-
-    num_infected = _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    # union splitting on csm
+    num_infected = if csm isa ContactparameterSampling
+        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    elseif csm isa RandomSampling
+        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    elseif csm isa AgeBasedContactSampling
+        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    else
+        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+    end
 
     if num_infected == 0
         deactivate!(setting)
