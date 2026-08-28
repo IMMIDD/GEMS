@@ -394,8 +394,17 @@ infection is successful.
 
 """
 function spread_infection!(setting::Setting, sim::Simulation)
-    # barrier function for `contact_sampling_method` 
-    num_infected = _process_infections!(setting.contact_sampling_method, setting, sim)
+    csm = setting.contact_sampling_method
+    # union splitting on csm
+    num_infected = if csm isa ContactparameterSampling
+        _process_infections!(csm, setting, sim)
+    elseif csm isa RandomSampling
+        _process_infections!(csm, setting, sim)
+    elseif csm isa AgeBasedContactSampling
+        _process_infections!(csm, setting, sim)
+    else
+        _process_infections!(csm, setting, sim)
+    end
 
     if num_infected == 0
         deactivate!(setting)
