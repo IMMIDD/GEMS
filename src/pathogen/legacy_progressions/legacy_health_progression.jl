@@ -51,7 +51,7 @@ function calculate_health_profile(cc::LegacyCriticalHealthProfile, individual::I
     hospital_discharge::Int16 = rand_round(icu_discharge + _rand_val(cc.icu_discharge_to_hospital_discharge, rng), rng)
 
     death::Int16 = Int16(-1)
-    if gems_rand(rng) <= Float64(cc.death_probability)
+    if gems_rand(rng) <= cc.death_probability
         death = rand_round(icu_admission + _rand_val(cc.icu_admission_to_death, rng), rng)
     end
 

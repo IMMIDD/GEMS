@@ -37,7 +37,7 @@ at `infection.severeness_onset`. `severe` carries no mortality risk, so the retu
 function calculate_health_profile(sc::SevereHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro)
     hospital_admission::Int16 = Int16(-1)
     hospital_discharge::Int16 = Int16(-1)
-    if gems_rand(rng) <= Float64(sc.hospital_probability)
+    if gems_rand(rng) <= sc.hospital_probability
         hospital_admission = rand_round(infection.severeness_onset + _rand_val(sc.severeness_onset_to_hospital_admission, rng), rng)
         hospital_discharge = rand_round(hospital_admission + _rand_val(sc.hospital_admission_to_hospital_discharge, rng), rng)
     end
@@ -132,11 +132,11 @@ function calculate_health_profile(cc::CriticalHealthProfile, individual::Individ
     ventilation_discharge::Int16 = Int16(-1)
     death::Int16 = Int16(-1)
 
-    if gems_rand(rng) <= Float64(cc.hospital_probability)
+    if gems_rand(rng) <= cc.hospital_probability
         hospital_admission = rand_round(infection.critical_onset + _rand_val(cc.critical_onset_to_hospital_admission, rng), rng)
-        if gems_rand(rng) <= Float64(cc.hospital_to_icu_probability)
+        if gems_rand(rng) <= cc.hospital_to_icu_probability
             icu_admission = rand_round(hospital_admission + _rand_val(cc.hospital_admission_to_icu_admission, rng), rng)
-            if gems_rand(rng) <= Float64(cc.icu_to_ventilation_probability)
+            if gems_rand(rng) <= cc.icu_to_ventilation_probability
                 ventilation_admission = rand_round(icu_admission + _rand_val(cc.icu_admission_to_ventilation_admission, rng), rng)
                 ventilation_discharge = rand_round(ventilation_admission + _rand_val(cc.ventilation_admission_to_ventilation_discharge, rng), rng)
                 icu_discharge = rand_round(ventilation_discharge + _rand_val(cc.ventilation_discharge_to_icu_discharge, rng), rng)
@@ -149,7 +149,7 @@ function calculate_health_profile(cc::CriticalHealthProfile, individual::Individ
         end
     end
     # death is independent of hospital/ICU here; the ladder and the outcome are reconciled downstream
-    if gems_rand(rng) <= Float64(cc.death_probability)
+    if gems_rand(rng) <= cc.death_probability
         death = rand_round(infection.critical_onset + _rand_val(cc.critical_onset_to_death, rng), rng)
     end
 
