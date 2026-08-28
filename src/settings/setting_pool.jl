@@ -258,79 +258,80 @@ end
 ### PRESENT MEMBERS
 ###
 
-"""
-    RunView(members, starts, prefix, len)
-
-The members of a container that has closed descendants or gaps, as runs over its hierarchy's
-pool. `starts[i]` is where run `i` begins in the pool; `prefix[i]` counts the elements in
-runs `1..i-1`. Indexing binary-searches `prefix`, so it costs O(log #runs) instead of O(1).
-"""
-struct RunView <: AbstractVector{Individual}
-    members::Vector{Individual}
-    starts::Vector{Int32}
-    prefix::Vector{Int32}
-    len::Int
-end
-
-Base.size(v::RunView) = (v.len,)
-Base.IndexStyle(::Type{RunView}) = IndexLinear()
-
-Base.@propagate_inbounds function Base.getindex(v::RunView, k::Int)
-    r = searchsortedlast(v.prefix, k - 1)
-    @inbounds v.members[v.starts[r] + (k - 1 - v.prefix[r])]
-end
+# Shared by every contiguous view, so the common case allocates no run vectors.
+const NO_RUNS = Int32[]
 
 """
     MemberView
 
-What `present_members` hands back: either a contiguous slice of a pool or a run-indexed view
-of one. Both are concrete, so the sampler call site splits the union instead of dispatching
-dynamically.
-"""
-const MemberView = Union{MemberSlice, RunView}
+A setting's present members, as a window onto its hierarchy's pool. Usually one unbroken span,
+described by `offset` and `len`. A container with closed descendants needs several runs, and
+then `starts`/`prefix` describe them and indexing binary-searches `prefix`.
 
-_slice(members::Vector{Individual}, lo::Int, n::Int)::MemberSlice =
-    view(members, n == 0 ? (1:0) : (lo:(lo + n - 1)))
+The result aliases real member storage, so writing to it edits membership.
+"""
+struct MemberView <: AbstractVector{Individual}
+    members::Vector{Individual}
+    offset::Int32
+    len::Int32
+    starts::Vector{Int32}
+    prefix::Vector{Int32}
+end
+
+MemberView(members::Vector{Individual}, offset::Int32, len::Int32) =
+    MemberView(members, offset, len, NO_RUNS, NO_RUNS)
+MemberView(members::Vector{Individual}, starts::Vector{Int32}, prefix::Vector{Int32}, len::Int32) =
+    MemberView(members, Int32(0), len, starts, prefix)
+
+Base.size(v::MemberView) = (Int(v.len),)
+Base.IndexStyle(::Type{MemberView}) = IndexLinear()
+
+Base.@propagate_inbounds function Base.getindex(v::MemberView, k::Int)
+    isempty(v.starts) && return @inbounds v.members[v.offset + k - 1]
+    r = searchsortedlast(v.prefix, k - 1)
+    @inbounds v.members[v.starts[r] + (k - 1 - v.prefix[r])]
+end
+
 
 """
     present_members(setting::Setting, cntnr::SettingsContainer)
 
 The setting's present members, as an indexable view. Nothing is copied and nothing is built
 per tick: an open leaf and an all-open container are both a contiguous slice of the
-hierarchy pool, and only a container with closed descendants or gaps needs a `RunView`.
+hierarchy pool, and only a container with closed descendants needs run indexing.
 
 Equal element for element to `present_individuals(setting, sim)`.
 
 The result aliases real member storage, so writing to it edits membership - see the note on
 `ContactSamplingMethod`.
 """
-function present_members(s::IndividualSetting, ::SettingsContainer)::MemberSlice
+function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
     pool = _pool(s)
-    pool === nothing || _check_clean(s, pool)
     if pool === nothing
         # standalone leaf: its own vector already holds exactly the members
-        v = s.individuals
-        return is_open(s) ? view(v, 1:length(v)) : view(v, 1:0)
+        v = s.individuals::Vector{Individual}
+        return is_open(s) ? MemberView(v, Int32(1), Int32(length(v))) : MemberView(v, Int32(1), Int32(0))
     end
-    return is_open(s) ? _slice(pool.members, Int(s.pool_offset), Int(s.pool_length)) :
-                        _slice(pool.members, 1, 0)
+    _check_clean(s, pool)
+    return is_open(s) ? MemberView(pool.members, s.pool_offset, s.pool_length) :
+                        MemberView(pool.members, Int32(1), Int32(0))
 end
 
 function present_members(s::ContainerSetting, cntnr::SettingsContainer)::MemberView
     pool = _pool(s)::SettingPool
     _check_clean(s, pool)
-    is_open(s) || return _slice(pool.members, 1, 0)
+    is_open(s) || return MemberView(pool.members, Int32(1), Int32(0))
 
     # the pool is repacked after every edit, so a container's range covers exactly its
     # members; only a closure below it can break that
-    (pool.closed == 0 || _subtree_open(cntnr, s)) &&
-        return _slice(pool.members, Int(s.pool_offset), Int(s.pool_length))
+    if pool.closed == 0 || _subtree_open(cntnr, s)
+        return MemberView(pool.members, s.pool_offset, s.pool_length)
+    end
 
     starts = Int32[]; prefix = Int32[]
     total = _collect_runs!(starts, prefix, 0, cntnr, s)
-    # one run means contiguous after all, so hand back the cheap view rather than a RunView
-    length(starts) == 1 && return _slice(pool.members, Int(starts[1]), total)
-    return RunView(pool.members, starts, prefix, total)
+    length(starts) == 1 && return MemberView(pool.members, @inbounds(starts[1]), Int32(total))
+    return MemberView(pool.members, starts, prefix, Int32(total))
 end
 
 # A member edit leaves every offset and length in the hierarchy stale until the pool is

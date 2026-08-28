@@ -394,11 +394,8 @@ infection is successful.
 
 """
 function spread_infection!(setting::Setting, sim::Simulation)
-    c_buffer = sim.contact_buffers[Threads.threadid()]
-    csm = setting.contact_sampling_method
-
-    num_infected = _process_infections!(present_members(setting, settingscontainer(sim)),
-                                        c_buffer, csm, setting, sim)
+    # barrier function for `contact_sampling_method` 
+    num_infected = _process_infections!(setting.contact_sampling_method, setting, sim)
 
     if num_infected == 0
         deactivate!(setting)
@@ -406,7 +403,9 @@ function spread_infection!(setting::Setting, sim::Simulation)
 end
 
 
-function _process_infections!(present_inds, c_buffer, csm, setting, sim)
+function _process_infections!(csm, setting, sim)
+    present_inds = present_members(setting, settingscontainer(sim))
+    c_buffer = sim.contact_buffers[Threads.threadid()]
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
