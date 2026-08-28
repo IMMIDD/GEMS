@@ -397,9 +397,7 @@ function spread_infection!(setting::Setting, sim::Simulation)
     c_buffer = sim.contact_buffers[Threads.threadid()]
     csm = setting.contact_sampling_method
 
-    # zero-copy: `present_members` dispatches on setting kind and hands back a view, so a closed
-    # setting yields an empty frame and falls through to `deactivate!` like any other
-    num_infected = _process_infections!(present_members(setting, settingscontainer(sim)), c_buffer, csm, setting, sim)
+    num_infected = _process_infections!(c_buffer, csm, setting, sim)
 
     if num_infected == 0
         deactivate!(setting)
@@ -407,18 +405,19 @@ function spread_infection!(setting::Setting, sim::Simulation)
 end
 
 
-function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+function _process_infections!(c_buffer, csm, setting, sim)
+    present_inds = present_members(setting, settingscontainer(sim))
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
 
-    for ind_index in 1:length(p_buffer)
-        ind = p_buffer[ind_index]
+    for ind_index in 1:length(present_inds)
+        ind = present_inds[ind_index]
         if infected(ind)
             num_infected += 1
             if can_infect(ind, setting, current_tick)
                 empty!(c_buffer)
-                sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
+                sample_contacts!(c_buffer, csm, setting, ind_index, present_inds, current_tick, true, current_rng)
 
                 # spread each active, shedding pathogen (cache then overflow); the iterator
                 # only resolves the shard registry if the individual has overflow infections

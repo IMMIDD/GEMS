@@ -93,21 +93,27 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualS
     for (i, l) in enumerate(leaves)
         pos[id(l)] = Int32(i)
     end
-    containers = ContainerSetting[]
-    ranges = UnitRange{Int}[]
-    for C in container_chain(L), c in settings(cntnr, C)
-        lo, hi = _leaf_span(pos, cntnr, c)
-        push!(containers, c)
-        push!(ranges, hi == 0 ? (1:0) : (lo:hi))
+    groups = Any[]
+    for C in container_chain(L)
+        cs = settings(cntnr, C)
+        rs = Vector{UnitRange{Int}}(undef, length(cs))
+        for (i, c) in enumerate(cs)
+            lo, hi = _leaf_span(pos, cntnr, c)
+            rs[i] = hi == 0 ? (1:0) : (lo:hi)
+        end
+        push!(groups, (cs, rs))
     end
 
-    pool = SettingPool(Individual[], 0, false, leaves, containers, ranges)
+    pool = SettingPool(Individual[], 0, false, leaves, Tuple(groups))
     for l in leaves; l.pool = pool; end
-    for c in containers; c.pool = pool; end
+    for (cs, _) in pool.container_groups, c in cs; c.pool = pool; end
     _repack!(pool)
 
     # settings may already be closed when the population is loaded
-    pool.closed = count(!is_open, leaves) + count(!is_open, containers)
+    pool.closed = count(!is_open, leaves)
+    for (cs, _) in pool.container_groups
+        pool.closed += count(!is_open, cs)
+    end
     return pool
 end
 
@@ -158,7 +164,7 @@ forbidden inside the threaded transmission phase.
 """
 function _repack!(pool::SettingPool)
     pool.members = _repack_leaves!(pool.leaves)
-    _repack_containers!(pool.containers, pool.leaf_ranges, pool.leaves)
+    _repack_groups!(pool.leaves, pool.container_groups...)
     return nothing
 end
 
@@ -188,9 +194,18 @@ function _repack_leaves!(leaves::Vector{T}) where {T<:IndividualSetting}
     return members
 end
 
-function _repack_containers!(containers, leaf_ranges, leaves::Vector{T}) where {T<:IndividualSetting}
-    for (i, c) in enumerate(containers)
-        r = leaf_ranges[i]
+# recursive, so each call specialises on that group's concrete vector type
+@inline _repack_groups!(leaves) = nothing
+@inline function _repack_groups!(leaves, group, rest...)
+    _repack_group!(group[1], group[2], leaves)
+    _repack_groups!(leaves, rest...)
+end
+
+function _repack_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}},
+                        leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
+    @inbounds for i in eachindex(cs)
+        c = cs[i]
+        r = ranges[i]
         if isempty(r)
             c.pool_offset = Int32(0)
             c.pool_length = Int32(0)
@@ -289,7 +304,7 @@ Equal element for element to `present_individuals(setting, sim)`.
 The result aliases real member storage, so writing to it edits membership - see the note on
 `ContactSamplingMethod`.
 """
-function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
+function present_members(s::IndividualSetting, ::SettingsContainer)::MemberSlice
     pool = _pool(s)
     pool === nothing || _check_clean(s, pool)
     if pool === nothing

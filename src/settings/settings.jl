@@ -70,11 +70,9 @@ in DFS order over `contains`, so any container's members form a contiguous range
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
     `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
     typed vector of the pool's one leaf type, which `_repack!` reaches behind a barrier.
-- `containers::Vector{ContainerSetting}`: Every container in the hierarchy, so a repack can
-    refresh their offsets and lengths without walking the setting tree again.
-- `leaf_ranges::Vector{UnitRange{Int}}`: For each entry of `containers`, which slice of
-    `leaves` sits below it. A container's leaves are consecutive in the layout order, so one
-    range describes its whole subtree.
+- `container_groups::Tuple`: One `(containers, ranges)` pair per container type, so each
+    vector is concretely typed. `ranges[i]` is the slice of `leaves` below `containers[i]`;
+    a container's leaves are consecutive, so one range covers its whole subtree.
 """
 mutable struct SettingPool
     members::Vector{Individual}
@@ -84,9 +82,8 @@ mutable struct SettingPool
     dirty::Bool
     # everything a repack needs, so a member edit does not have to find the hierarchy again
     leaves::Vector # widened: holds a Vector{SchoolClass} / Vector{Office}
-    containers::Vector{ContainerSetting}
-    # containers[i] covers leaves[leaf_ranges[i]]
-    leaf_ranges::Vector{UnitRange{Int}}
+    # one (containers, ranges) pair per container type, so each vector is concretely typed
+    container_groups::Tuple
 end
 
 ###
