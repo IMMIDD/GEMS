@@ -46,13 +46,13 @@ tick as in the old model.
 """
 function calculate_health_profile(cc::LegacyCriticalHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro)
     hospital_admission::Int16 = infection.critical_onset
-    icu_admission::Int16 = round(Int16, hospital_admission + _rand_val(cc.hospital_admission_to_icu_admission, rng))
-    icu_discharge::Int16 = round(Int16, icu_admission + _rand_val(cc.icu_admission_to_icu_discharge, rng))
-    hospital_discharge::Int16 = round(Int16, icu_discharge + _rand_val(cc.icu_discharge_to_hospital_discharge, rng))
+    icu_admission::Int16 = rand_round(hospital_admission + _rand_val(cc.hospital_admission_to_icu_admission, rng), rng)
+    icu_discharge::Int16 = rand_round(icu_admission + _rand_val(cc.icu_admission_to_icu_discharge, rng), rng)
+    hospital_discharge::Int16 = rand_round(icu_discharge + _rand_val(cc.icu_discharge_to_hospital_discharge, rng), rng)
 
     death::Int16 = Int16(-1)
     if gems_rand(rng) <= Float64(cc.death_probability)
-        death = round(Int16, icu_admission + _rand_val(cc.icu_admission_to_death, rng))
+        death = rand_round(icu_admission + _rand_val(cc.icu_admission_to_death, rng), rng)
     end
 
     care = CareContribution(hospital_admission = hospital_admission, hospital_discharge = hospital_discharge,

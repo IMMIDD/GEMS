@@ -346,11 +346,10 @@ Increments the simulation status by one tick and executes all events that shall 
 function step!(simulation::Simulation)
     dormant = is_dormant(simulation)
 
-    # realize scheduled care before anything reads hospitalization state. Unconditional, so a
-    # mis-judged dormant tick cannot strand a host mid-episode; dormancy makes it a no-op anyway
+    # realize scheduled care
     drain_health_schedule!(simulation)
 
-    # seed scheduled imports before transmission so a fresh import can spread this tick
+    # seed scheduled imports
     seed_scheduled!(simulation)
 
     # repack stale pools
@@ -364,7 +363,7 @@ function step!(simulation::Simulation)
         flush_ended_infections!(simulation)
     end
 
-    # after the individual loop, so trigger conditions see this tick's disease flags
+    # fire hospitalization_triggers
     fire_hospitalization_triggers!(simulation)
     # merge per-thread staged trigger events into the queue before processing
     flush_staging!(event_queue(simulation))
