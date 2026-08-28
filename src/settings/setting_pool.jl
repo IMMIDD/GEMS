@@ -317,18 +317,13 @@ function present_members(s::IndividualSetting, ::SettingsContainer)::MemberSlice
 end
 
 function present_members(s::ContainerSetting, cntnr::SettingsContainer)::MemberView
-    pool = _pool(s)
-    pool === nothing && error("$(typeof(s)) has no pool; every ContainerSetting must belong to one")
+    pool = _pool(s)::SettingPool
     _check_clean(s, pool)
     is_open(s) || return _slice(pool.members, 1, 0)
 
-    # the pool is repacked after every edit, so a container's range always covers exactly
-    # its members; only a closure can make them non-contiguous
-    pool.closed == 0 &&
-        return _slice(pool.members, Int(s.pool_offset), Int(s.pool_length))
-
-    # something is closed somewhere: this container may still be untouched by it
-    _subtree_open(cntnr, s) &&
+    # the pool is repacked after every edit, so a container's range covers exactly its
+    # members; only a closure below it can break that
+    (pool.closed == 0 || _subtree_open(cntnr, s)) &&
         return _slice(pool.members, Int(s.pool_offset), Int(s.pool_length))
 
     starts = Int32[]; prefix = Int32[]
