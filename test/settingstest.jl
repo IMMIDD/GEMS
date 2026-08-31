@@ -965,6 +965,8 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             (sc, cs, ys, sch, inds)
         end
         ids(f) = [id(x) for x in f]
+        # `present_members` returns one `MemberView`; an unbroken span carries no runs
+        contiguous(f) = isempty(f.starts)
 
         @testset "build relocates members into one pool" begin
             sc, cs, ys, sch, _ = make_school()
@@ -977,7 +979,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
             # nothing closed and no gaps, so every container is a contiguous view
-            @test GEMS.present_members(sch, sc) isa GEMS.MemberSlice
+            @test contiguous(GEMS.present_members(sch, sc))
         end
 
         @testset "adding repacks the hierarchy" begin
@@ -995,7 +997,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             # the pool is repacked, so the container still reports every member AND stays
             # contiguous - an edit costs no lasting fast-path degradation
             @test sort(ids(GEMS.present_members(sch, sc))) == sort(vcat(collect(1:9), 42))
-            @test GEMS.present_members(sch, sc) isa GEMS.MemberSlice
+            @test contiguous(GEMS.present_members(sch, sc))
         end
 
         @testset "removing swaps with last inside the leaf" begin
@@ -1046,7 +1048,6 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             sch = School(id = Int32(1), contains = Int32[1])
             for x in vcat(cs, [y, sch]); GEMS.add!(sc, x); end
             GEMS.build_pools!(sc)
-            ids(f) = [id(x) for x in f]
 
             @test isempty(GEMS.present_members(cs[2], sc))
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
@@ -1054,7 +1055,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             # closing a middle class forces two runs with an empty leaf inside the first
             close!(cs[3])
             f = GEMS.present_members(sch, sc)
-            @test f isa GEMS.RunView
+            @test !contiguous(f)
             @test ids(f) == [1, 2, 3, 7, 8, 9]
             # every index, not just the ends: a bad prefix shows up in the middle
             @test [id(f[i]) for i in eachindex(f)] == [1, 2, 3, 7, 8, 9]
@@ -1107,13 +1108,13 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test isempty(GEMS.present_members(ys[2], sc))
             open!(ys[2])
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
-            @test GEMS.present_members(sch, sc) isa GEMS.MemberSlice
+            @test contiguous(GEMS.present_members(sch, sc))
 
             # a closed leaf in the middle leaves two runs, and must not leak its members
             close!(cs[2])
             f = GEMS.present_members(sch, sc)
             @test ids(f) == [1, 2, 3, 7, 8, 9]
-            @test f isa GEMS.RunView
+            @test !contiguous(f)
         end
     end
 
