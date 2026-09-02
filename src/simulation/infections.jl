@@ -243,7 +243,7 @@ function try_to_infect!(infctr::Individual,
 
     # try to infect
     if gems_rand(sim) < infection_probability
-        hh = settings(sim, Household)[household_id(infctd)]::Household
+        hh = settings(sim, Household)[household_id(infctd, activity_plans(sim))]::Household
         infect!(infctd,
             tick(sim),
             pathogen,

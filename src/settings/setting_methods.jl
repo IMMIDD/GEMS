@@ -644,3 +644,24 @@ function activate!(setting::Setting, sim::Simulation)
         activate!(parent_setting, sim)
     end
 end
+###
+### MEMBERSHIP MUTATION - SIMULATION CONVENIENCE
+### The primitives take a `Population`; these are here because `Simulation` does not exist
+### yet where they are defined.
+###
+
+"""
+    add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Adds a member, taking the population from the simulation.
+"""
+add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    add_member!(setting, individual, population(sim))
+
+"""
+    remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Removes a member, taking the population from the simulation.
+"""
+remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    remove_member!(setting, individual, population(sim))

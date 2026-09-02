@@ -41,13 +41,15 @@
             path = joinpath(base_folder, testfile)
 
             csv_content = CSV.read(path, DataFrame)
-            population = individuals(Population(path))
+            pop = Population(path)
+            plans = GEMS.activity_plans(pop)
+            population = individuals(pop)
 
             id_map = Dict([(id(individual), individual) for individual in population])
             @test keys(id_map) == Set(range(0,num_indiv_in_file-1))
             for row in eachrow(csv_content)
                 @test age(id_map[row["id"]]) == row["age"]
-                @test household_id(id_map[row["id"]]) == row["household"]
+                @test household_id(id_map[row["id"]], plans) == row["household"]
             end
         end
         
@@ -59,13 +61,15 @@
             path = joinpath(base_folder, testfile)
 
             jld2_content = load(path, "data")
-            population = individuals(Population(path))
+            pop = Population(path)
+            plans = GEMS.activity_plans(pop)
+            population = individuals(pop)
 
             id_map = Dict([(id(individual), individual) for individual in population])
             @test keys(id_map) == Set(range(1,num_indiv_in_file))
             for row in eachrow(jld2_content)
                 @test age(id_map[row["id"]]) == row["age"]
-                @test household_id(id_map[row["id"]]) == row["household"]
+                @test household_id(id_map[row["id"]], plans) == row["household"]
             end
         end
     end
@@ -211,10 +215,10 @@
             )
 
             # Symbol-vector naming a core field
-            @test_throws ErrorException Population(df; ind_extension = [:household])
+            @test_throws ErrorException Population(df; ind_extension = [:education])
 
             # separate extension DataFrame with a core-field column
-            ext_df = DataFrame(id = Int32.(1:5), household = Int32.(11:15))
+            ext_df = DataFrame(id = Int32.(1:5), education = Int8.(1:5))
             @test_throws ErrorException Population(df; ind_extension = ext_df)
 
             # factory producing a struct whose field shadows a core field
@@ -275,8 +279,8 @@
             result = dataframe(pop)
 
             # only base fields (no leftover columns from the source DataFrame)
-            base_names = Set([:id, :sex, :age,
-                              :education, :occupation, :household, :office, :schoolclass])
+            base_names = Set([:id, :sex, :age, :education, :occupation,
+                              :household, :office, :schoolclass, :municipality])
             @test Set(propertynames(result)) == base_names
         end
     end

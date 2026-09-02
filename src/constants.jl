@@ -8,6 +8,7 @@ const DEFAULT_PATHOGEN_ID = Int8(-1)
 const DEFAULT_VACCINE_ID = Int8(-1)
 const DEFAULT_TICK = Int16(-1)
 const DEFAULT_INFECTION_ID = Int32(-1)
+const DEFAULT_MEMBER_INDEX = Int32(-1)
 const DEFAULT_AGS = Int32(-1)
 const GLOBAL_SETTING_ID = Int32(1)
 

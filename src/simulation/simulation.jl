@@ -506,7 +506,9 @@ function _BUILD_Simulation(;
 
         precompute_ags!(sim)
         build_pools!(settingscontainer(sim))
-        
+        # after pooling: a leaf's members only settle once its pool slice is laid out
+        assign_member_indices!(sim.population, settingscontainer(sim))
+
         # update label
         sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
@@ -1724,6 +1726,13 @@ Returns the population associated with the simulation run.
 function population(simulation::Simulation)
     return simulation.population
 end
+
+"""
+    activity_plans(simulation::Simulation)
+
+Returns the `ActivityPlanStore` holding every individual's setting memberships.
+"""
+@inline activity_plans(simulation::Simulation)::ActivityPlanStore = activity_plans(simulation.population)
 
 """
     populationDF(simulation::Simulation)

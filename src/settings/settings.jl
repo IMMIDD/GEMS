@@ -773,48 +773,64 @@ function contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
 end
 
 """
-    add_member!(setting::IndividualSetting, individual::Individual)
+    add_member!(setting::IndividualSetting, individual::Individual, pop::Population)
 
-Adds the given individual to the setting and records the membership on the individual.
-`setting_id!` is a no-op for setting types without an id field on `Individual` (`GlobalSetting`).
-
+Adds the given individual to the setting and the matching entry to their activity plan.
 Must not be called while the threaded transmission phase is running.
 """
-function add_member!(setting::IndividualSetting, individual::Individual)
+function add_member!(setting::IndividualSetting, individual::Individual, pop::Population)
+    plans = activity_plans(pop)
     if _pool(setting) === nothing
         push!(setting.individuals, individual)
     else
         _pool_add_member!(setting, individual)
     end
-    setting_id!(individual, typeof(setting), id(setting))
+    plan_add!(plans, individual,
+              PlanEntry(typeof(setting), id(setting), length(setting.individuals)))
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
 
 """
-    remove_member!(setting::IndividualSetting, individual::Individual)
+    remove_member!(setting::IndividualSetting, individual::Individual, pop::Population)
 
-Removes the given individual from the setting and clears the membership on the individual.
-Does nothing if it is not a member.
-
-The member is swapped with the last element, so member order is not preserved.
-
-Must not be called while the threaded transmission phase is running.
+Removes the given individual from the setting and their matching plan entry, or does nothing
+if they are not a member. Must not be called while the threaded transmission phase is running.
 """
-function remove_member!(setting::IndividualSetting, individual::Individual)
+function remove_member!(setting::IndividualSetting, individual::Individual, pop::Population)
+    plans = activity_plans(pop)
+    members = setting.individuals
+    idx = findfirst(i -> i === individual, members)
+    isnothing(idx) && return nothing
+    # the member that swap-with-last will move into `idx`
+    displaced = @inbounds members[end]
+
     if _pool(setting) === nothing
-        inds = setting.individuals
-        idx = findfirst(i -> i === individual, inds)
-        isnothing(idx) && return nothing
-        @inbounds inds[idx] = inds[end]
-        pop!(inds)
+        @inbounds members[idx] = members[end]
+        pop!(members)
     else
-        _pool_remove_member!(setting, individual) || return nothing
+        _pool_remove_member!(setting, individual)
     end
-    setting_id!(individual, typeof(setting), DEFAULT_SETTING_ID)
+
+    T = typeof(setting)
+    sid = id(setting)
+    slot = plan_slot(plans, individual, T, sid)
+    slot != 0 && plan_remove!(plans, individual, slot)
+    if displaced !== individual
+        dslot = plan_slot(plans, displaced, T, sid)
+        dslot != 0 && plan_set_member_index!(plans, dslot, idx)
+    end
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
+
+# The GlobalSetting is the whole population by definition, so its membership is not editable -
+# and an individual holds no plan entry for it, since `setting_id` answers from the constant.
+add_member!(::GlobalSetting, ::Individual, ::Population) =
+    throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
+remove_member!(::GlobalSetting, ::Individual, ::Population) =
+    throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
+
 
 """
     isactive(setting::Setting)
@@ -1012,29 +1028,31 @@ function settings_from_population(population::Population, global_setting::Bool =
     sorted_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
 
     for stngType in stngtypes
-        _settings_for_type!(settings, renaming, stngType, inds, pairs_buffer, sorted_buffer, default_sampling)
+        _settings_for_type!(settings, renaming, stngType, population, inds, pairs_buffer, sorted_buffer, default_sampling)
     end
 
     return settings, renaming
 end
 
-"""
-    _settings_for_type!(settings, renaming, ::Type{T}, inds, pairs_buffer, sorted_buffer, default_sampling) where {T <: Setting}
 
-Function barrier for the per-type body of [`settings_from_population`](@ref): with `T` static,
-`setting_id(ind, T)` resolves to an inlined `Int32` field load instead of a dynamic dispatch,
-keeping the per-individual loops allocation-free.
+"""
+    _settings_for_type!(settings, renaming, ::Type{T}, population, inds, pairs_buffer, sorted_buffer, default_sampling) where {T <: Setting}
+
+Function barrier for the per-type body of [`settings_from_population`](@ref), keeping the
+per-individual loops type-stable and allocation-free.
 """
 function _settings_for_type!(
     settings,
     renaming::Dict,
     ::Type{T},
+    population::Population,
     inds::Vector{Individual},
     pairs_buffer::Vector{Tuple{Int32, Individual}},
     sorted_buffer::Vector{Tuple{Int32, Individual}},
     default_sampling
 ) where {T <: Setting}
 
+    plans = activity_plans(population)
     max_inds = length(inds)
     resize!(pairs_buffer, max_inds)
 
@@ -1045,7 +1063,7 @@ function _settings_for_type!(
     # Iterate over all individuals and add them to the buffer
     for i in 1:max_inds
         ind = inds[i]
-        id = setting_id(ind, T)
+        id = setting_id(ind, T, plans)
         if id != DEFAULT_SETTING_ID
             valid_count += 1
 
@@ -1107,10 +1125,12 @@ function _settings_for_type!(
         renaming[T] = type_renaming
 
         for (i, setting) in enumerate(setting_vec)
-            type_renaming[setting.id] = i
+            old_id = setting.id
+            type_renaming[old_id] = i
             setting.id = i
             for individual in setting.individuals
-                setting_id!(individual, T, Int32(i))
+                slot = plan_slot(plans, individual, T, old_id)
+                slot != 0 && plan_set_setting_id!(plans, slot, Int32(i))
             end
         end
     end

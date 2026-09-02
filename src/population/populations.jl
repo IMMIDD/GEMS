@@ -8,6 +8,9 @@ export save, dataframe
 export size, count, each!, first
 export get_individual_by_id
 
+# supertype for the ActivityPlanStore, declared early so Population can type its field
+abstract type AbstractActivityPlanStore end
+
 """
     Population
 
@@ -18,6 +21,7 @@ A Type for a simple population. Acts as a container for a collection of individu
 - `maxage`: Age of the oldest individual
 - `minid`: smallest id of any individual
 - `maxid`: largest id of any individual
+- `activity_plans`: every individual's setting memberships, see `ActivityPlanStore`
 """
 mutable struct Population
     individuals::Vector{Individual}
@@ -26,7 +30,8 @@ mutable struct Population
     minid::Int32 # smallest id of any individual.
     maxid::Int32 # largest id of any individual.
     id_map::Vector{Int32} # Maps (id - minid + 1) to the individual's index in the `individuals` array. Needed for O(1) lookups.
-    
+    # concrete ActivityPlanStore is defined later; activity_plans(pop) narrows this back
+    activity_plans::AbstractActivityPlanStore
 
     @doc """
         make_id_map!(population::Population)
@@ -49,7 +54,7 @@ mutable struct Population
     """
     function Population(individuals::Vector{Individual})
         # Create the Population object
-        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, -1, Int32[])
+        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, -1, Int32[], ActivityPlanStore())
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
         pop.maxid = isempty(individuals) ? -1 : maximum(x -> x.id, individuals)
@@ -100,10 +105,10 @@ mutable struct Population
         end
 
         pop = Population(inds)
+        build_plans!(pop, df)
         pop.params["populationfile"] = "Not available."
         return(pop)
     end
-
 
     @doc """
         Population(path::String)
@@ -159,7 +164,7 @@ mutable struct Population
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
-            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, -1, Int32[])
+            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, -1, Int32[], ActivityPlanStore())
         end
 
         # exception handling
@@ -404,7 +409,6 @@ Returns the first individual of the internal vector.
 """
 Base.first(population::Population) = population |> individuals |> first
 
-
 ### INTERFACE
 """
     add!(population::Population, individual::Individual)
@@ -433,7 +437,6 @@ function individuals(population::Population)::Vector{Individual}
     population.individuals
 end
 
-
 """
     maxage(population::Population)
 
@@ -454,7 +457,6 @@ function maxage(population::Population)::Int8
     population.maxage = mx
     return(mx)
 end
-
 
 """
     populationfile(population::Population)
@@ -529,7 +531,6 @@ function Base.issubset(individuals_a::Vector{Individual}, individuals_b::Vector{
     )
 end
 
-
 """
     size(population::Population)
 
@@ -538,7 +539,6 @@ Returns the number of individuals in a given population.
 function Base.size(population::Population)::Int64
     return length(population.individuals)
 end
-
 
 """
     dataframe(population::Population)
@@ -565,7 +565,11 @@ homogeneous).
 | `household`             | `Int32` | Individual associated household          |
 | `office`                | `Int32` | Individual associated office             |
 | `schoolclass`           | `Int32` | Individual associated school class       |
+| `municipality`          | `Int32` | Individual associated municipality       |
 | `<extension fields>`    | (varies)| Any fields stored in `Individual.extensions`, appended dynamically |
+
+The membership columns are reconstructed from the activity plans, so a saved and reloaded
+population comes back with the same memberships.
 """
 function dataframe(population::Population)
 
@@ -574,13 +578,15 @@ function dataframe(population::Population)
         sex = map(sex, population |> individuals),
         age = map(age, population |> individuals),
         education = map(education, population |> individuals),
-        occupation = map(occupation, population |> individuals),
-        household = map(household_id, population |> individuals),
-        office = map(office_id, population |> individuals),
-        schoolclass = map(class_id, population |> individuals)
+        occupation = map(occupation, population |> individuals)
     )
-    
+
     inds = individuals(population)
+    plans = activity_plans(population)
+    for T in membership_setting_types(Individual)
+        df[!, membership_column(T)] = Int32[setting_id(ind, T, plans) for ind in inds]
+    end
+
     ext_idx = findfirst(ind -> ind.extensions !== nothing, inds)
     if ext_idx !== nothing
         ext = inds[ext_idx].extensions
@@ -602,7 +608,6 @@ function save(population::Population, path::AbstractString)
     CSV.write(path, dataframe(population))
 end
 
-
 """
     get_individual_by_id(population::Population, ind::Int32)
 
@@ -622,7 +627,6 @@ function get_individual_by_id(population::Population, ind::Int32)
     
     return nothing
 end
-
 
 ###
 ### PRINTING

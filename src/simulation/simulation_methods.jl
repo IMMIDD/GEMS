@@ -43,6 +43,7 @@ function log_stepinfo(simulation::Simulation)
     det_cnt = zeros(Int, Threads.maxthreadid())
 
     inds = simulation |> individuals
+    plans = activity_plans(simulation)
     chunk_size = max(1, length(inds) ÷ Threads.nthreads())
     
     Threads.@threads :static for chunk in collect(Iterators.partition(inds, chunk_size))
@@ -55,13 +56,13 @@ function log_stepinfo(simulation::Simulation)
         for i in chunk
             if isquarantined(i)
                 loc_tot_quar += 1
-                if is_student(i)
+                if is_student(i, plans)
                     loc_st_quar += 1
                     if is_infected(i)
                         loc_st_isol += 1
                     end
                 end
-                if is_working(i)
+                if is_working(i, plans)
                     loc_wo_quar += 1
                     if is_infected(i)
                         loc_wo_isol += 1

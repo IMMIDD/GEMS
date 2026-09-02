@@ -42,10 +42,10 @@ struct NoMethodSampler <: ContactSamplingMethod end
         rs = RandomSampling()
 
         # initial infectant
-        i = Individual(id = 42, age = 21, sex = 0, household=1)
+        i = Individual(id = 42, age = 21, sex = 0)
 
         # other individuals in the household
-        indis = [Individual(id = j, age = 18, sex = 1, household=1) for j in 0:10]
+        indis = [Individual(id = j, age = 18, sex = 1) for j in 0:10]
         i_index = 6
         insert!(indis, i_index, i)
         
@@ -73,10 +73,10 @@ struct NoMethodSampler <: ContactSamplingMethod end
         cps = ContactparameterSampling(2)
 
         # initial infectant
-        i = Individual(id = 42, age = 21, sex = 0, household=1)
+        i = Individual(id = 42, age = 21, sex = 0)
 
         # other individuals in the household
-        indis = [Individual(id = j, age = 18, sex = 1, household=1) for j in 0:10]
+        indis = [Individual(id = j, age = 18, sex = 1) for j in 0:10]
         i_index = 6
         insert!(indis, i_index, i)
         
@@ -119,10 +119,10 @@ struct NoMethodSampler <: ContactSamplingMethod end
         abcs100 = AgeBasedContactSampling(contactparameter=100.0, interval=5, contact_matrix_file=BASE_FOLDER * "/test/testdata/contact_matrix.txt")
 
         # initial infectant
-        i = Individual(id = 1, age = floor(Int, rand(Uniform(1, 100))), sex = floor(Int, rand(Uniform(0, 2))), household=1)
+        i = Individual(id = 1, age = floor(Int, rand(Uniform(1, 100))), sex = floor(Int, rand(Uniform(0, 2))))
 
         # other individuals in the household
-        indis = [Individual(id = j, age = floor(Int, rand(Uniform(1, 100))), sex = floor(Int, rand(Uniform(0, 2))), household=1) for j in 2:10000]
+        indis = [Individual(id = j, age = floor(Int, rand(Uniform(1, 100))), sex = floor(Int, rand(Uniform(0, 2)))) for j in 2:10000]
         i_index = 6
         insert!(indis, i_index, i)
 
@@ -168,7 +168,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
 
 @testset "sample_contacts positional wrapper" begin
         rs = RandomSampling()
-        indivs = [Individual(id = j, age = 18, sex = 1, household = 1) for j in 0:10]
+        indivs = [Individual(id = j, age = 18, sex = 1) for j in 0:10]
         h = Household(id = 1, individuals = indivs, contact_sampling_method = rs)
 
         result = sample_contacts(rs, h, 1, indivs, GEMS.DEFAULT_TICK, true, Xoshiro(42))
@@ -178,7 +178,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
 
     @testset "Buffer-aware Sampling" begin
         rs = RandomSampling()
-        indis = [Individual(id=j, age=18, sex=1, household=1) for j in 0:10]
+        indis = [Individual(id=j, age=18, sex=1) for j in 0:10]
         h = Household(id=1, individuals=indis, contact_sampling_method=rs)
         
         # Create an empty buffer
@@ -193,7 +193,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
     end
 
     @testset "sample_contacts! dispatch fallback" begin
-        inds = [Individual(id = j, age = 20, sex = 1, household = 1) for j in 1:5]
+        inds = [Individual(id = j, age = 20, sex = 1) for j in 1:5]
         h = Household(id = 1, individuals = copy(inds),
             contact_sampling_method = ContactparameterSampling(1.0))
         # what a pooled setting hands out, as opposed to a plain Vector
@@ -265,7 +265,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
     @testset "too few members" begin
         m = hcat([[rand(Xoshiro(7 + i)) for i = 1:10] for i = 1:10]...)
         m = m .* hcat([vec(1 ./ sum(m, dims = 2)) for _ = 1:10]...)
-        lone = [Individual(id = 1, age = 30, sex = 1, household = 1)]
+        lone = [Individual(id = 1, age = 30, sex = 1)]
 
         # a member on their own has nobody to meet, which is not an error the way an
         # empty setting is
@@ -279,8 +279,8 @@ struct NoMethodSampler <: ContactSamplingMethod end
 
         # with exactly one other member, `replace = false` draws from everyone but the last
         # slot, so the individual can only reach a valid contact via the self-swap
-        pair = [Individual(id = 1, age = 30, sex = 1, household = 1),
-                Individual(id = 2, age = 30, sex = 1, household = 1)]
+        pair = [Individual(id = 1, age = 30, sex = 1),
+                Individual(id = 2, age = 30, sex = 1)]
         abcs2 = AgeBasedContactSampling(100.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
         h3 = Household(id = 3, individuals = copy(pair), contact_sampling_method = abcs2)
 

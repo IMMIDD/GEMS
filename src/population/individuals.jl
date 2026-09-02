@@ -99,11 +99,10 @@ A type to represent individuals that act as agents inside the simulation.
     - `social_factor::Float32`: Parameter for risk-willingness (-1 to 1)
     - `mandate_compliance::Float32`: Probability of complying to mandates (-1 to 1)
 
-- Associated Settings
-    - `household::Int32`: Reference to household id
-    - `office::Int32`: Reference to office id
-    - `schoolclass::Int32`: Reference to schoolclass id
-    - `municipality::Int32`: Reference to municipality id
+- Associated Settings (an activity plan; see `ActivityPlanStore`)
+    - `plan_offset::Int32`: Start of this individual's block in the plan store's flat entry array
+    - `plan_count::Int8`: How many settings the individual belongs to
+    - `membership_mask::UInt16`: Bit per setting type present in the plan, for O(1) lookup
 
 - Bookkeeping
     - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
@@ -150,44 +149,45 @@ A type to represent individuals that act as agents inside the simulation.
     social_factor::Float32 = 0                      # off 12,  4B,  line 0
     mandate_compliance::Float32 = 0                 # off 16,  4B,  line 0
 
-    # ASSIGNED SETTINGS
-    household::Int32 = DEFAULT_SETTING_ID           # off 20,  4B,  line 0
-    office::Int32 = DEFAULT_SETTING_ID              # off 24,  4B,  line 0
-    schoolclass::Int32 = DEFAULT_SETTING_ID         # off 28,  4B,  line 0
-    municipality::Int32 = DEFAULT_SETTING_ID        # off 32,  4B,  line 0
+    # ACTIVITY PLAN (this individual's block in the population's ActivityPlanStore)
+    plan_offset::Int32 = 0                          # off 20,  4B,  line 0
+    plan_count::Int8 = 0                            # off 24,  1B,  line 0
 
     # BOOKKEEPING
-    needs_immunity_update::Bool = false             # off 36,  1B,  line 0
-    number_of_infections::Int8 = 0                  # off 37,  1B,  line 0
-    disease_flags::DiseaseFlags = DiseaseFlags()    # off 38,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 39,  1B,  line 0
+    needs_immunity_update::Bool = false             # off 25,  1B,  line 0
+    number_of_infections::Int8 = 0                  # off 26,  1B,  line 0
+    disease_flags::DiseaseFlags = DiseaseFlags()    # off 27,  1B,  line 0
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 28,  1B,  line 0
+    #                                                 off 29, 1B free (alignment)
+    membership_mask::UInt16 = 0                     # off 30,  2B,  line 0
 
     # INTERVENTIONS
-    detected_mask::UInt32 = 0                       # off 40,  4B,  line 0
-    quarantine_tick::Int16 = DEFAULT_TICK           # off 44,  2B,  line 0
-    quarantine_release_tick::Int16 = DEFAULT_TICK   # off 46,  2B,  line 0
-    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 48, 1B, line 0
+    detected_mask::UInt32 = 0                       # off 32,  4B,  line 0
+    quarantine_tick::Int16 = DEFAULT_TICK           # off 36,  2B,  line 0
+    quarantine_release_tick::Int16 = DEFAULT_TICK   # off 38,  2B,  line 0
+    quarantine_status::Int8 = QUARANTINE_STATE_NO_QUARANTINE # off 40, 1B, line 0
+    #                                                 off 41, 1B free (alignment)
 
     # HOST CARE STATE (current only; pending transitions live in the Simulation's HealthSchedule)
-    hospital_demands::Int16 = 0                     # off 50,  2B,  line 0
-    icu_demands::Int16 = 0                          # off 52,  2B,  line 0
-    ventilation_demands::Int16 = 0                  # off 54,  2B,  line 0
-    death::Int16 = DEFAULT_TICK                     # off 56,  2B,  line 0
-    #                                                 off 58-59, 2B free (alignment)
+    hospital_demands::Int16 = 0                     # off 42,  2B,  line 0
+    icu_demands::Int16 = 0                          # off 44,  2B,  line 0
+    ventilation_demands::Int16 = 0                  # off 46,  2B,  line 0
+    death::Int16 = DEFAULT_TICK                     # off 48,  2B,  line 0
+    #                                                 off 50-51, 2B free (alignment)
 
     # PATHOGEN
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} =
-        ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)  # off 60,  28B, line 0/1
-    infection_head::Int32 = 0                       # off 88,  4B,  line 1
-    active_pathogens_mask::UInt32 = 0               # off 92,  4B,  line 1
+        ntuple(_ -> InfectionState(), INFECTIONS_CACHE_SIZE)  # off 52,  28B, line 0/1
+    infection_head::Int32 = 0                       # off 80,  4B,  line 1
+    active_pathogens_mask::UInt32 = 0               # off 84,  4B,  line 1
 
     # IMMUNITY
     immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} =
-        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 96,  12B, line 1
-    immunity_head::Int32 = 0                        # off 108, 4B,  line 1
+        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 88,  12B, line 1
+    immunity_head::Int32 = 0                        # off 100, 4B,  line 1
 
     # EXTENSIONS
-    extensions::Any = nothing                       # off 112, 8B,  line 1
+    extensions::Any = nothing                       # off 104, 8B,  line 1
 end
 
 # CONSTRUCTOR
@@ -312,64 +312,8 @@ end
 mandate_compliance!(individual::Individual, val::Float64) = mandate_compliance!(individual, Float32(val))
 
 ### SETTINGS ###
-
-"""
-    household_id(individual::Individual)
-
-Returns an individual's associated household's ID.
-"""
-function household_id(individual::Individual)::Int32
-    return individual.household
-end
-
-"""
-    office_id(individual::Individual)
-
-Returns an individual's associated office's ID.
-"""
-function office_id(individual::Individual)::Int32
-    return individual.office
-end
-
-"""
-    class_id(individual::Individual)
-
-Returns an individual's associated class's ID.
-"""
-function class_id(individual::Individual)::Int32
-    return individual.schoolclass
-end
-
-"""
-    municipality_id(individual::Individual)
-
-Returns an individual's associated municipalities ID.
-"""
-function municipality_id(individual::Individual)::Int32
-    return individual.municipality
-end
-
-
-"""
-    is_working(individual::Individual)
-
-Returns `true` if individual is assigned to an  instance of type `Office`.
-"""
-is_working(individual::Individual) = office_id(individual) != DEFAULT_SETTING_ID
-
-"""
-    is_student(individual::Individual)
-
-Returns `true` if individual is assigned to an  instance of type `SchoolClass`.
-"""
-is_student(individual::Individual) = class_id(individual) != DEFAULT_SETTING_ID
-
-"""
-    has_municipality(individual::Individual)
-
-Returns `true` if individual is assigned to an instance of type `Municipality`.
-"""
-has_municipality(individual::Individual) = municipality_id(individual) != DEFAULT_SETTING_ID
+# Memberships live in the population's `ActivityPlanStore`, so the setting accessors need that
+# store and are defined in individual_methods.jl.
 
 
 ### HEALTH STATUS ###
@@ -784,14 +728,18 @@ end
     individual_base_fieldnames()
 
 Return the field names of `Individual` that a constructor may populate from external data,
-excluding `:extensions` and the three `*_demands` counters.
+excluding `:extensions`, the three `*_demands` counters and the two plan coordinates.
 Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
 they don't accidentally try to populate the extension slot from a column that doesn't exist.
 
 The demand counters are realized state, not input: a count set from a population file would have no
-matching discharge scheduled, stranding the host as permanently admitted.
+matching discharge scheduled, stranding the host as permanently admitted. The plan coordinates
+are likewise derived; membership is read from the `household`/`office`/... columns instead.
 """
-individual_base_fieldnames() = filter(f -> f !== :extensions && f !== :hospital_demands && f !== :icu_demands && f !== :ventilation_demands, fieldnames(Individual))
+const _INDIVIDUAL_DERIVED_FIELDS = (:extensions, :hospital_demands, :icu_demands,
+                                    :ventilation_demands, :plan_offset, :plan_count)
+
+individual_base_fieldnames() = filter(f -> !(f in _INDIVIDUAL_DERIVED_FIELDS), fieldnames(Individual))
 
 """
     assert_no_core_collision(names)
@@ -874,10 +822,8 @@ function Base.show(io::IO, individual::Individual)
         "Ventilation Demands" => individual.ventilation_demands,
         "Is Dead" => is_dead(individual),
 
-        "Household ID" => individual.household,
-        "Office ID" => individual.office != DEFAULT_SETTING_ID ? individual.office : "n/a",
-        "School Class ID" => individual.schoolclass != DEFAULT_SETTING_ID ? individual.schoolclass : "n/a",
-        "Municipality ID" => individual.municipality != DEFAULT_SETTING_ID ? individual.municipality : "n/a",
+        # the plan itself lives on the population, so only its extent is visible from here
+        "Plan Entries" => individual.plan_count,
 
         "Number of Infections" => individual.number_of_infections,
         

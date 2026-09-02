@@ -514,7 +514,7 @@ end
         @test SEEN_OTHER[] == Int8(100)
 
         # without a Simulation an empty registry is passed rather than erroring
-        lone = Individual(id = 1, age = 30, sex = 1, household = 1)
+        lone = Individual(id = 1, age = 30, sex = 1)
         SEEN_OWN[] = Int8(-1)
         infect!(lone, Int16(0), mkpath_ia(1, "Lone"), rng = Xoshiro(1))
         @test SEEN_OWN[] == Int8(0)

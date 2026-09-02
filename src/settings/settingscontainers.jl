@@ -4,6 +4,7 @@
 export SettingsContainer
 export add!, get, setting, settings
 export settingtypes, foreach_setting_vector, add_type!, add_types!
+export setting_type_index, setting_type_from_index, register_setting_type!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites 
 
 """
@@ -50,6 +51,7 @@ Add a settingtype to the container if it is not yet included.
 Creates a new concretely-typed vector for the provided type in the settings dictionary.
 """
 function add_type!(container::SettingsContainer, settingtype::DataType)
+    settingtype <: Setting && register_setting_type!(settingtype)
     if !haskey(container.settings, settingtype)
         container.settings[settingtype] = Vector{settingtype}()
     end
@@ -460,3 +462,67 @@ function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict
         error("The file $jld2file does not exist.\n Please provide a valid file path pointing to the desired settingfile!")
     end
 end
+
+
+###
+### DENSE SETTING-TYPE INDEX
+###
+
+"""
+    setting_type_index(::Type{T}) where {T<:Setting}
+
+Returns the dense index identifying a setting type, so a `PlanEntry` can name one without
+storing a `DataType`. Built-in types resolve to a compile-time constant.
+"""
+function setting_type_index end
+
+"""
+    setting_type_from_index(idx::Integer)
+
+Returns the setting type an index refers to. Inverse of `setting_type_index`.
+"""
+function setting_type_from_index end
+
+for (i, T) in enumerate(BUILTIN_SETTING_TYPES)
+    @eval @inline setting_type_index(::Type{$T}) = $(UInt8(i))
+end
+
+const _N_BUILTIN_SETTING_TYPES = UInt8(length(BUILTIN_SETTING_TYPES))
+
+# indices for user types, numbered past the built-ins so a built-in's never shifts
+const EXTRA_SETTING_TYPE_INDEX = Dict{DataType, UInt8}()
+const EXTRA_SETTING_TYPES = DataType[]
+
+"""
+    register_setting_type!(::Type{T}) where {T<:Setting}
+
+Assigns `T` a dense setting-type index if it has none yet, and returns it. The extension point
+for setting types GEMS does not ship; `add_type!` calls it.
+"""
+function register_setting_type!(::Type{T}) where {T<:Setting}
+    T in BUILTIN_SETTING_TYPES_SET && return setting_type_index(T)
+    idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
+    idx != 0 && return idx
+    length(EXTRA_SETTING_TYPES) < typemax(UInt8) - Int(_N_BUILTIN_SETTING_TYPES) ||
+        error("no dense setting-type index left for $T; at most $(typemax(UInt8)) setting types are supported")
+    push!(EXTRA_SETTING_TYPES, T)
+    new_idx = _N_BUILTIN_SETTING_TYPES + UInt8(length(EXTRA_SETTING_TYPES))
+    EXTRA_SETTING_TYPE_INDEX[T] = new_idx
+    return new_idx
+end
+
+function setting_type_index(::Type{T}) where {T<:Setting}
+    idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
+    idx == 0 && error("$T has no setting-type index; register it with `add_type!` first")
+    return idx
+end
+
+function setting_type_from_index(idx::Integer)
+    i = UInt8(idx)
+    i <= _N_BUILTIN_SETTING_TYPES && return BUILTIN_SETTING_TYPES[Int(i)]
+    extra = Int(i) - Int(_N_BUILTIN_SETTING_TYPES)
+    1 <= extra <= length(EXTRA_SETTING_TYPES) ||
+        throw(ArgumentError("no setting type registered for index $idx"))
+    return EXTRA_SETTING_TYPES[extra]
+end
+

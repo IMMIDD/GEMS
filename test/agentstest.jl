@@ -1,7 +1,8 @@
 import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, detected!, progress_disease!,
     inc_number_of_infections!,
     quarantine_release_tick!, quarantine_tick!, quarantined!,
-    mandate_compliance!, social_factor!, setting_id!,
+    mandate_compliance!, social_factor!,
+    ActivityPlanStore, PlanEntry, plan_add!, plan_slot,
     earliest_infectiousness_onset, push_infection!, push_immunity!
 
 @testset "Agents" begin
@@ -20,9 +21,11 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             @test social_factor(i) == 0
             @test mandate_compliance(i) == 0
             @test comorbidities(i) == 0
-            @test household_id(i) == GEMS.DEFAULT_SETTING_ID
-            @test office_id(i) == GEMS.DEFAULT_SETTING_ID
-            @test class_id(i) == GEMS.DEFAULT_SETTING_ID
+            # a fresh individual has no plan, so every setting lookup falls back
+            plans = ActivityPlanStore()
+            @test household_id(i, plans) == GEMS.DEFAULT_SETTING_ID
+            @test office_id(i, plans) == GEMS.DEFAULT_SETTING_ID
+            @test class_id(i, plans) == GEMS.DEFAULT_SETTING_ID
         end
 
         @testset "Behaviour Setters" begin
@@ -49,24 +52,27 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
 
 
         @testset "Setting Membership Predicates" begin
+            plans = ActivityPlanStore()
+
             i = Individual(id=1, sex=0, age=25)
-            @test !is_working(i)
-            @test !is_student(i)
-            @test !has_municipality(i)
+            @test !is_working(i, plans)
+            @test !is_student(i, plans)
+            @test !has_municipality(i, plans)
 
-            @test is_working(Individual(id=2, sex=0, age=25, office=Int32(5)))
-            @test is_student(Individual(id=3, sex=0, age=10, schoolclass=Int32(7)))
-            @test has_municipality(Individual(id=4, sex=0, age=40, municipality=Int32(3)))
+            i_off = Individual(id=2, sex=0, age=25)
+            plan_add!(plans, i_off, PlanEntry(Office, Int32(5), Int32(1)))
+            @test is_working(i_off, plans)
 
-            # setting_id! covers Office and Municipality branches
-            i_set = Individual(id=5, sex=0, age=30)
-            setting_id!(i_set, Office, Int32(7))
-            @test i_set.office == Int32(7)
-            setting_id!(i_set, Municipality, Int32(3))
-            @test i_set.municipality == Int32(3)
+            i_cls = Individual(id=3, sex=0, age=10)
+            plan_add!(plans, i_cls, PlanEntry(SchoolClass, Int32(7), Int32(1)))
+            @test is_student(i_cls, plans)
 
-            # setting_id for unknown type returns DEFAULT_SETTING_ID
-            @test setting_id(Individual(id=6, sex=0, age=20), WorkplaceSite) == GEMS.DEFAULT_SETTING_ID
+            i_mun = Individual(id=4, sex=0, age=40)
+            plan_add!(plans, i_mun, PlanEntry(Municipality, Int32(3), Int32(1)))
+            @test has_municipality(i_mun, plans)
+
+            # a setting type the individual holds no entry for falls back
+            @test setting_id(i_off, WorkplaceSite, plans) == GEMS.DEFAULT_SETTING_ID
 
             # detected!(ind, pathogen_id, false) clears the per-pathogen bit
             i_det = Individual(id=7, sex=0, age=30)
@@ -675,39 +681,38 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
     end
 
     @testset "Settings Tuple" begin
-    # Test individual with specific setting assignments
-    i = Individual(id = 1, sex = 0, age = 1, household=10, office=20, schoolclass=30, municipality=40)
-    res = settings_tuple(i)
-    
-    @test res isa Tuple
-    @test length(res) == 4
-    @test res[1] == (Household, Int32(10))
-    @test res[2] == (Office, Int32(20))
-    @test res[3] == (SchoolClass, Int32(30))
-    @test res[4] == (Municipality, Int32(40))
+        plans = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 1)
+        for (T, sid) in ((Household, 10), (Office, 20), (SchoolClass, 30), (Municipality, 40))
+            plan_add!(plans, i, PlanEntry(T, Int32(sid), Int32(1)))
+        end
 
-    # Test default/undefined settings
-    i_default = Individual(id=2, sex = 0, age = 1)
-    @test all(pair -> pair[2] == GEMS.DEFAULT_SETTING_ID, settings_tuple(i_default))
+        # entries come back sorted by setting type index, not insertion order
+        res = settings_tuple(i, plans)
+        @test length(res) == 4
+        @test res[1] == (Household, Int32(10))
+        @test res[2] == (SchoolClass, Int32(30))
+        @test res[3] == (Office, Int32(20))
+        @test res[4] == (Municipality, Int32(40))
+
+        # an individual without a plan has no memberships to report
+        @test isempty(settings_tuple(Individual(id=2, sex = 0, age = 1), plans))
     end
 
-    @testset "setting_id / setting_id!" begin
-        i = Individual(id=1, sex=0, age=25, household=10, office=20, schoolclass=30, municipality=40)
+    @testset "setting_id" begin
+        plans = ActivityPlanStore()
+        i = Individual(id=1, sex=0, age=25)
+        for (T, sid) in ((Household, 10), (Office, 20), (SchoolClass, 30), (Municipality, 40))
+            plan_add!(plans, i, PlanEntry(T, Int32(sid), Int32(1)))
+        end
 
-        # getters dispatch per type; GlobalSetting is constant, other settings fall back to the default
-        @test setting_id(i, Household) == Int32(10)
-        @test setting_id(i, GlobalSetting) == GEMS.GLOBAL_SETTING_ID
-        @test setting_id(i, SchoolYear) == GEMS.DEFAULT_SETTING_ID
+        @test setting_id(i, Household, plans) == Int32(10)
+        # everyone is in the one GlobalSetting, so it is answered from the constant
+        @test setting_id(i, GlobalSetting, plans) == GEMS.GLOBAL_SETTING_ID
+        # a type the plan holds no entry for falls back
+        @test setting_id(i, SchoolYear, plans) == GEMS.DEFAULT_SETTING_ID
 
-        # setters write the matching field
-        setting_id!(i, Household, Int32(1))
-        setting_id!(i, Office, Int32(2))
-        setting_id!(i, SchoolClass, Int32(3))
-        setting_id!(i, Municipality, Int32(4))
-        @test (household_id(i), office_id(i), class_id(i), municipality_id(i)) == (Int32(1), Int32(2), Int32(3), Int32(4))
-
-        # a setting type without a dedicated field is a no-op and leaves the individual unchanged
-        @test setting_id!(i, SchoolYear, Int32(99)) === nothing
-        @test (household_id(i), office_id(i), class_id(i), municipality_id(i)) == (Int32(1), Int32(2), Int32(3), Int32(4))
+        @test (household_id(i, plans), office_id(i, plans), class_id(i, plans), municipality_id(i, plans)) ==
+              (Int32(10), Int32(20), Int32(30), Int32(40))
     end
 end

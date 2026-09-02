@@ -7,6 +7,7 @@
 # EXPORTS
 # setting membership and lookup
 export household, office, schoolclass, getsetting, settings_tuple
+export membership_setting_types
 # registry-based getters
 export get_infection_state, get_immunity_state
 export infection_id
@@ -34,59 +35,123 @@ export progress_disease!
 """
     membership_setting_types(::Type{Individual})
 
-The `IndividualSetting` types an `Individual` can be a member of via a dedicated `Int32` field.
+The `IndividualSetting` types an `Individual` may hold a plan entry for. `GlobalSetting` is
+excluded; it holds everyone, and `setting_id` answers for it from the constant.
 """
 membership_setting_types(::Type{Individual}) = (Household, Office, SchoolClass, Municipality)
 
 """
-    setting_id(individual::Individual, ::Type{T}) where {T<:Setting}
+    setting_id(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
 
-Returns the id of the setting of type `T` associated with the individual. Dispatched per
-type (the type → field map); falls back to `DEFAULT_SETTING_ID` when the individual is not
-part of a setting of that type.
+Returns the id of the setting of type `T` the individual belongs to, or `DEFAULT_SETTING_ID`.
 """
-@inline setting_id(individual::Individual, ::Type{Household}) = individual.household
-@inline setting_id(individual::Individual, ::Type{Office}) = individual.office
-@inline setting_id(individual::Individual, ::Type{SchoolClass}) = individual.schoolclass
-@inline setting_id(individual::Individual, ::Type{Municipality}) = individual.municipality
-@inline setting_id(individual::Individual, ::Type{GlobalSetting}) = GLOBAL_SETTING_ID # there is only one GlobalSetting
-@inline setting_id(individual::Individual, ::Type{<:Setting}) = DEFAULT_SETTING_ID
-
-"""
-    setting_id!(individual::Individual, ::Type{T}, id::Int32) where {T<:Setting}
-
-Changes the assigned setting id of the individual for the given type of setting to `id`.
-Types without a dedicated field (e.g. `GlobalSetting`) are a no-op.
-"""
-@inline setting_id!(individual::Individual, ::Type{Household}, id::Int32) = (individual.household = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{Office}, id::Int32) = (individual.office = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{SchoolClass}, id::Int32) = (individual.schoolclass = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{Municipality}, id::Int32) = (individual.municipality = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{<:Setting}, id::Int32) = nothing
-
-"""
-    settings_tuple(individual::Individual)
-
-Returns all individual's associated setting IDs as a Tuple of `(type, id)` pairs.
-Derived from `membership_setting_types(Individual)`.
-"""
-settings_tuple(individual::Individual) = map(T -> (T, setting_id(individual, T)), membership_setting_types(Individual))
-
-"""
-    activate_memberships!(c::Individual, sim::Simulation)
-
-Activates every setting the individual `c` belongs to (and, recursively, their containers).
-Unrolls over `membership_setting_types(Individual)` so each access is type-stable.
-"""
-@inline activate_memberships!(c::Individual, sim::Simulation) = _activate_memberships!(c, sim, membership_setting_types(Individual)...)
-@inline _activate_memberships!(c::Individual, sim::Simulation) = nothing
-@inline function _activate_memberships!(c::Individual, sim::Simulation, ::Type{T}, rest...) where {T<:IndividualSetting}
-    sid = setting_id(c, T)
-    if sid != DEFAULT_SETTING_ID
-        activate!(settings(sim, T)[sid], sim)
-    end
-    _activate_memberships!(c, sim, rest...)
+@inline function setting_id(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Int32 where {T<:Setting}
+    slot = plan_slot(plans, individual, T)
+    slot == 0 && return DEFAULT_SETTING_ID
+    return @inbounds setting_id(plans.entries[slot])
 end
+
+# there is only one GlobalSetting and everyone is in it, so it needs no entry
+@inline setting_id(individual::Individual, ::Type{GlobalSetting}, plans::ActivityPlanStore)::Int32 = GLOBAL_SETTING_ID
+
+"""
+    setting_id(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting}
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+@inline setting_id(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting} =
+    setting_id(individual, T, activity_plans(sim))
+
+"""
+    member_index(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
+
+Returns the individual's position in the member frame of their setting of type `T`.
+"""
+@inline function member_index(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Int32 where {T<:Setting}
+    _check_indexed(plans)
+    slot = plan_slot(plans, individual, T)
+    slot == 0 && return DEFAULT_MEMBER_INDEX
+    return @inbounds member_index(plans.entries[slot])
+end
+
+"""
+    settings_tuple(individual::Individual, plans::ActivityPlanStore)
+    settings_tuple(individual::Individual, sim::Simulation)
+
+Returns all of the individual's memberships as `(type, id)` pairs, in plan order.
+"""
+function settings_tuple(individual::Individual, plans::ActivityPlanStore)
+    return [(setting_type_from_index(setting_type_of(e)), setting_id(e))
+            for e in plan_entries(plans, individual)]
+end
+
+settings_tuple(individual::Individual, sim::Simulation) = settings_tuple(individual, activity_plans(sim))
+
+### SETTING ACCESSORS ###
+# These resolve through the plan store, taken directly or via a `Simulation`.
+
+"""
+    household_id(individual::Individual, plans::ActivityPlanStore)
+    household_id(individual::Individual, sim::Simulation)
+
+Returns an individual's associated household's ID.
+"""
+@inline household_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Household, plans)
+@inline household_id(individual::Individual, sim::Simulation)::Int32 = household_id(individual, activity_plans(sim))
+
+"""
+    office_id(individual::Individual, plans::ActivityPlanStore)
+    office_id(individual::Individual, sim::Simulation)
+
+Returns an individual's associated office's ID.
+"""
+@inline office_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Office, plans)
+@inline office_id(individual::Individual, sim::Simulation)::Int32 = office_id(individual, activity_plans(sim))
+
+"""
+    class_id(individual::Individual, plans::ActivityPlanStore)
+    class_id(individual::Individual, sim::Simulation)
+
+Returns an individual's associated class's ID.
+"""
+@inline class_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, SchoolClass, plans)
+@inline class_id(individual::Individual, sim::Simulation)::Int32 = class_id(individual, activity_plans(sim))
+
+"""
+    municipality_id(individual::Individual, plans::ActivityPlanStore)
+    municipality_id(individual::Individual, sim::Simulation)
+
+Returns an individual's associated municipality's ID.
+"""
+@inline municipality_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Municipality, plans)
+@inline municipality_id(individual::Individual, sim::Simulation)::Int32 = municipality_id(individual, activity_plans(sim))
+
+"""
+    is_working(individual::Individual, plans::ActivityPlanStore)
+    is_working(individual::Individual, sim::Simulation)
+
+Returns `true` if individual is assigned to an instance of type `Office`.
+"""
+is_working(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, Office) != 0
+is_working(individual::Individual, sim::Simulation) = is_working(individual, activity_plans(sim))
+
+"""
+    is_student(individual::Individual, plans::ActivityPlanStore)
+    is_student(individual::Individual, sim::Simulation)
+
+Returns `true` if individual is assigned to an instance of type `SchoolClass`.
+"""
+is_student(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, SchoolClass) != 0
+is_student(individual::Individual, sim::Simulation) = is_student(individual, activity_plans(sim))
+
+"""
+    has_municipality(individual::Individual, plans::ActivityPlanStore)
+    has_municipality(individual::Individual, sim::Simulation)
+
+Returns `true` if individual is assigned to an instance of type `Municipality`.
+"""
+has_municipality(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, Municipality) != 0
+has_municipality(individual::Individual, sim::Simulation) = has_municipality(individual, activity_plans(sim))
 
 
 ### setting extraction from individuals
@@ -96,9 +161,7 @@ end
 Returns the `Household` instance referenced in an individual. 
 """
 function household(i::Individual, sim::Simulation)::Household
-    return sim |> settings |>
-        x -> x[Household] |>
-        x -> x[household_id(i)]
+    return settings(sim, Household)[household_id(i, sim)]
 end
 
 """
@@ -117,11 +180,9 @@ end
 Returns the `Office` instance referenced in an individual. 
 """
 function office(i::Individual, sim::Simulation)::Office
-    !is_working(i) ? throw(ArgumentError("Individual $(id(i)) is not assigned to an Office")) :
-
-    return sim |> settings |>
-        x -> x[Office] |>
-        x -> x[office_id(i)]
+    oid = office_id(i, sim)
+    oid == DEFAULT_SETTING_ID && throw(ArgumentError("Individual $(id(i)) is not assigned to an Office"))
+    return settings(sim, Office)[oid]
 end
 
 
@@ -175,11 +236,9 @@ end
 Returns the `SchoolClass` instance referenced in an individual. 
 """
 function schoolclass(i::Individual, sim::Simulation)::SchoolClass
-    !is_student(i) ? throw(ArgumentError("Individual $(id(i)) is not assigned to a School Class")) :
-
-    return sim |> settings |>
-        x -> x[SchoolClass] |>
-        x -> x[class_id(i)]
+    cid = class_id(i, sim)
+    cid == DEFAULT_SETTING_ID && throw(ArgumentError("Individual $(id(i)) is not assigned to a School Class"))
+    return settings(sim, SchoolClass)[cid]
 end
 
 """
@@ -232,9 +291,7 @@ end
 Returns the `Municipality` instance referenced in an individual. 
 """
 function municipality(i::Individual, sim::Simulation)::Municipality
-    return sim |> settings |>
-        x -> x[Municipality] |>
-        x -> x[municipality_id(i)]
+    return settings(sim, Municipality)[municipality_id(i, sim)]
 end
 
 """
@@ -246,6 +303,31 @@ function getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
     return settings(sim)[GlobalSetting][1]
 end
 
+
+### MEMBERSHIP ACTIVATION ###
+
+"""
+    activate_memberships!(c::Individual, sim::Simulation)
+
+Activates every setting the individual `c` belongs to, and recursively their containers.
+"""
+function activate_memberships!(c::Individual, sim::Simulation)
+    plans = activity_plans(sim)
+    for e in plan_entries(plans, c)
+        _activate_entry!(sim, setting_id(e), setting_type_of(e), membership_setting_types(Individual)...)
+    end
+    return nothing
+end
+
+# unrolled over the membership types, so the comparison is against a constant index
+@inline _activate_entry!(::Simulation, ::Int32, ::UInt8) = nothing
+@inline function _activate_entry!(sim::Simulation, sid::Int32, tidx::UInt8, ::Type{T}, rest...) where {T<:IndividualSetting}
+    if tidx == setting_type_index(T)
+        activate!(settings(sim, T)[sid], sim)
+        return nothing
+    end
+    _activate_entry!(sim, sid, tidx, rest...)
+end
 
 
 ### Registry GETTERS ###
