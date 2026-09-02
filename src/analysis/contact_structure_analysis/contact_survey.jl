@@ -57,9 +57,14 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
     settingtype_vec = Vector{DataType}(undef, CONTACT_SAMPLES)
 
     cnt = 1
-    last_s = nothing
-    present_inds = simulation.present_buffers[Threads.threadid()]
+    cntnr = settingscontainer(simulation)
     contacts = simulation.contact_buffers[Threads.threadid()]
+
+    # batches are sorted, so consecutive samples usually hit the same setting. A member view
+    # is not free for containers - it walks the subtree to check openness - so keep the
+    # previous one rather than re-deriving it per sample.
+    last_s = nothing
+    present_inds = present_members(@inbounds(stngs[1]), cntnr)
 
     # reusable batch buffer
     batch = Vector{Int}(undef, CONTACT_SAMPLES)
@@ -80,8 +85,7 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             s = stngs[sidx]::T
 
             if s !== last_s
-                empty!(present_inds)
-                present_individuals!(present_inds, s, simulation)
+                present_inds = present_members(s, cntnr)
                 last_s = s
             end
 

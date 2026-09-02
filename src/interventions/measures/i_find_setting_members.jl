@@ -106,7 +106,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSettingM
     st = measure |> settingtype
 
     # setting id
-    sid = setting_id(ind, st)
+    sid = setting_id(ind, st, activity_plans(sim))
 
     # setting object
     s = sim |> settingscontainer |>

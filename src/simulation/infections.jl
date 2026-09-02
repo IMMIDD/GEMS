@@ -243,7 +243,7 @@ function try_to_infect!(infctr::Individual,
 
     # try to infect
     if gems_rand(sim) < infection_probability
-        hh = settings(sim, Household)[household_id(infctd)]::Household
+        hh = settings(sim, Household)[household_id(infctd, activity_plans(sim))]::Household
         infect!(infctd,
             tick(sim),
             pathogen,
@@ -394,23 +394,16 @@ infection is successful.
 
 """
 function spread_infection!(setting::Setting, sim::Simulation)
-    tid = Threads.threadid()
-    p_buffer = sim.present_buffers[tid]
-    c_buffer = sim.contact_buffers[tid]
-
-    empty!(p_buffer)
-    present_individuals!(p_buffer, setting, sim)
-
     csm = setting.contact_sampling_method
     # union splitting on csm
     num_infected = if csm isa ContactparameterSampling
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+        _process_infections!(csm, setting, sim)
     elseif csm isa RandomSampling
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+        _process_infections!(csm, setting, sim)
     elseif csm isa AgeBasedContactSampling
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+        _process_infections!(csm, setting, sim)
     else
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+        _process_infections!(csm, setting, sim)
     end
 
     if num_infected == 0
@@ -419,18 +412,20 @@ function spread_infection!(setting::Setting, sim::Simulation)
 end
 
 
-function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
+function _process_infections!(csm, setting, sim)
+    present_inds = present_members(setting, settingscontainer(sim))
+    c_buffer = sim.contact_buffers[Threads.threadid()]
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
 
-    for ind_index in 1:length(p_buffer)
-        ind = p_buffer[ind_index]
+    for ind_index in 1:length(present_inds)
+        ind = present_inds[ind_index]
         if infected(ind)
             num_infected += 1
             if can_infect(ind, setting, current_tick)
                 empty!(c_buffer)
-                sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
+                sample_contacts!(c_buffer, csm, setting, ind_index, present_inds, current_tick, true, current_rng)
 
                 # spread each active, shedding pathogen (cache then overflow); the iterator
                 # only resolves the shard registry if the individual has overflow infections

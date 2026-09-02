@@ -34,7 +34,8 @@ end
     @test length(sim.strategies) == 2
 
     #define Individuals and settings
-    i = Individual(id=1, sex=0, age=31, household=1)
+    i = Individual(id=1, sex=0, age=31)
+    assign_settings!(population(sim), i, Household => 1)
     i2 = Individual(id=4, age=10, sex=1)
     indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
     indis2 = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
@@ -235,7 +236,8 @@ end
             test_measure5 = GEMS.Test()
         end
 
-        i_test_neg = Individual(id=201, sex=0, age=31, household=1)
+        i_test_neg = Individual(id=201, sex=0, age=31)
+        assign_settings!(population(sim), i_test_neg, Household => 1)
         eq = GEMS.event_queue(sim)
         empty!(eq)
         @test process_measure(sim, i_test_neg, test_measure3) === nothing   # negative result → negative follow-up
@@ -243,7 +245,8 @@ end
         @test followup_focals(evs) == [i_test_neg]
         @test events_from_strategy(evs, i_strategy)
 
-        i_test_pos = Individual(id=202, sex=0, age=31, household=1)
+        i_test_pos = Individual(id=202, sex=0, age=31)
+        assign_settings!(population(sim), i_test_pos, Household => 1)
         infect!(i_test_pos, Int16(0), first_pathogen(sim), rng = Xoshiro())
         empty!(eq)
         @test process_measure(sim, i_test_pos, test_measure2) === nothing
@@ -299,7 +302,8 @@ end
             s_test_measure5 = GEMS.Test()
         end
 
-        i_sero = Individual(id=203, sex=0, age=31, household=1)
+        i_sero = Individual(id=203, sex=0, age=31)
+        assign_settings!(population(sim), i_sero, Household => 1)
         infect!(i_sero, Int16(0), first_pathogen(sim), rng = Xoshiro())
         GEMS.push_immunity!(immunity_registry(sim, i_sero), i_sero, id(first_pathogen(sim)), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
         eq = GEMS.event_queue(sim)
@@ -871,7 +875,8 @@ end
 
     @testset "Test Measure Events" begin
         sim = Simulation()
-        i = Individual(id=1, sex=0, age=31, household=1)
+        i = Individual(id=1, sex=0, age=31)
+        assign_settings!(population(sim), i, Household => 1)
         indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
         rs = RandomSampling()
         gs = GlobalSetting(individuals=indis, contact_sampling_method=rs)
