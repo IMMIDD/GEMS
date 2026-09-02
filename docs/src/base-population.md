@@ -5,7 +5,7 @@ As such, all actions (contacts, infections, deaths, etc...) are being calculated
 
 ## Individuals and Settings
 
-The only two entities in GEMS are `Individual`s and `Setting`s.
+Besides 'Pathogene's, the only two, other entities in GEMS are `Individual`s and `Setting`s.
 *Individuals* are people that have personal characteristics, such as `age`, `sex`, and many more.
 Look up the documentation of the `Individual` object to get a full list of parameters.
 
@@ -17,7 +17,8 @@ Look up the documentation of the `Individual` object to get a full list of param
 
 *Settings* are the (physical or social) contexts in which contacts can occur.
 A setting does always have a type (e.g., *Household* or *SchoolClass*) and can be geolocated.
-Individuals can belong to an arbitrary number of settings but only one of each type.
+Individuals can belong to any setting type but only one of each type.
+The exact settings an Individual belongs to can be changed during the simulation.
 Settings can hold an arbitrary number of individuals.
 
 
