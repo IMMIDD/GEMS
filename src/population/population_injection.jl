@@ -693,7 +693,7 @@ function snapshot(injector::Injector, ind_id::Integer, base_population::DataFram
         # Decode the value from the event
         original_value = decode_value(injector, field_symbol, event.new_value)
 
-        # Update the snapshot dataframe (now guaranteed to have enough rows)
+        # Update the snapshot dataframe
         snapshot_df[field_symbol] = original_value
     end
 
@@ -754,13 +754,76 @@ function snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::
         # Decode the value from the event
         original_value = decode_value(injector, field_symbol, event.new_value)
 
-        # Update the snapshot dataframe (now guaranteed to have enough rows)
+        # Update the snapshot dataframe
         snapshot_df[ind_id, field_symbol] = original_value
     end
 
     return snapshot_df
 end
 
+"""
+    get_change_history(injector::Injector, ind_id::Integer, base_population::DataFrame)
+
+Reconstructs the table for the specified individuals at each changepoint.
+
+# Arguments
+- `injector::Injector`: The injector containing the staged events
+- `ind_id::Int`: The individual id for which the change history should be constructed
+- `base_population::DataFrame`: The base population table (day 0) to start from
+
+# Returns
+- `DataFrame`: The individual table with a row for each time point of change
+"""
+function get_change_history(injector::Injector, ind_id::Integer, base_population::DataFrame)
+    # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
+    for field in names(base_population)
+        field_symbol = Symbol(field)
+        col_data = base_population[:, field]
+        computed_hash = stable_hash(col_data)
+
+        if !haskey(injector.schema.meta[:hash], field_symbol)
+            error("No hash stored for column $field_symbol")
+        end
+
+        stored_hash = injector.schema.meta[:hash][field_symbol]
+        if computed_hash != stored_hash
+            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
+        end
+    end
+
+    # Create a copy of the base individual to avoid modifying it. Must be DataFrame() otherwise cannot add column
+    snapshot_df = DataFrame(deepcopy(base_population[ind_id, :]))
+    insertcols!(snapshot_df, 1, :timestamp => 0) #add timestamp column in first position
+
+    # Find all events that occurred before or at the given timestamp
+    relevant_events = filter(event -> event.ind_id == ind_id, injector.events)
+
+    if isempty(relevant_events)
+        return snapshot_df
+    end
+
+    # Process events in chronological order
+    sorted_events = sort(relevant_events, by=event -> event.timestamp)
+
+    # should always update latest row. Initiate with original row
+    tmp_df = copy(snapshot_df)
+
+    # Now process all events
+    for event in sorted_events
+        # Get field from the event
+        field_index = event.field
+        field_symbol = injector.schema.index_to_field[field_index+1]
+
+        # Decode the value from the event
+        original_value = decode_value(injector, field_symbol, event.new_value)
+
+       # Update the snapshot dataframe
+        tmp_df[!, field_symbol] .= original_value
+        tmp_df.timestamp .= event.timestamp
+        append!(snapshot_df, tmp_df)
+    end
+    return snapshot_df
+end
 
 """
     save(injector, path)
