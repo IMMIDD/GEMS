@@ -1,4 +1,4 @@
-export LegacyHealthProgression, LegacyCriticalHealthProfile
+export LegacyCriticalHealthProfile
 
 """
     LegacyCriticalHealthProfile <: HealthProfile
@@ -61,32 +61,6 @@ function calculate_health_profile(cc::LegacyCriticalHealthProfile, individual::I
     return care, outcome
 end
 
-"""
-    LegacyHealthProgression <: HealthProgression
-
-Host health policy for the legacy compatibility categories. Routes each infection by its
-`(pathogen_id, progression_id)` tag to the profile harvested for its legacy category
-([`Hospitalized`](@ref) -> a ward-only `SevereHealthProfile`, [`LegacyCritical`](@ref) ->
-[`LegacyCriticalHealthProfile`](@ref)); anything unmatched (modern or severe-home categories) falls
-through to the wrapped `DefaultHealthProgression`. Reading the tag is what lets a severe-peaking
-`Hospitalized` (ward) and `Severe` (home) coexist, which the tier-only `DefaultHealthProgression`
-cannot tell apart. Built by [`_harvest_legacy_health_progression`](@ref), not from config parameters.
-"""
-struct LegacyHealthProgression{D<:DefaultHealthProgression} <: HealthProgression
-    default::D
-    profiles::Dict{NTuple{2,Int8}, HealthProfile}
-end
-
-"""
-    select_health_profile(hp::LegacyHealthProgression, infection::InfectionState)
-
-Routes `infection` to its legacy category's harvested profile by `(pathogen_id, progression_id)`, or
-delegates to the wrapped `DefaultHealthProgression` when there is no legacy entry.
-"""
-function select_health_profile(hp::LegacyHealthProgression, infection::InfectionState)
-    p = get(hp.profiles, (infection.pathogen_id, infection.progression_id), nothing)
-    p === nothing ? select_health_profile(hp.default, infection) : p
-end
 
 """
     _has_legacy_category(pathogen)
@@ -97,14 +71,16 @@ end
 _has_legacy_category(pathogen) = any(c -> c isa Hospitalized || c isa LegacyCritical, pathogen.progressions)
 
 """
-    _harvest_legacy_health_progression(pathogens)
+    _harvest_legacy_health_profiles(pathogens, baseline = nothing)
 
-Assembles a [`LegacyHealthProgression`](@ref) by scanning every pathogen's progressions and building
-the health profile for each legacy category, keyed by `(pathogen_id, 1-based slot)`. Modern and
-severe-home categories get no entry and fall through to the default policy.
+Assembles the `HealthProfileIndex` for the legacy compatibility categories, keyed by
+`(pathogen_id, 1-based slot)`: `Hospitalized` becomes a ward-only `SevereHealthProfile`,
+`LegacyCritical` a `LegacyCriticalHealthProfile`. Keying on the slot is what lets a
+severe-peaking `Hospitalized` (ward) and `Severe` (home) coexist. A modern category alongside them
+falls back to `baseline`.
 """
-function _harvest_legacy_health_progression(pathogens)
-    profiles = Dict{NTuple{2,Int8}, HealthProfile}()
+function _harvest_legacy_health_profiles(pathogens, baseline = nothing)
+    profiles = HealthProfileIndex()
     for p in pathogens
         pid = id(p)
         for (k, c) in enumerate(p.progressions)
@@ -121,8 +97,11 @@ function _harvest_legacy_health_progression(pathogens)
                     icu_discharge_to_hospital_discharge = c.icu_discharge_to_hospital_discharge,
                     death_probability = c.death_probability,
                     icu_admission_to_death = c.icu_admission_to_death)
+            else
+                profile = _baseline_profile(baseline, _health_profile_type(typeof(c)))
+                isnothing(profile) || (profiles[key] = profile)
             end
         end
     end
-    return LegacyHealthProgression(DefaultHealthProgression(), profiles)
+    return profiles
 end

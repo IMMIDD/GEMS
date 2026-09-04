@@ -89,7 +89,6 @@ module GEMS
     include("population/individual_methods.jl")
     include("pathogen/health_progression/health_profiles.jl")
     include("pathogen/health_progression/default_health_progression.jl")
-    include("pathogen/health_progression/per_pathogen_health_progression.jl")
     include("pathogen/health_progression/health_embedding.jl")
 
     # PATHOGEN IMPLEMENTATIONS

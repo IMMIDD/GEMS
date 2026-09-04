@@ -3,45 +3,37 @@ export DefaultHealthProgression
 """
     DefaultHealthProgression <: HealthProgression
 
-Default host health policy. Holds a `SevereHealthProfile` and a `CriticalHealthProfile`; each
-infection contributes care and mortality risk from the profile for its peak tier once, when it
-arrives. Care contributions superpose into the host's occupancy and mortality folds by earliest death;
-the two are independent. Ventilation is disabled by default (`CriticalHealthProfile` has zero
-ventilation probability and length).
+Default host health policy: infections do not interact. Each infection contributes care and mortality
+risk once, when it arrives, from the `HealthProfile` its progression category carries; contributions
+superpose into the host's occupancy and mortality folds by earliest death, the two independent.
 
-Contributions are independent, not synergistic: a host's occupancy is the union of what each infection
-demanded on its own, so two infections that each demand a ward bed never escalate to ICU. Override
-`calculate_health_progression!` to model interaction between co-active infections.
+A host's occupancy is the union of what each infection demanded on its own, so two infections that
+each demand a ward bed never escalate to ICU. Implement `calculate_health_progression!` for your own
+`HealthProgression` to model interaction between co-active infections.
 
-# Example
-
-```julia
-hp = DefaultHealthProgression(
-    severe = SevereHealthProfile(hospital_probability = 0.1),
-    critical = CriticalHealthProfile(hospital_to_icu_probability = 0.6, death_probability = 0.25))
-```
+Where the profiles come from is a separate question: embed them on the progression categories, or
+pass a `StandardOfCare` to the simulation for the categories that embed none.
 """
-struct DefaultHealthProgression{S<:HealthProfile, C<:HealthProfile} <: HealthProgression
-    severe::S
-    critical::C
-
-    # the canonical default policy; type parameters are inferred from the profiles
-    function DefaultHealthProgression(;
-        severe::HealthProfile = SevereHealthProfile(),
-        critical::HealthProfile = CriticalHealthProfile()
-        )
-
-        return new{typeof(severe), typeof(critical)}(severe, critical)
-    end
-end
+struct DefaultHealthProgression <: HealthProgression end
 
 """
-    select_health_profile(hp::DefaultHealthProgression, infection::InfectionState)
+    calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual, infections::InfectionRegistry, hp::DefaultHealthProgression, new_infection::InfectionState, index::HealthProfileIndex, tick::Int16, rng::Xoshiro)
 
-Routes by peak tier: `severe` for a severe-peak infection, `critical` for a critical-peak one, and
-`nothing` for an infection that never reached `severe`.
+Default combination: draws and contributes for `new_infection` only. An infection whose category
+carries no profile contributes nothing.
+
+Non-synergy is structural here rather than documented — a contribution is drawn without reference to
+any other, so two infections that each demand a ward bed produce a host in a ward, never an
+escalation. A custom policy implements this method for its own type; it receives every active
+infection via `infections`, and `index` their profiles.
 """
-function select_health_profile(hp::DefaultHealthProgression, infection::InfectionState)
-    infection.severeness_onset < 0 && return nothing
-    infection.critical_onset < 0 ? hp.severe : hp.critical
+function calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual,
+        infections::InfectionRegistry, hp::DefaultHealthProgression, new_infection::InfectionState,
+        index::HealthProfileIndex, tick::Int16, rng::Xoshiro)
+
+    profile = _health_profile(index, new_infection)
+    profile === nothing && return HealthOutcome()
+    care, outcome = calculate_health_profile(profile, individual, new_infection, rng)
+    care.hospital_admission >= 0 && push!(contributions, care)
+    return outcome
 end

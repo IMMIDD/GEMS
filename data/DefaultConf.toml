@@ -132,26 +132,25 @@
                                          [0.250, 0.600, 0.140, 0.010], # age group 15-65
                                          [0.150, 0.400, 0.370, 0.080]] # age group 66-
 
-# host-level care/death policy shared by all pathogens; each infection contributes care for its
-# peak tier, folded per host. For per-pathogen rates, write a `health` block into that pathogen's
+# the health system's response to a disease tier, applied to every progression that carries no
+# `health` block of its own. For per-pathogen rates, write a `health` block into that pathogen's
 # own Severe/Critical progression instead - this section then acts as the baseline.
-[HealthProgression]
-    type = "DefaultHealthProgression"
+[StandardOfCare]
 
     # SEVERE-PEAK CARE [ward admission only]
-    [HealthProgression.parameters.severe]
+    [StandardOfCare.severe]
         hospital_probability = 0.05
         # hospital admission delay (after severeness onset)
-        [HealthProgression.parameters.severe.severeness_onset_to_hospital_admission]
+        [StandardOfCare.severe.severeness_onset_to_hospital_admission]
             distribution = "Poisson"
             parameters = [2]
         # ward stay length (after hospital admission)
-        [HealthProgression.parameters.severe.hospital_admission_to_hospital_discharge]
+        [StandardOfCare.severe.hospital_admission_to_hospital_discharge]
             distribution = "Poisson"
             parameters = [10]
 
     # CRITICAL-PEAK CARE [hospital -> ICU -> ventilation, plus ungated death; ventilation off by default]
-    [HealthProgression.parameters.critical]
+    [StandardOfCare.critical]
         hospital_probability = 0.95
         hospital_to_icu_probability = 0.5
         icu_to_ventilation_probability = 0.0
@@ -160,27 +159,27 @@
         ventilation_admission_to_ventilation_discharge = 0
         ventilation_discharge_to_icu_discharge = 0
         # hospital admission delay (after critical onset)
-        [HealthProgression.parameters.critical.critical_onset_to_hospital_admission]
+        [StandardOfCare.critical.critical_onset_to_hospital_admission]
             distribution = "Poisson"
             parameters = [1]
         # ward stay length when not admitted to ICU (after hospital admission)
-        [HealthProgression.parameters.critical.hospital_admission_to_hospital_discharge]
+        [StandardOfCare.critical.hospital_admission_to_hospital_discharge]
             distribution = "Poisson"
             parameters = [10]
         # ICU admission delay (after hospital admission)
-        [HealthProgression.parameters.critical.hospital_admission_to_icu_admission]
+        [StandardOfCare.critical.hospital_admission_to_icu_admission]
             distribution = "Poisson"
             parameters = [1]
         # ICU stay length when not ventilated (after ICU admission)
-        [HealthProgression.parameters.critical.icu_admission_to_icu_discharge]
+        [StandardOfCare.critical.icu_admission_to_icu_discharge]
             distribution = "Poisson"
             parameters = [8]
         # hospital stay after ICU discharge
-        [HealthProgression.parameters.critical.icu_discharge_to_hospital_discharge]
+        [StandardOfCare.critical.icu_discharge_to_hospital_discharge]
             distribution = "Poisson"
             parameters = [5]
         # death delay (after critical onset)
-        [HealthProgression.parameters.critical.critical_onset_to_death]
+        [StandardOfCare.critical.critical_onset_to_death]
             distribution = "Poisson"
             parameters = [7]
 

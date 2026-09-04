@@ -1,4 +1,35 @@
-export SevereHealthProfile, CriticalHealthProfile
+export SevereHealthProfile, CriticalHealthProfile, StandardOfCare
+
+"""
+    StandardOfCare
+
+The health system's response to a disease tier: the `HealthProfile` applied to every progression
+category that embeds none of its own. Health embedded on a category always wins.
+
+# Parameters
+- `severe::Union{Nothing, HealthProfile}`: profile for `severe`-peak categories (`nothing` by default).
+- `critical::Union{Nothing, HealthProfile}`: profile for `critical`-peak categories (`nothing` by default).
+
+# Example
+
+```julia
+sim = Simulation(pathogens = (covid, flu), standard_of_care = StandardOfCare(
+    severe = SevereHealthProfile(hospital_probability = 0.1),
+    critical = CriticalHealthProfile(hospital_probability = 0.9, death_probability = 0.25)))
+```
+"""
+struct StandardOfCare
+    severe::Union{Nothing, HealthProfile}
+    critical::Union{Nothing, HealthProfile}
+
+    function StandardOfCare(;
+        severe::Union{Nothing, HealthProfile} = nothing,
+        critical::Union{Nothing, HealthProfile} = nothing
+        )
+
+        return new(severe, critical)
+    end
+end
 
 
 """

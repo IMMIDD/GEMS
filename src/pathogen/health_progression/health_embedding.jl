@@ -2,7 +2,7 @@
 ### HEALTH EMBEDDING
 ###
 ### Build-time convenience that lets a progression category carry a `HealthProfile` in its `health`
-### field (via flat kwargs or a prebuilt object) and harvests those into a `PerPathogenHealthProgression`
+### field (via flat kwargs or a prebuilt object) and harvests those into the `HealthProfileIndex`
 ### when the simulation is assembled.
 ###
 
@@ -69,14 +69,14 @@ function _baseline_profile(baseline, profile_type)
 end
 
 """
-    _harvest_health_progression(pathogens, baseline = nothing)
+    _harvest_health_profiles(pathogens, baseline = nothing)
 
-Assembles a `PerPathogenHealthProgression` keyed by `(pathogen_id, 1-based slot)` from the care
-embedded on every category defining `_health_profile_type`. A category embedding none falls back to
-`baseline` (the tier profiles of a `[HealthProgression]` section), and is warned about when there is none.
+Assembles the `HealthProfileIndex` keyed by `(pathogen_id, 1-based slot)` from the care embedded on
+every category defining `_health_profile_type`. A category embedding none falls back to `baseline`
+(a `DefaultHealthProgression`'s tier profiles), and is warned about when there is none.
 """
-function _harvest_health_progression(pathogens, baseline = nothing)
-    profiles = Dict{NTuple{2,Int8}, HealthProfile}()
+function _harvest_health_profiles(pathogens, baseline = nothing)
+    profiles = HealthProfileIndex()
     for p in pathogens
         pid = id(p)
         for (k, c) in enumerate(p.progressions)
@@ -92,5 +92,5 @@ function _harvest_health_progression(pathogens, baseline = nothing)
             profiles[(pid, Int8(k))] = profile
         end
     end
-    return PerPathogenHealthProgression(profiles)
+    return profiles
 end

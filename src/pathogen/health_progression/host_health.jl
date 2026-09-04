@@ -9,6 +9,24 @@ export CareLevel, CARE_HOSPITAL, CARE_ICU, CARE_VENTILATION
 ###
 
 """
+    HealthProfileIndex
+
+Lookup from `(pathogen_id, progression_id)` to the `HealthProfile` embedded on that infection's
+progression category. A category carrying none has no entry. Handed to
+`calculate_health_progression!` so a policy can draw the care of any infection it reasons about.
+"""
+const HealthProfileIndex = Dict{NTuple{2,Int8}, HealthProfile}
+
+"""
+    _health_profile(index::HealthProfileIndex, infection::InfectionState)
+
+The profile indexed for `infection`, or `nothing` if its category carries none. No tier check is
+needed: only categories carrying health have an entry.
+"""
+@inline _health_profile(index::HealthProfileIndex, infection::InfectionState) =
+    get(index, (infection.pathogen_id, infection.progression_id), nothing)
+
+"""
     CareLevel
 
 The host care ladder. Declaration order is the ladder; the drain depends on it.
@@ -245,28 +263,6 @@ function _validate_health_plan(contributions::Vector{CareContribution}, outcome:
 end
 
 """
-    calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual, infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro)
-
-Generic combination policy: contributes for `new_infection` only. An infection that selects no profile
-contributes nothing.
-
-Non-synergy is structural here rather than documented — a contribution is drawn without reference to
-any other, so two infections that each demand a ward bed produce a host in a ward, never an
-escalation. Override this method to model interaction between co-active infections; it receives every
-active infection via `infections`.
-"""
-function calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual,
-        infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState,
-        tick::Int16, rng::Xoshiro)
-
-    profile = select_health_profile(hp, new_infection)
-    profile === nothing && return HealthOutcome()
-    care, outcome = calculate_health_profile(profile, individual, new_infection, rng)
-    care.hospital_admission >= 0 && push!(contributions, care)
-    return outcome
-end
-
-"""
     AbstractHealthSchedule
 
 Supertype of the concrete `HealthSchedule`, which is defined after `CareContribution` and so cannot
@@ -275,22 +271,22 @@ be named in `compute_health!`'s signature directly.
 abstract type AbstractHealthSchedule end
 
 """
-    compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
+    compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState, tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
 
 Framework entry point, not overridable. Hands `calculate_health_progression!` the shard's buffer to
-contribute care into, folds the death it proposes with the host's committed one, validates the whole
-result, and only then files the transitions and writes the death. Invoked whenever a new infection is
-added to a host.
+contribute care into and the profile `index` to draw from, folds the death it proposes with the host's
+committed one, validates the whole result, and only then files the transitions and writes the death.
+Invoked whenever a new infection is added to a host.
 """
 function compute_health!(individual::Individual, infections::InfectionRegistry,
-        hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro,
-        sched::AbstractHealthSchedule)
+        hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState,
+        tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
     dead(individual) && return nothing
 
     contributions = sched.buffer
     empty!(contributions)
     proposed = calculate_health_progression!(contributions, individual, infections, hp,
-        new_infection, tick, rng)
+        new_infection, index, tick, rng)
     outcome = combine_outcome(_committed_outcome(individual), proposed)
 
     _validate_health_plan(contributions, outcome, tick)
