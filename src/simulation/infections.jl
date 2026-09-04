@@ -81,9 +81,9 @@ function infect!(infectee::Individual,
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
         state = push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
-        # throwaway schedule: with no tick loop nothing would drain it, and the hardcoded
-        # DefaultHealthProgression() has zero admission and death probabilities anyway
-        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), state, tick, rng, HealthSchedule())
+        # throwaway schedule: with no tick loop nothing would drain it, and with an
+        # empty profile index no care is drawn anyway
+        compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), HealthProfileIndex(), state, tick, rng, HealthSchedule())
     else
         # log infection
         new_infection_id = log!(

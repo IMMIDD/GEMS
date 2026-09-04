@@ -1,5 +1,6 @@
 export CareContribution, HealthOutcome, combine_outcome, compute_health!
 export CareLevel, CARE_HOSPITAL, CARE_ICU, CARE_VENTILATION
+export HealthProfileIndex
 
 ###
 ### HOST HEALTH
@@ -7,6 +8,59 @@ export CareLevel, CARE_HOSPITAL, CARE_ICU, CARE_VENTILATION
 ### What a health progression policy produces — care contributions and a terminal outcome — and the
 ### framework entry point that validates them and commits them to the host and the schedule.
 ###
+
+"""
+    HealthProfileIndex()
+    HealthProfileIndex(entries::Pair...)
+
+Lookup from `(pathogen_id, progression_id)` to the `HealthProfile` embedded on that infection's
+progression category. A category carrying none has no entry. Handed to
+`calculate_health_progression!` so a policy can draw the care of any infection it reasons about.
+"""
+struct HealthProfileIndex
+    profiles::Dict{NTuple{2,Int8}, HealthProfile}
+
+    HealthProfileIndex() = new(Dict{NTuple{2,Int8}, HealthProfile}())
+end
+
+function HealthProfileIndex(entries::Pair...)
+    index = HealthProfileIndex()
+    for (pathogen, (category, profile)) in entries
+        slot = progression_index(pathogen, category)
+        slot == 0 && throw(ArgumentError("pathogen $(name(pathogen)) has no $category progression."))
+        index[(id(pathogen), slot)] = profile
+    end
+    return index
+end
+
+@inline Base.getindex(index::HealthProfileIndex, key::NTuple{2,Int8}) = index.profiles[key]
+@inline Base.setindex!(index::HealthProfileIndex, profile::HealthProfile, key::NTuple{2,Int8}) =
+    (index.profiles[key] = profile)
+@inline Base.get(index::HealthProfileIndex, key::NTuple{2,Int8}, default) = get(index.profiles, key, default)
+@inline Base.haskey(index::HealthProfileIndex, key::NTuple{2,Int8}) = haskey(index.profiles, key)
+Base.length(index::HealthProfileIndex) = length(index.profiles)
+Base.isempty(index::HealthProfileIndex) = isempty(index.profiles)
+Base.keys(index::HealthProfileIndex) = keys(index.profiles)
+Base.iterate(index::HealthProfileIndex, state...) = iterate(index.profiles, state...)
+
+function Base.show(io::IO, index::HealthProfileIndex)
+    isempty(index) && return print(io, "HealthProfileIndex(empty)")
+    res = "HealthProfileIndex($(length(index)) entries)\n"
+    for (pathogen_id, progression_id) in sort!(collect(keys(index)))
+        res *= "└ pathogen $pathogen_id, progression $progression_id: " *
+            "$(typeof(index[(pathogen_id, progression_id)]))\n"
+    end
+    print(io, res)
+end
+
+"""
+    _health_profile(index::HealthProfileIndex, infection::InfectionState)
+
+The profile indexed for `infection`, or `nothing` if its category carries none. No tier check is
+needed: only categories carrying health have an entry.
+"""
+@inline _health_profile(index::HealthProfileIndex, infection::InfectionState) =
+    get(index, (infection.pathogen_id, infection.progression_id), nothing)
 
 """
     CareLevel
@@ -245,22 +299,30 @@ function _validate_health_plan(contributions::Vector{CareContribution}, outcome:
 end
 
 """
-    compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
+    AbstractHealthSchedule
+
+Supertype of the concrete `HealthSchedule`, which is defined after `CareContribution` and so cannot
+be named in `compute_health!`'s signature directly.
+"""
+abstract type AbstractHealthSchedule end
+
+"""
+    compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState, tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
 
 Framework entry point, not overridable. Hands `calculate_health_progression!` the shard's buffer to
-contribute care into, folds the death it proposes with the host's committed one, validates the whole
-result, and only then files the transitions and writes the death. Invoked whenever a new infection is
-added to a host.
+contribute care into and the profile `index` to draw from, folds the death it proposes with the host's
+committed one, validates the whole result, and only then files the transitions and writes the death.
+Invoked whenever a new infection is added to a host.
 """
 function compute_health!(individual::Individual, infections::InfectionRegistry,
-        hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro,
-        sched::AbstractHealthSchedule)
+        hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState,
+        tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
     dead(individual) && return nothing
 
     contributions = sched.buffer
     empty!(contributions)
     proposed = calculate_health_progression!(contributions, individual, infections, hp,
-        new_infection, tick, rng)
+        new_infection, index, tick, rng)
     outcome = combine_outcome(_committed_outcome(individual), proposed)
 
     _validate_health_plan(contributions, outcome, tick)

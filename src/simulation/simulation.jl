@@ -10,7 +10,7 @@ export tick, label, start_condition, stop_criterion, settingscontainer, settings
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
-export health_progression
+export health_progression, health_profiles
 export infection_registry, immunity_registry, test_registry, health_schedule
 export configfile, populationfile
 export evaluate
@@ -198,6 +198,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     settings::SettingsContainer
     pathogens::P
     health_progression::HP
+    health_profiles::HealthProfileIndex
     infection_registries::Vector{InfectionRegistry}
     immunity_registries::Vector{ImmunityRegistry}
     test_registries::Vector{TestRegistry}
@@ -251,6 +252,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
         settings::SettingsContainer,
         pathogens::P,
         health_progression::HP,
+        health_profiles::HealthProfileIndex,
         stepmod::Function,
         seed::Int64,
         rngs::Vector{<:Xoshiro}
@@ -273,6 +275,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             settings,
             pathogens,
             health_progression,
+            health_profiles,
             [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
             [TestRegistry() for _ in 1:num_shards],
@@ -399,6 +402,7 @@ function _BUILD_Simulation(;
 
         # health progression
         health_progression = nothing,
+        standard_of_care = nothing,
 
         # stepmod
         stepmod::Function = x -> x,
@@ -478,7 +482,8 @@ function _BUILD_Simulation(;
         )
 
         # HEALTH PROGRESSION
-        hp = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
+        hp, hp_index = determine_health_progression(config, health_progression, standard_of_care,
+            pathogen_tuple, !isnothing(pathogens))
 
         # START CONDITION
         start_condition = determine_start_condition(
@@ -501,6 +506,7 @@ function _BUILD_Simulation(;
             settings,
             pathogen_tuple,
             hp,
+            hp_index,
             stepmod,
             rng_seed,
             rngs
@@ -762,51 +768,58 @@ function determine_pathogens(configfile_params::Dict, pathogens, transmission_fu
 end
 
 """
-    determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
+    determine_health_progression(configfile_params::Dict, health_progression, standard_of_care, pathogens, pathogens_explicit::Bool)
 
-Resolves the simulation's `HealthProgression`. An explicit `health_progression` argument wins. Then,
-if any progression carries embedded care (the single-pathogen convenience): when the pathogens were
-passed explicitly it is harvested (taking precedence over the default config section); when they came
-from the config it conflicts with a `[HealthProgression]` section. Otherwise a `[HealthProgression]`
-section is parsed, else the default. Embedded care with an explicit policy or `>1` pathogen errors.
+Resolves the simulation's combination policy and its `HealthProfileIndex` as a `(policy, index)` pair.
+The policy is the explicit `health_progression`, else a `[HealthProgression]` section, else the
+default. The index is harvested from the care embedded on the progression categories, with
+`standard_of_care` filling in the categories that embed none — unless the pathogens were passed
+explicitly, in which case a `[StandardOfCare]` section is not the caller's and is ignored.
 """
-function determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
+function determine_health_progression(configfile_params::Dict, health_progression, standard_of_care,
+        pathogens, pathogens_explicit::Bool)
+
     embedded = any(_has_embedded_health_profile, pathogens)
     legacy = any(_has_legacy_category, pathogens)
-    if !isnothing(health_progression)
-        embedded && throw(ArgumentError("embedded care parameters conflict with an explicit `health_progression`; remove one."))
-        legacy && @warn "Legacy progression categories (Hospitalized/LegacyCritical) were found but an explicit `health_progression` was provided; their legacy health behavior will be ignored."
-        return health_progression
+
+    has_section = _haspath(configfile_params, ["HealthProgression"])
+    section = has_section ? create_health_progression(configfile_params["HealthProgression"]) : nothing
+    section_soc = _haspath(configfile_params, ["StandardOfCare"]) ?
+        create_standard_of_care(configfile_params["StandardOfCare"]) :
+        has_section ? _deprecated_standard_of_care(configfile_params["HealthProgression"]) : nothing
+
+    # explicit argument wins, then the config section
+    policy = !isnothing(health_progression) ? health_progression :
+        !isnothing(section) ? section : DefaultHealthProgression()
+
+    baseline = standard_of_care
+    if isnothing(baseline) && !isnothing(section_soc)
+        if pathogens_explicit && embedded
+            # the section belongs to a config the caller did not write
+            @warn "Embedded care parameters were found on explicitly-passed pathogens, therefore the config's standard of care will be ignored."
+        else
+            baseline = section_soc
+        end
     end
 
-    # legacy categories carry their own care and are harvested into a tag-routing LegacyHealthProgression
+    # legacy categories carry their own care, harvested straight into the index
     if legacy
         embedded && throw(ArgumentError("legacy progression categories cannot be combined with modern embedded care parameters. " *
-            "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category care, drop the legacy categories and " *
-            "write a `HealthProgression` that routes on `progression_id` (see `LegacyHealthProgression` or the `TaggedHP` test example)."))
-        _haspath(configfile_params, ["HealthProgression"]) && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
-        return _harvest_legacy_health_progression(pathogens)
+            "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category care, drop the legacy " *
+            "categories and embed a `HealthProfile` on each progression instead."))
+        has_section && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
+        # a standard of care only reaches the modern categories mixed in alongside legacy ones
+        return policy, _harvest_legacy_health_profiles(pathogens, isnothing(baseline) ?
+            StandardOfCare(severe = SevereHealthProfile(), critical = CriticalHealthProfile()) : baseline)
     end
 
-    _harvest() = (length(pathogens) > 1 &&
-        throw(ArgumentError("embedded care parameters are only supported for a single pathogen; use an explicit [HealthProgression].")); _harvest_health_progression(pathogens))
-
-    # embedded care from explicitly-passed pathogens wins over the (possibly default) config section
-    if embedded && pathogens_explicit
-        _haspath(configfile_params, ["HealthProgression"]) &&
-            @warn "Embedded care parameters were found on explicitly-passed pathogens, therefore the [HealthProgression] config section will be ignored."
-        return _harvest()
+    # warn once here rather than once per uncovered category; only the default policy needs the index
+    if !embedded && isnothing(baseline)
+        policy isa DefaultHealthProgression && @warn "No care parameters were embedded on any progression, and no standard of care was provided; no hospitalization, ICU admission, or health-related death will occur."
+        return policy, HealthProfileIndex()
     end
 
-    if _haspath(configfile_params, ["HealthProgression"])
-        embedded && throw(ArgumentError("embedded care parameters conflict with a [HealthProgression] config section; remove one."))
-        return create_health_progression(configfile_params["HealthProgression"])
-    end
-
-    embedded && return _harvest()
-
-    @warn "No health_progression, [HealthProgression] config section, or embedded care parameters were provided; defaulting to a no-op HealthProgression (no hospitalization, ICU admission, or health-related death will occur)."
-    return DefaultHealthProgression()
+    return policy, _harvest_health_profiles(pathogens, baseline)
 end
 
 """
@@ -1188,20 +1201,34 @@ end
     create_progression(params::Dict, category::String)
 
 Creates a progression of the specified category based on the provided parameters.
-The `params` dictionary must contain the parameters for the progression constructor. For
-`Severe`/`Critical`, `params` may also carry that tier's `HealthProfile` parameters directly (the
-convenience embedding); the category constructor splits them out itself.
+The `params` dictionary must contain the parameters for the progression constructor. A category that
+takes host health may carry it either as a `health` sub-table (`care` is the deprecated spelling) or
+as that `HealthProfile`'s parameters directly (the shorthand); the two are mutually exclusive.
 The `category` string must be the name of a subtype of `ProgressionCategory`.
 """
 function create_progression(params::Dict, category::String)
-    # convert parameters to keyword arguments
-    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
+    cat_type = GEMS.get_subtype(category, ProgressionCategory)
+    # a `health` sub-table is this category's HealthProfile, not a distribution
+    kw_args = Dict(Symbol(k) => (k in ("health", "care") ? create_health(cat_type, v) : create_progression_parameter(v))
+        for (k, v) in params)
     # create the progression category using the keyword arguments
     return try
-        GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
+        cat_type(;kw_args...)
     catch e
         throw(ErrorException("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))"))
     end
+end
+
+"""
+    create_health(cat_type::DataType, params::Dict)
+
+Creates the `HealthProfile` for a `health` sub-table, using the profile type the category declares
+via `_health_profile_type`. Throws if the category takes no host health.
+"""
+function create_health(cat_type::DataType, params::Dict)
+    profile_type = _health_profile_type(cat_type)
+    isnothing(profile_type) && throw(ArgumentError("$cat_type takes no host health, so it cannot carry a `health` block."))
+    return create_health_profile(profile_type, params)
 end
 
 """
@@ -1313,25 +1340,66 @@ end
 """
     create_health_progression(params::Dict)
 
-Creates a `HealthProgression` based on the provided parameters.
-The `params` dictionary must contain a `type` key with the name of the health progression
-and a `parameters` key. For `DefaultHealthProgression` the parameters hold `severe` and
-`critical` sub-tables; other types receive their parameters as distributions or reals.
+Creates the combination policy a `[HealthProgression]` section describes. `type` names the policy and
+`parameters` are passed to it as distributions or reals, and may be omitted for a policy that takes
+none (such as `DefaultHealthProgression`). A section carrying the deprecated `severe`/`critical`
+sub-tables describes no policy of its own; see `_deprecated_standard_of_care`.
 """
 function create_health_progression(params::Dict)
     hp_type = get_subtype(params["type"], HealthProgression)
-    if hp_type == DefaultHealthProgression
-        p = params["parameters"]
-        return DefaultHealthProgression(
-            severe = create_health_profile(SevereHealthProfile, p["severe"]),
-            critical = create_health_profile(CriticalHealthProfile, p["critical"]))
-    end
-    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params["parameters"])
+    _has_deprecated_care(params) && return DefaultHealthProgression()
+    p = _health_progression_parameters(params)
+
     return try
-        hp_type(;kw_args...)
+        hp_type(; (Symbol(k) => create_progression_parameter(v) for (k, v) in p)...)
     catch e
         throw(ErrorException("HealthProgression of type '$hp_type' could not be created. $(sprint(showerror, e))"))
     end
+end
+
+"""
+    _health_progression_parameters(params::Dict)
+
+The `parameters` sub-table of a `[HealthProgression]` section, or an empty one if it omits it.
+"""
+_health_progression_parameters(params::Dict) = get(params, "parameters", Dict{String,Any}())
+
+"""
+    _has_deprecated_care(params::Dict)
+
+`true` if a `[HealthProgression]` section carries `severe`/`critical` sub-tables, the pre-split
+spelling of a `[StandardOfCare]` section.
+"""
+function _has_deprecated_care(params::Dict)
+    p = _health_progression_parameters(params)
+    return haskey(p, "severe") || haskey(p, "critical")
+end
+
+"""
+    _deprecated_standard_of_care(params::Dict)
+
+The `StandardOfCare` a pre-split `[HealthProgression]` section describes through its
+`severe`/`critical` sub-tables, or `nothing` if it carries none. Delete along with the deprecation.
+"""
+function _deprecated_standard_of_care(params::Dict)
+    _has_deprecated_care(params) || return nothing
+    get_subtype(params["type"], HealthProgression) == DefaultHealthProgression || throw(ArgumentError(
+        "a [HealthProgression] section of type '$(params["type"])' cannot carry `severe`/`critical` care " *
+        "parameters; move them to a [StandardOfCare] section."))
+    @warn "`severe`/`critical` under [HealthProgression.parameters] is deprecated; move them to a [StandardOfCare] section."
+    return create_standard_of_care(params["parameters"])
+end
+
+"""
+    create_standard_of_care(params::Dict)
+
+Creates a `StandardOfCare` from a config section's `severe` and `critical` sub-tables. A tier whose
+sub-table is absent gets no profile.
+"""
+function create_standard_of_care(params::Dict)
+    return StandardOfCare(
+        severe = haskey(params, "severe") ? create_health_profile(SevereHealthProfile, params["severe"]) : nothing,
+        critical = haskey(params, "critical") ? create_health_profile(CriticalHealthProfile, params["critical"]) : nothing)
 end
 
 """
@@ -1852,10 +1920,19 @@ end
 """
     health_progression(simulation)
 
-Returns the host `HealthProgression` of the simulation.
+Returns the host `HealthProgression` of the simulation — its combination policy.
 """
 function health_progression(simulation::Simulation)
     return simulation.health_progression
+end
+
+"""
+    health_profiles(simulation)
+
+Returns the simulation's `HealthProfileIndex`, keyed by `(pathogen_id, progression_id)`.
+"""
+function health_profiles(simulation::Simulation)
+    return simulation.health_profiles
 end
 
 """

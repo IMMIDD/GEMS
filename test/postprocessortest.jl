@@ -156,7 +156,7 @@ import GEMS: _mean_contacts_per_age_group,
             critical_onset_to_critical_offset = Poisson(5), critical_offset_to_severeness_offset = Poisson(3),
             severeness_offset_to_recovery = Poisson(10))
         crit = Critical(; dkw...)
-        hp = DefaultHealthProgression(critical = CriticalHealthProfile(
+        soc = StandardOfCare(critical = CriticalHealthProfile(
             hospital_probability = 0.4, critical_onset_to_hospital_admission = Poisson(1),
             hospital_admission_to_hospital_discharge = Poisson(8),
             death_probability = 0.15, critical_onset_to_death = Poisson(6)))
@@ -164,7 +164,7 @@ import GEMS: _mean_contacts_per_age_group,
             progression_assignment = RandomProgressionAssignment([Critical]),
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
         sim_ci = Simulation(pop_size = 4000, pathogens = (mkp(1, "A"), mkp(2, "B")),
-            health_progression = hp, infected_fraction = 0.01, seed = 42, tickunit = 'd')
+            standard_of_care = soc, infected_fraction = 0.01, seed = 42, tickunit = 'd')
         run!(sim_ci, with_progressbar = false)
         pp_ci = PostProcessor(sim_ci)
 
