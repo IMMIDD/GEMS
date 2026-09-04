@@ -90,7 +90,19 @@
                     distribution = "Poisson"
                     parameters = [4]
 
-            # CRITICAL PROGRESSION [disease tier; hospital/ICU/death handled by the HealthProgression]
+                # HOST HEALTH FOR THIS TIER [ward admission only]
+                [Pathogens.Covid19.progressions.Severe.health]
+                    hospital_probability = 0.05
+                    # hospital admission delay (after severeness onset)
+                    [Pathogens.Covid19.progressions.Severe.health.severeness_onset_to_hospital_admission]
+                        distribution = "Poisson"
+                        parameters = [2]
+                    # ward stay length (after hospital admission)
+                    [Pathogens.Covid19.progressions.Severe.health.hospital_admission_to_hospital_discharge]
+                        distribution = "Poisson"
+                        parameters = [10]
+
+            # CRITICAL PROGRESSION [disease tier; hospital/ICU/death live in its `health` block]
             [Pathogens.Covid19.progressions.Critical]
                 # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
                 [Pathogens.Covid19.progressions.Critical.exposure_to_infectiousness_onset]
@@ -121,6 +133,40 @@
                     distribution = "Poisson"
                     parameters = [4]
 
+                # HOST HEALTH FOR THIS TIER [hospital -> ICU -> ventilation, plus ungated death; ventilation off by default]
+                [Pathogens.Covid19.progressions.Critical.health]
+                    hospital_probability = 0.95
+                    hospital_to_icu_probability = 0.5
+                    icu_to_ventilation_probability = 0.0
+                    death_probability = 0.3          # ungated by hospital/ICU
+                    icu_admission_to_ventilation_admission = 0
+                    ventilation_admission_to_ventilation_discharge = 0
+                    ventilation_discharge_to_icu_discharge = 0
+                    # hospital admission delay (after critical onset)
+                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_hospital_admission]
+                        distribution = "Poisson"
+                        parameters = [1]
+                    # ward stay length when not admitted to ICU (after hospital admission)
+                    [Pathogens.Covid19.progressions.Critical.health.hospital_admission_to_hospital_discharge]
+                        distribution = "Poisson"
+                        parameters = [10]
+                    # ICU admission delay (after hospital admission)
+                    [Pathogens.Covid19.progressions.Critical.health.hospital_admission_to_icu_admission]
+                        distribution = "Poisson"
+                        parameters = [1]
+                    # ICU stay length when not ventilated (after ICU admission)
+                    [Pathogens.Covid19.progressions.Critical.health.icu_admission_to_icu_discharge]
+                        distribution = "Poisson"
+                        parameters = [8]
+                    # hospital stay after ICU discharge
+                    [Pathogens.Covid19.progressions.Critical.health.icu_discharge_to_hospital_discharge]
+                        distribution = "Poisson"
+                        parameters = [5]
+                    # death delay (after critical onset)
+                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_death]
+                        distribution = "Poisson"
+                        parameters = [7]
+
         # progression assignment method
         [Pathogens.Covid19.progression_assignment]
             type = "AgeBasedProgressionAssignment"
@@ -131,57 +177,6 @@
                 stratification_matrix = [[0.400, 0.580, 0.017, 0.003], # age group -14
                                          [0.250, 0.600, 0.140, 0.010], # age group 15-65
                                          [0.150, 0.400, 0.370, 0.080]] # age group 66-
-
-# the health system's response to a disease tier, applied to every progression that carries no
-# `health` block of its own. For per-pathogen rates, write a `health` block into that pathogen's
-# own Severe/Critical progression instead - this section then acts as the baseline.
-[StandardOfCare]
-
-    # SEVERE-PEAK CARE [ward admission only]
-    [StandardOfCare.severe]
-        hospital_probability = 0.05
-        # hospital admission delay (after severeness onset)
-        [StandardOfCare.severe.severeness_onset_to_hospital_admission]
-            distribution = "Poisson"
-            parameters = [2]
-        # ward stay length (after hospital admission)
-        [StandardOfCare.severe.hospital_admission_to_hospital_discharge]
-            distribution = "Poisson"
-            parameters = [10]
-
-    # CRITICAL-PEAK CARE [hospital -> ICU -> ventilation, plus ungated death; ventilation off by default]
-    [StandardOfCare.critical]
-        hospital_probability = 0.95
-        hospital_to_icu_probability = 0.5
-        icu_to_ventilation_probability = 0.0
-        death_probability = 0.3          # ungated by hospital/ICU
-        icu_admission_to_ventilation_admission = 0
-        ventilation_admission_to_ventilation_discharge = 0
-        ventilation_discharge_to_icu_discharge = 0
-        # hospital admission delay (after critical onset)
-        [StandardOfCare.critical.critical_onset_to_hospital_admission]
-            distribution = "Poisson"
-            parameters = [1]
-        # ward stay length when not admitted to ICU (after hospital admission)
-        [StandardOfCare.critical.hospital_admission_to_hospital_discharge]
-            distribution = "Poisson"
-            parameters = [10]
-        # ICU admission delay (after hospital admission)
-        [StandardOfCare.critical.hospital_admission_to_icu_admission]
-            distribution = "Poisson"
-            parameters = [1]
-        # ICU stay length when not ventilated (after ICU admission)
-        [StandardOfCare.critical.icu_admission_to_icu_discharge]
-            distribution = "Poisson"
-            parameters = [8]
-        # hospital stay after ICU discharge
-        [StandardOfCare.critical.icu_discharge_to_hospital_discharge]
-            distribution = "Poisson"
-            parameters = [5]
-        # death delay (after critical onset)
-        [StandardOfCare.critical.critical_onset_to_death]
-            distribution = "Poisson"
-            parameters = [7]
 
 [Settings]
 

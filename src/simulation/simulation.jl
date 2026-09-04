@@ -782,10 +782,11 @@ function determine_health_progression(configfile_params::Dict, health_progressio
     embedded = any(_has_embedded_health_profile, pathogens)
     legacy = any(_has_legacy_category, pathogens)
 
-    section, deprecated_soc = _haspath(configfile_params, ["HealthProgression"]) ?
-        create_health_progression(configfile_params["HealthProgression"]) : (nothing, nothing)
+    has_section = _haspath(configfile_params, ["HealthProgression"])
+    section = has_section ? create_health_progression(configfile_params["HealthProgression"]) : nothing
     section_soc = _haspath(configfile_params, ["StandardOfCare"]) ?
-        create_standard_of_care(configfile_params["StandardOfCare"]) : deprecated_soc
+        create_standard_of_care(configfile_params["StandardOfCare"]) :
+        has_section ? _deprecated_standard_of_care(configfile_params["HealthProgression"]) : nothing
 
     # explicit argument wins, then the config section
     policy = !isnothing(health_progression) ? health_progression :
@@ -1338,29 +1339,43 @@ end
 """
     create_health_progression(params::Dict)
 
-Builds the `(policy, standard of care)` pair a `[HealthProgression]` section describes. `type` names
-the combination policy and `parameters` are passed to it as distributions or reals. `severe`/`critical`
-sub-tables are the deprecated pre-split spelling of a `[StandardOfCare]` section and are mapped onto
-one with a warning.
+Creates the combination policy a `[HealthProgression]` section describes. `type` names the policy and
+`parameters` are passed to it as distributions or reals. A section carrying the deprecated
+`severe`/`critical` sub-tables describes no policy of its own; see `_deprecated_standard_of_care`.
 """
 function create_health_progression(params::Dict)
     hp_type = get_subtype(params["type"], HealthProgression)
     p = params["parameters"]
+    _has_deprecated_care(params) && return DefaultHealthProgression()
 
-    if haskey(p, "severe") || haskey(p, "critical")
-        hp_type == DefaultHealthProgression || throw(ArgumentError(
-            "a [HealthProgression] section of type '$hp_type' cannot carry `severe`/`critical` care " *
-            "parameters; move them to a [StandardOfCare] section."))
-        @warn "`severe`/`critical` under [HealthProgression.parameters] is deprecated; move them to a [StandardOfCare] section."
-        return DefaultHealthProgression(), create_standard_of_care(p)
-    end
-
-    policy = try
+    return try
         hp_type(; (Symbol(k) => create_progression_parameter(v) for (k, v) in p)...)
     catch e
         throw(ErrorException("HealthProgression of type '$hp_type' could not be created. $(sprint(showerror, e))"))
     end
-    return policy, nothing
+end
+
+"""
+    _has_deprecated_care(params::Dict)
+
+`true` if a `[HealthProgression]` section carries `severe`/`critical` sub-tables, the pre-split
+spelling of a `[StandardOfCare]` section.
+"""
+_has_deprecated_care(params::Dict) = haskey(params["parameters"], "severe") || haskey(params["parameters"], "critical")
+
+"""
+    _deprecated_standard_of_care(params::Dict)
+
+The `StandardOfCare` a pre-split `[HealthProgression]` section describes through its
+`severe`/`critical` sub-tables, or `nothing` if it carries none. Delete along with the deprecation.
+"""
+function _deprecated_standard_of_care(params::Dict)
+    _has_deprecated_care(params) || return nothing
+    get_subtype(params["type"], HealthProgression) == DefaultHealthProgression || throw(ArgumentError(
+        "a [HealthProgression] section of type '$(params["type"])' cannot carry `severe`/`critical` care " *
+        "parameters; move them to a [StandardOfCare] section."))
+    @warn "`severe`/`critical` under [HealthProgression.parameters] is deprecated; move them to a [StandardOfCare] section."
+    return create_standard_of_care(params["parameters"])
 end
 
 """
