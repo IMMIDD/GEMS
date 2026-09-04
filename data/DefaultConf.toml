@@ -132,7 +132,9 @@
                                          [0.250, 0.600, 0.140, 0.010], # age group 15-65
                                          [0.150, 0.400, 0.370, 0.080]] # age group 66-
 
-# host-level care/death policy; each infection contributes care for its peak tier, folded per host
+# host-level care/death policy shared by all pathogens; each infection contributes care for its
+# peak tier, folded per host. For per-pathogen rates, write a `health` block into that pathogen's
+# own Severe/Critical progression instead - this section then acts as the baseline.
 [HealthProgression]
     type = "DefaultHealthProgression"
 

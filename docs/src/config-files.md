@@ -123,7 +123,9 @@ If you want to set up a custom config file, you can copy this one into your own 
                                          [0.250, 0.600, 0.140, 0.010],
                                          [0.150, 0.400, 0.370, 0.080]]
 
-# host-level care/death policy; each infection contributes care for its peak tier, folded per host
+# host-level care/death policy shared by all pathogens; each infection contributes care for its
+# peak tier, folded per host. For per-pathogen rates, write a `health` block into that pathogen's
+# own Severe/Critical progression instead - this section then acts as the baseline.
 [HealthProgression]
     type = "DefaultHealthProgression"
 
@@ -360,7 +362,7 @@ The `type` argument specifies the `TransmissionFunction` that conditions the dis
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `TransmissionFunction` struct upon initialization.
 
 #### `progressions`
-Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Mild`, `Severe`, and `Critical`. `Severe` and `Critical` may also carry host-care parameters (see [`HealthProgression`](#healthprogression) below) directly inline, as a single-pathogen convenience.
+Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Mild`, `Severe`, and `Critical`. `Severe` and `Critical` may also carry host-health parameters (see [`HealthProgression`](#healthprogression) below), either as a `health` sub-table or inline, giving that pathogen its own care and mortality rates.
 
 Within each category, you must define the intervals between state transitions (e.g., `exposure_to_infectiousness_onset`, `symptom_onset_to_recovery`). Every interval requires two arguments to initialize the underlying random distribution:
 * **`distribution`**: A string representing the statistical distribution (e.g., `"Poisson"`, `"Binomial"`).
@@ -449,14 +451,32 @@ for the whole simulation.
 
 For `DefaultHealthProgression`, the `[.parameters]` block holds a `severe` and a `critical`
 sub-table, corresponding to a `SevereHealthProfile` and a `CriticalHealthProfile` respectively (see
-the pathogen API reference for their full parameter lists).
+the pathogen API reference for their full parameter lists). It routes by tier, so all pathogens
+share it.
 
-If your simulation has exactly **one** pathogen, you can skip this section entirely and instead
-write the `severe`/`critical` parameters directly inside that tier's disease progression in
-`[Pathogens.<Name>.progressions]` — they will be routed into the global `HealthProgression`
-automatically. This convenience is rejected (with an error) if you also define an explicit
-`[HealthProgression]` section, or if your simulation has more than one pathogen (since a single
-global policy cannot unambiguously combine care embedded in more than one pathogen's progressions).
+#### Per-pathogen health
+
+To give a pathogen its own care and mortality rates, write the profile into that tier's disease
+progression as a `health` sub-table:
+
+```toml
+[Pathogens.Covid19.progressions.Critical]
+    # ... disease timings ...
+    [Pathogens.Covid19.progressions.Critical.health]
+        hospital_probability = 0.9
+        death_probability = 0.3
+        [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_death]
+            distribution = "Poisson"
+            parameters = [7]
+```
+
+The same parameters may be written flat among the timings instead; the two forms are mutually
+exclusive.
+
+Any pathogen carrying health this way makes the resulting policy a `PerPathogenHealthProgression`,
+routing on `(pathogen, progression category)`. A `[HealthProgression]` section given alongside it
+supplies the baseline for categories that carry no `health` of their own. A category left with neither
+demands no hospitalization and causes no deaths; GEMS warns when that happens.
 
 ### Settings
 

@@ -34,7 +34,7 @@ dp = Severe(
 )
 ```
 
-Host care for this tier may be embedded directly, either as a `SevereHealthProfile` object or as flat
+Host health for this tier may be embedded directly, either as a `SevereHealthProfile` object or as flat
 `SevereHealthProfile` parameters (the latter is a convenience only; see `SevereHealthProfile` for its defaults):
 
 ```julia
@@ -54,9 +54,9 @@ mutable struct Severe <: ProgressionCategory
     symptom_onset_to_severeness_onset::Union{Distribution, Real}
     severeness_onset_to_severeness_offset::Union{Distribution, Real}
     severeness_offset_to_recovery::Union{Distribution, Real}
-    # embedded host care (build-time only; harvested into the global HealthProgression, ignored by
-    # calculate_progression). Pass `care=SevereHealthProfile(...)` or the SevereHealthProfile params directly.
-    care::Union{Nothing, HealthProfile}
+    # embedded host health (build-time only; harvested into the HealthProgression, ignored by
+    # calculate_progression). Pass `health=SevereHealthProfile(...)` or the SevereHealthProfile params directly.
+    health::Union{Nothing, HealthProfile}
 
     function Severe(;
         exposure_to_infectiousness_onset,
@@ -64,12 +64,13 @@ mutable struct Severe <: ProgressionCategory
         symptom_onset_to_severeness_onset,
         severeness_onset_to_severeness_offset,
         severeness_offset_to_recovery,
-        care::Union{Nothing, HealthProfile} = nothing,
-        care_params...)
+        health::Union{Nothing, HealthProfile} = nothing,
+        care::Union{Nothing, HealthProfile} = nothing,  # deprecated spelling of `health`
+        health_params...)
 
         return new(exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset,
             symptom_onset_to_severeness_onset, severeness_onset_to_severeness_offset,
-            severeness_offset_to_recovery, _embed_care(Severe, care, care_params))
+            severeness_offset_to_recovery, _embed_health(Severe, health, care, health_params))
     end
 end
 

@@ -3,7 +3,7 @@ import GEMS: _rand_val, push_infection!, combine_outcome, HealthSchedule, _deman
     create_progression, create_health_progression, create_health_profile,
     determine_health_progression, each_infection, progression_index, get_infection_state,
     calculate_progression, _harvest_legacy_health_progression, _has_legacy_category,
-    _is_legacy_critical, _normalize_legacy_pathogen!
+    _is_legacy_critical, _normalize_legacy_pathogen!, _harvest_health_progression, create_health
 
 # every transition filed for one host, as (tick, level, is_admission), in tick order
 _filed(sched, host_id) = sort!([(t, tr.level, tr.is_admission)
@@ -457,23 +457,23 @@ _filed(sched, host_id) = sort!([(t, tr.level, tr.is_admission)
 
         # flat kwargs embed a CriticalHealthProfile directly in the disease progression
         crit = Critical(; dkw..., hospital_probability = 0.9, hospital_to_icu_probability = 0.6)
-        @test crit.care isa CriticalHealthProfile
-        @test crit.care.hospital_probability == 0.9
-        @test crit.care.hospital_to_icu_probability == 0.6
+        @test crit.health isa CriticalHealthProfile
+        @test crit.health.hospital_probability == 0.9
+        @test crit.health.hospital_to_icu_probability == 0.6
         @test _health_profile_type(Critical) == CriticalHealthProfile
-        @test _embedded_health_profile(crit) === crit.care
+        @test _embedded_health_profile(crit) === crit.health
 
-        # care= object works too, and the two forms are mutually exclusive
-        crit_obj = Critical(; dkw..., care = CriticalHealthProfile(hospital_probability = 0.5))
-        @test crit_obj.care.hospital_probability == 0.5
-        @test_throws ArgumentError Critical(; dkw..., care = CriticalHealthProfile(), hospital_probability = 0.5)
+        # health= object works too, and the two forms are mutually exclusive
+        crit_obj = Critical(; dkw..., health = CriticalHealthProfile(hospital_probability = 0.5))
+        @test crit_obj.health.hospital_probability == 0.5
+        @test_throws ArgumentError Critical(; dkw..., health = CriticalHealthProfile(), hospital_probability = 0.5)
 
         # unknown embedded parameter errors
         @test_throws ArgumentError Critical(; dkw..., bogus_param = 3)
 
         # no embedded care at all -> care stays nothing, not silently harvested
         crit_bare = Critical(; dkw...)
-        @test isnothing(crit_bare.care)
+        @test isnothing(crit_bare.health)
         @test !_has_embedded_health_profile((progressions = [crit_bare],))
         @test _has_embedded_health_profile((progressions = [crit],))
 
@@ -483,27 +483,51 @@ _filed(sched, host_id) = sort!([(t, tr.level, tr.is_admission)
             severeness_offset_to_recovery = Poisson(4))
 
         sev = Severe(; skw..., hospital_probability = 0.3)
-        @test sev.care isa SevereHealthProfile
-        @test sev.care.hospital_probability == 0.3
+        @test sev.health isa SevereHealthProfile
+        @test sev.health.hospital_probability == 0.3
         @test _health_profile_type(Severe) == SevereHealthProfile
-        @test_throws ArgumentError Severe(; skw..., care = SevereHealthProfile(), hospital_probability = 0.3)
+        @test_throws ArgumentError Severe(; skw..., health = SevereHealthProfile(), hospital_probability = 0.3)
         @test_throws ArgumentError Severe(; skw..., hospital_to_icu_probability = 0.5)  # ICU is critical-tier
+
+        # critical-peak timeline used to look profiles up through the router
+        dp_crit = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            severeness_onset = Int16(5), critical_onset = Int16(8), critical_offset = Int16(15),
+            severeness_offset = Int16(16), recovery = Int16(20))
+        _profile(hp, pathogen_id, slot) =
+            select_health_profile(hp, InfectionState(Int8(pathogen_id), Int32(-1), dp_crit, Int8(slot)))
 
         # harvest at Simulation build (single pathogen, explicit `pathogens` argument)
         p = Pathogen(id = 1, name = "Covid19", progressions = [crit])
         sim = Simulation(pop_size = 3000, pathogens = p, seed = 1)
         hp = health_progression(sim)
-        @test hp.critical.hospital_probability == 0.9
-        @test hp.critical.hospital_to_icu_probability == 0.6
+        @test hp isa PerPathogenHealthProgression
+        @test _profile(hp, 1, 1).hospital_probability == 0.9
+        @test _profile(hp, 1, 1).hospital_to_icu_probability == 0.6
 
         # error: embedded care conflicts with an explicit health_progression
         @test_throws ArgumentError Simulation(pop_size = 1000,
             pathogens = Pathogen(id = 1, name = "Covid19", progressions = [Critical(; dkw..., hospital_probability = 0.9)]),
             health_progression = DefaultHealthProgression(), seed = 1)
 
-        # error: embedded care is only supported for a single pathogen
-        p2 = Pathogen(id = 2, name = "Flu", progressions = [Critical(; dkw..., hospital_probability = 0.9)])
-        @test_throws ArgumentError Simulation(pop_size = 1000, pathogens = (p, p2), seed = 1)
+        # two pathogens keep their own care: identical severity shape, different mortality
+        p2 = Pathogen(id = 2, name = "Flu", progressions = [Critical(; dkw..., hospital_probability = 0.9, death_probability = 0.5)])
+        hp2 = health_progression(Simulation(pop_size = 1000, pathogens = (p, p2), seed = 1))
+        @test hp2 isa PerPathogenHealthProgression
+        @test _profile(hp2, 1, 1).death_probability == 0.0   # `crit` embeds no death probability
+        @test _profile(hp2, 2, 1).death_probability == 0.5
+
+        # a pathogen embedding no care gets nothing, never the other pathogen's profile
+        p3 = Pathogen(id = 3, name = "Bare", progressions = [Critical(; dkw...)])
+        hp3 = health_progression(Simulation(pop_size = 1000, pathogens = (p, p3), seed = 1))
+        @test isnothing(_profile(hp3, 3, 1))
+        @test _profile(hp3, 1, 1).hospital_probability == 0.9
+
+        # ... and that uncovered tier is warned about, while a pathogen that cannot take care is not
+        @test_logs (:warn, r"Bare \(3\): .*Critical carries no care") match_mode = :any _harvest_health_progression((p, p3))
+        mild_only = Pathogen(id = 4, name = "Cold", progressions = [Mild(
+            exposure_to_infectiousness_onset = Poisson(2), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_recovery = Poisson(5))])
+        @test_logs _harvest_health_progression((p, mild_only))
 
         # no embedded care, no explicit policy, no [HealthProgression] section -> the plain default
         @test determine_health_progression(Dict{String, Any}(), nothing,
@@ -520,19 +544,82 @@ _filed(sched, host_id) = sort!([(t, tr.level, tr.is_admission)
             "severeness_offset_to_recovery" => Dict("distribution" => "Poisson", "parameters" => [4]),
             "hospital_probability" => 0.9, "hospital_to_icu_probability" => 0.6)
         crit_cfg = create_progression(cfg, "Critical")
-        @test crit_cfg.care.hospital_probability == 0.9
-        @test crit_cfg.care.hospital_to_icu_probability == 0.6
+        @test crit_cfg.health.hospital_probability == 0.9
+        @test crit_cfg.health.hospital_to_icu_probability == 0.6
+
+        # a `care` sub-table is the same profile written separately from the timings, and it may
+        # itself hold distributions
+        cfg_health = merge(
+            Dict(k => v for (k, v) in cfg if !(k in ("hospital_probability", "hospital_to_icu_probability"))),
+            Dict("health" => Dict("hospital_probability" => 0.9, "death_probability" => 0.3,
+                "critical_onset_to_death" => Dict("distribution" => "Poisson", "parameters" => [3]))))
+        crit_sub = create_progression(cfg_health, "Critical")
+        @test crit_sub.health isa CriticalHealthProfile
+        @test crit_sub.health.hospital_probability == 0.9
+        @test crit_sub.health.death_probability == 0.3
+        @test crit_sub.health.critical_onset_to_death == Poisson(3)
+
+        # the two forms are mutually exclusive, and a tier taking no health cannot carry one
+        @test_throws ErrorException create_progression(merge(cfg, Dict("health" => Dict("hospital_probability" => 0.9))), "Critical")
+        @test_throws ArgumentError create_health(Asymptomatic, Dict("hospital_probability" => 0.5))
+
+        # `care` is the deprecated spelling of `health`: it still works, and warns
+        crit_dep = @test_logs (:warn, r"`care` is deprecated") match_mode = :any Critical(; dkw...,
+            care = CriticalHealthProfile(hospital_probability = 0.7))
+        @test crit_dep.health.hospital_probability == 0.7
+        @test_throws ArgumentError Critical(; dkw..., health = CriticalHealthProfile(), care = CriticalHealthProfile())
+        cfg_dep = merge(Dict(k => v for (k, v) in cfg if !(k in ("hospital_probability", "hospital_to_icu_probability"))),
+            Dict("care" => Dict("hospital_probability" => 0.7)))
+        @test (@test_logs (:warn, r"`care` is deprecated") match_mode = :any create_progression(cfg_dep, "Critical")).health.hospital_probability == 0.7
+
+        # a [HealthProgression] section is the per-tier baseline for categories carrying no care
+        base = DefaultHealthProgression(
+            severe = SevereHealthProfile(hospital_probability = 0.05),
+            critical = CriticalHealthProfile(hospital_probability = 0.11, death_probability = 0.99))
+        p_mixed = Pathogen(id = 1, name = "Mixed", progressions = [Severe(; skw...), crit])
+        hp_base = _harvest_health_progression((p_mixed,), base)
+        @test _profile(hp_base, 1, 1).hospital_probability == 0.05   # Severe: from the baseline
+        @test _profile(hp_base, 1, 2).hospital_probability == 0.9    # Critical: its own care wins
+
+        # without a baseline the bare tier stays uncovered, and is warned about
+        hp_nobase = @test_logs (:warn, r"Mixed \(1\): .*Severe carries no care") match_mode = :any _harvest_health_progression((p_mixed,), nothing)
+        @test isnothing(_profile(hp_nobase, 1, 1))
+        @test _profile(hp_nobase, 1, 2).hospital_probability == 0.9
 
         # end-to-end config path: TestConf.toml embeds care on its Severe/Critical progressions,
         # so the harvest runs through the config-side branch (pathogens not passed explicitly)
         conf_path = joinpath(pkgdir(GEMS), "test/testdata/TestConf.toml")
         sim_cfg = Simulation(configfile = conf_path)
         hp_cfg = health_progression(sim_cfg)
-        @test hp_cfg isa DefaultHealthProgression
-        @test hp_cfg.severe.hospital_probability == 1.0
-        @test hp_cfg.critical.hospital_probability == 1.0
-        @test hp_cfg.critical.hospital_to_icu_probability == 1.0
-        @test hp_cfg.critical.death_probability == 0.3
+        @test hp_cfg isa PerPathogenHealthProgression
+        # slots come from the parsed TOML, so resolve them rather than assuming an order
+        pat_cfg = pathogen(sim_cfg)
+        sev_cfg = _profile(hp_cfg, id(pat_cfg), progression_index(pat_cfg, Severe))
+        crit_cfg_prof = _profile(hp_cfg, id(pat_cfg), progression_index(pat_cfg, Critical))
+        @test sev_cfg.hospital_probability == 1.0
+        @test crit_cfg_prof.hospital_probability == 1.0
+        @test crit_cfg_prof.hospital_to_icu_probability == 1.0
+        @test crit_cfg_prof.death_probability == 0.3
+
+        # a [HealthProgression] section cannot build one: per-pathogen care is expressed by embedding
+        @test_throws ArgumentError create_health_progression(
+            Dict("type" => "PerPathogenHealthProgression", "parameters" => Dict()))
+
+        # built by hand and passed explicitly, it needs no embedding at all
+        bare_a = Pathogen(id = 1, name = "A", progressions = [Critical(; dkw...)])
+        bare_b = Pathogen(id = 2, name = "B", progressions = [Critical(; dkw...)])
+        manual = PerPathogenHealthProgression(Dict{NTuple{2,Int8}, GEMS.HealthProfile}(
+            (Int8(1), Int8(1)) => CriticalHealthProfile(death_probability = 0.05),
+            (Int8(2), Int8(1)) => CriticalHealthProfile(death_probability = 0.5)))
+        sim_manual = Simulation(pop_size = 1000, pathogens = (bare_a, bare_b),
+            health_progression = manual, seed = 1)
+        @test health_progression(sim_manual) === manual
+        @test _profile(manual, 1, 1).death_probability == 0.05
+        @test _profile(manual, 2, 1).death_probability == 0.5
+
+        # the table is mutable, so a pathogen created after the fact can be registered into a live policy
+        manual.profiles[(Int8(3), Int8(1))] = CriticalHealthProfile(death_probability = 0.9)
+        @test _profile(health_progression(sim_manual), 3, 1).death_probability == 0.9
     end
 
     @testset "Explicit [HealthProgression] config round-trip" begin

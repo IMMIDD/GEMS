@@ -245,6 +245,36 @@ function _validate_health_plan(contributions::Vector{CareContribution}, outcome:
 end
 
 """
+    calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual, infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro)
+
+Generic combination policy: contributes for `new_infection` only. An infection that selects no profile
+contributes nothing.
+
+Non-synergy is structural here rather than documented — a contribution is drawn without reference to
+any other, so two infections that each demand a ward bed produce a host in a ward, never an
+escalation. Override this method to model interaction between co-active infections; it receives every
+active infection via `infections`.
+"""
+function calculate_health_progression!(contributions::Vector{CareContribution}, individual::Individual,
+        infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState,
+        tick::Int16, rng::Xoshiro)
+
+    profile = select_health_profile(hp, new_infection)
+    profile === nothing && return HealthOutcome()
+    care, outcome = calculate_health_profile(profile, individual, new_infection, rng)
+    care.hospital_admission >= 0 && push!(contributions, care)
+    return outcome
+end
+
+"""
+    AbstractHealthSchedule
+
+Supertype of the concrete `HealthSchedule`, which is defined after `CareContribution` and so cannot
+be named in `compute_health!`'s signature directly.
+"""
+abstract type AbstractHealthSchedule end
+
+"""
     compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
 
 Framework entry point, not overridable. Hands `calculate_health_progression!` the shard's buffer to

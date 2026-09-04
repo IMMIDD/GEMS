@@ -50,7 +50,7 @@ When reasoning across infections:
 An override must annotate every argument, differing from the generic method only in `hp`. 
 Annotating `hp` alone is ambiguous with the generic method.
 
-See `DefaultHealthProgression` for the generic method, which contributes for `new_infection` only.
+The generic method (in `host_health.jl`) contributes for `new_infection` only.
 """
 function calculate_health_progression! end
 
@@ -72,7 +72,3 @@ the arriving infection; override it to route infections (e.g. by their `progress
 custom profiles while reusing the default combination.
 """
 function select_health_profile end
-
-# Forward declaration, not part of the interface above: `compute_health!` is defined before the
-# concrete `HealthSchedule` (which needs `CareContribution`) and annotates its argument with this.
-abstract type AbstractHealthSchedule end

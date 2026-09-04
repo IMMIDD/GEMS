@@ -765,10 +765,10 @@ end
     determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
 
 Resolves the simulation's `HealthProgression`. An explicit `health_progression` argument wins. Then,
-if any progression carries embedded care (the single-pathogen convenience): when the pathogens were
-passed explicitly it is harvested (taking precedence over the default config section); when they came
-from the config it conflicts with a `[HealthProgression]` section. Otherwise a `[HealthProgression]`
-section is parsed, else the default. Embedded care with an explicit policy or `>1` pathogen errors.
+if any progression carries care, it is harvested into a `PerPathogenHealthProgression`, with a
+`[HealthProgression]` section supplying the per-tier baseline for the categories that carry none —
+unless the pathogens were passed explicitly, in which case the section is not the caller's and is
+ignored. Otherwise the section is used as-is, else the default. Embedded care with an explicit policy errors.
 """
 function determine_health_progression(configfile_params::Dict, health_progression, pathogens, pathogens_explicit::Bool)
     embedded = any(_has_embedded_health_profile, pathogens)
@@ -788,22 +788,26 @@ function determine_health_progression(configfile_params::Dict, health_progressio
         return _harvest_legacy_health_progression(pathogens)
     end
 
-    _harvest() = (length(pathogens) > 1 &&
-        throw(ArgumentError("embedded care parameters are only supported for a single pathogen; use an explicit [HealthProgression].")); _harvest_health_progression(pathogens))
+    section = _haspath(configfile_params, ["HealthProgression"]) ?
+        create_health_progression(configfile_params["HealthProgression"]) : nothing
 
-    # embedded care from explicitly-passed pathogens wins over the (possibly default) config section
-    if embedded && pathogens_explicit
-        _haspath(configfile_params, ["HealthProgression"]) &&
-            @warn "Embedded care parameters were found on explicitly-passed pathogens, therefore the [HealthProgression] config section will be ignored."
-        return _harvest()
+    # per-pathogen care wins per category; the section fills in the tiers it leaves uncovered
+    if embedded
+        baseline = nothing
+        if !isnothing(section)
+            if pathogens_explicit
+                # the section belongs to a config the caller did not write, so it is not their baseline
+                @warn "Embedded care parameters were found on explicitly-passed pathogens, therefore the [HealthProgression] config section will be ignored."
+            elseif section isa DefaultHealthProgression
+                baseline = section
+            else
+                @warn "The [HealthProgression] config section is a $(typeof(section)), which cannot serve as a per-tier baseline for embedded care parameters; it will be ignored."
+            end
+        end
+        return _harvest_health_progression(pathogens, baseline)
     end
 
-    if _haspath(configfile_params, ["HealthProgression"])
-        embedded && throw(ArgumentError("embedded care parameters conflict with a [HealthProgression] config section; remove one."))
-        return create_health_progression(configfile_params["HealthProgression"])
-    end
-
-    embedded && return _harvest()
+    !isnothing(section) && return section
 
     @warn "No health_progression, [HealthProgression] config section, or embedded care parameters were provided; defaulting to a no-op HealthProgression (no hospitalization, ICU admission, or health-related death will occur)."
     return DefaultHealthProgression()
@@ -1188,20 +1192,34 @@ end
     create_progression(params::Dict, category::String)
 
 Creates a progression of the specified category based on the provided parameters.
-The `params` dictionary must contain the parameters for the progression constructor. For
-`Severe`/`Critical`, `params` may also carry that tier's `HealthProfile` parameters directly (the
-convenience embedding); the category constructor splits them out itself.
+The `params` dictionary must contain the parameters for the progression constructor. A category that
+takes host health may carry it either as a `health` sub-table (`care` is the deprecated spelling) or
+as that `HealthProfile`'s parameters directly (the shorthand); the two are mutually exclusive.
 The `category` string must be the name of a subtype of `ProgressionCategory`.
 """
 function create_progression(params::Dict, category::String)
-    # convert parameters to keyword arguments
-    kw_args = Dict(Symbol(k) => create_progression_parameter(v) for (k, v) in params)
+    cat_type = GEMS.get_subtype(category, ProgressionCategory)
+    # a `health` sub-table is this category's HealthProfile, not a distribution
+    kw_args = Dict(Symbol(k) => (k in ("health", "care") ? create_health(cat_type, v) : create_progression_parameter(v))
+        for (k, v) in params)
     # create the progression category using the keyword arguments
     return try
-        GEMS.get_subtype(category, ProgressionCategory)(;kw_args...)
+        cat_type(;kw_args...)
     catch e
         throw(ErrorException("ProgressionCategory of type '$category' could not be created. $(sprint(showerror, e))"))
     end
+end
+
+"""
+    create_health(cat_type::DataType, params::Dict)
+
+Creates the `HealthProfile` for a `health` sub-table, using the profile type the category declares
+via `_health_profile_type`. Throws if the category takes no host health.
+"""
+function create_health(cat_type::DataType, params::Dict)
+    profile_type = _health_profile_type(cat_type)
+    isnothing(profile_type) && throw(ArgumentError("$cat_type takes no host health, so it cannot carry a `health` block."))
+    return create_health_profile(profile_type, params)
 end
 
 """
@@ -1320,6 +1338,11 @@ and a `parameters` key. For `DefaultHealthProgression` the parameters hold `seve
 """
 function create_health_progression(params::Dict)
     hp_type = get_subtype(params["type"], HealthProgression)
+    # its table is keyed by (pathogen_id, progression slot), which is what care embedding already writes
+    hp_type == PerPathogenHealthProgression && throw(ArgumentError(
+        "PerPathogenHealthProgression cannot be built from a [HealthProgression] config section. " *
+        "Write the care parameters into each pathogen's own Severe/Critical progression block instead; " *
+        "they are harvested into one automatically."))
     if hp_type == DefaultHealthProgression
         p = params["parameters"]
         return DefaultHealthProgression(

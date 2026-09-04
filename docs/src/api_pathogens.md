@@ -39,6 +39,7 @@ Critical
 HealthProgression
 HealthProfile
 DefaultHealthProgression
+PerPathogenHealthProgression
 SevereHealthProfile
 CriticalHealthProfile
 calculate_health_progression!

@@ -330,12 +330,12 @@ A policy does not write the host's care directly. It contributes `CareContributi
 
 By default, GEMS applies a `DefaultHealthProgression`: `Severe` cases may be hospitalized, and `Critical` cases may escalate to ICU or ventilation and carry a death risk.
 
-!!! tip "Single-pathogen convenience: inline care parameters"
-    For a single pathogen you don't need a custom policy. Write the care parameters straight into the `Severe`/`Critical` progression and they are routed into the default policy automatically:
+!!! tip "Per-pathogen health: inline health parameters"
+    To give each pathogen its own care and mortality rates, write the health parameters straight into the `Severe`/`Critical` progression. GEMS harvests them into a `PerPathogenHealthProgression`:
     ```julia
     Critical(...; hospital_probability = 0.9, hospital_to_icu_probability = 0.6, death_probability = 0.25)
     ```
-    See the [config reference](@ref config-files) for the config-file form and the exact rules.
+    Pass `health = CriticalHealthProfile(...)` instead to keep them separate from the disease timings. A tier with neither its own health nor a `[HealthProgression]` baseline demands no hospitalization and causes no deaths; GEMS warns when that happens. See the [config reference](@ref config-files) for the config-file form.
 
 To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression!()` method: it `push!`es its care demand onto `contributions` and returns the death it proposes.
 
