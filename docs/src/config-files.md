@@ -193,7 +193,7 @@ If you want to set up a custom config file, you can copy this one into your own 
 While you can adapt many parameters via the `Simulation()` constructor, config files are required if you want to add custom mechanics (like custom transmission functions or custom contact sampling functions).
 Please have a look at the tutorial for [advanced parameterization](@ref advanced).
 
-A config file contains five sections: `[Simulation]`, `[Population]`, `[Pathogens]`, `[HealthProgression]`, and `[Settings]`.
+A config file contains four required sections: `[Simulation]`, `[Population]`, `[Pathogens]`, and `[Settings]`, plus the optional `[StandardOfCare]` and `[HealthProgression]`.
 
 ```@contents
 Pages = ["config-files.md"]

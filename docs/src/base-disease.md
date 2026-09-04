@@ -39,7 +39,7 @@ configuration, only `Severe` and `Critical` infections demand any host care: a `
 infection may lead to a ward admission; a `Critical`-peak infection may additionally require ICU
 admission (and, optionally, ventilation), and carries an ungated `30%` death probability. In the
 default configuration, all care and timing offsets (admission delays and stay lengths) are drawn
-from Poisson distributions; see the `[HealthProgression]` block in `DefaultConf.toml` for the
+from Poisson distributions; see the `health` block on each progression in `DefaultConf.toml` for the
 concrete parameters. See the "Health Progression" section of the pathogen API reference for the
 extension API.
 

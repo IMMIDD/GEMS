@@ -328,18 +328,18 @@ Hospitalization, ICU, ventilation, and death are decided separately from the dis
 
 A policy does not write the host's care directly. It contributes `CareContribution`s — intervals of demand — and the host occupies a care level for as long as any contribution demands it. Overlapping contributions therefore produce one continuous stay, and contributions separated by a gap produce two separate episodes.
 
-By default, GEMS applies a `DefaultHealthProgression`: `Severe` cases may be hospitalized, and `Critical` cases may escalate to ICU or ventilation and carry a death risk.
+Which profile an infection draws from is a separate question from how a host's infections combine. The profile comes from the progression category it was assigned; the combination is the `HealthProgression`. By default GEMS applies a `DefaultHealthProgression`, under which infections do not interact.
 
 !!! tip "Per-pathogen health: inline health parameters"
-    To give each pathogen its own care and mortality rates, write the health parameters straight into the `Severe`/`Critical` progression. GEMS harvests them into a `PerPathogenHealthProgression`:
+    To give each pathogen its own care and mortality rates, write the health parameters straight into the `Severe`/`Critical` progression. GEMS harvests them into the simulation's `HealthProfileIndex`:
     ```julia
     Critical(...; hospital_probability = 0.9, hospital_to_icu_probability = 0.6, death_probability = 0.25)
     ```
-    Pass `health = CriticalHealthProfile(...)` instead to keep them separate from the disease timings. A tier with neither its own health nor a `[HealthProgression]` baseline demands no hospitalization and causes no deaths; GEMS warns when that happens. See the [config reference](@ref config-files) for the config-file form.
+    Pass `health = CriticalHealthProfile(...)` instead to keep them separate from the disease timings. A tier with neither its own health nor a `StandardOfCare` demands no hospitalization and causes no deaths; GEMS warns when that happens. See the [config reference](@ref config-files) for the config-file form.
 
 To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression!()` method: it `push!`es its care demand onto `contributions` and returns the death it proposes.
 
-The method is invoked once per arriving infection, and `new_infection` is the one that triggered it.
+The method is invoked once per arriving infection, and `new_infection` is the one that triggered it. `index` is the simulation's `HealthProfileIndex`: `GEMS._health_profile(index, infection)` gives the profile any infection carries, so a policy can draw the standard care for one and add to it. `DefaultHealthProgression`'s own method is the template to start from.
 
 !!! warning "Contribute only the increment"
     Contributions superpose and are never retracted, so a policy must contribute only what previous calls did not. Re-deriving the whole active set and contributing all of it again on every call leaves the host admitted for the rest of the run, and nothing detects it. The returned `HealthOutcome` is likewise this call's own contribution: GEMS folds it with the host's committed death (earliest wins), so returning an empty `HealthOutcome()` means "no mortality from this infection", not "cancel the scheduled death".
@@ -361,7 +361,7 @@ end
 # differing from the generic method only in `hp` is what keeps the override unambiguous
 function GEMS.calculate_health_progression!(contributions::Vector{CareContribution},
     individual::Individual, infections::InfectionRegistry, hp::SevereWithDeathProgression,
-    new_infection::InfectionState, tick::Int16, rng::Xoshiro)
+    new_infection::InfectionState, index::HealthProfileIndex, tick::Int16, rng::Xoshiro)
 
     # a non-severe infection demands no host care
     new_infection.severeness_onset < 0 && return HealthOutcome()
