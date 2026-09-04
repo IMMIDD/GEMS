@@ -641,6 +641,128 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
 end
 
 """
+    snapshot(injector::Injector, ind_id::Integer, base_population::DataFrame, timestamp::Int16)
+
+Reconstructs the table for a specified individual at a given day of the staged-changes timeline.
+
+# Arguments
+- `injector::Injector`: The injector containing the staged events
+- `ind_id::Int`: The individual id the snapshot applies to
+- `base_population::DataFrame`: The base population table (day 0) to start from
+- `timestamp::Int16`: The day to create the snapshot for
+
+# Returns
+- `DataFrame`: The population table at the given day for an individual
+"""
+function snapshot(injector::Injector, ind_id::Integer, base_population::DataFrame, timestamp::Int16)
+    # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
+    for field in names(base_population)
+        field_symbol = Symbol(field)
+        col_data = base_population[:, field]
+        computed_hash = stable_hash(col_data)
+
+        if !haskey(injector.schema.meta[:hash], field_symbol)
+            error("No hash stored for column $field_symbol")
+        end
+
+        stored_hash = injector.schema.meta[:hash][field_symbol]
+        if computed_hash != stored_hash
+            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
+        end
+    end
+
+    # Create a copy of the base individual to avoid modifying it
+    snapshot_df = deepcopy(base_population[ind_id, :])
+
+    # Find all events for the individual that occurred before or at the given timestamp
+    relevant_events = filter(event -> event.ind_id == ind_id && event.timestamp <= timestamp, injector.events)
+
+    if isempty(relevant_events)
+        return snapshot_df
+    end
+
+    # Process events in chronological order
+    sorted_events = sort(relevant_events, by=event -> event.timestamp)
+
+    # Now process all events
+    for event in sorted_events
+        # Get field from the event
+        field_index = event.field
+        field_symbol = injector.schema.index_to_field[field_index+1]
+
+        # Decode the value from the event
+        original_value = decode_value(injector, field_symbol, event.new_value)
+
+        # Update the snapshot dataframe (now guaranteed to have enough rows)
+        snapshot_df[field_symbol] = original_value
+    end
+
+    return snapshot_df
+end
+
+"""
+    snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::DataFrame, timestamp::Int16)
+
+Reconstructs the table for the specified individuals at a given day of the staged-changes timeline.
+
+# Arguments
+- `injector::Injector`: The injector containing the staged events
+- `ind_id::Vector{Int}`: The vector of individual ids the snapshot applies to
+- `base_population::DataFrame`: The base population table (day 0) to start from
+- `timestamp::Int16`: The day to create the snapshot for
+
+# Returns
+- `DataFrame`: The population table at the given day for an individual
+"""
+function snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::DataFrame, timestamp::Int16)
+    # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
+    for field in names(base_population)
+        field_symbol = Symbol(field)
+        col_data = base_population[:, field]
+        computed_hash = stable_hash(col_data)
+
+        if !haskey(injector.schema.meta[:hash], field_symbol)
+            error("No hash stored for column $field_symbol")
+        end
+
+        stored_hash = injector.schema.meta[:hash][field_symbol]
+        if computed_hash != stored_hash
+            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
+        end
+    end
+
+    # Create a copy of the base individuals to avoid modifying it
+    snapshot_df = deepcopy(base_population[ind_id, :])
+
+    # Find all events for the individuals that occurred before or at the given timestamp
+    relevant_events = filter(event -> event.ind_id ∈ ind_id && event.timestamp <= timestamp, injector.events)
+
+    if isempty(relevant_events)
+        return snapshot_df
+    end
+
+    # Process events in chronological order
+    sorted_events = sort(relevant_events, by=event -> event.timestamp)
+
+    # Now process all events
+    for event in sorted_events
+        # Get field and index from the event
+        ind_id = Int(event.ind_id)
+        field_index = event.field
+        field_symbol = injector.schema.index_to_field[field_index+1]
+
+        # Decode the value from the event
+        original_value = decode_value(injector, field_symbol, event.new_value)
+
+        # Update the snapshot dataframe (now guaranteed to have enough rows)
+        snapshot_df[ind_id, field_symbol] = original_value
+    end
+
+    return snapshot_df
+end
+
+
+"""
     save(injector, path)
 
 Saves the staged changes (schema + events) to a `.jld2` file at `path`
