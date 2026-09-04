@@ -689,6 +689,12 @@ end
         # an unknown parameter on that same branch is rewrapped as an ErrorException too
         @test_throws ErrorException create_health_progression(Dict("type" => "ConfigurableHealthProgression",
             "parameters" => Dict("bogus" => 1)))
+
+        # the section names a policy and nothing else, so `parameters` may be left out
+        @test create_health_progression(Dict("type" => "DefaultHealthProgression")) isa DefaultHealthProgression
+        @test create_health_progression(Dict("type" => "DefaultHealthProgression",
+            "parameters" => Dict{String,Any}())) isa DefaultHealthProgression
+        @test !GEMS._has_deprecated_care(Dict("type" => "DefaultHealthProgression"))
     end
 
     @testset "Progression tag + index lookup" begin
@@ -792,6 +798,20 @@ end
             severeness_offset_to_recovery = 4, hospital_probability = 0.1)
         p_mix = Pathogen(id = 1, name = "Mix", progressions = [hosp, sev_embed])
         @test_throws ArgumentError determine_health_progression(Dict{String,Any}(), nothing, nothing, (p_mix,), true)
+
+        # a standard of care fills the modern slots; legacy slots keep their harvested profiles
+        sev_plain = Severe(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+            symptom_onset_to_severeness_onset = 1, severeness_onset_to_severeness_offset = 10,
+            severeness_offset_to_recovery = 4)
+        p_soc = Pathogen(id = 1, name = "Soc", progressions = [hosp, sev_plain])
+        soc_legacy = StandardOfCare(severe = SevereHealthProfile(hospital_probability = 0.4))
+        _, idx_soc = determine_health_progression(Dict{String,Any}(), nothing, soc_legacy, (p_soc,), true)
+        @test idx_soc[(Int8(1), Int8(1))].hospital_probability == 1.0   # Hospitalized, harvested
+        @test idx_soc[(Int8(1), Int8(2))].hospital_probability == 0.4   # modern Severe, from the SoC
+
+        # without one, the pre-decoupling no-op profile still stands for that modern slot
+        _, idx_none = determine_health_progression(Dict{String,Any}(), nothing, nothing, (p_soc,), true)
+        @test idx_none[(Int8(1), Int8(2))].hospital_probability == 0.0
 
         # old-format Critical is detected and rerouted to LegacyCritical (assignment list rewritten in place)
         legacy_params = Dict(

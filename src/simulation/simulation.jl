@@ -807,14 +807,15 @@ function determine_health_progression(configfile_params::Dict, health_progressio
         embedded && throw(ArgumentError("legacy progression categories cannot be combined with modern embedded care parameters. " *
             "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category care, drop the legacy " *
             "categories and embed a `HealthProfile` on each progression instead."))
-        _haspath(configfile_params, ["HealthProgression"]) && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
-        return policy, _harvest_legacy_health_profiles(pathogens,
-            StandardOfCare(severe = SevereHealthProfile(), critical = CriticalHealthProfile()))
+        has_section && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
+        # a standard of care only reaches the modern categories mixed in alongside legacy ones
+        return policy, _harvest_legacy_health_profiles(pathogens, isnothing(baseline) ?
+            StandardOfCare(severe = SevereHealthProfile(), critical = CriticalHealthProfile()) : baseline)
     end
 
-    # warn once here rather than once per uncovered category
+    # warn once here rather than once per uncovered category; only the default policy needs the index
     if !embedded && isnothing(baseline)
-        @warn "No care parameters were embedded on any progression, and no standard of care was provided; no hospitalization, ICU admission, or health-related death will occur."
+        policy isa DefaultHealthProgression && @warn "No care parameters were embedded on any progression, and no standard of care was provided; no hospitalization, ICU admission, or health-related death will occur."
         return policy, HealthProfileIndex()
     end
 
@@ -1340,13 +1341,14 @@ end
     create_health_progression(params::Dict)
 
 Creates the combination policy a `[HealthProgression]` section describes. `type` names the policy and
-`parameters` are passed to it as distributions or reals. A section carrying the deprecated
-`severe`/`critical` sub-tables describes no policy of its own; see `_deprecated_standard_of_care`.
+`parameters` are passed to it as distributions or reals, and may be omitted for a policy that takes
+none (such as `DefaultHealthProgression`). A section carrying the deprecated `severe`/`critical`
+sub-tables describes no policy of its own; see `_deprecated_standard_of_care`.
 """
 function create_health_progression(params::Dict)
     hp_type = get_subtype(params["type"], HealthProgression)
-    p = params["parameters"]
     _has_deprecated_care(params) && return DefaultHealthProgression()
+    p = _health_progression_parameters(params)
 
     return try
         hp_type(; (Symbol(k) => create_progression_parameter(v) for (k, v) in p)...)
@@ -1356,12 +1358,22 @@ function create_health_progression(params::Dict)
 end
 
 """
+    _health_progression_parameters(params::Dict)
+
+The `parameters` sub-table of a `[HealthProgression]` section, or an empty one if it omits it.
+"""
+_health_progression_parameters(params::Dict) = get(params, "parameters", Dict{String,Any}())
+
+"""
     _has_deprecated_care(params::Dict)
 
 `true` if a `[HealthProgression]` section carries `severe`/`critical` sub-tables, the pre-split
 spelling of a `[StandardOfCare]` section.
 """
-_has_deprecated_care(params::Dict) = haskey(params["parameters"], "severe") || haskey(params["parameters"], "critical")
+function _has_deprecated_care(params::Dict)
+    p = _health_progression_parameters(params)
+    return haskey(p, "severe") || haskey(p, "critical")
+end
 
 """
     _deprecated_standard_of_care(params::Dict)
