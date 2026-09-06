@@ -67,6 +67,7 @@ module GEMS
     include("contacts/contact_sampling.jl")
     include("population/individuals.jl")
     include("pathogen/health_progression/health_progression.jl")
+    include("pathogen/health_progression/health_profile_index.jl")
     include("pathogen/health_progression/host_health.jl")
     include("simulation/health_schedule.jl")
     include("population/populations.jl")
