@@ -159,6 +159,34 @@ end
         @test combine_outcome(HealthOutcome(), outcome_a).death == 20
     end
 
+    @testset "HealthProfileIndex" begin
+        sev = SevereHealthProfile(hospital_probability = 0.1)
+        crit = CriticalHealthProfile(hospital_probability = 0.9)
+
+        index = HealthProfileIndex()
+        @test isempty(index)
+        @test length(index) == 0
+        @test !haskey(index, (Int8(1), Int8(1)))
+
+        index[(Int8(1), Int8(1))] = sev
+        index[(Int8(2), Int8(3))] = crit
+        @test !isempty(index)
+        @test length(index) == 2
+        @test haskey(index, (Int8(2), Int8(3)))
+        @test !haskey(index, (Int8(2), Int8(1)))   # same pathogen, different slot
+        @test index[(Int8(1), Int8(1))] === sev
+        @test sort!(collect(keys(index))) == [(Int8(1), Int8(1)), (Int8(2), Int8(3))]
+
+        # iterating yields the (key, profile) pairs
+        @test sort!([k for (k, _) in index]) == [(Int8(1), Int8(1)), (Int8(2), Int8(3))]
+        @test Set(v for (_, v) in index) == Set([sev, crit])
+
+        # setting an existing key replaces rather than adds
+        index[(Int8(1), Int8(1))] = crit
+        @test length(index) == 2
+        @test index[(Int8(1), Int8(1))] === crit
+    end
+
     @testset "show" begin
         # a full care timeline prints every realized part of the ladder
         ct = CareContribution(hospital_admission = 1, hospital_discharge = 40, icu_admission = 5,
@@ -176,6 +204,15 @@ end
         # the outcome distinguishes a scheduled death from survival
         @test occursin("death", @capture_out show(HealthOutcome(death = 5, death_pathogen_id = 2)))
         @test occursin("alive", @capture_out show(HealthOutcome()))
+
+        # an empty index says so; a populated one lists a row per entry
+        @test occursin("empty", @capture_out show(HealthProfileIndex()))
+        index = HealthProfileIndex()
+        index[(Int8(1), Int8(2))] = CriticalHealthProfile()
+        index_out = @capture_out show(index)
+        @test occursin("1 entries", index_out)
+        @test occursin("pathogen 1, progression 2", index_out)
+        @test occursin("CriticalHealthProfile", index_out)
     end
 
     @testset "DefaultHealthProgression folds across a host's infections" begin
@@ -554,6 +591,23 @@ end
             Dict{String, Any}(), nothing, nothing, ((progressions = [crit_bare],),), true)
         @test policy_bare isa DefaultHealthProgression
         @test isempty(index_bare)
+
+        # a config [StandardOfCare] section covers the categories embedding none ...
+        soc_cfg = Dict{String, Any}("StandardOfCare" =>
+            Dict("critical" => Dict("hospital_probability" => 0.42)))
+        _, index_soc = determine_health_progression(soc_cfg, nothing, nothing, (p, p3), false)
+        @test _profile(index_soc, 3, 1).hospital_probability == 0.42   # Bare: from the section
+        @test _profile(index_soc, 1, 1).hospital_probability == 0.9    # embedded still wins
+
+        # ... but not when the pathogens were passed explicitly: the section is then not the caller's
+        _, index_ignored = @test_logs (:warn, r"standard of care will be ignored") match_mode = :any determine_health_progression(
+            soc_cfg, nothing, nothing, (p, p3), true)
+        @test isnothing(_profile(index_ignored, 3, 1))
+
+        # an explicit standard_of_care argument wins over the section either way
+        _, index_arg = determine_health_progression(soc_cfg, nothing,
+            StandardOfCare(critical = CriticalHealthProfile(hospital_probability = 0.7)), (p3,), true)
+        @test _profile(index_arg, 3, 1).hospital_probability == 0.7
 
         # an index can be built by hand from pathogen objects and category types
         by_hand = HealthProfileIndex(p => (Critical, CriticalHealthProfile(death_probability = 0.42)))
