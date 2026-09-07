@@ -131,7 +131,9 @@ Returns how many settings the individual belongs to.
 
 ###
 ### MEMBERSHIP MASK
-### Entries are sorted by setting type, so a type's rank among the mask bits is its block offset.
+### One bit per setting type the individual holds at least one entry for. Entries stay sorted by
+### type, so while every type appears once a type's rank among the bits is its block offset; a
+### repeated type breaks that and the lookups fall back to scanning the block.
 ###
 
 const MEMBERSHIP_MASK_BITS = 8 * sizeof(fieldtype(Individual, :membership_mask))
@@ -139,9 +141,22 @@ const MEMBERSHIP_MASK_BITS = 8 * sizeof(fieldtype(Individual, :membership_mask))
 @inline _membership_bit(tidx::UInt8) = UInt16(1) << (tidx - 0x01)
 
 """
+    _mask_locates_entries(individual::Individual)
+
+Whether an entry's position can be counted off the mask. False when a type repeats or one sits
+beyond the mask, since the bit count then falls short of `plan_count`.
+
+Conservative: counting is still right for types below the repeat, but rejecting the whole block
+costs only a scan.
+"""
+@inline _mask_locates_entries(individual::Individual) =
+    count_ones(individual.membership_mask) == individual.plan_count
+
+"""
     plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
 
 Returns the index in `store.entries` of the individual's entry for a setting of type `T`, or `0`.
+When the type appears more than once, returns the first.
 """
 @inline function plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
     tidx = setting_type_index(T)
@@ -149,6 +164,7 @@ Returns the index in `store.entries` of the individual's entry for a setting of 
     bit = _membership_bit(tidx)
     mask = individual.membership_mask
     mask & bit == 0 && return 0
+    _mask_locates_entries(individual) || return _plan_slot_scan(store, individual, tidx)
     return Int(individual.plan_offset) + count_ones(mask & (bit - UInt16(1)))
 end
 
@@ -172,10 +188,22 @@ function _plan_slot_scan(store::ActivityPlanStore, individual::Individual, tidx:
     return 0
 end
 
-# position an entry of type `tidx` takes in the block
-@inline function _insert_position(individual::Individual, tidx::UInt8)
+# position an entry of type `tidx` takes in the block, which stays sorted by type
+@inline function _insert_position(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
     tidx > MEMBERSHIP_MASK_BITS && return Int(individual.plan_count)
+    _mask_locates_entries(individual) ||
+        return _insert_position_scan(store, individual, tidx)
     return count_ones(individual.membership_mask & (_membership_bit(tidx) - UInt16(1)))
+end
+
+# first position holding a higher type, so a repeated type groups with its own kind
+function _insert_position_scan(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+    off = Int(individual.plan_offset)
+    n = Int(individual.plan_count)
+    @inbounds for k in 0:(n - 1)
+        store.entries[off + k].setting_type > tidx && return k
+    end
+    return n
 end
 
 ###
@@ -360,7 +388,7 @@ function plan_add!(store::ActivityPlanStore, individual::Individual, entry::Plan
     n < typemax(Int8) || throw(ArgumentError(
         "individual $(id(individual)) already holds $n plan entries; the cap is $(typemax(Int8))"))
 
-    pos = _insert_position(individual, tidx)
+    pos = _insert_position(store, individual, tidx)
     old = Int(individual.plan_offset)
     new = _alloc_block!(store, n + 1)
 
@@ -408,7 +436,10 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
     end
 
     individual.plan_count = Int8(n - 1)
-    tidx <= MEMBERSHIP_MASK_BITS && (individual.membership_mask &= ~_membership_bit(tidx))
+    # the bit means "holds at least one of this type", so it only clears once the last one goes
+    if tidx <= MEMBERSHIP_MASK_BITS && _plan_slot_scan(store, individual, tidx) == 0
+        individual.membership_mask &= ~_membership_bit(tidx)
+    end
     return true
 end
 
