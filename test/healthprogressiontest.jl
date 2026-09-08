@@ -580,7 +580,7 @@ end
         @test _profile(index3, 1, 1).hospital_probability == 0.9
 
         # ... and that uncovered tier is warned about, while a pathogen that cannot take care is not
-        @test_logs (:warn, r"Bare \(3\): .*Critical carries no care") match_mode = :any _harvest_health_profiles((p, p3))
+        @test_logs (:warn, r"Bare \(3\): .*Critical carries no health") match_mode = :any _harvest_health_profiles((p, p3))
         mild_only = Pathogen(id = 4, name = "Cold", progressions = [Mild(
             exposure_to_infectiousness_onset = Poisson(2), infectiousness_onset_to_symptom_onset = Poisson(1),
             symptom_onset_to_recovery = Poisson(5))])
@@ -663,7 +663,7 @@ end
         @test _profile(index_base, 1, 2).hospital_probability == 0.9    # Critical: its own care wins
 
         # without a baseline the bare tier stays uncovered, and is warned about
-        index_nobase = @test_logs (:warn, r"Mixed \(1\): .*Severe carries no care") match_mode = :any _harvest_health_profiles((p_mixed,), nothing)
+        index_nobase = @test_logs (:warn, r"Mixed \(1\): .*Severe carries no health") match_mode = :any _harvest_health_profiles((p_mixed,), nothing)
         @test isnothing(_profile(index_nobase, 1, 1))
         @test _profile(index_nobase, 1, 2).hospital_probability == 0.9
 

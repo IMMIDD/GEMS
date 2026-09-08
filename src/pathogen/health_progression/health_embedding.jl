@@ -58,8 +58,8 @@ end
 """
     _baseline_profile(baseline, profile_type)
 
-The baseline `DefaultHealthProgression`'s profile for `profile_type`'s tier, or `nothing` if there is
-no baseline or the tier is not one it covers.
+The `StandardOfCare`'s profile for `profile_type`'s tier, or `nothing` if there is no baseline or the
+tier is not one it covers.
 """
 function _baseline_profile(baseline, profile_type)
     isnothing(baseline) && return nothing
@@ -71,9 +71,9 @@ end
 """
     _harvest_health_profiles(pathogens, baseline = nothing)
 
-Assembles the `HealthProfileIndex` keyed by `(pathogen_id, 1-based slot)` from the care embedded on
+Assembles the `HealthProfileIndex` keyed by `(pathogen_id, 1-based slot)` from the health embedded on
 every category defining `_health_profile_type`. A category embedding none falls back to `baseline`
-(a `DefaultHealthProgression`'s tier profiles), and is warned about when there is none.
+(a `StandardOfCare`), and is warned about when there is none.
 """
 function _harvest_health_profiles(pathogens, baseline = nothing)
     profiles = HealthProfileIndex()
@@ -86,7 +86,7 @@ function _harvest_health_profiles(pathogens, baseline = nothing)
             if isnothing(profile)
                 profile = _baseline_profile(baseline, profile_type)
                 isnothing(profile) && @warn "Pathogen $(name(p)) ($(id(p))): $(typeof(c)) carries no " *
-                    "care; its infections will demand no hospitalization and cause no deaths."
+                    "health; its infections will demand no hospitalization and cause no deaths."
                 isnothing(profile) && continue
             end
             profiles[(pid, Int8(k))] = profile
