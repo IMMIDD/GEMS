@@ -193,7 +193,7 @@ If you want to set up a custom config file, you can copy this one into your own 
 While you can adapt many parameters via the `Simulation()` constructor, config files are required if you want to add custom mechanics (like custom transmission functions or custom contact sampling functions).
 Please have a look at the tutorial for [advanced parameterization](@ref advanced).
 
-A config file contains four required sections: `[Simulation]`, `[Population]`, `[Pathogens]`, and `[Settings]`, plus the optional `[StandardOfCare]` and `[HealthProgression]`.
+A config file contains four required sections: `[Simulation]`, `[Population]`, `[Pathogens]`, and `[Settings]`, plus the optional `[HealthProgression]`.
 
 ```@contents
 Pages = ["config-files.md"]
@@ -449,23 +449,6 @@ progression, two pathogens can differ in mortality while sharing a severity stra
 A category with no `health` of its own demands no hospitalization and causes no deaths; GEMS warns
 when that happens.
 
-#### StandardOfCare
-
-Repeating the same profiles across many pathogens is what `[StandardOfCare]` avoids. It describes the
-health system's response to a disease tier, and applies to every progression carrying no `health` of
-its own — anything embedded always wins.
-
-```toml
-[StandardOfCare]
-    [StandardOfCare.severe]
-        hospital_probability = 0.05
-        ...
-    [StandardOfCare.critical]
-        hospital_probability = 0.95
-        death_probability = 0.3
-        ...
-```
-
 #### HealthProgression
 
 The `[HealthProgression]` section names the *combination* policy — how a host's concurrent infections
@@ -478,8 +461,9 @@ which infections do not interact, so the section is only needed for a custom pol
 ```
 
 !!! warning "Deprecated"
-    `severe`/`critical` sub-tables under `[HealthProgression.parameters]` are the pre-split spelling
-    of a `[StandardOfCare]` section. They still work and are mapped onto one with a warning.
+    `severe` and `critical` sub-tables here are the old per-tier form. They still work, with a
+    warning, and fill in the categories of that tier carrying no `health`. Write a `health` block
+    into the progressions instead. Pathogens passed to `Simulation` directly ignore them.
 
 ### Settings
 

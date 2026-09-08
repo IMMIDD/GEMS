@@ -11,8 +11,8 @@ A host's occupancy is the union of what each infection demanded on its own, so t
 each demand a ward bed never escalate to ICU. Implement `calculate_health_progression!` for your own
 `HealthProgression` to model interaction between co-active infections.
 
-Where the profiles come from is a separate question: embed them on the progression categories, or
-pass a `StandardOfCare` to the simulation for the categories that embed none.
+Health profiles are embedded on the progression categories and harvested into the `HealthProfileIndex` 
+when the simulation is assembled.
 """
 struct DefaultHealthProgression <: HealthProgression end
 

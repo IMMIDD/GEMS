@@ -1,10 +1,10 @@
 import GEMS: _rand_val, push_infection!, combine_outcome, HealthSchedule, _get_demand,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
-    create_progression, create_health_progression, create_health_profile, create_standard_of_care,
+    create_progression, create_health_progression, create_health_profile, _deprecated_standard_of_care,
     determine_health_progression, each_infection, progression_index, get_infection_state,
     calculate_progression, _harvest_legacy_health_profiles, _has_legacy_category,
     _is_legacy_critical, _normalize_legacy_pathogen!, _harvest_health_profiles, create_health,
-    _health_profile
+    _health_profile, StandardOfCare
 
 # every transition filed for one host, as (tick, level, is_admission), in tick order
 _filed(sched, host_id) = sort!([(t, tr.level, tr.is_admission)
@@ -421,8 +421,7 @@ end
             symptom_onset_to_severeness_onset = Poisson(1), severeness_onset_to_critical_onset = Poisson(2),
             critical_onset_to_critical_offset = Poisson(5), critical_offset_to_severeness_offset = Poisson(3),
             severeness_offset_to_recovery = Poisson(10))
-        crit = Critical(; dkw...)
-        soc = StandardOfCare(critical = CriticalHealthProfile(
+        crit = Critical(; dkw..., health = CriticalHealthProfile(
             hospital_probability = 0.4, critical_onset_to_hospital_admission = Poisson(1),
             hospital_admission_to_hospital_discharge = Poisson(8),
             hospital_to_icu_probability = 0.3, hospital_admission_to_icu_admission = Poisson(1),
@@ -432,7 +431,7 @@ end
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
         pB = Pathogen(id = 2, name = "B", progressions = [crit],
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
-        sim = Simulation(pop_size = 10_000, pathogens = (pA, pB), standard_of_care = soc,
+        sim = Simulation(pop_size = 10_000, pathogens = (pA, pB),
             infected_fraction = 0.005, seed = 42, tickunit = 'd')
         run!(sim; with_progressbar = false)
 
@@ -587,27 +586,23 @@ end
         @test_logs _harvest_health_profiles((p, mild_only))
 
         # no embedded care, no explicit policy, no config sections -> default policy, empty index
-        policy_bare, index_bare = @test_logs (:warn, r"no standard of care") match_mode = :any determine_health_progression(
-            Dict{String, Any}(), nothing, nothing, ((progressions = [crit_bare],),), true)
+        policy_bare, index_bare = @test_logs (:warn, r"No health parameters were embedded") match_mode = :any determine_health_progression(
+            Dict{String, Any}(), nothing, ((progressions = [crit_bare],),), true)
         @test policy_bare isa DefaultHealthProgression
         @test isempty(index_bare)
 
-        # a config [StandardOfCare] section covers the categories embedding none ...
-        soc_cfg = Dict{String, Any}("StandardOfCare" =>
-            Dict("critical" => Dict("hospital_probability" => 0.42)))
-        _, index_soc = determine_health_progression(soc_cfg, nothing, nothing, (p, p3), false)
+        # the deprecated per-tier section covers the categories embedding none ...
+        soc_cfg = Dict{String, Any}("HealthProgression" => Dict("type" => "DefaultHealthProgression",
+            "parameters" => Dict("critical" => Dict("hospital_probability" => 0.42))))
+        _, index_soc = @test_logs (:warn, r"deprecated") match_mode = :any determine_health_progression(
+            soc_cfg, nothing, (p, p3), false)
         @test _profile(index_soc, 3, 1).hospital_probability == 0.42   # Bare: from the section
         @test _profile(index_soc, 1, 1).hospital_probability == 0.9    # embedded still wins
 
         # ... but not when the pathogens were passed explicitly: the section is then not the caller's
-        _, index_ignored = @test_logs (:warn, r"standard of care will be ignored") match_mode = :any determine_health_progression(
-            soc_cfg, nothing, nothing, (p, p3), true)
+        _, index_ignored = @test_logs (:warn, r"will be ignored") match_mode = :any determine_health_progression(
+            soc_cfg, nothing, (p, p3), true)
         @test isnothing(_profile(index_ignored, 3, 1))
-
-        # an explicit standard_of_care argument wins over the section either way
-        _, index_arg = determine_health_progression(soc_cfg, nothing,
-            StandardOfCare(critical = CriticalHealthProfile(hospital_probability = 0.7)), (p3,), true)
-        @test _profile(index_arg, 3, 1).hospital_probability == 0.7
 
         # an index can be built by hand from pathogen objects and category types
         by_hand = HealthProfileIndex(p => (Critical, CriticalHealthProfile(death_probability = 0.42)))
@@ -696,7 +691,7 @@ end
         @test _profile(health_profiles(sim_manual), 3, 1).death_probability == 0.9
     end
 
-    @testset "[StandardOfCare] and [HealthProgression] config round-trip" begin
+    @testset "[HealthProgression] config round-trip" begin
         params = Dict(
             "severe" => Dict(
                 "hospital_probability" => 0.1,
@@ -710,21 +705,23 @@ end
                 "icu_admission_to_icu_discharge" => Dict("distribution" => "Poisson", "parameters" => [8]),
                 "icu_discharge_to_hospital_discharge" => Dict("distribution" => "Poisson", "parameters" => [5]),
                 "critical_onset_to_death" => Dict("distribution" => "Poisson", "parameters" => [7])))
-        soc = create_standard_of_care(params)
+        # the pre-split spelling still parses, mapped onto the internal carrier with a warning
+        deprecated = Dict("type" => "DefaultHealthProgression", "parameters" => params)
+        @test create_health_progression(deprecated) isa DefaultHealthProgression
+        soc = @test_logs (:warn, r"deprecated") match_mode = :any _deprecated_standard_of_care(deprecated)
         @test soc isa StandardOfCare
         @test soc.severe.hospital_probability == 0.1
         @test soc.critical.hospital_to_icu_probability == 0.6
 
         # a tier the section leaves out gets no profile
-        @test isnothing(create_standard_of_care(Dict("severe" => params["severe"])).critical)
+        severe_only = Dict("type" => "DefaultHealthProgression", "parameters" => Dict("severe" => params["severe"]))
+        @test isnothing((@test_logs (:warn, r"deprecated") match_mode = :any _deprecated_standard_of_care(severe_only)).critical)
 
-        # the pre-split spelling still parses, mapped onto a StandardOfCare with a warning
-        deprecated = Dict("type" => "DefaultHealthProgression", "parameters" => params)
-        @test create_health_progression(deprecated) isa DefaultHealthProgression
-        soc_dep = @test_logs (:warn, r"deprecated") match_mode = :any GEMS._deprecated_standard_of_care(deprecated)
-        @test soc_dep.critical.hospital_to_icu_probability == 0.6
+        # a section carrying neither tier is not deprecated at all
+        @test isnothing(_deprecated_standard_of_care(Dict("type" => "DefaultHealthProgression")))
+
         # ... but only for the default policy
-        @test_throws ArgumentError GEMS._deprecated_standard_of_care(
+        @test_throws ArgumentError _deprecated_standard_of_care(
             Dict("type" => "AlwaysHospitalize", "parameters" => params))
 
         # a failed profile construction is rewrapped as an ErrorException carrying the type name
@@ -851,21 +848,17 @@ end
             symptom_onset_to_severeness_onset = 1, severeness_onset_to_severeness_offset = 10,
             severeness_offset_to_recovery = 4, hospital_probability = 0.1)
         p_mix = Pathogen(id = 1, name = "Mix", progressions = [hosp, sev_embed])
-        @test_throws ArgumentError determine_health_progression(Dict{String,Any}(), nothing, nothing, (p_mix,), true)
+        @test_throws ArgumentError determine_health_progression(Dict{String,Any}(), nothing, (p_mix,), true)
 
-        # a standard of care fills the modern slots; legacy slots keep their harvested profiles
+        # legacy slots keep their harvested profiles; a modern category mixed in gets the
+        # pre-decoupling no-op profile, matching what it fell through to before the split
         sev_plain = Severe(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
             symptom_onset_to_severeness_onset = 1, severeness_onset_to_severeness_offset = 10,
             severeness_offset_to_recovery = 4)
         p_soc = Pathogen(id = 1, name = "Soc", progressions = [hosp, sev_plain])
-        soc_legacy = StandardOfCare(severe = SevereHealthProfile(hospital_probability = 0.4))
-        _, idx_soc = determine_health_progression(Dict{String,Any}(), nothing, soc_legacy, (p_soc,), true)
-        @test idx_soc[(Int8(1), Int8(1))].hospital_probability == 1.0   # Hospitalized, harvested
-        @test idx_soc[(Int8(1), Int8(2))].hospital_probability == 0.4   # modern Severe, from the SoC
-
-        # without one, the pre-decoupling no-op profile still stands for that modern slot
-        _, idx_none = determine_health_progression(Dict{String,Any}(), nothing, nothing, (p_soc,), true)
-        @test idx_none[(Int8(1), Int8(2))].hospital_probability == 0.0
+        _, idx_none = determine_health_progression(Dict{String,Any}(), nothing, (p_soc,), true)
+        @test idx_none[(Int8(1), Int8(1))].hospital_probability == 1.0   # Hospitalized, harvested
+        @test idx_none[(Int8(1), Int8(2))].hospital_probability == 0.0   # modern Severe, no-op
 
         # old-format Critical is detected and rerouted to LegacyCritical (assignment list rewritten in place)
         legacy_params = Dict(

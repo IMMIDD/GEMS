@@ -40,7 +40,6 @@ HealthProgression
 HealthProfile
 DefaultHealthProgression
 HealthProfileIndex
-StandardOfCare
 SevereHealthProfile
 CriticalHealthProfile
 calculate_health_progression!

@@ -335,7 +335,7 @@ Which profile an infection draws from is a separate question from how a host's i
     ```julia
     Critical(...; hospital_probability = 0.9, hospital_to_icu_probability = 0.6, death_probability = 0.25)
     ```
-    Pass `health = CriticalHealthProfile(...)` instead to keep them separate from the disease timings. A tier with neither its own health nor a `StandardOfCare` demands no hospitalization and causes no deaths; GEMS warns when that happens. See the [config reference](@ref config-files) for the config-file form.
+    Pass `health = CriticalHealthProfile(...)` instead to keep them separate from the disease timings. A tier with no health of its own demands no hospitalization and causes no deaths; GEMS warns when that happens. See the [config reference](@ref config-files) for the config-file form.
 
 To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression!()` method: it `push!`es its care demand onto `contributions` and returns the death it proposes.
 
