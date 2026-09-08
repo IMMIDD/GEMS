@@ -1,4 +1,4 @@
-import GEMS: _rand_val, push_infection!, combine_outcome, HealthSchedule, _get_demand,
+import GEMS: _rand_val, push_infection!, combine_outcome, HealthSchedule, _get_demand, _set_demand!,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
     create_progression, create_health_progression, create_health_profile, _deprecated_standard_of_care,
     determine_health_progression, each_infection, progression_index, get_infection_state,
@@ -87,6 +87,20 @@ end
 
         vent = CareContribution(CARE_VENTILATION, Int16(5), Int16(9))
         @test vent.hospital_admission == 5 && vent.icu_admission == 5 && vent.ventilation_admission == 5
+    end
+
+    @testset "care demand counters" begin
+        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(30))
+        _set_demand!(ind, CARE_HOSPITAL, Int16(3))
+        _set_demand!(ind, CARE_ICU, Int16(2))
+        @test _set_demand!(ind, CARE_VENTILATION, Int16(1)) == 1     # returns what it wrote
+        @test (_get_demand(ind, CARE_HOSPITAL), _get_demand(ind, CARE_ICU),
+            _get_demand(ind, CARE_VENTILATION)) == (3, 2, 1)
+
+        # a level with no field on Individual is rejected, not silently folded into ventilation's
+        bogus = reinterpret(CareLevel, Int8(99))
+        @test_throws ArgumentError _get_demand(ind, bogus)
+        @test_throws ArgumentError _set_demand!(ind, bogus, Int16(1))
     end
 
     @testset "calculate_health_profile per tier" begin

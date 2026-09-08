@@ -579,9 +579,12 @@ detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int
 
 The host's current demand count for one care level.
 """
-@inline _get_demand(individual::Individual, level::CareLevel) =
-    level === CARE_HOSPITAL ? individual.hospital_demands :
-    level === CARE_ICU ? individual.icu_demands : individual.ventilation_demands
+@inline function _get_demand(individual::Individual, level::CareLevel)
+    level === CARE_HOSPITAL && return individual.hospital_demands
+    level === CARE_ICU && return individual.icu_demands
+    level === CARE_VENTILATION && return individual.ventilation_demands
+    throw(ArgumentError("no demand field on Individual for care level $level"))
+end
 
 """
     _set_demand!(individual::Individual, level::CareLevel, n::Int16)
@@ -589,9 +592,10 @@ The host's current demand count for one care level.
 Writes one care level's demand count and returns it.
 """
 @inline function _set_demand!(individual::Individual, level::CareLevel, n::Int16)
-    level === CARE_HOSPITAL ? (individual.hospital_demands = n) :
-    level === CARE_ICU ? (individual.icu_demands = n) : (individual.ventilation_demands = n)
-    return n
+    level === CARE_HOSPITAL && return (individual.hospital_demands = n)
+    level === CARE_ICU && return (individual.icu_demands = n)
+    level === CARE_VENTILATION && return (individual.ventilation_demands = n)
+    throw(ArgumentError("no demand field on Individual for care level $level"))
 end
 
 """
