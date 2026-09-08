@@ -34,6 +34,10 @@ WorkplaceSite
 ```@docs
 activate!
 add!(::SettingsContainer, ::Setting)
+add_member!(::IndividualSetting, ::Individual, ::Population)
+add_member!(::IndividualSetting, ::Individual, ::Simulation)
+remove_member!(::IndividualSetting, ::Individual, ::Population)
+remove_member!(::IndividualSetting, ::Individual, ::Simulation)
 add_type!
 add_types!
 ags(::ContainerSetting, ::Simulation)
