@@ -1,4 +1,4 @@
-import GEMS: settings_from_jld2!, settings_from_population, remove_empty_settings!, new_setting_ids!, delete_dangling_ids!, get_open_contained!, get_containers!, contained, contained_type, contains_type
+import GEMS: settings_from_jld2!, settings_from_population, remove_empty_settings!, new_setting_ids!, delete_dangling_ids!, get_open_contained!, get_containers!, contained, contained_type, contains_type, add_member!, remove_member!
 
 @testset "Settings" begin
     rs = RandomSampling()
