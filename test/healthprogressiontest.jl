@@ -1,4 +1,4 @@
-import GEMS: _rand_val, push_infection!, combine_outcome, HealthSchedule, _demand,
+import GEMS: _rand_val, push_infection!, combine_outcome, HealthSchedule, _get_demand,
     _health_profile_type, _embedded_health_profile, _has_embedded_health_profile,
     create_progression, create_health_progression, create_health_profile, create_standard_of_care,
     determine_health_progression, each_infection, progression_index, get_infection_state,

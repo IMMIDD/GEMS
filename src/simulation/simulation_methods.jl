@@ -648,7 +648,7 @@ negative.
 """
 @inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
     for level in reverse(instances(CareLevel))
-        _demand(indiv, level) > 0 || continue
+        _get_demand(indiv, level) > 0 || continue
         _set_demand!(indiv, level, Int16(0))
         log!(hl, id(indiv), _care_event(level, false), tick)
     end

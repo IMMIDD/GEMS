@@ -575,11 +575,11 @@ detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int
 ### CARE DEMAND ###
 
 """
-    _demand(individual::Individual, level::CareLevel)
+    _get_demand(individual::Individual, level::CareLevel)
 
 The host's current demand count for one care level.
 """
-@inline _demand(individual::Individual, level::CareLevel) =
+@inline _get_demand(individual::Individual, level::CareLevel) =
     level === CARE_HOSPITAL ? individual.hospital_demands :
     level === CARE_ICU ? individual.icu_demands : individual.ventilation_demands
 
@@ -603,7 +603,7 @@ detects the 0-1 and 1-0 edges.
 Throws on a negative result, which also catches overflow since `Int16` wraps.
 """
 @inline function _adjust_demand!(individual::Individual, level::CareLevel, delta::Int16)
-    n = _demand(individual, level) + delta
+    n = _get_demand(individual, level) + delta
     n < 0 && throw(ArgumentError("care demand for $level went negative on host $(individual.id): a discharge with no matching admission. Only simulation-level reset! is safe."))
     return _set_demand!(individual, level, n)
 end
