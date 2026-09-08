@@ -9,7 +9,6 @@ export Department, Office, WorkplaceSite, Workplace
 export settingchar, settingstring
 export contact_sampling_method, contact_sampling_method!
 export add!, remove!
-export add_member!, remove_member!
 export id, individuals
 export activate!, deactivate!, isactive
 export open!, close!
