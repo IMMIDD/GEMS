@@ -156,7 +156,7 @@ import GEMS: _mean_contacts_per_age_group,
             critical_onset_to_critical_offset = Poisson(5), critical_offset_to_severeness_offset = Poisson(3),
             severeness_offset_to_recovery = Poisson(10))
         crit = Critical(; dkw..., health = CriticalHealthProfile(
-            hospital_probability = 0.4, critical_onset_to_hospital_admission = Poisson(1),
+            hospital_probability = 0.4, severeness_onset_to_hospital_admission = Poisson(1),
             hospital_admission_to_hospital_discharge = Poisson(8),
             death_probability = 0.15, critical_onset_to_death = Poisson(6)))
         mkp(i, nm) = Pathogen(id = i, name = nm, progressions = [crit],

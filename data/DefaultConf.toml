@@ -142,16 +142,16 @@
                     icu_admission_to_ventilation_admission = 0
                     ventilation_admission_to_ventilation_discharge = 0
                     ventilation_discharge_to_icu_discharge = 0
-                    # hospital admission delay (after critical onset)
-                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_hospital_admission]
+                    # ward admission delay (after severeness onset), unless the ICU claims the patient first
+                    [Pathogens.Covid19.progressions.Critical.health.severeness_onset_to_hospital_admission]
                         distribution = "Poisson"
                         parameters = [1]
                     # ward stay length when not admitted to ICU (after hospital admission)
                     [Pathogens.Covid19.progressions.Critical.health.hospital_admission_to_hospital_discharge]
                         distribution = "Poisson"
                         parameters = [10]
-                    # ICU admission delay (after hospital admission)
-                    [Pathogens.Covid19.progressions.Critical.health.hospital_admission_to_icu_admission]
+                    # ICU admission delay (after critical onset)
+                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_icu_admission]
                         distribution = "Poisson"
                         parameters = [1]
                     # ICU stay length when not ventilated (after ICU admission)

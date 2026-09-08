@@ -126,13 +126,13 @@ end
             critical_offset = Int16(15), severeness_offset = Int16(16), recovery = Int16(20))
         inf_crit = InfectionState(Int8(1), Int32(-1), dp_crit)
         # death is set well after the care ladder resolves
-        cc = CriticalHealthProfile(hospital_probability = 1.0, critical_onset_to_hospital_admission = 0,
-            hospital_to_icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
+        cc = CriticalHealthProfile(hospital_probability = 1.0, severeness_onset_to_hospital_admission = 0,
+            hospital_to_icu_probability = 1.0, critical_onset_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5, icu_discharge_to_hospital_discharge = 3,
             death_probability = 1.0, critical_onset_to_death = 20)
         care2, outcome2 = calculate_health_profile(cc, ind, inf_crit, rng)
-        @test care2.hospital_admission == 8
-        @test care2.icu_admission == 8
+        @test care2.hospital_admission == 5    
+        @test care2.icu_admission == 8         
         @test care2.icu_discharge == 13
         @test care2.hospital_discharge == 16
         @test outcome2.death == 28
@@ -140,8 +140,8 @@ end
 
         # full critical ladder: guaranteed ventilation nests inside ICU which nests inside the ward.
         # discharges chain inward-out, so ventilation ends first, then ICU, then hospital.
-        cc_vent = CriticalHealthProfile(hospital_probability = 1.0, critical_onset_to_hospital_admission = 0,
-            hospital_to_icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
+        cc_vent = CriticalHealthProfile(hospital_probability = 1.0, severeness_onset_to_hospital_admission = 0,
+            hospital_to_icu_probability = 1.0, critical_onset_to_icu_admission = 0,
             icu_to_ventilation_probability = 1.0, icu_admission_to_ventilation_admission = 0,
             ventilation_admission_to_ventilation_discharge = 4, ventilation_discharge_to_icu_discharge = 2,
             icu_discharge_to_hospital_discharge = 3)
@@ -154,7 +154,7 @@ end
 
         # cascading-off caveat: hospital_to_icu_probability set without hospital_probability is a no-op,
         # since ICU is gated behind a hospital admission that never happens
-        cc2 = CriticalHealthProfile(hospital_to_icu_probability = 1.0, hospital_admission_to_icu_admission = 0,
+        cc2 = CriticalHealthProfile(hospital_to_icu_probability = 1.0, critical_onset_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5)
         care3, _ = calculate_health_profile(cc2, ind, inf_crit, rng)
         @test care3.hospital_admission == -1
@@ -232,7 +232,7 @@ end
     @testset "DefaultHealthProgression folds across a host's infections" begin
         rng = Xoshiro(1)
         cc = CriticalHealthProfile(hospital_probability = 1.0, hospital_to_icu_probability = 1.0, death_probability = 1.0,
-            critical_onset_to_hospital_admission = 0, hospital_admission_to_icu_admission = 0,
+            severeness_onset_to_hospital_admission = 0, critical_onset_to_icu_admission = 0,
             icu_admission_to_icu_discharge = 5, icu_discharge_to_hospital_discharge = 3,
             critical_onset_to_death = 9)
         hp = DefaultHealthProgression()
@@ -256,8 +256,11 @@ end
         filed = _filed(sched, 1)
         # two stays: hospital+ICU in, ICU+hospital out, twice over
         @test length(filed) == 8
-        @test (Int16(4), CARE_HOSPITAL, true) in filed     # pathogen 1, critical_onset 4
-        @test (Int16(20), CARE_HOSPITAL, true) in filed    # pathogen 2, critical_onset 20
+        # the ward is entered at severeness onset, the ICU at critical onset
+        @test (Int16(3), CARE_HOSPITAL, true) in filed     # pathogen 1, severeness_onset 3
+        @test (Int16(4), CARE_ICU, true) in filed          # pathogen 1, critical_onset 4
+        @test (Int16(6), CARE_HOSPITAL, true) in filed     # pathogen 2, severeness_onset 6
+        @test (Int16(20), CARE_ICU, true) in filed         # pathogen 2, critical_onset 20
         @test count(f -> f[2] === CARE_HOSPITAL && f[3], filed) == 2
 
         # earliest death wins
@@ -402,7 +405,7 @@ end
         hp = DefaultHealthProgression()
         # only pathogen 1 carries a profile; pathogen 2 misses the index entirely
         index = _idx((1, 0) => CriticalHealthProfile(hospital_probability = 0.4,
-            critical_onset_to_hospital_admission = 1, hospital_admission_to_hospital_discharge = 3))
+            severeness_onset_to_hospital_admission = 1, hospital_admission_to_hospital_discharge = 3))
 
         function stays(n, coinfect::Bool)
             rng = Xoshiro(1234); episodes = 0
@@ -436,9 +439,9 @@ end
             critical_onset_to_critical_offset = Poisson(5), critical_offset_to_severeness_offset = Poisson(3),
             severeness_offset_to_recovery = Poisson(10))
         crit = Critical(; dkw..., health = CriticalHealthProfile(
-            hospital_probability = 0.4, critical_onset_to_hospital_admission = Poisson(1),
+            hospital_probability = 0.4, severeness_onset_to_hospital_admission = Poisson(1),
             hospital_admission_to_hospital_discharge = Poisson(8),
-            hospital_to_icu_probability = 0.3, hospital_admission_to_icu_admission = Poisson(1),
+            hospital_to_icu_probability = 0.3, critical_onset_to_icu_admission = Poisson(1),
             icu_admission_to_icu_discharge = Poisson(5), icu_discharge_to_hospital_discharge = Poisson(2),
             death_probability = 0.15, critical_onset_to_death = Poisson(6)))
         pA = Pathogen(id = 1, name = "A", progressions = [crit],
@@ -713,9 +716,9 @@ end
                 "hospital_admission_to_hospital_discharge" => Dict("distribution" => "Poisson", "parameters" => [10])),
             "critical" => Dict(
                 "hospital_probability" => 0.9, "hospital_to_icu_probability" => 0.6, "death_probability" => 0.3,
-                "critical_onset_to_hospital_admission" => Dict("distribution" => "Poisson", "parameters" => [1]),
+                "severeness_onset_to_hospital_admission" => Dict("distribution" => "Poisson", "parameters" => [1]),
                 "hospital_admission_to_hospital_discharge" => Dict("distribution" => "Poisson", "parameters" => [10]),
-                "hospital_admission_to_icu_admission" => Dict("distribution" => "Poisson", "parameters" => [1]),
+                "critical_onset_to_icu_admission" => Dict("distribution" => "Poisson", "parameters" => [1]),
                 "icu_admission_to_icu_discharge" => Dict("distribution" => "Poisson", "parameters" => [8]),
                 "icu_discharge_to_hospital_discharge" => Dict("distribution" => "Poisson", "parameters" => [5]),
                 "critical_onset_to_death" => Dict("distribution" => "Poisson", "parameters" => [7])))

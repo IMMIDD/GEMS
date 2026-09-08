@@ -132,13 +132,13 @@ If you want to set up a custom config file, you can copy this one into your own 
                     icu_admission_to_ventilation_admission = 0
                     ventilation_admission_to_ventilation_discharge = 0
                     ventilation_discharge_to_icu_discharge = 0
-                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_hospital_admission]
+                    [Pathogens.Covid19.progressions.Critical.health.severeness_onset_to_hospital_admission]
                         distribution = "Poisson"
                         parameters = [1]
                     [Pathogens.Covid19.progressions.Critical.health.hospital_admission_to_hospital_discharge]
                         distribution = "Poisson"
                         parameters = [10]
-                    [Pathogens.Covid19.progressions.Critical.health.hospital_admission_to_icu_admission]
+                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_icu_admission]
                         distribution = "Poisson"
                         parameters = [1]
                     [Pathogens.Covid19.progressions.Critical.health.icu_admission_to_icu_discharge]

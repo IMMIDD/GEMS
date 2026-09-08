@@ -97,8 +97,8 @@
                 hospital_probability = 1.0
                 hospital_to_icu_probability = 1.0
                 death_probability = 0.3
-                critical_onset_to_hospital_admission = 0
-                hospital_admission_to_icu_admission = 0
+                severeness_onset_to_hospital_admission = 0
+                critical_onset_to_icu_admission = 0
 
                 # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
                 [Pathogens.Covid19.progressions.Critical.exposure_to_infectiousness_onset]
