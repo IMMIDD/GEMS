@@ -2,7 +2,7 @@ import GEMS: PlanEntry, ActivityPlanStore, plan_slot, plan_add!, plan_remove!, p
     plan_length, plan_set_setting_id!, plan_set_member_index!, build_plans!, assign_settings!,
     assign_member_indices!, validate_plans, container_frame_index, membership_column,
     setting_type_index, setting_type_from_index, register_setting_type!, activity_plans,
-    member_index, setting_type_of, weight, entry_active, entry_active!
+    member_index, setting_type_of, weight, entry_active, entry_active!, plan_slots
 
 # a registered and an unregistered setting type, for the type-index tests
 struct PlanTestSettingA <: IndividualSetting end
@@ -149,18 +149,48 @@ struct PlanTestSettingB <: IndividualSetting end
         @test length(store.active) == length(store.entries)
     end
 
-    @testset "Id-qualified lookup cannot reach a repeat" begin
+    @testset "Id-qualified lookup" begin
         store = ActivityPlanStore()
         i = Individual(id = 1, sex = 0, age = 30)
         plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
         plan_add!(store, i, PlanEntry(Household, Int32(11), Int32(2)))
+        plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
 
-        # plan_slot(store, ind, T, sid) resolves the type to its *first* entry and then
-        # compares that one id, so only one of the two households is reachable.
-        # add_member!/remove_member! and _assign_member_indices! are all built on it.
-        found = count(sid -> plan_slot(store, i, Household, sid) != 0, (Int32(10), Int32(11)))
-        @test found == 1
-        @test_broken found == 2
+        # searching the whole run, not just its first entry. add_member!/remove_member! and
+        # _assign_member_indices! are built on this, and silently desynced without it
+        for sid in (Int32(10), Int32(11))
+            slot = plan_slot(store, i, Household, sid)
+            @test slot != 0
+            @test setting_id(store.entries[slot]) == sid
+        end
+        @test plan_slot(store, i, Household, Int32(99)) == 0
+        # a neighbouring type is not swept into the run
+        @test plan_slot(store, i, Office, Int32(11)) == 0
+        @test setting_id(store.entries[plan_slot(store, i, Office, Int32(20))]) == Int32(20)
+
+        # a repeat joins its own kind in insertion order, so the block stays sorted
+        @test [setting_id(e) for e in plan_entries(store, i)] ==
+              Int32[10, 11, 20]
+    end
+
+    @testset "plan_slots" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
+        plan_add!(store, i, PlanEntry(Household, Int32(11), Int32(2)))
+        plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
+
+        hh = plan_slots(store, i, Household)
+        @test length(hh) == 2
+        @test [setting_id(store.entries[s]) for s in hh] == Int32[10, 11]
+        # the run stops at the type boundary
+        @test [setting_id(store.entries[s]) for s in plan_slots(store, i, Office)] == Int32[20]
+        # and agrees with the single-slot form
+        @test first(hh) == plan_slot(store, i, Household)
+
+        # a type the individual holds none of gives an empty range, not an error
+        @test isempty(plan_slots(store, i, SchoolClass))
+        @test isempty(plan_slots(store, Individual(id = 2, sex = 0, age = 30), Household))
     end
 
     @testset "plan_remove!" begin

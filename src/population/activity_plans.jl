@@ -171,58 +171,74 @@ costs only a scan.
 @inline _mask_locates_entries(individual::Individual) =
     count_ones(individual.membership_mask) == individual.plan_count
 
+# A type's entries form one contiguous run, returned block-relative as `(start, len)`. When
+# `len` is 0, `start` is where the run would begin, so inserts read it too.
+@inline function _plan_type_run(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+    (tidx > MEMBERSHIP_MASK_BITS || !_mask_locates_entries(individual)) &&
+        return _plan_type_run_scan(store, individual, tidx)
+    mask = individual.membership_mask
+    bit = _membership_bit(tidx)
+    return (count_ones(mask & (bit - UInt16(1))), mask & bit == 0 ? 0 : 1)
+end
+
+function _plan_type_run_scan(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+    off = Int(individual.plan_offset)
+    n = Int(individual.plan_count)
+    @inbounds for k in 0:(n - 1)
+        t = store.entries[off + k].setting_type
+        t < tidx && continue
+        # types ascend, so a higher one means the run is empty
+        t > tidx && return (k, 0)
+        j = k + 1
+        while j < n && store.entries[off + j].setting_type == tidx
+            j += 1
+        end
+        return (k, j - k)
+    end
+    return (n, 0)
+end
+
 """
     plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
 
-Returns the index in `store.entries` of the individual's entry for a setting of type `T`, or `0`.
-When the type appears more than once, returns the first.
+Returns the index in `store.entries` of the individual's first entry of type `T`, or `0`.
+A repeated type's entries sit together in insertion order, so this is the earliest added.
 """
 @inline function plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
-    tidx = setting_type_index(T)
-    tidx > MEMBERSHIP_MASK_BITS && return _plan_slot_scan(store, individual, tidx)
-    bit = _membership_bit(tidx)
-    mask = individual.membership_mask
-    mask & bit == 0 && return 0
-    _mask_locates_entries(individual) || return _plan_slot_scan(store, individual, tidx)
-    return Int(individual.plan_offset) + count_ones(mask & (bit - UInt16(1)))
+    start, len = _plan_type_run(store, individual, setting_type_index(T))
+    return len == 0 ? 0 : Int(individual.plan_offset) + start
 end
 
 """
     plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting}
 
-As above, but for one particular setting rather than any of its type.
+As above, but for one particular setting rather than any of its type. Searches the whole run,
+so a repeated type's later entries are reachable too.
 """
 @inline function plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting}
-    slot = plan_slot(store, individual, T)
-    slot == 0 && return 0
-    return @inbounds store.entries[slot].setting_id == sid ? slot : 0
-end
-
-# fallback for setting types beyond the mask width
-function _plan_slot_scan(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+    start, len = _plan_type_run(store, individual, setting_type_index(T))
     off = Int(individual.plan_offset)
-    @inbounds for k in 0:(Int(individual.plan_count) - 1)
-        store.entries[off + k].setting_type == tidx && return off + k
+    @inbounds for k in start:(start + len - 1)
+        store.entries[off + k].setting_id == sid && return off + k
     end
     return 0
 end
 
-# position an entry of type `tidx` takes in the block, which stays sorted by type
-@inline function _insert_position(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
-    tidx > MEMBERSHIP_MASK_BITS && return Int(individual.plan_count)
-    _mask_locates_entries(individual) ||
-        return _insert_position_scan(store, individual, tidx)
-    return count_ones(individual.membership_mask & (_membership_bit(tidx) - UInt16(1)))
+"""
+    plan_slots(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
+
+Returns every slot in `store.entries` holding an entry of type `T`, empty when there are none.
+"""
+@inline function plan_slots(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
+    start, len = _plan_type_run(store, individual, setting_type_index(T))
+    s = Int(individual.plan_offset) + start
+    return s:(s + len - 1)
 end
 
-# first position holding a higher type, so a repeated type groups with its own kind
-function _insert_position_scan(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
-    off = Int(individual.plan_offset)
-    n = Int(individual.plan_count)
-    @inbounds for k in 0:(n - 1)
-        store.entries[off + k].setting_type > tidx && return k
-    end
-    return n
+# where an entry of type `tidx` goes: the run's end, so a repeat joins its kind in insertion order
+@inline function _insert_position(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+    start, len = _plan_type_run(store, individual, tidx)
+    return start + len
 end
 
 ###
@@ -467,7 +483,8 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
 
     individual.plan_count = Int8(n - 1)
     # the bit means "holds at least one of this type", so it only clears once the last one goes
-    if tidx <= MEMBERSHIP_MASK_BITS && _plan_slot_scan(store, individual, tidx) == 0
+    # the mask still describes the pre-removal block, so scan rather than trust it
+    if tidx <= MEMBERSHIP_MASK_BITS && _plan_type_run_scan(store, individual, tidx)[2] == 0
         individual.membership_mask &= ~_membership_bit(tidx)
     end
     return true
