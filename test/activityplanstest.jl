@@ -87,6 +87,82 @@ struct PlanTestSettingB <: IndividualSetting end
         @test plan_slot(store, i, Household, Int32(99)) == 0
     end
 
+    @testset "Repeated setting types" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        # two entries of one type make count_ones(mask) fall short of plan_count, so
+        # every lookup drops off the bit-counting fast path onto the scan
+        plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
+        plan_add!(store, i, PlanEntry(Household, Int32(11), Int32(2)))
+        plan_add!(store, i, PlanEntry(Municipality, Int32(40), Int32(1)))
+        plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
+
+        @test plan_length(i) == 4
+        @test count_ones(i.membership_mask) < plan_length(i)
+
+        # the block stays sorted and the repeat groups with its own kind
+        types = [setting_type_of(e) for e in plan_entries(store, i)]
+        @test issorted(types)
+        @test types[1] == types[2] == setting_type_index(Household)
+
+        # a higher-indexed type resolves to its own entry rather than being misrouted
+        # by a bit count the repeat has invalidated
+        @test setting_id(store.entries[plan_slot(store, i, Office)]) == Int32(20)
+        @test setting_id(store.entries[plan_slot(store, i, Municipality)]) == Int32(40)
+        # a repeated type answers with the first of its entries
+        first_hh = setting_id(store.entries[plan_slot(store, i, Household)])
+        @test first_hh in (Int32(10), Int32(11))
+
+        # removing one of a repeated type must not clear the type's bit
+        kept = first_hh == Int32(10) ? Int32(11) : Int32(10)
+        @test plan_remove!(store, i, plan_slot(store, i, Household))
+        @test plan_slot(store, i, Household) != 0
+        @test setting_id(store.entries[plan_slot(store, i, Household)]) == kept
+        @test i.membership_mask & (UInt16(1) << (setting_type_index(Household) - 1)) != 0
+
+        # with the repeat gone the fast path comes back, and it is only correct over a
+        # block the scan-path inserts left sorted
+        @test count_ones(i.membership_mask) == plan_length(i)
+        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        for (T, sid) in ((Household, kept), (Office, Int32(20)), (Municipality, Int32(40)))
+            @test setting_id(store.entries[plan_slot(store, i, T)]) == sid
+        end
+
+        # the last entry of the type clears the bit
+        @test plan_remove!(store, i, plan_slot(store, i, Household))
+        @test plan_slot(store, i, Household) == 0
+        @test i.membership_mask & (UInt16(1) << (setting_type_index(Household) - 1)) == 0
+    end
+
+    @testset "Active flags survive a repeated type" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
+        plan_add!(store, i, PlanEntry(Household, Int32(11), Int32(2)))
+
+        entry_active!(store, Int(i.plan_offset), false)
+        # an insert relocates the block, so the cleared flag has to travel with its entry
+        plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
+        off = Int(i.plan_offset)
+        flags = [entry_active(store, off + k) for k in 0:(plan_length(i) - 1)]
+        @test count(!, flags) == 1
+        @test length(store.active) == length(store.entries)
+    end
+
+    @testset "Id-qualified lookup cannot reach a repeat" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
+        plan_add!(store, i, PlanEntry(Household, Int32(11), Int32(2)))
+
+        # plan_slot(store, ind, T, sid) resolves the type to its *first* entry and then
+        # compares that one id, so only one of the two households is reachable.
+        # add_member!/remove_member! and _assign_member_indices! are all built on it.
+        found = count(sid -> plan_slot(store, i, Household, sid) != 0, (Int32(10), Int32(11)))
+        @test found == 1
+        @test_broken found == 2
+    end
+
     @testset "plan_remove!" begin
         store = ActivityPlanStore()
         i = Individual(id = 1, sex = 0, age = 30)
