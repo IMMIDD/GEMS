@@ -331,7 +331,6 @@ function _seed_infection!(simulation::Simulation, spec::InfectionSeed, rng::Xosh
 
     for i in picked
         infect!(i, t, pthgn, sim = simulation, rng = rng)
-        activate_memberships!(i, simulation)
     end
     return nothing
 end
