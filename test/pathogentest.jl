@@ -273,7 +273,8 @@ end
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
         run!(sim)
         
-        flattened_pc = vcat(infectionlogger(sim).progression_category...)
+        flattened_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
 
         # check if all infections used the custom progression category in simulation
         @test all(pc -> pc == :TestProgression, flattened_pc)
@@ -451,7 +452,8 @@ end
         run!(sim)
         
         flat_id_b = vcat(infectionlogger(sim).id_b...)
-        flat_pc = vcat(infectionlogger(sim).progression_category...)
+        flat_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
         
         # make sure that there were infections
         @test length(flat_id_b) > 0 

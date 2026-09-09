@@ -22,7 +22,7 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     # Infected data
     id_b::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    progression_category::Vector{Vector{Symbol}} = [Vector{Symbol}() for _ in 1:Threads.maxthreadid()]
+    progression_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
     infectiousness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     symptom_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     severeness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
@@ -49,12 +49,13 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     infecter_index::Union{Nothing, InfecterIndex} = nothing
 end
 
+
 function log!(
         logger::InfectionLogger,
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
-        progression_category::Symbol,
+        progression_id::Int8,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -81,7 +82,7 @@ function log!(
     push!(logger.id_a[tid], a)
     push!(logger.id_b[tid], b)
     push!(logger.pathogen_id[tid], pathogen_id)
-    push!(logger.progression_category[tid], progression_category)
+    push!(logger.progression_id[tid], progression_id)
     push!(logger.tick[tid], tick)
     push!(logger.infectiousness_onset[tid], infectiousness_onset)
     push!(logger.symptom_onset[tid], symptom_onset)
@@ -111,7 +112,7 @@ function log!(;
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
-        progression_category::Symbol,
+        progression_id::Int8,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -129,7 +130,7 @@ function log!(;
     )
 
     return log!(
-        logger, a, b, pathogen_id, progression_category, tick,
+        logger, a, b, pathogen_id, progression_id, tick,
         infectiousness_onset, symptom_onset, severeness_onset,
         critical_onset, critical_offset, severeness_offset,
         recovery, setting_id, setting_type, lat, lon, ags, source_infection_id
@@ -186,7 +187,7 @@ function dataframe(logger::InfectionLogger)
         id_a = vcat(logger.id_a...),
         id_b = vcat(logger.id_b...),
         pathogen_id = vcat(logger.pathogen_id...),
-        progression_category = vcat(logger.progression_category...),
+        progression_id = vcat(logger.progression_id...),
         infectiousness_onset = vcat(logger.infectiousness_onset...),
         symptom_onset = vcat(logger.symptom_onset...),
         severeness_onset = vcat(logger.severeness_onset...),
@@ -210,7 +211,7 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["id_a"] = vcat(logger.id_a...)
         file["id_b"] = vcat(logger.id_b...)
         file["pathogen_id"] = vcat(logger.pathogen_id...)
-        file["progression_category"] = vcat(logger.progression_category...)
+        file["progression_id"] = vcat(logger.progression_id...)
         file["infectiousness_onset"] = vcat(logger.infectiousness_onset...)
         file["symptom_onset"] = vcat(logger.symptom_onset...)
         file["severeness_onset"] = vcat(logger.severeness_onset...)

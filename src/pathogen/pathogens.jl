@@ -205,6 +205,21 @@ Emits a static if/elseif chain at compile time, enabling union-splitting.
 end
 progression_index(p::Pathogen, dp_type::DataType) = progression_index(p.progressions, dp_type)
 
+"""
+    progression_names(pathogens::P, pathogen_ids, progression_ids) where {P<:Tuple}
+
+Resolves logged `(pathogen_id, progression_id)` pairs to category names, inverting
+`progression_index`. Builds the lookup once rather than indexing the tuples per row.
+"""
+function progression_names(pathogens::P, pathogen_ids, progression_ids) where {P<:Tuple}
+    isempty(pathogens) && return Symbol[]
+    table = [Symbol[] for _ in 1:maximum(id, pathogens)]
+    for p in pathogens
+        table[id(p)] = [nameof(typeof(prog)) for prog in p.progressions]
+    end
+    return Symbol[table[pid][prog] for (pid, prog) in zip(pathogen_ids, progression_ids)]
+end
+
 
 function Base.show(io::IO, p::Pathogen)
     res = "Pathogen: $(p.name) (ID: $(p.id))\n"
