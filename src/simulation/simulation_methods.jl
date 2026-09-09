@@ -481,51 +481,81 @@ end
 """
     flush_pending_infections!(sim::Simulation)
  
-Logs every `_PendingInfection` staged in `sim.infection_buffers` and drains it into
-`sim.infection_registry`. Empties each buffer when done.
+Commits every `_PendingInfection` staged in `sim.infection_buffers`, keeping one winner per
+`(host, pathogen)` and dropping the rest. Empties each buffer when done.
+
+Two passes: the first records the smallest `_deduplication_key` per
+`(host, pathogen)`, the second commits the attempt carrying it.
 """
 function flush_pending_infections!(sim::Simulation)
     pop = population(sim)
     logger = infectionlogger(sim)
     num_shards = Threads.maxthreadid()
- 
+
     Threads.@threads :static for shard_id in 1:num_shards
         infections = sim.infection_registries[shard_id]
+        best = sim.deduplication_winners[shard_id]
 
-        # drain all buffers destined for this shard
+        # pass 1: pick canonical winner of each contest, over the whole column
+        empty!(best)
+        @inbounds for producer_id in 1:num_shards
+            for p in sim.infection_buffers[producer_id, shard_id]
+                k = _deduplication_key(p)
+                hp = (p.host_id, p.pathogen_id)
+                cur = get(best, hp, nothing)
+                (cur === nothing || k < cur) && (best[hp] = k)
+            end
+        end
+
+        # pass 2: commit the winners. The mask guard skips the losers' host and settles exact ties.
         @inbounds for producer_id in 1:num_shards
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
+                _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = get_individual_by_id(pop, p.host_id)
-                infection_id = log!(
-                    logger,
-                    p.infecter_id,
-                    p.host_id,
-                    p.pathogen_id,
-                    p.progression_id,
-                    p.tick,
-                    infectiousness_onset(p.dp),
-                    symptom_onset(p.dp),
-                    severeness_onset(p.dp),
-                    critical_onset(p.dp),
-                    critical_offset(p.dp),
-                    severeness_offset(p.dp),
-                    recovery(p.dp),
-                    p.setting_id,
-                    p.setting_type,
-                    p.lat,
-                    p.lon,
-                    p.ags,
-                    p.source_infection_id
-                )
-                state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)
-                # contribute the new infection's care demand
-                compute_health!(ind, infections, health_progression(sim), state, tick(sim),
-                    sim.rngs[shard_id], sim.health_schedules[shard_id])
+                infected(ind, p.pathogen_id) && continue
+                _commit_infection!(sim, ind, p, infections, logger, shard_id)
             end
             empty!(buf)
         end
     end
+    return nothing
+end
+
+"""
+    _commit_infection!(sim, ind, p::_PendingInfection, infections, logger, shard_id)
+
+Realizes one deduplicated infection: logs it, stores the state, contributes its care demand,
+sets the host's flags and activates the settings it can now spread in.
+"""
+function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfection,
+        infections::InfectionRegistry, logger::InfectionLogger, shard_id::Int)
+    infection_id = log!(
+        logger,
+        p.infecter_id,
+        p.host_id,
+        p.pathogen_id,
+        p.progression_id,
+        p.tick,
+        infectiousness_onset(p.dp),
+        symptom_onset(p.dp),
+        severeness_onset(p.dp),
+        critical_onset(p.dp),
+        critical_offset(p.dp),
+        severeness_offset(p.dp),
+        recovery(p.dp),
+        p.setting_id,
+        p.setting_type,
+        p.lat,
+        p.lon,
+        p.ags,
+        p.source_infection_id
+    )
+    state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)
+    compute_health!(ind, infections, health_progression(sim), state, tick(sim),
+        sim.rngs[shard_id], sim.health_schedules[shard_id])
+    _mark_infected!(ind, p.pathogen_id)
+    activate_memberships!(ind, sim)
     return nothing
 end
 

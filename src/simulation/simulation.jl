@@ -237,6 +237,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     contact_buffers::Vector{Vector{Individual}}
     infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{_EndedInfection}}
+    # per shard, the attempt that wins each contested (host, pathogen) this tick
+    deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
 
     # inner default constructor
     function Simulation(
@@ -309,7 +311,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # INITIALIZE BUFFERS
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
             [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
-            [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
+            [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # removal buffers matrix
+            [sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards) for _ in 1:num_shards] # deduplication winners
         )
 
         # increase simulation counter

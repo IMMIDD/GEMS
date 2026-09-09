@@ -57,7 +57,9 @@ function infect!(infectee::Individual,
         lat::Float32,
         setting_type::Char,
         ags::Int32 ,
-        source_infection_id::Int32)
+        source_infection_id::Int32,
+        infecter_position::Int32,
+        type_rank::UInt8)
 
     # an individual can hold at most one active infection per pathogen 
     if infected(infectee, id(pathogen))
@@ -84,23 +86,15 @@ function infect!(infectee::Individual,
         # throwaway schedule: with no tick loop nothing would drain it, and the hardcoded
         # DefaultHealthProgression() has zero admission and death probabilities anyway
         compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), state, tick, rng, HealthSchedule())
+        _mark_infected!(infectee, id(pathogen))
     else
-        # stage for the serial flush, which logs and assigns the infection id
+        # stage for the serial flush, which dedups, logs and sets the host's flags
         new_infection_id = DEFAULT_INFECTION_ID
         shard_id = _owner_shard(id(infectee))
         push!(sim.infection_buffers[Threads.threadid(), shard_id],
             _PendingInfection(id(infectee), infecter_id, source_infection_id, setting_id, ags,
-                lat, lon, setting_type, tick, id(pathogen), tag, dp))
+                infecter_position, lat, lon, setting_type, tick, id(pathogen), tag, type_rank, dp))
     end
-
-    # increase lifetime number of infections
-    inc_number_of_infections!(infectee)
-
-    # flag this pathogen as currently active
-    infected!(infectee, id(pathogen), true)
-
-    # set infected flag
-    infected!(infectee, true)
 
     return new_infection_id
 end
@@ -155,9 +149,12 @@ function infect!(infectee::Individual,
         lat::Float32 = NaN32,
         setting_type::Char = '?',
         ags::Int32 = Int32(-1),
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID,
+        infecter_position::Int32 = Int32(0),
+        type_rank::UInt8 = UInt8(0))
 
-        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
+        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags,
+            source_infection_id, infecter_position, type_rank)
 end
 """
     infect!(infectee::Individual, sim::Simulation)
@@ -196,7 +193,9 @@ function try_to_infect!(infctr::Individual,
         sim::Simulation,
         pathogen::Pathogen,
         setting::Setting,
-        source_infection_id::Int32)::Bool
+        source_infection_id::Int32,
+        infecter_position::Int32,
+        type_rank::UInt8)::Bool
 
     # if one of both is dead
     if dead(infctr) || dead(infctd)
@@ -236,7 +235,9 @@ function try_to_infect!(infctr::Individual,
             lat(hh),
             settingchar(setting),
             ags(setting) |> id,
-            source_infection_id)
+            source_infection_id,
+            infecter_position,
+            type_rank)
         return true
     end
 
@@ -273,9 +274,11 @@ function try_to_infect!(infctr::Individual,
         sim::Simulation,
         pathogen::Pathogen,
         setting::Setting;
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)::Bool
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID,
+        infecter_position::Int32 = Int32(0),
+        type_rank::UInt8 = UInt8(0))::Bool
 
-        try_to_infect!(infctr, infctd, sim, pathogen, setting, source_infection_id)
+        try_to_infect!(infctr, infctd, sim, pathogen, setting, source_infection_id, infecter_position, type_rank)
 end
 
 
@@ -399,6 +402,8 @@ function _process_infections!(csm, setting, sim)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
+    # the dedup sort key: this setting's place in the type walk
+    type_rank = setting_type_index(typeof(setting))
 
     for ind_index in 1:length(present_inds)
         ind = present_inds[ind_index]
@@ -412,7 +417,8 @@ function _process_infections!(csm, setting, sim)
                 # only resolves the shard registry if the individual has overflow infections
                 for state in each_infection(ind, sim)
                     state.infectiousness == 0 && continue
-                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id, current_tick)
+                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting,
+                        state.infection_id, current_tick, Int32(ind_index), type_rank)
                 end
             end
         end
@@ -421,12 +427,11 @@ function _process_infections!(csm, setting, sim)
     return num_infected
 end
 
-function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick::Int16)
+function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick::Int16,
+        infecter_position::Int32, type_rank::UInt8)
     for c in c_buffer
         if can_be_contacted(c, setting, tick)
-            if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
-                activate_memberships!(c, sim)
-            end
+            try_to_infect!(ind, c, sim, pat, setting, src_inf_id, infecter_position, type_rank)
         end
     end
 end

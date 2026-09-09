@@ -376,6 +376,18 @@ Mirrors `detected!(individual, pathogen_id, val)`; read back with `infected(indi
 end
 
 """
+    _mark_infected!(individual::Individual, pathogen_id::Int8)
+
+Sets the flags a new infection implies: lifetime count, the pathogen's active bit, and the
+infected flag. Shared by `infect!` and `flush_pending_infections!`.
+"""
+@inline function _mark_infected!(individual::Individual, pathogen_id::Int8)
+    inc_number_of_infections!(individual)
+    infected!(individual, pathogen_id, true)
+    infected!(individual, true)
+end
+
+"""
     is_infectious(individual::Individual)
     isinfectious(individual::Individual)
     infectious(individual::Individual)
