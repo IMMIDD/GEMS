@@ -340,6 +340,8 @@ end
         # then infect ind2 at tick=0; get_infections_between finds it in range [-1..0]
         set_progression!(ind1, pid3)
         infect!(ind2, Int16(0), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
+        # the trace reads the infection log, which only fills at the flush
+        GEMS.flush_pending_infections!(sim3)
         
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
         eq3 = GEMS.event_queue(sim3)

@@ -80,6 +80,8 @@
 
         @test 0 == num_of_infected(pop)
         infect!(individuals(sim)[1], sim)
+        # deferred write path: the flags land on the host at the flush
+        GEMS.flush_pending_infections!(sim)
         @test 1 == num_of_infected(pop)
 
         run!(sim)
