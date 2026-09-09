@@ -169,12 +169,12 @@ end
         @test pr_crit.critical_onset_to_critical_offset === poi7
         @test pr_crit.critical_offset_to_severeness_offset === poi3
         @test pr_crit.severeness_offset_to_recovery === poi4
-        @test isnothing(pr_crit.care)
+        @test isnothing(pr_crit.health)
     end
 
     @testset "Embedded Health Profile" begin
         # flat health profile parameters embedded directly in a Critical progression
-        crit_with_care = Critical(
+        crit_with_health = Critical(
             exposure_to_infectiousness_onset = poi1,
             infectiousness_onset_to_symptom_onset = poi1,
             symptom_onset_to_severeness_onset = poi1,
@@ -185,11 +185,11 @@ end
             hospital_probability = 0.9,
             hospital_to_icu_probability = 0.5
         )
-        @test crit_with_care.care isa CriticalHealthProfile
-        @test crit_with_care.care.hospital_probability == 0.9
-        @test crit_with_care.care.hospital_to_icu_probability == 0.5
+        @test crit_with_health.health isa CriticalHealthProfile
+        @test crit_with_health.health.hospital_probability == 0.9
+        @test crit_with_health.health.hospital_to_icu_probability == 0.5
 
-        # care= object and flat kwargs are mutually exclusive
+        # health= object and flat kwargs are mutually exclusive
         @test_throws ArgumentError Critical(
             exposure_to_infectiousness_onset = poi1,
             infectiousness_onset_to_symptom_onset = poi1,
@@ -198,7 +198,7 @@ end
             critical_onset_to_critical_offset = poi7,
             critical_offset_to_severeness_offset = poi3,
             severeness_offset_to_recovery = poi4,
-            care = CriticalHealthProfile(),
+            health = CriticalHealthProfile(),
             hospital_probability = 0.9
         )
 
@@ -214,8 +214,8 @@ end
             bogus_param = 3
         )
 
-        # a Severe tier with no embedded care leaves `.care` as nothing
-        @test isnothing(pr_sev.care)
+        # a Severe tier with no embedded health leaves `.health` as nothing
+        @test isnothing(pr_sev.health)
     end
 
     @testset "Custom Progression Category" begin
