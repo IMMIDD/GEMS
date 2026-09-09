@@ -2,7 +2,7 @@ import GEMS: PlanEntry, ActivityPlanStore, plan_slot, plan_add!, plan_remove!, p
     plan_length, plan_set_setting_id!, plan_set_member_index!, build_plans!, assign_settings!,
     assign_member_indices!, validate_plans, container_frame_index, membership_column,
     setting_type_index, setting_type_from_index, register_setting_type!, activity_plans,
-    member_index, setting_type_of, weight
+    member_index, setting_type_of, weight, entry_active, entry_active!
 
 # a registered and an unregistered setting type, for the type-index tests
 struct PlanTestSettingA <: IndividualSetting end
@@ -132,6 +132,38 @@ struct PlanTestSettingB <: IndividualSetting end
         # and growing again reuses the size-2 block that remove freed
         plan_add!(store, i, PlanEntry(Office, Int32(2), Int32(1)))
         @test length(store) == grown
+    end
+
+    @testset "Active flags" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        plan_add!(store, i, PlanEntry(Household, Int32(1), Int32(1)))
+        plan_add!(store, i, PlanEntry(Office, Int32(2), Int32(1)))
+
+        @test length(store.active) == length(store.entries)
+        # an entry applies until something gates it
+        @test all(entry_active(store, plan_slot(store, i, T)) for T in (Household, Office))
+
+        # a cleared flag follows its entry when the block is relocated by an add
+        entry_active!(store, plan_slot(store, i, Household), false)
+        plan_add!(store, i, PlanEntry(SchoolClass, Int32(3), Int32(1)))
+        @test !entry_active(store, plan_slot(store, i, Household))
+        @test entry_active(store, plan_slot(store, i, Office))
+        @test entry_active(store, plan_slot(store, i, SchoolClass))
+
+        # and when a remove relocates it
+        plan_remove!(store, i, plan_slot(store, i, SchoolClass))
+        @test !entry_active(store, plan_slot(store, i, Household))
+        @test entry_active(store, plan_slot(store, i, Office))
+        @test length(store.active) == length(store.entries)
+
+        # build_plans! leaves every entry applying
+        df = DataFrame(id = Int32.(1:3), age = Int8.(20:22), sex = Int8.(ones(3)),
+                       household = Int32[1, 1, 2])
+        pop = Population(df)
+        plans = activity_plans(pop)
+        @test length(plans.active) == length(plans.entries)
+        @test all(plans.active)
     end
 
     @testset "plan_set_setting_id!" begin

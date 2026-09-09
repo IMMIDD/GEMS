@@ -6,7 +6,7 @@
 # EXPORTS
 export PlanEntry, ActivityPlanStore
 export member_index, weight, setting_type_of
-export plan_entries, plan_length, container_frame_index
+export plan_entries, plan_length, entry_active, entry_active!, container_frame_index
 export build_plans!, assign_settings!, assign_member_indices!, activity_plans, validate_plans
 export membership_column
 
@@ -81,13 +81,15 @@ Every individual's plan entries in one flat vector. An individual's entries are 
 """
 mutable struct ActivityPlanStore <: AbstractActivityPlanStore
     entries::Vector{PlanEntry}
+    # one bit per entry: whether it applies this tick. All true until a calendar gates them.
+    active::BitVector
     # freed blocks by size, so a resized plan reuses one instead of leaking it
     free::Vector{Vector{Int32}}
     # false until `assign_member_indices!` runs; member indices are meaningless before that
     indexed::Bool
 end
 
-ActivityPlanStore() = ActivityPlanStore(PlanEntry[], Vector{Int32}[], false)
+ActivityPlanStore() = ActivityPlanStore(PlanEntry[], BitVector(), Vector{Int32}[], false)
 
 Base.length(store::ActivityPlanStore) = length(store.entries)
 Base.isempty(store::ActivityPlanStore) = isempty(store.entries)
@@ -128,6 +130,23 @@ end
 Returns how many settings the individual belongs to.
 """
 @inline plan_length(individual::Individual)::Int = Int(individual.plan_count)
+
+"""
+    entry_active(store::ActivityPlanStore, slot::Int)
+
+Returns whether the entry at `slot` applies this tick.
+"""
+@inline entry_active(store::ActivityPlanStore, slot::Int)::Bool = @inbounds store.active[slot]
+
+"""
+    entry_active!(store::ActivityPlanStore, slot::Int, val::Bool)
+
+Sets whether the entry at `slot` applies this tick.
+"""
+@inline function entry_active!(store::ActivityPlanStore, slot::Int, val::Bool)
+    @inbounds store.active[slot] = val
+    return nothing
+end
 
 ###
 ### MEMBERSHIP MASK
@@ -293,6 +312,10 @@ function build_plans!(pop::Population, df::DataFrame)
         ind.plan_count = Int8(n)
         ind.membership_mask = mask
     end
+
+    # nothing gates entries yet, so every one applies
+    resize!(store.active, length(store.entries))
+    fill!(store.active, true)
     return store
 end
 
@@ -352,6 +375,8 @@ a matching entry.
 function validate_plans(pop::Population, cntnr::SettingsContainer)
     plans = activity_plans(pop)
     _check_indexed(plans)
+    length(plans.active) == length(plans.entries) ||
+        error("the store holds $(length(plans.entries)) entries but $(length(plans.active)) active flags")
 
     for ind in individuals(pop), e in plan_entries(plans, ind)
         T = setting_type_from_index(setting_type_of(e))
@@ -394,10 +419,13 @@ function plan_add!(store::ActivityPlanStore, individual::Individual, entry::Plan
 
     @inbounds for k in 0:(pos - 1)
         store.entries[new + k] = store.entries[old + k]
+        store.active[new + k] = store.active[old + k]
     end
     @inbounds store.entries[new + pos] = entry
+    @inbounds store.active[new + pos] = true
     @inbounds for k in pos:(n - 1)
         store.entries[new + k + 1] = store.entries[old + k]
+        store.active[new + k + 1] = store.active[old + k]
     end
 
     _free_block!(store, old, n)
@@ -427,9 +455,11 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
         new = _alloc_block!(store, n - 1)
         @inbounds for k in 0:(pos - 1)
             store.entries[new + k] = store.entries[old + k]
+            store.active[new + k] = store.active[old + k]
         end
         @inbounds for k in (pos + 1):(n - 1)
             store.entries[new + k - 1] = store.entries[old + k]
+            store.active[new + k - 1] = store.active[old + k]
         end
         _free_block!(store, old, n)
         individual.plan_offset = Int32(new)
@@ -470,6 +500,7 @@ function _alloc_block!(store::ActivityPlanStore, n::Int)
     end
     off = length(store.entries) + 1
     resize!(store.entries, off + n - 1)
+    resize!(store.active, off + n - 1)
     return off
 end
 
