@@ -8,8 +8,8 @@ A logging structure specifically for infections. An infection event is given by 
 entries of the field-vectors at a given index. Data is thread-local to prevent lock contention.
 """
 @with_kw mutable struct InfectionLogger <: EventLogger
-    # Atomic counter for generating unique infection IDs safely across threads
-    infection_counter::Threads.Atomic{Int32} = Threads.Atomic{Int32}(0)
+    # Highest infection id issued. Reserved in blocks, so it exceeds the infection count.
+    last_infection_id::Int32 = Int32(0)
     # Atomic tick for the last modification
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
@@ -52,6 +52,7 @@ end
 
 function log!(
         logger::InfectionLogger,
+        infection_id::Int32,
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
@@ -74,11 +75,8 @@ function log!(
 
     tid = Threads.threadid()
 
-    # Safely generate a unique ID without a lock
-    new_infection_id = Threads.atomic_add!(logger.infection_counter, Int32(1)) + Int32(1)
-
     # push data directly to the thread-local arrays
-    push!(logger.infection_id[tid], new_infection_id)
+    push!(logger.infection_id[tid], infection_id)
     push!(logger.id_a[tid], a)
     push!(logger.id_b[tid], b)
     push!(logger.pathogen_id[tid], pathogen_id)
@@ -104,11 +102,12 @@ function log!(
 
     Threads.atomic_xchg!(logger.last_modified_tick, tick)
 
-    return(new_infection_id)
+    return infection_id
 end
 
 function log!(;
         logger::InfectionLogger,
+        infection_id::Int32,
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
@@ -130,11 +129,24 @@ function log!(;
     )
 
     return log!(
-        logger, a, b, pathogen_id, progression_id, tick,
+        logger, infection_id, a, b, pathogen_id, progression_id, tick,
         infectiousness_onset, symptom_onset, severeness_onset,
         critical_onset, critical_offset, severeness_offset,
         recovery, setting_id, setting_type, lat, lon, ags, source_infection_id
     )
+end
+
+"""
+    reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+
+Reserves `n` consecutive infection ids and returns the first. Call it from a serial point;
+the ids are then handed out without any cross-thread coordination. Reserving more than are
+used leaves gaps, so `last_infection_id` is an upper bound on the infection count.
+"""
+function reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+    first_id = logger.last_infection_id + Int32(1)
+    logger.last_infection_id += Int32(n)
+    return first_id
 end
 
 """

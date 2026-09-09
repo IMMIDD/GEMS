@@ -26,6 +26,7 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
 
     # Precompute secondary cases
     infs = infectionsDF(postProcessor)
+    # ids are sparse, so this sits slightly above the infection count
     max_inf_id = isempty(infs) ? 0 : maximum(infs.infection_id)
 
     secondary_counts = zeros(Int, max_inf_id)

@@ -38,6 +38,7 @@
 
             log!(
                 logger = il,
+                infection_id = Int32(1),
                 a = Int32(0),
                 b = Int32(0),
                 pathogen_id = Int8(0),
@@ -156,7 +157,7 @@
 
             # minimal infection record; only a, b and tick matter for the index
             function log_infection!(il, a, b, t)
-                log!(il, Int32(a), Int32(b), Int8(1), Int8(1), Int16(t),
+                log!(il, Int32(1), Int32(a), Int32(b), Int8(1), Int8(1), Int16(t),
                     Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
                     Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
             end

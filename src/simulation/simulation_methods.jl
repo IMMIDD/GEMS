@@ -486,15 +486,29 @@ Commits every `_PendingInfection` staged in `sim.infection_buffers`, keeping one
 
 Two passes: the first records the smallest `_deduplication_key` per
 `(host, pathogen)`, the second commits the attempt carrying it.
+
+Each shard reserves its block of infection ids up front, so ids are reproducible. Losers leave
+gaps in a block.
 """
 function flush_pending_infections!(sim::Simulation)
     pop = population(sim)
     logger = infectionlogger(sim)
     num_shards = Threads.maxthreadid()
 
+    # serial: reserve one id block per shard, sized by what that shard is about to see
+    id_bases = Vector{Int32}(undef, num_shards)
+    @inbounds for shard_id in 1:num_shards
+        arrivals = 0
+        for producer_id in 1:num_shards
+            arrivals += length(sim.infection_buffers[producer_id, shard_id])
+        end
+        id_bases[shard_id] = reserve_infection_ids!(logger, arrivals)
+    end
+
     Threads.@threads :static for shard_id in 1:num_shards
         infections = sim.infection_registries[shard_id]
         best = sim.deduplication_winners[shard_id]
+        next_id = id_bases[shard_id]
 
         # pass 1: pick canonical winner of each contest, over the whole column
         empty!(best)
@@ -514,7 +528,8 @@ function flush_pending_infections!(sim::Simulation)
                 _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = get_individual_by_id(pop, p.host_id)
                 infected(ind, p.pathogen_id) && continue
-                _commit_infection!(sim, ind, p, infections, logger, shard_id)
+                _commit_infection!(sim, ind, p, next_id, infections, logger, shard_id)
+                next_id += Int32(1)
             end
             empty!(buf)
         end
@@ -523,15 +538,16 @@ function flush_pending_infections!(sim::Simulation)
 end
 
 """
-    _commit_infection!(sim, ind, p::_PendingInfection, infections, logger, shard_id)
+    _commit_infection!(sim, ind, p::_PendingInfection, infection_id, infections, logger, shard_id)
 
-Realizes one deduplicated infection: logs it, stores the state, contributes its care demand,
-sets the host's flags and activates the settings it can now spread in.
+Realizes one deduplicated infection: logs it under `infection_id`, stores the state, contributes
+its care demand, sets the host's flags and activates the settings it can now spread in.
 """
 function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfection,
-        infections::InfectionRegistry, logger::InfectionLogger, shard_id::Int)
-    infection_id = log!(
+        infection_id::Int32, infections::InfectionRegistry, logger::InfectionLogger, shard_id::Int)
+    log!(
         logger,
+        infection_id,
         p.infecter_id,
         p.host_id,
         p.pathogen_id,
