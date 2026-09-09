@@ -103,7 +103,7 @@
             @test df1.tick[end] == t
             @test df1.id_a[end] == -1
             @test df1.id_b[end] == id(infecter)
-            @test df1.progression_category[end] == Symbol(Asymptomatic)
+            @test df1.progression_id[end] == GEMS.progression_index(first_pathogen(sim), Asymptomatic)
             @test df1.infectiousness_onset[end] >= t+3
             @test df1.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df1.severeness_onset[end] == GEMS.DEFAULT_TICK
@@ -132,7 +132,7 @@
             @test df2.tick[end] == t
             @test df2.id_a[end] == id(infecter)
             @test df2.id_b[end] == id(infectee)
-            @test df2.progression_category[end] == Symbol(Asymptomatic)
+            @test df2.progression_id[end] == GEMS.progression_index(first_pathogen(sim), Asymptomatic)
             @test df2.infectiousness_onset[end] >= t+3
             @test df2.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df2.severeness_onset[end] == GEMS.DEFAULT_TICK
