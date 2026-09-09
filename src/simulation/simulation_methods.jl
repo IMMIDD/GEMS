@@ -481,11 +481,12 @@ end
 """
     flush_pending_infections!(sim::Simulation)
  
-Drains every `_PendingInfection` staged in `sim.infection_buffers` into `sim.infection_registry`.
-Empties each buffer when done.
+Logs every `_PendingInfection` staged in `sim.infection_buffers` and drains it into
+`sim.infection_registry`. Empties each buffer when done.
 """
 function flush_pending_infections!(sim::Simulation)
     pop = population(sim)
+    logger = infectionlogger(sim)
     num_shards = Threads.maxthreadid()
  
     Threads.@threads :static for shard_id in 1:num_shards
@@ -496,7 +497,28 @@ function flush_pending_infections!(sim::Simulation)
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
                 ind = get_individual_by_id(pop, p.host_id)
-                state = push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
+                infection_id = log!(
+                    logger,
+                    p.infecter_id,
+                    p.host_id,
+                    p.pathogen_id,
+                    p.progression_id,
+                    p.tick,
+                    infectiousness_onset(p.dp),
+                    symptom_onset(p.dp),
+                    severeness_onset(p.dp),
+                    critical_onset(p.dp),
+                    critical_offset(p.dp),
+                    severeness_offset(p.dp),
+                    recovery(p.dp),
+                    p.setting_id,
+                    p.setting_type,
+                    p.lat,
+                    p.lon,
+                    p.ags,
+                    p.source_infection_id
+                )
+                state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)
                 # contribute the new infection's care demand
                 compute_health!(ind, infections, health_progression(sim), state, tick(sim),
                     sim.rngs[shard_id], sim.health_schedules[shard_id])

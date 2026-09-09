@@ -42,8 +42,8 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 
 # Returns
 
-- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` if `infectee` is
-  already actively infected with `pathogen`.
+- `Int32`: always `DEFAULT_INFECTION_ID`. Infection ids are assigned by
+  `flush_pending_infections!`, which logs the staged infections.
 
 """
 function infect!(infectee::Individual,
@@ -85,31 +85,12 @@ function infect!(infectee::Individual,
         # DefaultHealthProgression() has zero admission and death probabilities anyway
         compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), state, tick, rng, HealthSchedule())
     else
-        # log infection
-        new_infection_id = log!(
-            infectionlogger(sim),
-            infecter_id,
-            id(infectee),
-            id(pathogen),
-            tag,
-            tick,
-            infectiousness_onset(dp),
-            symptom_onset(dp),
-            severeness_onset(dp),
-            critical_onset(dp),
-            critical_offset(dp),
-            severeness_offset(dp),
-            recovery(dp),
-            setting_id,
-            setting_type,
-            lat,
-            lon,
-            ags,
-            source_infection_id
-        )
-        # stage for serial flush after the threaded phase
+        # stage for the serial flush, which logs and assigns the infection id
+        new_infection_id = DEFAULT_INFECTION_ID
         shard_id = _owner_shard(id(infectee))
-        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), tag, dp))
+        push!(sim.infection_buffers[Threads.threadid(), shard_id],
+            _PendingInfection(id(infectee), infecter_id, source_infection_id, setting_id, ags,
+                lat, lon, setting_type, tick, id(pathogen), tag, dp))
     end
 
     # increase lifetime number of infections
@@ -157,8 +138,8 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 
 # Returns
 
-- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` (with a warning) if `infectee` is
-  already actively infected with `pathogen`.
+- `Int32`: always `DEFAULT_INFECTION_ID`. Infection ids are assigned by
+  `flush_pending_infections!`, which logs the staged infections.
 
 """
 

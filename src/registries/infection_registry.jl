@@ -102,13 +102,20 @@ end
 """
     _PendingInfection
 
-Per-thread transfer struct staged in `infection_buffers` during the threaded
-contact phase, then drained into the individual cache / registry by
-`flush_pending_infections!`.
+Per-thread transfer struct staged in `infection_buffers` during the threaded contact
+phase, then logged and drained into the individual cache / registry by
+`flush_pending_infections!`, which assigns the infection id.
 """
 struct _PendingInfection
     host_id::Int32
-    infection_id::Int32
+    infecter_id::Int32
+    source_infection_id::Int32
+    setting_id::Int32
+    ags::Int32
+    lat::Float32
+    lon::Float32
+    setting_type::Char
+    tick::Int16
     pathogen_id::Int8
     progression_id::Int8
     dp::DiseaseProgression

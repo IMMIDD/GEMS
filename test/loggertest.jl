@@ -97,7 +97,9 @@
 
             # infect one agent
             infect!(infecter, t, first_pathogen(sim), sim = sim, rng = rng(sim))
-            
+            # infections only reach the logger on flush
+            GEMS.flush_pending_infections!(sim)
+
             # flatten logger internal arrays to a dataframe to check values
             df1 = dataframe(il)
             @test df1.tick[end] == t
@@ -127,6 +129,7 @@
                 setting_id=id(h),
                 setting_type=settingchar(h),
                 source_infection_id = df1.infection_id[end])
+            GEMS.flush_pending_infections!(sim)
 
             df2 = dataframe(il)
             @test df2.tick[end] == t
