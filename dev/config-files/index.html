@@ -73,7 +73,17 @@
                     distribution = &quot;Poisson&quot;
                     parameters = [4]
 
-            # CRITICAL PROGRESSION [disease tier only; hospital/ICU/death are decided by the HealthProgression]
+                # HOST HEALTH FOR THIS TIER [ward admission only]
+                [Pathogens.Covid19.progressions.Severe.health]
+                    hospital_probability = 0.05
+                    [Pathogens.Covid19.progressions.Severe.health.severeness_onset_to_hospital_admission]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [2]
+                    [Pathogens.Covid19.progressions.Severe.health.hospital_admission_to_hospital_discharge]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [10]
+
+            # CRITICAL PROGRESSION [disease tier; hospital/ICU/death live in its `health` block]
             [Pathogens.Covid19.progressions.Critical]
                 [Pathogens.Covid19.progressions.Critical.exposure_to_infectiousness_onset]
                     distribution = &quot;Poisson&quot;
@@ -97,6 +107,34 @@
                     distribution = &quot;Poisson&quot;
                     parameters = [4]
 
+                # HOST HEALTH FOR THIS TIER [hospital -&gt; ICU -&gt; ventilation, plus ungated death; ventilation off by default]
+                [Pathogens.Covid19.progressions.Critical.health]
+                    hospital_probability = 0.95
+                    hospital_to_icu_probability = 0.5
+                    icu_to_ventilation_probability = 0.0
+                    death_probability = 0.3          # ungated by hospital/ICU
+                    icu_admission_to_ventilation_admission = 0
+                    ventilation_admission_to_ventilation_discharge = 0
+                    ventilation_discharge_to_icu_discharge = 0
+                    [Pathogens.Covid19.progressions.Critical.health.severeness_onset_to_hospital_admission]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [1]
+                    [Pathogens.Covid19.progressions.Critical.health.hospital_admission_to_hospital_discharge]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [10]
+                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_icu_admission]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [1]
+                    [Pathogens.Covid19.progressions.Critical.health.icu_admission_to_icu_discharge]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [8]
+                    [Pathogens.Covid19.progressions.Critical.health.icu_discharge_to_hospital_discharge]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [5]
+                    [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_death]
+                        distribution = &quot;Poisson&quot;
+                        parameters = [7]
+
         # progression assignment method
         [Pathogens.Covid19.progression_assignment]
             type = &quot;AgeBasedProgressionAssignment&quot;
@@ -106,48 +144,6 @@
                 stratification_matrix = [[0.400, 0.580, 0.017, 0.003],
                                          [0.250, 0.600, 0.140, 0.010],
                                          [0.150, 0.400, 0.370, 0.080]]
-
-# host-level care/death policy; each infection contributes care for its peak tier, folded per host
-[HealthProgression]
-    type = &quot;DefaultHealthProgression&quot;
-
-    # SEVERE-PEAK CARE [ward admission only]
-    [HealthProgression.parameters.severe]
-        hospital_probability = 0.05
-        [HealthProgression.parameters.severe.severeness_onset_to_hospital_admission]
-            distribution = &quot;Poisson&quot;
-            parameters = [2]
-        [HealthProgression.parameters.severe.hospital_admission_to_hospital_discharge]
-            distribution = &quot;Poisson&quot;
-            parameters = [10]
-
-    # CRITICAL-PEAK CARE [hospital -&gt; ICU -&gt; ventilation, plus ungated death; ventilation off by default]
-    [HealthProgression.parameters.critical]
-        hospital_probability = 0.95
-        hospital_to_icu_probability = 0.5
-        icu_to_ventilation_probability = 0.0
-        death_probability = 0.3          # ungated by hospital/ICU
-        icu_admission_to_ventilation_admission = 0
-        ventilation_admission_to_ventilation_discharge = 0
-        ventilation_discharge_to_icu_discharge = 0
-        [HealthProgression.parameters.critical.critical_onset_to_hospital_admission]
-            distribution = &quot;Poisson&quot;
-            parameters = [1]
-        [HealthProgression.parameters.critical.hospital_admission_to_hospital_discharge]
-            distribution = &quot;Poisson&quot;
-            parameters = [10]
-        [HealthProgression.parameters.critical.hospital_admission_to_icu_admission]
-            distribution = &quot;Poisson&quot;
-            parameters = [1]
-        [HealthProgression.parameters.critical.icu_admission_to_icu_discharge]
-            distribution = &quot;Poisson&quot;
-            parameters = [8]
-        [HealthProgression.parameters.critical.icu_discharge_to_hospital_discharge]
-            distribution = &quot;Poisson&quot;
-            parameters = [5]
-        [HealthProgression.parameters.critical.critical_onset_to_death]
-            distribution = &quot;Poisson&quot;
-            parameters = [7]
 
 [Settings]
 
@@ -173,7 +169,7 @@
         [Settings.SchoolClass.contact_sampling_method]
                 type = &quot;ContactparameterSampling&quot;
                 [Settings.SchoolClass.contact_sampling_method.parameters]
-                    contactparameter = 1.0</code></pre><h2 id="Manipulating-Config-Files"><a class="docs-heading-anchor" href="#Manipulating-Config-Files">Manipulating Config Files</a><a id="Manipulating-Config-Files-1"></a><a class="docs-heading-anchor-permalink" href="#Manipulating-Config-Files" title="Permalink"></a></h2><p>While you can adapt many parameters via the <code>Simulation()</code> constructor, config files are required if you want to add custom mechanics (like custom transmission functions or custom contact sampling functions). Please have a look at the tutorial for <a href="../tut_configfiles/#advanced">advanced parameterization</a>.</p><p>A config file contains five sections: <code>[Simulation]</code>, <code>[Population]</code>, <code>[Pathogens]</code>, <code>[HealthProgression]</code>, and <code>[Settings]</code>.</p><ul><li><a href="#Simulation">Simulation</a></li><li class="no-marker"><ul><li><a href="#seed"><code>seed</code></a></li><li><a href="#tickunit"><code>tickunit</code></a></li><li><a href="#GlobalSetting"><code>GlobalSetting</code></a></li><li><a href="#startdate"><code>startdate</code></a></li><li><a href="#enddate"><code>enddate</code></a></li><li><a href="#StartCondition"><code>StartCondition</code></a></li></ul></li><li><a href="#Population">Population</a></li><li class="no-marker"><ul><li><a href="#n"><code>n</code></a></li><li><a href="#avg_household_size"><code>avg_household_size</code></a></li><li><a href="#avg_office_size"><code>avg_office_size</code></a></li><li><a href="#avg_school_size"><code>avg_school_size</code></a></li><li><a href="#empty"><code>empty</code></a></li></ul></li><li><a href="#Pathogens">Pathogens</a></li><li class="no-marker"><ul><li><a href="#transmission_function"><code>transmission_function</code></a></li><li><a href="#progressions"><code>progressions</code></a></li><li><a href="#progression_assignment"><code>progression_assignment</code></a></li><li><a href="#infectiousness_profile"><code>infectiousness_profile</code></a></li><li><a href="#immunity_profile"><code>immunity_profile</code></a></li></ul></li><li><a href="#HealthProgression">HealthProgression</a></li><li><a href="#Settings">Settings</a></li><li class="no-marker"><ul><li><a href="#contact_sampling_method"><code>contact_sampling_method</code></a></li></ul></li></ul><h3 id="Simulation"><a class="docs-heading-anchor" href="#Simulation">Simulation</a><a id="Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Simulation" title="Permalink"></a></h3><h4 id="seed"><a class="docs-heading-anchor" href="#seed"><code>seed</code></a><a id="seed-1"></a><a class="docs-heading-anchor-permalink" href="#seed" title="Permalink"></a></h4><p>Random seed used for the simulation. The seed is being set upon creation of the <code>Simulation</code> object.</p><pre><code class="language-toml hljs">[Simulation]
+                    contactparameter = 1.0</code></pre><h2 id="Manipulating-Config-Files"><a class="docs-heading-anchor" href="#Manipulating-Config-Files">Manipulating Config Files</a><a id="Manipulating-Config-Files-1"></a><a class="docs-heading-anchor-permalink" href="#Manipulating-Config-Files" title="Permalink"></a></h2><p>While you can adapt many parameters via the <code>Simulation()</code> constructor, config files are required if you want to add custom mechanics (like custom transmission functions or custom contact sampling functions). Please have a look at the tutorial for <a href="../tut_configfiles/#advanced">advanced parameterization</a>.</p><p>A config file contains four required sections: <code>[Simulation]</code>, <code>[Population]</code>, <code>[Pathogens]</code>, and <code>[Settings]</code>, plus the optional <code>[HealthProgression]</code>.</p><ul><li><a href="#Simulation">Simulation</a></li><li class="no-marker"><ul><li><a href="#seed"><code>seed</code></a></li><li><a href="#tickunit"><code>tickunit</code></a></li><li><a href="#GlobalSetting"><code>GlobalSetting</code></a></li><li><a href="#startdate"><code>startdate</code></a></li><li><a href="#enddate"><code>enddate</code></a></li><li><a href="#StartCondition"><code>StartCondition</code></a></li></ul></li><li><a href="#Population">Population</a></li><li class="no-marker"><ul><li><a href="#n"><code>n</code></a></li><li><a href="#avg_household_size"><code>avg_household_size</code></a></li><li><a href="#avg_office_size"><code>avg_office_size</code></a></li><li><a href="#avg_school_size"><code>avg_school_size</code></a></li><li><a href="#empty"><code>empty</code></a></li></ul></li><li><a href="#Pathogens">Pathogens</a></li><li class="no-marker"><ul><li><a href="#transmission_function"><code>transmission_function</code></a></li><li><a href="#progressions"><code>progressions</code></a></li><li><a href="#progression_assignment"><code>progression_assignment</code></a></li><li><a href="#infectiousness_profile"><code>infectiousness_profile</code></a></li><li><a href="#immunity_profile"><code>immunity_profile</code></a></li></ul></li><li><a href="#HealthProgression">HealthProgression</a></li><li class="no-marker"><ul><li><a href="#HealthProgression-2">HealthProgression</a></li></ul></li><li><a href="#Settings">Settings</a></li><li class="no-marker"><ul><li><a href="#contact_sampling_method"><code>contact_sampling_method</code></a></li></ul></li></ul><h3 id="Simulation"><a class="docs-heading-anchor" href="#Simulation">Simulation</a><a id="Simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Simulation" title="Permalink"></a></h3><h4 id="seed"><a class="docs-heading-anchor" href="#seed"><code>seed</code></a><a id="seed-1"></a><a class="docs-heading-anchor-permalink" href="#seed" title="Permalink"></a></h4><p>Random seed used for the simulation. The seed is being set upon creation of the <code>Simulation</code> object.</p><pre><code class="language-toml hljs">[Simulation]
     seed = 12345
     ...</code></pre><p>The seed must be an integer value.</p><h4 id="tickunit"><a class="docs-heading-anchor" href="#tickunit"><code>tickunit</code></a><a id="tickunit-1"></a><a class="docs-heading-anchor-permalink" href="#tickunit" title="Permalink"></a></h4><p>Length of a simulated timestep.</p><pre><code class="language-toml hljs">[Simulation]
     tickunit = &#39;d&#39;
@@ -211,7 +207,7 @@
             type = &quot;ConstantTransmissionRate&quot;
             [Pathogens.Covid19.transmission_function.parameters]
                 transmission_rate = 0.2
-                ...</code></pre><p>The <code>type</code> argument specifies the <code>TransmissionFunction</code> that conditions the dispatching to the respective <code>transmission_probability(...)</code> function when running GEMS. The subsequent <code>[.parameters]</code> section holds the arguments that the GEMS engine will pass to the <code>TransmissionFunction</code> struct upon initialization.</p><h4 id="progressions"><a class="docs-heading-anchor" href="#progressions"><code>progressions</code></a><a id="progressions-1"></a><a class="docs-heading-anchor-permalink" href="#progressions" title="Permalink"></a></h4><p>Defines distinct disease progression tracks. The engine currently supports explicit pathways like <code>Asymptomatic</code>, <code>Mild</code>, <code>Severe</code>, and <code>Critical</code>. <code>Severe</code> and <code>Critical</code> may also carry host-care parameters (see <a href="#healthprogression"><code>HealthProgression</code></a> below) directly inline, as a single-pathogen convenience.</p><p>Within each category, you must define the intervals between state transitions (e.g., <code>exposure_to_infectiousness_onset</code>, <code>symptom_onset_to_recovery</code>). Every interval requires two arguments to initialize the underlying random distribution:</p><ul><li><strong><code>distribution</code></strong>: A string representing the statistical distribution (e.g., <code>&quot;Poisson&quot;</code>, <code>&quot;Binomial&quot;</code>).</li><li><strong><code>parameters</code></strong>: An array of numerical values required by the chosen distribution (e.g., <code>[7]</code> for a Poisson distribution with <span>$\lambda = 7$</span>).</li></ul><pre><code class="language-toml hljs">[Pathogens.Covid19.progressions.Mild]
+                ...</code></pre><p>The <code>type</code> argument specifies the <code>TransmissionFunction</code> that conditions the dispatching to the respective <code>transmission_probability(...)</code> function when running GEMS. The subsequent <code>[.parameters]</code> section holds the arguments that the GEMS engine will pass to the <code>TransmissionFunction</code> struct upon initialization.</p><h4 id="progressions"><a class="docs-heading-anchor" href="#progressions"><code>progressions</code></a><a id="progressions-1"></a><a class="docs-heading-anchor-permalink" href="#progressions" title="Permalink"></a></h4><p>Defines distinct disease progression tracks. The engine currently supports explicit pathways like <code>Asymptomatic</code>, <code>Mild</code>, <code>Severe</code>, and <code>Critical</code>. <code>Severe</code> and <code>Critical</code> may also carry host-health parameters (see <a href="#healthprogression"><code>HealthProgression</code></a> below), either as a <code>health</code> sub-table or inline, giving that pathogen its own care and mortality rates.</p><p>Within each category, you must define the intervals between state transitions (e.g., <code>exposure_to_infectiousness_onset</code>, <code>symptom_onset_to_recovery</code>). Every interval requires two arguments to initialize the underlying random distribution:</p><ul><li><strong><code>distribution</code></strong>: A string representing the statistical distribution (e.g., <code>&quot;Poisson&quot;</code>, <code>&quot;Binomial&quot;</code>).</li><li><strong><code>parameters</code></strong>: An array of numerical values required by the chosen distribution (e.g., <code>[7]</code> for a Poisson distribution with <span>$\lambda = 7$</span>).</li></ul><pre><code class="language-toml hljs">[Pathogens.Covid19.progressions.Mild]
     [Pathogens.Covid19.progressions.Mild.symptom_onset_to_recovery]
         distribution = &quot;Poisson&quot;
         parameters = [7]</code></pre><p><em>Note: For distributions representing days, GEMS internally adds +1 to early stages like exposure-to-infectiousness to prevent zero-day state transitions.</em></p><h4 id="progression_assignment"><a class="docs-heading-anchor" href="#progression_assignment"><code>progression_assignment</code></a><a id="progression_assignment-1"></a><a class="docs-heading-anchor-permalink" href="#progression_assignment" title="Permalink"></a></h4><p>Determines how the distinct disease tracks defined above are distributed among the infected population. By passing an <code>AgeBasedProgressionAssignment</code>, probabilities can be mapped explicitly via age stratifications.</p><pre><code class="language-toml hljs">[Pathogens.Covid19.progression_assignment]
@@ -229,18 +225,18 @@
     type = &quot;ExponentialWaning&quot;
     [Pathogens.Covid19.immunity_profile.parameters]
         halflife = 180
-        floor = 10</code></pre><p>The <code>type</code> argument specifies the <code>ImmunityProfile</code> that conditions the dispatching to the respective <code>calculate_immunity(...)</code> function when running GEMS. The subsequent <code>[.parameters]</code> section holds the arguments passed to the <code>ImmunityProfile</code> struct upon initialization, and can be omitted entirely for profiles that take no arguments (such as <code>FullImmunity</code> and <code>NoImmunity</code>).</p><h3 id="HealthProgression"><a class="docs-heading-anchor" href="#HealthProgression">HealthProgression</a><a id="HealthProgression-1"></a><a class="docs-heading-anchor-permalink" href="#HealthProgression" title="Permalink"></a></h3><p>Host-level care and mortality (hospitalization, ICU, ventilation, death) are decided independently of the disease progression, by a <code>HealthProgression</code> that folds the demand of <em>all</em> of a host&#39;s active infections into one care timeline. The <code>[HealthProgression]</code> section configures this policy for the whole simulation.</p><pre><code class="language-toml hljs">[HealthProgression]
-    type = &quot;DefaultHealthProgression&quot;
-    [HealthProgression.parameters.severe]
-        hospital_probability = 0.05
-        ...
-    [HealthProgression.parameters.critical]
+        floor = 10</code></pre><p>The <code>type</code> argument specifies the <code>ImmunityProfile</code> that conditions the dispatching to the respective <code>calculate_immunity(...)</code> function when running GEMS. The subsequent <code>[.parameters]</code> section holds the arguments passed to the <code>ImmunityProfile</code> struct upon initialization, and can be omitted entirely for profiles that take no arguments (such as <code>FullImmunity</code> and <code>NoImmunity</code>).</p><h3 id="HealthProgression"><a class="docs-heading-anchor" href="#HealthProgression">HealthProgression</a><a id="HealthProgression-1"></a><a class="docs-heading-anchor-permalink" href="#HealthProgression" title="Permalink"></a></h3><p>Host-level care and mortality (hospitalization, ICU, ventilation, death) are decided independently of the disease progression. Each disease tier carries its own <code>HealthProfile</code>, written as a <code>health</code> sub-table of that progression:</p><pre><code class="language-toml hljs">[Pathogens.Covid19.progressions.Critical]
+    # ... disease timings ...
+    [Pathogens.Covid19.progressions.Critical.health]
         hospital_probability = 0.95
         hospital_to_icu_probability = 0.5
         death_probability = 0.3
-        ...</code></pre><p>For <code>DefaultHealthProgression</code>, the <code>[.parameters]</code> block holds a <code>severe</code> and a <code>critical</code> sub-table, corresponding to a <code>SevereHealthProfile</code> and a <code>CriticalHealthProfile</code> respectively (see the pathogen API reference for their full parameter lists).</p><p>If your simulation has exactly <strong>one</strong> pathogen, you can skip this section entirely and instead write the <code>severe</code>/<code>critical</code> parameters directly inside that tier&#39;s disease progression in <code>[Pathogens.&lt;Name&gt;.progressions]</code> — they will be routed into the global <code>HealthProgression</code> automatically. This convenience is rejected (with an error) if you also define an explicit <code>[HealthProgression]</code> section, or if your simulation has more than one pathogen (since a single global policy cannot unambiguously combine care embedded in more than one pathogen&#39;s progressions).</p><h3 id="Settings"><a class="docs-heading-anchor" href="#Settings">Settings</a><a id="Settings-1"></a><a class="docs-heading-anchor-permalink" href="#Settings" title="Permalink"></a></h3><p>The <code>[Settings]</code> section defines the interaction mechanics for the different setting types in the simulation. By default, simulations only include the <code>Household</code>, <code>SchoolClass</code>, and <code>Office</code> setting. If you want to configure mechanics for other setting types, you have to load a population model that includes those settings first.</p><h4 id="contact_sampling_method"><a class="docs-heading-anchor" href="#contact_sampling_method"><code>contact_sampling_method</code></a><a id="contact_sampling_method-1"></a><a class="docs-heading-anchor-permalink" href="#contact_sampling_method" title="Permalink"></a></h4><p>Defines the routine which is used to generate contacts between individuals in a setting.</p><pre><code class="language-toml hljs">[Settings]
+        [Pathogens.Covid19.progressions.Critical.health.critical_onset_to_death]
+            distribution = &quot;Poisson&quot;
+            parameters = [7]</code></pre><p><code>Severe</code> takes a <code>SevereHealthProfile</code> and <code>Critical</code> a <code>CriticalHealthProfile</code>; see the pathogen API reference for their full parameter lists. The same parameters may be written flat among the timings instead; the two forms are mutually exclusive. Because the profile belongs to the pathogen&#39;s own progression, two pathogens can differ in mortality while sharing a severity stratification.</p><p>A category with no <code>health</code> of its own demands no hospitalization and causes no deaths; GEMS warns when that happens.</p><h4 id="HealthProgression-2"><a class="docs-heading-anchor" href="#HealthProgression-2">HealthProgression</a><a class="docs-heading-anchor-permalink" href="#HealthProgression-2" title="Permalink"></a></h4><p>The <code>[HealthProgression]</code> section names the <em>combination</em> policy — how a host&#39;s concurrent infections fold into one care timeline — and not the profiles. The default is <code>DefaultHealthProgression</code>, under which infections do not interact, so the section is only needed for a custom policy.</p><pre><code class="language-toml hljs">[HealthProgression]
+    type = &quot;DefaultHealthProgression&quot;</code></pre><div class="admonition is-warning" id="Deprecated-8f72808a91c81062"><header class="admonition-header">Deprecated<a class="admonition-anchor" href="#Deprecated-8f72808a91c81062" title="Permalink"></a></header><div class="admonition-body"><p><code>severe</code> and <code>critical</code> sub-tables here are the old per-tier form. They still work, with a warning, and fill in the categories of that tier carrying no <code>health</code>. Write a <code>health</code> block into the progressions instead. Pathogens passed to <code>Simulation</code> directly ignore them.</p></div></div><h3 id="Settings"><a class="docs-heading-anchor" href="#Settings">Settings</a><a id="Settings-1"></a><a class="docs-heading-anchor-permalink" href="#Settings" title="Permalink"></a></h3><p>The <code>[Settings]</code> section defines the interaction mechanics for the different setting types in the simulation. By default, simulations only include the <code>Household</code>, <code>SchoolClass</code>, and <code>Office</code> setting. If you want to configure mechanics for other setting types, you have to load a population model that includes those settings first.</p><h4 id="contact_sampling_method"><a class="docs-heading-anchor" href="#contact_sampling_method"><code>contact_sampling_method</code></a><a id="contact_sampling_method-1"></a><a class="docs-heading-anchor-permalink" href="#contact_sampling_method" title="Permalink"></a></h4><p>Defines the routine which is used to generate contacts between individuals in a setting.</p><pre><code class="language-toml hljs">[Settings]
     [Settings.Household]
         [Settings.Household.contact_sampling_method]
                 type = &quot;ContactparameterSampling&quot;
                 [Settings.Household.contact_sampling_method.parameters]
-                    contactparameter = 1.0</code></pre><p>The <code>type</code> argument specifies the <code>ContactSamplingMethod</code> that conditions the dispatching to the respective <code>sample_contacts!(...)</code> function when running GEMS. The subsequent <code>[.parameters]</code> section holds the arguments that the GEMS engine will pass to the <code>ContactSamplingMethod</code> struct upon initialization.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_configfiles/">« 10 - Advanced Parameterization</a><a class="docs-footer-nextpage" href="../docstrings-overview/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 8 September 2026 20:34">Tuesday 8 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+                    contactparameter = 1.0</code></pre><p>The <code>type</code> argument specifies the <code>ContactSamplingMethod</code> that conditions the dispatching to the respective <code>sample_contacts!(...)</code> function when running GEMS. The subsequent <code>[.parameters]</code> section holds the arguments that the GEMS engine will pass to the <code>ContactSamplingMethod</code> struct upon initialization.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_configfiles/">« 10 - Advanced Parameterization</a><a class="docs-footer-nextpage" href="../docstrings-overview/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 9 September 2026 08:02">Wednesday 9 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
