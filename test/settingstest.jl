@@ -1009,7 +1009,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         # `present_members` returns one `MemberView`; an unbroken span carries no runs
         contiguous(f) = isempty(f.starts)
 
-        @testset "build relocates members into one pool" begin
+        @testset "Pool construction" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             pool = sc.pools[SchoolClass]
             # the members are relocated once; the pool is longer than that only by the
@@ -1026,7 +1026,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test contiguous(GEMS.present_members(sch, sc))
         end
 
-        @testset "adding repacks the hierarchy" begin
+        @testset "Adding a member" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             before1, before3 = ids(GEMS.present_members(cs[1], sc)), ids(GEMS.present_members(cs[3], sc))
             newcomer = Individual(id = Int32(42), age = 10, sex = 1)
@@ -1044,7 +1044,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test contiguous(GEMS.present_members(sch, sc))
         end
 
-        @testset "removing swaps with last inside the leaf" begin
+        @testset "Removing a member" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
             victim = cs[1].individuals[2]
 
@@ -1062,7 +1062,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test length(GEMS.present_members(cs[1], sc)) == 2
         end
 
-        @testset "a leaf can be drained and refilled" begin
+        @testset "Draining a leaf" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             while length(cs[3].individuals) > 0
                 remove_member!(cs[3], cs[3].individuals[1], pop)
@@ -1078,7 +1078,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test sort(ids(GEMS.present_members(sch, sc))) == vcat(collect(1:6), 50)
         end
 
-        @testset "empty leaves do not corrupt run indexing" begin
+        @testset "Empty leaves" begin
             # a zero-length run would leave `prefix` non-increasing and make
             # `searchsortedlast` return members from the wrong run, silently
             sc = SettingsContainer()
@@ -1113,7 +1113,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test isempty(GEMS.present_members(y, sc))
         end
 
-        @testset "blocks partition the leaves and carry the slack" begin
+        @testset "Block partition" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             pool = sc.pools[SchoolClass]
             bl = pool.blocks
@@ -1129,7 +1129,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test isempty(bl.dirty)
         end
 
-        @testset "a leaf under no container gets its own block" begin
+        @testset "Uncontained leaves" begin
             # the block partition has to cover leaves the containers do not reach, or an
             # edit to one would have no block to dirty
             sc = SettingsContainer()
@@ -1156,8 +1156,31 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(y, sc)) == collect(1:6)
         end
 
-        @testset "only the edited block is repacked" begin
+        @testset "Splicing" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+
+            add_member!(cs[1], Individual(id = Int32(43), age = 10, sex = 1), pop)
+            add_member!(cs[2], Individual(id = Int32(44), age = 10, sex = 1), pop)
+            # nothing is queued and nothing is stale, so the frames are readable right away
+            @test isempty(pool.blocks.dirty)
+            @test all(c -> c.individuals isa GEMS.MemberSlice, cs)
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 43]
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 44]
+            @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9]
+            @test ids(GEMS.present_members(sch, sc)) == [1, 2, 3, 43, 4, 5, 6, 44, 7, 8, 9]
+            @test contiguous(GEMS.present_members(sch, sc))
+
+            # and a removal splices back out, keeping swap-with-last inside the leaf
+            remove_member!(cs[1], individuals(cs[1])[1], pop)
+            @test isempty(pool.blocks.dirty)
+            @test ids(GEMS.present_members(cs[1], sc)) == [43, 2, 3]
+            @test ids(GEMS.present_members(sch, sc)) == [43, 2, 3, 4, 5, 6, 44, 7, 8, 9]
+        end
+
+        @testset "Slack exhaustion" begin
+            # slack 0 leaves nothing to splice into, so every add falls back to the repack
+            sc, cs, ys, sch, _, pop, plans = make_school(slack = 0.0)
             pool = sc.pools[SchoolClass]
 
             add_member!(cs[1], Individual(id = Int32(43), age = 10, sex = 1), pop)
@@ -1172,6 +1195,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test sort(ids(GEMS.present_members(sch, sc))) == sort(vcat(collect(1:9), 43, 44))
             @test contiguous(GEMS.present_members(sch, sc))
         end
+
 
         # one block per school, so a single dirty block stays under the fraction at which
         # `repack_dirty_pools!` gives up and repacks everything
@@ -1188,7 +1212,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             (sc, cs, schs, Population(inds))
         end
 
-        @testset "exact fit relocates the block instead of growing it" begin
+        @testset "Block relocation" begin
             sc, cs, schs, pop = make_schools(5; slack = 0.0)
             pool = sc.pools[SchoolClass]
             bl = pool.blocks
@@ -1210,7 +1234,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9]
         end
 
-        @testset "a full repack compacts the holes away" begin
+        @testset "Compaction" begin
             sc, cs, schs, pop = make_schools(5; slack = 0.0)
             pool = sc.pools[SchoolClass]
 
@@ -1227,7 +1251,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(cs[5], sc)) == [13, 14, 15]
         end
 
-        @testset "duplicate scan " begin
+        @testset "Repeat gating" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             pool = sc.pools[SchoolClass]
             @test pool.repeats == 0
@@ -1247,7 +1271,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test contiguous(GEMS.present_members(sch, sc))
         end
 
-        @testset "a full repack re-establishes the repeat count" begin
+        @testset "Repeat recount" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             pool = sc.pools[SchoolClass]
             pool.repeats = 7                        # as if an edit had over-counted
@@ -1255,8 +1279,29 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test pool.repeats == 0
         end
 
-        @testset "reading a pool with pending edits is refused" begin
-            sc, cs, ys, sch, _, pop, plans = make_school()
+        @testset "Splice against repack" begin
+            # the splice maintains by hand what the repack rebuilds, so the two must not drift
+            spliced, _, _, pop1 = make_schools(5)
+            repacked, _, _, pop2 = make_schools(5)
+            for (sc, pop, splice) in ((spliced, pop1, true), (repacked, pop2, false))
+                for k in 1:4
+                    cls = GEMS.settings(sc, SchoolClass)
+                    add_member!(cls[2], Individual(id = Int32(60 + k), age = 10, sex = 1), pop)
+                    isempty(individuals(cls[3])) ||
+                        remove_member!(cls[3], individuals(cls[3])[1], pop)
+                    splice || GEMS._repack!(sc.pools[SchoolClass])
+                end
+                GEMS.repack_dirty_pools!(sc)
+            end
+            for T in (SchoolClass, SchoolYear, School), k in 1:length(GEMS.settings(spliced, T))
+                a = ids(GEMS.present_members(GEMS.settings(spliced, T)[k], spliced))
+                b = ids(GEMS.present_members(GEMS.settings(repacked, T)[k], repacked))
+                @test a == b
+            end
+        end
+        @testset "Stale reads" begin
+            # slack 0, so the add cannot be spliced and really does leave the pool stale
+            sc, cs, ys, sch, _, pop, plans = make_school(slack = 0.0)
             newcomer = Individual(id = Int32(43), age = 10, sex = 1)
             add_member!(cs[1], newcomer, pop)
 
@@ -1276,7 +1321,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 43]
         end
 
-        @testset "sparse setting ids are rejected with a clear message" begin
+        @testset "Sparse setting ids" begin
             sc = SettingsContainer()
             add_types!(sc, [SchoolClass, SchoolYear])
             GEMS.add!(sc, SchoolClass(id = Int32(1), individuals = Individual[], contained = Int32(1)))
@@ -1288,7 +1333,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test occursin("new_setting_ids!", sprint(showerror, err))
         end
 
-        @testset "closed descendants drop out of a container frame" begin
+        @testset "Closed descendants" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             close!(ys[2])
             @test ids(GEMS.present_members(sch, sc)) == collect(1:6)
@@ -1304,7 +1349,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test !contiguous(f)
         end
 
-        @testset "a member in two leaves counts once in their container" begin
+        @testset "Repeated members" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
             # inds[4] is already in cs[2]; both classes sit in ys[1]
             add_member!(cs[1], inds[4], pop)
@@ -1324,7 +1369,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(ys[2], sc)) == [7, 8, 9]
         end
 
-        @testset "a repeat at the end of a span stays one run" begin
+        @testset "Repeat at a span edge" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
             add_member!(cs[2], inds[1], pop)
             GEMS.repack_dirty_pools!(sc)
@@ -1335,7 +1380,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
         end
 
-        @testset "a repeat spanning years counts once in the school only" begin
+        @testset "Repeat across years" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
             add_member!(cs[3], inds[1], pop)
             GEMS.repack_dirty_pools!(sc)
@@ -1347,7 +1392,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
         end
 
-        @testset "closing the leaf holding the kept copy promotes the other" begin
+        @testset "Promoting a repeat" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
             add_member!(cs[1], inds[4], pop)
             GEMS.repack_dirty_pools!(sc)

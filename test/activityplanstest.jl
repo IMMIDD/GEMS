@@ -385,7 +385,7 @@ struct PlanTestSettingB <: IndividualSetting end
         open!(sy)
     end
 
-    @testset "container_frame_index of a repeated member" begin
+    @testset "container_frame_index with a repeat" begin
         cntnr = SettingsContainer()
         add_types!(cntnr, [SchoolClass, SchoolYear])
         inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
