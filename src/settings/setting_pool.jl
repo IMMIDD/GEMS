@@ -147,6 +147,29 @@ nblocks(bl::PoolBlocks) = length(bl.first_leaf) - 1
 @inline leaves_of(bl::PoolBlocks, b::Int) = Int(bl.first_leaf[b]):(Int(bl.first_leaf[b + 1]) - 1)
 
 """
+    ContainerLevel
+
+One container type's settings, and everything a repack needs to find them. `C` is left
+unconstrained because `ContainerSetting` is defined in settings.jl, which this file precedes;
+in practice it is always a `ContainerSetting`.
+
+# Fields
+
+- `containers::Vector{C}`: Every container of this type, in id order.
+- `ranges::Vector{UnitRange{Int}}`: `ranges[i]` is the slice of `pool.leaves` below
+    `containers[i]`. A container's leaves are consecutive, so one range covers its subtree.
+- `block_ptr::Vector{Int32}`, `block_idx::Vector{Int32}`: CSR from block to containers.
+    Block `b` holds `containers[block_idx[block_ptr[b]:(block_ptr[b + 1] - 1)]]`, which is how
+    a block-local repack skips every other container at this level.
+"""
+struct ContainerLevel{C}
+    containers::Vector{C}
+    ranges::Vector{UnitRange{Int}}
+    block_ptr::Vector{Int32}
+    block_idx::Vector{Int32}
+end
+
+"""
     SettingPool
 
 Backing storage for one setting hierarchy. Holds every member of every leaf, leaves laid out
@@ -164,14 +187,12 @@ a member sits in two of its leaves, which costs that container contiguity but no
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
     `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
     typed vector of the pool's one leaf type, which `_repack!` reaches behind a barrier.
-- `container_groups::Tuple`: One `(containers, ranges, block_ptr, block_idx)` tuple per
-    container type, so each vector is concretely typed. `ranges[i]` is the slice of `leaves`
-    below `containers[i]`; a container's leaves are consecutive, so one range covers its whole
-    subtree. `block_idx[block_ptr[b]:(block_ptr[b + 1] - 1)]` are this level's containers in
-    block `b`, which is how a block-local repack skips the rest.
+- `container_groups::Tuple`: One `ContainerLevel` per container type, so each level's vectors
+    stay concretely typed and a splat over the tuple specialises per level.
 - `blocks::PoolBlocks`: The leaves cut into independently repackable blocks.
 - `dup_table::DupTable` *(internal)*: Repack scratch for finding a member that sits in two
-    leaves of one container. Sized once per repack and reused by every container of every level.
+    leaves of one container. Grown to the widest span it is asked to scan and reused from there;
+    `_refresh_container!` sizes it per container, `_count_repeats` per block.
 - `scratch::Vector{Individual}` *(internal)*: Holds one block while it is relaid on itself.
 """
 mutable struct SettingPool
@@ -182,8 +203,7 @@ mutable struct SettingPool
     repeats::Int
     # everything a repack needs, so a member edit does not have to find the hierarchy again
     leaves::Vector # widened: holds a Vector{SchoolClass} / Vector{Office}
-    # one (containers, ranges, block_ptr, block_idx) tuple per container type, so each vector
-    # is concretely typed
+    # one ContainerLevel per container type, so each stays concretely typed
     container_groups::Tuple
     # an edit repacks its own block, not the hierarchy
     blocks::PoolBlocks

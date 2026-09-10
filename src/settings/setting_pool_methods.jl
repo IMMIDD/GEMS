@@ -235,16 +235,16 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
         push!(ranges, rs)
     end
 
-    blocks = _build_blocks!(length(leaves), ranges, slack)
+    blocks = _build_blocks(length(leaves), ranges, slack)
     groups = Any[]
     for (k, C) in enumerate(container_chain(L))
         ptr, idx = _block_containers(ranges[k], blocks, C)
-        push!(groups, (settings(cntnr, C), ranges[k], ptr, idx))
+        push!(groups, ContainerLevel(settings(cntnr, C), ranges[k], ptr, idx))
     end
 
     pool = SettingPool(Individual[], 0, 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
     for (i, l) in enumerate(leaves); l.pool = pool; l.pool_leaf = Int32(i); end
-    for g in pool.container_groups, c in g[1]; c.pool = pool; end
+    for g in pool.container_groups, c in g.containers; c.pool = pool; end
     # counted once here; the edits keep it exact
     pool.repeats = _count_repeats(pool, leaves)
     _repack!(pool)
@@ -252,14 +252,14 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
     # settings may already be closed when the population is loaded
     pool.closed = count(!is_open, leaves)
     for g in pool.container_groups
-        pool.closed += count(!is_open, g[1])
+        pool.closed += count(!is_open, g.containers)
     end
     return pool
 end
 
 # The coarsest partition of `1:nleaves` no container range straddles. Every level, not just the
 # root, or a container with no parent gets cut in half. Uncontained leaves stand alone.
-function _build_blocks!(nleaves::Int, ranges::Vector{Vector{UnitRange{Int}}}, slack::Float64)
+function _build_blocks(nleaves::Int, ranges::Vector{Vector{UnitRange{Int}}}, slack::Float64)
     spans = UnitRange{Int}[]
     for rs in ranges, r in rs
         isempty(r) || push!(spans, r)
@@ -380,6 +380,9 @@ end
 
 ###
 ### REPACKING
+### Several functions here take `leaves` alongside `pool`, always `pool.leaves`. The field is
+### widened to hold a `Vector{SchoolClass}` or `Vector{Office}`, so passing it as an argument
+### is what lets the callee specialise on the concrete vector. Do not "simplify" it away.
 ###
 
 """
@@ -438,28 +441,20 @@ forbidden inside the threaded transmission phase.
 """
 function _repack!(pool::SettingPool)
     pool.members = _repack_leaves!(pool.blocks, pool.leaves)
-    _repack_groups!(pool, pool.leaves, pool.container_groups...)
+    _refresh_levels!(pool, pool.leaves, AllOf(), pool.container_groups...)
     _clear_dirty!(pool.blocks)
     return nothing
 end
-
-"""
-    _repack_block!(pool::SettingPool, b::Int)
-
-Relay one block and refresh only the containers inside it - an edit cannot move a coordinate
-out of its own block.
-"""
-_repack_block!(pool::SettingPool, b::Int) = _repack_blocks!(pool, (b,))
 
 # the barrier: both fields are abstractly typed, so pay the dispatch once per batch, not per block
 _repack_blocks!(pool::SettingPool, dirty) =
     _repack_blocks!(pool, pool.leaves, dirty, pool.container_groups...)
 
 function _repack_blocks!(pool::SettingPool, leaves::Vector{T}, dirty,
-                         groups...) where {T<:IndividualSetting}
+                         levels...) where {T<:IndividualSetting}
     for b in dirty
         _repack_block_leaves!(pool, leaves, Int(b))
-        _block_groups!(pool, leaves, Int(b), groups...)
+        _refresh_levels!(pool, leaves, InBlock(Int(b)), levels...)
     end
     return nothing
 end
@@ -619,34 +614,33 @@ function _relocate_block!(pool::SettingPool, b::Int, n::Int)
     return nothing
 end
 
-# recursive, so each call specialises on that group's concrete vector type
-@inline _repack_groups!(pool, leaves) = nothing
-@inline function _repack_groups!(pool, leaves, group, rest...)
-    _repack_group!(group[1], group[2], pool, leaves)
-    _repack_groups!(pool, leaves, rest...)
+# Which containers of a level a refresh visits. Both are plain values, so the choice resolves
+# at compile time and costs no closure and no view.
+struct AllOf end
+struct InBlock
+    b::Int
 end
 
-function _repack_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}}, pool::SettingPool,
-                        leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
-    @inbounds for i in eachindex(cs)
-        _refresh_container!(cs[i], ranges[i], pool, leaves)
+# recursive, so each call specialises on that level's concrete container vector
+@inline _refresh_levels!(pool, leaves, sel) = nothing
+@inline function _refresh_levels!(pool, leaves, sel, level, rest...)
+    _refresh_level!(level, sel, pool, leaves)
+    _refresh_levels!(pool, leaves, sel, rest...)
+end
+
+function _refresh_level!(lv::ContainerLevel{C}, ::AllOf, pool::SettingPool,
+                         leaves::Vector{T}) where {C, T<:IndividualSetting}
+    @inbounds for i in eachindex(lv.containers)
+        _refresh_container!(lv.containers[i], lv.ranges[i], pool, leaves)
     end
     return nothing
 end
 
-# the same recursion, restricted to block `b`'s containers
-@inline _block_groups!(pool, leaves, b) = nothing
-@inline function _block_groups!(pool, leaves, b, group, rest...)
-    _block_group!(group[1], group[2], group[3], group[4], b, pool, leaves)
-    _block_groups!(pool, leaves, b, rest...)
-end
-
-function _block_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}}, ptr::Vector{Int32},
-                       idx::Vector{Int32}, b::Int, pool::SettingPool,
-                       leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
-    @inbounds for k in Int(ptr[b]):(Int(ptr[b + 1]) - 1)
-        i = Int(idx[k])
-        _refresh_container!(cs[i], ranges[i], pool, leaves)
+function _refresh_level!(lv::ContainerLevel{C}, sel::InBlock, pool::SettingPool,
+                         leaves::Vector{T}) where {C, T<:IndividualSetting}
+    @inbounds for k in Int(lv.block_ptr[sel.b]):(Int(lv.block_ptr[sel.b + 1]) - 1)
+        i = Int(lv.block_idx[k])
+        _refresh_container!(lv.containers[i], lv.ranges[i], pool, leaves)
     end
     return nothing
 end
