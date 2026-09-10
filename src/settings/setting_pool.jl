@@ -159,6 +159,8 @@ a member sits in two of its leaves, which costs that container contiguity but no
     stranded by a relocation. Only the spans a leaf or container names are meaningful.
 - `closed::Int`: How many settings in this hierarchy are currently closed. Zero is the
     common case and lets a container hand over its range without any walk.
+- `repeats::Int`: Memberships beyond an individual's first in this hierarchy. Only a repeated
+    member can sit in one container's frame twice, so zero skips the duplicate scan.
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
     `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
     typed vector of the pool's one leaf type, which `_repack!` reaches behind a barrier.
@@ -176,6 +178,8 @@ mutable struct SettingPool
     members::Vector{Individual}
     # how many settings in this hierarchy are currently closed
     closed::Int
+    # memberships beyond the first; zero lets a repack skip the duplicate scan
+    repeats::Int
     # everything a repack needs, so a member edit does not have to find the hierarchy again
     leaves::Vector # widened: holds a Vector{SchoolClass} / Vector{Office}
     # one (containers, ranges, block_ptr, block_idx) tuple per container type, so each vector

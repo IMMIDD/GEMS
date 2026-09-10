@@ -1227,6 +1227,34 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(cs[5], sc)) == [13, 14, 15]
         end
 
+        @testset "duplicate scan " begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+            @test pool.repeats == 0
+
+            # the same member in two classes of one school is what the scan exists to find
+            victim = individuals(cs[1])[1]
+            add_member!(cs[2], victim, pop)
+            @test pool.repeats == 1
+            GEMS.repack_dirty_pools!(sc)
+            @test count(m -> m === victim, GEMS.present_members(sch, sc)) == 1
+
+            # and it comes back down, so one repeat does not cost a scan for the rest of the run
+            remove_member!(cs[2], victim, pop)
+            @test pool.repeats == 0
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test contiguous(GEMS.present_members(sch, sc))
+        end
+
+        @testset "a full repack re-establishes the repeat count" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+            pool.repeats = 7                        # as if an edit had over-counted
+            GEMS._repack!(pool)
+            @test pool.repeats == 0
+        end
+
         @testset "reading a pool with pending edits is refused" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             newcomer = Individual(id = Int32(43), age = 10, sex = 1)

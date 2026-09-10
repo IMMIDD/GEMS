@@ -242,7 +242,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
         push!(groups, (settings(cntnr, C), ranges[k], ptr, idx))
     end
 
-    pool = SettingPool(Individual[], 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
+    pool = SettingPool(Individual[], 0, 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
     for (i, l) in enumerate(leaves); l.pool = pool; l.pool_leaf = Int32(i); end
     for g in pool.container_groups, c in g[1]; c.pool = pool; end
     _repack!(pool)
@@ -438,6 +438,8 @@ forbidden inside the threaded transmission phase.
 """
 function _repack!(pool::SettingPool)
     pool.members = _repack_leaves!(pool.blocks, pool.leaves)
+    # re-established here, so an edit's over-count cannot outlive one full repack
+    pool.repeats = _count_repeats(pool, pool.leaves)
     _repack_groups!(pool, pool.leaves, pool.container_groups...)
     _clear_dirty!(pool.blocks)
     return nothing
@@ -531,6 +533,30 @@ function _repack_leaves!(bl::PoolBlocks, leaves::Vector{T}) where {T<:Individual
     end
     bl.dead = 0
     return members
+end
+
+# Memberships beyond the first, counted per block: a repeat only matters inside a container and
+# no container straddles one. Block-scoped also keeps the dup table at a single block's width.
+function _count_repeats(pool::SettingPool, leaves::Vector{T}) where {T<:IndividualSetting}
+    bl = pool.blocks
+    tbl = pool.dup_table
+    n = 0
+    for b in 1:nblocks(bl)
+        r = leaves_of(bl, b)
+        total = 0
+        @inbounds for j in r
+            total += length(leaves[j].individuals)
+        end
+        total == 0 && continue
+        _size_dup_table!(tbl, total)
+        _next_container!(tbl)
+        p = 0
+        @inbounds for j in r, m in leaves[j].individuals
+            p += 1
+            _first_seen!(tbl, id(m), p) == 0 || (n += 1)
+        end
+    end
+    return n
 end
 
 # Relay one block's leaves, growing it first if they no longer fit. Behind a barrier because
@@ -632,6 +658,7 @@ end
     len == 0 && return nothing
 
     # a member in two leaves below sits in the span twice, and only the first copy counts
+    pool.repeats == 0 && return nothing
     tbl = pool.dup_table
     _size_dup_table!(tbl, Int(len))
     found = _dup_runs(pool.members, Int(lo.pool_offset), Int(len), tbl)
@@ -694,10 +721,13 @@ _detached(s::IndividualSetting)::Vector{Individual} =
     s.individuals isa MemberSlice ? collect(s.individuals) : s.individuals
 
 function _pool_add_member!(s::IndividualSetting, individual::Individual)
+    pool = _pool(s)::SettingPool
+    # counted before the add, so an individual already in this block becomes a repeat
+    _occurrences(pool, pool.leaves, s, individual) > 0 && (pool.repeats += 1)
     v = _detached(s)
     push!(v, individual)
     s.individuals = v
-    _mark_dirty!(_pool(s)::SettingPool, s)
+    _mark_dirty!(pool, s)
     return nothing
 end
 
@@ -706,12 +736,26 @@ function _pool_remove_member!(s::IndividualSetting, individual::Individual)
     idx = findfirst(i -> i === individual, s.individuals)
     isnothing(idx) && return false
 
+    pool = _pool(s)::SettingPool
+    _occurrences(pool, pool.leaves, s, individual) > 1 && (pool.repeats -= 1)
     v = _detached(s)
     @inbounds v[idx] = v[end]
     pop!(v)
     s.individuals = v
-    _mark_dirty!(_pool(s)::SettingPool, s)
+    _mark_dirty!(pool, s)
     return true
+end
+
+# How many of `s`'s block's leaves hold `individual`.
+function _occurrences(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
+                      individual::Individual) where {T<:IndividualSetting}
+    n = 0
+    @inbounds for j in leaves_of(pool.blocks, Int(pool.blocks.of_leaf[s.pool_leaf]))
+        for m in leaves[j].individuals
+            m === individual && (n += 1)
+        end
+    end
+    return n
 end
 
 ###
