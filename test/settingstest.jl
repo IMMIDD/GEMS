@@ -1248,12 +1248,23 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test contiguous(GEMS.present_members(sch, sc))
         end
 
-        @testset "Repeat recount" begin
-            sc, cs, ys, sch, _, pop, plans = make_school()
-            pool = sc.pools[SchoolClass]
-            pool.repeats = 7                        # as if an edit had over-counted
-            GEMS._repack!(pool)
-            @test pool.repeats == 0
+        @testset "Repeat count at build" begin
+            # a member already in two classes when the pool is built has to be counted there,
+            # since nothing recounts afterwards
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = inds[3:6], contained = Int32(1))]
+            y = SchoolYear(id = Int32(1), contains = Int32[1, 2], contained = Int32(1))
+            sch = School(id = Int32(1), contains = Int32[1])
+            for x in vcat(cs, [y, sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc)
+
+            @test sc.pools[SchoolClass].repeats == 1
+            # and the frame it protects still holds inds[3] once, not twice
+            @test count(m -> m === inds[3], GEMS.present_members(sch, sc)) == 1
+            @test length(GEMS.present_members(sch, sc)) == 6
         end
 
         @testset "Stale reads" begin

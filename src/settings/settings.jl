@@ -794,7 +794,7 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
         @inbounds members[idx] = members[end]
         pop!(members)
     else
-        _pool_remove_member!(setting, individual)
+        _pool_remove_member!(setting, individual, idx)
     end
 
     T = typeof(setting)

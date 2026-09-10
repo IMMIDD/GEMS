@@ -84,23 +84,23 @@ end
     DupTable
 
 Repack scratch for spotting a member that sits in two leaves of one container. Open addressing
-keyed on member id.
+keyed on object identity, which costs no load from the member.
 
 # Fields
 
-- `keys::Vector{Int32}`: The member id in that slot, meaningful only while `gen` matches.
+- `keys::Vector{UInt}`: The member identity in that slot, meaningful only while `gen` matches.
 - `pos::Vector{Int32}`: The first pool position that member was seen at.
 - `gen::Vector{Int32}`: The `epoch` that last claimed the slot; anything else means free.
 - `epoch::Int32`: Bumped per container scanned.
 """
 mutable struct DupTable
-    keys::Vector{Int32}
+    keys::Vector{UInt}
     pos::Vector{Int32}
     gen::Vector{Int32}
     epoch::Int32
 end
 
-DupTable() = DupTable(Int32[], Int32[], Int32[], Int32(0))
+DupTable() = DupTable(UInt[], Int32[], Int32[], Int32(0))
 
 ###
 ### BLOCKS

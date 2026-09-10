@@ -245,6 +245,8 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
     pool = SettingPool(Individual[], 0, 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
     for (i, l) in enumerate(leaves); l.pool = pool; l.pool_leaf = Int32(i); end
     for g in pool.container_groups, c in g[1]; c.pool = pool; end
+    # counted once here; the edits keep it exact
+    pool.repeats = _count_repeats(pool, leaves)
     _repack!(pool)
 
     # settings may already be closed when the population is loaded
@@ -396,9 +398,7 @@ function repack_dirty_pools!(cntnr::SettingsContainer)
         if bl.dead * 2 > length(pool.members)
             _repack!(pool)
         else
-            for b in bl.dirty
-                _repack_block!(pool, Int(b))
-            end
+            _repack_blocks!(pool, bl.dirty)
             _clear_dirty!(bl)
         end
     end
@@ -438,8 +438,6 @@ forbidden inside the threaded transmission phase.
 """
 function _repack!(pool::SettingPool)
     pool.members = _repack_leaves!(pool.blocks, pool.leaves)
-    # re-established here, so an edit's over-count cannot outlive one full repack
-    pool.repeats = _count_repeats(pool, pool.leaves)
     _repack_groups!(pool, pool.leaves, pool.container_groups...)
     _clear_dirty!(pool.blocks)
     return nothing
@@ -451,9 +449,18 @@ end
 Relay one block and refresh only the containers inside it - an edit cannot move a coordinate
 out of its own block.
 """
-function _repack_block!(pool::SettingPool, b::Int)
-    _repack_block_leaves!(pool, pool.leaves, b)
-    _block_groups!(pool, pool.leaves, b, pool.container_groups...)
+_repack_block!(pool::SettingPool, b::Int) = _repack_blocks!(pool, (b,))
+
+# the barrier: both fields are abstractly typed, so pay the dispatch once per batch, not per block
+_repack_blocks!(pool::SettingPool, dirty) =
+    _repack_blocks!(pool, pool.leaves, dirty, pool.container_groups...)
+
+function _repack_blocks!(pool::SettingPool, leaves::Vector{T}, dirty,
+                         groups...) where {T<:IndividualSetting}
+    for b in dirty
+        _repack_block_leaves!(pool, leaves, Int(b))
+        _block_groups!(pool, leaves, Int(b), groups...)
+    end
     return nothing
 end
 
@@ -479,10 +486,14 @@ end
     return nothing
 end
 
+# What `===` compares, and unlike `id` it needs no load from the object.
+@inline _identity(m::Individual) = UInt(pointer_from_objref(m))
+
 # The position `k` was first seen at in this container, or 0 after claiming a slot for `p`.
-@inline function _first_seen!(t::DupTable, k::Int32, p::Int)
-    mask = length(t.keys) - 1
-    h = (Int(k) * 2654435761) & mask
+@inline function _first_seen!(t::DupTable, k::UInt, p::Int)
+    mask = UInt(length(t.keys) - 1)
+    # identities are addresses, so the low bits are alignment: mix the high half down
+    h = ((k >> 4) * 0x9e3779b97f4a7c15 >> 32) & mask
     e = t.epoch
     @inbounds while true
         if t.gen[h + 1] != e
@@ -493,7 +504,7 @@ end
         elseif t.keys[h + 1] == k
             return Int(t.pos[h + 1])
         end
-        h = (h + 1) & mask
+        h = (h + UInt(1)) & mask
     end
 end
 
@@ -553,7 +564,7 @@ function _count_repeats(pool::SettingPool, leaves::Vector{T}) where {T<:Individu
         p = 0
         @inbounds for j in r, m in leaves[j].individuals
             p += 1
-            _first_seen!(tbl, id(m), p) == 0 || (n += 1)
+            _first_seen!(tbl, _identity(m), p) == 0 || (n += 1)
         end
     end
     return n
@@ -677,7 +688,7 @@ function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTabl
     # (first position, repeat position) for every copy past the first
     reps = nothing
     @inbounds for p in off:(off + len - 1)
-        f = _first_seen!(tbl, id(members[p]), p)
+        f = _first_seen!(tbl, _identity(members[p]), p)
         if f != 0
             reps === nothing && (reps = Tuple{Int32, Int32}[])
             push!(reps, (Int32(f), Int32(p)))
@@ -732,10 +743,8 @@ function _pool_add_member!(s::IndividualSetting, individual::Individual)
 end
 
 # Swap with last, as before: removal reorders a leaf, which is RNG-visible and unavoidable.
-function _pool_remove_member!(s::IndividualSetting, individual::Individual)
-    idx = findfirst(i -> i === individual, s.individuals)
-    isnothing(idx) && return false
-
+# `idx` comes from the caller, which already located the member.
+function _pool_remove_member!(s::IndividualSetting, individual::Individual, idx::Int)
     pool = _pool(s)::SettingPool
     _occurrences(pool, pool.leaves, s, individual) > 1 && (pool.repeats -= 1)
     v = _detached(s)
@@ -743,7 +752,7 @@ function _pool_remove_member!(s::IndividualSetting, individual::Individual)
     pop!(v)
     s.individuals = v
     _mark_dirty!(pool, s)
-    return true
+    return nothing
 end
 
 # How many of `s`'s block's leaves hold `individual`
