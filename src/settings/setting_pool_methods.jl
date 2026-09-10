@@ -461,6 +461,15 @@ end
 ### Where each leaf's members sit in the pool. A block is relaid on itself, the hierarchy is not.
 ###
 
+# How many members block `b`'s leaves hold between them.
+@inline function _block_members(bl::PoolBlocks, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
+    n = 0
+    @inbounds for j in leaves_of(bl, b)
+        n += length(leaves[j].individuals)
+    end
+    return n
+end
+
 # The slots a block of `n` members is given.
 _with_slack(n::Int, slack::Float64) = Int32(n + ceil(Int, slack * n))
 
@@ -468,10 +477,7 @@ function _repack_leaves!(bl::PoolBlocks, leaves::Vector{T}) where {T<:Individual
     # place every block before copying: the leaves are pointed into the vector
     total = 0
     @inbounds for b in 1:nblocks(bl)
-        n = 0
-        for j in leaves_of(bl, b)
-            n += length(leaves[j].individuals)
-        end
+        n = _block_members(bl, leaves, b)
         bl.capacity[b] = _with_slack(n, bl.slack)
         bl.offset[b] = Int32(total + 1)
         total += Int(bl.capacity[b])
@@ -507,10 +513,7 @@ end
 function _repack_block_leaves!(pool::SettingPool, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
     bl = pool.blocks
     r = leaves_of(bl, b)
-    n = 0
-    @inbounds for j in r
-        n += length(leaves[j].individuals)
-    end
+    n = _block_members(bl, leaves, b)
     n > Int(bl.capacity[b]) && _relocate_block!(pool, b, n)
 
     # relaid on top of itself, so a moved leaf would land on one not yet read: via scratch
@@ -605,16 +608,8 @@ end
     len == 0 && return nothing
 
     # a member in two leaves below sits in the span twice, and only the first copy counts
-    pool.repeats == 0 && return nothing
-    tbl = pool.dup_table
-    _size_dup_table!(tbl, Int(len))
-    found = _dup_runs(pool.members, Int(lo.pool_offset), Int(len), tbl)
-    if found !== nothing
-        runs, kept = found
-        c.pool_offset = runs.starts[1]
-        c.pool_length = Int32(kept)
-        c.pool_runs = runs
-    end
+    pool.repeats == 0 || 
+        _dedup_container!(c, pool, Int(lo.pool_offset), Int(len))
     return nothing
 end
 
@@ -668,6 +663,19 @@ end
     end
 end
 
+# Narrow a container's span to a frame holding each member once, when it holds one twice.
+function _dedup_container!(c::ContainerSetting, pool::SettingPool, off::Int, len::Int)
+    tbl = pool.dup_table
+    _size_dup_table!(tbl, len)
+    found = _dup_runs(pool.members, off, len, tbl)
+    found === nothing && return nothing
+    runs, kept = found
+    c.pool_offset = runs.starts[1]
+    c.pool_length = Int32(kept)
+    c.pool_runs = runs
+    return nothing
+end
+
 # The frame for the span `off:(off + len - 1)`, or `nothing` when it holds no member twice.
 function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTable)
     _next_container!(tbl)
@@ -711,10 +719,7 @@ function _count_repeats(pool::SettingPool, leaves::Vector{T}) where {T<:Individu
     n = 0
     for b in 1:nblocks(bl)
         r = leaves_of(bl, b)
-        total = 0
-        @inbounds for j in r
-            total += length(leaves[j].individuals)
-        end
+        total = _block_members(bl, leaves, b)
         total == 0 && continue
         _size_dup_table!(tbl, total)
         _next_container!(tbl)
