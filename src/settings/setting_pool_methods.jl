@@ -746,6 +746,18 @@ function _pool_remove_member!(s::IndividualSetting, individual::Individual)
     return true
 end
 
+# How many of `s`'s block's leaves hold `individual`
+function _occurrences(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
+                      individual::Individual) where {T<:IndividualSetting}
+    n = 0
+    @inbounds for j in leaves_of(pool.blocks, Int(pool.blocks.of_leaf[s.pool_leaf]))
+        for m in leaves[j].individuals
+            m === individual && (n += 1)
+        end
+    end
+    return n
+end
+
 ###
 ### HIERARCHY TRAITS
 ###
