@@ -12,11 +12,11 @@
     _is_legacy_critical(crit)
 
 `true` if a `Critical` progression config table uses the pre-decoupling health format, i.e. carries
-`icu_admission_to_death` or `severeness_onset_to_hospital_admission`. A modern `Critical` (new disease
+`icu_admission_to_death` or `hospital_discharge_to_severeness_offset`. A modern `Critical` (new disease
 tier, optionally with embedded care) carries neither.
 """
 _is_legacy_critical(crit) = crit isa Dict &&
-    (haskey(crit, "icu_admission_to_death") || haskey(crit, "severeness_onset_to_hospital_admission"))
+    (haskey(crit, "icu_admission_to_death") || haskey(crit, "hospital_discharge_to_severeness_offset"))
 
 """
     _normalize_legacy_pathogen!(params::Dict)

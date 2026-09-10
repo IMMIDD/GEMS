@@ -526,9 +526,10 @@ function flush_pending_infections!(sim::Simulation)
             for p in buf
                 _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = get_individual_by_id(pop, p.host_id)
-                infected(ind, p.pathogen_id) && continue
-                _commit_infection!(sim, ind, p, next_id, infections, logger, shard_id)
-                next_id += Int32(1)
+                state = push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
+                # contribute the new infection's care demand
+                compute_health!(ind, infections, health_progression(sim), sim.health_profiles,
+                    state, tick(sim), sim.rngs[shard_id], sim.health_schedules[shard_id])
             end
             empty!(buf)
         end
@@ -567,7 +568,7 @@ function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfecti
         p.source_infection_id
     )
     state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)
-    compute_health!(ind, infections, health_progression(sim), state, tick(sim),
+    compute_health!(ind, infections, health_progression(sim), sim.health_profiles, state, tick(sim),
         sim.rngs[shard_id], sim.health_schedules[shard_id])
     _mark_infected!(ind, p.pathogen_id)
     activate_memberships!(ind, sim)
@@ -719,7 +720,7 @@ negative.
 """
 @inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
     for level in reverse(instances(CareLevel))
-        _demand(indiv, level) > 0 || continue
+        _get_demand(indiv, level) > 0 || continue
         _set_demand!(indiv, level, Int16(0))
         log!(hl, id(indiv), _care_event(level, false), tick)
     end

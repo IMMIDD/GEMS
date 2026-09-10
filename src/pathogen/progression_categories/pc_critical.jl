@@ -40,7 +40,7 @@ dp = Critical(
 )
 ```
 
-Host care for this tier may be embedded directly, either as a `CriticalHealthProfile` object or as flat
+Host health for this tier may be embedded directly, either as a `CriticalHealthProfile` object or as flat
 `CriticalHealthProfile` parameters (the latter is a convenience only; see `CriticalHealthProfile` for its defaults
 and the cascading-off caveat):
 
@@ -66,9 +66,9 @@ mutable struct Critical <: ProgressionCategory
     critical_onset_to_critical_offset::Union{Distribution, Real}
     critical_offset_to_severeness_offset::Union{Distribution, Real}
     severeness_offset_to_recovery::Union{Distribution, Real}
-    # embedded host care (build-time only; harvested into the global HealthProgression, ignored by
-    # calculate_progression). Pass `care=CriticalHealthProfile(...)` or the CriticalHealthProfile params directly.
-    care::Union{Nothing, HealthProfile}
+    # embedded host health (build-time only; harvested into the HealthProgression, ignored by
+    # calculate_progression). Pass `health=CriticalHealthProfile(...)` or the CriticalHealthProfile params directly.
+    health::Union{Nothing, HealthProfile}
 
     function Critical(;
         exposure_to_infectiousness_onset,
@@ -78,13 +78,14 @@ mutable struct Critical <: ProgressionCategory
         critical_onset_to_critical_offset,
         critical_offset_to_severeness_offset,
         severeness_offset_to_recovery,
-        care::Union{Nothing, HealthProfile} = nothing,
-        care_params...)
+        health::Union{Nothing, HealthProfile} = nothing,
+        care::Union{Nothing, HealthProfile} = nothing,  # deprecated spelling of `health`
+        health_params...)
 
         return new(exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset,
             symptom_onset_to_severeness_onset, severeness_onset_to_critical_onset,
             critical_onset_to_critical_offset, critical_offset_to_severeness_offset,
-            severeness_offset_to_recovery, _embed_care(Critical, care, care_params))
+            severeness_offset_to_recovery, _embed_health(Critical, health, care, health_params))
     end
 end
 
