@@ -80,6 +80,12 @@ function _subtree_open(cntnr::SettingsContainer, s::ContainerSetting)
     return true
 end
 
+###
+### MEMBER RUNS
+### Run arithmetic shared by the closed case and the repeated-member case, both of which turn
+### a container's span into several runs.
+###
+
 function _collect_runs!(starts, prefix, total, ::SettingsContainer, s::IndividualSetting)
     (is_open(s) && s.pool_length > 0) || return total
     lo = Int(s.pool_offset)
@@ -100,12 +106,6 @@ function _collect_runs!(starts, prefix, total, cntnr::SettingsContainer, s::Cont
     end
     return total
 end
-
-###
-### MEMBER RUNS
-### Run arithmetic shared by the closed case and the repeated-member case, both of which turn
-### a container's span into several runs.
-###
 
 # The runs a container's open leaves cover, repeats past the first present copy dropped.
 function _open_runs(cntnr::SettingsContainer, s::ContainerSetting)
@@ -427,9 +427,6 @@ function _clear_dirty!(bl::PoolBlocks)
     return nothing
 end
 
-# The slots a block of `n` members is given.
-_with_slack(n::Int, slack::Float64) = Int32(n + ceil(Int, slack * n))
-
 """
     _repack!(pool::SettingPool)
 
@@ -459,49 +456,13 @@ function _repack_blocks!(pool::SettingPool, leaves::Vector{T}, dirty,
     return nothing
 end
 
-# Grown to the widest container span, never the pool. Must run before the span it sizes for:
-# a table smaller than that spins forever in `_first_seen!`.
-function _size_dup_table!(t::DupTable, n::Int)
-    want = n == 0 ? 0 : nextpow(2, 2n)
-    length(t.keys) >= want && return nothing
-    resize!(t.keys, want); resize!(t.pos, want); resize!(t.gen, want)
-    fill!(t.gen, Int32(0))
-    t.epoch = Int32(0)
-    return nothing
-end
+###
+### LEAF LAYOUT
+### Where each leaf's members sit in the pool. A block is relaid on itself, the hierarchy is not.
+###
 
-# Start a fresh container. Every slot the previous one claimed is free again by definition.
-@inline function _next_container!(t::DupTable)
-    if t.epoch == typemax(Int32)
-        fill!(t.gen, Int32(0))
-        t.epoch = Int32(1)
-    else
-        t.epoch += Int32(1)
-    end
-    return nothing
-end
-
-# What `===` compares, and unlike `id` it needs no load from the object.
-@inline _identity(m::Individual) = UInt(pointer_from_objref(m))
-
-# The position `k` was first seen at in this container, or 0 after claiming a slot for `p`.
-@inline function _first_seen!(t::DupTable, k::UInt, p::Int)
-    mask = UInt(length(t.keys) - 1)
-    # identities are addresses, so the low bits are alignment: mix the high half down
-    h = ((k >> 4) * 0x9e3779b97f4a7c15 >> 32) & mask
-    e = t.epoch
-    @inbounds while true
-        if t.gen[h + 1] != e
-            t.gen[h + 1] = e
-            t.keys[h + 1] = k
-            t.pos[h + 1] = Int32(p)
-            return 0
-        elseif t.keys[h + 1] == k
-            return Int(t.pos[h + 1])
-        end
-        h = (h + UInt(1)) & mask
-    end
-end
+# The slots a block of `n` members is given.
+_with_slack(n::Int, slack::Float64) = Int32(n + ceil(Int, slack * n))
 
 function _repack_leaves!(bl::PoolBlocks, leaves::Vector{T}) where {T<:IndividualSetting}
     # place every block before copying: the leaves are pointed into the vector
@@ -539,30 +500,6 @@ function _repack_leaves!(bl::PoolBlocks, leaves::Vector{T}) where {T<:Individual
     end
     bl.dead = 0
     return members
-end
-
-# Memberships beyond the first, counted per block: a repeat only matters inside a container and
-# no container straddles one. Block-scoped also keeps the dup table at a single block's width.
-function _count_repeats(pool::SettingPool, leaves::Vector{T}) where {T<:IndividualSetting}
-    bl = pool.blocks
-    tbl = pool.dup_table
-    n = 0
-    for b in 1:nblocks(bl)
-        r = leaves_of(bl, b)
-        total = 0
-        @inbounds for j in r
-            total += length(leaves[j].individuals)
-        end
-        total == 0 && continue
-        _size_dup_table!(tbl, total)
-        _next_container!(tbl)
-        p = 0
-        @inbounds for j in r, m in leaves[j].individuals
-            p += 1
-            _first_seen!(tbl, _identity(m), p) == 0 || (n += 1)
-        end
-    end
-    return n
 end
 
 # Relay one block's leaves, growing it first if they no longer fit. Behind a barrier because
@@ -613,6 +550,11 @@ function _relocate_block!(pool::SettingPool, b::Int, n::Int)
     bl.capacity[b] = cap
     return nothing
 end
+
+###
+### CONTAINER REFRESH
+### A container stores no members, so its span is read back from its leaves' fresh offsets.
+###
 
 # Which containers of a level a refresh visits. Both are plain values, so the choice resolves
 # at compile time and costs no closure and no view.
@@ -676,6 +618,56 @@ end
     return nothing
 end
 
+###
+### DUPLICATE DETECTION
+### A member in two leaves of one container would sit in its frame twice. `pool.repeats`
+### gates all of this: at zero, none of it runs.
+###
+
+# Grown to the widest container span, never the pool. Must run before the span it sizes for:
+# a table smaller than that spins forever in `_first_seen!`.
+function _size_dup_table!(t::DupTable, n::Int)
+    want = n == 0 ? 0 : nextpow(2, 2n)
+    length(t.keys) >= want && return nothing
+    resize!(t.keys, want); resize!(t.pos, want); resize!(t.gen, want)
+    fill!(t.gen, Int32(0))
+    t.epoch = Int32(0)
+    return nothing
+end
+
+# Start a fresh container. Every slot the previous one claimed is free again by definition.
+@inline function _next_container!(t::DupTable)
+    if t.epoch == typemax(Int32)
+        fill!(t.gen, Int32(0))
+        t.epoch = Int32(1)
+    else
+        t.epoch += Int32(1)
+    end
+    return nothing
+end
+
+# What `===` compares, and unlike `id` it needs no load from the object.
+@inline _identity(m::Individual) = UInt(pointer_from_objref(m))
+
+# The position `k` was first seen at in this container, or 0 after claiming a slot for `p`.
+@inline function _first_seen!(t::DupTable, k::UInt, p::Int)
+    mask = UInt(length(t.keys) - 1)
+    # identities are addresses, so the low bits are alignment: mix the high half down
+    h = ((k >> 4) * 0x9e3779b97f4a7c15 >> 32) & mask
+    e = t.epoch
+    @inbounds while true
+        if t.gen[h + 1] != e
+            t.gen[h + 1] = e
+            t.keys[h + 1] = k
+            t.pos[h + 1] = Int32(p)
+            return 0
+        elseif t.keys[h + 1] == k
+            return Int(t.pos[h + 1])
+        end
+        h = (h + UInt(1)) & mask
+    end
+end
+
 # The frame for the span `off:(off + len - 1)`, or `nothing` when it holds no member twice.
 function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTable)
     _next_container!(tbl)
@@ -709,6 +701,30 @@ function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTabl
 
     starts, prefix, kept = _drop_skips(Int32[off], Int32[0], len, skips)
     return MemberRuns(starts, prefix, groups, bounds), kept
+end
+
+# Memberships beyond the first, counted per block: a repeat only matters inside a container and
+# no container straddles one. Block-scoped also keeps the dup table at a single block's width.
+function _count_repeats(pool::SettingPool, leaves::Vector{T}) where {T<:IndividualSetting}
+    bl = pool.blocks
+    tbl = pool.dup_table
+    n = 0
+    for b in 1:nblocks(bl)
+        r = leaves_of(bl, b)
+        total = 0
+        @inbounds for j in r
+            total += length(leaves[j].individuals)
+        end
+        total == 0 && continue
+        _size_dup_table!(tbl, total)
+        _next_container!(tbl)
+        p = 0
+        @inbounds for j in r, m in leaves[j].individuals
+            p += 1
+            _first_seen!(tbl, _identity(m), p) == 0 || (n += 1)
+        end
+    end
+    return n
 end
 
 ###
