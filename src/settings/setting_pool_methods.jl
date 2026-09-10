@@ -746,12 +746,20 @@ function _pool_remove_member!(s::IndividualSetting, individual::Individual, idx:
     return nothing
 end
 
-# Whether `individual` is in more than `n` leaves of `s`'s block.
+# In more than `n` leaves of `s`'s block. The plan bounds that count, so it usually answers alone.
 @inline function _repeats_beyond(pool::SettingPool, plans, s::IndividualSetting,
                                  individual::Individual, n::Int)
     length(plan_slots(plans, individual, typeof(s))) <= n && return false
     return _occurrences(pool, pool.leaves, s, individual) > n
 end
+
+# Already a member of `s`'s block.
+@inline _in_block(pool::SettingPool, plans, s::IndividualSetting, individual::Individual) =
+    _repeats_beyond(pool, plans, s, individual, 0)
+
+# A member of `s`'s block more than once.
+@inline _repeated_in_block(pool::SettingPool, plans, s::IndividualSetting, individual::Individual) =
+    _repeats_beyond(pool, plans, s, individual, 1)
 
 # How many of `s`'s block's leaves hold `individual`
 function _occurrences(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
