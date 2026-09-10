@@ -8,6 +8,7 @@ export PlanEntry, ActivityPlanStore
 export member_index, weight, setting_type_of
 export plan_entries, plan_length, entry_active, entry_active!, container_frame_index
 export build_plans!, assign_settings!, assign_member_indices!, activity_plans, validate_plans
+export check_pool_entries
 export membership_column
 
 ###
@@ -401,12 +402,33 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
 
     for T in settingtypes(cntnr)
         (T <: IndividualSetting && T !== GlobalSetting) || continue
-        for s in settings(cntnr, T), ind in individuals(s)
-            plan_slot(plans, ind, T, id(s)) != 0 ||
-                error("individual $(id(ind)) is a member of $T $(id(s)) but holds no plan entry for it")
-        end
+        _check_member_entries(plans, cntnr, T)
     end
     return true
+end
+
+"""
+    check_pool_entries(pop::Population, cntnr::SettingsContainer)
+
+Errors unless every member of every pooled leaf holds a plan entry for it.
+"""
+function check_pool_entries(pop::Population, cntnr::SettingsContainer)
+    plans = activity_plans(pop)
+    for T in keys(cntnr.pools)
+        _check_member_entries(plans, cntnr, T)
+    end
+    return true
+end
+
+# function barrier: with `T` static, `settings(cntnr, T)` is a typed vector
+function _check_member_entries(plans::ActivityPlanStore, cntnr::SettingsContainer,
+                               ::Type{T}) where {T<:IndividualSetting}
+    for s in settings(cntnr, T), ind in individuals(s)
+        plan_slot(plans, ind, T, id(s)) != 0 ||
+            error("individual $(id(ind)) is a member of $T $(id(s)) but holds no plan entry " *
+                  "for it; membership edits read the plan store, so it has to cover every member")
+    end
+    return nothing
 end
 
 ###

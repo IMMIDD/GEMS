@@ -765,9 +765,11 @@ Must not be called while the threaded transmission phase is running.
 """
 function add_member!(setting::IndividualSetting, individual::Individual, pop::Population)
     plans = activity_plans(pop)
-    if _pool(setting) === nothing
+    pool = _pool(setting)
+    if pool === nothing
         push!(setting.individuals, individual)
     else
+        _repeats_beyond(pool, plans, setting, individual, 0) && (pool.repeats += 1)
         _pool_add_member!(setting, individual)
     end
     plan_add!(plans, individual,
@@ -790,10 +792,12 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
     # the member that swap-with-last will move into `idx`
     displaced = @inbounds members[end]
 
-    if _pool(setting) === nothing
+    pool = _pool(setting)
+    if pool === nothing
         @inbounds members[idx] = members[end]
         pop!(members)
     else
+        _repeats_beyond(pool, plans, setting, individual, 1) && (pool.repeats -= 1)
         _pool_remove_member!(setting, individual, idx)
     end
 

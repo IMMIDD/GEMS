@@ -396,6 +396,14 @@ struct PlanTestSettingB <: IndividualSetting end
         for x in vcat(cs, [sy]); GEMS.add!(cntnr, x); end
         GEMS.build_pools!(cntnr)
         pop = Population(inds)
+        # every member holds an entry for its class, which is what `validate_plans` requires and
+        # what `add_member!` reads to decide whether the newcomer is already in the hierarchy
+        plans = GEMS.activity_plans(pop)
+        for (k, ind) in enumerate(inds)
+            assign_settings!(pop, ind, SchoolClass => div(k - 1, 3) + 1)
+            GEMS.plan_set_member_index!(plans, Int(ind.plan_offset), mod(k - 1, 3) + 1)
+        end
+        plans.indexed = true
 
         # inds[4] now sits in cs[1] and cs[2], so the year holds one of the two copies
         add_member!(cs[1], inds[4], pop)

@@ -518,6 +518,7 @@ function _BUILD_Simulation(;
         build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
         # after pooling: a leaf's members only settle once its pool slice is laid out
         assign_member_indices!(sim.population, settingscontainer(sim))
+        check_pool_entries(sim.population, settingscontainer(sim))
 
         # update label
         sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)

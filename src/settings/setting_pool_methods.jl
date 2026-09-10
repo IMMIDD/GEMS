@@ -727,8 +727,6 @@ _detached(s::IndividualSetting)::Vector{Individual} =
 
 function _pool_add_member!(s::IndividualSetting, individual::Individual)
     pool = _pool(s)::SettingPool
-    # counted before the add, so an individual already in this block becomes a repeat
-    _occurrences(pool, pool.leaves, s, individual) > 0 && (pool.repeats += 1)
     v = _detached(s)
     push!(v, individual)
     s.individuals = v
@@ -740,13 +738,19 @@ end
 # `idx` comes from the caller, which already located the member.
 function _pool_remove_member!(s::IndividualSetting, individual::Individual, idx::Int)
     pool = _pool(s)::SettingPool
-    _occurrences(pool, pool.leaves, s, individual) > 1 && (pool.repeats -= 1)
     v = _detached(s)
     @inbounds v[idx] = v[end]
     pop!(v)
     s.individuals = v
     _mark_dirty!(pool, s)
     return nothing
+end
+
+# Whether `individual` is in more than `n` leaves of `s`'s block.
+@inline function _repeats_beyond(pool::SettingPool, plans, s::IndividualSetting,
+                                 individual::Individual, n::Int)
+    length(plan_slots(plans, individual, typeof(s))) <= n && return false
+    return _occurrences(pool, pool.leaves, s, individual) > n
 end
 
 # How many of `s`'s block's leaves hold `individual`
