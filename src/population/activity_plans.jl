@@ -249,7 +249,8 @@ end
     container_frame_index(cntnr::SettingsContainer, container::ContainerSetting, leaf::IndividualSetting, leaf_index::Integer)
 
 Returns the position in `container`'s frame of the member at `leaf_index` of `leaf`, or
-`DEFAULT_MEMBER_INDEX` when they are not in it. Mirrors the three cases of `present_members`.
+`DEFAULT_MEMBER_INDEX` when they are not in it. Mirrors the three cases of `present_members`,
+so the dropped copy of a member in two leaves has no position here.
 """
 function container_frame_index(cntnr::SettingsContainer, container::ContainerSetting,
                                leaf::IndividualSetting, leaf_index::Integer)::Int32
@@ -261,22 +262,16 @@ function container_frame_index(cntnr::SettingsContainer, container::ContainerSet
     p = Int(leaf.pool_offset) + Int(leaf_index) - 1
 
     if pool.closed == 0 || _subtree_open(cntnr, container)
-        return Int32(p - Int(container.pool_offset) + 1)
+        runs = container.pool_runs
+        runs === nothing && return Int32(p - Int(container.pool_offset) + 1)
+        k = _run_index(runs.starts, runs.prefix, Int(container.pool_length), p)
+        return k == 0 ? DEFAULT_MEMBER_INDEX : Int32(k)
     end
 
-    starts = Int32[]
-    prefix = Int32[]
-    total = _collect_runs!(starts, prefix, 0, cntnr, container)
+    starts, prefix, total = _open_runs(cntnr, container)
     isempty(starts) && return DEFAULT_MEMBER_INDEX
-
-    # one run is contiguous again, but based at `starts[1]`, not at `container.pool_offset`
-    length(starts) == 1 && return Int32(p - Int(starts[1]) + 1)
-
-    r = searchsortedlast(starts, Int32(p))
-    r == 0 && return DEFAULT_MEMBER_INDEX
-    run_len = (r < length(prefix) ? Int(prefix[r + 1]) : total) - Int(prefix[r])
-    (p - Int(starts[r])) < run_len || return DEFAULT_MEMBER_INDEX
-    return Int32(p - Int(starts[r]) + Int(prefix[r]) + 1)
+    k = _run_index(starts, prefix, total, p)
+    return k == 0 ? DEFAULT_MEMBER_INDEX : Int32(k)
 end
 
 ###

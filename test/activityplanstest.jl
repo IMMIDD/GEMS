@@ -384,4 +384,37 @@ struct PlanTestSettingB <: IndividualSetting end
         @test container_frame_index(cntnr, sy, cs[1], 1) == GEMS.DEFAULT_MEMBER_INDEX
         open!(sy)
     end
+
+    @testset "container_frame_index of a repeated member" begin
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [SchoolClass, SchoolYear])
+        inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+        cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+              SchoolClass(id = Int32(2), individuals = inds[4:6], contained = Int32(1)),
+              SchoolClass(id = Int32(3), individuals = inds[7:9], contained = Int32(1))]
+        sy = SchoolYear(id = Int32(1), contains = Int32[1, 2, 3])
+        for x in vcat(cs, [sy]); GEMS.add!(cntnr, x); end
+        GEMS.build_pools!(cntnr)
+        pop = Population(inds)
+
+        # inds[4] now sits in cs[1] and cs[2], so the year holds one of the two copies
+        add_member!(cs[1], inds[4], pop)
+        GEMS.repack_dirty_pools!(cntnr)
+        frame = GEMS.present_members(sy, cntnr)
+
+        kept = container_frame_index(cntnr, sy, cs[1], 4)
+        @test kept != GEMS.DEFAULT_MEMBER_INDEX
+        @test frame[kept] === inds[4]
+        # the dropped copy has no position, which is what gives it one turn and not two
+        @test container_frame_index(cntnr, sy, cs[2], 1) == GEMS.DEFAULT_MEMBER_INDEX
+
+        # closing the class the kept copy is in hands the position to the other
+        close!(cs[1])
+        frame = GEMS.present_members(sy, cntnr)
+        promoted = container_frame_index(cntnr, sy, cs[2], 1)
+        @test promoted != GEMS.DEFAULT_MEMBER_INDEX
+        @test frame[promoted] === inds[4]
+        @test container_frame_index(cntnr, sy, cs[1], 4) == GEMS.DEFAULT_MEMBER_INDEX
+        open!(cs[1])
+    end
 end

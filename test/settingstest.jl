@@ -1158,6 +1158,67 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(f) == [1, 2, 3, 7, 8, 9]
             @test !contiguous(f)
         end
+
+        @testset "a member in two leaves counts once in their container" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            # inds[4] is already in cs[2]; both classes sit in ys[1]
+            add_member!(cs[1], inds[4], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            # the leaves keep both copies - the member really is in both classes
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 4]
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6]
+
+            f = GEMS.present_members(ys[1], sc)
+            @test ids(f) == [1, 2, 3, 4, 5, 6]
+            # the repeat sits inside the span, so the frame is two runs
+            @test !contiguous(f)
+            @test [id(f[i]) for i in eachindex(f)] == [1, 2, 3, 4, 5, 6]
+            # and every level above drops the same copy
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test ids(GEMS.present_members(ys[2], sc)) == [7, 8, 9]
+        end
+
+        @testset "a repeat at the end of a span stays one run" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[2], inds[1], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            f = GEMS.present_members(ys[1], sc)
+            @test ids(f) == [1, 2, 3, 4, 5, 6]
+            @test contiguous(f)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+        end
+
+        @testset "a repeat spanning years counts once in the school only" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[3], inds[1], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            # each year holds one copy, so neither year is affected
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+            @test ids(GEMS.present_members(ys[2], sc)) == [7, 8, 9, 1]
+            @test contiguous(GEMS.present_members(ys[1], sc))
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+        end
+
+        @testset "closing the leaf holding the kept copy promotes the other" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[1], inds[4], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            # dropping the class the kept copy sits in must not drop the member
+            close!(cs[1])
+            @test ids(GEMS.present_members(ys[1], sc)) == [4, 5, 6]
+            @test ids(GEMS.present_members(sch, sc)) == [4, 5, 6, 7, 8, 9]
+            open!(cs[1])
+
+            # the other way round the kept copy is the one that survives
+            close!(cs[2])
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4]
+            open!(cs[2])
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+        end
     end
 
 end

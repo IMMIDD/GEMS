@@ -1,57 +1,22 @@
 ###
 ### SETTING POOL METHODS
 ###
-### `SettingPool`, `MemberSlice` and `MemberStorage` live in settings.jl - the setting
-### structs use them as field types.
-###
 export build_pools!, repack_dirty_pools!, present_members
 
 ###
 ### PRESENT MEMBERS
 ###
 
-# Shared by every contiguous view, so the common case allocates no run vectors.
-const NO_RUNS = Int32[]
-
-"""
-    MemberView
-
-A setting's present members, as a window onto its hierarchy's pool. Usually one unbroken span,
-described by `offset` and `len`. A container with closed descendants needs several runs, and
-then `starts`/`prefix` describe them and indexing binary-searches `prefix`.
-
-The result aliases real member storage, so writing to it edits membership.
-"""
-struct MemberView <: AbstractVector{Individual}
-    members::Vector{Individual}
-    offset::Int32
-    len::Int32
-    starts::Vector{Int32}
-    prefix::Vector{Int32}
-end
-
-MemberView(members::Vector{Individual}, offset::Int32, len::Int32) =
-    MemberView(members, offset, len, NO_RUNS, NO_RUNS)
-MemberView(members::Vector{Individual}, starts::Vector{Int32}, prefix::Vector{Int32}, len::Int32) =
-    MemberView(members, Int32(0), len, starts, prefix)
-
-Base.size(v::MemberView) = (Int(v.len),)
-Base.IndexStyle(::Type{MemberView}) = IndexLinear()
-
-Base.@propagate_inbounds function Base.getindex(v::MemberView, k::Int)
-    isempty(v.starts) && return @inbounds v.members[v.offset + k - 1]
-    r = searchsortedlast(v.prefix, k - 1)
-    @inbounds v.members[v.starts[r] + (k - 1 - v.prefix[r])]
-end
-
 """
     present_members(setting::Setting, cntnr::SettingsContainer)
 
 The setting's present members, as an indexable view. Nothing is copied and nothing is built
 per tick: an open leaf and an all-open container are both a contiguous slice of the
-hierarchy pool, and only a container with closed descendants needs run indexing.
+hierarchy pool, and only a container with closed descendants or a repeated member needs run
+indexing.
 
-Equal element for element to `present_individuals(setting, sim)`.
+Equal element for element to `present_individuals(setting, sim)`, except that a member in two
+leaves of one container appears once here and twice there.
 
 The result aliases real member storage, so writing to it edits membership - see the note on
 `ContactSamplingMethod`.
@@ -76,11 +41,14 @@ function present_members(s::ContainerSetting, cntnr::SettingsContainer)::MemberV
     # the pool is repacked after every edit, so a container's range covers exactly its
     # members; only a closure below it can break that
     if pool.closed == 0 || _subtree_open(cntnr, s)
-        return MemberView(pool.members, s.pool_offset, s.pool_length)
+        r = s.pool_runs
+        # a repeat at the edge of the span leaves one run, which is a plain slice again
+        (r === nothing || length(r.starts) == 1) &&
+            return MemberView(pool.members, s.pool_offset, s.pool_length)
+        return MemberView(pool.members, r.starts, r.prefix, s.pool_length)
     end
 
-    starts = Int32[]; prefix = Int32[]
-    total = _collect_runs!(starts, prefix, 0, cntnr, s)
+    starts, prefix, total = _open_runs(cntnr, s)
     length(starts) == 1 && return MemberView(pool.members, @inbounds(starts[1]), Int32(total))
     return MemberView(pool.members, starts, prefix, Int32(total))
 end
@@ -131,6 +99,80 @@ function _collect_runs!(starts, prefix, total, cntnr::SettingsContainer, s::Cont
         total = _collect_runs!(starts, prefix, total, cntnr, kids[cid])
     end
     return total
+end
+
+###
+### MEMBER RUNS
+### Run arithmetic shared by the closed case and the repeated-member case, both of which turn
+### a container's span into several runs.
+###
+
+# The runs a container's open leaves cover, repeats past the first present copy dropped.
+function _open_runs(cntnr::SettingsContainer, s::ContainerSetting)
+    starts = Int32[]; prefix = Int32[]
+    total = _collect_runs!(starts, prefix, 0, cntnr, s)
+    r = s.pool_runs
+    if r !== nothing
+        skips = _repeat_skips(r, starts, prefix, total)
+        isempty(skips) || ((starts, prefix, total) = _drop_skips(starts, prefix, total, skips))
+    end
+    return starts, prefix, total
+end
+
+# Where pool position `p` sits in a run-indexed frame, 0 when the runs do not cover it.
+@inline function _run_index(starts::Vector{Int32}, prefix::Vector{Int32}, total::Int, p::Int)
+    r = searchsortedlast(starts, Int32(p))
+    r == 0 && return 0
+    @inbounds run_len = (r < length(prefix) ? Int(prefix[r + 1]) : total) - Int(prefix[r])
+    @inbounds off = p - Int(starts[r])
+    off < run_len || return 0
+    @inbounds return off + Int(prefix[r]) + 1
+end
+
+# Split `starts`/`prefix` around `skips`, ascending pool positions lying inside them.
+function _drop_skips(starts::Vector{Int32}, prefix::Vector{Int32}, total::Int,
+                     skips::Vector{Int32})
+    out_starts = Int32[]; out_prefix = Int32[]
+    kept = 0
+    k = 1
+    @inbounds for r in eachindex(starts)
+        lo = Int(starts[r])
+        stop = lo + (r < length(prefix) ? Int(prefix[r + 1]) : total) - Int(prefix[r])
+        pos = lo
+        while k <= length(skips) && Int(skips[k]) < lo
+            k += 1
+        end
+        while k <= length(skips) && Int(skips[k]) < stop
+            s = Int(skips[k])
+            if s > pos
+                push!(out_starts, Int32(pos)); push!(out_prefix, Int32(kept))
+                kept += s - pos
+            end
+            pos = s + 1
+            k += 1
+        end
+        if pos < stop
+            push!(out_starts, Int32(pos)); push!(out_prefix, Int32(kept))
+            kept += stop - pos
+        end
+    end
+    return out_starts, out_prefix, kept
+end
+
+# Which repeats to drop given the open runs: the first copy still present is the one kept, so
+# closing the leaf holding it promotes the next rather than losing the member.
+function _repeat_skips(r::MemberRuns, starts::Vector{Int32}, prefix::Vector{Int32}, total::Int)
+    skips = Int32[]
+    @inbounds for g in 1:(length(r.bounds) - 1)
+        seen = false
+        for k in Int(r.bounds[g]):(Int(r.bounds[g + 1]) - 1)
+            p = r.groups[k]
+            _run_index(starts, prefix, total, Int(p)) == 0 && continue
+            seen ? push!(skips, p) : (seen = true)
+        end
+    end
+    sort!(skips)
+    return skips
 end
 
 ###
@@ -187,7 +229,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualS
         push!(groups, (cs, rs))
     end
 
-    pool = SettingPool(Individual[], 0, false, leaves, Tuple(groups))
+    pool = SettingPool(Individual[], 0, false, leaves, Tuple(groups), DupTable())
     for l in leaves; l.pool = pool; end
     for (cs, _) in pool.container_groups, c in cs; c.pool = pool; end
     _repack!(pool)
@@ -283,8 +325,48 @@ forbidden inside the threaded transmission phase.
 """
 function _repack!(pool::SettingPool)
     pool.members = _repack_leaves!(pool.leaves)
-    _repack_groups!(pool.leaves, pool.container_groups...)
+    _repack_groups!(pool, pool.leaves, pool.container_groups...)
     return nothing
+end
+
+# Grown to the widest container span, never the pool. Must run before the span it sizes for:
+# a table smaller than that spins forever in `_first_seen!`.
+function _size_dup_table!(t::DupTable, n::Int)
+    want = n == 0 ? 0 : nextpow(2, 2n)
+    length(t.keys) >= want && return nothing
+    resize!(t.keys, want); resize!(t.pos, want); resize!(t.gen, want)
+    fill!(t.gen, Int32(0))
+    t.epoch = Int32(0)
+    return nothing
+end
+
+# Start a fresh container. Every slot the previous one claimed is free again by definition.
+@inline function _next_container!(t::DupTable)
+    if t.epoch == typemax(Int32)
+        fill!(t.gen, Int32(0))
+        t.epoch = Int32(1)
+    else
+        t.epoch += Int32(1)
+    end
+    return nothing
+end
+
+# The position `k` was first seen at in this container, or 0 after claiming a slot for `p`.
+@inline function _first_seen!(t::DupTable, k::Int32, p::Int)
+    mask = length(t.keys) - 1
+    h = (Int(k) * 2654435761) & mask
+    e = t.epoch
+    @inbounds while true
+        if t.gen[h + 1] != e
+            t.gen[h + 1] = e
+            t.keys[h + 1] = k
+            t.pos[h + 1] = Int32(p)
+            return 0
+        elseif t.keys[h + 1] == k
+            return Int(t.pos[h + 1])
+        end
+        h = (h + 1) & mask
+    end
 end
 
 function _repack_leaves!(leaves::Vector{T}) where {T<:IndividualSetting}
@@ -314,17 +396,20 @@ function _repack_leaves!(leaves::Vector{T}) where {T<:IndividualSetting}
 end
 
 # recursive, so each call specialises on that group's concrete vector type
-@inline _repack_groups!(leaves) = nothing
-@inline function _repack_groups!(leaves, group, rest...)
-    _repack_group!(group[1], group[2], leaves)
-    _repack_groups!(leaves, rest...)
+@inline _repack_groups!(pool, leaves) = nothing
+@inline function _repack_groups!(pool, leaves, group, rest...)
+    _repack_group!(group[1], group[2], pool, leaves)
+    _repack_groups!(pool, leaves, rest...)
 end
 
-function _repack_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}},
+function _repack_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}}, pool::SettingPool,
                         leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
+    members = pool.members
+    tbl = pool.dup_table
     @inbounds for i in eachindex(cs)
         c = cs[i]
         r = ranges[i]
+        c.pool_runs = nothing
         if isempty(r)
             c.pool_offset = Int32(0)
             c.pool_length = Int32(0)
@@ -337,8 +422,54 @@ function _repack_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}},
         len = hi.pool_offset + hi.pool_length - lo.pool_offset
         c.pool_offset = len == 0 ? Int32(0) : lo.pool_offset # 0 means "no members here"
         c.pool_length = len
+        len == 0 && continue
+
+        # a member in two leaves below sits in the span twice, and only the first copy counts
+        _size_dup_table!(tbl, Int(len))
+        found = _dup_runs(members, Int(lo.pool_offset), Int(len), tbl)
+        if found !== nothing
+            runs, kept = found
+            c.pool_offset = runs.starts[1]
+            c.pool_length = Int32(kept)
+            c.pool_runs = runs
+        end
     end
     return nothing
+end
+
+# The frame for the span `off:(off + len - 1)`, or `nothing` when it holds no member twice.
+function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTable)
+    _next_container!(tbl)
+    # (first position, repeat position) for every copy past the first
+    reps = nothing
+    @inbounds for p in off:(off + len - 1)
+        f = _first_seen!(tbl, id(members[p]), p)
+        if f != 0
+            reps === nothing && (reps = Tuple{Int32, Int32}[])
+            push!(reps, (Int32(f), Int32(p)))
+        end
+    end
+    reps === nothing && return nothing
+
+    # by first position, so groups come out in layout order and a repack is reproducible
+    sort!(reps)
+
+    groups = Int32[]; bounds = Int32[]; skips = Int32[]
+    prev = Int32(0)
+    for (f, p) in reps
+        if f != prev
+            push!(bounds, Int32(length(groups) + 1))
+            push!(groups, f)
+            prev = f
+        end
+        push!(groups, p)
+        push!(skips, p)
+    end
+    push!(bounds, Int32(length(groups) + 1))
+    sort!(skips)
+
+    starts, prefix, kept = _drop_skips(Int32[off], Int32[0], len, skips)
+    return MemberRuns(starts, prefix, groups, bounds), kept
 end
 
 ###

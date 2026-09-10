@@ -71,6 +71,7 @@ module GEMS
     include("pathogen/health_progression/host_health.jl")
     include("simulation/health_schedule.jl")
     include("population/populations.jl")
+    include("settings/setting_pool.jl")
     include("settings/settings.jl") 
     include("settings/settingscontainers.jl")
     include("settings/setting_pool_methods.jl")

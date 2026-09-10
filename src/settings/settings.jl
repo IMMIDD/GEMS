@@ -40,53 +40,6 @@ Supertype for all simulation settings which act as containers of settings.
 abstract type ContainerSetting <: Setting end
 
 ###
-### MEMBER STORAGE
-### Here rather than in setting_pool.jl because the setting types below use them as field
-### types, and that file is included later.
-###
-
-# A contiguous view into a `SettingPool`'s member vector.
-const MemberSlice = SubArray{Individual, 1, Vector{Individual}, Tuple{UnitRange{Int64}}, true}
-
-# What an `individuals` field may hold. A setting outside a hierarchy owns its members
-# outright; one inside a pooled hierarchy holds a slice of that pool, so its members are not
-# duplicated and its containers can address them as a range. Both alternatives are concrete,
-# so reading the field splits a two-way union rather than dispatching dynamically.
-const MemberStorage = Union{Vector{Individual}, MemberSlice}
-
-"""
-    SettingPool
-
-Backing storage for one setting hierarchy. Holds every member of every leaf, leaves laid out
-in DFS order over `contains`, so any container's members form a contiguous range of it.
-
-# Fields
-
-- `members::Vector{Individual}`: Every member of every leaf in the hierarchy.
-- `closed::Int`: How many settings in this hierarchy are currently closed. Zero is the
-    common case and lets a container hand over its range without any walk.
-- `dirty::Bool`: Set by a member edit and cleared by `repack_dirty_pools!`. While set, every
-    offset and length in the hierarchy is stale, so `present_members` refuses to read it.
-- `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
-    `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
-    typed vector of the pool's one leaf type, which `_repack!` reaches behind a barrier.
-- `container_groups::Tuple`: One `(containers, ranges)` pair per container type, so each
-    vector is concretely typed. `ranges[i]` is the slice of `leaves` below `containers[i]`;
-    a container's leaves are consecutive, so one range covers its whole subtree.
-"""
-mutable struct SettingPool
-    members::Vector{Individual}
-    # how many settings in this hierarchy are currently closed
-    closed::Int
-    # set by a member edit, cleared by the repack that follows it
-    dirty::Bool
-    # everything a repack needs, so a member edit does not have to find the hierarchy again
-    leaves::Vector # widened: holds a Vector{SchoolClass} / Vector{Office}
-    # one (containers, ranges) pair per container type, so each vector is concretely typed
-    container_groups::Tuple
-end
-
-###
 ### GLOBALSETTING
 ###
 """
@@ -304,6 +257,8 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
+    the span already covers each member once.
 """
 @with_kw mutable struct SchoolYear <: ContainerSetting
     id::Int32 # 4 bytes
@@ -322,6 +277,8 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # set when a member sits in two leaves below, so the frame is not one span
+    pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
 
 end
@@ -358,6 +315,8 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
+    the span already covers each member once.
 """
 @with_kw mutable struct School <: ContainerSetting
     id::Int32 # 4 bytes
@@ -375,6 +334,8 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # set when a member sits in two leaves below, so the frame is not one span
+    pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
 
 end
@@ -409,6 +370,8 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
+    the span already covers each member once.
 """
 @with_kw mutable struct SchoolComplex <: ContainerSetting
     id::Int32 # 4 bytes
@@ -426,6 +389,8 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # set when a member sits in two leaves below, so the frame is not one span
+    pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
 
 end
@@ -463,6 +428,8 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
+    the span already covers each member once.
 """
 @with_kw mutable struct WorkplaceSite <: ContainerSetting
     id::Int32 # 4 bytes
@@ -481,6 +448,8 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # set when a member sits in two leaves below, so the frame is not one span
+    pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
 
 end
@@ -516,6 +485,8 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
+    the span already covers each member once.
 """
 @with_kw mutable struct Workplace <: ContainerSetting
     id::Int32 # 4 bytes
@@ -534,6 +505,8 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # set when a member sits in two leaves below, so the frame is not one span
+    pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
 
 end
@@ -569,6 +542,8 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
+    the span already covers each member once.
 """
 @with_kw mutable struct Department <: ContainerSetting
     id::Int32 # 4 bytes
@@ -590,6 +565,8 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # set when a member sits in two leaves below, so the frame is not one span
+    pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
 
 end
