@@ -984,7 +984,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
         # three classes over two years over one school, wired by hand so the test does not
         # depend on a population file
-        make_school() = begin
+        make_school(; slack = GEMS.DEFAULT_POOL_SLACK) = begin
             sc = SettingsContainer()
             add_types!(sc, [SchoolClass, SchoolYear, School])
             inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
@@ -995,7 +995,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
                   SchoolYear(id = Int32(2), contains = Int32[3], contained = Int32(1))]
             sch = School(id = Int32(1), contains = Int32[1, 2])
             for x in vcat(cs, ys, [sch]); GEMS.add!(sc, x); end
-            GEMS.build_pools!(sc)
+            GEMS.build_pools!(sc; slack = slack)
             pop = Population(inds)
             plans = GEMS.activity_plans(pop)
             for (k, ind) in enumerate(inds)
@@ -1012,7 +1012,10 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @testset "build relocates members into one pool" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             pool = sc.pools[SchoolClass]
-            @test length(pool.members) == 9
+            # the members are relocated once; the pool is longer than that only by the
+            # slack its one block carries
+            @test sum(Int(c.pool_length) for c in cs) == 9
+            @test length(pool.members) == GEMS._with_slack(9, pool.blocks.slack)
             @test all(c -> c.individuals isa GEMS.MemberSlice, cs)
             @test all(c -> parent(c.individuals) === pool.members, cs)
 
@@ -1108,6 +1111,120 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             GEMS.repack_dirty_pools!(sc)
             @test isempty(GEMS.present_members(sch, sc))
             @test isempty(GEMS.present_members(y, sc))
+        end
+
+        @testset "blocks partition the leaves and carry the slack" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+            bl = pool.blocks
+
+            # the school covers all three classes, so the hierarchy is one block
+            @test GEMS.nblocks(bl) == 1
+            @test GEMS.leaves_of(bl, 1) == 1:3
+            @test all(j -> bl.of_leaf[j] == 1, 1:3)
+            # every leaf knows its own index, which is how an edit finds its block
+            @test sort([Int(c.pool_leaf) for c in cs]) == [1, 2, 3]
+            @test Int(bl.capacity[1]) == Int(GEMS._with_slack(9, bl.slack))
+            @test bl.dead == 0
+            @test isempty(bl.dirty)
+        end
+
+        @testset "a leaf under no container gets its own block" begin
+            # the block partition has to cover leaves the containers do not reach, or an
+            # edit to one would have no block to dirty
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = inds[4:6], contained = Int32(1)),
+                  SchoolClass(id = Int32(3), individuals = inds[7:9])]
+            y = SchoolYear(id = Int32(1), contains = Int32[1, 2], contained = Int32(1))
+            sch = School(id = Int32(1), contains = Int32[1])
+            for x in vcat(cs, [y, sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc)
+            pop = Population(inds)
+
+            bl = sc.pools[SchoolClass].blocks
+            @test GEMS.nblocks(bl) == 2
+            @test sum(length(GEMS.leaves_of(bl, b)) for b in 1:2) == 3
+            @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9]
+
+            # the orphan is editable, and its edit does not disturb the year beside it
+            add_member!(cs[3], Individual(id = Int32(50), age = 10, sex = 1), pop)
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9, 50]
+            @test ids(GEMS.present_members(y, sc)) == collect(1:6)
+        end
+
+        @testset "only the edited block is repacked" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+
+            add_member!(cs[1], Individual(id = Int32(43), age = 10, sex = 1), pop)
+            # one edit queues one block, however many edits land in it
+            add_member!(cs[2], Individual(id = Int32(44), age = 10, sex = 1), pop)
+            @test pool.blocks.dirty == Int32[1]
+
+            GEMS.repack_dirty_pools!(sc)
+            @test isempty(pool.blocks.dirty)
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 43]
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 44]
+            @test sort(ids(GEMS.present_members(sch, sc))) == sort(vcat(collect(1:9), 43, 44))
+            @test contiguous(GEMS.present_members(sch, sc))
+        end
+
+        # one block per school, so a single dirty block stays under the fraction at which
+        # `repack_dirty_pools!` gives up and repacks everything
+        make_schools(n; slack = GEMS.DEFAULT_POOL_SLACK) = begin
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:(3 * n)]
+            cs = [SchoolClass(id = Int32(k), individuals = inds[(3k - 2):(3k)],
+                              contained = Int32(k)) for k in 1:n]
+            ys = [SchoolYear(id = Int32(k), contains = Int32[k], contained = Int32(k)) for k in 1:n]
+            schs = [School(id = Int32(k), contains = Int32[k]) for k in 1:n]
+            for x in vcat(cs, ys, schs); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc; slack = slack)
+            (sc, cs, schs, Population(inds))
+        end
+
+        @testset "exact fit relocates the block instead of growing it" begin
+            sc, cs, schs, pop = make_schools(5; slack = 0.0)
+            pool = sc.pools[SchoolClass]
+            bl = pool.blocks
+            @test GEMS.nblocks(bl) == 5
+            @test length(pool.members) == 15         # no slack anywhere
+            @test Int(bl.offset[2]) == 4
+
+            add_member!(cs[2], Individual(id = Int32(43), age = 10, sex = 1), pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            @test bl.dead == 3                       # the space block 2 used to hold
+            @test Int(bl.offset[2]) == 16            # relaid past the old end of the pool
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 43]
+            @test ids(GEMS.present_members(schs[2], sc)) == [4, 5, 6, 43]
+            @test contiguous(GEMS.present_members(schs[2], sc))
+            # the blocks either side were never touched
+            @test Int(bl.offset[1]) == 1 && Int(bl.offset[3]) == 7
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3]
+            @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9]
+        end
+
+        @testset "a full repack compacts the holes away" begin
+            sc, cs, schs, pop = make_schools(5; slack = 0.0)
+            pool = sc.pools[SchoolClass]
+
+            # every add relocates, so the stranded space eventually outgrows the live data
+            # and the next repack compacts instead of walking blocks
+            for k in 1:6
+                add_member!(cs[2], Individual(id = Int32(100 + k), age = 10, sex = 1), pop)
+                GEMS.repack_dirty_pools!(sc)
+            end
+            @test pool.blocks.dead == 0
+            @test length(pool.members) == 21
+            @test Int(pool.blocks.offset[1]) == 1
+            @test ids(GEMS.present_members(cs[2], sc)) == vcat([4, 5, 6], collect(101:106))
+            @test ids(GEMS.present_members(cs[5], sc)) == [13, 14, 15]
         end
 
         @testset "reading a pool with pending edits is refused" begin

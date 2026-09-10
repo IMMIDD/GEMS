@@ -57,7 +57,7 @@ end
 # repacked. Reading in that window would silently return the wrong members, so refuse
 # instead. `present_individuals` reads the member vectors directly and stays usable.
 @inline function _check_clean(s::Setting, pool::SettingPool)
-    pool.dirty && error(
+    isempty(pool.blocks.dirty) || error(
         "$(typeof(s)) belongs to a setting pool with pending member edits. Call " *
         "`repack_dirty_pools!` after editing membership and before reading members.")
     return nothing
@@ -179,17 +179,23 @@ end
 ### POOL CONSTRUCTION
 ###
 
+# A block's default headroom, as a fraction of its length: memory against relocations.
+const DEFAULT_POOL_SLACK = 0.25
+
 """
-    build_pools!(cntnr::SettingsContainer)
+    build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK)
 
 Move each pooled hierarchy's leaf members into one `SettingPool` and repoint the leaves at
 their slices. Relocates storage rather than duplicating it. Idempotent per container.
+
+`slack` is each block's headroom as a fraction of its length; zero packs blocks exact-fit.
 """
-function build_pools!(cntnr::SettingsContainer)
+function build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK)
+    slack >= 0 || throw(ArgumentError("pool slack must not be negative, got $slack"))
     _check_contiguous_ids(cntnr)
     for L in settingtypes_sorted(cntnr)
         (is_pooled_leaf(L) && !isempty(get(cntnr.settings, L, ()))) || continue
-        cntnr.pools[L] = _build_pool!(cntnr, L)
+        cntnr.pools[L] = _build_pool!(cntnr, L, Float64(slack))
     end
     return cntnr
 end
@@ -209,7 +215,7 @@ function _check_contiguous_ids(cntnr::SettingsContainer)
     return nothing
 end
 
-function _build_pool!(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualSetting}
+function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where {L<:IndividualSetting}
     leaves = _dfs_leaves(cntnr, L)
 
     # a container's leaves are consecutive in DFS order, so its span is one index range.
@@ -218,7 +224,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualS
     for (i, l) in enumerate(leaves)
         pos[id(l)] = Int32(i)
     end
-    groups = Any[]
+    ranges = Vector{UnitRange{Int}}[]
     for C in container_chain(L)
         cs = settings(cntnr, C)
         rs = Vector{UnitRange{Int}}(undef, length(cs))
@@ -226,20 +232,98 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualS
             lo, hi = _leaf_span(pos, cntnr, c)
             rs[i] = hi == 0 ? (1:0) : (lo:hi)
         end
-        push!(groups, (cs, rs))
+        push!(ranges, rs)
     end
 
-    pool = SettingPool(Individual[], 0, false, leaves, Tuple(groups), DupTable())
-    for l in leaves; l.pool = pool; end
-    for (cs, _) in pool.container_groups, c in cs; c.pool = pool; end
+    blocks = _build_blocks!(length(leaves), ranges, slack)
+    groups = Any[]
+    for (k, C) in enumerate(container_chain(L))
+        ptr, idx = _block_containers(ranges[k], blocks, C)
+        push!(groups, (settings(cntnr, C), ranges[k], ptr, idx))
+    end
+
+    pool = SettingPool(Individual[], 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
+    for (i, l) in enumerate(leaves); l.pool = pool; l.pool_leaf = Int32(i); end
+    for g in pool.container_groups, c in g[1]; c.pool = pool; end
     _repack!(pool)
 
     # settings may already be closed when the population is loaded
     pool.closed = count(!is_open, leaves)
-    for (cs, _) in pool.container_groups
-        pool.closed += count(!is_open, cs)
+    for g in pool.container_groups
+        pool.closed += count(!is_open, g[1])
     end
     return pool
+end
+
+# The coarsest partition of `1:nleaves` no container range straddles. Every level, not just the
+# root, or a container with no parent gets cut in half. Uncontained leaves stand alone.
+function _build_blocks!(nleaves::Int, ranges::Vector{Vector{UnitRange{Int}}}, slack::Float64)
+    spans = UnitRange{Int}[]
+    for rs in ranges, r in rs
+        isempty(r) || push!(spans, r)
+    end
+    sort!(spans; by = first)
+
+    merged = UnitRange{Int}[]
+    for r in spans
+        if !isempty(merged) && first(r) <= last(merged[end])
+            merged[end] = first(merged[end]):max(last(merged[end]), last(r))
+        else
+            push!(merged, r)
+        end
+    end
+
+    first_leaf = Int32[]
+    j = 1
+    for r in merged
+        while j < first(r)
+            push!(first_leaf, Int32(j))
+            j += 1
+        end
+        push!(first_leaf, Int32(first(r)))
+        j = last(r) + 1
+    end
+    while j <= nleaves
+        push!(first_leaf, Int32(j))
+        j += 1
+    end
+    push!(first_leaf, Int32(nleaves + 1))
+
+    of_leaf = Vector{Int32}(undef, nleaves)
+    blocks = PoolBlocks(first_leaf, of_leaf, slack)
+    for b in 1:nblocks(blocks), l in leaves_of(blocks, b)
+        of_leaf[l] = Int32(b)
+    end
+    return blocks
+end
+
+# Which containers of one level lie in which block, as a CSR index: they come in id order.
+function _block_containers(rs::Vector{UnitRange{Int}}, blocks::PoolBlocks, ::Type{C}) where {C}
+    nb = nblocks(blocks)
+    counts = zeros(Int32, nb)
+    for r in rs
+        isempty(r) && continue
+        b = blocks.of_leaf[first(r)]
+        # a container split across blocks would misindex its own frame, silently
+        blocks.of_leaf[last(r)] == b ||
+            error("a $C spans pool leaves $r, which cross a block boundary; the block " *
+                  "partition did not cover every container level")
+        counts[b] += 1
+    end
+
+    ptr = ones(Int32, nb + 1)
+    for b in 1:nb
+        ptr[b + 1] = ptr[b] + counts[b]
+    end
+    idx = Vector{Int32}(undef, Int(ptr[end]) - 1)
+    fill = copy(ptr)
+    for (i, r) in enumerate(rs)
+        isempty(r) && continue
+        b = blocks.of_leaf[first(r)]
+        idx[fill[b]] = Int32(i)
+        fill[b] += 1
+    end
+    return ptr, idx
 end
 
 # Lowest and highest layout position `s` covers, `(typemax(Int), 0)` for none. Min/max, not
@@ -306,26 +390,68 @@ Cheap when nothing changed.
 """
 function repack_dirty_pools!(cntnr::SettingsContainer)
     for pool in values(cntnr.pools)
-        pool.dirty || continue
-        _repack!(pool)
-        pool.dirty = false
+        bl = pool.blocks
+        isempty(bl.dirty) && continue
+        # compact once holes outgrow the live data; one flat pass once most blocks are dirty
+        if bl.dead * 2 > length(pool.members) || length(bl.dirty) * 4 >= nblocks(bl)
+            _repack!(pool)
+        else
+            for b in bl.dirty
+                _repack_block!(pool, Int(b))
+            end
+            _clear_dirty!(bl)
+        end
     end
     return cntnr
 end
 
+# Queue a leaf's block. Idempotent, so k edits on one block cost one repack.
+function _mark_dirty!(pool::SettingPool, s::IndividualSetting)
+    bl = pool.blocks
+    b = bl.of_leaf[s.pool_leaf]
+    if !bl.is_dirty[b]
+        bl.is_dirty[b] = true
+        push!(bl.dirty, b)
+    end
+    return nothing
+end
+
+function _clear_dirty!(bl::PoolBlocks)
+    for b in bl.dirty
+        bl.is_dirty[b] = false
+    end
+    empty!(bl.dirty)
+    return nothing
+end
+
+# The slots a block of `n` members is given.
+_with_slack(n::Int, slack::Float64) = Int32(n + ceil(Int, slack * n))
+
 """
     _repack!(pool::SettingPool)
 
-Lay every leaf's members out back to back and refresh all offsets, lengths and views. Run
-after a member edit, so the pool never accumulates gaps and a container's range always
-covers exactly its members. O(members in the hierarchy).
+Lay every block out back to back, and every leaf inside its block, refreshing all offsets,
+lengths and views. The compaction path: reclaims every hole and re-slacks every block.
 
 Invalidates any previously handed-out member view, which is safe because member edits are
 forbidden inside the threaded transmission phase.
 """
 function _repack!(pool::SettingPool)
-    pool.members = _repack_leaves!(pool.leaves)
+    pool.members = _repack_leaves!(pool.blocks, pool.leaves)
     _repack_groups!(pool, pool.leaves, pool.container_groups...)
+    _clear_dirty!(pool.blocks)
+    return nothing
+end
+
+"""
+    _repack_block!(pool::SettingPool, b::Int)
+
+Relay one block and refresh only the containers inside it - an edit cannot move a coordinate
+out of its own block.
+"""
+function _repack_block!(pool::SettingPool, b::Int)
+    _repack_block_leaves!(pool, pool.leaves, b)
+    _block_groups!(pool, pool.leaves, b, pool.container_groups...)
     return nothing
 end
 
@@ -369,30 +495,91 @@ end
     end
 end
 
-function _repack_leaves!(leaves::Vector{T}) where {T<:IndividualSetting}
+function _repack_leaves!(bl::PoolBlocks, leaves::Vector{T}) where {T<:IndividualSetting}
+    # place every block before copying: the leaves are pointed into the vector
     total = 0
-    for l in leaves
-        total += length(l.individuals)
+    @inbounds for b in 1:nblocks(bl)
+        n = 0
+        for j in leaves_of(bl, b)
+            n += length(leaves[j].individuals)
+        end
+        bl.capacity[b] = _with_slack(n, bl.slack)
+        bl.offset[b] = Int32(total + 1)
+        total += Int(bl.capacity[b])
     end
     # a repack cannot pack in place: a leaf that grew would overwrite the next leaf before
     # it was copied
     members = Vector{Individual}(undef, total)
 
-    off = 1
-    for l in leaves
-        n = length(l.individuals)
-        copyto!(members, off, l.individuals, 1, n)
-        l.pool_offset = Int32(off)
-        l.pool_length = Int32(n)
-        off += n
+    @inbounds for b in 1:nblocks(bl)
+        off = Int(bl.offset[b])
+        for j in leaves_of(bl, b)
+            l = leaves[j]
+            n = length(l.individuals)
+            copyto!(members, off, l.individuals, 1, n)
+            l.pool_offset = Int32(off)
+            l.pool_length = Int32(n)
+            off += n
+        end
     end
 
     # repoint only after all copying, so no leaf is read after its storage was replaced
-    for l in leaves
+    @inbounds for j in eachindex(leaves)
+        l = leaves[j]
         lo = Int(l.pool_offset)
         l.individuals = view(members, lo:(lo + Int(l.pool_length) - 1))
     end
+    bl.dead = 0
     return members
+end
+
+# Relay one block's leaves, growing it first if they no longer fit. Behind a barrier because
+# `pool.leaves` is widened.
+function _repack_block_leaves!(pool::SettingPool, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
+    bl = pool.blocks
+    r = leaves_of(bl, b)
+    n = 0
+    @inbounds for j in r
+        n += length(leaves[j].individuals)
+    end
+    n > Int(bl.capacity[b]) && _relocate_block!(pool, b, n)
+
+    # relaid on top of itself, so a moved leaf would land on one not yet read: via scratch
+    scratch = pool.scratch
+    length(scratch) < n && resize!(scratch, n)
+    at = 1
+    @inbounds for j in r
+        l = leaves[j]
+        m = length(l.individuals)
+        copyto!(scratch, at, l.individuals, 1, m)
+        at += m
+    end
+
+    members = pool.members
+    copyto!(members, Int(bl.offset[b]), scratch, 1, n)
+    off = Int(bl.offset[b])
+    @inbounds for j in r
+        l = leaves[j]
+        m = length(l.individuals)
+        l.pool_offset = Int32(off)
+        l.pool_length = Int32(m)
+        l.individuals = view(members, off:(off + m - 1))
+        off += m
+    end
+    return nothing
+end
+
+# Move a block that outgrew its slack to the end of the pool, stranding the space it held.
+function _relocate_block!(pool::SettingPool, b::Int, n::Int)
+    bl = pool.blocks
+    bl.dead += Int(bl.capacity[b])
+    cap = _with_slack(n, bl.slack)
+    off = length(pool.members) + 1
+    # safe despite the leaves' views: a `SubArray` keeps the parent `Vector`, not a pointer
+    resize!(pool.members, length(pool.members) + Int(cap))
+    bl.offset[b] = Int32(off)
+    bl.capacity[b] = cap
+    return nothing
 end
 
 # recursive, so each call specialises on that group's concrete vector type
@@ -404,35 +591,55 @@ end
 
 function _repack_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}}, pool::SettingPool,
                         leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
-    members = pool.members
-    tbl = pool.dup_table
     @inbounds for i in eachindex(cs)
-        c = cs[i]
-        r = ranges[i]
-        c.pool_runs = nothing
-        if isempty(r)
-            c.pool_offset = Int32(0)
-            c.pool_length = Int32(0)
-            continue
-        end
-        # the leaf pass left no gaps, so the span runs from the first leaf's start to the
-        # end of the last one
-        lo = leaves[first(r)]
-        hi = leaves[last(r)]
-        len = hi.pool_offset + hi.pool_length - lo.pool_offset
-        c.pool_offset = len == 0 ? Int32(0) : lo.pool_offset # 0 means "no members here"
-        c.pool_length = len
-        len == 0 && continue
+        _refresh_container!(cs[i], ranges[i], pool, leaves)
+    end
+    return nothing
+end
 
-        # a member in two leaves below sits in the span twice, and only the first copy counts
-        _size_dup_table!(tbl, Int(len))
-        found = _dup_runs(members, Int(lo.pool_offset), Int(len), tbl)
-        if found !== nothing
-            runs, kept = found
-            c.pool_offset = runs.starts[1]
-            c.pool_length = Int32(kept)
-            c.pool_runs = runs
-        end
+# the same recursion, restricted to block `b`'s containers
+@inline _block_groups!(pool, leaves, b) = nothing
+@inline function _block_groups!(pool, leaves, b, group, rest...)
+    _block_group!(group[1], group[2], group[3], group[4], b, pool, leaves)
+    _block_groups!(pool, leaves, b, rest...)
+end
+
+function _block_group!(cs::Vector{C}, ranges::Vector{UnitRange{Int}}, ptr::Vector{Int32},
+                       idx::Vector{Int32}, b::Int, pool::SettingPool,
+                       leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
+    @inbounds for k in Int(ptr[b]):(Int(ptr[b + 1]) - 1)
+        i = Int(idx[k])
+        _refresh_container!(cs[i], ranges[i], pool, leaves)
+    end
+    return nothing
+end
+
+# One container's span, from its leaves' freshly written offsets.
+@inline function _refresh_container!(c::C, r::UnitRange{Int}, pool::SettingPool,
+                                     leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
+    c.pool_runs = nothing
+    if isempty(r)
+        c.pool_offset = Int32(0)
+        c.pool_length = Int32(0)
+        return nothing
+    end
+    # no gaps inside a block, so the span runs from the first leaf's start to the last's end
+    @inbounds lo = leaves[first(r)]
+    @inbounds hi = leaves[last(r)]
+    len = hi.pool_offset + hi.pool_length - lo.pool_offset
+    c.pool_offset = len == 0 ? Int32(0) : lo.pool_offset # 0 means "no members here"
+    c.pool_length = len
+    len == 0 && return nothing
+
+    # a member in two leaves below sits in the span twice, and only the first copy counts
+    tbl = pool.dup_table
+    _size_dup_table!(tbl, Int(len))
+    found = _dup_runs(pool.members, Int(lo.pool_offset), Int(len), tbl)
+    if found !== nothing
+        runs, kept = found
+        c.pool_offset = runs.starts[1]
+        c.pool_length = Int32(kept)
+        c.pool_runs = runs
     end
     return nothing
 end
@@ -490,7 +697,7 @@ function _pool_add_member!(s::IndividualSetting, individual::Individual)
     v = _detached(s)
     push!(v, individual)
     s.individuals = v
-    (_pool(s)::SettingPool).dirty = true
+    _mark_dirty!(_pool(s)::SettingPool, s)
     return nothing
 end
 
@@ -503,7 +710,7 @@ function _pool_remove_member!(s::IndividualSetting, individual::Individual)
     @inbounds v[idx] = v[end]
     pop!(v)
     s.individuals = v
-    (_pool(s)::SettingPool).dirty = true
+    _mark_dirty!(_pool(s)::SettingPool, s)
     return true
 end
 

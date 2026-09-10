@@ -102,6 +102,50 @@ end
 
 DupTable() = DupTable(Int32[], Int32[], Int32[], Int32(0))
 
+###
+### BLOCKS
+###
+
+"""
+    PoolBlocks
+
+The pool's leaves cut into independently repackable blocks, so an edit repacks its own subtree
+rather than the hierarchy. A block is a maximal run of leaves no container range straddles, at
+any level. Leaves stay packed inside a block; the slack sits at its tail.
+
+# Fields
+
+- `first_leaf::Vector{Int32}`: Block `b` holds leaves `first_leaf[b]:(first_leaf[b + 1] - 1)`,
+    so the blocks tile the leaf vector by construction. One entry longer than the rest.
+- `offset::Vector{Int32}`: Where `b` starts in `pool.members`.
+- `capacity::Vector{Int32}`: Slots reserved for `b`. Outgrowing it relocates the block.
+- `of_leaf::Vector{Int32}`: Leaf to block, inverted from `first_leaf` because edits look it up.
+- `dirty::Vector{Int32}`, `is_dirty::BitVector`: The repack queue, and its dedup test.
+- `dead::Int`: Slots stranded by relocation, reclaimed by the next full repack.
+- `slack::Float64`: Headroom as a fraction of block length; 0 means exact fit.
+"""
+mutable struct PoolBlocks
+    first_leaf::Vector{Int32}
+    offset::Vector{Int32}
+    capacity::Vector{Int32}
+    of_leaf::Vector{Int32}
+    dirty::Vector{Int32}
+    is_dirty::BitVector
+    dead::Int
+    slack::Float64
+end
+
+function PoolBlocks(first_leaf::Vector{Int32}, of_leaf::Vector{Int32}, slack::Float64)
+    n = length(first_leaf) - 1
+    return PoolBlocks(first_leaf, zeros(Int32, n), zeros(Int32, n), of_leaf,
+                      Int32[], falses(n), 0, slack)
+end
+
+nblocks(bl::PoolBlocks) = length(bl.first_leaf) - 1
+
+# Block `b`'s leaves; the blocks tile the leaf vector.
+@inline leaves_of(bl::PoolBlocks, b::Int) = Int(bl.first_leaf[b]):(Int(bl.first_leaf[b + 1]) - 1)
+
 """
     SettingPool
 
@@ -111,30 +155,36 @@ a member sits in two of its leaves, which costs that container contiguity but no
 
 # Fields
 
-- `members::Vector{Individual}`: Every member of every leaf in the hierarchy.
+- `members::Vector{Individual}`: Every member of every leaf, plus block slack and any space
+    stranded by a relocation. Only the spans a leaf or container names are meaningful.
 - `closed::Int`: How many settings in this hierarchy are currently closed. Zero is the
     common case and lets a container hand over its range without any walk.
-- `dirty::Bool`: Set by a member edit and cleared by `repack_dirty_pools!`. While set, every
-    offset and length in the hierarchy is stale, so `present_members` refuses to read it.
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
     `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
     typed vector of the pool's one leaf type, which `_repack!` reaches behind a barrier.
-- `container_groups::Tuple`: One `(containers, ranges)` pair per container type, so each
-    vector is concretely typed. `ranges[i]` is the slice of `leaves` below `containers[i]`;
-    a container's leaves are consecutive, so one range covers its whole subtree.
+- `container_groups::Tuple`: One `(containers, ranges, block_ptr, block_idx)` tuple per
+    container type, so each vector is concretely typed. `ranges[i]` is the slice of `leaves`
+    below `containers[i]`; a container's leaves are consecutive, so one range covers its whole
+    subtree. `block_idx[block_ptr[b]:(block_ptr[b + 1] - 1)]` are this level's containers in
+    block `b`, which is how a block-local repack skips the rest.
+- `blocks::PoolBlocks`: The leaves cut into independently repackable blocks.
 - `dup_table::DupTable` *(internal)*: Repack scratch for finding a member that sits in two
     leaves of one container. Sized once per repack and reused by every container of every level.
+- `scratch::Vector{Individual}` *(internal)*: Holds one block while it is relaid on itself.
 """
 mutable struct SettingPool
     members::Vector{Individual}
     # how many settings in this hierarchy are currently closed
     closed::Int
-    # set by a member edit, cleared by the repack that follows it
-    dirty::Bool
     # everything a repack needs, so a member edit does not have to find the hierarchy again
     leaves::Vector # widened: holds a Vector{SchoolClass} / Vector{Office}
-    # one (containers, ranges) pair per container type, so each vector is concretely typed
+    # one (containers, ranges, block_ptr, block_idx) tuple per container type, so each vector
+    # is concretely typed
     container_groups::Tuple
+    # an edit repacks its own block, not the hierarchy
+    blocks::PoolBlocks
     # repack scratch for duplicate detection, reused by every container of every level
     dup_table::DupTable
+    # repack scratch: a block is relaid on top of itself
+    scratch::Vector{Individual}
 end

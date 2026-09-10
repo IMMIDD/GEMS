@@ -199,6 +199,8 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     than in this setting, so its containers can address them without a copy.
 - `pool_offset`, `pool_length` *(internal)*: Where this setting's members sit in that pool.
     `individuals` is a view of exactly that span.
+- `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
+    finds the block it has to dirty.
 """
 @with_kw mutable struct SchoolClass <: Geolocated
     id::Int32 # 4 bytes
@@ -220,6 +222,8 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # index in pool.leaves, so an edit finds the block it dirties without a search
+    pool_leaf::Int32 = 0
     pool::Union{Nothing, SettingPool} = nothing
 
 end
@@ -608,6 +612,8 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     than in this setting, so its containers can address them without a copy.
 - `pool_offset`, `pool_length` *(internal)*: Where this setting's members sit in that pool.
     `individuals` is a view of exactly that span.
+- `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
+    finds the block it has to dirty.
 """
 @with_kw mutable struct Office <: Geolocated
     id::Int32 # 4 bytes
@@ -632,6 +638,8 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
+    # index in pool.leaves, so an edit finds the block it dirties without a search
+    pool_leaf::Int32 = 0
     pool::Union{Nothing, SettingPool} = nothing
 
 end

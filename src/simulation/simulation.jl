@@ -410,6 +410,9 @@ function _BUILD_Simulation(;
         # seed
         seed = nothing,
 
+        # setting pool
+        pool_slack = nothing,
+
         # individual extensions
         ind_extension = nothing
     )
@@ -512,7 +515,7 @@ function _BUILD_Simulation(;
         )
 
         precompute_ags!(sim)
-        build_pools!(settingscontainer(sim))
+        build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
         # after pooling: a leaf's members only settle once its pool slice is laid out
         assign_member_indices!(sim.population, settingscontainer(sim))
 
@@ -1148,6 +1151,25 @@ function determine_seed(configfile_params::Dict, seed)
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
     _printinfo("\u2514 Initializing RNG with seed $sd")
     return sd
+end
+
+"""
+    determine_pool_slack(configfile_params::Dict, pool_slack)
+
+Determines the headroom each setting pool block carries, as a fraction of its length.
+If a `pool_slack` is provided, it will be used.
+If not, it will look for `Simulation.pool_slack` in the config file.
+If neither is found, it defaults to `DEFAULT_POOL_SLACK`.
+"""
+function determine_pool_slack(configfile_params::Dict, pool_slack)
+    ps = pool_slack
+    if isnothing(ps)
+        _haspath(configfile_params, ["Simulation", "pool_slack"]) || return DEFAULT_POOL_SLACK
+        ps = configfile_params["Simulation"]["pool_slack"]
+    end
+    !isa(ps, Real) && throw(ArgumentError("Provided pool slack must be a non-negative number."))
+    ps < 0 && throw(ArgumentError("Provided pool slack must not be negative, got $ps."))
+    return Float64(ps)
 end
 
 
