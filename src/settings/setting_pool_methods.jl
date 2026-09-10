@@ -724,8 +724,6 @@ function _pool_add_member!(s::IndividualSetting, individual::Individual)
     pool = _pool(s)::SettingPool
     # counted before the add, so an individual already in this block becomes a repeat
     _occurrences(pool, pool.leaves, s, individual) > 0 && (pool.repeats += 1)
-    _splice_in!(pool, pool.leaves, s, individual) && return nothing
-
     v = _detached(s)
     push!(v, individual)
     s.individuals = v
@@ -740,106 +738,12 @@ function _pool_remove_member!(s::IndividualSetting, individual::Individual)
 
     pool = _pool(s)::SettingPool
     _occurrences(pool, pool.leaves, s, individual) > 1 && (pool.repeats -= 1)
-    _splice_out!(pool, pool.leaves, s, idx) && return true
-
     v = _detached(s)
     @inbounds v[idx] = v[end]
     pop!(v)
     s.individuals = v
     _mark_dirty!(pool, s)
     return true
-end
-
-###
-### SPLICING
-### An edit that fits in its block's slack is made in the pool directly, so the block never
-### becomes dirty and members stay readable for the rest of the tick.
-###
-
-@inline function _point_at_pool!(members::Vector{Individual}, l::IndividualSetting)
-    lo = Int(l.pool_offset)
-    l.individuals = view(members, lo:(lo + Int(l.pool_length) - 1))
-    return nothing
-end
-
-# The block's slots in use, from its last leaf. Valid only while the block is clean, since a
-# detached leaf's `pool_length` still describes the span it had before the edit.
-@inline function _block_used(bl::PoolBlocks, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
-    @inbounds hi = leaves[last(leaves_of(bl, b))]
-    return Int(hi.pool_offset) + Int(hi.pool_length) - Int(bl.offset[b])
-end
-
-# Whether `s` can be edited in place: a block already queued is rebuilt wholesale anyway, and
-# mixing the two paths would splice against a leaf whose span no longer describes its members.
-@inline function _spliceable(bl::PoolBlocks, s::IndividualSetting, b::Int)
-    return !bl.is_dirty[b] && s.individuals isa MemberSlice
-end
-
-function _splice_in!(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
-                     individual::Individual) where {T<:IndividualSetting}
-    bl = pool.blocks
-    b = Int(bl.of_leaf[s.pool_leaf])
-    _spliceable(bl, s, b) || return false
-    used = _block_used(bl, leaves, b)
-    used < Int(bl.capacity[b]) || return false          # no slack left; relocate instead
-
-    members = pool.members
-    last_slot = Int(s.pool_offset) + Int(s.pool_length) - 1
-    block_end = Int(bl.offset[b]) + used - 1
-    # everything below `s` moves up one. copyto! memmoves, so the overlap is safe
-    block_end > last_slot &&
-        copyto!(members, last_slot + 2, members, last_slot + 1, block_end - last_slot)
-    @inbounds members[last_slot + 1] = individual
-
-    s.pool_length += Int32(1)
-    return _settle_block!(pool, leaves, bl, b, s, Int32(1))
-end
-
-function _splice_out!(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
-                      idx::Int) where {T<:IndividualSetting}
-    bl = pool.blocks
-    b = Int(bl.of_leaf[s.pool_leaf])
-    _spliceable(bl, s, b) || return false
-
-    members = pool.members
-    lo = Int(s.pool_offset)
-    last_slot = lo + Int(s.pool_length) - 1
-    block_end = Int(bl.offset[b]) + _block_used(bl, leaves, b) - 1
-    # swap with last inside the leaf, as the detached path does: removal reorders a leaf, and
-    # that reordering is RNG-visible
-    @inbounds members[lo + idx - 1] = members[last_slot]
-    block_end > last_slot &&
-        copyto!(members, last_slot, members, last_slot + 1, block_end - last_slot)
-
-    s.pool_length -= Int32(1)
-    return _settle_block!(pool, leaves, bl, b, s, Int32(-1))
-end
-
-# What both splices owe the rest of the block: the leaves below `s` moved by `delta`, and every
-# container in the block re-read off them.
-function _settle_block!(pool::SettingPool, leaves::Vector{T}, bl::PoolBlocks, b::Int,
-                        s::IndividualSetting, delta::Int32) where {T<:IndividualSetting}
-    members = pool.members
-    _point_at_pool!(members, s)
-    @inbounds for j in (Int(s.pool_leaf) + 1):last(leaves_of(bl, b))
-        l = leaves[j]
-        l.pool_offset += delta
-        _point_at_pool!(members, l)
-    end
-    _block_groups!(pool, leaves, b, pool.container_groups...)
-    return true
-end
-
-# How many of `s`'s block's leaves hold `individual`.
-function _occurrences(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
-                      individual::Individual) where {T<:IndividualSetting}
-    n = 0
-    @inbounds for j in leaves_of(pool.blocks, Int(pool.blocks.of_leaf[s.pool_leaf]))
-        for m in leaves[j].individuals
-            m === individual && (n += 1)
-        end
-    end
-    return n
 end
 
 ###
