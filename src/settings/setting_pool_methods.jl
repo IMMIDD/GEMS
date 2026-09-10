@@ -392,8 +392,8 @@ function repack_dirty_pools!(cntnr::SettingsContainer)
     for pool in values(cntnr.pools)
         bl = pool.blocks
         isempty(bl.dirty) && continue
-        # compact once holes outgrow the live data; one flat pass once most blocks are dirty
-        if bl.dead * 2 > length(pool.members) || length(bl.dirty) * 4 >= nblocks(bl)
+        # repack to compact
+        if bl.dead * 2 > length(pool.members)
             _repack!(pool)
         else
             for b in bl.dirty
@@ -792,14 +792,7 @@ function _splice_in!(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
     @inbounds members[last_slot + 1] = individual
 
     s.pool_length += Int32(1)
-    _point_at_pool!(members, s)
-    @inbounds for j in (Int(s.pool_leaf) + 1):last(leaves_of(bl, b))
-        l = leaves[j]
-        l.pool_offset += Int32(1)
-        _point_at_pool!(members, l)
-    end
-    _block_groups!(pool, leaves, b, pool.container_groups...)
-    return true
+    return _settle_block!(pool, leaves, bl, b, s, Int32(1))
 end
 
 function _splice_out!(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting,
@@ -819,10 +812,18 @@ function _splice_out!(pool::SettingPool, leaves::Vector{T}, s::IndividualSetting
         copyto!(members, last_slot, members, last_slot + 1, block_end - last_slot)
 
     s.pool_length -= Int32(1)
+    return _settle_block!(pool, leaves, bl, b, s, Int32(-1))
+end
+
+# What both splices owe the rest of the block: the leaves below `s` moved by `delta`, and every
+# container in the block re-read off them.
+function _settle_block!(pool::SettingPool, leaves::Vector{T}, bl::PoolBlocks, b::Int,
+                        s::IndividualSetting, delta::Int32) where {T<:IndividualSetting}
+    members = pool.members
     _point_at_pool!(members, s)
     @inbounds for j in (Int(s.pool_leaf) + 1):last(leaves_of(bl, b))
         l = leaves[j]
-        l.pool_offset -= Int32(1)
+        l.pool_offset += delta
         _point_at_pool!(members, l)
     end
     _block_groups!(pool, leaves, b, pool.container_groups...)
