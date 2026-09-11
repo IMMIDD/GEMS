@@ -1382,11 +1382,10 @@ import GEMS: increment!, infected!
         sim = Simulation()
         num_threads = Threads.maxthreadid()
         
-        @test length(present_buffers(sim)) == num_threads
         @test length(contact_buffers(sim)) == num_threads
         
         # Verify they are actual individual vectors
-        @test present_buffers(sim)[1] isa Vector{Individual}
+        @test contact_buffers(sim)[1] isa Vector{Individual}
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)

@@ -63,7 +63,7 @@ end
 ###
 
 """
-    process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
+    process_measure(sim::Simulation, ind::Individual, measure::FindSetting, sid::Int32 = PRIMARY_SETTING_ID)
 
 Detects a particular setting (specified by the `FindSetting` measure's `settingtype` attribute)
 for an individual and hands over a `follow_up` strategy for the respective setting object.
@@ -73,20 +73,22 @@ for an individual and hands over a `follow_up` strategy for the respective setti
 - `sim::Simulation`: Simulation object
 - `ind::Individual`: Individual that this measure will be applied to (focus individual)
 - `measure::FindSetting`: Measure instance
+- `sid::Int32 = PRIMARY_SETTING_ID` *(optional)*: Id of the setting to hand over; the
+    individual's primary setting of the type by default
 
 # Returns
 
 - `Nothing`: Triggers the `follow_up` strategy for the detected setting.
 """
-function process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
+function process_measure(sim::Simulation, ind::Individual, measure::FindSetting, sid::Int32 = PRIMARY_SETTING_ID)
 
     # setting type
     st = measure |> settingtype
 
     # setting object
-    s = getsetting(ind, sim, st)
+    s = sid == PRIMARY_SETTING_ID ? getsetting(ind, sim, st) : settings(sim, st)[sid]
 
-        INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$sid] at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$(s |> id)] at tick $(sim |> tick)"
 
     # trigger the follow-up strategy for the detected setting
     apply_followup!(sim, s, measure |> follow_up)

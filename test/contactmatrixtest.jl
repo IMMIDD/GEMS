@@ -55,7 +55,7 @@
     @testset "Get Contacts" begin
 
         # create individual
-        i = Individual(id = 1, sex = 0, age = 12, household = 1)
+        i = Individual(id = 1, sex = 0, age = 12)
 
         correct_data = [1 2 3; 4 5 6; 7 8 9]
 

@@ -425,6 +425,8 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             GEMS.update_individual!(infecter, Int16(1), sim)
 
             @test try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
+            # the infection is only staged; its flags land on the host at the flush
+            GEMS.flush_pending_infections!(sim)
 
             # TRY TO INFECT INFECTER-INFECTEE (should NOT work - infectee already infected)
             @test !try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
@@ -591,6 +593,40 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 df -> innerjoin(df, select(infections(rd), :source_infection_id, :setting_type), on = (:infection_id => :source_infection_id)) |>
                 df -> df[(df.setting_type .!= 'h'), :] |> nrow == 0
 
+        end
+
+        @testset "Deferred Write Dedup" begin
+            # Two attempts on the same host and pathogen in one tick, staged out of canonical
+            # order. The flush must keep the one the sequential loop would have reached first:
+            # Household is walked before Office, whatever order the buffers arrive in.
+            sim = Simulation(pop_size = 100, infected_fraction = 0.0)
+            host = individuals(sim)[1]
+            pid = id(first_pathogen(sim))
+            t = tick(sim)
+            dp = DiseaseProgression(exposure = t, infectiousness_onset = t + Int16(2),
+                recovery = t + Int16(10))
+
+            stage(rank, char, sid) = GEMS._PendingInfection(
+                id(host), Int32(7), GEMS.DEFAULT_INFECTION_ID, Int32(sid), Int32(-1),
+                Int32(1), NaN32, NaN32, char, t, pid, Int8(1), rank, dp)
+
+            office = GEMS.setting_type_index(Office)
+            household = GEMS.setting_type_index(Household)
+            @test household < office
+
+            # push the office attempt first, so buffer order and canonical order disagree
+            buf = sim.infection_buffers[Threads.threadid(), GEMS._owner_shard(id(host))]
+            push!(buf, stage(office, 'o', 20))
+            push!(buf, stage(household, 'h', 10))
+
+            GEMS.flush_pending_infections!(sim)
+
+            df = infections(sim)
+            @test nrow(df) == 1
+            @test df.setting_type[1] == 'h'
+            @test df.setting_id[1] == 10
+            @test infected(host, pid)
+            @test number_of_infections(host) == 1
         end
     end
 end

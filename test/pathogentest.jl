@@ -273,7 +273,8 @@ end
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
         run!(sim)
         
-        flattened_pc = vcat(infectionlogger(sim).progression_category...)
+        flattened_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
 
         # check if all infections used the custom progression category in simulation
         @test all(pc -> pc == :TestProgression, flattened_pc)
@@ -451,7 +452,8 @@ end
         run!(sim)
         
         flat_id_b = vcat(infectionlogger(sim).id_b...)
-        flat_pc = vcat(infectionlogger(sim).progression_category...)
+        flat_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
         
         # make sure that there were infections
         @test length(flat_id_b) > 0 
@@ -514,7 +516,7 @@ end
         @test SEEN_OTHER[] == Int8(100)
 
         # without a Simulation an empty registry is passed rather than erroring
-        lone = Individual(id = 1, age = 30, sex = 1, household = 1)
+        lone = Individual(id = 1, age = 30, sex = 1)
         SEEN_OWN[] = Int8(-1)
         infect!(lone, Int16(0), mkpath_ia(1, "Lone"), rng = Xoshiro(1))
         @test SEEN_OWN[] == Int8(0)

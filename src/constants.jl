@@ -8,8 +8,12 @@ const DEFAULT_PATHOGEN_ID = Int8(-1)
 const DEFAULT_VACCINE_ID = Int8(-1)
 const DEFAULT_TICK = Int16(-1)
 const DEFAULT_INFECTION_ID = Int32(-1)
+const DEFAULT_MEMBER_INDEX = Int32(-1)
 const DEFAULT_AGS = Int32(-1)
 const GLOBAL_SETTING_ID = Int32(1)
+# where a setting id is expected, stands for the individual's primary setting of the type;
+# real ids start at 1
+const PRIMARY_SETTING_ID = Int32(0)
 
 # start condition pathogen name meaning "every pathogen in the simulation"
 const ALL_PATHOGENS = "all"

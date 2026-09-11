@@ -31,10 +31,12 @@ get_individual_by_id(::Population, ::Int32)
 individuals(::Population)
 issubset(::Vector{Individual}, ::Vector{Individual})
 maxage(::Population)
+memberships(::Population)
 num_of_infected(::Population)
 params(::Population)
 populationfile(::Population)
 remove!(::Population, ::Individual)
 save(::Population, ::AbstractString)
+set_primary!
 size(::Population)
 ```
