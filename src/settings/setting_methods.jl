@@ -651,12 +651,21 @@ end
 ###
 
 """
-    add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+    add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false)
 
 Adds a member, taking the population from the simulation.
 """
-add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
-    add_member!(setting, individual, population(sim))
+add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false) =
+    add_member!(setting, individual, population(sim); primary = primary)
+
+"""
+    set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+
+Makes setting `sid` the individual's primary setting of type `T`, taking the population from
+the simulation.
+"""
+set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting} =
+    set_primary!(population(sim), individual, T, sid)
 
 """
     remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)

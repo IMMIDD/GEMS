@@ -568,8 +568,8 @@ homogeneous).
 | `municipality`          | `Int32` | Individual associated municipality       |
 | `<extension fields>`    | (varies)| Any fields stored in `Individual.extensions`, appended dynamically |
 
-The membership columns are reconstructed from the activity plans, so a saved and reloaded
-population comes back with the same memberships.
+The membership columns hold each individual's primary setting of that type, read from the
+activity plans; further settings of a type are not included.
 """
 function dataframe(population::Population)
 

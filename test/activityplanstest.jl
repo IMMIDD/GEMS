@@ -391,6 +391,55 @@ struct PlanTestSettingB <: IndividualSetting end
         @test plan_length(i) == 2
     end
 
+    @testset "Primary entries" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        # a household first, so the office run does not start at the block start
+        plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
+        plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
+        plan_add!(store, i, PlanEntry(Office, Int32(21), Int32(2)))
+
+        # a repeat joins behind the primary, unless it is added as the primary
+        @test setting_id(i, Office, store) == Int32(20)
+        plan_add!(store, i, PlanEntry(Office, Int32(22), Int32(3)); primary = true)
+        @test setting_ids(i, Office, store) == Int32[22, 20, 21]
+
+        # set_primary! moves an entry to the front, its active bit and member index with it
+        entry_active!(store, plan_slot(store, i, Office, Int32(21)), false)
+        set_primary!(store, i, Office, 21)
+        @test setting_ids(i, Office, store) == Int32[21, 22, 20]
+        @test !entry_active(store, plan_slot(store, i, Office))
+        @test member_index(store.entries[plan_slot(store, i, Office)]) == Int32(2)
+        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        @test setting_id(i, Household, store) == Int32(10)
+        @test_throws ArgumentError set_primary!(store, i, Office, 99)
+
+        # removing the primary promotes the next
+        plan_remove!(store, i, plan_slot(store, i, Office))
+        @test setting_id(i, Office, store) == Int32(22)
+    end
+
+    @testset "Primary through the population" begin
+        df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
+                       household = Int32[1, 2, 2])
+        pop = Population(df)
+        a, b = individuals(pop)[1], individuals(pop)[2]
+        plans = activity_plans(pop)
+        # a also lives in household 2 and makes it their primary
+        assign_settings!(pop, a, Household => 2; primary = true)
+        @test household_id(a, plans) == Int32(2)
+        @test setting_ids(a, Household, plans) == Int32[2, 1]
+
+        sim = Simulation(population = pop)
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
+        # once built, add_member! and set_primary! do the same through the settings
+        add_member!(households(sim)[1], b, sim; primary = true)
+        @test household_id(b, plans) == Int32(1)
+        set_primary!(sim, b, Household, 2)
+        @test setting_ids(b, Household, plans) == Int32[2, 1]
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
+    end
+
     @testset "container_frame_index" begin
         cntnr = SettingsContainer()
         add_types!(cntnr, [SchoolClass, SchoolYear])

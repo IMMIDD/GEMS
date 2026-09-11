@@ -43,7 +43,8 @@ membership_setting_types(::Type{Individual}) = (Household, Office, SchoolClass, 
 """
     setting_id(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
 
-Returns the id of the setting of type `T` the individual belongs to, or `DEFAULT_SETTING_ID`.
+Returns the id of the individual's primary setting of type `T` (the first entry of that type),
+or `DEFAULT_SETTING_ID`.
 """
 @inline function setting_id(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Int32 where {T<:Setting}
     slot = plan_slot(plans, individual, T)
@@ -63,9 +64,29 @@ Convenience for callers holding a `Simulation` rather than the store.
     setting_id(individual, T, activity_plans(sim))
 
 """
+    setting_ids(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
+
+Returns the ids of every setting of type `T` the individual belongs to, primary first.
+"""
+function setting_ids(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Vector{Int32} where {T<:Setting}
+    return Int32[@inbounds(setting_id(plans.entries[s])) for s in plan_slots(plans, individual, T)]
+end
+
+# there is only one GlobalSetting and everyone is in it, so it needs no entry
+setting_ids(individual::Individual, ::Type{GlobalSetting}, plans::ActivityPlanStore)::Vector{Int32} = [GLOBAL_SETTING_ID]
+
+"""
+    setting_ids(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting}
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+setting_ids(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting} =
+    setting_ids(individual, T, activity_plans(sim))
+
+"""
     member_index(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
 
-Returns the individual's position in the member frame of their setting of type `T`.
+Returns the individual's position in the member frame of their primary setting of type `T`.
 """
 @inline function member_index(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Int32 where {T<:Setting}
     _check_indexed(plans)
@@ -76,7 +97,6 @@ end
 
 """
     settings_tuple(individual::Individual, plans::ActivityPlanStore)
-    settings_tuple(individual::Individual, sim::Simulation)
 
 Returns all of the individual's memberships as `(type, id)` pairs, in plan order.
 """
@@ -85,6 +105,11 @@ function settings_tuple(individual::Individual, plans::ActivityPlanStore)
             for e in plan_entries(plans, individual)]
 end
 
+"""
+    settings_tuple(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 settings_tuple(individual::Individual, sim::Simulation) = settings_tuple(individual, activity_plans(sim))
 
 ### SETTING ACCESSORS ###
@@ -92,65 +117,100 @@ settings_tuple(individual::Individual, sim::Simulation) = settings_tuple(individ
 
 """
     household_id(individual::Individual, plans::ActivityPlanStore)
-    household_id(individual::Individual, sim::Simulation)
 
-Returns an individual's associated household's ID.
+Returns the id of an individual's primary household.
 """
 @inline household_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Household, plans)
+
+"""
+    household_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 @inline household_id(individual::Individual, sim::Simulation)::Int32 = household_id(individual, activity_plans(sim))
 
 """
     office_id(individual::Individual, plans::ActivityPlanStore)
-    office_id(individual::Individual, sim::Simulation)
 
-Returns an individual's associated office's ID.
+Returns the id of an individual's primary office.
 """
 @inline office_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Office, plans)
+
+"""
+    office_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 @inline office_id(individual::Individual, sim::Simulation)::Int32 = office_id(individual, activity_plans(sim))
 
 """
     class_id(individual::Individual, plans::ActivityPlanStore)
-    class_id(individual::Individual, sim::Simulation)
 
-Returns an individual's associated class's ID.
+Returns the id of an individual's primary school class.
 """
 @inline class_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, SchoolClass, plans)
+
+"""
+    class_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 @inline class_id(individual::Individual, sim::Simulation)::Int32 = class_id(individual, activity_plans(sim))
 
 """
     municipality_id(individual::Individual, plans::ActivityPlanStore)
-    municipality_id(individual::Individual, sim::Simulation)
 
-Returns an individual's associated municipality's ID.
+Returns the id of an individual's primary municipality.
 """
 @inline municipality_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Municipality, plans)
+
+"""
+    municipality_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 @inline municipality_id(individual::Individual, sim::Simulation)::Int32 = municipality_id(individual, activity_plans(sim))
 
 """
     is_working(individual::Individual, plans::ActivityPlanStore)
-    is_working(individual::Individual, sim::Simulation)
 
 Returns `true` if individual is assigned to an instance of type `Office`.
 """
 is_working(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, Office) != 0
+
+"""
+    is_working(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 is_working(individual::Individual, sim::Simulation) = is_working(individual, activity_plans(sim))
 
 """
     is_student(individual::Individual, plans::ActivityPlanStore)
-    is_student(individual::Individual, sim::Simulation)
 
 Returns `true` if individual is assigned to an instance of type `SchoolClass`.
 """
 is_student(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, SchoolClass) != 0
+
+"""
+    is_student(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 is_student(individual::Individual, sim::Simulation) = is_student(individual, activity_plans(sim))
 
 """
     has_municipality(individual::Individual, plans::ActivityPlanStore)
-    has_municipality(individual::Individual, sim::Simulation)
 
 Returns `true` if individual is assigned to an instance of type `Municipality`.
 """
 has_municipality(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, Municipality) != 0
+
+"""
+    has_municipality(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
 has_municipality(individual::Individual, sim::Simulation) = has_municipality(individual, activity_plans(sim))
 
 

@@ -7,7 +7,7 @@
 export PlanEntry, ActivityPlanStore
 export member_index, weight, setting_type_of
 export plan_entries, plan_length, entry_active, entry_active!, container_frame_index
-export build_plans!, assign_settings!, assign_member_indices!, activity_plans, validate_plans
+export build_plans!, assign_settings!, assign_member_indices!, activity_plans, validate_plans, set_primary!
 export check_pool_entries
 export membership_column
 
@@ -202,8 +202,9 @@ end
 """
     plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
 
-Returns the index in `store.entries` of the individual's first entry of type `T`, or `0`.
-A repeated type's entries sit together in insertion order, so this is the earliest added.
+Returns the index in `store.entries` of the individual's primary entry of type `T`, or `0`.
+A repeated type's entries sit together and the first is the primary: a repeat joins behind it
+unless added with `primary = true`, and `set_primary!` moves one to the front.
 """
 @inline function plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
     start, len = _plan_type_run(store, individual, setting_type_index(T))
@@ -238,12 +239,6 @@ Returns every slot in `store.entries` holding an entry of type `T`, empty when t
     start, len = _plan_type_run(store, individual, setting_type_index(T))
     s = Int(individual.plan_offset) + start
     return s:(s + len - 1)
-end
-
-# where an entry of type `tidx` goes: the run's end, so a repeat joins its kind in insertion order
-@inline function _insert_position(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
-    start, len = _plan_type_run(store, individual, tidx)
-    return start + len
 end
 
 ###
@@ -336,19 +331,19 @@ function build_plans!(pop::Population, df::DataFrame)
 end
 
 """
-    assign_settings!(pop::Population, individual::Individual, memberships::Pair...)
+    assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false)
 
 Gives `individual` one plan entry per `setting type => setting id` pair, as a population
-file's membership columns would. Only before the settings are built; afterwards use
-`add_member!`, which edits the setting too.
+file's membership columns would, each as the primary of its type if `primary`. Only before
+the settings are built; afterwards use `add_member!`, which edits the setting too.
 """
-function assign_settings!(pop::Population, individual::Individual, memberships::Pair...)
+function assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false)
     plans = activity_plans(pop)
     # once indexed, an entry with no matching setting member would go unnoticed
     plans.indexed && throw(ArgumentError(
         "the settings are already built; use `add_member!`, which also edits the setting"))
     for (T, sid) in memberships
-        plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX))
+        plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX); primary = primary)
     end
     return pop
 end
@@ -444,12 +439,13 @@ end
 ###
 
 """
-    plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry)
+    plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry; primary::Bool = false)
 
-Inserts an entry, keeping the individual's block sorted by setting type. Throws if the
-individual already holds an entry for that setting.
+Inserts an entry, keeping the individual's block sorted by setting type. A repeated type joins
+behind its kind, or in front of it as the new primary if `primary`. Throws if the individual
+already holds an entry for that setting.
 """
-function plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry)
+function plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry; primary::Bool = false)
     tidx = setting_type_of(entry)
     # a second entry for one setting would put the individual in its member list twice
     _entry_slot(store, individual, tidx, setting_id(entry)) == 0 || throw(ArgumentError(
@@ -458,7 +454,8 @@ function plan_add!(store::ActivityPlanStore, individual::Individual, entry::Plan
     n < typemax(Int8) || throw(ArgumentError(
         "individual $(id(individual)) already holds $n plan entries; the cap is $(typemax(Int8))"))
 
-    pos = _insert_position(store, individual, tidx)
+    start, len = _plan_type_run(store, individual, tidx)
+    pos = primary ? start : start + len
     old = Int(individual.plan_offset)
     new = _alloc_block!(store, n + 1)
 
@@ -538,6 +535,37 @@ Repoints one entry at a renumbered setting.
     @inbounds store.entries[slot] = _with_setting_id(store.entries[slot], sid)
     return nothing
 end
+
+"""
+    set_primary!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+
+Makes setting `sid` the individual's primary setting of type `T` by moving its entry to the
+front of its kind. Member indices and active flags travel with their entries; no setting's
+member list changes.
+"""
+function set_primary!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+    slot = plan_slot(store, individual, T, Int32(sid))
+    slot == 0 && throw(ArgumentError("individual $(id(individual)) holds no entry for $T $sid"))
+    front = plan_slot(store, individual, T)
+    e = @inbounds store.entries[slot]
+    a = @inbounds store.active[slot]
+    # the entries ahead of it move back by one, so the rest keep their order
+    @inbounds for k in slot:-1:(front + 1)
+        store.entries[k] = store.entries[k - 1]
+        store.active[k] = store.active[k - 1]
+    end
+    @inbounds store.entries[front] = e
+    @inbounds store.active[front] = a
+    return nothing
+end
+
+"""
+    set_primary!(pop::Population, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+
+Convenience for callers holding a `Population` rather than the store.
+"""
+set_primary!(pop::Population, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting} =
+    set_primary!(activity_plans(pop), individual, T, sid)
 
 # takes a block of `n` entries, reusing a freed one if available
 function _alloc_block!(store::ActivityPlanStore, n::Int)

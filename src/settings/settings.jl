@@ -758,13 +758,13 @@ function contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
 end
 
 """
-    add_member!(setting::IndividualSetting, individual::Individual, pop::Population)
+    add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false)
 
-Adds the given individual to the setting and the matching entry to their activity plan.
-Throws if they already belong to it. Must not be called while the threaded transmission
-phase is running.
+Adds the given individual to the setting and the matching entry to their activity plan, as
+their primary setting of that type if `primary`. Throws if they already belong to it. Must
+not be called while the threaded transmission phase is running.
 """
-function add_member!(setting::IndividualSetting, individual::Individual, pop::Population)
+function add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false)
     plans = activity_plans(pop)
     # checked before the member list is touched, so a refusal leaves both sides as they were
     plan_slot(plans, individual, typeof(setting), id(setting)) == 0 || throw(ArgumentError(
@@ -778,7 +778,7 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
         _pool_add_member!(setting, individual)
     end
     plan_add!(plans, individual,
-              PlanEntry(typeof(setting), id(setting), length(setting.individuals)))
+              PlanEntry(typeof(setting), id(setting), length(setting.individuals)); primary = primary)
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
@@ -821,7 +821,7 @@ end
 
 # The GlobalSetting is the whole population by definition, so its membership is not editable -
 # and an individual holds no plan entry for it, since `setting_id` answers from the constant.
-add_member!(::GlobalSetting, ::Individual, ::Population) =
+add_member!(::GlobalSetting, ::Individual, ::Population; primary::Bool = false) =
     throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
 remove_member!(::GlobalSetting, ::Individual, ::Population) =
     throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
