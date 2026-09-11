@@ -440,6 +440,82 @@ struct PlanTestSettingB <: IndividualSetting end
         @test validate_plans(pop, GEMS.settingscontainer(sim))
     end
 
+    @testset "Membership table" begin
+        df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
+                       household = Int32[1, 1, 2],
+                       office = Int32[5, -1, 6])
+        table = DataFrame(id = Int32[1, 1, 2, 2],
+                          setting_type = ["Office", "Household", "Office", "Office"],
+                          setting_id = Int32[7, 2, 8, 9],
+                          primary = [false, false, false, true])
+        pop = Population(df; memberships = table)
+        plans = activity_plans(pop)
+        a, b, c = individuals(pop)
+
+        # the population row holds the primary, and the table's rows follow it in file order
+        @test setting_ids(a, Office, plans) == Int32[5, 7]
+        @test setting_ids(a, Household, plans) == Int32[1, 2]
+        # with no office in its row, b's primary is the row that says so
+        @test setting_ids(b, Office, plans) == Int32[9, 8]
+        @test setting_ids(c, Office, plans) == Int32[6]
+        for ind in (a, b, c)
+            @test issorted([setting_type_of(e) for e in plan_entries(plans, ind)])
+        end
+        @test all(plans.active)
+        @test a.membership_mask == (UInt16(1) << (setting_type_index(Household) - 1)) |
+                                   (UInt16(1) << (setting_type_index(Office) - 1))
+
+        # both tables together rebuild the same plans
+        @test nrow(memberships(pop)) == 3
+        @test nrow(memberships(Population(df))) == 0
+        back = Population(dataframe(pop); memberships = memberships(pop))
+        for T in (Household, Office)
+            @test [setting_ids(i, T, activity_plans(back)) for i in individuals(back)] ==
+                  [setting_ids(i, T, plans) for i in individuals(pop)]
+        end
+
+        # and the settings they name get built
+        sim = Simulation(population = pop)
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
+    end
+
+    @testset "Membership table errors" begin
+        df = DataFrame(id = Int32.(1:2), age = Int8.(30:31), sex = Int8.(ones(2)),
+                       household = Int32[1, 2], office = Int32[5, -1])
+        rows(ids, types, sids; kw...) =
+            DataFrame(; id = Int32.(ids), setting_type = types, setting_id = Int32.(sids), kw...)
+
+        # an individual the population does not hold
+        @test_throws ArgumentError Population(df; memberships = rows([3], ["Office"], [7]))
+        # a type nobody registered, and one the tables do not carry yet
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Bakery"], [7]))
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Department"], [7]))
+        # ids start at 1
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Office"], [0]))
+        # the same setting twice, against the population row or within the table
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Office"], [5]))
+        @test_throws ArgumentError Population(df; memberships = rows([2, 2], ["Office", "Office"], [7, 7]))
+        # a primary where the population row already names one, and two primaries
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Office"], [7]; primary = [true]))
+        @test_throws ArgumentError Population(df;
+            memberships = rows([2, 2], ["Office", "Office"], [7, 8]; primary = [true, true]))
+        # a missing column
+        @test_throws ArgumentError Population(df; memberships = DataFrame(id = Int32[1], setting_id = Int32[7]))
+    end
+
+    @testset "Membership table survives the ind_extension rebuild" begin
+        df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
+                       household = Int32[1, 1, 2])
+        extra = DataFrame(id = Int32[1], setting_type = ["Household"], setting_id = Int32[2])
+        pop = Population(df; memberships = extra)
+        # an extension on a ready population goes through a rebuild of it
+        sim = Simulation(population = pop,
+            ind_extension = DataFrame(id = Int32.(1:3), score = Float32[1, 2, 3]))
+        a = individuals(population(sim))[1]
+        @test setting_ids(a, Household, sim) == Int32[1, 2]
+        @test a.score == 1.0f0
+    end
+
     @testset "container_frame_index" begin
         cntnr = SettingsContainer()
         add_types!(cntnr, [SchoolClass, SchoolYear])

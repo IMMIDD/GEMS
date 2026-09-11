@@ -756,16 +756,19 @@ individual_base_fieldnames() = filter(f -> !(f in _INDIVIDUAL_DERIVED_FIELDS), f
 """
     assert_no_core_collision(names)
 
-Throw an error if any of `names` of extension fields collides with a core `Individual` field name.
+Throw an error if any of `names` of extension fields collides with a core `Individual` field name
+or a membership column.
 
 Checks every field, not `individual_base_fieldnames()`: that list answers "settable from external
 data", and a field excluded from it is still shadowed by the real one, so an extension sharing its
-name would be silently unreachable.
+name would be silently unreachable. A membership column is read into the activity plan, so an
+extension sharing its name would be read twice and overwrite that column on export.
 """
 function assert_no_core_collision(names)
-    clash = intersect(Symbol.(collect(names)), fieldnames(Individual))
+    reserved = union(fieldnames(Individual), map(membership_column, membership_setting_types(Individual)))
+    clash = intersect(Symbol.(collect(names)), reserved)
     isempty(clash) || error(
-        "ind_extension field(s) $(collect(clash)) collide with core Individual fields. " *
+        "ind_extension field(s) $(collect(clash)) collide with core Individual fields or membership columns. " *
         "Extension fields must use distinct names. Rename the offending column(s).")
 end
 

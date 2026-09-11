@@ -526,3 +526,15 @@ function setting_type_from_index(idx::Integer)
     return EXTRA_SETTING_TYPES[extra]
 end
 
+# The registered setting type called `name`, or `nothing`. Files name a type rather than store
+# its index, since a custom type's index depends on registration order.
+function _setting_type_by_name(name::AbstractString)
+    for T in BUILTIN_SETTING_TYPES
+        string(nameof(T)) == name && return T
+    end
+    for T in EXTRA_SETTING_TYPES
+        string(nameof(T)) == name && return T
+    end
+    return nothing
+end
+

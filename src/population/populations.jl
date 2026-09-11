@@ -68,9 +68,11 @@ mutable struct Population
 
     Creates a `Population` object from a `DataFrame` where each row corresponds to one individual.
     The dataframe column names must correspond to the fieldnames of the `Individual` struct.
-    `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
+    `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional.
+    Settings beyond each type's primary come from `memberships`, a table (see `memberships`) or
+    the path to a CSV file holding one.
     """
-    function Population(df::DataFrame; ind_extension = nothing)
+    function Population(df::DataFrame; ind_extension = nothing, memberships = nothing)
 
         # Intersect DataFrame columns with base Individual field names
         base_cols = Tuple(intersect(individual_base_fieldnames(), propertynames(df)))
@@ -105,7 +107,7 @@ mutable struct Population
         end
 
         pop = Population(inds)
-        build_plans!(pop, df)
+        build_plans!(pop, df, _membership_table(memberships))
         pop.params["populationfile"] = "Not available."
         return(pop)
     end
@@ -113,20 +115,24 @@ mutable struct Population
     @doc """
         Population(path::String)
 
-    Creates a `Population` object from a CSV- or JLD2 file (path).
+    Creates a `Population` object from a CSV- or JLD2 file (path). Settings beyond each type's
+    primary come from `memberships`, a table or the path to a CSV file holding one; a JLD2
+    file may instead carry the table under its `"memberships"` key.
     """
-    function Population(path::String; ind_extension = nothing)
+    function Population(path::String; ind_extension = nothing, memberships = nothing)
         file_ext = split(path, ".")[end]
 
         if file_ext == "csv"
             _printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from CSV and pass it to df constructor
-            pop = Population(CSV.File(path) |> DataFrame; ind_extension = ind_extension)
+            pop = Population(CSV.File(path) |> DataFrame; ind_extension = ind_extension, memberships = memberships)
 
         elseif file_ext == "jld2"
             _printinfo("\u2514 Loading population data from $(basename(path))")
+            # an explicit table wins over the one the file carries
+            table = memberships === nothing ? _jld2_memberships(path) : memberships
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
-            pop = Population(load(path, "data"); ind_extension = ind_extension)
+            pop = Population(load(path, "data"); ind_extension = ind_extension, memberships = table)
 
         else
             error("File Extension .$file_ext is not supported")
@@ -379,6 +385,22 @@ function _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
     return(inds)
 end
 
+###
+### MEMBERSHIP TABLE HELPERS
+###
+
+# A constructor's `memberships` argument as a table: a path is read as CSV, like the population.
+_membership_table(::Nothing) = nothing
+_membership_table(table::DataFrame) = table
+function _membership_table(path::AbstractString)
+    _printinfo("└ Loading memberships from $(basename(path))")
+    return CSV.File(path) |> DataFrame
+end
+
+# The membership table a population JLD2 carries under its own key, or `nothing`.
+_jld2_memberships(path::AbstractString) =
+    jldopen(f -> haskey(f, "memberships") ? f["memberships"] : nothing, path, "r")
+
 """
     count(f, population::Population)
 
@@ -600,12 +622,19 @@ function dataframe(population::Population)
 end
 
 """
-    save(population::Population, path::AbstractString)
+    save(population::Population, path::AbstractString; membershipsfile::Union{Nothing, AbstractString} = nothing)
 
-Saves the given population as a CSV-file at `path`.
+Saves the given population as a CSV-file at `path`, and its settings beyond each type's primary
+(see `memberships`) as a CSV-file at `membershipsfile`. Throws if the population holds such
+settings but no `membershipsfile` is given, rather than lose them.
 """
-function save(population::Population, path::AbstractString)
-    CSV.write(path, dataframe(population))
+function save(population::Population, path::AbstractString; membershipsfile::Union{Nothing, AbstractString} = nothing)
+    table = memberships(population)
+    membershipsfile === nothing && nrow(table) > 0 && throw(ArgumentError(
+        "the population holds settings beyond each type's primary; pass `membershipsfile` to save them"))
+    result = CSV.write(path, dataframe(population))
+    membershipsfile === nothing || CSV.write(membershipsfile, table)
+    return result
 end
 
 """

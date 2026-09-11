@@ -9,7 +9,7 @@ export member_index, weight, setting_type_of
 export plan_entries, plan_length, entry_active, entry_active!, container_frame_index
 export build_plans!, assign_settings!, assign_member_indices!, activity_plans, validate_plans, set_primary!
 export check_pool_entries
-export membership_column
+export membership_column, memberships
 
 ###
 ### PLAN ENTRY
@@ -289,11 +289,12 @@ membership_column(::Type{SchoolClass}) = :schoolclass
 membership_column(::Type{Municipality}) = :municipality
 
 """
-    build_plans!(pop::Population, df::DataFrame)
+    build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing, DataFrame} = nothing)
 
-Builds every individual's plan from the membership columns of `df`.
+Builds every individual's plan from the membership columns of `df`, which hold each type's
+primary, plus one entry per row of the optional `memberships` table (see `memberships`).
 """
-function build_plans!(pop::Population, df::DataFrame)
+function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing, DataFrame} = nothing)
     store = ActivityPlanStore()
     pop.activity_plans = store
 
@@ -301,23 +302,45 @@ function build_plans!(pop::Population, df::DataFrame)
     types = [T for T in membership_setting_types(Individual) if membership_column(T) in cols]
     # sorted by type index: the order `plan_slot` ranks against
     sort!(types, by = setting_type_index)
-    isempty(types) && return store
+    data = Vector{Int32}[Int32.(df[!, membership_column(T)]) for T in types]
+    tidx = UInt8[setting_type_index(T) for T in types]
+    rows = memberships === nothing ? nothing : _membership_rows(pop, memberships, tidx, data)
+    isempty(types) && (rows === nothing || isempty(rows.ind)) && return store
 
-    data = [Int32.(df[!, membership_column(T)]) for T in types]
-    tidx = [setting_type_index(T) for T in types]
+    # each individual's rows together, primary first and otherwise in file order
+    order = rows === nothing ? Int[] : sortperm(collect(zip(rows.ind, .!rows.primary)))
     inds = individuals(pop)
-    sizehint!(store.entries, length(inds) * length(types))
+    sizehint!(store.entries, length(inds) * length(types) + length(order))
 
+    cursor = 1
     for (i, ind) in enumerate(inds)
         off = length(store.entries) + 1
-        n = 0
         mask = UInt16(0)
         for k in eachindex(types)
             sid = @inbounds data[k][i]
             sid == DEFAULT_SETTING_ID && continue
             push!(store.entries, PlanEntry(sid, DEFAULT_MEMBER_INDEX, Float16(1.0), tidx[k]))
             tidx[k] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(tidx[k]))
-            n += 1
+        end
+
+        # the individual's table rows follow its population-row entries
+        from_table = false
+        while cursor <= length(order) && rows.ind[order[cursor]] == i
+            r = order[cursor]
+            push!(store.entries, PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(1.0), rows.tidx[r]))
+            rows.tidx[r] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(rows.tidx[r]))
+            cursor += 1
+            from_table = true
+        end
+
+        n = length(store.entries) - off + 1
+        if from_table
+            n <= typemax(Int8) || throw(ArgumentError(
+                "individual $(id(ind)) would hold $n plan entries; the cap is $(typemax(Int8))"))
+            block = view(store.entries, off:(off + n - 1))
+            # stable, so each type keeps its primary first and the rest in file order
+            sort!(block; alg = InsertionSort, by = setting_type_of)
+            _check_repeated_entries(block, ind)
         end
         ind.plan_offset = Int32(n == 0 ? 0 : off)
         ind.plan_count = Int8(n)
@@ -328,6 +351,94 @@ function build_plans!(pop::Population, df::DataFrame)
     resize!(store.active, length(store.entries))
     fill!(store.active, true)
     return store
+end
+
+# Resolves the membership table to per-row (individual index, type index, setting id, primary),
+# erroring on the first row that names an unknown individual or type, or breaks the primary rule.
+function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{UInt8}, wide::Vector{Vector{Int32}})
+    for c in (:id, :setting_type, :setting_id)
+        c in propertynames(table) || throw(ArgumentError("the membership table has no `$c` column"))
+    end
+    n = nrow(table)
+    ind = Vector{Int}(undef, n)
+    tidx = Vector{UInt8}(undef, n)
+    sid = Vector{Int32}(undef, n)
+    primary = :primary in propertynames(table) ? BitVector(Bool.(table.primary)) : falses(n)
+    allowed = membership_setting_types(Individual)
+    resolved = Dict{String, UInt8}()
+    primaries = Set{Tuple{Int, UInt8}}()
+
+    for r in 1:n
+        pid = table.id[r]
+        k = Int(pid) - Int(pop.minid) + 1
+        (1 <= k <= length(pop.id_map) && pop.id_map[k] > 0) || throw(ArgumentError(
+            "membership row $r names individual $pid, who is not in the population"))
+        ind[r] = Int(pop.id_map[k])
+
+        name = string(table.setting_type[r])
+        tidx[r] = get!(resolved, name) do
+            T = _setting_type_by_name(name)
+            T === nothing && throw(ArgumentError(
+                "membership row $r names setting type \"$name\", which is not registered"))
+            T in allowed || throw(ArgumentError(
+                "membership row $r names $T; membership tables carry $(join(allowed, ", ")) for now"))
+            setting_type_index(T)
+        end
+
+        s = Int32(table.setting_id[r])
+        s > 0 || throw(ArgumentError("membership row $r has setting id $s; ids start at 1"))
+        sid[r] = s
+
+        primary[r] || continue
+        w = findfirst(==(tidx[r]), wide_tidx)
+        (w === nothing || wide[w][ind[r]] == DEFAULT_SETTING_ID) || throw(ArgumentError(
+            "membership row $r makes $name $s the primary of individual $pid, whose population row already names one"))
+        (ind[r], tidx[r]) in primaries && throw(ArgumentError(
+            "membership row $r is a second primary $name for individual $pid"))
+        push!(primaries, (ind[r], tidx[r]))
+    end
+    return (ind = ind, tidx = tidx, sid = sid, primary = primary)
+end
+
+# A setting named twice would put the individual in its member list twice.
+function _check_repeated_entries(block, ind::Individual)
+    for a in eachindex(block), b in (a + 1):lastindex(block)
+        x = block[a]
+        y = block[b]
+        (setting_type_of(x) == setting_type_of(y) && setting_id(x) == setting_id(y)) || continue
+        throw(ArgumentError(
+            "individual $(id(ind)) is given $(setting_type_from_index(setting_type_of(x))) $(setting_id(x)) twice"))
+    end
+    return nothing
+end
+
+"""
+    memberships(pop::Population)
+
+Returns the memberships `dataframe(pop)` leaves out, one row per plan entry: `id`,
+`setting_type` (the type's name) and `setting_id`, in individual then plan order. That is every
+entry after the first of its type, and every entry of a type without a membership column.
+Loading both tables back rebuilds the same plans.
+"""
+function memberships(pop::Population)
+    plans = activity_plans(pop)
+    wide = map(setting_type_index, membership_setting_types(Individual))
+    ids = Int32[]
+    types = String[]
+    sids = Int32[]
+    for ind in individuals(pop)
+        prev = 0x00
+        for e in plan_entries(plans, ind)
+            t = setting_type_of(e)
+            if t == prev || !(t in wide)
+                push!(ids, id(ind))
+                push!(types, string(nameof(setting_type_from_index(t))))
+                push!(sids, setting_id(e))
+            end
+            prev = t
+        end
+    end
+    return DataFrame(id = ids, setting_type = types, setting_id = sids)
 end
 
 """
