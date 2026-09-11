@@ -503,6 +503,40 @@ struct PlanTestSettingB <: IndividualSetting end
         @test_throws ArgumentError Population(df; memberships = DataFrame(id = Int32[1], setting_id = Int32[7]))
     end
 
+    @testset "Membership table through the pool" begin
+        # the file path a real second membership takes: table -> plans -> settings -> pool.
+        # `repeats` is counted when the pool is built and never recounted, so it has to be
+        # right here or the department's frame silently holds the member twice.
+        df = DataFrame(id = Int32[1, 2, 3], sex = Int8[0, 0, 0], age = Int8[30, 31, 32],
+                       household = Int32[1, 1, 1], office = Int32[1, 2, 2])
+        mktempdir() do dir
+            path = joinpath(dir, "pop.csv")
+            mpath = joinpath(dir, "extra.csv")
+            spath = joinpath(dir, "settings.jld2")
+            CSV.write(path, df)
+            CSV.write(mpath, DataFrame(id = Int32[1], setting_type = ["Office"], setting_id = Int32[2]))
+            # both offices in one department, so the repeat lands inside one block
+            jldsave(spath; data = Dict(
+                :Office => DataFrame(id = Int32[1, 2], contained = Int32[1, 1]),
+                :Department => DataFrame(id = Int32[1], contains = [Int32[1, 2]])))
+
+            sim = Simulation(population = path, membershipsfile = mpath, settingsfile = spath)
+            cntnr = GEMS.settingscontainer(sim)
+            ind = individuals(sim)[1]
+
+            @test setting_ids(ind, Office, GEMS.activity_plans(sim)) == Int32[1, 2]
+            @test cntnr.pools[Office].repeats == 1
+
+            # the department spans both offices; the second copy is dropped from its frame
+            dept = settings(sim, Department)[1]
+            @test count(m -> m === ind, present_members(dept, cntnr)) == 1
+            @test length(present_members(dept, cntnr)) == 3
+
+            @test validate_plans(population(sim), cntnr)
+            step!(sim)
+        end
+    end
+
     @testset "Membership table survives the ind_extension rebuild" begin
         df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
                        household = Int32[1, 1, 2])

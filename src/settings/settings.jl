@@ -1136,6 +1136,8 @@ function _settings_for_type!(
         type_renaming = Dict{Int32, Int32}()
         renaming[T] = type_renaming
 
+        # ascending old ids, and every new id is <= its old one, so a rename never collides
+        # with an id the individual still holds
         for (i, setting) in enumerate(setting_vec)
             old_id = setting.id
             type_renaming[old_id] = i

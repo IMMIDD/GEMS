@@ -353,6 +353,37 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
     return store
 end
 
+"""
+    memberships(pop::Population)
+
+Returns the memberships `dataframe(pop)` leaves out, one row per plan entry: `id`,
+`setting_type` (the type's name) and `setting_id`, in individual then plan order. That is every
+entry after the first of its type, and every entry of a type without a membership column.
+Loading both tables back rebuilds the same plans.
+"""
+function memberships(pop::Population)
+    plans = activity_plans(pop)
+    wide = map(setting_type_index, membership_setting_types(Individual))
+    ids = Int32[]
+    types = String[]
+    sids = Int32[]
+    for ind in individuals(pop)
+        prev = 0x00
+        for e in plan_entries(plans, ind)
+            t = setting_type_of(e)
+            # entries are sorted by type, so `t == prev` means "not the first of its type",
+            # which is exactly what the population row could not carry
+            if t == prev || !(t in wide)
+                push!(ids, id(ind))
+                push!(types, string(nameof(setting_type_from_index(t))))
+                push!(sids, setting_id(e))
+            end
+            prev = t
+        end
+    end
+    return DataFrame(id = ids, setting_type = types, setting_id = sids)
+end
+
 # Resolves the membership table to per-row (individual index, type index, setting id, primary),
 # erroring on the first row that names an unknown individual or type, or breaks the primary rule.
 function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{UInt8}, wide::Vector{Vector{Int32}})
@@ -410,35 +441,6 @@ function _check_repeated_entries(block, ind::Individual)
             "individual $(id(ind)) is given $(setting_type_from_index(setting_type_of(x))) $(setting_id(x)) twice"))
     end
     return nothing
-end
-
-"""
-    memberships(pop::Population)
-
-Returns the memberships `dataframe(pop)` leaves out, one row per plan entry: `id`,
-`setting_type` (the type's name) and `setting_id`, in individual then plan order. That is every
-entry after the first of its type, and every entry of a type without a membership column.
-Loading both tables back rebuilds the same plans.
-"""
-function memberships(pop::Population)
-    plans = activity_plans(pop)
-    wide = map(setting_type_index, membership_setting_types(Individual))
-    ids = Int32[]
-    types = String[]
-    sids = Int32[]
-    for ind in individuals(pop)
-        prev = 0x00
-        for e in plan_entries(plans, ind)
-            t = setting_type_of(e)
-            if t == prev || !(t in wide)
-                push!(ids, id(ind))
-                push!(types, string(nameof(setting_type_from_index(t))))
-                push!(sids, setting_id(e))
-            end
-            prev = t
-        end
-    end
-    return DataFrame(id = ids, setting_type = types, setting_id = sids)
 end
 
 """
