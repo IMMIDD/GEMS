@@ -84,6 +84,24 @@ setting_ids(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Settin
     setting_ids(individual, T, activity_plans(sim))
 
 """
+    setting_ids(individual::Individual, ::Type{T}, sim::Simulation) where {T<:ContainerSetting}
+
+Returns the ids of every container of type `T` above the individual's settings, primary first and each once
+"""
+function setting_ids(individual::Individual, ::Type{T}, sim::Simulation)::Vector{Int32} where {T<:ContainerSetting}
+    L = _leaf_type(T)
+    ids = Int32[]
+    containers = Dict{DataType, Int32}()
+    for leaf in setting_ids(individual, L, sim)
+        empty!(containers)
+        get_containers!(settings(sim, L)[leaf], containers, sim)
+        cid = get(containers, T, DEFAULT_SETTING_ID)
+        cid == DEFAULT_SETTING_ID || cid in ids || push!(ids, cid)
+    end
+    return ids
+end
+
+"""
     member_index(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
 
 Returns the individual's position in the member frame of their primary setting of type `T`.

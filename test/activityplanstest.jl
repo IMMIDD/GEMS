@@ -592,4 +592,44 @@ struct PlanTestSettingB <: IndividualSetting end
         @test container_frame_index(cntnr, sy, cs[1], 4) == GEMS.DEFAULT_MEMBER_INDEX
         open!(cs[1])
     end
+
+    @testset "Gate: a second office transmits" begin
+        # two individuals who share nothing but the infecter's second office
+        df = DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[31, 32],
+                       household = Int32[1, 2], office = Int32[1, 2])
+        # infectious from tick 1, and every contact infects
+        p = Pathogen(id = 1, name = "TestPathogen",
+            progressions = [Asymptomatic(
+                exposure_to_infectiousness_onset = 0,
+                infectiousness_onset_to_recovery = 7)],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 1.0))
+
+        function gate_run(second_office::Bool)
+            pop = Population(df)
+            second_office && assign_settings!(pop, individuals(pop)[1], Office => 2)
+            # one contact per infectious member, which in a two-person office is the other one
+            sim = Simulation(population = pop, pathogens = (p,), infected_fraction = 0.0,
+                office_contacts = RandomSampling())
+            # the flush logs the infection and activates the infecter's settings from its plan
+            infect!(individuals(sim)[1], sim)
+            GEMS.flush_pending_infections!(sim)
+            step!(sim)
+            step!(sim)
+            return sim
+        end
+
+        sim = gate_run(true)
+        @test validate_plans(population(sim), GEMS.settingscontainer(sim))
+        caught = filter(r -> r.id_b == 2, infections(sim))
+        @test nrow(caught) == 1
+        @test caught.id_a[1] == 1
+        @test caught.tick[1] == 1
+        @test caught.setting_type[1] == 'o'
+        @test caught.setting_id[1] == 2
+
+        # without the second office there is no path between them
+        sim = gate_run(false)
+        @test !infected(individuals(sim)[2])
+        @test nrow(filter(r -> r.id_b == 2, infections(sim))) == 0
+    end
 end

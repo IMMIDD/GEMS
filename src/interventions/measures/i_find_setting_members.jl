@@ -81,7 +81,7 @@ end
 ###
 
 """
-    process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers)
+    process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers, sid::Int32 = PRIMARY_SETTING_ID)
 
 Finds all members of one of the settings an individual is associated with. the measure's 
 field `settingtype` specifies which kind of setting shall be queried, the `nonself` 
@@ -94,19 +94,21 @@ The `follow_up` strategy is handed over to all found members (and enqueued in th
 - `sim::Simulation`: Simulation object
 - `ind::Individual`: Individual that this measure will be applied to (focus individual)
 - `measure::FindSettingMembers`: Measure instance
+- `sid::Int32 = PRIMARY_SETTING_ID` *(optional)*: Id of the setting whose members are found;
+    the individual's primary setting of the type by default
 
 # Returns
 
 - `Nothing`: Triggers the `follow_up` strategy for each found member (skipping the focal
     individual when `nonself` is set).
 """
-function process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers)
+function process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers, sid::Int32 = PRIMARY_SETTING_ID)
 
     # setting type
     st = measure |> settingtype
 
     # setting id
-    sid = setting_id(ind, st, activity_plans(sim))
+    sid == PRIMARY_SETTING_ID && (sid = setting_id(ind, st, activity_plans(sim)))
 
     # setting object
     s = sim |> settingscontainer |>

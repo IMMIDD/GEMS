@@ -930,6 +930,10 @@ trait on `typeof(setting)`.
 """
 contained_type(setting::Setting) = contained_type(typeof(setting))
 
+# The individual-setting type at the bottom of `T`'s hierarchy, `T` itself for an individual setting.
+_leaf_type(::Type{T}) where {T<:IndividualSetting} = T
+_leaf_type(::Type{T}) where {T<:ContainerSetting} = _leaf_type(contains_type(T))
+
 """
     individuals(setting::IndividualSetting)
 
