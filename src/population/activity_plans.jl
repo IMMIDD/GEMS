@@ -216,8 +216,12 @@ end
 As above, but for one particular setting rather than any of its type. Searches the whole run,
 so a repeated type's later entries are reachable too.
 """
-@inline function plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting}
-    start, len = _plan_type_run(store, individual, setting_type_index(T))
+@inline plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting} =
+    _entry_slot(store, individual, setting_type_index(T), sid)
+
+# the slot of the entry for setting `sid` of type index `tidx`, or 0
+@inline function _entry_slot(store::ActivityPlanStore, individual::Individual, tidx::UInt8, sid::Int32)
+    start, len = _plan_type_run(store, individual, tidx)
     off = Int(individual.plan_offset)
     @inbounds for k in start:(start + len - 1)
         store.entries[off + k].setting_id == sid && return off + k
@@ -335,10 +339,14 @@ end
     assign_settings!(pop::Population, individual::Individual, memberships::Pair...)
 
 Gives `individual` one plan entry per `setting type => setting id` pair, as a population
-file's membership columns would.
+file's membership columns would. Only before the settings are built; afterwards use
+`add_member!`, which edits the setting too.
 """
 function assign_settings!(pop::Population, individual::Individual, memberships::Pair...)
     plans = activity_plans(pop)
+    # once indexed, an entry with no matching setting member would go unnoticed
+    plans.indexed && throw(ArgumentError(
+        "the settings are already built; use `add_member!`, which also edits the setting"))
     for (T, sid) in memberships
         plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX))
     end
@@ -438,10 +446,14 @@ end
 """
     plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry)
 
-Inserts an entry, keeping the individual's block sorted by setting type.
+Inserts an entry, keeping the individual's block sorted by setting type. Throws if the
+individual already holds an entry for that setting.
 """
 function plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry)
     tidx = setting_type_of(entry)
+    # a second entry for one setting would put the individual in its member list twice
+    _entry_slot(store, individual, tidx, setting_id(entry)) == 0 || throw(ArgumentError(
+        "individual $(id(individual)) already holds an entry for $(setting_type_from_index(tidx)) $(setting_id(entry))"))
     n = Int(individual.plan_count)
     n < typemax(Int8) || throw(ArgumentError(
         "individual $(id(individual)) already holds $n plan entries; the cap is $(typemax(Int8))"))

@@ -349,6 +349,48 @@ struct PlanTestSettingB <: IndividualSetting end
         plan_set_member_index!(plans, slot, original)
     end
 
+    @testset "Several settings of one type" begin
+        df = DataFrame(id = Int32.(1:4), age = Int8.(30:33), sex = Int8.(ones(4)),
+                       household = Int32[1, 1, 2, 2],
+                       office = Int32[1, 1, 2, 2])
+        pop = Population(df)
+        a, b = individuals(pop)[1], individuals(pop)[2]
+        # a also works in the office of household 2, b in an office nobody else names
+        assign_settings!(pop, a, Office => 2)
+        assign_settings!(pop, b, Office => 3)
+        sim = Simulation(population = pop)
+        cntnr = GEMS.settingscontainer(sim)
+        plans = activity_plans(pop)
+        offices = GEMS.settings(cntnr, Office)
+
+        # every entry reached a member list, including a setting only a second entry names
+        @test validate_plans(pop, cntnr)
+        @test length(offices) == 3
+        @test a in individuals(offices[1]) && a in individuals(offices[2])
+        @test individuals(offices[3]) == [b]
+        # the first entry of the type is the primary
+        @test setting_id(a, Office, plans) == Int32(1)
+
+        # activation reaches every setting the plan names
+        foreach(deactivate!, offices)
+        GEMS.activate_memberships!(a, sim)
+        @test isactive(offices[1]) && isactive(offices[2])
+
+        # once the settings exist, an entry needs its setting edited too
+        @test_throws ArgumentError assign_settings!(pop, a, Office => 3)
+    end
+
+    @testset "The same setting twice is refused" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        plan_add!(store, i, PlanEntry(Office, Int32(5), Int32(1)))
+        @test_throws ArgumentError plan_add!(store, i, PlanEntry(Office, Int32(5), Int32(2)))
+        @test plan_length(i) == 1
+        # the same id under another type is another setting
+        plan_add!(store, i, PlanEntry(Household, Int32(5), Int32(1)))
+        @test plan_length(i) == 2
+    end
+
     @testset "container_frame_index" begin
         cntnr = SettingsContainer()
         add_types!(cntnr, [SchoolClass, SchoolYear])

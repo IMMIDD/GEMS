@@ -751,6 +751,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         sim_gs = Simulation(pop_size=100, global_setting=true)
         ind_gs = individuals(sim_gs)[1]
         @test getsetting(ind_gs, sim_gs, GlobalSetting) === settings(sim_gs, GlobalSetting)[1]
+        # there is exactly one, and it holds everyone
+        @test length(settings(sim_gs, GlobalSetting)) == 1
+        @test individuals(settings(sim_gs, GlobalSetting)[1]) == individuals(sim_gs)
     end
 
     @testset "get_containers!" begin
@@ -899,7 +902,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @testset "remove! is a no-op for a non-member" begin
             h, _, pop, plans = make_household(3)
             stranger = Individual(id = Int32(99), age = 40, sex = 1)
-            assign_settings!(pop, stranger, Household => 7)
+            fake_membership!(pop, stranger, Household, 7)
             remove_member!(h, stranger, pop)
             @test length(individuals(h)) == 3
             # a non-member's own membership must not be touched
@@ -932,6 +935,14 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             add_member!(h, newcomer, pop)
             remove_member!(h, newcomer, pop)
             @test Set(id.(individuals(h))) == before
+        end
+
+        @testset "add! refuses an existing member" begin
+            h, inds, pop, plans = make_household(3)
+            @test_throws ArgumentError add_member!(h, inds[2], pop)
+            # the refusal comes before either side is touched
+            @test length(individuals(h)) == 3
+            @test GEMS.plan_length(inds[2]) == 1
         end
 
         @testset "membership_changed! drops a derived cache" begin

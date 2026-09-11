@@ -761,10 +761,14 @@ end
     add_member!(setting::IndividualSetting, individual::Individual, pop::Population)
 
 Adds the given individual to the setting and the matching entry to their activity plan.
-Must not be called while the threaded transmission phase is running.
+Throws if they already belong to it. Must not be called while the threaded transmission
+phase is running.
 """
 function add_member!(setting::IndividualSetting, individual::Individual, pop::Population)
     plans = activity_plans(pop)
+    # checked before the member list is touched, so a refusal leaves both sides as they were
+    plan_slot(plans, individual, typeof(setting), id(setting)) == 0 || throw(ArgumentError(
+        "individual $(id(individual)) is already a member of $(typeof(setting)) $(id(setting))"))
     pool = _pool(setting)
     if pool === nothing
         push!(setting.individuals, individual)
@@ -1019,10 +1023,25 @@ function settings_from_population(population::Population, global_setting::Bool =
     sorted_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
 
     for stngType in stngtypes
-        _settings_for_type!(settings, renaming, stngType, population, inds, pairs_buffer, sorted_buffer, default_sampling)
+        # everyone is in the one GlobalSetting, so it is built here rather than from plan entries
+        if stngType === GlobalSetting
+            _build_global_setting!(settings, inds, default_sampling)
+        else
+            _settings_for_type!(settings, renaming, stngType, population, inds, pairs_buffer, sorted_buffer, default_sampling)
+        end
     end
 
     return settings, renaming
+end
+
+# The GlobalSetting holds every individual under the constant id; nobody carries a plan entry
+# for it. An empty population gets none, as when it was built from pairs.
+function _build_global_setting!(settings, inds::Vector{Individual}, default_sampling)
+    isempty(inds) && return nothing
+    add_type!(settings, GlobalSetting)
+    add!(settings, GlobalSetting(id = GLOBAL_SETTING_ID, individuals = copy(inds),
+        contact_sampling_method = default_sampling))
+    return nothing
 end
 
 
@@ -1044,25 +1063,23 @@ function _settings_for_type!(
 ) where {T <: Setting}
 
     plans = activity_plans(population)
-    max_inds = length(inds)
-    resize!(pairs_buffer, max_inds)
+    resize!(pairs_buffer, sum(ind -> length(plan_slots(plans, ind, T)), inds; init = 0))
 
     valid_count = 0
     min_id = typemax(Int32)
     max_id = typemin(Int32)
 
-    # Iterate over all individuals and add them to the buffer
-    for i in 1:max_inds
-        ind = inds[i]
-        id = setting_id(ind, T, plans)
-        if id != DEFAULT_SETTING_ID
+    # one pair per entry, so a second setting of the type is built as well
+    for ind in inds
+        for slot in plan_slots(plans, ind, T)
+            sid = @inbounds setting_id(plans.entries[slot])
             valid_count += 1
 
             # Track ID bounds for Counting Sort
-            min_id = id < min_id ? id : min_id
-            max_id = id > max_id ? id : max_id
+            min_id = sid < min_id ? sid : min_id
+            max_id = sid > max_id ? sid : max_id
 
-            @inbounds pairs_buffer[valid_count] = (id, ind)
+            @inbounds pairs_buffer[valid_count] = (sid, ind)
         end
     end
 

@@ -740,16 +740,16 @@ end
     individual_base_fieldnames()
 
 Return the field names of `Individual` that a constructor may populate from external data,
-excluding `:extensions`, the three `*_demands` counters and the two plan coordinates.
+excluding `:extensions`, the three `*_demands` counters and the three plan fields.
 Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
 they don't accidentally try to populate the extension slot from a column that doesn't exist.
 
 The demand counters are realized state, not input: a count set from a population file would have no
-matching discharge scheduled, stranding the host as permanently admitted. The plan coordinates
+matching discharge scheduled, stranding the host as permanently admitted. The plan fields
 are likewise derived; membership is read from the `household`/`office`/... columns instead.
 """
 const _INDIVIDUAL_DERIVED_FIELDS = (:extensions, :hospital_demands, :icu_demands,
-                                    :ventilation_demands, :plan_offset, :plan_count)
+                                    :ventilation_demands, :plan_offset, :plan_count, :membership_mask)
 
 individual_base_fieldnames() = filter(f -> !(f in _INDIVIDUAL_DERIVED_FIELDS), fieldnames(Individual))
 
