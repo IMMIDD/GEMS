@@ -397,8 +397,12 @@ end
 
 
 function _process_infections!(csm, setting, sim)
-    present_inds = present_members(setting, settingscontainer(sim))
+    cntnr = settingscontainer(sim)
+    present_inds = present_members(setting, cntnr)
     c_buffer = sim.contact_buffers[Threads.threadid()]
+    draws = sim.draw_buffers[Threads.threadid()]
+    plans = activity_plans(sim)
+    bound = _scale_bound(setting)
     num_infected = 0
     current_tick = tick(sim)
     current_rng = rng(sim)
@@ -410,8 +414,9 @@ function _process_infections!(csm, setting, sim)
         if infected(ind)
             num_infected += 1
             if can_infect(ind, setting, current_tick)
-                empty!(c_buffer)
-                sample_contacts!(c_buffer, csm, setting, ind_index, present_inds, current_tick, true, current_rng)
+                s_host = ind.plan_scaled ? _membership_scale(plans, ind, setting, cntnr) : 1.0f0
+                sample_scaled_contacts!(c_buffer, draws, csm, setting, ind_index, present_inds, current_tick,
+                    current_rng, plans, cntnr, s_host, bound)
 
                 # spread each active, shedding pathogen (cache then overflow); the iterator
                 # only resolves the shard registry if the individual has overflow infections

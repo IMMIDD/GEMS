@@ -102,6 +102,7 @@ A type to represent individuals that act as agents inside the simulation.
 - Associated Settings (an activity plan; see `ActivityPlanStore`)
     - `plan_offset::Int32`: Start of this individual's block in the plan store's flat entry array
     - `plan_count::Int8`: How many settings the individual belongs to
+    - `plan_scaled::Bool`: Whether any plan entry has a scale other than 1
     - `membership_mask::UInt16`: Bit per setting type present in the plan, for O(1) lookup
 
 - Bookkeeping
@@ -152,13 +153,13 @@ A type to represent individuals that act as agents inside the simulation.
     # ACTIVITY PLAN (this individual's block in the population's ActivityPlanStore)
     plan_offset::Int32 = 0                          # off 20,  4B,  line 0
     plan_count::Int8 = 0                            # off 24,  1B,  line 0
+    plan_scaled::Bool = false                       # off 25,  1B,  line 0
 
     # BOOKKEEPING
-    needs_immunity_update::Bool = false             # off 25,  1B,  line 0
-    number_of_infections::Int8 = 0                  # off 26,  1B,  line 0
-    disease_flags::DiseaseFlags = DiseaseFlags()    # off 27,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 28,  1B,  line 0
-    #                                                 off 29, 1B free (alignment)
+    needs_immunity_update::Bool = false             # off 26,  1B,  line 0
+    number_of_infections::Int8 = 0                  # off 27,  1B,  line 0
+    disease_flags::DiseaseFlags = DiseaseFlags()    # off 28,  1B,  line 0
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 29,  1B,  line 0
     membership_mask::UInt16 = 0                     # off 30,  2B,  line 0
 
     # INTERVENTIONS
@@ -740,7 +741,7 @@ end
     individual_base_fieldnames()
 
 Return the field names of `Individual` that a constructor may populate from external data,
-excluding `:extensions`, the three `*_demands` counters and the three plan fields.
+excluding `:extensions`, the three `*_demands` counters and the four plan fields.
 Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
 they don't accidentally try to populate the extension slot from a column that doesn't exist.
 
@@ -749,7 +750,7 @@ matching discharge scheduled, stranding the host as permanently admitted. The pl
 are likewise derived; membership is read from the `household`/`office`/... columns instead.
 """
 const _INDIVIDUAL_DERIVED_FIELDS = (:extensions, :hospital_demands, :icu_demands,
-                                    :ventilation_demands, :plan_offset, :plan_count, :membership_mask)
+                                    :ventilation_demands, :plan_offset, :plan_count, :membership_mask, :plan_scaled)
 
 individual_base_fieldnames() = filter(f -> !(f in _INDIVIDUAL_DERIVED_FIELDS), fieldnames(Individual))
 

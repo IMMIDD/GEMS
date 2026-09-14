@@ -651,12 +651,12 @@ end
 ###
 
 """
-    add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false)
+    add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false, scale::Real = 1.0)
 
 Adds a member, taking the population from the simulation.
 """
-add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false) =
-    add_member!(setting, individual, population(sim); primary = primary)
+add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false, scale::Real = 1.0) =
+    add_member!(setting, individual, population(sim); primary = primary, scale = scale)
 
 """
     set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
@@ -666,6 +666,20 @@ the simulation.
 """
 set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting} =
     set_primary!(population(sim), individual, T, sid)
+
+"""
+    set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+
+Sets the scale of the individual's entry for setting `sid` of type `T`, and that setting's scale bound.
+"""
+function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+    plans = activity_plans(sim)
+    _set_entry_scale!(plans, individual, T, sid, scale)
+    s = settings(sim, T)[sid]
+    # raising a scale can only raise the bound; lowering one may free it, so recount
+    Float32(scale) >= _scale_bound(s) ? _set_scale_bound!(s, Float32(scale)) : _refresh_scale_bound!(plans, s)
+    return nothing
+end
 
 """
     remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)

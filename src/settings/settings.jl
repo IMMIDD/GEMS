@@ -103,6 +103,7 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 - `lat::Float32 = NaN`: Latitude of the household
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
 """
 @with_kw mutable struct Household <: Geolocated
     id::Int32 # 4 bytes
@@ -121,6 +122,9 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # upper bound on its members' scales
+    scale_bound::Float32 = 1
 end
 
 ###
@@ -149,6 +153,7 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the municipality.
 - `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
 """
 @with_kw mutable struct Municipality <: IndividualSetting
     id::Int32 # 4 bytes // Municipality identifier
@@ -160,6 +165,9 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # upper bound on its members' scales
+    scale_bound::Float32 = 1
 end
 
 ###
@@ -201,6 +209,7 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     `individuals` is a view of exactly that span.
 - `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
     finds the block it has to dirty.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
 """
 @with_kw mutable struct SchoolClass <: Geolocated
     id::Int32 # 4 bytes
@@ -225,6 +234,8 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     # index in pool.leaves, so an edit finds the block it dirties without a search
     pool_leaf::Int32 = 0
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on its members' scales
+    scale_bound::Float32 = 1
 
 end
 
@@ -263,6 +274,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
     the span already covers each member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolYear <: ContainerSetting
     id::Int32 # 4 bytes
@@ -284,6 +296,8 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     # set when a member sits in two leaves below, so the frame is not one span
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
 
 end
 
@@ -321,6 +335,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
     the span already covers each member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct School <: ContainerSetting
     id::Int32 # 4 bytes
@@ -341,6 +356,8 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     # set when a member sits in two leaves below, so the frame is not one span
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
 
 end
 
@@ -376,6 +393,7 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
     the span already covers each member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolComplex <: ContainerSetting
     id::Int32 # 4 bytes
@@ -396,6 +414,8 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     # set when a member sits in two leaves below, so the frame is not one span
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
 
 end
 
@@ -434,6 +454,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
     the span already covers each member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct WorkplaceSite <: ContainerSetting
     id::Int32 # 4 bytes
@@ -455,6 +476,8 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     # set when a member sits in two leaves below, so the frame is not one span
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
 
 end
 
@@ -491,6 +514,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
     the span already covers each member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Workplace <: ContainerSetting
     id::Int32 # 4 bytes
@@ -512,6 +536,8 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     # set when a member sits in two leaves below, so the frame is not one span
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
 
 end
 
@@ -548,6 +574,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below, `nothing` when
     the span already covers each member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Department <: ContainerSetting
     id::Int32 # 4 bytes
@@ -572,6 +599,8 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     # set when a member sits in two leaves below, so the frame is not one span
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
 
 end
 
@@ -614,6 +643,7 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     `individuals` is a view of exactly that span.
 - `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
     finds the block it has to dirty.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
 """
 @with_kw mutable struct Office <: Geolocated
     id::Int32 # 4 bytes
@@ -641,6 +671,8 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     # index in pool.leaves, so an edit finds the block it dirties without a search
     pool_leaf::Int32 = 0
     pool::Union{Nothing, SettingPool} = nothing
+    # upper bound on its members' scales
+    scale_bound::Float32 = 1
 
 end
 ###
@@ -758,13 +790,13 @@ function contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
 end
 
 """
-    add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false)
+    add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false, scale::Real = 1.0)
 
-Adds the given individual to the setting and the matching entry to their activity plan, as
-their primary setting of that type if `primary`. Throws if they already belong to it. Must
-not be called while the threaded transmission phase is running.
+Adds the given individual to the setting and the matching entry at `scale` to their activity
+plan, as their primary setting of that type if `primary`. Throws if they already belong to it.
+Must not be called while the threaded transmission phase is running.
 """
-function add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false)
+function add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false, scale::Real = 1.0)
     plans = activity_plans(pop)
     # checked before the member list is touched, so a refusal leaves both sides as they were
     plan_slot(plans, individual, typeof(setting), id(setting)) == 0 || throw(ArgumentError(
@@ -778,7 +810,8 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
         _pool_add_member!(setting, individual)
     end
     plan_add!(plans, individual,
-              PlanEntry(typeof(setting), id(setting), length(setting.individuals)); primary = primary)
+              PlanEntry(typeof(setting), id(setting), length(setting.individuals), scale); primary = primary)
+    Float32(scale) > _scale_bound(setting) && _set_scale_bound!(setting, Float32(scale))
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
@@ -815,13 +848,15 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
         dslot = plan_slot(plans, displaced, T, sid)
         dslot != 0 && plan_set_member_index!(plans, dslot, idx)
     end
+    # the removed member may have held the bound
+    _scale_bound(setting) > 1 && _refresh_scale_bound!(plans, setting)
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
 
 # The GlobalSetting is the whole population by definition, so its membership is not editable -
 # and an individual holds no plan entry for it, since `setting_id` answers from the constant.
-add_member!(::GlobalSetting, ::Individual, ::Population; primary::Bool = false) =
+add_member!(::GlobalSetting, ::Individual, ::Population; primary::Bool = false, scale::Real = 1.0) =
     throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
 remove_member!(::GlobalSetting, ::Individual, ::Population) =
     throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))

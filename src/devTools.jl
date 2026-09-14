@@ -282,6 +282,15 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
             error("individual $(id(ind)) has member index $idx in $T $(setting_id(e)), which holds $(length(individuals(s))) members")
         individuals(s)[idx] === ind ||
             error("individual $(id(ind)) has member index $idx in $T $(setting_id(e)), but that slot holds individual $(id(individuals(s)[idx]))")
+        0 <= entry_scale(e) <= floatmax(Float16) ||
+            error("individual $(id(ind)) has scale $(entry_scale(e)) in $T $(setting_id(e)), outside [0, $(floatmax(Float16))]")
+        entry_scale(e) <= _scale_bound(s) ||
+            error("the scale bound of $T $(setting_id(e)) is below individual $(id(ind))'s scale $(entry_scale(e))")
+    end
+
+    for ind in individuals(pop)
+        ind.plan_scaled == any(e -> entry_scale(e) != 1, plan_entries(plans, ind)) ||
+            error("individual $(id(ind)) has plan_scaled = $(ind.plan_scaled), which its entries contradict")
     end
 
     for T in settingtypes(cntnr)

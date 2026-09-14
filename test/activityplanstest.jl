@@ -2,7 +2,7 @@ import GEMS: PlanEntry, ActivityPlanStore, plan_slot, plan_add!, plan_remove!, p
     plan_length, plan_set_setting_id!, plan_set_member_index!, build_plans!, assign_settings!,
     assign_member_indices!, validate_plans, container_frame_index, membership_column,
     setting_type_index, setting_type_from_index, register_setting_type!, activity_plans,
-    member_index, setting_type_of, weight, entry_active, entry_active!, plan_slots
+    member_index, setting_type_of, entry_scale, entry_active, entry_active!, plan_slots, set_scale!
 
 # a registered and an unregistered setting type, for the type-index tests
 struct PlanTestSettingA <: IndividualSetting end
@@ -15,9 +15,9 @@ struct PlanTestSettingB <: IndividualSetting end
         @test setting_id(e) == Int32(7)
         @test member_index(e) == Int32(3)
         @test setting_type_of(e) == setting_type_index(Office)
-        @test weight(e) == Float16(0.25)
-        # the weight defaults to a full day
-        @test weight(PlanEntry(Household, Int32(1), Int32(1))) == Float16(1.0)
+        @test entry_scale(e) == Float16(0.25)
+        # a normal member by default
+        @test entry_scale(PlanEntry(Household, Int32(1), Int32(1))) == Float16(1.0)
     end
 
     @testset "Setting type index" begin
@@ -665,5 +665,228 @@ struct PlanTestSettingB <: IndividualSetting end
         sim = gate_run(false)
         @test !infected(individuals(sim)[2])
         @test nrow(filter(r -> r.id_b == 2, infections(sim))) == 0
+    end
+
+    @testset "Scale flag follows the entries" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
+        @test !i.plan_scaled
+        plan_add!(store, i, PlanEntry(Household, Int32(11), Int32(2), 0.5))
+        @test i.plan_scaled
+        set_scale!(store, i, Household, 11, 1.0)
+        @test !i.plan_scaled
+        set_scale!(store, i, Household, 10, 3.0)
+        @test i.plan_scaled
+        @test_throws ArgumentError set_scale!(store, i, Household, 99, 0.5)
+
+        # removing the only scaled entry clears the flag
+        plan_remove!(store, i, plan_slot(store, i, Household, Int32(10)))
+        @test !i.plan_scaled
+        # derived, so a population file cannot set it
+        @test !(:plan_scaled in GEMS.individual_base_fieldnames())
+        # once the settings are built, only the simulation may change a scale
+        store.indexed = true
+        @test_throws ArgumentError set_scale!(store, i, Household, 11, 2.0)
+    end
+
+    @testset "Membership table scales" begin
+        df = DataFrame(id = Int32.(1:2), age = Int8.(30:31), sex = Int8.(ones(2)),
+                       household = Int32[1, 2], office = Int32[5, -1])
+        rows(ids, types, sids, scales) = DataFrame(id = Int32.(ids), setting_type = types,
+            setting_id = Int32.(sids), scale = scales)
+
+        # a row naming the population row's own setting only scales it; the others are new entries
+        pop = Population(df; memberships = rows([1, 1, 1], ["Household", "Household", "Office"], [1, 2, 7], [0.5, 0.5, 2.5]))
+        plans = activity_plans(pop)
+        a, b = individuals(pop)
+        @test setting_ids(a, Household, plans) == Int32[1, 2]
+        @test [entry_scale(plans.entries[k]) for k in plan_slots(plans, a, Household)] == Float16[0.5, 0.5]
+        @test [entry_scale(plans.entries[k]) for k in plan_slots(plans, a, Office)] == Float16[1.0, 2.5]
+        @test a.plan_scaled && !b.plan_scaled
+
+        # both tables together rebuild the same plans, the primary's scale included
+        back = Population(dataframe(pop); memberships = memberships(pop))
+        @test [entry_scale(e) for e in plan_entries(activity_plans(back), individuals(back)[1])] ==
+              [entry_scale(e) for e in plan_entries(plans, a)]
+
+        # out of range, and one entry scaled twice
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Office"], [7], [-0.5]))
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Office"], [7], [70000.0]))
+        @test_throws ArgumentError Population(df; memberships = rows([1], ["Office"], [7], [NaN]))
+        @test_throws ArgumentError Population(df;
+            memberships = rows([1, 1], ["Office", "Office"], [5, 5], [0.5, 0.5]))
+
+        # once the settings exist, each carries a bound on its members' scales
+        sim = Simulation(population = pop)
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
+        k = last(plan_slots(plans, a, Office))
+        sid = setting_id(plans.entries[k])
+        @test GEMS._scale_bound(settings(sim, Office)[sid]) == 2.5f0
+        # and the simulation changes scales together with the bound
+        @test_throws ArgumentError set_scale!(pop, a, Office, sid, 1.0)
+        set_scale!(sim, a, Office, sid, 1.0)
+        @test GEMS._scale_bound(settings(sim, Office)[sid]) == 1.0f0
+        set_scale!(sim, a, Office, sid, 4.0)
+        @test GEMS._scale_bound(settings(sim, Office)[sid]) == 4.0f0
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
+    end
+
+    @testset "Membership scales" begin
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [SchoolClass, SchoolYear, School])
+        inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:11]
+        x, y, z, w, v = inds[7], inds[8], inds[9], inds[10], inds[11]
+        # school 1: year 1 holds classes 1 and 2, year 2 holds class 3. school 2: year 3 holds class 4
+        cs = [SchoolClass(id = Int32(1), individuals = [inds[1], inds[2], x, y, v], contained = Int32(1)),
+              SchoolClass(id = Int32(2), individuals = [inds[3], x, v], contained = Int32(1)),
+              SchoolClass(id = Int32(3), individuals = [inds[4], y, z], contained = Int32(2)),
+              SchoolClass(id = Int32(4), individuals = [inds[5], inds[6], z, w], contained = Int32(3))]
+        ys = [SchoolYear(id = Int32(1), contains = Int32[1, 2], contained = Int32(1)),
+              SchoolYear(id = Int32(2), contains = Int32[3], contained = Int32(1)),
+              SchoolYear(id = Int32(3), contains = Int32[4], contained = Int32(2))]
+        ss = [School(id = Int32(1), contains = Int32[1, 2]), School(id = Int32(2), contains = Int32[3])]
+        for s in vcat(cs, ys, ss); GEMS.add!(cntnr, s); end
+        GEMS.build_pools!(cntnr)
+
+        pop = Population(inds)
+        for (k, c) in enumerate(cs), m in individuals(c)
+            m in (x, y, z, w, v) || assign_settings!(pop, m, SchoolClass => k)
+        end
+        for (ind, cid, s) in ((x, 1, 0.5), (x, 2, 0.5), (y, 1, 0.7), (y, 3, 0.7), (z, 3, 0.3), (z, 4, 0.4),
+                              (w, 4, 0.25), (v, 1, 2.0), (v, 2, 0.5))
+            assign_settings!(pop, ind, SchoolClass => cid; scale = s)
+        end
+        plans = activity_plans(pop)
+        ms(ind, s) = GEMS._membership_scale(plans, ind, s, cntnr)
+
+        # a leaf reads its own entry, and the global setting has none
+        @test ms(x, cs[1]) == 0.5f0
+        @test ms(inds[1], cs[1]) == 1.0f0
+        @test GEMS._membership_scale(plans, x, GlobalSetting(contact_sampling_method = RandomSampling()), cntnr) == 1.0f0
+        # a lone leaf entry is taken as it is
+        @test ms(inds[1], ys[1]) == 1.0f0
+        @test ms(w, ss[2]) == 0.25f0
+        # leaves under one container add up, capped at the larger of 1 and the largest
+        @test ms(x, ys[1]) == 1.0f0
+        @test isapprox(ms(y, ys[1]), 0.7; atol = 1e-3)
+        @test ms(y, ss[1]) == 1.0f0
+        @test ms(v, ys[1]) == 2.0f0
+        @test ms(v, ss[1]) == 2.0f0
+        # a leaf under another container does not count
+        @test isapprox(ms(z, ss[1]), 0.3; atol = 1e-3)
+        @test isapprox(ms(z, ss[2]), 0.4; atol = 1e-3)
+
+        # closed leaves, and leaves below a closed container, drop out
+        close!(cs[2])
+        @test ms(x, ys[1]) == 0.5f0
+        open!(cs[2])
+        close!(ys[2])
+        @test isapprox(ms(y, ss[1]), 0.7; atol = 1e-3)
+        @test ms(z, ss[1]) == 0.0f0
+        open!(ys[2])
+
+        # the leaf range agrees with climbing `contained`, for every leaf and container
+        function ancestor(s, C)
+            while !(s isa C)
+                s = GEMS.settings(cntnr, GEMS.contained_type(typeof(s)))[s.contained]
+            end
+            return s
+        end
+        for c in cs, C in (SchoolYear, School), p in GEMS.settings(cntnr, C)
+            @test (c.pool_leaf in GEMS._leaf_range(p)) == (ancestor(c, C) === p)
+        end
+
+        # once indexed, a leaf above 1 bounds itself and every container above it
+        assign_member_indices!(pop, cntnr)
+        @test GEMS._scale_bound(cs[1]) == 2.0f0
+        @test GEMS._scale_bound(ys[1]) == 2.0f0
+        @test GEMS._scale_bound(ss[1]) == 2.0f0
+        @test GEMS._scale_bound(cs[3]) == 1.0f0
+        @test GEMS._scale_bound(ss[2]) == 1.0f0
+        # a member edit moves its leaf's bound at once, and the containers' at the next repack
+        add_member!(cs[4], inds[1], pop; scale = 3.0)
+        @test GEMS._scale_bound(cs[4]) == 3.0f0
+        GEMS.repack_dirty_pools!(cntnr)
+        @test GEMS._scale_bound(ys[3]) == 3.0f0
+        @test GEMS._scale_bound(ss[2]) == 3.0f0
+        remove_member!(cs[4], inds[1], pop)
+        GEMS.repack_dirty_pools!(cntnr)
+        @test GEMS._scale_bound(cs[4]) == 1.0f0
+        @test GEMS._scale_bound(ss[2]) == 1.0f0
+    end
+
+    @testset "Scaled contact sampling" begin
+        cntnr = SettingsContainer()
+        plans = ActivityPlanStore()
+        csm = ContactparameterSampling(20.0)
+        hh = Household(id = Int32(1), contact_sampling_method = csm,
+                       individuals = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:10])
+        present = GEMS.present_members(hh, cntnr)
+        draws = Individual[]
+        sampled(s, p, rng, s_host, bound) = GEMS.sample_scaled_contacts!(Individual[], draws,
+            contact_sampling_method(s), s, 1, p, Int16(1), rng, plans, cntnr, Float32(s_host), Float32(bound))
+
+        # unscaled, it is the plain draw with no extra randomness
+        r1 = Xoshiro(7); r2 = copy(r1)
+        plain = Individual[]
+        sample_contacts!(plain, csm, hh, 1, present, Int16(1), true, r1)
+        @test sampled(hh, present, r2, 1, 1) == plain
+        @test r1 == r2
+        @test isempty(sampled(hh, present, Xoshiro(7), 0, 1))
+
+        # the host's scale and the bound set how much is drawn; unscaled contacts are thinned against the bound
+        rng = Xoshiro(11)
+        n = 4000
+        mean_contacts(s, p, s_host, bound) = sum(_ -> length(sampled(s, p, rng, s_host, bound)), 1:n) / n
+        @test isapprox(mean_contacts(hh, present, 0.5, 1), 10.0; atol = 0.3)
+        @test isapprox(mean_contacts(hh, present, 2.5, 1), 50.0; atol = 0.8)
+        @test isapprox(mean_contacts(hh, present, 1, 2.5), 20.0; atol = 0.5)
+
+        # in a pair the other member is the only candidate, so its own scale shows directly
+        pair = [Individual(id = Int32(11), age = 30, sex = 1), Individual(id = Int32(12), age = 30, sex = 1)]
+        hh2 = Household(id = Int32(2), contact_sampling_method = RandomSampling(), individuals = pair)
+        p2 = GEMS.present_members(hh2, cntnr)
+        plan_add!(plans, pair[2], PlanEntry(Household, Int32(2), Int32(2), 0.5))
+        @test isapprox(mean_contacts(hh2, p2, 1, 1), 0.5; atol = 0.03)
+        @test isapprox(mean_contacts(hh2, p2, 0.5, 1), 0.25; atol = 0.03)
+        set_scale!(plans, pair[2], Household, 2, 2.5)
+        @test isapprox(mean_contacts(hh2, p2, 1, 2.5), 2.5; atol = 0.08)
+    end
+
+    @testset "Gate: scales act on both ends" begin
+        n = 1000
+        df = DataFrame(id = Int32.(1:2n), sex = Int8.(zeros(2n)), age = Int8.(fill(30, 2n)),
+                       household = Int32.(repeat(1:n, inner = 2)))
+
+        # share of second members caught at home on the first infectious tick, with the first
+        # (`:host`) or the second (`:contact`) member of every household at scale `s`
+        function caught(scaled::Symbol, s::Float64, rate::Float64, csm)
+            p = Pathogen(id = 1, name = "TestPathogen",
+                progressions = [Asymptomatic(
+                    exposure_to_infectiousness_onset = 0,
+                    infectiousness_onset_to_recovery = 7)],
+                transmission_function = ConstantTransmissionRate(transmission_rate = rate))
+            ids = scaled === :host ? Int32.(1:2:2n) : Int32.(2:2:2n)
+            table = DataFrame(id = ids, setting_type = fill("Household", n),
+                              setting_id = Int32.(div.(ids .+ 1, 2)), scale = fill(s, n))
+            sim = Simulation(population = Population(df; memberships = table), pathogens = (p,),
+                infected_fraction = 0.0, household_contacts = csm, seed = 42)
+            for k in 1:2:2n
+                infect!(individuals(sim)[k], sim)
+            end
+            GEMS.flush_pending_infections!(sim)
+            step!(sim)
+            step!(sim)
+            return nrow(filter(r -> iseven(r.id_b) && r.tick == 1 && r.setting_type == 'h', infections(sim))) / n
+        end
+
+        # one contact per tick and every contact infects, so the scale is the share caught
+        @test caught(:contact, 1.0, 1.0, RandomSampling()) == 1.0
+        @test isapprox(caught(:contact, 0.5, 1.0, RandomSampling()), 0.5; atol = 0.06)
+        @test isapprox(caught(:host, 0.5, 1.0, RandomSampling()), 0.5; atol = 0.06)
+        # above 1: Poisson(2) attempts on the one housemate, each infecting with 0.3
+        @test isapprox(caught(:contact, 2.0, 0.3, ContactparameterSampling(1.0)), 1 - exp(-0.6); atol = 0.05)
+        @test isapprox(caught(:host, 2.0, 0.3, ContactparameterSampling(1.0)), 1 - exp(-0.6); atol = 0.05)
     end
 end

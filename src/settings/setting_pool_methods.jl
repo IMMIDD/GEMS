@@ -594,6 +594,14 @@ end
 @inline function _refresh_container!(c::C, r::UnitRange{Int}, pool::SettingPool,
                                      leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
     c.pool_runs = nothing
+    # a member's scale here never exceeds 1 or its largest leaf's, so the leaves bound it
+    if hasfield(C, :scale_bound)
+        b = 1.0f0
+        @inbounds for j in r
+            b = max(b, _scale_bound(leaves[j]))
+        end
+        c.scale_bound = b
+    end
     if isempty(r)
         c.pool_offset = Int32(0)
         c.pool_length = Int32(0)

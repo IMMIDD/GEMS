@@ -59,6 +59,8 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
     cnt = 1
     cntnr = settingscontainer(simulation)
     contacts = simulation.contact_buffers[Threads.threadid()]
+    draws = simulation.draw_buffers[Threads.threadid()]
+    plans = activity_plans(simulation)
 
     # batches are sorted, so consecutive samples usually hit the same setting. A member view
     # is not free for containers - it walks the subtree to check openness - so keep the
@@ -94,8 +96,9 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             ind_index = gems_rand(simulation, 1:length(present_inds))
             ind = present_inds[ind_index]
 
-            empty!(contacts)
-            sample_contacts!(contacts, s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, rng(simulation))
+            s_host = ind.plan_scaled ? _membership_scale(plans, ind, s, cntnr) : 1.0f0
+            sample_scaled_contacts!(contacts, draws, s.contact_sampling_method, s, ind_index, present_inds,
+                tick(simulation), rng(simulation), plans, cntnr, s_host, _scale_bound(s))
 
             if length(contacts) > 0
                 for contact in contacts

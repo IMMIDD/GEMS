@@ -38,5 +38,6 @@ populationfile(::Population)
 remove!(::Population, ::Individual)
 save(::Population, ::AbstractString)
 set_primary!
+set_scale!
 size(::Population)
 ```

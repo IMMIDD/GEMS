@@ -5,9 +5,9 @@
 
 # EXPORTS
 export PlanEntry, ActivityPlanStore
-export member_index, weight, setting_type_of
+export member_index, entry_scale, setting_type_of
 export plan_entries, plan_length, entry_active, entry_active!, container_frame_index
-export build_plans!, assign_settings!, assign_member_indices!, activity_plans, set_primary!
+export build_plans!, assign_settings!, assign_member_indices!, activity_plans, set_primary!, set_scale!
 export check_pool_entries
 export membership_column, memberships
 
@@ -19,22 +19,22 @@ export membership_column, memberships
     PlanEntry
 
 One setting membership: the setting's id and dense type index, the individual's position in
-that setting's member frame, and the share of the day spent there.
+that setting's member frame, and the scale of its contacts there.
 """
 struct PlanEntry
     setting_id::Int32
     member_index::Int32
-    weight::Float16
+    scale::Float16
     setting_type::UInt8
 end
 
 """
-    PlanEntry(::Type{T}, setting_id, member_index, weight = 1.0f0)
+    PlanEntry(::Type{T}, setting_id, member_index, scale = 1.0f0)
 
 Builds an entry for a setting of type `T`, resolving the dense type index.
 """
-PlanEntry(::Type{T}, setting_id::Integer, member_index::Integer, weight::Real = 1.0f0) where {T<:Setting} =
-    PlanEntry(Int32(setting_id), Int32(member_index), Float16(weight), setting_type_index(T))
+PlanEntry(::Type{T}, setting_id::Integer, member_index::Integer, scale::Real = 1.0f0) where {T<:Setting} =
+    PlanEntry(Int32(setting_id), Int32(member_index), Float16(scale), setting_type_index(T))
 
 """
     setting_id(entry::PlanEntry)
@@ -51,11 +51,11 @@ Returns the individual's position in the setting's member frame.
 @inline member_index(entry::PlanEntry)::Int32 = entry.member_index
 
 """
-    weight(entry::PlanEntry)
+    entry_scale(entry::PlanEntry)
 
-Returns the entry's share of the individual's day.
+Returns the scale of the individual's contacts in the entry's setting, relative to a normal member.
 """
-@inline weight(entry::PlanEntry)::Float16 = entry.weight
+@inline entry_scale(entry::PlanEntry)::Float16 = entry.scale
 
 """
     setting_type_of(entry::PlanEntry)
@@ -66,9 +66,11 @@ Returns the entry's dense setting-type index.
 
 # entries are immutable, so an edit rewrites the whole entry
 @inline _with_member_index(e::PlanEntry, idx::Integer) =
-    PlanEntry(e.setting_id, Int32(idx), e.weight, e.setting_type)
+    PlanEntry(e.setting_id, Int32(idx), e.scale, e.setting_type)
 @inline _with_setting_id(e::PlanEntry, sid::Int32) =
-    PlanEntry(sid, e.member_index, e.weight, e.setting_type)
+    PlanEntry(sid, e.member_index, e.scale, e.setting_type)
+@inline _with_scale(e::PlanEntry, scale::Real) =
+    PlanEntry(e.setting_id, e.member_index, Float16(scale), e.setting_type)
 
 ###
 ### PLAN STORE
@@ -327,9 +329,15 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
         from_table = false
         while cursor <= length(order) && rows.ind[order[cursor]] == i
             r = order[cursor]
-            push!(store.entries, PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(1.0), rows.tidx[r]))
-            rows.tidx[r] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(rows.tidx[r]))
             cursor += 1
+            if rows.restates[r]
+                # the population row's entry is the first of its type, so this finds it
+                k = off - 1 + findfirst(e -> setting_type_of(e) == rows.tidx[r], view(store.entries, off:length(store.entries)))
+                store.entries[k] = _with_scale(store.entries[k], rows.scale[r])
+                continue
+            end
+            push!(store.entries, PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(rows.scale[r]), rows.tidx[r]))
+            rows.tidx[r] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(rows.tidx[r]))
             from_table = true
         end
 
@@ -345,6 +353,7 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
         ind.plan_offset = Int32(n == 0 ? 0 : off)
         ind.plan_count = Int8(n)
         ind.membership_mask = mask
+        ind.plan_scaled = any(e -> entry_scale(e) != 1, view(store.entries, off:(off + n - 1)))
     end
 
     # nothing gates entries yet, so every one applies
@@ -357,9 +366,9 @@ end
     memberships(pop::Population)
 
 Returns the memberships `dataframe(pop)` leaves out, one row per plan entry: `id`,
-`setting_type` (the type's name) and `setting_id`, in individual then plan order. That is every
-entry after the first of its type, and every entry of a type without a membership column.
-Loading both tables back rebuilds the same plans.
+`setting_type` (the type's name), `setting_id` and `scale`, in individual then plan order. That
+is every entry after the first of its type, every entry of a type without a membership column,
+and every scaled entry. Loading both tables back rebuilds the same plans.
 """
 function memberships(pop::Population)
     plans = activity_plans(pop)
@@ -367,25 +376,28 @@ function memberships(pop::Population)
     ids = Int32[]
     types = String[]
     sids = Int32[]
+    scales = Float32[]
     for ind in individuals(pop)
         prev = 0x00
         for e in plan_entries(plans, ind)
             t = setting_type_of(e)
             # entries are sorted by type, so `t == prev` means "not the first of its type",
-            # which is exactly what the population row could not carry
-            if t == prev || !(t in wide)
+            # which is exactly what the population row could not carry, and neither can it a scale
+            if t == prev || !(t in wide) || entry_scale(e) != 1
                 push!(ids, id(ind))
                 push!(types, string(nameof(setting_type_from_index(t))))
                 push!(sids, setting_id(e))
+                push!(scales, entry_scale(e))
             end
             prev = t
         end
     end
-    return DataFrame(id = ids, setting_type = types, setting_id = sids)
+    return DataFrame(id = ids, setting_type = types, setting_id = sids, scale = scales)
 end
 
-# Resolves the membership table to per-row (individual index, type index, setting id, primary),
-# erroring on the first row that names an unknown individual or type, or breaks the primary rule.
+# Resolves the membership table to per-row (individual index, type index, setting id, primary,
+# scale, whether the row only scales the population row's entry), erroring on the first row that
+# names an unknown individual or type, has an invalid scale, or breaks the primary rule.
 function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{UInt8}, wide::Vector{Vector{Int32}})
     for c in (:id, :setting_type, :setting_id)
         c in propertynames(table) || throw(ArgumentError("the membership table has no `$c` column"))
@@ -395,9 +407,13 @@ function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{U
     tidx = Vector{UInt8}(undef, n)
     sid = Vector{Int32}(undef, n)
     primary = :primary in propertynames(table) ? BitVector(Bool.(table.primary)) : falses(n)
+    has_scale = :scale in propertynames(table)
+    scale = has_scale ? Float64.(table.scale) : ones(n)
+    restates = falses(n)
     allowed = membership_setting_types(Individual)
     resolved = Dict{String, UInt8}()
     primaries = Set{Tuple{Int, UInt8}}()
+    restated = Set{Tuple{Int, UInt8}}()
 
     for r in 1:n
         pid = table.id[r]
@@ -419,16 +435,27 @@ function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{U
         s = Int32(table.setting_id[r])
         s > 0 || throw(ArgumentError("membership row $r has setting id $s; ids start at 1"))
         sid[r] = s
+        0 <= scale[r] <= floatmax(Float16) || throw(ArgumentError(
+            "membership row $r has scale $(scale[r]); scales lie in [0, $(floatmax(Float16))]"))
+
+        w = findfirst(==(tidx[r]), wide_tidx)
+        # with a scale column, a row naming the population row's own setting only scales it
+        if has_scale && w !== nothing && wide[w][ind[r]] == s
+            (ind[r], tidx[r]) in restated && throw(ArgumentError(
+                "membership row $r scales individual $pid's $name $s a second time"))
+            push!(restated, (ind[r], tidx[r]))
+            restates[r] = true
+            continue
+        end
 
         primary[r] || continue
-        w = findfirst(==(tidx[r]), wide_tidx)
         (w === nothing || wide[w][ind[r]] == DEFAULT_SETTING_ID) || throw(ArgumentError(
             "membership row $r makes $name $s the primary of individual $pid, whose population row already names one"))
         (ind[r], tidx[r]) in primaries && throw(ArgumentError(
             "membership row $r is a second primary $name for individual $pid"))
         push!(primaries, (ind[r], tidx[r]))
     end
-    return (ind = ind, tidx = tidx, sid = sid, primary = primary)
+    return (ind = ind, tidx = tidx, sid = sid, primary = primary, scale = scale, restates = restates)
 end
 
 # A setting named twice would put the individual in its member list twice.
@@ -444,19 +471,19 @@ function _check_repeated_entries(block, ind::Individual)
 end
 
 """
-    assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false)
+    assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false, scale::Real = 1.0)
 
-Gives `individual` one plan entry per `setting type => setting id` pair, as a population
-file's membership columns would, each as the primary of its type if `primary`. Only before
-the settings are built; afterwards use `add_member!`, which edits the setting too.
+Gives `individual` one plan entry at `scale` per `setting type => setting id` pair, as a
+population file's membership columns would, each as the primary of its type if `primary`. Only
+before the settings are built; afterwards use `add_member!`, which edits the setting too.
 """
-function assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false)
+function assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false, scale::Real = 1.0)
     plans = activity_plans(pop)
     # once indexed, an entry with no matching setting member would go unnoticed
     plans.indexed && throw(ArgumentError(
         "the settings are already built; use `add_member!`, which also edits the setting"))
     for (T, sid) in memberships
-        plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX); primary = primary)
+        plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX, scale); primary = primary)
     end
     return pop
 end
@@ -464,13 +491,18 @@ end
 """
     assign_member_indices!(pop::Population, cntnr::SettingsContainer)
 
-Fills in each entry's `member_index` from the finished settings. Must run after `build_pools!`.
+Fills in each entry's `member_index`, and each setting's scale bound, from the finished settings.
+Must run after `build_pools!`.
 """
 function assign_member_indices!(pop::Population, cntnr::SettingsContainer)
     plans = activity_plans(pop)
     for T in settingtypes(cntnr)
         # GlobalSetting holds everyone, so nobody carries an entry for it
         (T <: IndividualSetting && T !== GlobalSetting) && _assign_member_indices!(plans, cntnr, T)
+    end
+    # containers take their bounds from the leaf bounds just set
+    for pool in values(cntnr.pools)
+        _refresh_levels!(pool, pool.leaves, AllOf(), pool.container_groups...)
     end
     plans.indexed = true
     return plans
@@ -482,10 +514,14 @@ function _assign_member_indices!(plans::ActivityPlanStore, cntnr::SettingsContai
     for s in settings(cntnr, T)
         sid = id(s)
         members = individuals(s)
+        bound = 1.0f0
         for k in eachindex(members)
             slot = plan_slot(plans, members[k], T, sid)
-            slot != 0 && plan_set_member_index!(plans, slot, k)
+            slot == 0 && continue
+            plan_set_member_index!(plans, slot, k)
+            bound = max(bound, Float32(entry_scale(@inbounds plans.entries[slot])))
         end
+        hasfield(T, :scale_bound) && (s.scale_bound = bound)
     end
     return nothing
 end
@@ -558,6 +594,7 @@ function plan_add!(store::ActivityPlanStore, individual::Individual, entry::Plan
     individual.plan_offset = Int32(new)
     individual.plan_count = Int8(n + 1)
     tidx <= MEMBERSHIP_MASK_BITS && (individual.membership_mask |= _membership_bit(tidx))
+    entry_scale(entry) != 1 && (individual.plan_scaled = true)
     return nothing
 end
 
@@ -572,6 +609,7 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
     (n > 0 && old <= slot <= old + n - 1) || return false
 
     tidx = @inbounds setting_type_of(store.entries[slot])
+    scaled = @inbounds entry_scale(store.entries[slot]) != 1
     pos = slot - old
 
     if n == 1
@@ -597,6 +635,7 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
     if tidx <= MEMBERSHIP_MASK_BITS && _plan_type_run_scan(store, individual, tidx)[2] == 0
         individual.membership_mask &= ~_membership_bit(tidx)
     end
+    scaled && _refresh_plan_scaled!(store, individual)
     return true
 end
 
@@ -650,6 +689,41 @@ Convenience for callers holding a `Population` rather than the store.
 """
 set_primary!(pop::Population, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting} =
     set_primary!(activity_plans(pop), individual, T, sid)
+
+"""
+    set_scale!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+
+Sets the scale of the individual's entry for setting `sid` of type `T`. Only before the settings
+are built; afterwards use the `Simulation` method, which also updates the setting's scale bound.
+"""
+function set_scale!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+    # once built, the setting's bound would go stale
+    store.indexed && throw(ArgumentError(
+        "the settings are already built; use `set_scale!` with the simulation, which also updates the setting"))
+    _set_entry_scale!(store, individual, T, sid, scale)
+    return nothing
+end
+
+"""
+    set_scale!(pop::Population, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+
+Convenience for callers holding a `Population` rather than the store.
+"""
+set_scale!(pop::Population, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting} =
+    set_scale!(activity_plans(pop), individual, T, sid, scale)
+
+function _set_entry_scale!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+    slot = plan_slot(store, individual, T, Int32(sid))
+    slot == 0 && throw(ArgumentError("individual $(id(individual)) holds no entry for $T $sid"))
+    @inbounds store.entries[slot] = _with_scale(store.entries[slot], scale)
+    _refresh_plan_scaled!(store, individual)
+    return nothing
+end
+
+function _refresh_plan_scaled!(store::ActivityPlanStore, individual::Individual)
+    individual.plan_scaled = any(e -> entry_scale(e) != 1, plan_entries(store, individual))
+    return nothing
+end
 
 # takes a block of `n` entries, reusing a freed one if available
 function _alloc_block!(store::ActivityPlanStore, n::Int)
