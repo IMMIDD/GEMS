@@ -38,7 +38,7 @@ This is part of the pathogen and only separated for readability.
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
 | **Progression Assignment** | |
 | Progression Assignment | `AgeBasedProgressionAssignment` (with stratification matrix) |
-| Age Groups | `-14, 15-65, 66-` |
+| Age Groups | `-14, 15-65, 66-` the same as the pathogen stratification |
 | **Asymptomatic Progression** | |
 | Time to infectiousness | `1` day after exposure (Poisson-distributed) |
 | Time to recovery | `8` days after infectiousness onset (Poisson-distributed) |
