@@ -7,7 +7,7 @@ As such, all actions (contacts, infections, deaths, etc...) are being calculated
 
 Besides 'Pathogene's, the only two, other entities in GEMS are `Individual`s and `Setting`s.
 *Individuals* are people that have personal characteristics, such as `age`, `sex`, and many more.
-Look up the documentation of the `Individual` object to get a full list of parameters.
+They can also be extended to hold additional characteristics.
 
 ```@raw html
 <p align="center">
