@@ -638,7 +638,9 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
         # Update the snapshot dataframe (now guaranteed to have enough rows)
         snapshot_df[ind_id, field_symbol] = original_value
     end
-
+    # revert columns to original type from Union(missing, type). Columns that are in snapshot_df but not in the injector will be returned
+    # as Union(missing, type)!
+    disallowmissing!(snapshot_df, error = false)
     return snapshot_df
 end
 
