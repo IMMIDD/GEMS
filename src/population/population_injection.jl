@@ -620,6 +620,8 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
         # Calculate how many additional rows we need
         num_new_individuals = max_ind_id - current_num_rows
         extra_rows = DataFrame(fill(missing, num_new_individuals, ncol(snapshot_df)), names(snapshot_df))
+        # add individual IDs for units to be added
+        extra_rows.id = collect((current_num_rows+1):max_ind_id)
         append!(snapshot_df, extra_rows)
     end
 
