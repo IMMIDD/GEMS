@@ -677,7 +677,9 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
     _set_entry_scale!(plans, individual, T, sid, scale)
     s = settings(sim, T)[sid]
     # raising a scale can only raise the bound; lowering one may free it, so recount
-    Float32(scale) >= _scale_bound(s) ? _set_scale_bound!(s, Float32(scale)) : _refresh_scale_bound!(plans, s)
+    # the bound must use the scale as rounded into the entry's Float16
+    stored = Float32(Float16(scale))
+    stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
     return nothing
 end
 

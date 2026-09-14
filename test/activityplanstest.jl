@@ -730,6 +730,14 @@ struct PlanTestSettingB <: IndividualSetting end
         set_scale!(sim, a, Office, sid, 4.0)
         @test GEMS._scale_bound(settings(sim, Office)[sid]) == 4.0f0
         @test validate_plans(pop, GEMS.settingscontainer(sim))
+
+        # Float16 stores 2.3 as 2.3007812, so a raised bound has to cover that, not 2.3
+        set_scale!(sim, a, Office, sid, 1.0)
+        set_scale!(sim, a, Office, sid, 2.3)
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
+        set_scale!(sim, a, Office, sid, 1.0)
+        add_member!(settings(sim, Office)[sid], b, sim; scale = 2.3)
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
     end
 
     @testset "Membership scales" begin

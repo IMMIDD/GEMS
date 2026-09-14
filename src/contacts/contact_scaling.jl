@@ -42,7 +42,7 @@ end
 
 @inline function _keep_contact(c::Individual, f::Float32, bound::Float32, plans::ActivityPlanStore,
         setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
-    p = f * (c.plan_scaled ? _membership_scale(plans, c, setting, cntnr) : 1.0f0) / bound
+    p = f * _membership_scale(plans, c, setting, cntnr) / bound
     return p >= 1 || gems_rand(rng) < p
 end
 
@@ -56,6 +56,7 @@ end
 
 @inline function _membership_scale(plans::ActivityPlanStore, individual::Individual, s::T,
                                    ::SettingsContainer) where {T<:IndividualSetting}
+    individual.plan_scaled || return 1.0f0
     # Float16 arithmetic is emulated in software
     return Float32(entry_scale(plans.entries[plan_slot(plans, individual, T, id(s))]))
 end
@@ -64,6 +65,7 @@ end
 # capped at the larger of 1 and the largest, so presence there is normal unless its leaves say more.
 function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::C,
                            cntnr::SettingsContainer) where {C<:ContainerSetting}
+    individual.plan_scaled || return 1.0f0
     L = _leaf_type(C)
     slots = plan_slots(plans, individual, L)
     # in c's frame, so a lone leaf entry is the one that put it there

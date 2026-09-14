@@ -414,7 +414,7 @@ function _process_infections!(csm, setting, sim)
         if infected(ind)
             num_infected += 1
             if can_infect(ind, setting, current_tick)
-                s_host = ind.plan_scaled ? _membership_scale(plans, ind, setting, cntnr) : 1.0f0
+                s_host = _membership_scale(plans, ind, setting, cntnr)
                 sample_scaled_contacts!(c_buffer, draws, csm, setting, ind_index, present_inds, current_tick,
                     current_rng, plans, cntnr, s_host, bound)
 

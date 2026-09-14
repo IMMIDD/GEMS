@@ -811,7 +811,9 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
     end
     plan_add!(plans, individual,
               PlanEntry(typeof(setting), id(setting), length(setting.individuals), scale); primary = primary)
-    Float32(scale) > _scale_bound(setting) && _set_scale_bound!(setting, Float32(scale))
+    # the bound must use the scale as rounded into the entry's Float16
+    stored = Float32(Float16(scale))
+    stored > _scale_bound(setting) && _set_scale_bound!(setting, stored)
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
