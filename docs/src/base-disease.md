@@ -3,6 +3,7 @@
 ## Disease Progression 
 
 For a given pathogen we assume a disease progression that branches out depending on the severity of the infection.
+While it is possible to input multiple pathogens, the mechanisms presented here hold true for all pathogens. 
 
 ```@raw html
 <p align="center">
@@ -14,7 +15,7 @@ For a given pathogen we assume a disease progression that branches out depending
     The diagram above still depicts the pre-decoupling model, where hospitalization, ICU, ventilation, and death appear as part of the disease path. These are now host-level outcomes decided by a separate `HealthProgression` (see below) and are no longer part of the disease progression. The diagram is pending regeneration.
 
 An infected person will be considered exposed until they become infectious.
-After this, they can stay without symptoms (resulting in asymptomatic cases) or progress through a disease pathway until recovering.
+After this, they can stay without symptoms (resulting in asymptomatic cases) or progress through a symptomatic disease pathway until recovering.
 
 Throughout GEMS we use the term "removed" for the state of an individual leaving a disease progression, either by recovering or by dying.
 GEMS categorizes disease states internally using symbols (e.g., `:Mild`, `:Critical`). Depending on the peak severity an individual reaches, we can categorize the infected individuals into the following progression tracks:
@@ -32,13 +33,12 @@ Host-level care and mortality (hospitalization, ICU, ventilation, death) are **n
 This is what lets a host who is concurrently infected with multiple pathogens have their hospitalization or death decided jointly, rather than by whichever single infection happens to "win". 
 Each infection contributes when it arrives, and the policy is told what the host is already committed to, so an infection whose contribution has been decided is never re-decided by a later co-infection. 
 In the default configuration, only `Severe` and `Critical` infections demand any host care: a `Severe`-peak infection may lead to a ward admission; a `Critical`-peak infection may additionally require ICU admission (and, optionally, ventilation), and carries an ungated `30%` death probability. 
-In the default configuration, all care and timing offsets (admission delays and stay lengths) are drawn from Poisson distributions; see the `[HealthProgression]` block in `DefaultConf.toml` for the concrete parameters. 
-See the "Health Progression" section of the pathogen API reference for the extension API.
+In the default configuration, all care and timing offsets (admission delays and stay lengths) are drawn from Poisson distributions; see the `[.health]` blocks added to the individual progression categories in `DefaultConf.toml` for the concrete parameters. 
 
 ## Infectiousness
 
 The infectiousness of an individual is tracked separately from the disease state.
-Generally an individual should become infectious some time after becoming exposed and before getting symptoms.
+Generally an individual should become infectious some time after becoming exposed either concurrently or before getting symptoms.
 In asymptomatic cases, the individual will become infectious between becoming exposed and recovering from a disease.
 
 ## Age Stratification
