@@ -1017,7 +1017,7 @@ function _settings_for_type!(
 ) where {T <: Setting}
 
     plans = activity_plans(population)
-    resize!(pairs_buffer, sum(ind -> length(plan_slots(plans, ind, T)), inds; init = 0))
+    resize!(pairs_buffer, length(inds))
 
     valid_count = 0
     min_id = typemax(Int32)
@@ -1028,6 +1028,7 @@ function _settings_for_type!(
         for slot in plan_slots(plans, ind, T)
             sid = @inbounds setting_id(plans.entries[slot])
             valid_count += 1
+            valid_count > length(pairs_buffer) && resize!(pairs_buffer, 2 * length(pairs_buffer))
 
             # Track ID bounds for Counting Sort
             min_id = sid < min_id ? sid : min_id
