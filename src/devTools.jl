@@ -266,7 +266,7 @@ end
 
 Errors unless every entry indexes back to its own individual, and every setting member holds
 a matching entry. A full check of the activity plans against the settings, for tests and
-debugging; a simulation only runs the cheaper `check_pool_entries`.
+debugging; a simulation builds member indices from the entries, so it needs no check.
 """
 function validate_plans(pop::Population, cntnr::SettingsContainer)
     plans = activity_plans(pop)

@@ -511,7 +511,7 @@ end
     assign_member_indices!(pop::Population, cntnr::SettingsContainer)
 
 Fills in each entry's `member_index`, and each setting's scale bound, from the finished settings.
-Must run after `build_pools!`.
+Must run after `build_pools!`. Errors if a member of a pooled leaf holds no entry for it.
 """
 function assign_member_indices!(pop::Population, cntnr::SettingsContainer)
     plans = activity_plans(pop)
@@ -519,7 +519,12 @@ function assign_member_indices!(pop::Population, cntnr::SettingsContainer)
         # GlobalSetting holds everyone, so nobody carries an entry for it
         (T <: IndividualSetting && T !== GlobalSetting) && _assign_member_indices!(plans, cntnr, T)
     end
-    # containers take their bounds from the leaf bounds just set
+    return _finish_indexing!(plans, cntnr)
+end
+
+# Once every leaf's member indices and bound are set: the containers take their bounds from the
+# leaves, and the store counts as indexed.
+function _finish_indexing!(plans::ActivityPlanStore, cntnr::SettingsContainer)
     for pool in values(cntnr.pools)
         _refresh_levels!(pool, pool.leaves, AllOf(), pool.container_groups...)
     end
@@ -527,16 +532,21 @@ function assign_member_indices!(pop::Population, cntnr::SettingsContainer)
     return plans
 end
 
-# function barrier: with `T` static, `settings(cntnr, T)` is a typed vector
+# function barrier: with `T` static, `settings(cntnr, T)` is a typed vector. The lookup is the
+# one `check_pool_entries` makes, so a pooled member without an entry is caught here.
 function _assign_member_indices!(plans::ActivityPlanStore, cntnr::SettingsContainer,
                                  ::Type{T}) where {T<:IndividualSetting}
+    pooled = haskey(cntnr.pools, T)
     for s in settings(cntnr, T)
         sid = id(s)
         members = individuals(s)
         bound = 1.0f0
         for k in eachindex(members)
             slot = plan_slot(plans, members[k], T, sid)
-            slot == 0 && continue
+            if slot == 0
+                pooled && _missing_entry_error(members[k], s)
+                continue
+            end
             plan_set_member_index!(plans, slot, k)
             bound = max(bound, Float32(entry_scale(@inbounds plans.entries[slot])))
         end
@@ -566,12 +576,14 @@ end
 function _check_member_entries(plans::ActivityPlanStore, cntnr::SettingsContainer,
                                ::Type{T}) where {T<:IndividualSetting}
     for s in settings(cntnr, T), ind in individuals(s)
-        plan_slot(plans, ind, T, id(s)) != 0 ||
-            error("individual $(id(ind)) is a member of $T $(id(s)) but holds no plan entry " *
-                  "for it; membership edits read the plan store, so it has to cover every member")
+        plan_slot(plans, ind, T, id(s)) != 0 || _missing_entry_error(ind, s)
     end
     return nothing
 end
+
+@noinline _missing_entry_error(ind::Individual, s::Setting) = error(
+    "individual $(id(ind)) is a member of $(typeof(s)) $(id(s)) but holds no plan entry " *
+    "for it; membership edits read the plan store, so it has to cover every member")
 
 ###
 ### MEMBER EDITS

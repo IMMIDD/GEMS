@@ -891,14 +891,17 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 ### CREATION OF SETTINGS
 
 """
-    construct_and_add_settings!(container_vec::Vector, pairs::Vector{Tuple{Int32, Individual}}, settingtype::Type{T}, default_sampling) where {T <: Setting}
+    construct_and_add_settings!(container_vec::Vector, pairs::Vector{Tuple{Int32, Int32, Individual}}, settingtype::Type{T}, plans, default_sampling) where {T <: Setting}
 
-Helper function to construct settings from a sorted list of ID-Individual pairs without dynamic dispatch.
+Helper function to construct settings from a sorted list of (setting id, plan slot, individual)
+triples without dynamic dispatch. Sets each entry's `member_index` and each setting's scale bound
+on the way, since pooling keeps a leaf's member order.
 """
 function construct_and_add_settings!(
     container_vec::Vector,
-    pairs::Vector{Tuple{Int32, Individual}},
+    pairs::Vector{Tuple{Int32, Int32, Individual}},
     settingtype::Type{T},
+    plans::AbstractActivityPlanStore,
     default_sampling
 ) where {T <: Setting}
     n = length(pairs)
@@ -929,11 +932,16 @@ function construct_and_add_settings!(
         # Exact pre-allocation for the members array
         count = j - i
         members = Vector{Individual}(undef, count)
+        bound = 1.0f0
         for k in 0:(count-1)
-            members[k+1] = pairs[i+k][2]
+            _, slot, ind = pairs[i+k]
+            members[k+1] = ind
+            plan_set_member_index!(plans, Int(slot), k + 1)
+            bound = max(bound, Float32(entry_scale(@inbounds plans.entries[slot])))
         end
         
         setting = settingtype(id=current_id, individuals=members, contact_sampling_method=default_sampling)
+        hasfield(T, :scale_bound) && (setting.scale_bound = bound)
         push!(container_vec, setting)
         
         i = j # Move to the next unique ID
@@ -963,9 +971,10 @@ function settings_from_population(population::Population, global_setting::Bool =
     max_inds = length(inds)
 
     # Buffers are allocated once and reused across every setting type
-    pairs_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+    # (setting id, plan slot, individual): the two Int32s side by side keep it at 16 bytes
+    pairs_buffer = Vector{Tuple{Int32, Int32, Individual}}(undef, max_inds)
     # Pre-allocate another buffer for Counting Sort
-    sorted_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+    sorted_buffer = Vector{Tuple{Int32, Int32, Individual}}(undef, max_inds)
 
     for stngType in stngtypes
         # everyone is in the one GlobalSetting, so it is built here rather than from plan entries
@@ -1002,8 +1011,8 @@ function _settings_for_type!(
     ::Type{T},
     population::Population,
     inds::Vector{Individual},
-    pairs_buffer::Vector{Tuple{Int32, Individual}},
-    sorted_buffer::Vector{Tuple{Int32, Individual}},
+    pairs_buffer::Vector{Tuple{Int32, Int32, Individual}},
+    sorted_buffer::Vector{Tuple{Int32, Int32, Individual}},
     default_sampling
 ) where {T <: Setting}
 
@@ -1024,7 +1033,7 @@ function _settings_for_type!(
             min_id = sid < min_id ? sid : min_id
             max_id = sid > max_id ? sid : max_id
 
-            @inbounds pairs_buffer[valid_count] = (sid, ind)
+            @inbounds pairs_buffer[valid_count] = (sid, Int32(slot), ind)
         end
     end
 
@@ -1068,7 +1077,7 @@ function _settings_for_type!(
     add_type!(settings, T)
     setting_vec = get(settings, T)
 
-    construct_and_add_settings!(setting_vec, pairs_buffer, T, default_sampling)
+    construct_and_add_settings!(setting_vec, pairs_buffer, T, plans, default_sampling)
 
     # Sort the vector of settings by ID and check if the ids are continuous and start from 1
     if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
