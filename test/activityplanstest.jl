@@ -140,13 +140,33 @@ struct PlanTestSettingB <: IndividualSetting end
         plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
         plan_add!(store, i, PlanEntry(Household, Int32(11), Int32(2)))
 
-        entry_active!(store, Int(i.plan_offset), false)
+        entry_active!(store, i, Int(i.plan_offset), false)
         # an insert relocates the block, so the cleared flag has to travel with its entry
         plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
         off = Int(i.plan_offset)
         flags = [entry_active(store, off + k) for k in 0:(plan_length(i) - 1)]
         @test count(!, flags) == 1
         @test length(store.active) == length(store.entries)
+    end
+
+    @testset "Inactive entries count as scaled" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        plan_add!(store, i, PlanEntry(Household, Int32(1), Int32(1)))
+        plan_add!(store, i, PlanEntry(Office, Int32(2), Int32(1)))
+        @test !i.plan_scaled
+
+        # an inactive entry has scale 0, so the unscaled fast path no longer applies
+        entry_active!(store, i, plan_slot(store, i, Office), false)
+        @test i.plan_scaled
+        # removing it leaves only the unscaled household
+        plan_remove!(store, i, plan_slot(store, i, Office))
+        @test !i.plan_scaled
+
+        # a slot outside the individual's block is refused
+        j = Individual(id = 2, sex = 0, age = 30)
+        plan_add!(store, j, PlanEntry(Household, Int32(3), Int32(1)))
+        @test_throws ArgumentError entry_active!(store, i, plan_slot(store, j, Household), false)
     end
 
     @testset "Id-qualified lookup" begin
@@ -251,7 +271,7 @@ struct PlanTestSettingB <: IndividualSetting end
         @test all(entry_active(store, plan_slot(store, i, T)) for T in (Household, Office))
 
         # a cleared flag follows its entry when the block is relocated by an add
-        entry_active!(store, plan_slot(store, i, Household), false)
+        entry_active!(store, i, plan_slot(store, i, Household), false)
         plan_add!(store, i, PlanEntry(SchoolClass, Int32(3), Int32(1)))
         @test !entry_active(store, plan_slot(store, i, Household))
         @test entry_active(store, plan_slot(store, i, Office))
@@ -405,7 +425,7 @@ struct PlanTestSettingB <: IndividualSetting end
         @test setting_ids(i, Office, store) == Int32[22, 20, 21]
 
         # set_primary! moves an entry to the front, its active bit and member index with it
-        entry_active!(store, plan_slot(store, i, Office, Int32(21)), false)
+        entry_active!(store, i, plan_slot(store, i, Office, Int32(21)), false)
         set_primary!(store, i, Office, 21)
         @test setting_ids(i, Office, store) == Int32[21, 22, 20]
         @test !entry_active(store, plan_slot(store, i, Office))
@@ -743,6 +763,11 @@ struct PlanTestSettingB <: IndividualSetting end
         set_scale!(sim, a, Office, sid, 1.0)
         add_member!(settings(sim, Office)[sid], b, sim; scale = 2.3)
         @test validate_plans(pop, GEMS.settingscontainer(sim))
+
+        # an inactive entry keeps its scale and its setting's bound, so the plans still validate
+        entry_active!(plans, b, plan_slot(plans, b, Office, sid), false)
+        @test b.plan_scaled
+        @test validate_plans(pop, GEMS.settingscontainer(sim))
     end
 
     @testset "Membership scales" begin
@@ -798,6 +823,36 @@ struct PlanTestSettingB <: IndividualSetting end
         @test isapprox(ms(y, ss[1]), 0.7; atol = 1e-3)
         @test ms(z, ss[1]) == 0.0f0
         open!(ys[2])
+
+        # an inactive entry counts as scale 0, at its leaf and in every container above it
+        x1 = plan_slot(plans, x, SchoolClass, Int32(1))
+        x2 = plan_slot(plans, x, SchoolClass, Int32(2))
+        entry_active!(plans, x, x1, false)
+        @test ms(x, cs[1]) == 0.0f0
+        @test ms(x, cs[2]) == 0.5f0
+        @test ms(x, ys[1]) == 0.5f0
+        # with every leaf below inactive, the container gives 0 too
+        entry_active!(plans, x, x2, false)
+        @test ms(x, ys[1]) == 0.0f0
+        @test ms(x, ss[1]) == 0.0f0
+        # a lone leaf entry is taken as it is, inactive included
+        w4 = plan_slot(plans, w, SchoolClass, Int32(4))
+        entry_active!(plans, w, w4, false)
+        @test ms(w, ss[2]) == 0.0f0
+        # an unscaled member switched off leaves the fast path, and returns to it when switched on
+        i1 = inds[1]
+        @test !i1.plan_scaled
+        entry_active!(plans, i1, plan_slot(plans, i1, SchoolClass), false)
+        @test i1.plan_scaled
+        @test ms(i1, cs[1]) == 0.0f0
+        @test ms(i1, ys[1]) == 0.0f0
+        entry_active!(plans, i1, plan_slot(plans, i1, SchoolClass), true)
+        @test !i1.plan_scaled
+        @test ms(i1, cs[1]) == 1.0f0
+        # everything applies again for what follows
+        entry_active!(plans, x, x1, true)
+        entry_active!(plans, x, x2, true)
+        entry_active!(plans, w, w4, true)
 
         # the leaf range agrees with climbing `contained`, for every leaf and container
         function ancestor(s, C)

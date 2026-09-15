@@ -137,19 +137,31 @@ Returns how many settings the individual belongs to.
 """
     entry_active(store::ActivityPlanStore, slot::Int)
 
-Returns whether the entry at `slot` applies this tick.
+Returns whether the entry at `slot` applies this tick. One that does not counts as scale 0 on
+both ends of a contact: its individual draws no contacts in that setting, and contacts drawn to
+them there are rejected. They keep their place among the setting's members, so a draw can still
+land on them.
 """
 @inline entry_active(store::ActivityPlanStore, slot::Int)::Bool = @inbounds store.active[slot]
 
 """
-    entry_active!(store::ActivityPlanStore, slot::Int, val::Bool)
+    entry_active!(store::ActivityPlanStore, individual::Individual, slot::Int, val::Bool)
 
-Sets whether the entry at `slot` applies this tick.
+Sets whether the entry at `slot`, which must be one of `individual`'s, applies this tick.
 """
-@inline function entry_active!(store::ActivityPlanStore, slot::Int, val::Bool)
+function entry_active!(store::ActivityPlanStore, individual::Individual, slot::Int, val::Bool)
+    off = Int(individual.plan_offset)
+    off <= slot < off + plan_length(individual) || throw(ArgumentError(
+        "slot $slot does not hold one of individual $(id(individual))'s plan entries"))
     @inbounds store.active[slot] = val
+    # an inactive entry has scale 0, which the unscaled fast path must not skip
+    _refresh_plan_scaled!(store, individual)
     return nothing
 end
+
+# The entry's scale this tick: its own while it applies, 0 while it does not.
+@inline _effective_scale(store::ActivityPlanStore, slot::Int)::Float16 =
+    entry_active(store, slot) ? entry_scale(@inbounds store.entries[slot]) : Float16(0)
 
 ###
 ### MEMBERSHIP MASK
@@ -349,6 +361,7 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
         ind.plan_offset = Int32(n == 0 ? 0 : off)
         ind.plan_count = Int8(n)
         ind.membership_mask = mask
+        # every entry starts active, so its own scale is the one that counts
         ind.plan_scaled = any(e -> entry_scale(e) != 1, view(store.entries, off:(off + n - 1)))
     end
 
@@ -605,7 +618,8 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
     (n > 0 && old <= slot <= old + n - 1) || return false
 
     tidx = @inbounds setting_type_of(store.entries[slot])
-    scaled = @inbounds entry_scale(store.entries[slot]) != 1
+    # an inactive entry made the individual scaled too
+    scaled = _effective_scale(store, slot) != 1
     pos = slot - old
 
     if n == 1
@@ -717,7 +731,8 @@ function _set_entry_scale!(store::ActivityPlanStore, individual::Individual, ::T
 end
 
 function _refresh_plan_scaled!(store::ActivityPlanStore, individual::Individual)
-    individual.plan_scaled = any(e -> entry_scale(e) != 1, plan_entries(store, individual))
+    off = Int(individual.plan_offset)
+    individual.plan_scaled = any(k -> _effective_scale(store, k) != 1, off:(off + plan_length(individual) - 1))
     return nothing
 end
 

@@ -49,7 +49,8 @@ end
 
 ###
 ### MEMBERSHIP SCALE
-### An individual's scale in a setting, from its own plan entries.
+### An individual's scale in a setting, from its own plan entries. An entry that does not apply
+### this tick contributes 0.
 ###
 
 # nobody holds an entry for the GlobalSetting
@@ -59,7 +60,7 @@ end
                                    ::SettingsContainer) where {T<:IndividualSetting}
     individual.plan_scaled || return 1.0f0
     # Float16 arithmetic is emulated in software
-    return Float32(entry_scale(plans.entries[plan_slot(plans, individual, T, id(s))]))
+    return Float32(_effective_scale(plans, plan_slot(plans, individual, T, id(s))))
 end
 
 # A container holds no entry: the scales of the individual's open leaves below it, summed but
@@ -70,7 +71,7 @@ function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::
     L = _leaf_type(C)
     slots = plan_slots(plans, individual, L)
     # in c's frame, so a lone leaf entry is the one that put it there
-    length(slots) == 1 && return Float32(entry_scale(@inbounds plans.entries[first(slots)]))
+    length(slots) == 1 && return Float32(_effective_scale(plans, first(slots)))
     leaves = settings(cntnr, L)
     below = _leaf_range(c)
     closed = (_pool(c)::SettingPool).closed != 0
@@ -81,7 +82,7 @@ function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::
         leaf = leaves[setting_id(e)]
         Int(leaf.pool_leaf) in below || continue
         (!closed || _open_below(cntnr, leaf, c)) || continue
-        s = Float32(entry_scale(e))
+        s = Float32(_effective_scale(plans, k))
         total += s
         largest = max(largest, s)
     end
