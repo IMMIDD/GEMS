@@ -57,12 +57,10 @@ Household
   individuals: Array{Individual}((3,))
   income: Int8 -1
   dwelling: Int8 -1
-  last_infectious: Int16 -1
   contact_sampling_method: ContactparameterSampling
   ags: AGS
   lon: Float32 NaN32
   lat: Float32 NaN32
-  isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock</code></pre><p>Also try <code>office(i)</code>, <code>schoolclass(i)</code>, or <code>municipality(i)</code>. If an individual is not assigned to the respective setting (e.g., a child not being assigned to an office), these functions will throw an exception. You can make sure to not call these functions for individuals without a valid assignment by verifying <code>is_working(i)</code> or <code>is_student(i)</code> first.</p><h2 id="Adjusting-Individuals"><a class="docs-heading-anchor" href="#Adjusting-Individuals">Adjusting Individuals</a><a id="Adjusting-Individuals-1"></a><a class="docs-heading-anchor-permalink" href="#Adjusting-Individuals" title="Permalink"></a></h2><p>You can easily adjust individuals&#39; attribute values. This example selects the first individual from the list of individuals and updates its <code>age</code> to <code>15</code>:</p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
@@ -88,12 +86,10 @@ and one custom parameter.
   individuals: Array{Individual}((2,))
   income: Int8 -1
   dwelling: Int8 -1
-  last_infectious: Int16 -1
   contact_sampling_method: ContactparameterSampling
   ags: AGS
   lon: Float32 NaN32
   lat: Float32 NaN32
-  isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock
  ⋮</code></pre><p>Similar to what we did with the individuals, you can run analyses on a collection of settings calling getter functions (e.g., <code>size(s)</code>) for a vector of settings using <code>.</code>. In the example below, we extract the size (number of assigned individuals) for each household and plot them in a histogram:</p><pre><code class="language-julia hljs">using GEMS, Plots
@@ -118,4 +114,4 @@ and custom parameters.
      ⋮
  57705
  87052
- 94858</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_gettingstarted/">« 1 - Getting Started</a><a class="docs-footer-nextpage" href="../tut_pops/">3 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Monday 14 September 2026 15:43">Monday 14 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 94858</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_gettingstarted/">« 1 - Getting Started</a><a class="docs-footer-nextpage" href="../tut_pops/">3 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 15 September 2026 13:03">Tuesday 15 September 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
