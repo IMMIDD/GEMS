@@ -373,7 +373,11 @@ function step!(simulation::Simulation)
 
     # infect individuals in settings
     if !dormant
-        spread_infections!(simulation)
+        Threads.@threads :static for _ in 1:Threads.nthreads()
+            for i in simulation.infectious_individuals[Threads.threadid()]
+                spread_infections!(i, simulation)
+            end
+        end
 
         # push pending infections to InfectionRegistry
         flush_pending_infections!(simulation)

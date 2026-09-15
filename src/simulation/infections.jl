@@ -364,25 +364,20 @@ end
 
 
 """
-    spread_infections!(sim::Simulation)
+    spread_infections!(ind::Individual, sim::Simulation)
 
-Spreads infections from every individual who is infectious this tick into each setting they
-belong to. Each thread goes through the infectious individuals the disease-update sweep
-collected, so no setting is searched for infectious members.
+Spreads the infections of an infectious individual into each setting they belong to: the
+setting of each plan entry, each container above it, and the GlobalSetting.
 
 # Parameters
 
+- `ind::Individual`: Infectious individual
 - `sim::Simulation`: Simulation object
 
 """
-function spread_infections!(sim::Simulation)
-    # both loops run on the same threads, so every thread's list is taken exactly once
-    Threads.@threads :static for _ in 1:Threads.nthreads()
-        for ind in sim.infectious_individuals[Threads.threadid()]
-            spread_here = (setting, pos, scale) -> _spread_in!(setting, pos, scale, ind, sim)
-            _foreach_spread_setting(spread_here, ind, sim)
-        end
-    end
+function spread_infections!(ind::Individual, sim::Simulation)
+    spread_here = (setting, pos, scale) -> _spread_in!(setting, pos, scale, ind, sim)
+    _foreach_spread_setting(spread_here, ind, sim)
     return nothing
 end
 
