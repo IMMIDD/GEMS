@@ -61,6 +61,11 @@ mutable struct PostProcessor
         # join all infections with additional info from population DF
         infections = simulation |> infectionlogger |> dataframe
 
+        # the logger stores the progression index; resolve it here, where pathogens are known
+        infections[!, :progression_id] = progression_names(pathogens(simulation),
+            infections.pathogen_id, infections.progression_id)
+        DataFrames.rename!(infections, :progression_id => :progression_category)
+
         # calculate generation time and serial interval (self join)
         # Using a lightweight renamed view to avoid leftjoin allocation
         source_info = DataFrames.select(infections, 

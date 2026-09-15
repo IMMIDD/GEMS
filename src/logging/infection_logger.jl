@@ -8,8 +8,8 @@ A logging structure specifically for infections. An infection event is given by 
 entries of the field-vectors at a given index. Data is thread-local to prevent lock contention.
 """
 @with_kw mutable struct InfectionLogger <: EventLogger
-    # Atomic counter for generating unique infection IDs safely across threads
-    infection_counter::Threads.Atomic{Int32} = Threads.Atomic{Int32}(0)
+    # Highest infection id issued. Reserved in blocks, so it exceeds the infection count.
+    last_infection_id::Int32 = Int32(0)
     # Atomic tick for the last modification
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
@@ -22,7 +22,7 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     # Infected data
     id_b::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    progression_category::Vector{Vector{Symbol}} = [Vector{Symbol}() for _ in 1:Threads.maxthreadid()]
+    progression_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
     infectiousness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     symptom_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
     severeness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
@@ -49,12 +49,14 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     infecter_index::Union{Nothing, InfecterIndex} = nothing
 end
 
+
 function log!(
         logger::InfectionLogger,
+        infection_id::Int32,
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
-        progression_category::Symbol,
+        progression_id::Int8,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -73,15 +75,12 @@ function log!(
 
     tid = Threads.threadid()
 
-    # Safely generate a unique ID without a lock
-    new_infection_id = Threads.atomic_add!(logger.infection_counter, Int32(1)) + Int32(1)
-
     # push data directly to the thread-local arrays
-    push!(logger.infection_id[tid], new_infection_id)
+    push!(logger.infection_id[tid], infection_id)
     push!(logger.id_a[tid], a)
     push!(logger.id_b[tid], b)
     push!(logger.pathogen_id[tid], pathogen_id)
-    push!(logger.progression_category[tid], progression_category)
+    push!(logger.progression_id[tid], progression_id)
     push!(logger.tick[tid], tick)
     push!(logger.infectiousness_onset[tid], infectiousness_onset)
     push!(logger.symptom_onset[tid], symptom_onset)
@@ -103,15 +102,16 @@ function log!(
 
     Threads.atomic_xchg!(logger.last_modified_tick, tick)
 
-    return(new_infection_id)
+    return infection_id
 end
 
 function log!(;
         logger::InfectionLogger,
+        infection_id::Int32,
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
-        progression_category::Symbol,
+        progression_id::Int8,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -129,11 +129,24 @@ function log!(;
     )
 
     return log!(
-        logger, a, b, pathogen_id, progression_category, tick,
+        logger, infection_id, a, b, pathogen_id, progression_id, tick,
         infectiousness_onset, symptom_onset, severeness_onset,
         critical_onset, critical_offset, severeness_offset,
         recovery, setting_id, setting_type, lat, lon, ags, source_infection_id
     )
+end
+
+"""
+    reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+
+Reserves `n` consecutive infection ids and returns the first. Call it from a serial point;
+the ids are then handed out without any cross-thread coordination. Reserving more than are
+used leaves gaps, so `last_infection_id` is an upper bound on the infection count.
+"""
+function reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+    first_id = logger.last_infection_id + Int32(1)
+    logger.last_infection_id += Int32(n)
+    return first_id
 end
 
 """
@@ -186,7 +199,7 @@ function dataframe(logger::InfectionLogger)
         id_a = vcat(logger.id_a...),
         id_b = vcat(logger.id_b...),
         pathogen_id = vcat(logger.pathogen_id...),
-        progression_category = vcat(logger.progression_category...),
+        progression_id = vcat(logger.progression_id...),
         infectiousness_onset = vcat(logger.infectiousness_onset...),
         symptom_onset = vcat(logger.symptom_onset...),
         severeness_onset = vcat(logger.severeness_onset...),
@@ -210,7 +223,7 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["id_a"] = vcat(logger.id_a...)
         file["id_b"] = vcat(logger.id_b...)
         file["pathogen_id"] = vcat(logger.pathogen_id...)
-        file["progression_category"] = vcat(logger.progression_category...)
+        file["progression_id"] = vcat(logger.progression_id...)
         file["infectiousness_onset"] = vcat(logger.infectiousness_onset...)
         file["symptom_onset"] = vcat(logger.symptom_onset...)
         file["severeness_onset"] = vcat(logger.severeness_onset...)

@@ -359,7 +359,7 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         expected_cols = [
             "test_id", "tick", "id", "test_result", "infected", "infection_id",
             "test_type", "reportable", "sex", "age",
-            "education", "occupation", "household", "office", "schoolclass",
+            "education", "occupation", "household", "office", "schoolclass", "municipality",
             "pathogen_id"
         ]
         @test all(col -> col in names(df), expected_cols)

@@ -22,12 +22,12 @@ driven by several co-active infections. To attribute an episode to infections, j
 
 - `DataFrame` with the following columns:
 
-| Name             | Type     | Description                            |
-| :--------------- | :------- | :------------------------------------- |
-| `host_id`        | `Int32`  | Individual id                          |
-| `care_level`     | `Symbol` | `:hospital` / `:icu` / `:ventilation`  |
-| `admission_tick` | `Int16`  | Tick of admission                      |
-| `discharge_tick` | `Int16`  | Tick of discharge (capped at death)    |
+| Name             | Type     | Description                                                   |
+| :--------------- | :------- | :------------------------------------------------------------ |
+| `host_id`        | `Int32`  | Individual id                                                 |
+| `care_level`     | `Symbol` | `:hospital` / `:icu` / `:ventilation`                         |
+| `admission_tick` | `Int16`  | Tick of admission                                             |
+| `discharge_tick` | `Int16`  | Tick of discharge (capped at death), `-1` for an ongoing stay |
 """
 function health_episodes(postProcessor::PostProcessor)
 
@@ -60,6 +60,11 @@ function health_episodes(postProcessor::PostProcessor)
                     push!(discharge_tick, ticks[i])
                     open_admission = Int16(-1)
                 end
+            end
+            # the simulation ended during this stay, so it has no discharge
+            if open_admission >= 0
+                push!(admission_tick, open_admission)
+                push!(discharge_tick, DEFAULT_TICK)
             end
             return (admission_tick = admission_tick, discharge_tick = discharge_tick)
         end

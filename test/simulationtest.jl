@@ -1350,7 +1350,7 @@ import GEMS: increment!, infected!
     @testset "Multipathogen run!" begin
         # both pathogens are seeded at 30% so that ~9% of individuals start with both
         # simultaneously (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow
-        # block in _process_infections!
+        # iteration in _spread_with!
         p1 = Pathogen(id=1, name="PathA")
         p2 = Pathogen(id=2, name="PathB")
         mc = MultiStartCondition([
@@ -1382,11 +1382,10 @@ import GEMS: increment!, infected!
         sim = Simulation()
         num_threads = Threads.maxthreadid()
         
-        @test length(present_buffers(sim)) == num_threads
         @test length(contact_buffers(sim)) == num_threads
         
         # Verify they are actual individual vectors
-        @test present_buffers(sim)[1] isa Vector{Individual}
+        @test contact_buffers(sim)[1] isa Vector{Individual}
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)

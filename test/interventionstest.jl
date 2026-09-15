@@ -34,7 +34,8 @@ end
     @test length(sim.strategies) == 2
 
     #define Individuals and settings
-    i = Individual(id=1, sex=0, age=31, household=1)
+    i = Individual(id=1, sex=0, age=31)
+    fake_membership!(population(sim), i, Household, 1)
     i2 = Individual(id=4, age=10, sex=1)
     indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
     indis2 = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
@@ -190,6 +191,63 @@ end
         @test events_from_strategy(evs, i_strategy2)
     end
 
+    @testset "Find Settings" begin
+        df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
+                       household = Int32[1, 2, 2], office = Int32[1, 1, 2])
+        pop = Population(df)
+        a = individuals(pop)[1]
+        # a also lives in household 2 and works in office 2
+        assign_settings!(pop, a, Household => 2, Office => 2)
+        sim4 = Simulation(population = pop)
+        fu = SStrategy("find_settings_fu", sim4)
+        add_measure!(fu, CloseSetting())
+        eq = GEMS.event_queue(sim4)
+        empty!(eq)
+
+        # FindSetting acts on the primary, or on the setting it is given
+        process_measure(sim4, a, FindSetting(Household, fu))
+        @test followup_focals(drain_events!(eq)) == [households(sim4)[1]]
+        process_measure(sim4, a, FindSetting(Household, fu), Int32(2))
+        @test followup_focals(drain_events!(eq)) == [households(sim4)[2]]
+
+        # FindSettingMembers likewise
+        i_fu = IStrategy("find_members_fu", sim4)
+        add_measure!(i_fu, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
+        process_measure(sim4, a, FindSettingMembers(Household, i_fu), Int32(2))
+        @test Set(followup_focals(drain_events!(eq))) == Set(individuals(households(sim4)[2]))
+
+        # FindSettings acts on every setting of the type; the queue, not the measure, orders them
+        fs = FindSettings(Office, fu)
+        @test settingtype(fs) === Office
+        @test follow_up(fs) === fu
+        process_measure(sim4, a, fs)
+        @test Set(id.(followup_focals(drain_events!(eq)))) == Set(Int32[1, 2])
+
+        # a container is found above each setting and handed over once
+        mktempdir() do dir
+            path = joinpath(dir, "pop.csv")
+            mpath = joinpath(dir, "extra.csv")
+            spath = joinpath(dir, "settings.jld2")
+            CSV.write(path, df)
+            CSV.write(mpath, DataFrame(id = Int32[1], setting_type = ["Office"], setting_id = Int32[2]))
+            # both offices in one department
+            jldsave(spath; data = Dict(
+                :Office => DataFrame(id = Int32[1, 2], contained = Int32[1, 1]),
+                :Department => DataFrame(id = Int32[1], contains = [Int32[1, 2]])))
+            sim5 = Simulation(population = path, membershipsfile = mpath, settingsfile = spath)
+            a5 = individuals(sim5)[1]
+            @test setting_ids(a5, Office, sim5) == Int32[1, 2]
+            @test setting_ids(a5, Department, sim5) == Int32[1]
+
+            dept_fu = SStrategy("find_departments_fu", sim5)
+            add_measure!(dept_fu, CloseSetting())
+            eq5 = GEMS.event_queue(sim5)
+            empty!(eq5)
+            process_measure(sim5, a5, FindSettings(Department, dept_fu))
+            @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
+        end
+    end
+
     @testset "Testing" begin
 
         test = TestType("Test", id(first_pathogen(sim)), sim)
@@ -235,7 +293,8 @@ end
             test_measure5 = GEMS.Test()
         end
 
-        i_test_neg = Individual(id=201, sex=0, age=31, household=1)
+        i_test_neg = Individual(id=201, sex=0, age=31)
+        fake_membership!(population(sim), i_test_neg, Household, 1)
         eq = GEMS.event_queue(sim)
         empty!(eq)
         @test process_measure(sim, i_test_neg, test_measure3) === nothing   # negative result → negative follow-up
@@ -243,7 +302,8 @@ end
         @test followup_focals(evs) == [i_test_neg]
         @test events_from_strategy(evs, i_strategy)
 
-        i_test_pos = Individual(id=202, sex=0, age=31, household=1)
+        i_test_pos = Individual(id=202, sex=0, age=31)
+        fake_membership!(population(sim), i_test_pos, Household, 1)
         infect!(i_test_pos, Int16(0), first_pathogen(sim), rng = Xoshiro())
         empty!(eq)
         @test process_measure(sim, i_test_pos, test_measure2) === nothing
@@ -299,7 +359,8 @@ end
             s_test_measure5 = GEMS.Test()
         end
 
-        i_sero = Individual(id=203, sex=0, age=31, household=1)
+        i_sero = Individual(id=203, sex=0, age=31)
+        fake_membership!(population(sim), i_sero, Household, 1)
         infect!(i_sero, Int16(0), first_pathogen(sim), rng = Xoshiro())
         GEMS.push_immunity!(immunity_registry(sim, i_sero), i_sero, id(first_pathogen(sim)), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
         eq = GEMS.event_queue(sim)
@@ -336,6 +397,8 @@ end
         # then infect ind2 at tick=0; get_infections_between finds it in range [-1..0]
         set_progression!(ind1, pid3)
         infect!(ind2, Int16(0), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
+        # the trace reads the infection log, which only fills at the flush
+        GEMS.flush_pending_infections!(sim3)
         
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
         eq3 = GEMS.event_queue(sim3)
@@ -871,7 +934,8 @@ end
 
     @testset "Test Measure Events" begin
         sim = Simulation()
-        i = Individual(id=1, sex=0, age=31, household=1)
+        i = Individual(id=1, sex=0, age=31)
+        fake_membership!(population(sim), i, Household, 1)
         indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
         rs = RandomSampling()
         gs = GlobalSetting(individuals=indis, contact_sampling_method=rs)

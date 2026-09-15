@@ -1,4 +1,4 @@
-export test_sim, test_sim_r, geolocated_sim, settingfile_sim
+export test_sim, test_sim_r, geolocated_sim, settingfile_sim, validate_plans
 
 """
     test_sim()
@@ -259,6 +259,46 @@ function getundocumented()
         end
     end
     return undocumented
+end
+
+"""
+    validate_plans(pop::Population, cntnr::SettingsContainer)
+
+Errors unless every entry indexes back to its own individual, and every setting member holds
+a matching entry. A full check of the activity plans against the settings, for tests and
+debugging; a simulation builds member indices from the entries, so it needs no check.
+"""
+function validate_plans(pop::Population, cntnr::SettingsContainer)
+    plans = activity_plans(pop)
+    _check_indexed(plans)
+    length(plans.active) == length(plans.entries) ||
+        error("the store holds $(length(plans.entries)) entries but $(length(plans.active)) active flags")
+
+    for ind in individuals(pop), e in plan_entries(plans, ind)
+        T = setting_type_from_index(setting_type_of(e))
+        s = settings(cntnr, T)[setting_id(e)]
+        idx = member_index(e)
+        1 <= idx <= length(individuals(s)) ||
+            error("individual $(id(ind)) has member index $idx in $T $(setting_id(e)), which holds $(length(individuals(s))) members")
+        individuals(s)[idx] === ind ||
+            error("individual $(id(ind)) has member index $idx in $T $(setting_id(e)), but that slot holds individual $(id(individuals(s)[idx]))")
+        0 <= entry_scale(e) <= floatmax(Float16) ||
+            error("individual $(id(ind)) has scale $(entry_scale(e)) in $T $(setting_id(e)), outside [0, $(floatmax(Float16))]")
+        entry_scale(e) <= _scale_bound(s) ||
+            error("the scale bound of $T $(setting_id(e)) is below individual $(id(ind))'s scale $(entry_scale(e))")
+    end
+
+    for ind in individuals(pop)
+        # an inactive entry has scale 0, so it counts as scaled
+        ind.plan_scaled == any(k -> _effective_scale(plans, k) != 1, plan_slots(plans, ind)) ||
+            error("individual $(id(ind)) has plan_scaled = $(ind.plan_scaled), which its entries contradict")
+    end
+
+    for T in settingtypes(cntnr)
+        (T <: IndividualSetting && T !== GlobalSetting) || continue
+        _check_member_entries(plans, cntnr, T)
+    end
+    return true
 end
 
 

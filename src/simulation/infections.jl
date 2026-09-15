@@ -42,8 +42,8 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 
 # Returns
 
-- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` if `infectee` is
-  already actively infected with `pathogen`.
+- `Int32`: always `DEFAULT_INFECTION_ID`. Infection ids are assigned by
+  `flush_pending_infections!`, which logs the staged infections.
 
 """
 function infect!(infectee::Individual,
@@ -57,7 +57,9 @@ function infect!(infectee::Individual,
         lat::Float32,
         setting_type::Char,
         ags::Int32 ,
-        source_infection_id::Int32)
+        source_infection_id::Int32,
+        infecter_position::Int32,
+        type_rank::UInt8)
 
     # an individual can hold at most one active infection per pathogen 
     if infected(infectee, id(pathogen))
@@ -84,42 +86,15 @@ function infect!(infectee::Individual,
         # throwaway schedule: with no tick loop nothing would drain it, and with an
         # empty profile index no care is drawn anyway
         compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), HealthProfileIndex(), state, tick, rng, HealthSchedule())
+        _mark_infected!(infectee, id(pathogen))
     else
-        # log infection
-        new_infection_id = log!(
-            infectionlogger(sim),
-            infecter_id,
-            id(infectee),
-            id(pathogen),
-            nameof(pc),
-            tick,
-            infectiousness_onset(dp),
-            symptom_onset(dp),
-            severeness_onset(dp),
-            critical_onset(dp),
-            critical_offset(dp),
-            severeness_offset(dp),
-            recovery(dp),
-            setting_id,
-            setting_type,
-            lat,
-            lon,
-            ags,
-            source_infection_id
-        )
-        # stage for serial flush after the threaded phase
+        # stage for the serial flush, which dedups, logs and sets the host's flags
+        new_infection_id = DEFAULT_INFECTION_ID
         shard_id = _owner_shard(id(infectee))
-        push!(sim.infection_buffers[Threads.threadid(), shard_id], _PendingInfection(id(infectee), new_infection_id, id(pathogen), tag, dp))
+        push!(sim.infection_buffers[Threads.threadid(), shard_id],
+            _PendingInfection(id(infectee), infecter_id, source_infection_id, setting_id, ags,
+                infecter_position, lat, lon, setting_type, tick, id(pathogen), tag, type_rank, dp))
     end
-
-    # increase lifetime number of infections
-    inc_number_of_infections!(infectee)
-
-    # flag this pathogen as currently active
-    infected!(infectee, id(pathogen), true)
-
-    # set infected flag
-    infected!(infectee, true)
 
     return new_infection_id
 end
@@ -157,8 +132,8 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 
 # Returns
 
-- `Int32`: New infection ID, or `DEFAULT_INFECTION_ID` (with a warning) if `infectee` is
-  already actively infected with `pathogen`.
+- `Int32`: always `DEFAULT_INFECTION_ID`. Infection ids are assigned by
+  `flush_pending_infections!`, which logs the staged infections.
 
 """
 
@@ -174,9 +149,12 @@ function infect!(infectee::Individual,
         lat::Float32 = NaN32,
         setting_type::Char = '?',
         ags::Int32 = Int32(-1),
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID,
+        infecter_position::Int32 = Int32(0),
+        type_rank::UInt8 = UInt8(0))
 
-        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags, source_infection_id)
+        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags,
+            source_infection_id, infecter_position, type_rank)
 end
 """
     infect!(infectee::Individual, sim::Simulation)
@@ -215,7 +193,9 @@ function try_to_infect!(infctr::Individual,
         sim::Simulation,
         pathogen::Pathogen,
         setting::Setting,
-        source_infection_id::Int32)::Bool
+        source_infection_id::Int32,
+        infecter_position::Int32,
+        type_rank::UInt8)::Bool
 
     # if one of both is dead
     if dead(infctr) || dead(infctd)
@@ -243,7 +223,7 @@ function try_to_infect!(infctr::Individual,
 
     # try to infect
     if gems_rand(sim) < infection_probability
-        hh = settings(sim, Household)[household_id(infctd)]::Household
+        hh = settings(sim, Household)[household_id(infctd, activity_plans(sim))]::Household
         infect!(infctd,
             tick(sim),
             pathogen,
@@ -255,7 +235,9 @@ function try_to_infect!(infctr::Individual,
             lat(hh),
             settingchar(setting),
             ags(setting) |> id,
-            source_infection_id)
+            source_infection_id,
+            infecter_position,
+            type_rank)
         return true
     end
 
@@ -292,9 +274,11 @@ function try_to_infect!(infctr::Individual,
         sim::Simulation,
         pathogen::Pathogen,
         setting::Setting;
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)::Bool
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID,
+        infecter_position::Int32 = Int32(0),
+        type_rank::UInt8 = UInt8(0))::Bool
 
-        try_to_infect!(infctr, infctd, sim, pathogen, setting, source_infection_id)
+        try_to_infect!(infctr, infctd, sim, pathogen, setting, source_infection_id, infecter_position, type_rank)
 end
 
 
@@ -380,77 +364,138 @@ end
 
 
 """
-    spread_infection!(setting::Setting, sim::Simulation)
+    spread_infections!(ind::Individual, sim::Simulation)
 
-Spreads the infection of `pathogen` inside the provided setting. This will simulate the
-infection dynamics at the time `tick(sim)` inside `setting` within the context of the
-simulation `sim`. This will also update all settings, the individual is part of, if the
-infection is successful.
+Spreads the infections of an infectious individual into each setting they belong to: the
+setting of each plan entry, each container above it, and the GlobalSetting.
 
 # Parameters
 
-- `setting::Setting`: Setting in which the pathogen shall be spreaded
+- `ind::Individual`: Infectious individual
 - `sim::Simulation`: Simulation object
 
 """
-function spread_infection!(setting::Setting, sim::Simulation)
-    tid = Threads.threadid()
-    p_buffer = sim.present_buffers[tid]
-    c_buffer = sim.contact_buffers[tid]
-
-    empty!(p_buffer)
-    present_individuals!(p_buffer, setting, sim)
-
-    csm = setting.contact_sampling_method
-    # union splitting on csm
-    num_infected = if csm isa ContactparameterSampling
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
-    elseif csm isa RandomSampling
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
-    elseif csm isa AgeBasedContactSampling
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
-    else
-        _process_infections!(p_buffer, c_buffer, csm, setting, sim)
-    end
-
-    if num_infected == 0
-        deactivate!(setting)
-    end
+function spread_infections!(ind::Individual, sim::Simulation)
+    spread_here = (setting, pos, scale) -> _spread_in!(setting, pos, scale, ind, sim)
+    _foreach_spread_setting(spread_here, ind, sim)
+    return nothing
 end
 
-
-function _process_infections!(p_buffer, c_buffer, csm, setting, sim)
-    num_infected = 0
-    current_tick = tick(sim)
-    current_rng = rng(sim)
-
-    for ind_index in 1:length(p_buffer)
-        ind = p_buffer[ind_index]
-        if infected(ind)
-            num_infected += 1
-            if can_infect(ind, setting, current_tick)
-                empty!(c_buffer)
-                sample_contacts!(c_buffer, csm, setting, ind_index, p_buffer, current_tick, true, current_rng)
-
-                # spread each active, shedding pathogen (cache then overflow); the iterator
-                # only resolves the shard registry if the individual has overflow infections
-                for state in each_infection(ind, sim)
-                    state.infectiousness == 0 && continue
-                    _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting, state.infection_id, current_tick)
-                end
+# Spreading starts from each infectious individual and reaches every setting they spread in: the
+# setting of each plan entry, each container above it, and the GlobalSetting. For each one it
+# calls `visit(setting, position, scale)`, which decides what happens there, so a test can list
+# the visits without spreading. `position` is the individual's index among the setting's present
+# members, which the deduplication key orders infecters by.
+function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation) where {V}
+    plans = activity_plans(sim)
+    cntnr = settingscontainer(sim)
+    for e in plan_entries(plans, ind)
+        idx = member_index(e)
+        _with_entry_setting(sim, e) do setting
+            # the entry's own setting
+            visit(setting, Int(idx), _membership_scale(plans, ind, setting, cntnr))
+            # each container above it that holds this individual's copy. An inactive entry climbs
+            # too: its setting may hold the copy a container kept
+            _foreach_container_above(setting, idx, cntnr) do container, pos
+                visit(container, pos, _membership_scale(plans, ind, container, cntnr))
             end
         end
     end
-
-    return num_infected
+    # everyone is in the GlobalSetting
+    pos = _global_position(ind, sim)
+    pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), pos, 1.0f0)
+    return nothing
 end
 
-function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick::Int16)
+# Calls `use` with the entry's setting as its concrete type, found by unrolling over the
+# membership types so each comparison is against a constant index.
+@inline _with_entry_setting(use::U, sim::Simulation, e::PlanEntry) where {U} =
+    _unroll_entry_setting(use, sim, e, membership_setting_types(Individual)...)
+
+@inline function _unroll_entry_setting(use::U, sim::Simulation, e::PlanEntry, ::Type{T}, rest...) where {U, T<:IndividualSetting}
+    setting_type_of(e) == setting_type_index(T) || return _unroll_entry_setting(use, sim, e, rest...)
+    return use(settings(sim, T)[setting_id(e)])
+end
+
+# no membership type matched: a setting type GEMS does not ship, looked up at runtime
+@inline _unroll_entry_setting(use::U, sim::Simulation, e::PlanEntry) where {U} =
+    use(settings(sim, setting_type_from_index(setting_type_of(e)))[setting_id(e)])
+
+# Calls `visit(container, position)` for each container above `leaf` that holds the member at
+# `idx`. A member in two leaves below one container is among its members once, and the other copy
+# has no position there, so each container is reached once.
+@inline _foreach_container_above(visit::V, leaf::IndividualSetting, idx::Int32, cntnr::SettingsContainer) where {V} =
+    _foreach_container_above(visit, leaf, leaf, idx, cntnr)
+
+function _foreach_container_above(visit::V, s::S, leaf::IndividualSetting, idx::Int32,
+                                  cntnr::SettingsContainer) where {V, S<:Setting}
+    (hasfield(S, :contained) && s.contained != DEFAULT_SETTING_ID) || return nothing
+    c = settings(cntnr, contained_type(S))[s.contained]
+    pos = container_frame_index(cntnr, c, leaf, idx)
+    pos == DEFAULT_MEMBER_INDEX || visit(c, Int(pos))
+    return _foreach_container_above(visit, c, leaf, idx, cntnr)
+end
+
+# The individual's position in the GlobalSetting, which copied the population in its order when it
+# was built. 0 when there is no GlobalSetting, or the individual joined the population later.
+function _global_position(ind::Individual, sim::Simulation)::Int
+    # not `settings(sim, GlobalSetting)`, which builds an empty vector per call when there is none
+    gs = get(settingscontainer(sim).settings, GlobalSetting, nothing)
+    (gs === nothing || isempty(gs)) && return 0
+    members = (@inbounds (gs::Vector{GlobalSetting})[1]).individuals
+    pop = population(sim)
+    i = id(ind) - pop.minid + 1
+    k = 1 <= i <= length(pop.id_map) ? Int(pop.id_map[i]) : 0
+    1 <= k <= length(members) || return 0
+    @inbounds members[k] === ind || error(
+        "the GlobalSetting no longer holds the population in its order: individual $(id(ind)) " *
+        "is not at position $k")
+    return k
+end
+
+# One setting's part of a host's spreading: its contacts there, and each shedding pathogen tried on them.
+function _spread_in!(setting::Setting, pos::Int, s_host::Float32, ind::Individual, sim::Simulation)
+    # at scale 0 the host meets nobody here
+    s_host == 0 && return nothing
+    can_infect(ind, setting, tick(sim)) || return nothing
+    csm = setting.contact_sampling_method
+    # union splitting on csm
+    if csm isa ContactparameterSampling
+        _spread_with!(csm, setting, pos, s_host, ind, sim)
+    elseif csm isa RandomSampling
+        _spread_with!(csm, setting, pos, s_host, ind, sim)
+    elseif csm isa AgeBasedContactSampling
+        _spread_with!(csm, setting, pos, s_host, ind, sim)
+    else
+        _spread_with!(csm, setting, pos, s_host, ind, sim)
+    end
+    return nothing
+end
+
+function _spread_with!(csm, setting, pos::Int, s_host::Float32, ind::Individual, sim::Simulation)
+    cntnr = settingscontainer(sim)
+    c_buffer = sim.contact_buffers[Threads.threadid()]
+    current_tick = tick(sim)
+    sample_scaled_contacts!(c_buffer, sim.draw_buffers[Threads.threadid()], csm, setting, pos,
+        present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
+        s_host, _scale_bound(setting))
+
+    # spread each active, shedding pathogen (cache then overflow); the iterator
+    # only resolves the shard registry if the individual has overflow infections
+    type_rank = setting_type_index(typeof(setting))
+    for state in each_infection(ind, sim)
+        state.infectiousness == 0 && continue
+        _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting,
+            state.infection_id, current_tick, Int32(pos), type_rank)
+    end
+    return nothing
+end
+
+function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick::Int16,
+        infecter_position::Int32, type_rank::UInt8)
     for c in c_buffer
         if can_be_contacted(c, setting, tick)
-            if try_to_infect!(ind, c, sim, pat, setting, src_inf_id)
-                activate_memberships!(c, sim)
-            end
+            try_to_infect!(ind, c, sim, pat, setting, src_inf_id, infecter_position, type_rank)
         end
     end
 end
