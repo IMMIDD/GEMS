@@ -456,17 +456,17 @@ end
         @test sum(hdf.hospital_admissions) > 0            # the scenario actually exercises care
         @test sum(hdf.icu_admissions) > 0
 
-        # every admission is eventually discharged, so occupancy never goes negative. A care event
-        # scheduled at the current tick would be written after that tick's logging pass and could
-        # never be emitted, leaving its discharge orphaned.
-        @test sum(hdf.hospital_admissions) == sum(hdf.hospital_discharges)
-        @test sum(hdf.icu_admissions) == sum(hdf.icu_discharges)
+        # occupancy never goes negative, and the care still occupied when the run ends is exactly the
+        # hosts still holding demand: a stay may outlast the run, but the log never loses one
         @test minimum(hdf.current_hospitalized) >= 0
         @test minimum(hdf.current_icu) >= 0
+        @test last(hdf.current_hospitalized) == count(i -> i.hospital_demands > 0, individuals(sim))
+        @test last(hdf.current_icu) == count(i -> i.icu_demands > 0, individuals(sim))
+        @test last(hdf.current_ventilation) == count(i -> i.ventilation_demands > 0, individuals(sim))
 
-        # no host is left occupying care when the run ends
-        @test all(i -> i.hospital_demands == 0 && i.icu_demands == 0 && i.ventilation_demands == 0,
-            individuals(sim))
+        # a care event scheduled at the current tick would land in an already drained bucket and never
+        # fire, orphaning its discharge, so nothing may be left pending below a schedule's head
+        @test all(s -> all(>=(s.head), keys(s.buckets)), sim.health_schedules)
 
         # a death is realized at the tick it was scheduled for (a death drawn into the past would be
         # logged late, on the next update), and care never outlives the host
@@ -478,8 +478,10 @@ end
         dd = dataframe(deathlogger(sim))
         @test all(r -> !haskey(scheduled, r.id) || r.tick == scheduled[r.id], eachrow(dd))
 
+        # a stay still ongoing at the end is only possible for a host not yet due to die
         he = health_episodes(PostProcessor(sim))
-        @test all(r -> !haskey(scheduled, r.host_id) || r.discharge_tick <= scheduled[r.host_id],
+        @test all(r -> !haskey(scheduled, r.host_id) ||
+            (r.discharge_tick == GEMS.DEFAULT_TICK ? scheduled[r.host_id] >= tick(sim) : r.discharge_tick <= scheduled[r.host_id]),
             eachrow(he))
     end
 
