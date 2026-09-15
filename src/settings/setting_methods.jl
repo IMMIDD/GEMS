@@ -1,7 +1,6 @@
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, individuals_in_ags, ags
 export geolocation, lat, lon, present_individuals, is_open, open!, close!
 export sample_individuals
-export activate!
 
 
 ### Setting access functions
@@ -640,20 +639,6 @@ function remove_empty_settings!(sim::Simulation)
 end 
 
 
-"""
-    activate!(setting::Setting, sim::Simulation)
-
-Activates setting and recursively activates the the containing setting.
-"""
-function activate!(setting::Setting, sim::Simulation)
-    activate!(setting)
-    # Check if this setting is contained within a parent setting
-    if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
-        # Recursively activate the parent
-        parent_setting = settings(sim, contained_type(typeof(setting)))[setting.contained]
-        activate!(parent_setting, sim)
-    end
-end
 ###
 ### MEMBERSHIP MUTATION - SIMULATION CONVENIENCE
 ### The primitives take a `Population`; these are here because `Simulation` does not exist

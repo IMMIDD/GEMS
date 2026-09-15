@@ -537,7 +537,7 @@ end
     _commit_infection!(sim, ind, p::_PendingInfection, infection_id, infections, logger, shard_id)
 
 Realizes one deduplicated infection: logs it under `infection_id`, stores the state, contributes
-its care demand, sets the host's flags and activates the settings it can now spread in.
+its care demand and sets the host's flags.
 """
 function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfection,
         infection_id::Int32, infections::InfectionRegistry, logger::InfectionLogger, shard_id::Int)
@@ -567,7 +567,6 @@ function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfecti
     compute_health!(ind, infections, health_progression(sim), sim.health_profiles, state, tick(sim),
         sim.rngs[shard_id], sim.health_schedules[shard_id])
     _mark_infected!(ind, p.pathogen_id)
-    activate_memberships!(ind, sim)
     return nothing
 end
 

@@ -390,10 +390,12 @@ struct PlanTestSettingB <: IndividualSetting end
         # the first entry of the type is the primary
         @test setting_id(a, Office, plans) == Int32(1)
 
-        # activation reaches every setting the plan names
-        foreach(deactivate!, offices)
-        GEMS.activate_memberships!(a, sim)
-        @test isactive(offices[1]) && isactive(offices[2])
+        # spreading from a reaches every office the plan names, the second one included
+        reached = Int32[]
+        GEMS._foreach_spread_setting(a, sim) do setting, pos, scale
+            setting isa Office && push!(reached, id(setting))
+        end
+        @test reached == Int32[1, 2]
 
         # once the settings exist, an entry needs its setting edited too
         @test_throws ArgumentError assign_settings!(pop, a, Office => 3)
@@ -668,7 +670,7 @@ struct PlanTestSettingB <: IndividualSetting end
             # one contact per infectious member, which in a two-person office is the other one
             sim = Simulation(population = pop, pathogens = (p,), infected_fraction = 0.0,
                 office_contacts = RandomSampling())
-            # the flush logs the infection and activates the infecter's settings from its plan
+            # the flush commits the infection, so the next sweep finds the infecter infectious
             infect!(individuals(sim)[1], sim)
             GEMS.flush_pending_infections!(sim)
             step!(sim)

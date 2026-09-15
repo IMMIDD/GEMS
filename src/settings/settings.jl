@@ -11,7 +11,6 @@ export contact_sampling_method, contact_sampling_method!
 export add!, remove!
 export add_member!, remove_member!
 export id, individuals
-export activate!, deactivate!, isactive
 export open!, close!
 
 ###
@@ -54,7 +53,6 @@ There should only be one `GlobalSetting` instance in any simulation.
 
 - `individuals::Vector{Individual}`: List of associated individuals
 - `contact_sampling_method::ContactSamplingMethod`: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool`: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool`: Whether the setting is open for contacts.
     conditions
 """
@@ -63,9 +61,6 @@ There should only be one `GlobalSetting` instance in any simulation.
     individuals::Vector{Individual} = Vector{Individual}()
     contact_sampling_method::ContactSamplingMethod   
     ags::AGS= AGS() # 4 bytes
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(true)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -95,13 +90,11 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 - `individuals::Vector{Individual} = []` *(optional)*: List of associated individuals
 - `income::Int8 = -1` *(optional)*: Category of income for the household
 - `dwelling::Int8 = -1  *(optional)*`: Category of dwelliung size
-- `last_infectious::Int16 = -1` *(optional)*: Tick indicating the last presence of an infected individual
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the Household.
 - `lon::Float32 = NaN` *(optional)*: Longitude of the household
 - `lat::Float32 = NaN`: Latitude of the household
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 """
@@ -110,15 +103,11 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
     individuals::Vector{Individual} = Vector{Individual}() # 40 + n*8 bytes
     income::Int8 = -1 # 1 byte
     dwelling::Int8 = -1 # 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     lon::Float32 = NaN # 4 bytes
     lat::Float32 = NaN # 4 bytes
 
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -151,7 +140,6 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 - `individuals::Vector{Individual} = []` *(optional)*: List of associated individuals
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the municipality.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 """
@@ -160,9 +148,6 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
     individuals::Vector{Individual} = [] # 40 + n*8 bytes // List of associated individuals
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
 
@@ -195,13 +180,11 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 - `individuals::MemberStorage = []` *(optional)*: List of associated individuals
 - `type::Int32 = -1` *(optional)*: Type of school class (e.g. grade)
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`SchoolYear`)
-- `last_infectious::Int16 = -1` *(optional)*: Tick indicating the last presence of an infected individual
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `ags::Int32 = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the schoolclass.
 - `lon::Float32 = NaN` *(optional)*: Longitude of the schoolclass
 - `lat::Float32 = NaN` *(optional)*: Latitude of the schoolclass
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `pool` *(internal)*: The hierarchy's shared member storage. Members are held there rather
     than in this setting, so its containers can address them without a copy.
@@ -216,14 +199,10 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     individuals::MemberStorage = Vector{Individual}() # a slice of the hierarchy pool once built
     type::Int32 = -1 # 1 byte
     contained::Int32 = DEFAULT_SETTING_ID # 4 bytes
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     lon::Float32 = NaN # 4 bytes
     lat::Float32 = NaN # 4 bytes
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -265,7 +244,6 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`School`)
 - `type::Int32 = -1` *(optional)*: Type of school year (e.g. grade)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
@@ -283,9 +261,6 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -326,7 +301,6 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`SchoolComplex`)
 - `type::Int32 = -1` *(optional)*: Type of school (e.g. primary, highschool, ...)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
@@ -344,9 +318,6 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
 
@@ -384,7 +355,6 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 - `id::Int32`: Unique identifier of the school complex
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `School`s
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
@@ -401,9 +371,6 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
      type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -443,9 +410,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 - `id::Int32`: Unique identifier of the workplace.
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Workplace`s
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace site.
-- `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: Whether the workplace is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
@@ -460,12 +425,8 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     type::Int32 = -1# 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -502,10 +463,8 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Department`s
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`WorkplaceSite`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace (e.g., farm, office).
-- `last_infectious::Int16 -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: Whether the workplace is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
@@ -521,12 +480,8 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1 # 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
 
@@ -562,10 +517,8 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Office`s
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`Workplace`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of department.
-- `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: Whether the department is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
@@ -581,15 +534,11 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1# 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
 
     
     
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
 
@@ -627,7 +576,6 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`Department`) 
 - `contained_type::DataType = Department` *(optional)*: Parent setting tye (`Department`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of office
-- `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the office
@@ -635,7 +583,6 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 - `workhome::Int8 = -1` *(optional)*: Describes the amount of work done from home
 - `lon::Float32 = NaN` *(optional)*: Longitude of the office
 - `lat::Float32 = NaN` *(optional)*: Latitude of the office
-- `isactive::Bool = false` *(optional)*: Whether the office is active in the simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts
 - `pool` *(internal)*: The hierarchy's shared member storage. Members are held there rather
     than in this setting, so its containers can address them without a copy.
@@ -650,7 +597,6 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     individuals::MemberStorage = Vector{Individual}() # a slice of the hierarchy pool once built
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1# 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     inroom::Int8 = -1 # 1 byte
@@ -658,9 +604,6 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     lon::Float32 = NaN # 4 bytes
     lat::Float32 = NaN # 4 bytes
 
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 
     # if closed, no contacts can happen here
     isopen::Bool = true
@@ -759,7 +702,7 @@ end
 ###
 #   You can override the functions for different settings, but this is the default behaviour   
 #   A Setting should thus have the following fields by default
-#       id, individuals, infected_individuals, isactive
+#       id, individuals, contact_sampling_method, isopen
 
 """
     id(setting::Setting)
@@ -863,45 +806,6 @@ add_member!(::GlobalSetting, ::Individual, ::Population; primary::Bool = false, 
 remove_member!(::GlobalSetting, ::Individual, ::Population) =
     throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
 
-
-"""
-    isactive(setting::Setting)
-
-Returns whether the setting is considered active for simulation, e.g. an infection could
-spread in the setting.
-"""
-function isactive(setting::Setting)::Bool
-    return setting.isactive[]
-end
-
-"""
-    activate!(setting::Setting)
-
-Sets the setting active for simulation.
-"""
-function activate!(setting::Setting)
-    if hasproperty(setting, :contains) || setting |> individuals |> length > 1
-        Threads.atomic_xchg!(setting.isactive, true)
-    end
-end
-
-"""
-    deactivate!(setting::Setting)
-
-Sets the setting as inactive for simulation.
-"""
-function deactivate!(setting::Setting)
-    Threads.atomic_xchg!(setting.isactive, false)
-end
-
-"""
-    deactivate!(setting::GlobalSetting)
-
-Deactivating GlobalSetting is a no-op
-"""
-function deactivate!(setting::GlobalSetting)
-    return nothing
-end
 
 """
     contains(setting::ContainerSetting)

@@ -382,32 +382,6 @@ function getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
 end
 
 
-### MEMBERSHIP ACTIVATION ###
-
-"""
-    activate_memberships!(c::Individual, sim::Simulation)
-
-Activates every setting the individual `c` belongs to, and recursively their containers.
-"""
-function activate_memberships!(c::Individual, sim::Simulation)
-    plans = activity_plans(sim)
-    for e in plan_entries(plans, c)
-        _activate_entry!(sim, setting_id(e), setting_type_of(e), membership_setting_types(Individual)...)
-    end
-    return nothing
-end
-
-# unrolled over the membership types, so the comparison is against a constant index
-@inline _activate_entry!(::Simulation, ::Int32, ::UInt8) = nothing
-@inline function _activate_entry!(sim::Simulation, sid::Int32, tidx::UInt8, ::Type{T}, rest...) where {T<:IndividualSetting}
-    if tidx == setting_type_index(T)
-        activate!(settings(sim, T)[sid], sim)
-        return nothing
-    end
-    _activate_entry!(sim, sid, tidx, rest...)
-end
-
-
 ### Registry GETTERS ###
 
 """

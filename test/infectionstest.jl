@@ -7,7 +7,6 @@ import GEMS: try_to_infect!, spread_infections!, update_individual!, get_contain
     individuals::Vector{Individual} = Individual[]
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
     isopen::Bool = true
 end
 # registered at once: every simulation built from here on looks at each IndividualSetting subtype

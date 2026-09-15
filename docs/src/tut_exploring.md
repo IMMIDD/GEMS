@@ -132,12 +132,10 @@ Household
   individuals: Array{Individual}((3,))
   income: Int8 -1
   dwelling: Int8 -1
-  last_infectious: Int16 -1
   contact_sampling_method: ContactparameterSampling
   ags: AGS
   lon: Float32 NaN32
   lat: Float32 NaN32
-  isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock
 ```
@@ -211,12 +209,10 @@ and one custom parameter.
   individuals: Array{Individual}((2,))
   income: Int8 -1
   dwelling: Int8 -1
-  last_infectious: Int16 -1
   contact_sampling_method: ContactparameterSampling
   ags: AGS
   lon: Float32 NaN32
   lat: Float32 NaN32
-  isactive: Bool false
   isopen: Bool true
   lock: ReentrantLock
  ⋮

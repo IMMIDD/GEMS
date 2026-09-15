@@ -190,17 +190,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             h = Household(id=1, individuals=indis, contact_sampling_method=rs)
 
             @test Set(individuals(h)) == Set(indis)
-            @test !isactive(h)
 
             add_member!(h, i, Population(vcat(indis, i)))
             @test Set(individuals(h)) == Set(push!(indis, i))
-            @test !isactive(h)
-
-            activate!(h)
-            @test isactive(h)
-
-            deactivate!(h)
-            @test !isactive(h)
         end
 
         @testset "Settings from Population" begin
@@ -785,32 +777,6 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         dct2 = Dict{DataType, Int32}()
         GEMS.get_containers!(hh, dct2, sim)
         @test isempty(dct2)
-    end
-
-    @testset "Recursive Activation" begin
-        sim = Simulation()
-        rs = RandomSampling()
-        
-        # Setup hierarchy: SchoolClass (1) -> SchoolYear (1) -> School (1)
-        sc1 = SchoolClass(id=1, contained=1, contact_sampling_method=rs, individuals=[Individual(id=i, sex=1, age=5) for i in 1:2])
-        sy1 = SchoolYear(id=1, contains=[1], contained=1, contact_sampling_method=rs)
-        s1 = School(id=1, contains=[1], contact_sampling_method=rs)
-        
-        stngs = SettingsContainer()
-        add_types!(stngs, [SchoolClass, SchoolYear, School])
-        add!(stngs, sc1); add!(stngs, sy1); add!(stngs, s1)
-        sim.settings = stngs
-
-        # Deactivate all
-        deactivate!(sc1); deactivate!(sy1); deactivate!(s1)
-        @test !isactive(sc1) && !isactive(sy1) && !isactive(s1)
-
-        # Trigger recursive activation from the bottom
-        activate!(sc1, sim)
-
-        @test isactive(sc1) == true
-        @test isactive(sy1) == true
-        @test isactive(s1) == true
     end
 
     @testset "SettingsContainer ID Management" begin
