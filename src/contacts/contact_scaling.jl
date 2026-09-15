@@ -7,10 +7,11 @@
 
 # Samples the host's contacts in `setting` into `contacts`, drawing into `draws` when the sampler
 # has to be called more than once. Draws nothing extra while every scale involved is 1.
+# `oversample` only acts without replacement, see `_sample_unique_scaled!`.
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
-        tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
-        s_host::Float32, bound::Float32)
+        tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
+        s_host::Float32, bound::Float32; oversample::Float32 = 1.0f0)
     r = s_host * bound
     empty!(contacts)
     # a lone member could only meet itself
@@ -18,7 +19,7 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
 
     if r <= 1
         # one draw, thinned in place
-        sample_contacts!(contacts, csm, setting, idx, present, tick, true, rng)
+        sample_contacts!(contacts, csm, setting, idx, present, tick, replace, rng)
         kept = 0
         for c in contacts
             _keep_contact(c, r, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
@@ -26,9 +27,12 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         return resize!(contacts, kept)
     end
 
-    # samplers fill their buffer from the start, so each call draws into `draws`
+    replace ||
+        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, bound)
+
     calls = floor(Int, r)
     frac = r - calls
+    # samplers fill their buffer from the start, so each call draws into `draws`
     for call in 1:(calls + (frac > 0))
         # the last draw stands for the fraction beyond the whole ones
         f = call > calls ? frac : 1.0f0
@@ -37,6 +41,63 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         for c in draws
             _keep_contact(c, f, bound, plans, setting, cntnr, rng) && push!(contacts, c)
         end
+    end
+    return contacts
+end
+
+# Without replacement a contact drawn by several calls is kept once, with the weights of the calls
+# that drew it summed. Exact while `s_host * s_contact <= 1`; above that the keep probability caps
+# at 1, so a contact drawn often is met too rarely. `oversample` times the calls, each weighted down
+# by it, shrink that bias at `oversample` times the sampler calls.
+# The whole calls collect in `contacts`, the fractional last call stays in `draws`.
+function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
+        r::Float32, oversample::Float32, bound::Float32)
+    total = r * oversample
+    calls = floor(Int, total)
+    frac = total - calls
+    unit = 1.0f0 / oversample
+    for _ in 1:calls
+        empty!(draws)
+        sample_contacts!(draws, csm, setting, idx, present, tick, false, rng)
+        append!(contacts, draws)
+    end
+    empty!(draws)
+    frac > 0 && sample_contacts!(draws, csm, setting, idx, present, tick, false, rng)
+    # QuickSort needs no scratch buffer
+    sort!(contacts; by = id, alg = QuickSort)
+    sort!(draws; by = id, alg = QuickSort)
+
+    # merge both sorted lists; kept contacts and unmatched draws compact in place
+    kept = 0
+    unmatched = 0
+    j = 1
+    i = 1
+    while i <= length(contacts)
+        c = contacts[i]
+        w = unit
+        while i < length(contacts) && contacts[i + 1] === c
+            w += unit
+            i += 1
+        end
+        while j <= length(draws) && id(draws[j]) < id(c)
+            draws[unmatched += 1] = draws[j]
+            j += 1
+        end
+        if j <= length(draws) && draws[j] === c
+            w += frac * unit
+            j += 1
+        end
+        _keep_contact(c, w, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
+        i += 1
+    end
+    resize!(contacts, kept)
+    for k in j:length(draws)
+        draws[unmatched += 1] = draws[k]
+    end
+    for k in 1:unmatched
+        _keep_contact(draws[k], frac * unit, bound, plans, setting, cntnr, rng) && push!(contacts, draws[k])
     end
     return contacts
 end

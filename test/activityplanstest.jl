@@ -893,8 +893,9 @@ struct PlanTestSettingB <: IndividualSetting end
                        individuals = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:10])
         present = GEMS.present_members(hh, cntnr)
         draws = Individual[]
-        sampled(s, p, rng, s_host, bound) = GEMS.sample_scaled_contacts!(Individual[], draws,
-            contact_sampling_method(s), s, 1, p, Int16(1), rng, plans, cntnr, Float32(s_host), Float32(bound))
+        sampled(s, p, rng, s_host, bound; replace = true, oversample = 1) = GEMS.sample_scaled_contacts!(Individual[], draws,
+            contact_sampling_method(s), s, 1, p, Int16(1), replace, rng, plans, cntnr, Float32(s_host), Float32(bound);
+            oversample = Float32(oversample))
 
         # unscaled, it is the plain draw with no extra randomness
         r1 = Xoshiro(7); r2 = copy(r1)
@@ -921,6 +922,33 @@ struct PlanTestSettingB <: IndividualSetting end
         @test isapprox(mean_contacts(hh2, p2, 0.5, 1), 0.25; atol = 0.03)
         set_scale!(plans, pair[2], Household, 2, 2.5)
         @test isapprox(mean_contacts(hh2, p2, 1, 2.5), 2.5; atol = 0.08)
+
+        # without replacement several draws merge: nobody twice, and a pair at scale <= 1 meets at its scaled rate
+        hh4 = Household(id = Int32(4), contact_sampling_method = ContactparameterSampling(3.0),
+                        individuals = [Individual(id = Int32(20 + j), age = 30, sex = 1) for j in 1:10])
+        p4 = GEMS.present_members(hh4, cntnr)
+        target = p4[2]
+        plan_add!(plans, target, PlanEntry(Household, Int32(4), Int32(2), 0.5))
+        hits = 0
+        repeats = 0
+        for _ in 1:n
+            cs = sampled(hh4, p4, rng, 1.5, 1.5; replace = false)
+            repeats += !allunique(cs)
+            hits += target in cs
+        end
+        @test repeats == 0
+        # one call meets a given member with probability 3/9; 1.5 * 0.5 of that
+        @test isapprox(hits / n, 0.75 * 3 / 9; atol = 0.02)
+
+        # a pair above 1 caps when drawn repeatedly, and oversampling shrinks that bias
+        hh5 = Household(id = Int32(5), contact_sampling_method = RandomSampling(),
+                        individuals = [Individual(id = Int32(40 + j), age = 30, sex = 1) for j in 1:4])
+        p5 = GEMS.present_members(hh5, cntnr)
+        plan_add!(plans, p5[2], PlanEntry(Household, Int32(5), Int32(2), 1.2))
+        meets(oversample) = count(_ -> p5[2] in sampled(hh5, p5, rng, 2, 2; replace = false, oversample = oversample), 1:n) / n
+        # four calls draw it m ~ Binomial(4, 1/3) times, each worth 0.6 and capped at 1
+        @test isapprox(meets(1), (0.6 * 32 + 33) / 81; atol = 0.025)
+        @test isapprox(meets(50), 2 * 1.2 / 3; atol = 0.025)
 
         # a lone member could only meet itself, so no sampler is asked, not even one that would throw
         alone = Individual(id = Int32(13), age = 30, sex = 1)

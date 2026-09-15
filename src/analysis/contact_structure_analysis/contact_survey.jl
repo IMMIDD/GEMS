@@ -99,7 +99,7 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
             s_host = _membership_scale(plans, ind, s, cntnr)
             sample_scaled_contacts!(contacts, draws, s.contact_sampling_method, s, ind_index, present_inds,
-                tick(simulation), rng(simulation), plans, cntnr, s_host, _scale_bound(s))
+                tick(simulation), true, rng(simulation), plans, cntnr, s_host, _scale_bound(s))
 
             if length(contacts) > 0
                 for contact in contacts

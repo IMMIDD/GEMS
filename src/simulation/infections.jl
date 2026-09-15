@@ -482,7 +482,7 @@ function _spread_with!(csm, setting, pos::Int, s_host::Float32, ind::Individual,
     c_buffer = sim.contact_buffers[Threads.threadid()]
     current_tick = tick(sim)
     sample_scaled_contacts!(c_buffer, sim.draw_buffers[Threads.threadid()], csm, setting, pos,
-        present_members(setting, cntnr), current_tick, rng(sim), activity_plans(sim), cntnr,
+        present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
         s_host, _scale_bound(setting))
 
     # spread each active, shedding pathogen (cache then overflow); the iterator
