@@ -13,7 +13,8 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         s_host::Float32, bound::Float32)
     r = s_host * bound
     empty!(contacts)
-    r == 0 && return contacts
+    # a lone member could only meet itself
+    (r == 0 || length(present) <= 1) && return contacts
 
     if r <= 1
         # one draw, thinned in place

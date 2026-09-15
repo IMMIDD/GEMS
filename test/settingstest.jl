@@ -1108,8 +1108,14 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test isempty(GEMS.present_members(cs[2], sc))
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
 
+            # closing the empty class takes nobody out, so the frame stays one span
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            @test contiguous(GEMS.present_members(sch, sc))
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            open!(cs[2])
+
             # closing a middle class forces two runs with an empty leaf inside the first
-            close!(cs[3])
+            close!(cs[3]); GEMS.repack_dirty_pools!(sc)
             f = GEMS.present_members(sch, sc)
             @test !contiguous(f)
             @test ids(f) == [1, 2, 3, 7, 8, 9]
@@ -1314,14 +1320,17 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @testset "Closed descendants" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
             close!(ys[2])
+            # a closure reshapes frames, so like a member edit it is unreadable until the repack
+            @test (try; GEMS.present_members(sch, sc); false; catch; true; end)
+            GEMS.repack_dirty_pools!(sc)
             @test ids(GEMS.present_members(sch, sc)) == collect(1:6)
             @test isempty(GEMS.present_members(ys[2], sc))
-            open!(ys[2])
+            open!(ys[2]); GEMS.repack_dirty_pools!(sc)
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
             @test contiguous(GEMS.present_members(sch, sc))
 
             # a closed leaf in the middle leaves two runs, and must not leak its members
-            close!(cs[2])
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
             f = GEMS.present_members(sch, sc)
             @test ids(f) == [1, 2, 3, 7, 8, 9]
             @test !contiguous(f)
@@ -1376,15 +1385,15 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             GEMS.repack_dirty_pools!(sc)
 
             # dropping the class the kept copy sits in must not drop the member
-            close!(cs[1])
+            close!(cs[1]); GEMS.repack_dirty_pools!(sc)
             @test ids(GEMS.present_members(ys[1], sc)) == [4, 5, 6]
             @test ids(GEMS.present_members(sch, sc)) == [4, 5, 6, 7, 8, 9]
             open!(cs[1])
 
             # the other way round the kept copy is the one that survives
-            close!(cs[2])
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
             @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4]
-            open!(cs[2])
+            open!(cs[2]); GEMS.repack_dirty_pools!(sc)
             @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
         end
     end

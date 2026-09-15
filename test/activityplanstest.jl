@@ -575,13 +575,18 @@ struct PlanTestSettingB <: IndividualSetting end
             end
         end
 
-        check_all()                              # nothing closed: one unbroken span
-        close!(cs[1]); check_all()               # a closed edge leaves one run
-        open!(cs[1]); close!(cs[2]); check_all() # a closed middle leaves two
-        open!(cs[2])
+        # nothing closed: one unbroken span
+        check_all()
+        # a closed edge leaves one run; like a member edit, it shows after the repack
+        close!(cs[1]); GEMS.repack_dirty_pools!(cntnr)
+        check_all()
+        # a closed middle leaves two
+        open!(cs[1]); close!(cs[2]); GEMS.repack_dirty_pools!(cntnr)
+        check_all()
+        open!(cs[2]); GEMS.repack_dirty_pools!(cntnr)
 
         # a closed container holds nobody
-        close!(sy)
+        close!(sy); GEMS.repack_dirty_pools!(cntnr)
         @test container_frame_index(cntnr, sy, cs[1], 1) == GEMS.DEFAULT_MEMBER_INDEX
         open!(sy)
     end
@@ -618,7 +623,7 @@ struct PlanTestSettingB <: IndividualSetting end
         @test container_frame_index(cntnr, sy, cs[2], 1) == GEMS.DEFAULT_MEMBER_INDEX
 
         # closing the class the kept copy is in hands the position to the other
-        close!(cs[1])
+        close!(cs[1]); GEMS.repack_dirty_pools!(cntnr)
         frame = GEMS.present_members(sy, cntnr)
         promoted = container_frame_index(cntnr, sy, cs[2], 1)
         @test promoted != GEMS.DEFAULT_MEMBER_INDEX
@@ -860,6 +865,25 @@ struct PlanTestSettingB <: IndividualSetting end
         @test isapprox(mean_contacts(hh2, p2, 0.5, 1), 0.25; atol = 0.03)
         set_scale!(plans, pair[2], Household, 2, 2.5)
         @test isapprox(mean_contacts(hh2, p2, 1, 2.5), 2.5; atol = 0.08)
+
+        # a lone member could only meet itself, so no sampler is asked, not even one that would throw
+        alone = Individual(id = Int32(13), age = 30, sex = 1)
+        hh3 = Household(id = Int32(3), contact_sampling_method = RandomSampling(), individuals = [alone])
+        p3 = GEMS.present_members(hh3, cntnr)
+        @test_throws ArgumentError sample_contacts!(Individual[], RandomSampling(), hh3, 1, p3, Int16(1), true, Xoshiro(1))
+        r3 = Xoshiro(5); r3_before = copy(r3)
+        @test isempty(sampled(hh3, p3, r3, 1, 1))
+        @test r3 == r3_before
+    end
+
+    @testset "Contact survey of one-person settings" begin
+        n = 20
+        df = DataFrame(id = Int32.(1:n), sex = Int8.(zeros(n)), age = Int8.(fill(30, n)),
+                       household = Int32.(1:n))
+        sim = Simulation(population = Population(df), household_contacts = RandomSampling(), seed = 1)
+        # nobody has anyone to meet, which must give no contacts rather than a sampler error
+        @test nrow(GEMS.contact_samples(sim, Household, false)) == 0
+        @test all(==(-1), GEMS.contact_samples(sim, Household, true).b_id)
     end
 
     @testset "Gate: scales act on both ends" begin

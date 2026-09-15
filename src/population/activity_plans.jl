@@ -251,10 +251,11 @@ end
     container_frame_index(cntnr::SettingsContainer, container::ContainerSetting, leaf::IndividualSetting, leaf_index::Integer)
 
 Returns the position in `container`'s frame of the member at `leaf_index` of `leaf`, or
-`DEFAULT_MEMBER_INDEX` when they are not in it. Mirrors the three cases of `present_members`,
-so the dropped copy of a member in two leaves has no position here.
+`DEFAULT_MEMBER_INDEX` when they are not in it. Reads the frame `present_members` hands out, so
+a member below a closed setting, and the dropped copy of a member in two leaves, have no
+position here.
 """
-function container_frame_index(cntnr::SettingsContainer, container::ContainerSetting,
+function container_frame_index(::SettingsContainer, container::ContainerSetting,
                                leaf::IndividualSetting, leaf_index::Integer)::Int32
     pool = _pool(container)::SettingPool
     _check_clean(container, pool)
@@ -262,17 +263,12 @@ function container_frame_index(cntnr::SettingsContainer, container::ContainerSet
 
     # the member's absolute position in the hierarchy pool
     p = Int(leaf.pool_offset) + Int(leaf_index) - 1
-
-    if pool.closed == 0 || _subtree_open(cntnr, container)
-        runs = container.pool_runs
-        runs === nothing && return Int32(p - Int(container.pool_offset) + 1)
-        k = _run_index(runs.starts, runs.prefix, Int(container.pool_length), p)
-        return k == 0 ? DEFAULT_MEMBER_INDEX : Int32(k)
+    runs = container.pool_runs
+    if runs === nothing
+        k = p - Int(container.pool_offset) + 1
+        return 1 <= k <= container.pool_length ? Int32(k) : DEFAULT_MEMBER_INDEX
     end
-
-    starts, prefix, total = _open_runs(cntnr, container)
-    isempty(starts) && return DEFAULT_MEMBER_INDEX
-    k = _run_index(starts, prefix, total, p)
+    k = _run_index(runs.starts, runs.prefix, Int(container.pool_length), p)
     return k == 0 ? DEFAULT_MEMBER_INDEX : Int32(k)
 end
 

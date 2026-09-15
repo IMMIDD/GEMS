@@ -58,13 +58,14 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
     cnt = 1
     cntnr = settingscontainer(simulation)
+    # a run can end on settings opened or closed, whose pools are unreadable until repacked
+    repack_dirty_pools!(cntnr)
     contacts = simulation.contact_buffers[Threads.threadid()]
     draws = simulation.draw_buffers[Threads.threadid()]
     plans = activity_plans(simulation)
 
-    # batches are sorted, so consecutive samples usually hit the same setting. A member view
-    # is not free for containers - it walks the subtree to check openness - so keep the
-    # previous one rather than re-deriving it per sample.
+    # batches are sorted, so consecutive samples usually hit the same setting; keep its member
+    # view rather than re-deriving it per sample.
     last_s = nothing
     present_inds = present_members(@inbounds(stngs[1]), cntnr)
 

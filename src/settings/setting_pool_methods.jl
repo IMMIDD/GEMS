@@ -33,51 +33,35 @@ function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
                         MemberView(pool.members, Int32(1), Int32(0))
 end
 
-function present_members(s::ContainerSetting, cntnr::SettingsContainer)::MemberView
+function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     pool = _pool(s)::SettingPool
     _check_clean(s, pool)
     is_open(s) || return MemberView(pool.members, Int32(1), Int32(0))
 
-    # the pool is repacked after every edit, so a container's range covers exactly its
-    # members; only a closure below it can break that
-    if pool.closed == 0 || _subtree_open(cntnr, s)
-        r = s.pool_runs
-        # a repeat at the edge of the span leaves one run, which is a plain slice again
-        (r === nothing || length(r.starts) == 1) &&
-            return MemberView(pool.members, s.pool_offset, s.pool_length)
-        return MemberView(pool.members, r.starts, r.prefix, s.pool_length)
-    end
-
-    starts, prefix, total = _open_runs(cntnr, s)
-    length(starts) == 1 && return MemberView(pool.members, @inbounds(starts[1]), Int32(total))
-    return MemberView(pool.members, starts, prefix, Int32(total))
+    # the repack stores the frame, as runs when a member repeats or something below is closed
+    r = s.pool_runs
+    # one run, or none when everything below is closed, is a plain slice again
+    (r === nothing || length(r.starts) <= 1) &&
+        return MemberView(pool.members, s.pool_offset, s.pool_length)
+    return MemberView(pool.members, r.starts, r.prefix, s.pool_length)
 end
 
-# A member edit leaves every offset and length in the hierarchy stale until the pool is
-# repacked. Reading in that window would silently return the wrong members, so refuse
-# instead. `present_individuals` reads the member vectors directly and stays usable.
+# A member edit, or opening or closing a setting, leaves the hierarchy's offsets, lengths and
+# frames stale until the pool is repacked. Reading in that window would silently return the
+# wrong members, so refuse instead. `present_individuals` reads the member vectors directly and
+# stays usable.
 @inline function _check_clean(s::Setting, pool::SettingPool)
     isempty(pool.blocks.dirty) || error(
-        "$(typeof(s)) belongs to a setting pool with pending member edits. Call " *
-        "`repack_dirty_pools!` after editing membership and before reading members.")
+        "$(typeof(s)) belongs to a setting pool with pending member edits or closures. Call " *
+        "`repack_dirty_pools!` after editing membership or opening or closing settings, and " *
+        "before reading members.")
     return nothing
 end
 
 # `open!` and `close!` keep this in step; they only call it on a real state change.
-_count_closed!(s::Setting, delta::Int) = begin
-    pool = _pool(s)
-    pool === nothing || (pool.closed += delta)
+function _count_closed!(pool::SettingPool, delta::Int)
+    pool.closed += delta
     return nothing
-end
-
-_subtree_open(::SettingsContainer, s::IndividualSetting) = is_open(s)
-function _subtree_open(cntnr::SettingsContainer, s::ContainerSetting)
-    is_open(s) || return false
-    kids = settings(cntnr, contains_type(typeof(s)))
-    for cid in s.contains
-        _subtree_open(cntnr, kids[cid]) || return false
-    end
-    return true
 end
 
 ###
@@ -85,39 +69,6 @@ end
 ### Run arithmetic shared by the closed case and the repeated-member case, both of which turn
 ### a container's span into several runs.
 ###
-
-function _collect_runs!(starts, prefix, total, ::SettingsContainer, s::IndividualSetting)
-    (is_open(s) && s.pool_length > 0) || return total
-    lo = Int(s.pool_offset)
-    # merge with the previous run when the leaves stayed adjacent in the pool
-    if !isempty(starts) && Int(starts[end]) + (total - Int(prefix[end])) == lo
-        return total + Int(s.pool_length)
-    end
-    push!(starts, Int32(lo))
-    push!(prefix, Int32(total))
-    return total + Int(s.pool_length)
-end
-
-function _collect_runs!(starts, prefix, total, cntnr::SettingsContainer, s::ContainerSetting)
-    is_open(s) || return total
-    kids = settings(cntnr, contains_type(typeof(s)))
-    for cid in s.contains
-        total = _collect_runs!(starts, prefix, total, cntnr, kids[cid])
-    end
-    return total
-end
-
-# The runs a container's open leaves cover, repeats past the first present copy dropped.
-function _open_runs(cntnr::SettingsContainer, s::ContainerSetting)
-    starts = Int32[]; prefix = Int32[]
-    total = _collect_runs!(starts, prefix, 0, cntnr, s)
-    r = s.pool_runs
-    if r !== nothing
-        skips = _repeat_skips(r, starts, prefix, total)
-        isempty(skips) || ((starts, prefix, total) = _drop_skips(starts, prefix, total, skips))
-    end
-    return starts, prefix, total
-end
 
 # Where pool position `p` sits in a run-indexed frame, 0 when the runs do not cover it.
 @inline function _run_index(starts::Vector{Int32}, prefix::Vector{Int32}, total::Int, p::Int)
@@ -247,13 +198,12 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
     for g in pool.container_groups, c in g.containers; c.pool = pool; end
     # counted once here; the edits keep it exact
     pool.repeats = _count_repeats(pool, leaves)
-    _repack!(pool)
-
-    # settings may already be closed when the population is loaded
+    # settings may already be closed when the population is loaded, and the repack reads this
     pool.closed = count(!is_open, leaves)
     for g in pool.container_groups
         pool.closed += count(!is_open, g.containers)
     end
+    _repack!(pool)
     return pool
 end
 
@@ -388,9 +338,10 @@ end
 """
     repack_dirty_pools!(cntnr::SettingsContainer)
 
-Repack every pool left stale by a member edit. Must run between a membership change and the
-next read of `present_members`. `step!` calls it ahead of the transmission phase, which is
-the only reader inside a tick, so edits made anywhere in the previous tick are covered.
+Repack every pool left stale by a member edit, a scale change, or a setting opened or closed.
+Must run between such a change and the next read of `present_members`. `step!` calls it ahead
+of the transmission phase, which is the only reader inside a tick, so changes made anywhere in
+the previous tick are covered.
 Cheap when nothing changed.
 """
 function repack_dirty_pools!(cntnr::SettingsContainer)
@@ -409,9 +360,18 @@ function repack_dirty_pools!(cntnr::SettingsContainer)
 end
 
 # Queue a leaf's block. Idempotent, so k edits on one block cost one repack.
-function _mark_dirty!(pool::SettingPool, s::IndividualSetting)
-    bl = pool.blocks
-    b = bl.of_leaf[s.pool_leaf]
+_mark_dirty!(pool::SettingPool, s::IndividualSetting) =
+    _mark_block_dirty!(pool.blocks, pool.blocks.of_leaf[s.pool_leaf])
+
+# A container has no leaf position of its own, but no container crosses a block, so the block of
+# its first leaf holds all of it. One with no leaves has no frame to reshape.
+function _mark_dirty!(pool::SettingPool, c::ContainerSetting)
+    r = _leaf_range(c)
+    isempty(r) || _mark_block_dirty!(pool.blocks, pool.blocks.of_leaf[first(r)])
+    return nothing
+end
+
+function _mark_block_dirty!(bl::PoolBlocks, b::Int32)
     if !bl.is_dirty[b]
         bl.is_dirty[b] = true
         push!(bl.dirty, b)
@@ -616,9 +576,65 @@ end
     len == 0 && return nothing
 
     # a member in two leaves below sits in the span twice, and only the first copy counts
-    pool.repeats == 0 || 
+    pool.repeats == 0 ||
         _dedup_container!(c, pool, Int(lo.pool_offset), Int(len))
+    # a closure below takes its members out of the frame
+    pool.closed == 0 || _drop_closed!(c, r, pool, leaves)
     return nothing
+end
+
+# Narrow a container's frame to the leaves still present below it. A closure elsewhere in the
+# hierarchy leaves the frame as it is.
+function _drop_closed!(c::C, r::UnitRange{Int}, pool::SettingPool,
+                       leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
+    _all_present(pool, leaves, r, C) && return nothing
+
+    starts = Int32[]; prefix = Int32[]
+    total = 0
+    @inbounds for j in r
+        l = leaves[j]
+        (l.pool_length > 0 && _open_up_to(pool, l, C)) || continue
+        lo = Int(l.pool_offset)
+        # merge with the previous run when the leaves are adjacent in the pool
+        if isempty(starts) || Int(starts[end]) + (total - Int(prefix[end])) != lo
+            push!(starts, Int32(lo))
+            push!(prefix, Int32(total))
+        end
+        total += Int(l.pool_length)
+    end
+
+    # of a repeated member, the first copy still present is the one kept
+    runs = c.pool_runs
+    groups = runs === nothing ? Int32[] : runs.groups
+    bounds = runs === nothing ? Int32[] : runs.bounds
+    if runs !== nothing
+        skips = _repeat_skips(runs, starts, prefix, total)
+        isempty(skips) || ((starts, prefix, total) = _drop_skips(starts, prefix, total, skips))
+    end
+    c.pool_runs = MemberRuns(starts, prefix, groups, bounds)
+    c.pool_offset = isempty(starts) ? Int32(0) : starts[1]
+    c.pool_length = Int32(total)
+    return nothing
+end
+
+# Whether every leaf with members in the range is present in the frame of its ancestor of type `C`.
+function _all_present(pool::SettingPool, leaves::Vector{T}, r::UnitRange{Int},
+                      ::Type{C}) where {C<:ContainerSetting, T<:IndividualSetting}
+    @inbounds for j in r
+        l = leaves[j]
+        (l.pool_length == 0 || _open_up_to(pool, l, C)) || return false
+    end
+    return true
+end
+
+# Whether `s` and every container between it and its ancestor of type `C` are open. Climbs
+# through the pool's own levels, so a repack needs no settings container.
+@inline _open_up_to(::SettingPool, ::C, ::Type{C}) where {C<:ContainerSetting} = true
+function _open_up_to(pool::SettingPool, s::S, ::Type{C}) where {S<:Setting, C<:ContainerSetting}
+    is_open(s) || return false
+    P = contained_type(S)
+    lv = pool.container_groups[_container_depth(P)]::ContainerLevel{P}
+    return _open_up_to(pool, @inbounds(lv.containers[s.contained]), C)
 end
 
 ###

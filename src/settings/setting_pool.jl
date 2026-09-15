@@ -22,9 +22,9 @@ const MemberStorage = Union{Vector{Individual}, MemberSlice}
 """
     MemberRuns
 
-A container's frame when a member sits in two of its leaves at once. The frame skips the repeat
-positions instead of being one span, and `groups` records which positions those were, so a
-closure below can be answered from the same data.
+A container's frame when it is not one span: a member sits in two of its leaves at once, or
+something below it is closed. The frame skips those positions, and `groups` records where the
+repeats were, so a closure keeps the first copy still present.
 
 # Fields
 
@@ -181,7 +181,7 @@ a member sits in two of its leaves, which costs that container contiguity but no
 - `members::Vector{Individual}`: Every member of every leaf, plus block slack and any space
     stranded by a relocation. Only the spans a leaf or container names are meaningful.
 - `closed::Int`: How many settings in this hierarchy are currently closed. Zero is the
-    common case and lets a container hand over its range without any walk.
+    common case and lets a repack skip looking for leaves a closure removes.
 - `repeats::Int`: Memberships beyond an individual's first in this hierarchy. Only a repeated
     member can sit in one container's frame twice, so zero skips the duplicate scan.
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in

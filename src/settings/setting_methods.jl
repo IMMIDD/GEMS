@@ -544,7 +544,12 @@ Opens the setting.
 function open!(setting::Setting)
     setting.isopen && return nothing
     setting.isopen = true
-    _count_closed!(setting, -1)
+    pool = _pool(setting)
+    if pool !== nothing
+        _count_closed!(pool, -1)
+        # the containers above now hold different members, so their block is repacked
+        _mark_dirty!(pool, setting)
+    end
     return nothing
 end
 """
@@ -572,7 +577,12 @@ Closes the setting.
 function close!(setting::Setting)
     setting.isopen || return nothing
     setting.isopen = false
-    _count_closed!(setting, +1)
+    pool = _pool(setting)
+    if pool !== nothing
+        _count_closed!(pool, +1)
+        # the containers above now hold different members, so their block is repacked
+        _mark_dirty!(pool, setting)
+    end
     return nothing
 end
 
