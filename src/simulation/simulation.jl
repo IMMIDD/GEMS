@@ -235,6 +235,11 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # INFECTIOUS INDIVIDUALS
+    # who each thread's part of the disease-update sweep found infectious this tick; the
+    # transmission phase goes through exactly these
+    infectious_individuals::Vector{Vector{Individual}}
+
     # THREAD-LOCAL BUFFERS
     contact_buffers::Vector{Vector{Individual}}
     # one sampler call's draws, for scaled hosts that call a sampler more than once
@@ -314,6 +319,9 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             seed,
             rngs,
             
+            # INFECTIOUS INDIVIDUALS
+            [Vector{Individual}() for _ in 1:num_shards],
+
             # INITIALIZE BUFFERS
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
             [Vector{Individual}() for _ in 1:num_shards], # draw_buffers

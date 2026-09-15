@@ -1,5 +1,17 @@
-import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containers!, dead!,
+import GEMS: try_to_infect!, spread_infections!, update_individual!, get_containers!, dead!,
     push_infection!, push_immunity!, update_immunity!, _EndedInfection
+
+# a setting type GEMS does not ship, for the infectious-first loop's fallback lookup
+@with_kw mutable struct SpreadTestSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
+    isopen::Bool = true
+end
+# registered at once: every simulation built from here on looks at each IndividualSetting subtype
+GEMS.register_setting_type!(SpreadTestSetting)
 
 @testset "Infections" begin
     test_rng = Xoshiro()
@@ -627,6 +639,120 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             @test df.setting_id[1] == 10
             @test infected(host, pid)
             @test number_of_infections(host) == 1
+        end
+
+        @testset "Infectious-first loop" begin
+            # The loop reaches settings from each infectious individual's plan. A walk over every
+            # setting's present members must find exactly the same (individual, setting type,
+            # setting id, position, scale) combinations.
+            Visit = Tuple{Int32, UInt8, Int32, Int, Float32}
+
+            function setting_first(sim)
+                cntnr = GEMS.settingscontainer(sim)
+                plans = GEMS.activity_plans(sim)
+                t = tick(sim)
+                found = Visit[]
+                GEMS.foreach_setting_vector(cntnr) do stngs
+                    for s in stngs, (k, ind) in enumerate(GEMS.present_members(s, cntnr))
+                        (GEMS.infectious(ind) && GEMS.can_infect(ind, s, t)) || continue
+                        scale = GEMS._membership_scale(plans, ind, s, cntnr)
+                        scale > 0 && push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), k, scale))
+                    end
+                end
+                return sort!(found)
+            end
+
+            # what the loop visits, and how many visits name a position holding someone else
+            function individual_first(sim)
+                cntnr = GEMS.settingscontainer(sim)
+                t = tick(sim)
+                found = Visit[]
+                misplaced = Ref(0)
+                for ind in individuals(sim)
+                    GEMS.infectious(ind) || continue
+                    GEMS._foreach_spread_setting(ind, sim) do s, pos, scale
+                        (scale > 0 && GEMS.can_infect(ind, s, t)) || return
+                        GEMS.present_members(s, cntnr)[pos] === ind || (misplaced[] += 1)
+                        push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), pos, scale))
+                    end
+                end
+                return sort!(found), misplaced[]
+            end
+
+            function agrees(sim)
+                expected = setting_first(sim)
+                visited, misplaced = individual_first(sim)
+                @test !isempty(expected)
+                @test visited == expected
+                @test misplaced == 0
+            end
+
+            BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+            sim = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+                settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+                global_setting = true, infected_fraction = 0.0, seed = 1)
+            @test length(settings(sim, GlobalSetting)) == 1
+            foreach(i -> GEMS.infectious!(i, true), individuals(sim))
+            agrees(sim)
+
+            # repeated members: a second class in the same year, and one in another year of the same
+            # school, scaled; and one member removed
+            pop = population(sim)
+            cntnr = GEMS.settingscontainer(sim)
+            classes, years, schools = settings(sim, SchoolClass), settings(sim, SchoolYear), settings(sim, School)
+            join!(m, c) = any(x -> x === m, individuals(c)) || add_member!(c, m, pop; scale = 0.5)
+            for y in years[1:50]
+                length(y.contains) > 1 || continue
+                c1, c2 = classes[y.contains[1]], classes[y.contains[2]]
+                isempty(individuals(c1)) || join!(individuals(c1)[1], c2)
+            end
+            for s in schools[1:50]
+                length(s.contains) > 1 || continue
+                y1, y2 = years[s.contains[1]], years[s.contains[2]]
+                (isempty(y1.contains) || isempty(y2.contains)) && continue
+                c1, c2 = classes[y1.contains[1]], classes[y2.contains[1]]
+                isempty(individuals(c1)) || join!(individuals(c1)[end], c2)
+            end
+            leaver = first(c for c in classes if length(individuals(c)) > 2)
+            remove_member!(leaver, individuals(leaver)[2], pop)
+            GEMS.repack_dirty_pools!(cntnr)
+            @test pop.activity_plans isa ActivityPlanStore && cntnr.pools[SchoolClass].repeats > 0
+            agrees(sim)
+
+            # closures at every level, and entries that do not apply
+            rng = Xoshiro(3)
+            foreach(close!, randsubseq(rng, classes, 0.05))
+            foreach(close!, randsubseq(rng, years, 0.02))
+            close!(schools[2])
+            foreach(close!, randsubseq(rng, settings(sim, Office), 0.05))
+            GEMS.repack_dirty_pools!(cntnr)
+            plans = GEMS.activity_plans(sim)
+            for ind in individuals(sim), slot in GEMS.plan_slots(plans, ind)
+                rand(rng) < 0.02 && entry_active!(plans, ind, slot, false)
+            end
+            agrees(sim)
+
+            # a setting type GEMS does not ship is reached through the runtime lookup
+            df = DataFrame(id = Int32.(1:4), age = Int8.(fill(30, 4)), sex = Int8.(ones(4)),
+                           household = Int32[1, 1, 2, 2])
+            custom_pop = Population(df)
+            foreach(ind -> assign_settings!(custom_pop, ind, SpreadTestSetting => 1), individuals(custom_pop))
+            custom = Simulation(population = custom_pop, infected_fraction = 0.0)
+            @test length(settings(custom, SpreadTestSetting)) == 1
+            foreach(i -> GEMS.infectious!(i, true), individuals(custom))
+            agrees(custom)
+            @test count(v -> v[2] == GEMS.setting_type_index(SpreadTestSetting), first(individual_first(custom))) == 4
+
+            # the sweep collects exactly the individuals who are infectious
+            sim = Simulation(pop_size = 2000, seed = 5)
+            seen = 0
+            for _ in 1:15
+                step!(sim)
+                collected = sort(id.(reduce(vcat, sim.infectious_individuals)))
+                @test collected == sort(id.(filter(GEMS.infectious, individuals(sim))))
+                seen += length(collected)
+            end
+            @test seen > 0
         end
     end
 end

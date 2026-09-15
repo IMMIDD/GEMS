@@ -143,8 +143,7 @@ struct PlanTestSettingB <: IndividualSetting end
         entry_active!(store, i, Int(i.plan_offset), false)
         # an insert relocates the block, so the cleared flag has to travel with its entry
         plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
-        off = Int(i.plan_offset)
-        flags = [entry_active(store, off + k) for k in 0:(plan_length(i) - 1)]
+        flags = [entry_active(store, k) for k in plan_slots(store, i)]
         @test count(!, flags) == 1
         @test length(store.active) == length(store.entries)
     end

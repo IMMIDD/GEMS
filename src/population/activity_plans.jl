@@ -255,6 +255,16 @@ Returns every slot in `store.entries` holding an entry of type `T`, empty when t
     return s:(s + len - 1)
 end
 
+"""
+    plan_slots(store::ActivityPlanStore, individual::Individual)
+
+Returns every slot in `store.entries` holding one of the individual's entries, empty when there are none.
+"""
+@inline function plan_slots(::ActivityPlanStore, individual::Individual)
+    off = Int(individual.plan_offset)
+    return off:(off + plan_length(individual) - 1)
+end
+
 ###
 ### CONTAINER FRAME INDEX
 ###
@@ -731,8 +741,7 @@ function _set_entry_scale!(store::ActivityPlanStore, individual::Individual, ::T
 end
 
 function _refresh_plan_scaled!(store::ActivityPlanStore, individual::Individual)
-    off = Int(individual.plan_offset)
-    individual.plan_scaled = any(k -> _effective_scale(store, k) != 1, off:(off + plan_length(individual) - 1))
+    individual.plan_scaled = any(k -> _effective_scale(store, k) != 1, plan_slots(store, individual))
     return nothing
 end
 

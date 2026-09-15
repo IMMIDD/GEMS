@@ -289,9 +289,8 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
     end
 
     for ind in individuals(pop)
-        off = Int(ind.plan_offset)
         # an inactive entry has scale 0, so it counts as scaled
-        ind.plan_scaled == any(k -> _effective_scale(plans, k) != 1, off:(off + plan_length(ind) - 1)) ||
+        ind.plan_scaled == any(k -> _effective_scale(plans, k) != 1, plan_slots(plans, ind)) ||
             error("individual $(id(ind)) has plan_scaled = $(ind.plan_scaled), which its entries contradict")
     end
 

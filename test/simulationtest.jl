@@ -1350,7 +1350,7 @@ import GEMS: increment!, infected!
     @testset "Multipathogen run!" begin
         # both pathogens are seeded at 30% so that ~9% of individuals start with both
         # simultaneously (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow
-        # block in _process_infections!
+        # iteration in _spread_with!
         p1 = Pathogen(id=1, name="PathA")
         p2 = Pathogen(id=2, name="PathB")
         mc = MultiStartCondition([

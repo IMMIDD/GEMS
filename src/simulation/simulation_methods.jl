@@ -357,8 +357,11 @@ function step!(simulation::Simulation)
 
     # update disease state
     if !dormant
+        foreach(empty!, simulation.infectious_individuals)
         Threads.@threads :static for i in simulation |> population |> individuals
             update_individual!(i, tick(simulation), simulation)
+            # the transmission phase goes through exactly these
+            infectious(i) && push!(simulation.infectious_individuals[Threads.threadid()], i)
         end
         flush_ended_infections!(simulation)
     end
@@ -370,13 +373,7 @@ function step!(simulation::Simulation)
 
     # infect individuals in settings
     if !dormant
-        foreach_setting_vector(settingscontainer(simulation)) do stngs
-            Threads.@threads :static for stng in stngs
-                if isactive(stng)
-                    spread_infection!(stng, simulation)
-                end
-            end
-        end
+        spread_infections!(simulation)
 
         # push pending infections to InfectionRegistry
         flush_pending_infections!(simulation)
