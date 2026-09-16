@@ -754,4 +754,145 @@ GEMS.register_setting_type!(SpreadTestSetting)
             @test seen > 0
         end
     end
+
+    @testset "Joint transmission draw" begin
+        # the probability of an outcome when each pathogen transmits independently
+        indep(ps, mask) = prod(mask[i] ? ps[i] : 1 - ps[i] for i in eachindex(ps))
+        outcomes(N) = [ntuple(i -> (k >> (i - 1)) & 1 == 1, N) for k in 0:(2^N - 1)]
+        # whether every outcome's frequency over `n` draws is within 5 standard errors of `expected`
+        function matches(draw, expected, N, n)
+            counts = Dict(m => 0 for m in outcomes(N))
+            for _ in 1:n
+                counts[draw()] += 1
+            end
+            return all(outcomes(N)) do m
+                q = expected(m)
+                abs(counts[m] / n - q) <= 5 * sqrt(max(q * (1 - q), 0.0) / n) + 1 / n
+            end
+        end
+
+        rng = Xoshiro(42)
+        n = 200_000
+        # rounded up to Float32, as spreading does
+        roundup(x) = (t = Float32(x); t < x ? nextfloat(t) : t)
+        # probabilities, with bounds that are tight, loose, 0 or 1
+        cases = [((0.3, 0.3), (0.3, 0.3)), ((0.3, 0.3), (0.5, 0.4)), ((0.1, 0.6), (0.1, 0.6)),
+                 ((0.05, 0.9, 0.2), (0.1, 0.95, 0.5)), ((0.0, 0.4), (0.2, 0.4)), ((0.0, 0.0, 0.2), (0.0, 0.0, 0.2)),
+                 ((1e-6, 1e-6), (0.5, 0.5)), ((0.5, 0.5), (1.0, 0.5)), ((0.7,), (0.7,)), ((0.2,), (0.9,))]
+        for (ps, bounds) in cases
+            N = length(ps)
+            any_bound = 1 - prod(1 .- bounds)
+            nothing_ = ntuple(_ -> false, N)
+            # kept by thinning with at least the probability that any draw falls below its bound, the outcomes are the independent ones
+            for thin in (roundup(any_bound), roundup((any_bound + 1) / 2), 1.0f0)
+                thinned = () -> gems_rand(rng) < thin ? GEMS._draw_transmissions(ps, bounds, thin, rng) : nothing_
+                @test matches(thinned, m -> indep(ps, m), N, n)
+            end
+        end
+        @test @inferred(GEMS._draw_transmissions((0.1, 0.6), (0.2, 0.6), 0.68f0, rng)) isa NTuple{2, Bool}
+
+        # thinning by the largest bound and accepting each pathogen on its own inflates co-transmission
+        ps = (0.3, 0.3)
+        naive = () -> gems_rand(rng) < 0.3 ? ntuple(i -> gems_rand(rng) < ps[i] / 0.3, 2) : (false, false)
+        @test !matches(naive, m -> indep(ps, m), 2, n)
+    end
+
+    @testset "Transmission prethinning" begin
+        n = 4000
+        asymp = Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 7)
+        pathogen(pid, name, tf) = Pathogen(id = pid, name = name, progressions = [asymp], transmission_function = tf)
+        rate(r) = ConstantTransmissionRate(transmission_rate = r)
+
+        # the pathogens each second household member caught at home on the first infectious tick,
+        # with every first member infected with every pathogen
+        function caught(ps; prethinning, csm = RandomSampling(), host_scale = 1.0, ages = fill(30, n), setup! = sim -> nothing)
+            df = DataFrame(id = Int32.(1:2n), sex = Int8.(zeros(2n)), age = Int8.(vec(permutedims(hcat(fill(30, n), ages)))),
+                           household = Int32.(repeat(1:n, inner = 2)))
+            table = DataFrame(id = Int32.(1:2:2n), setting_type = fill("Household", n), setting_id = Int32.(1:n),
+                              scale = fill(host_scale, n))
+            pop = host_scale == 1 ? Population(df) : Population(df; memberships = table)
+            sim = Simulation(population = pop, pathogens = ps, infected_fraction = 0.0, household_contacts = csm,
+                seed = 42, transmission_prethinning = prethinning)
+            setup!(sim)
+            for k in 1:2:2n, p in GEMS.pathogens(sim)
+                infect!(individuals(sim)[k], tick(sim), p; sim = sim, rng = rng(sim))
+            end
+            GEMS.flush_pending_infections!(sim)
+            step!(sim)
+            step!(sim)
+            got = Dict{Int32, Set{Int8}}()
+            for r in eachrow(infections(sim))
+                iseven(r.id_b) && r.tick == 1 && r.setting_type == 'h' || continue
+                push!(get!(got, r.id_b, Set{Int8}()), r.pathogen_id)
+            end
+            return got
+        end
+        share(got, set) = count(==(set), values(got)) / n
+        A, B, AB = Set(Int8[1]), Set(Int8[2]), Set(Int8[1, 2])
+
+        # co-infection over one contact per tick: each pathogen transmits on its own
+        for on in (true, false), (a, b) in ((0.3, 0.3), (0.1, 0.6))
+            got = caught((pathogen(1, "A", rate(a)), pathogen(2, "B", rate(b))); prethinning = on)
+            @test isapprox(share(got, A), a * (1 - b); atol = 0.02)
+            @test isapprox(share(got, B), (1 - a) * b; atol = 0.02)
+            @test isapprox(share(got, AB), a * b; atol = 0.02)
+        end
+
+        # co-infection over Poisson(2) contacts, drawn by the sampler or by a host at scale 2
+        no_a, no_b, neither = exp(-0.6), exp(-0.6), exp(-2 * (1 - 0.7^2))
+        both = 1 - no_a - no_b + neither
+        for on in (true, false), (csm, scale) in ((ContactparameterSampling(2.0), 1.0), (ContactparameterSampling(1.0), 2.0))
+            got = caught((pathogen(1, "A", rate(0.3)), pathogen(2, "B", rate(0.3))); prethinning = on, csm = csm, host_scale = scale)
+            @test isapprox(share(got, A), 1 - no_a - both; atol = 0.02)
+            @test isapprox(share(got, B), 1 - no_b - both; atol = 0.02)
+            @test isapprox(share(got, AB), both; atol = 0.02)
+        end
+
+        # a loose bound: housemates of 10 and 60 are caught at 0.1 and 0.5, immune ones never
+        function immunize!(sim)
+            for h in 4:4:n
+                ind = individuals(sim)[2h]
+                push_immunity!(immunity_registry(sim, ind), ind, Int8(1), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+                ind.needs_immunity_update = true
+                update_immunity!(ind, immunity_registry(sim, ind), sim.pathogens, Int16(0), Xoshiro())
+            end
+        end
+        adtr = AgeDependentTransmissionRate(age_groups = ["0-19", "20-"], transmission_rates = [0.1, 0.5])
+        for on in (true, false)
+            got = caught((pathogen(1, "A", adtr),); prethinning = on, ages = repeat([10, 60], n ÷ 2), setup! = immunize!)
+            caught_share(hs) = count(h -> haskey(got, Int32(2h)), hs) / length(hs)
+            @test isapprox(caught_share(1:2:n), 0.1; atol = 0.03)
+            @test isapprox(caught_share(2:4:n), 0.5; atol = 0.05)
+            @test caught_share(4:4:n) == 0
+        end
+
+        # a modifier above 1: at its peak, seasonality raises 0.4 to 0.6
+        seasonal = SinusoidalSeasonalTransmissionRate(transmission_rate = 0.4, amplitude = 0.5, peak_day = 2)
+        for on in (true, false)
+            @test isapprox(length(caught((pathogen(1, "A", seasonal),); prethinning = on)) / n, 0.6; atol = 0.025)
+        end
+
+        # housemates carrying B cannot catch it again, and its interference cuts A from 0.5 to 0.2
+        interfered = CompositeTransmissionRate(rate(0.5), ViralInterferenceModifier(interferences = [("B", 0.4)]))
+        carry_b! = sim -> foreach(h -> infect!(individuals(sim)[2h], tick(sim), GEMS.pathogens(sim)[2]; sim = sim, rng = rng(sim)), 1:n)
+        for on in (true, false)
+            got = caught((pathogen(1, "A", interfered), pathogen(2, "B", rate(0.3))); prethinning = on, setup! = carry_b!)
+            @test isapprox(share(got, A), 0.2; atol = 0.02)
+            @test share(got, B) == 0 && share(got, AB) == 0
+        end
+
+        # a bound below the probability is an error, not a silent bias
+        struct UnderboundRate <: GEMS.TransmissionFunction end
+        GEMS.transmission_probability(::UnderboundRate, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+            setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.5
+        GEMS.transmission_bound(::UnderboundRate, pathogen_id::Int8, infecter::Individual, setting::Setting,
+            tick::Int16, sim::GEMS.Simulation) = 0.1
+        err = try
+            caught((pathogen(1, "A", UnderboundRate()),); prethinning = true)
+            nothing
+        catch e
+            e
+        end
+        @test err !== nothing && occursin("UnderboundRate", sprint(showerror, err))
+    end
 end

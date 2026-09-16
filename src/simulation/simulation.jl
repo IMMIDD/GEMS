@@ -235,6 +235,9 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # TRANSMISSION PRE-THINNING
+    prethinning::Bool
+
     # INFECTIOUS INDIVIDUALS
     # who each thread's part of the disease-update sweep found infectious this tick; the
     # transmission phase goes through exactly these
@@ -324,6 +327,9 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # RNG
             seed,
             rngs,
+
+            # TRANSMISSION PRE-THINNING
+            all(_prethinnable, pathogens),
             
             # INFECTIOUS INDIVIDUALS
             _thread_local_vector(Vector{Individual}),
@@ -436,6 +442,9 @@ function _BUILD_Simulation(;
         # setting pool
         pool_slack = nothing,
 
+        # transmission pre-thinning
+        transmission_prethinning = nothing,
+
         # individual extensions
         ind_extension = nothing
 )
@@ -540,6 +549,7 @@ function _BUILD_Simulation(;
 
     precompute_ags!(sim)
     build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
+    determine_transmission_prethinning(config, transmission_prethinning) || (sim.prethinning = false)
     _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
 
     # update label
@@ -1233,6 +1243,24 @@ function determine_pool_slack(configfile_params::Dict, pool_slack)
     !isa(ps, Real) && throw(ArgumentError("Provided pool slack must be a non-negative number."))
     ps < 0 && throw(ArgumentError("Provided pool slack must not be negative, got $ps."))
     return Float64(ps)
+end
+
+"""
+    determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+
+Determines whether spreading thins contacts by the pathogens' transmission bounds.
+If a `transmission_prethinning` flag is provided, it will be used.
+If not, it will look for `Simulation.transmission_prethinning` in the config file.
+If neither is found, it defaults to `true`.
+"""
+function determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+    tp = transmission_prethinning
+    if isnothing(tp)
+        _haspath(configfile_params, ["Simulation", "transmission_prethinning"]) || return true
+        tp = configfile_params["Simulation"]["transmission_prethinning"]
+    end
+    !isa(tp, Bool) && throw(ArgumentError("transmission_prethinning flag must be a boolean value!"))
+    return tp
 end
 
 

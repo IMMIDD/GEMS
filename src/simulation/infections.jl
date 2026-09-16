@@ -136,7 +136,6 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
   `flush_pending_infections!`, which logs the staged infections.
 
 """
-
 function infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen;
@@ -268,7 +267,6 @@ Returns `true` if infection was successful. Wrapper for optional keyword argumen
 - `Bool`: True if infection was successful, false otherwise
 
 """
-
 function try_to_infect!(infctr::Individual,
         infctd::Individual,
         sim::Simulation,
@@ -279,6 +277,95 @@ function try_to_infect!(infctr::Individual,
         type_rank::UInt8 = UInt8(0))::Bool
 
         try_to_infect!(infctr, infctd, sim, pathogen, setting, source_infection_id, infecter_position, type_rank)
+end
+
+# Tries to infect `infctd` with the pathogens `infctr` sheds, on a contact kept by pre-thinning with
+# `thin`. Each pathogen's probability is capped by its entry of `bounds`, which is 0 if it is not shed.
+function _try_to_infect_thinned!(infctr::Individual,
+        infctd::Individual,
+        sim::Simulation,
+        setting::Setting,
+        bounds::NTuple{N, Float64},
+        thin::Float32,
+        infecter_position::Int32,
+        type_rank::UInt8)::Bool where {N}
+
+    # if one of both is dead
+    if dead(infctr) || dead(infctd)
+        return false
+    end
+
+    # if one of both is hospitalized
+    if hospitalized(infctr) || hospitalized(infctd)
+        return false
+    end
+
+    # calculate infection probabilities
+    infection_probabilities = map((pathogen, bound) -> _thinned_infection_probability(infctr, infctd, sim, pathogen, setting, bound),
+        pathogens(sim), bounds)
+
+    # try to infect
+    transmits = _draw_transmissions(infection_probabilities, bounds, thin, rng(sim))
+    any(transmits) || return false
+    hh = settings(sim, Household)[household_id(infctd, activity_plans(sim))]::Household
+    for (pathogen, transmitted) in zip(pathogens(sim), transmits)
+        transmitted || continue
+        infect!(infctd,
+            tick(sim),
+            pathogen,
+            sim,
+            rng(sim),
+            id(infctr),
+            id(setting),
+            lon(hh),
+            lat(hh),
+            settingchar(setting),
+            ags(setting) |> id,
+            infection_id(infctr, sim, id(pathogen)),
+            infecter_position,
+            type_rank)
+    end
+    return true
+end
+
+# The probability that `infctr` infects `infctd` with `pathogen`, which must not exceed `bound`.
+# 0 if `pathogen` is not shed or `infctd` already has it.
+function _thinned_infection_probability(infctr::Individual, infctd::Individual, sim::Simulation,
+        pathogen::Pathogen, setting::Setting, bound::Float64)::Float64
+    (bound == 0 || infected(infctd, id(pathogen))) && return 0.0
+
+    infection_probability = min(1.0, effective_transmission_probability(
+        pathogen |> transmission_function,
+        pathogen |> id,
+        infctr, infctd,
+        setting, sim |> tick,
+        sim,
+        rng(sim)
+    ))
+    infection_probability > bound * (1 + 1e-9) &&
+        error("the transmission bound of $(typeof(transmission_function(pathogen))) is $bound, below its probability $infection_probability")
+    return infection_probability
+end
+
+# Draws which pathogens transmit on a contact kept with `thin`, so that each transmits independently
+# with its probability. The first pathogen whose draw falls below its bound transmits with its
+# probability over that bound, the ones after it with their probability, and the ones before it not.
+function _draw_transmissions(probabilities::NTuple{N, Float64}, bounds::NTuple{N, Float64}, thin::Float32,
+        rng::Xoshiro)::NTuple{N, Bool} where {N}
+    # pick the first pathogen, or none for the part of `thin` above the bounds
+    first = 0
+    r = gems_rand(rng) * thin
+    none_before = 1.0
+    for i in 1:N
+        w = none_before * bounds[i]
+        if r < w
+            first = i
+            break
+        end
+        r -= w
+        none_before *= 1.0 - bounds[i]
+    end
+    return ntuple(i -> first > 0 && i >= first && gems_rand(rng) < probabilities[i] / (i == first ? bounds[i] : 1.0), Val(N))
 end
 
 
@@ -479,19 +566,39 @@ function _spread_with!(csm, setting, pos::Int, s_host::Float32, ind::Individual,
     cntnr = settingscontainer(sim)
     c_buffer = sim.contact_buffers[Threads.threadid()]
     current_tick = tick(sim)
+    bounds, thin = _transmission_bounds(ind, setting, current_tick, sim)
+    # no shedding pathogen can infect anyone here
+    thin == 0 && return nothing
     sample_scaled_contacts!(c_buffer, sim.draw_buffers[Threads.threadid()], csm, setting, pos,
         present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
-        s_host, _scale_bound(setting))
+        s_host, _scale_bound(setting); thin = thin)
 
-    # spread each active, shedding pathogen (cache then overflow); the iterator
-    # only resolves the shard registry if the individual has overflow infections
     type_rank = setting_type_index(typeof(setting))
-    for state in each_infection(ind, sim)
-        state.infectiousness == 0 && continue
-        _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting,
-            state.infection_id, current_tick, Int32(pos), type_rank)
+    if thin < 1
+        _spread_to_contacts_thinned!(ind, c_buffer, sim, setting, bounds, thin, current_tick, Int32(pos), type_rank)
+    else
+        # spread each active, shedding pathogen (cache then overflow); the iterator
+        # only resolves the shard registry if the individual has overflow infections
+        for state in each_infection(ind, sim)
+            state.infectiousness == 0 && continue
+            _spread_to_contacts!(get_pathogen(sim, state.pathogen_id), ind, c_buffer, sim, setting,
+                state.infection_id, current_tick, Int32(pos), type_rank)
+        end
     end
     return nothing
+end
+
+# Each pathogen's bound on transmitting from `ind` to anyone in `setting`, 0 if it is not shed, and
+# the share of contacts to keep, 1 without pre-thinning.
+@inline function _transmission_bounds(ind::Individual, setting::Setting, t::Int16, sim::Simulation)
+    ps = pathogens(sim)
+    sim.prethinning || return map(_ -> 1.0, ps), 1.0f0
+    bounds = map(p -> infectiousness(ind, sim, id(p)) == 0 ? 0.0 :
+        effective_transmission_bound(transmission_function(p), id(p), ind, setting, t, sim), ps)
+    any_bound = 1.0 - prod(b -> 1.0 - b, bounds)
+    # rounded up, so no contact is thinned harder than its acceptance makes up for
+    thin = Float32(any_bound)
+    return bounds, thin < any_bound ? nextfloat(thin) : thin
 end
 
 function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick::Int16,
@@ -499,6 +606,15 @@ function _spread_to_contacts!(pat, ind, c_buffer, sim, setting, src_inf_id, tick
     for c in c_buffer
         if can_be_contacted(c, setting, tick)
             try_to_infect!(ind, c, sim, pat, setting, src_inf_id, infecter_position, type_rank)
+        end
+    end
+end
+
+function _spread_to_contacts_thinned!(ind, c_buffer, sim, setting, bounds, thin::Float32, tick::Int16,
+        infecter_position::Int32, type_rank::UInt8)
+    for c in c_buffer
+        if can_be_contacted(c, setting, tick)
+            _try_to_infect_thinned!(ind, c, sim, setting, bounds, thin, infecter_position, type_rank)
         end
     end
 end
