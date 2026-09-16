@@ -243,6 +243,8 @@ function apply_test!(ind::Individual, testtype::TestType, sim::Simulation, repor
 
     # record test result
     record_test!(ind, test_registry(sim, ind), testtype.pathogen_id, sim |> tick, test_pos, reportable)
+    # a positive can set detection on an uninfected individual
+    test_pos && _mark_active!(sim, ind)
  
     # log test in sim object
     log!(

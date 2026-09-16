@@ -39,21 +39,28 @@ function log_stepinfo(simulation::Simulation)
     wo_unab_cnt = zeros(Int, Threads.maxthreadid())
     exp_cnt = zeros(Int, Threads.maxthreadid())
     inf_cnt = zeros(Int, Threads.maxthreadid())
-    dead_cnt = zeros(Int, Threads.maxthreadid())
     det_cnt = zeros(Int, Threads.maxthreadid())
 
     inds = simulation |> individuals
     plans = activity_plans(simulation)
+    active = simulation.active_individuals
+    quarantined = simulation.quarantined_individuals
+    s_classes = schoolclasses(simulation)
+    offs = offices(simulation)
     chunk_size = max(1, length(inds) ÷ Threads.nthreads())
     
-    Threads.@threads :static for chunk in collect(Iterators.partition(inds, chunk_size))
+    # only flagged individuals can be quarantined, exposed, infectious, detected or unable to attend
+    Threads.@threads :static for chunk in collect(Iterators.partition(eachindex(inds), chunk_size))
         tid = Threads.threadid()
         
         loc_tot_quar = 0; loc_st_quar = 0; loc_st_isol = 0; 
         loc_wo_quar = 0; loc_wo_isol = 0; loc_exp = 0; 
-        loc_inf = 0; loc_dead = 0; loc_det = 0
+        loc_inf = 0; loc_det = 0; loc_st_unab = 0; loc_wo_unab = 0
 
-        for i in chunk
+        for k in chunk
+            @inbounds (active[k] || quarantined[k]) || continue
+            i = @inbounds inds[k]
+
             if isquarantined(i)
                 loc_tot_quar += 1
                 if is_student(i, plans)
@@ -72,8 +79,13 @@ function log_stepinfo(simulation::Simulation)
 
             loc_exp += is_exposed(i) ? 1 : 0
             loc_inf += is_infectious(i) ? 1 : 0
-            loc_dead += is_dead(i) ? 1 : 0
             loc_det += is_detected(i) ? 1 : 0
+
+            # members of closed settings are counted below, by setting size
+            if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                loc_st_unab += _open_memberships(plans, i, s_classes)
+                loc_wo_unab += _open_memberships(plans, i, offs)
+            end
         end
 
         @inbounds begin
@@ -84,51 +96,17 @@ function log_stepinfo(simulation::Simulation)
             wo_isol_cnt[tid] += loc_wo_isol
             exp_cnt[tid] += loc_exp
             inf_cnt[tid] += loc_inf
-            dead_cnt[tid] += loc_dead
             det_cnt[tid] += loc_det
+            st_unab_cnt[tid] += loc_st_unab
+            wo_unab_cnt[tid] += loc_wo_unab
         end
     end
 
-    s_classes = schoolclasses(simulation)
-    chunk_size_sc = max(1, length(s_classes) ÷ Threads.nthreads())
-    
-    Threads.@threads :static for chunk in collect(Iterators.partition(s_classes, chunk_size_sc))
-        tid = Threads.threadid()
-        loc_st_unab = 0
-        
-        for s in chunk
-            if !is_open(s)
-                loc_st_unab += size(s)
-            else
-                for i in individuals(s)
-                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
-                        loc_st_unab += 1
-                    end
-                end
-            end
-        end
-        @inbounds st_unab_cnt[tid] += loc_st_unab
+    for s in s_classes
+        is_open(s) || (st_unab_cnt[1] += size(s))
     end
-
-    offs = offices(simulation)
-    chunk_size_off = max(1, length(offs) ÷ Threads.nthreads())
-    
-    Threads.@threads :static for chunk in collect(Iterators.partition(offs, chunk_size_off))
-        tid = Threads.threadid()
-        loc_wo_unab = 0
-        
-        for o in chunk
-            if !is_open(o)
-                loc_wo_unab += size(o)
-            else
-                for i in individuals(o)
-                    if is_severe(i) || is_hospitalized(i) || isquarantined(i)
-                        loc_wo_unab += 1
-                    end
-                end
-            end
-        end
-        @inbounds wo_unab_cnt[tid] += loc_wo_unab
+    for o in offs
+        is_open(o) || (wo_unab_cnt[1] += size(o))
     end
 
     log!(
@@ -143,7 +121,7 @@ function log_stepinfo(simulation::Simulation)
         tick = simulation |> tick,
         exposed = sum(exp_cnt),
         infectious = sum(inf_cnt),
-        dead = sum(dead_cnt),
+        dead = length(deathlogger(simulation)),
         detected = sum(det_cnt),
         quarantined = sum(tot_quar_cnt),
         quarantined_students = sum(st_quar_cnt),
@@ -188,6 +166,19 @@ function copy_last_log_state(simulation::Simulation)
          isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
          quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
          unable_to_attend_workers=last_unab_wo)             
+end
+
+"""
+    _open_memberships(plans::ActivityPlanStore, indiv::Individual, stngs::Vector{T}) where {T<:Setting}
+
+Counts the settings of type `T` in `indiv`'s activity plan that are open.
+"""
+@inline function _open_memberships(plans::ActivityPlanStore, indiv::Individual, stngs::Vector{T}) where {T<:Setting}
+    n = 0
+    for slot in plan_slots(plans, indiv, T)
+        @inbounds is_open(stngs[setting_id(plans.entries[slot])]) && (n += 1)
+    end
+    return n
 end
 
 """
@@ -357,12 +348,7 @@ function step!(simulation::Simulation)
 
     # update disease state
     if !dormant
-        foreach(empty!, simulation.infectious_individuals)
-        Threads.@threads :static for i in simulation |> population |> individuals
-            update_individual!(i, tick(simulation), simulation)
-            # the transmission phase goes through exactly these
-            infectious(i) && push!(simulation.infectious_individuals[Threads.threadid()], i)
-        end
+        update_individuals!(simulation)
         flush_ended_infections!(simulation)
     end
 
@@ -373,11 +359,7 @@ function step!(simulation::Simulation)
 
     # infect individuals in settings
     if !dormant
-        Threads.@threads :static for _ in 1:Threads.nthreads()
-            for i in simulation.infectious_individuals[Threads.threadid()]
-                spread_infections!(i, simulation)
-            end
-        end
+        spread_infections!(simulation)
 
         # push pending infections to InfectionRegistry
         flush_pending_infections!(simulation)
@@ -394,9 +376,7 @@ function step!(simulation::Simulation)
 
     # update quarantine state
     if !dormant
-        Threads.@threads :static for i in simulation |> population |> individuals
-            quarantined!(i, is_quarantined(i, tick(simulation)))
-        end
+        update_quarantines!(simulation)
     end
 
     if !dormant
@@ -571,6 +551,7 @@ function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfecti
     compute_health!(ind, infections, health_progression(sim), sim.health_profiles, state, tick(sim),
         sim.rngs[shard_id], sim.health_schedules[shard_id])
     _mark_infected!(ind, p.pathogen_id)
+    _mark_active!(sim, ind)
     return nothing
 end
 
@@ -598,6 +579,7 @@ function flush_ended_infections!(sim::Simulation)
                 ind = get_individual_by_id(pop, r.host_id)
                 push_immunity!(immunities, ind, r.pathogen_id, IMMUNITY_SOURCE_NATURAL, r.recovery, DEFAULT_VACCINE_ID)
                 ind.needs_immunity_update = true
+                _mark_active!(sim, ind)
                 # refresh now: this runs before the spread phase, so the level must be current
                 update_immunity!(ind, immunities, sim.pathogens, tick(sim), sim.rngs[shard_id])
             end
@@ -673,8 +655,10 @@ function drain_health_schedule!(sim::Simulation)
                 (tr.is_admission && tr.level === level) || continue
                 indiv = get_individual_by_id(pop, tr.host_id)
                 (Int16(0) <= indiv.death <= t) && continue
-                _apply_transition!(indiv, hl, tr, bucket_tick) &&
-                    level === CARE_HOSPITAL && push!(sched.admitted, tr.host_id)
+                _apply_transition!(indiv, hl, tr, bucket_tick) || continue
+                # an admission can come after the infection ended
+                _mark_active!(sim, indiv)
+                level === CARE_HOSPITAL && push!(sched.admitted, tr.host_id)
             end
             for level in reverse(instances(CareLevel)), tr in bucket
                 (!tr.is_admission && tr.level === level) || continue
@@ -727,6 +711,36 @@ negative.
 end
 
 """
+    _mark_active!(sim::Simulation, indiv::Individual)
+
+Flags `indiv` for the disease-update loop and state log. No-op if it is not part of the population.
+"""
+@inline function _mark_active!(sim::Simulation, indiv::Individual)
+    k = _individual_index(population(sim), id(indiv))
+    k > 0 && (@inbounds sim.active_individuals[k] = true)
+    return nothing
+end
+
+"""
+    _mark_quarantined!(sim::Simulation, indiv::Individual)
+
+Flags `indiv` for the quarantine update and state log. No-op if it is not part of the population.
+"""
+@inline function _mark_quarantined!(sim::Simulation, indiv::Individual)
+    k = _individual_index(population(sim), id(indiv))
+    k > 0 && (@inbounds sim.quarantined_individuals[k] = true)
+    return nothing
+end
+
+"""
+    _stays_active(indiv::Individual)
+
+Whether `indiv` must keep its active flag after this tick's disease update.
+"""
+@inline _stays_active(indiv::Individual) = infected(indiv) || indiv.needs_immunity_update ||
+    (Int16(0) <= indiv.death && !dead(indiv)) || hospitalized(indiv) || detected(indiv)
+
+"""
     update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
 Update the individual disease progression, handle its recovery and log its possible death.
@@ -759,6 +773,45 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
             trigger(st, indiv, sim, staged = true)
         end
     end
+end
+
+"""
+    update_individuals!(sim::Simulation)
+
+Updates every active individual and collects the infectious ones per thread for the transmission phase.
+"""
+function update_individuals!(sim::Simulation)
+    t = tick(sim)
+    inds = individuals(population(sim))
+    active = sim.active_individuals
+    foreach(empty!, sim.infectious_individuals)
+    Threads.@threads :static for k in eachindex(inds)
+        @inbounds active[k] || continue
+        i = @inbounds inds[k]
+        update_individual!(i, t, sim)
+        # the transmission phase goes through exactly these
+        infectious(i) && push!(sim.infectious_individuals[Threads.threadid()], i)
+        @inbounds active[k] = _stays_active(i)
+    end
+    return nothing
+end
+
+"""
+    update_quarantines!(sim::Simulation)
+
+Sets the quarantine status of every individual with a quarantine that has not ended yet.
+"""
+function update_quarantines!(sim::Simulation)
+    t = tick(sim)
+    inds = individuals(population(sim))
+    quarantined = sim.quarantined_individuals
+    Threads.@threads :static for k in eachindex(inds)
+        @inbounds quarantined[k] || continue
+        i = @inbounds inds[k]
+        quarantined!(i, is_quarantined(i, t))
+        @inbounds quarantined[k] = t < quarantine_release_tick(i)
+    end
+    return nothing
 end
 
 

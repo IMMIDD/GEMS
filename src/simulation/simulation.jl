@@ -240,6 +240,12 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     # transmission phase goes through exactly these
     infectious_individuals::Vector{Vector{Individual}}
 
+    # PER-INDIVIDUAL FLAGS
+    # who the disease-update loop and state log must visit
+    active_individuals::Vector{Bool}
+    # who has a quarantine that has not ended yet
+    quarantined_individuals::Vector{Bool}
+
     # THREAD-LOCAL BUFFERS
     contact_buffers::Vector{Vector{Individual}}
     # one sampler call's draws, for scaled hosts that call a sampler more than once
@@ -321,6 +327,10 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             
             # INFECTIOUS INDIVIDUALS
             [Vector{Individual}() for _ in 1:num_shards],
+
+            # PER-INDIVIDUAL FLAGS
+            zeros(Bool, length(population.individuals)),
+            zeros(Bool, length(population.individuals)),
 
             # INITIALIZE BUFFERS
             [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
@@ -2301,6 +2311,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     for ind in individuals(simulation)
         reset!(ind, infection_registry(simulation, id(ind)), immunity_registry(simulation, id(ind)))
     end
+    fill!(simulation.active_individuals, false)
+    fill!(simulation.quarantined_individuals, false)
     reset_tick!(simulation)
 
     # Reset all loggers

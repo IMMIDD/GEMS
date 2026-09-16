@@ -664,6 +664,16 @@ function get_individual_by_id(population::Population, ind::Int32)
     return nothing
 end
 
+"""
+    _individual_index(population::Population, id::Int32)
+
+Returns the position of the individual with `id` in `individuals(population)`, or `0` if there is none.
+"""
+@inline function _individual_index(population::Population, id::Int32)::Int
+    idx = id - population.minid + 1
+    return 1 <= idx <= length(population.id_map) ? Int(@inbounds population.id_map[idx]) : 0
+end
+
 ###
 ### PRINTING
 ###
