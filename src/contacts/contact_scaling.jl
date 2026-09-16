@@ -8,10 +8,11 @@
 # Samples the host's contacts in `setting` into `contacts`, drawing into `draws` when the sampler
 # has to be called more than once. Draws nothing extra while every scale involved is 1.
 # `oversample` only acts without replacement, see `_sample_unique_scaled!`.
+# `thin` keeps each contact with that probability on top of its scales.
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
-        s_host::Float32, bound::Float32; oversample::Float32 = 1.0f0)
+        s_host::Float32, bound::Float32; oversample::Float32 = 1.0f0, thin::Float32 = 1.0f0)
     r = s_host * bound
     empty!(contacts)
     # a lone member could only meet itself
@@ -22,13 +23,13 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         sample_contacts!(contacts, csm, setting, idx, present, tick, replace, rng)
         kept = 0
         for c in contacts
-            _keep_contact(c, r, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
+            _keep_contact(c, r, thin, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
         end
         return resize!(contacts, kept)
     end
 
     replace ||
-        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, bound)
+        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, bound, thin)
 
     calls = floor(Int, r)
     frac = r - calls
@@ -39,7 +40,7 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         empty!(draws)
         sample_contacts!(draws, csm, setting, idx, present, tick, true, rng)
         for c in draws
-            _keep_contact(c, f, bound, plans, setting, cntnr, rng) && push!(contacts, c)
+            _keep_contact(c, f, thin, bound, plans, setting, cntnr, rng) && push!(contacts, c)
         end
     end
     return contacts
@@ -53,7 +54,7 @@ end
 function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
-        r::Float32, oversample::Float32, bound::Float32)
+        r::Float32, oversample::Float32, bound::Float32, thin::Float32)
     total = r * oversample
     calls = floor(Int, total)
     frac = total - calls
@@ -89,7 +90,7 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
             w += frac * unit
             j += 1
         end
-        _keep_contact(c, w, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
+        _keep_unique_contact(c, w, thin, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
         i += 1
     end
     resize!(contacts, kept)
@@ -97,15 +98,33 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
         draws[unmatched += 1] = draws[k]
     end
     for k in 1:unmatched
-        _keep_contact(draws[k], frac * unit, bound, plans, setting, cntnr, rng) && push!(contacts, draws[k])
+        _keep_unique_contact(draws[k], frac * unit, thin, bound, plans, setting, cntnr, rng) && push!(contacts, draws[k])
     end
     return contacts
 end
 
-@inline function _keep_contact(c::Individual, f::Float32, bound::Float32, plans::ActivityPlanStore,
-        setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
-    p = f * _membership_scale(plans, c, setting, cntnr) / bound
+# Keeps a drawn contact with `f * thin` times its scale over `bound`. A contact's scale is at most
+# `bound`, so a draw above `f * thin` rejects it without reading the contact.
+@inline function _keep_contact(c::Individual, f::Float32, thin::Float32, bound::Float32,
+        plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
+    ft = f * thin
+    # headroom for rounding in the scale over the bound
+    reach = ft * 1.000001f0
+    if reach < 1
+        x = gems_rand(rng)
+        x < reach || return false
+        return x < ft * _membership_scale(plans, c, setting, cntnr) / bound
+    end
+    p = ft * _membership_scale(plans, c, setting, cntnr) / bound
     return p >= 1 || gems_rand(rng) < p
+end
+
+# Keeps a contact drawn without replacement with `thin` times its capped keep probability.
+@inline function _keep_unique_contact(c::Individual, w::Float32, thin::Float32, bound::Float32,
+        plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
+    p = w * _membership_scale(plans, c, setting, cntnr) / bound
+    p >= 1 && return (thin >= 1 || gems_rand(rng) < thin)
+    return gems_rand(rng) < p * thin
 end
 
 ###

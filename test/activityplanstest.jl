@@ -8,6 +8,12 @@ import GEMS: PlanEntry, ActivityPlanStore, plan_slot, plan_add!, plan_remove!, p
 struct PlanTestSettingA <: IndividualSetting end
 struct PlanTestSettingB <: IndividualSetting end
 
+# a setting that counts how often a member's scale is read
+struct ScaleReadSetting <: IndividualSetting end
+register_setting_type!(ScaleReadSetting)
+const SCALE_READS = Ref(0)
+GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::GEMS.SettingsContainer) = (SCALE_READS[] += 1; 1.0f0)
+
 @testset "Activity Plans" begin
 
     @testset "PlanEntry" begin
@@ -958,6 +964,118 @@ struct PlanTestSettingB <: IndividualSetting end
         r3 = Xoshiro(5); r3_before = copy(r3)
         @test isempty(sampled(hh3, p3, r3, 1, 1))
         @test r3 == r3_before
+    end
+
+    @testset "Thinned contact sampling" begin
+        # two scaled classes in one year, with members 5 and 6 in both and member 3 at scale 0
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [SchoolClass, SchoolYear])
+        inds = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:10]
+        cs = [SchoolClass(id = Int32(1), individuals = inds[1:6], contained = Int32(1)),
+              SchoolClass(id = Int32(2), individuals = inds[5:10], contained = Int32(1))]
+        yr = SchoolYear(id = Int32(1), contains = Int32[1, 2])
+        for s in vcat(cs, [yr]); GEMS.add!(cntnr, s); end
+        GEMS.build_pools!(cntnr)
+        pop = Population(inds)
+        for (k, c) in enumerate(cs), m in individuals(c)
+            assign_settings!(pop, m, SchoolClass => k; scale = id(m) == 3 ? 0.0 : 0.25 * id(m))
+        end
+        assign_member_indices!(pop, cntnr)
+        plans = activity_plans(pop)
+
+        # with thin = 1 both keeps decide and draw exactly as the unthinned keep
+        function unthinned_keep(c, f, bound, s, rng)
+            p = f * GEMS._membership_scale(plans, c, s, cntnr) / bound
+            return p >= 1 || gems_rand(rng) < p
+        end
+        r1 = Xoshiro(3); r2 = copy(r1)
+        same = true
+        for s in (cs[1], cs[2], yr), c in GEMS.present_members(s, cntnr), _ in 1:20
+            sc = GEMS._membership_scale(plans, c, s, cntnr)
+            # the setting's bound, and a bound equal to the contact's own scale
+            for bound in unique((GEMS._scale_bound(s), sc))
+                bound > 0 || continue
+                for f in Float32[0, 1f-3, 0.3, 0.5, prevfloat(1.0f0), 1, 1.7]
+                    same &= GEMS._keep_contact(c, f, 1.0f0, bound, plans, s, cntnr, r1) == unthinned_keep(c, f, bound, s, r2)
+                end
+                for w in Float32[0.2, 1, 1.5, 3]
+                    same &= GEMS._keep_unique_contact(c, w, 1.0f0, bound, plans, s, cntnr, r1) == unthinned_keep(c, w, bound, s, r2)
+                end
+            end
+        end
+        @test same
+        @test r1 == r2
+
+        # a contact's scale is read only for the draws thinning keeps
+        SCALE_READS[] = 0
+        rr = Xoshiro(5)
+        kept = count(_ -> GEMS._keep_contact(inds[1], 1.0f0, 0.1f0, 1.0f0, plans, ScaleReadSetting(), cntnr, rr), 1:10_000)
+        @test SCALE_READS[] == kept
+        @test isapprox(kept / 10_000, 0.1; atol = 0.015)
+
+        plain = ActivityPlanStore()
+        scaled = ActivityPlanStore()
+        empty_cntnr = SettingsContainer()
+        draws = Individual[]
+        rng = Xoshiro(11)
+        sampled(s, p, s_host, bound, thin; replace = true, store = plain) = GEMS.sample_scaled_contacts!(Individual[], draws,
+            contact_sampling_method(s), s, 1, p, Int16(1), replace, rng, store, empty_cntnr, Float32(s_host), Float32(bound);
+            thin = Float32(thin))
+
+        # contacts thin by `thin` whether the host draws once, several times, or against a raised bound
+        hh = Household(id = Int32(1), contact_sampling_method = ContactparameterSampling(20.0),
+                       individuals = [Individual(id = Int32(20 + j), age = 30, sex = 1) for j in 1:10])
+        present = GEMS.present_members(hh, empty_cntnr)
+        n = 4000
+        mean_contacts(args...) = sum(_ -> length(sampled(args...)), 1:n) / n
+        @test isapprox(mean_contacts(hh, present, 0.5, 1, 0.3), 3.0; atol = 0.15)
+        @test isapprox(mean_contacts(hh, present, 2.5, 1, 0.3), 15.0; atol = 0.4)
+        @test isapprox(mean_contacts(hh, present, 1, 2.5, 0.3), 6.0; atol = 0.25)
+
+        # thinning acts per draw: five single draws give Binomial(5, 0.2), not one thinned call
+        hh_r = Household(id = Int32(2), contact_sampling_method = RandomSampling(),
+                         individuals = [Individual(id = Int32(40 + j), age = 30, sex = 1) for j in 1:10])
+        p_r = GEMS.present_members(hh_r, empty_cntnr)
+        counts = [length(sampled(hh_r, p_r, 5, 1, 0.2)) for _ in 1:20_000]
+        @test isapprox(mean(counts), 1.0; atol = 0.03)
+        @test isapprox(var(counts), 0.8; atol = 0.05)
+        @test isapprox(count(==(0), counts) / length(counts), 0.8^5; atol = 0.015)
+
+        # without replacement, uncapped: the meeting rate thins by `thin`
+        n = 20_000
+        hh4 = Household(id = Int32(4), contact_sampling_method = ContactparameterSampling(3.0),
+                        individuals = [Individual(id = Int32(60 + j), age = 30, sex = 1) for j in 1:10])
+        p4 = GEMS.present_members(hh4, empty_cntnr)
+        plan_add!(scaled, p4[2], PlanEntry(Household, Int32(4), Int32(2), 0.5))
+        hits = count(_ -> p4[2] in sampled(hh4, p4, 1.5, 1.5, 0.4; replace = false, store = scaled), 1:n)
+        @test isapprox(hits / n, 0.4 * 0.75 * 3 / 9; atol = 0.012)
+
+        # capped: four calls draw it m ~ Binomial(4, 1/3) times at 0.6 each, capped at 1, then thinned
+        hh5 = Household(id = Int32(5), contact_sampling_method = RandomSampling(),
+                        individuals = [Individual(id = Int32(80 + j), age = 30, sex = 1) for j in 1:4])
+        p5 = GEMS.present_members(hh5, empty_cntnr)
+        plan_add!(scaled, p5[2], PlanEntry(Household, Int32(5), Int32(2), 1.2))
+        meets = count(_ -> p5[2] in sampled(hh5, p5, 2, 2, 0.5; replace = false, store = scaled), 1:n)
+        @test isapprox(meets / n, 0.5 * (0.6 * 32 + 33) / 81; atol = 0.02)
+
+        # every scale a host spreads with stays within its setting's bound, with random scales and inactive entries
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+        sim = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+            settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+            global_setting = true, infected_fraction = 0.0, seed = 1)
+        mplans = activity_plans(sim)
+        srng = Xoshiro(17)
+        for ind in individuals(sim)[1:3:end], k in plan_slots(mplans, ind)
+            e = mplans.entries[k]
+            set_scale!(sim, ind, setting_type_from_index(setting_type_of(e)), GEMS.setting_id(e), 3 * rand(srng))
+            rand(srng) < 0.1 && entry_active!(mplans, ind, k, false)
+        end
+        GEMS.repack_dirty_pools!(GEMS.settingscontainer(sim))
+        within = true
+        for ind in individuals(sim)
+            GEMS._foreach_spread_setting((s, pos, sc) -> (within &= sc <= GEMS._scale_bound(s)), ind, sim)
+        end
+        @test within
     end
 
     @testset "Contact survey of one-person settings" begin
