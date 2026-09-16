@@ -95,3 +95,11 @@ end
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+"""
+    transmission_bound(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Returns the largest age group transmission rate.
+"""
+transmission_bound(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+    maximum(transFunc.age_transmission_rates)
