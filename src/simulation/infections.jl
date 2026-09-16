@@ -365,7 +365,8 @@ function _draw_transmissions(probabilities::NTuple{N, Float64}, bounds::NTuple{N
         r -= w
         none_before *= 1.0 - bounds[i]
     end
-    return ntuple(i -> first > 0 && i >= first && gems_rand(rng) < probabilities[i] / (i == first ? bounds[i] : 1.0), Val(N))
+    picked = first
+    return ntuple(i -> picked > 0 && i >= picked && gems_rand(rng) < probabilities[i] / (i == picked ? bounds[i] : 1.0), Val(N))
 end
 
 
