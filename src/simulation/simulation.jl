@@ -311,10 +311,10 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             rngs,
             
             # INITIALIZE BUFFERS
-            [Vector{Individual}() for _ in 1:num_shards], # present_buffers
-            [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
-            [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
-            [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
+            _thread_local_vector(Vector{Individual}), # present_buffers
+            _thread_local_vector(Vector{Individual}), # contact_buffers
+            _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
+            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)) # removal buffers matrix
         )
 
         # increase simulation counter
@@ -411,115 +411,154 @@ function _BUILD_Simulation(;
 
         # individual extensions
         ind_extension = nothing
+)
+
+    # parse the config file (or default to default.toml)
+    configpath = configfile_path(configfile)
+    config = load_configfile(configpath)
+
+    # SEED
+    rng_seed = determine_seed(config, seed)
+    master_rng = Xoshiro(rng_seed)
+    rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+
+    # GLOBAL SETTING FLAG
+    gs = determine_global_setting(config, global_setting)
+
+    # POPULATION
+    pop, settings = determine_population_and_settings(
+        config,
+        population,
+        gs,
+        pop_size,
+        avg_household_size,
+        avg_office_size,
+        avg_school_size,
+        settingsfile,
+        rngs[1],
+        ind_extension
     )
 
-        # parse the config file (or default to default.toml)
-        configpath = configfile_path(configfile)
-        config = load_configfile(configpath)
+    # everything after this is just generating, not loading from disk
+    _printinfo("\u2514 Creating simulation object")
 
-        # SEED
-        rng_seed = determine_seed(config, seed)
-        master_rng = Xoshiro(rng_seed)
-        rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+    # START DATE
+    sd = determine_start_date(config, start_date)
 
-        # GLOBAL SETTING FLAG
-        gs = determine_global_setting(config, global_setting)
+    # END DATE
+    ed = determine_end_date(config, end_date)
 
-        # POPULATION
-        pop, settings = determine_population_and_settings(
-            config,
-            population,
-            gs,
-            pop_size,
-            avg_household_size,
-            avg_office_size,
-            avg_school_size,
-            settingsfile,
-            rngs[1],
-            ind_extension
-        )
+    ed < sd && throw(ArgumentError("End date must be after start date."))
 
-        # everything after this is just generating, not loading from disk
-        _printinfo("\u2514 Creating simulation object")
+    # TICK UNIT
+    tu = determine_tick_unit(config, tickunit)
 
-        # START DATE
-        sd = determine_start_date(config, start_date)
+    # SETTINGS & CONTACTS
+    determine_setting_config!(settings, config,
+        household_contacts = household_contacts,
+        office_contacts = office_contacts,
+        department_contacts = department_contacts,
+        workplace_contacts = workplace_contacts,
+        workplace_site_contacts = workplace_site_contacts,
+        school_class_contacts = school_class_contacts,
+        school_year_contacts = school_year_contacts,
+        school_contacts = school_contacts,
+        school_complex_contacts = school_complex_contacts,
+        municipality_contacts = municipality_contacts,
+        global_setting_contacts = global_setting_contacts)
 
-        # END DATE
-        ed = determine_end_date(config, end_date)
+    # STOP CRITERION
+    stop_criterion = determine_stop_criterion(
+        config,
+        stop_criterion)
 
-        ed < sd && throw(ArgumentError("End date must be after start date."))
+    # PATHOGENS
+    pathogen_tuple = determine_pathogens(
+        config,
+        pathogens,
+        transmission_function,
+        transmission_rate
+    )
 
-        # TICK UNIT
-        tu = determine_tick_unit(config, tickunit)
+    # HEALTH PROGRESSION
+    hp, hp_index = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
 
-        # SETTINGS & CONTACTS
-        determine_setting_config!(settings, config,
-            household_contacts = household_contacts,
-            office_contacts = office_contacts,
-            department_contacts = department_contacts,
-            workplace_contacts = workplace_contacts,
-            workplace_site_contacts = workplace_site_contacts,
-            school_class_contacts = school_class_contacts,
-            school_year_contacts = school_year_contacts,
-            school_contacts = school_contacts,
-            school_complex_contacts = school_complex_contacts,
-            municipality_contacts = municipality_contacts,
-            global_setting_contacts = global_setting_contacts)
-
-        # STOP CRITERION
-        stop_criterion = determine_stop_criterion(
-            config,
-            stop_criterion)
-
-        # PATHOGENS
-        pathogen_tuple = determine_pathogens(
-            config,
-            pathogens,
-            transmission_function,
-            transmission_rate
-        )
-
-        # HEALTH PROGRESSION
-        hp, hp_index = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
-
-        # START CONDITION
-        start_condition = determine_start_condition(
-            config,
-            start_condition,
-            infected_fraction,
-            pathogen_tuple)
+    # START CONDITION
+    start_condition = determine_start_condition(
+        config,
+        start_condition,
+        infected_fraction,
+        pathogen_tuple)
 
 
 
-        # CREATES SIMULATION OBJECT
-        sim = Simulation(
-            configpath,
-            tu,
-            sd,
-            ed,
-            start_condition,
-            stop_criterion,
-            pop,
-            settings,
-            pathogen_tuple,
-            hp,
-            hp_index,
-            stepmod,
-            rng_seed,
-            rngs
-        )
+    # CREATES SIMULATION OBJECT
+    sim = Simulation(
+        configpath,
+        tu,
+        sd,
+        ed,
+        start_condition,
+        stop_criterion,
+        pop,
+        settings,
+        pathogen_tuple,
+        hp,
+        hp_index,
+        stepmod,
+        rng_seed,
+        rngs
+    )
 
-        precompute_ags!(sim)
-        
-        # update label
-        sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
+    precompute_ags!(sim)
 
-        # initialize simulation
-        initialize!(sim)
+    # update label
+    sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
-        return sim
+    # initialize simulation
+    initialize!(sim)
+
+    return sim
+end
+
+"""
+    _thread_local_vector(T::Type, make = T)
+
+Returns a `Vector{T}` of `make()` results with one entry per thread id, each created on the thread that uses it.
+"""
+function _thread_local_vector(T::Type, make = T)
+    v = Vector{T}(undef, Threads.maxthreadid())
+    # objects allocated back to back share cache lines; each thread's own heap pages keep concurrent writes apart
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        v[Threads.threadid()] = make()
     end
+    # slots of threads outside the default pool
+    for i in eachindex(v)
+        isassigned(v, i) || (v[i] = make())
+    end
+    return v
+end
+
+"""
+    _thread_local_matrix(T::Type, make = T)
+
+Returns a producer × shard `Matrix{T}` of `make()` results, each row created on the producing thread.
+"""
+function _thread_local_matrix(T::Type, make = T)
+    n = Threads.maxthreadid()
+    m = Matrix{T}(undef, n, n)
+    # see `_thread_local_vector`
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        p = Threads.threadid()
+        for s in 1:n
+            m[p, s] = make()
+        end
+    end
+    for i in eachindex(m)
+        isassigned(m, i) || (m[i] = make())
+    end
+    return m
+end
 
 
 ### DETERMINATION FUNCTIONS
