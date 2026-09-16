@@ -139,7 +139,7 @@ import GEMS: increment!, infected!
             # TRANSMISSION PRE-THINNING
             # passing
             config(value) = Dict("Simulation" => Dict("transmission_prethinning" => value))
-            @test Simulation(pop_size = 100).prethinning
+            @test Simulation(pop_size = 100, transmission_prethinning = true).prethinning
             @test !Simulation(pop_size = 100, transmission_prethinning = false).prethinning
             @test GEMS.determine_transmission_prethinning(Dict(), nothing)
             @test !GEMS.determine_transmission_prethinning(config(false), nothing)
