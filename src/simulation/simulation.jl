@@ -438,118 +438,118 @@ function _BUILD_Simulation(;
 
         # individual extensions
         ind_extension = nothing
+)
+
+    # parse the config file (or default to default.toml)
+    configpath = configfile_path(configfile)
+    config = load_configfile(configpath)
+
+    # SEED
+    rng_seed = determine_seed(config, seed)
+    master_rng = Xoshiro(rng_seed)
+    rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+
+    # GLOBAL SETTING FLAG
+    gs = determine_global_setting(config, global_setting)
+
+    # POPULATION
+    pop, settings = determine_population_and_settings(
+        config,
+        population,
+        gs,
+        pop_size,
+        avg_household_size,
+        avg_office_size,
+        avg_school_size,
+        settingsfile,
+        rngs[1],
+        ind_extension;
+        membershipsfile = membershipsfile
     )
 
-        # parse the config file (or default to default.toml)
-        configpath = configfile_path(configfile)
-        config = load_configfile(configpath)
+    # everything after this is just generating, not loading from disk
+    _printinfo("\u2514 Creating simulation object")
 
-        # SEED
-        rng_seed = determine_seed(config, seed)
-        master_rng = Xoshiro(rng_seed)
-        rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+    # START DATE
+    sd = determine_start_date(config, start_date)
 
-        # GLOBAL SETTING FLAG
-        gs = determine_global_setting(config, global_setting)
+    # END DATE
+    ed = determine_end_date(config, end_date)
 
-        # POPULATION
-        pop, settings = determine_population_and_settings(
-            config,
-            population,
-            gs,
-            pop_size,
-            avg_household_size,
-            avg_office_size,
-            avg_school_size,
-            settingsfile,
-            rngs[1],
-            ind_extension;
-            membershipsfile = membershipsfile
-        )
+    ed < sd && throw(ArgumentError("End date must be after start date."))
 
-        # everything after this is just generating, not loading from disk
-        _printinfo("\u2514 Creating simulation object")
+    # TICK UNIT
+    tu = determine_tick_unit(config, tickunit)
 
-        # START DATE
-        sd = determine_start_date(config, start_date)
+    # SETTINGS & CONTACTS
+    determine_setting_config!(settings, config,
+        household_contacts = household_contacts,
+        office_contacts = office_contacts,
+        department_contacts = department_contacts,
+        workplace_contacts = workplace_contacts,
+        workplace_site_contacts = workplace_site_contacts,
+        school_class_contacts = school_class_contacts,
+        school_year_contacts = school_year_contacts,
+        school_contacts = school_contacts,
+        school_complex_contacts = school_complex_contacts,
+        municipality_contacts = municipality_contacts,
+        global_setting_contacts = global_setting_contacts)
 
-        # END DATE
-        ed = determine_end_date(config, end_date)
+    # STOP CRITERION
+    stop_criterion = determine_stop_criterion(
+        config,
+        stop_criterion)
 
-        ed < sd && throw(ArgumentError("End date must be after start date."))
+    # PATHOGENS
+    pathogen_tuple = determine_pathogens(
+        config,
+        pathogens,
+        transmission_function,
+        transmission_rate
+    )
 
-        # TICK UNIT
-        tu = determine_tick_unit(config, tickunit)
+    # HEALTH PROGRESSION
+    hp, hp_index = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
 
-        # SETTINGS & CONTACTS
-        determine_setting_config!(settings, config,
-            household_contacts = household_contacts,
-            office_contacts = office_contacts,
-            department_contacts = department_contacts,
-            workplace_contacts = workplace_contacts,
-            workplace_site_contacts = workplace_site_contacts,
-            school_class_contacts = school_class_contacts,
-            school_year_contacts = school_year_contacts,
-            school_contacts = school_contacts,
-            school_complex_contacts = school_complex_contacts,
-            municipality_contacts = municipality_contacts,
-            global_setting_contacts = global_setting_contacts)
-
-        # STOP CRITERION
-        stop_criterion = determine_stop_criterion(
-            config,
-            stop_criterion)
-
-        # PATHOGENS
-        pathogen_tuple = determine_pathogens(
-            config,
-            pathogens,
-            transmission_function,
-            transmission_rate
-        )
-
-        # HEALTH PROGRESSION
-        hp, hp_index = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
-
-        # START CONDITION
-        start_condition = determine_start_condition(
-            config,
-            start_condition,
-            infected_fraction,
-            pathogen_tuple)
+    # START CONDITION
+    start_condition = determine_start_condition(
+        config,
+        start_condition,
+        infected_fraction,
+        pathogen_tuple)
 
 
 
-        # CREATES SIMULATION OBJECT
-        sim = Simulation(
-            configpath,
-            tu,
-            sd,
-            ed,
-            start_condition,
-            stop_criterion,
-            pop,
-            settings,
-            pathogen_tuple,
-            hp,
-            hp_index,
-            stepmod,
-            rng_seed,
-            rngs
-        )
+    # CREATES SIMULATION OBJECT
+    sim = Simulation(
+        configpath,
+        tu,
+        sd,
+        ed,
+        start_condition,
+        stop_criterion,
+        pop,
+        settings,
+        pathogen_tuple,
+        hp,
+        hp_index,
+        stepmod,
+        rng_seed,
+        rngs
+    )
 
-        precompute_ags!(sim)
-        build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
-        _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
+    precompute_ags!(sim)
+    build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
+    _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
 
-        # update label
-        sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
+    # update label
+    sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
-        # initialize simulation
-        initialize!(sim)
+    # initialize simulation
+    initialize!(sim)
 
-        return sim
-    end
+    return sim
+end
 
 """
     _thread_local_vector(T::Type, make = T)
