@@ -3,7 +3,7 @@
     # seed = 1234
     tickunit = 'd'
     GlobalSetting = false
-    transmission_prethinning = false
+    transmission_prethinning = true
     startdate = '2024-01-01'
     enddate = '2024-12-31'
     [Simulation.StartCondition]
