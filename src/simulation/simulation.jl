@@ -326,18 +326,18 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             rngs,
             
             # INFECTIOUS INDIVIDUALS
-            [Vector{Individual}() for _ in 1:num_shards],
+            _thread_local_vector(Vector{Individual}),
 
             # PER-INDIVIDUAL FLAGS
             zeros(Bool, length(population.individuals)),
             zeros(Bool, length(population.individuals)),
 
             # INITIALIZE BUFFERS
-            [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
-            [Vector{Individual}() for _ in 1:num_shards], # draw_buffers
-            [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
-            [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # removal buffers matrix
-            [sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards) for _ in 1:num_shards] # deduplication winners
+            _thread_local_vector(Vector{Individual}), # contact_buffers
+            _thread_local_vector(Vector{Individual}), # draw_buffers
+            _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
+            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)), # removal buffers matrix
+            _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards)) # deduplication winners
         )
 
         # increase simulation counter
@@ -550,6 +550,45 @@ function _BUILD_Simulation(;
 
         return sim
     end
+
+"""
+    _thread_local_vector(T::Type, make = T)
+
+Returns a `Vector{T}` of `make()` results with one entry per thread id, each created on the thread that uses it.
+"""
+function _thread_local_vector(T::Type, make = T)
+    v = Vector{T}(undef, Threads.maxthreadid())
+    # objects allocated back to back share cache lines; each thread's own heap pages keep concurrent writes apart
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        v[Threads.threadid()] = make()
+    end
+    # slots of threads outside the default pool
+    for i in eachindex(v)
+        isassigned(v, i) || (v[i] = make())
+    end
+    return v
+end
+
+"""
+    _thread_local_matrix(T::Type, make = T)
+
+Returns a producer × shard `Matrix{T}` of `make()` results, each row created on the producing thread.
+"""
+function _thread_local_matrix(T::Type, make = T)
+    n = Threads.maxthreadid()
+    m = Matrix{T}(undef, n, n)
+    # see `_thread_local_vector`
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        p = Threads.threadid()
+        for s in 1:n
+            m[p, s] = make()
+        end
+    end
+    for i in eachindex(m)
+        isassigned(m, i) || (m[i] = make())
+    end
+    return m
+end
 
 
 ### DETERMINATION FUNCTIONS
