@@ -81,11 +81,15 @@ end
 
 # row indices per week (week 1 = ticks 1-7), in row order
 function _rows_by_week(ticks::AbstractVector, nweeks::Int)
-    rows = [Int32[] for _ in 1:nweeks]
+    week(t) = t >= 1 ? (Int(t) - 1) ÷ 7 + 1 : 0
+    # count first, so every bucket is allocated once at its final size
+    counts = zeros(Int, nweeks)
+    for t in ticks
+        1 <= week(t) <= nweeks && (counts[week(t)] += 1)
+    end
+    rows = [sizehint!(Int32[], c) for c in counts]
     for (r, t) in enumerate(ticks)
-        t >= 1 || continue
-        w = (Int(t) - 1) ÷ 7 + 1
-        w <= nweeks && push!(rows[w], Int32(r))
+        1 <= week(t) <= nweeks && push!(rows[week(t)], Int32(r))
     end
     return rows
 end

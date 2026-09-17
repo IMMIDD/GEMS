@@ -19,5 +19,16 @@ function attack_rate(postProcessor::PostProcessor)
     infs = infectionsDF(postProcessor)
     pop_size = nrow(postProcessor.populationDF)
     return combine(groupby(infs, :pathogen_id),
-        :id_b => (ids -> length(unique(ids)) / pop_size) => :attack_rate)
+        :id_b => (ids -> _count_distinct(ids) / pop_size) => :attack_rate)
+end
+
+# `length(unique(ids))`, marking ids in a bit vector over their range instead of hashing them
+function _count_distinct(ids::AbstractVector{<:Integer})
+    isempty(ids) && return 0
+    lo, hi = extrema(ids)
+    seen = falses(hi - lo + 1)
+    for id in ids
+        seen[id - lo + 1] = true
+    end
+    return count(seen)
 end

@@ -30,24 +30,41 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
 
     secondary_counts = _secondary_counts(infs.source_infection_id, max_inf_id)
 
-    # calcuates R for infection ids in grouped dataframe
-    function calc_r(infection_ids)
-        sample_size = max(Int(ceil(sample_fraction * length(infection_ids))), 1)
+    sim_infs = sim_infectionsDF(postProcessor)
+    return _county_r0(sim_infs.infection_id, sim_infs.pathogen_id, county.(sim_infs.household_ags_a),
+        secondary_counts, sample_fraction)
+end
 
-        # select first "sample_fraction" infections
-        sampled_ids = sort(infection_ids)[1:sample_size]
-
-        # sum precomputed secondary cases
-        total_secondary = sum(id <= max_inf_id ? secondary_counts[id] : 0 for id in sampled_ids)
-
-        return total_secondary / sample_size
+# R per (county, pathogen): the secondary infections caused by each group's first `sample_fraction` of
+# infections (by id), per sampled infection. 
+function _county_r0(inf_ids::AbstractVector, pids::AbstractVector, counties::AbstractVector,
+        secondary_counts::Vector{Int}, sample_fraction)
+    # each infection's group by infection id, and each group's (county, pathogen) and size
+    group_keys = Tuple{eltype(counties), eltype(pids)}[]
+    group_index = Dict{eltype(group_keys), Int}()
+    group_sizes = Int[]
+    group_of_id = zeros(Int32, isempty(inf_ids) ? 0 : maximum(inf_ids))
+    for r in eachindex(inf_ids)
+        g = get!(group_index, (counties[r], pids[r])) do
+            push!(group_keys, (counties[r], pids[r]))
+            push!(group_sizes, 0)
+            length(group_keys)
+        end
+        group_sizes[g] += 1
+        group_of_id[inf_ids[r]] = g
     end
 
-    return sim_infectionsDF(postProcessor) |>
-        # select and transform AGS to county codes
-        df -> DataFrames.select(df, :infection_id, :pathogen_id, :household_ags_a => (a -> county.(a)) => :ags) |>
-        df -> groupby(df, [:ags, :pathogen_id]) |>
-        df -> combine(df, :infection_id => calc_r => :r0)
+    # ids are dense, so walking them in order visits every group's infections sorted by id
+    sample_sizes = [max(Int(ceil(sample_fraction * n)), 1) for n in group_sizes]
+    sampled = zeros(Int, length(group_keys))
+    total_secondary = zeros(Int, length(group_keys))
+    for (id, g) in enumerate(group_of_id)
+        (g == 0 || sampled[g] == sample_sizes[g]) && continue
+        sampled[g] += 1
+        total_secondary[g] += id <= length(secondary_counts) ? secondary_counts[id] : 0
+    end
+
+    return DataFrame(ags = first.(group_keys), pathogen_id = last.(group_keys), r0 = total_secondary ./ sample_sizes)
 end
 
 # barrier: a DataFrame column is untyped where it is read, so count behind its concrete type
