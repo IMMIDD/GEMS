@@ -144,9 +144,11 @@ their slices. Relocates storage rather than duplicating it. Idempotent per conta
 function build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK)
     slack >= 0 || throw(ArgumentError("pool slack must not be negative, got $slack"))
     _check_contiguous_ids(cntnr)
-    for L in settingtypes_sorted(cntnr)
-        (is_pooled_leaf(L) && !isempty(get(cntnr.settings, L, ()))) || continue
-        cntnr.pools[L] = _build_pool!(cntnr, L, Float64(slack))
+    types = [L for L in settingtypes_sorted(cntnr) if is_pooled_leaf(L) && !isempty(get(cntnr.settings, L, ()))]
+    # the hierarchies share no settings, so their pools build in parallel
+    tasks = [Threads.@spawn _build_pool!(cntnr, L, Float64(slack)) for L in types]
+    for (L, task) in zip(types, tasks)
+        cntnr.pools[L] = _fetch_rethrow(task)
     end
     return cntnr
 end
@@ -177,13 +179,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
     end
     ranges = Vector{UnitRange{Int}}[]
     for C in container_chain(L)
-        cs = settings(cntnr, C)
-        rs = Vector{UnitRange{Int}}(undef, length(cs))
-        for (i, c) in enumerate(cs)
-            lo, hi = _leaf_span(pos, cntnr, c)
-            rs[i] = hi == 0 ? (1:0) : (lo:hi)
-        end
-        push!(ranges, rs)
+        push!(ranges, _leaf_ranges(pos, cntnr, settings(cntnr, C)))
     end
 
     blocks = _build_blocks(length(leaves), ranges, slack)
@@ -280,6 +276,16 @@ end
 
 # Lowest and highest layout position `s` covers, `(typemax(Int), 0)` for none. Min/max, not
 # first/last reached, so a leaf under two parents still spans both.
+# each container's leaf range; a barrier like `_take_leaves!`
+function _leaf_ranges(pos, cntnr::SettingsContainer, cs::Vector{C}) where {C<:ContainerSetting}
+    rs = Vector{UnitRange{Int}}(undef, length(cs))
+    for (i, c) in enumerate(cs)
+        lo, hi = _leaf_span(pos, cntnr, c)
+        rs[i] = hi == 0 ? (1:0) : (lo:hi)
+    end
+    return rs
+end
+
 function _leaf_span(pos, ::SettingsContainer, s::IndividualSetting)
     p = Int(pos[id(s)])
     return (p, p)
@@ -304,13 +310,21 @@ function _dfs_leaves(cntnr::SettingsContainer, ::Type{L}) where {L<:IndividualSe
     order = Vector{L}()
     taken = falses(length(leaves)) # ids are contiguous 1..n by now
 
-    for C in reverse(container_chain(L)), s in settings(cntnr, C)
-        _take_leaf!(order, taken, cntnr, s)
+    for C in reverse(container_chain(L))
+        _take_leaves!(order, taken, cntnr, settings(cntnr, C))
     end
     for leaf in leaves
         _take_leaf!(order, taken, cntnr, leaf)
     end
     return order
+end
+
+# barrier: `C` is only known at runtime, so iterate its settings behind a concrete vector type
+function _take_leaves!(order, taken, cntnr::SettingsContainer, cs::Vector{C}) where {C<:Setting}
+    for s in cs
+        _take_leaf!(order, taken, cntnr, s)
+    end
+    return nothing
 end
 
 _take_leaf!(order, taken, ::SettingsContainer, s::IndividualSetting) = begin
