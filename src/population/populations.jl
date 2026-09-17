@@ -606,7 +606,7 @@ function dataframe(population::Population)
     inds = individuals(population)
     plans = activity_plans(population)
     for T in membership_setting_types(Individual)
-        df[!, membership_column(T)] = Int32[setting_id(ind, T, plans) for ind in inds]
+        df[!, membership_column(T)] = _primary_setting_ids(inds, T, plans)
     end
 
     ext_idx = findfirst(ind -> ind.extensions !== nothing, inds)
@@ -619,6 +619,11 @@ function dataframe(population::Population)
     end
 
     return df
+end
+
+# barrier: `T` is the caller's loop variable, so the per-individual lookup compiles once per type
+function _primary_setting_ids(inds::Vector{Individual}, ::Type{T}, plans) where {T}
+    return Int32[setting_id(ind, T, plans) for ind in inds]
 end
 
 """
