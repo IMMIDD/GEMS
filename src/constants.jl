@@ -156,8 +156,9 @@ const ENFORCE_SIM_RNGS = true
 # ":none"    everything sequentially
 # ":builtin" the result functions GEMS ships run concurrently; functions of your own result data style
 #            run sequentially, as they might not be safe to run in parallel
-# ":all"     your own functions run concurrently, too. They must not share mutable state or draw from
-#            the simulation's RNGs, and their results must not depend on the order they run in.
+# ":all"     everything runs concurrently, including your own functions and the steps that need the
+#            most memory. Your functions must not share mutable state or draw from the simulation's
+#            RNGs, and their results must not depend on the order they run in.
 # Concurrent post processing needs more memory; Lower POST_PROCESSING_MAX_TASKS if memory is a bottleneck.
 POST_PROCESSING_PARALLELISM = :builtin
 
