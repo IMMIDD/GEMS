@@ -49,11 +49,6 @@ with their result value in a new output dictionary. Depending on the
 """
 function process_funcs(func_dicts::Dict)
 
-    if POST_PROCESSING_PARALLELISM != :none && Sys.free_memory() / Sys.total_memory() < 0.5
-        # print warning if memory might not suffice
-        @warn "You are running the Post Processor in parallel-mode with less than 50% available system memory. If you encounter severe performance issues, set the POST_PROCESSING_PARALLELISM flag in constants.jl to :none"
-    end
-
     data = Dict{String, Any}()
     tasks = Task[]
     slots = Base.Semaphore(max(POST_PROCESSING_MAX_TASKS, 1))
