@@ -905,47 +905,71 @@ function construct_and_add_settings!(
     default_sampling
 ) where {T <: Setting}
     n = length(pairs)
+    n == 0 && return nothing
 
-    # Pre-calculate the number of unique settings to avoid push! reallocations
-    if n > 0
-        num_unique = 1
-        for k in 2:n
-            if pairs[k][1] != pairs[k-1][1]
-                num_unique += 1
-            end
+    # chunk starts moved forward to the start of a setting, so no setting is split between chunks
+    nchunks = min(n, 8 * Threads.nthreads())
+    step = cld(n, nchunks)
+    bounds = Vector{Int}(undef, nchunks + 1)
+    bounds[1] = 1
+    @inbounds for c in 2:nchunks
+        b = max(bounds[c - 1], 1 + (c - 1) * step)
+        while b <= n && pairs[b][1] == pairs[b - 1][1]
+            b += 1
         end
-        # Pre-allocate the memory needed
-        sizehint!(container_vec, length(container_vec) + num_unique)
+        bounds[c] = min(b, n + 1)
     end
+    bounds[end] = n + 1
 
-    i = 1
-    # Iterate through the sorted pairs
-    while i <= n
+    # settings per chunk, counted in parallel, give each chunk the position of its first setting
+    nsettings = zeros(Int, nchunks + 1)
+    Threads.@threads for c in 1:nchunks
+        m = 0
+        @inbounds for k in bounds[c]:(bounds[c + 1] - 1)
+            (k == bounds[c] || pairs[k][1] != pairs[k - 1][1]) && (m += 1)
+        end
+        @inbounds nsettings[c + 1] = m
+    end
+    first_position = length(container_vec) + 1
+    nsettings[1] = first_position
+    cumsum!(nsettings, nsettings)
+    resize!(container_vec, nsettings[end] - 1)
+
+    Threads.@threads for c in 1:nchunks
+        @inbounds _construct_settings_chunk!(container_vec, pairs, settingtype, plans, default_sampling,
+            bounds[c], bounds[c + 1] - 1, nsettings[c])
+    end
+    return nothing
+end
+
+# Builds the settings for `pairs[lo:hi]` from `container_vec[at]`, setting member indices and scale bounds.
+function _construct_settings_chunk!(container_vec::Vector, pairs::Vector{Tuple{Int32, Int32, Individual}},
+        settingtype::Type{T}, plans::AbstractActivityPlanStore, default_sampling, lo::Int, hi::Int,
+        at::Int) where {T <: Setting}
+    i = lo
+    @inbounds while i <= hi
         current_id = pairs[i][1]
-
-        # Find the block of individuals sharing this ID
         j = i
-        while j <= n && pairs[j][1] == current_id
+        while j <= hi && pairs[j][1] == current_id
             j += 1
         end
 
-        # Exact pre-allocation for the members array
-        count = j - i
-        members = Vector{Individual}(undef, count)
+        members = Vector{Individual}(undef, j - i)
         bound = 1.0f0
-        for k in 0:(count-1)
-            _, slot, ind = pairs[i+k]
-            members[k+1] = ind
-            plan_set_member_index!(plans, Int(slot), k + 1)
-            bound = max(bound, Float32(entry_scale(@inbounds plans.entries[slot])))
+        for k in i:(j - 1)
+            _, slot, ind = pairs[k]
+            members[k - i + 1] = ind
+            plan_set_member_index!(plans, Int(slot), k - i + 1)
+            bound = max(bound, Float32(entry_scale(plans.entries[slot])))
         end
-        
-        setting = settingtype(id=current_id, individuals=members, contact_sampling_method=default_sampling)
+
+        setting = settingtype(id = current_id, individuals = members, contact_sampling_method = default_sampling)
         hasfield(T, :scale_bound) && (setting.scale_bound = bound)
-        push!(container_vec, setting)
-        
-        i = j # Move to the next unique ID
+        container_vec[at] = setting
+        at += 1
+        i = j
     end
+    return nothing
 end
 
 """
@@ -968,20 +992,21 @@ function settings_from_population(population::Population, global_setting::Bool =
     end
 
     inds = individuals(population)
-    max_inds = length(inds)
 
-    # Buffers are allocated once and reused across every setting type
+    # Buffers reused across every setting type, grown by the largest one
     # (setting id, plan slot, individual): the two Int32s side by side keep it at 16 bytes
-    pairs_buffer = Vector{Tuple{Int32, Int32, Individual}}(undef, max_inds)
-    # Pre-allocate another buffer for Counting Sort
-    sorted_buffer = Vector{Tuple{Int32, Int32, Individual}}(undef, max_inds)
+    pairs_buffer = Tuple{Int32, Int32, Individual}[]
+    sorted_buffer = Tuple{Int32, Int32, Individual}[]
+    # chunks of individuals every type collects its entries in, with their buffers
+    chunks = _thread_chunks(eachindex(inds))
+    parts = [Tuple{Int32, Int32, Individual}[] for _ in chunks]
 
     for stngType in stngtypes
         # everyone is in the one GlobalSetting, so it is built here rather than from plan entries
         if stngType === GlobalSetting
             _build_global_setting!(settings, inds, default_sampling)
         else
-            _settings_for_type!(settings, renaming, stngType, population, inds, pairs_buffer, sorted_buffer, default_sampling)
+            _settings_for_type!(settings, renaming, stngType, population, inds, chunks, parts, pairs_buffer, sorted_buffer, default_sampling)
         end
     end
 
@@ -999,8 +1024,28 @@ function _build_global_setting!(settings, inds::Vector{Individual}, default_samp
 end
 
 
+# Pushes the (setting id, slot, individual) of each type-`T` entry in `r` onto `out`; returns the id range.
+function _collect_entry_triples!(out::Vector{Tuple{Int32, Int32, Individual}}, plans::AbstractActivityPlanStore,
+                                 inds::Vector{Individual}, r::UnitRange{Int}, ::Type{T}) where {T <: Setting}
+    # reused across types: keep the capacity, most types hold at most one entry per individual
+    empty!(out)
+    sizehint!(out, length(r); shrink = false)
+    min_id = typemax(Int32)
+    max_id = typemin(Int32)
+    @inbounds for i in r
+        ind = inds[i]
+        for slot in plan_slots(plans, ind, T)
+            sid = setting_id(plans.entries[slot])
+            push!(out, (sid, Int32(slot), ind))
+            min_id = min(min_id, sid)
+            max_id = max(max_id, sid)
+        end
+    end
+    return min_id, max_id
+end
+
 """
-    _settings_for_type!(settings, renaming, ::Type{T}, population, inds, pairs_buffer, sorted_buffer, default_sampling) where {T <: Setting}
+    _settings_for_type!(settings, renaming, ::Type{T}, population, inds, chunks, parts, pairs_buffer, sorted_buffer, default_sampling) where {T <: Setting}
 
 Function barrier for the per-type body of [`settings_from_population`](@ref), keeping the
 per-individual loops type-stable and allocation-free.
@@ -1011,74 +1056,59 @@ function _settings_for_type!(
     ::Type{T},
     population::Population,
     inds::Vector{Individual},
+    chunks::Vector{UnitRange{Int}},
+    parts::Vector{Vector{Tuple{Int32, Int32, Individual}}},
     pairs_buffer::Vector{Tuple{Int32, Int32, Individual}},
     sorted_buffer::Vector{Tuple{Int32, Int32, Individual}},
     default_sampling
 ) where {T <: Setting}
 
     plans = activity_plans(population)
-    resize!(pairs_buffer, length(inds))
 
-    valid_count = 0
-    min_id = typemax(Int32)
-    max_id = typemin(Int32)
-
-    # one pair per entry, so a second setting of the type is built as well
-    for ind in inds
-        for slot in plan_slots(plans, ind, T)
-            sid = @inbounds setting_id(plans.entries[slot])
-            valid_count += 1
-            valid_count > length(pairs_buffer) && resize!(pairs_buffer, 2 * length(pairs_buffer))
-
-            # Track ID bounds for Counting Sort
-            min_id = sid < min_id ? sid : min_id
-            max_id = sid > max_id ? sid : max_id
-
-            @inbounds pairs_buffer[valid_count] = (sid, Int32(slot), ind)
-        end
+    # chunks collect one triple per entry in parallel; reading them in order keeps the serial order
+    min_ids = fill(typemax(Int32), length(chunks))
+    max_ids = fill(typemin(Int32), length(chunks))
+    Threads.@threads for c in eachindex(chunks)
+        @inbounds min_ids[c], max_ids[c] = _collect_entry_triples!(parts[c], plans, inds, chunks[c], T)
     end
 
-    if valid_count == 0
-        return
-    end
-
-    resize!(pairs_buffer, valid_count)
-
+    valid_count = sum(length, parts; init = 0)
+    valid_count == 0 && return
+    min_id = minimum(min_ids)
+    max_id = maximum(max_ids)
     id_range = Int64(max_id) - Int64(min_id) + 1
 
-    # Counting Sort
+    # Counting Sort, read straight from the chunks
     if id_range <= valid_count * 5
         counts = zeros(Int, id_range + 1)
-
-        # Count occurrences
-        @inbounds for i in 1:valid_count
-            counts[pairs_buffer[i][1] - min_id + 2] += 1
+        @inbounds for part in parts, t in part
+            counts[t[1] - min_id + 2] += 1
         end
-
-        # Accumulate offsets
         @inbounds for i in 2:length(counts)
             counts[i] += counts[i-1]
         end
-
-        # Place elements directly into their sorted positions
         resize!(sorted_buffer, valid_count)
-        @inbounds for i in 1:valid_count
-            val = pairs_buffer[i]
-            idx = val[1] - min_id + 1
-            sorted_buffer[counts[idx] + 1] = val
+        @inbounds for part in parts, t in part
+            idx = t[1] - min_id + 1
+            sorted_buffer[counts[idx] + 1] = t
             counts[idx] += 1
         end
-
-        # Transfer back to original buffer
-        copyto!(pairs_buffer, sorted_buffer)
+        sorted = sorted_buffer
     else
+        resize!(pairs_buffer, valid_count)
+        at = 0
+        for part in parts
+            copyto!(pairs_buffer, at + 1, part, 1, length(part))
+            at += length(part)
+        end
         sort!(pairs_buffer, by = first)
+        sorted = pairs_buffer
     end
 
     add_type!(settings, T)
     setting_vec = get(settings, T)
 
-    construct_and_add_settings!(setting_vec, pairs_buffer, T, plans, default_sampling)
+    construct_and_add_settings!(setting_vec, sorted, T, plans, default_sampling)
 
     # Sort the vector of settings by ID and check if the ids are continuous and start from 1
     if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
