@@ -9,6 +9,17 @@ export gemscolors
 ### GENERAL UTILS
 ###
 
+# `fetch` wraps an error thrown inside a task in a `TaskFailedException`; rethrow the original, so a
+# caller sees the same exception as when the work ran inline.
+function _fetch_rethrow(t::Task)
+    try
+        return fetch(t)
+    catch e
+        e isa TaskFailedException && throw(e.task.exception)
+        rethrow()
+    end
+end
+
 """
     _duplicates(vec)
 
