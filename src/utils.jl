@@ -23,14 +23,31 @@ end
 ### TYPING AND SUBTYPES
 ###
 
+# `subtypes` walks the names of every loaded module, and config parsing asks for one per parameter.
+# Cached per parent, keyed by the world age, so a type defined later is still found.
+const _SUBTYPE_CACHE = Dict{Type, Pair{UInt, Vector{Any}}}()
+const _SUBTYPE_CACHE_LOCK = ReentrantLock()
+
+function _cached_subtypes(parent::Type)::Vector{Any}
+    world = Base.get_world_counter()
+    return lock(_SUBTYPE_CACHE_LOCK) do
+        cached = get(_SUBTYPE_CACHE, parent, nothing)
+        (cached !== nothing && first(cached) == world) && return last(cached)
+        stypes = Vector{Any}(subtypes(parent))
+        _SUBTYPE_CACHE[parent] = world => stypes
+        return stypes
+    end
+end
+
 function _concrete_subtypes(type::Type)::Vector{DataType}
-    if subtypes(type) == []
+    stypes = _cached_subtypes(type)
+    if isempty(stypes)
         if !isabstracttype(type)
             return [type]
         end
         return []
     else
-        return vcat([_concrete_subtypes(t) for t in subtypes(type)]...)
+        return vcat([_concrete_subtypes(t) for t in stypes]...)
     end
 end
 
@@ -94,7 +111,7 @@ This function supersedes `find_subtype(...)`
 
 """
 function get_subtype(type::String, parent::Type)
-    stypes = subtypes(parent)
+    stypes = _cached_subtypes(parent)
 
     # throw exception if multiple modules define a struct subtype
     # of the same name. This can happen if GEMS is used as a dependency in
