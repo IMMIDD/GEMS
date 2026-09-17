@@ -44,29 +44,38 @@ function health_episodes(postProcessor::PostProcessor)
     if nrow(events) > 0
         # tag each event with its care level, then pair admission -> discharge within (host, level)
         ev = transform(events, :event => ByRow(e -> _CARE_LEVEL[e]) => :care_level)
-        result = combine(groupby(ev, [:id, :care_level])) do sdf
-            # by tick, admissions before discharges within a tick (0-length stays pair correctly)
-            order = sortperm(collect(zip(sdf.tick, .!_is_admission.(sdf.event))))
-            ticks = sdf.tick[order]
-            evs = sdf.event[order]
-            admission_tick = Int16[]
-            discharge_tick = Int16[]
-            open_admission = Int16(-1)
-            for i in eachindex(ticks)
-                if _is_admission(evs[i])
-                    open_admission = ticks[i]
-                elseif open_admission >= 0
-                    push!(admission_tick, open_admission)
-                    push!(discharge_tick, ticks[i])
-                    open_admission = Int16(-1)
-                end
-            end
-            return (admission_tick = admission_tick, discharge_tick = discharge_tick)
-        end
-        rename!(result, :id => :host_id)
+        # grouped only for the group order, which the rows come out in
+        groups = collect(Int, groupindices(groupby(ev, [:id, :care_level])))
+        result = _pair_episodes(groups, ev.id, ev.care_level, ev.tick, ev.event)
     end
 
     store_cache(postProcessor, "health_episodes", result)
 
     return result
+end
+
+# Pairs each admission with the next discharge of its (host, care level) group, in one pass over the events
+# sorted by group, then tick with admissions before discharges (0-length stays pair correctly).
+function _pair_episodes(groups::Vector{Int}, ids::AbstractVector, levels::AbstractVector, ticks::AbstractVector,
+        events::AbstractVector)
+    order = sortperm(eachindex(groups); by = i -> (groups[i], ticks[i], !_is_admission(events[i])))
+    host_id = eltype(ids)[]
+    care_level = eltype(levels)[]
+    admission_tick = Int16[]
+    discharge_tick = Int16[]
+    open_admission = Int16(-1)
+    for (k, i) in enumerate(order)
+        k > 1 && groups[i] != groups[order[k - 1]] && (open_admission = Int16(-1))
+        if _is_admission(events[i])
+            open_admission = ticks[i]
+        elseif open_admission >= 0
+            push!(host_id, ids[i])
+            push!(care_level, levels[i])
+            push!(admission_tick, open_admission)
+            push!(discharge_tick, ticks[i])
+            open_admission = Int16(-1)
+        end
+    end
+    return DataFrame(host_id = host_id, care_level = care_level, admission_tick = admission_tick,
+        discharge_tick = discharge_tick)
 end
