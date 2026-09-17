@@ -322,63 +322,146 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
     types = [T for T in membership_setting_types(Individual) if membership_column(T) in cols]
     # sorted by type index: the order `plan_slot` ranks against
     sort!(types, by = setting_type_index)
-    data = Vector{Int32}[Int32.(df[!, membership_column(T)]) for T in types]
+    # no copy when a column is already Int32
+    data = Vector{Int32}[_int32_column(df[!, membership_column(T)]) for T in types]
     tidx = UInt8[setting_type_index(T) for T in types]
-    rows = memberships === nothing ? nothing : _membership_rows(pop, memberships, tidx, data)
-    isempty(types) && (rows === nothing || isempty(rows.ind)) && return store
+    rows = memberships === nothing ? _no_membership_rows() : _membership_rows(pop, memberships, tidx, data)
+    isempty(types) && isempty(rows.ind) && return store
+    # what every block is built from
+    source = (data = data, tidx = tidx, rows = _grouped_rows(rows))
 
-    # each individual's rows together, primary first and otherwise in file order
-    order = rows === nothing ? Int[] : sortperm(collect(zip(rows.ind, .!rows.primary)))
     inds = individuals(pop)
-    sizehint!(store.entries, length(inds) * length(types) + length(order))
+    # chunks count their entries in parallel to find their first slot, then fill their blocks in parallel
+    chunks = _thread_chunks(eachindex(inds))
+    starts = zeros(Int, length(chunks) + 1)
+    Threads.@threads for c in eachindex(chunks)
+        @inbounds starts[c + 1] = _count_plan_entries(source, chunks[c])
+    end
+    starts[1] = 1
+    cumsum!(starts, starts)
+    resize!(store.entries, starts[end] - 1)
 
-    cursor = 1
-    for (i, ind) in enumerate(inds)
-        off = length(store.entries) + 1
-        mask = UInt16(0)
-        for k in eachindex(types)
-            sid = @inbounds data[k][i]
-            sid == DEFAULT_SETTING_ID && continue
-            push!(store.entries, PlanEntry(sid, DEFAULT_MEMBER_INDEX, Float16(1.0), tidx[k]))
-            tidx[k] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(tidx[k]))
-        end
-
-        # the individual's table rows follow its population-row entries
-        from_table = false
-        while cursor <= length(order) && rows.ind[order[cursor]] == i
-            r = order[cursor]
-            cursor += 1
-            if rows.restates[r]
-                # the population row's entry is the first of its type, so this finds it
-                k = off - 1 + findfirst(e -> setting_type_of(e) == rows.tidx[r], view(store.entries, off:length(store.entries)))
-                store.entries[k] = _with_scale(store.entries[k], rows.scale[r])
-                continue
-            end
-            push!(store.entries, PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(rows.scale[r]), rows.tidx[r]))
-            rows.tidx[r] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(rows.tidx[r]))
-            from_table = true
-        end
-
-        n = length(store.entries) - off + 1
-        if from_table
-            n <= typemax(Int8) || throw(ArgumentError(
-                "individual $(id(ind)) would hold $n plan entries; the cap is $(typemax(Int8))"))
-            block = view(store.entries, off:(off + n - 1))
-            # stable, so each type keeps its primary first and the rest in file order
-            sort!(block; alg = InsertionSort, by = setting_type_of)
-            _check_repeated_entries(block, ind)
-        end
-        ind.plan_offset = Int32(n == 0 ? 0 : off)
-        ind.plan_count = Int8(n)
-        ind.membership_mask = mask
-        # every entry starts active, so its own scale is the one that counts
-        ind.plan_scaled = any(e -> entry_scale(e) != 1, view(store.entries, off:(off + n - 1)))
+    # individuals with table rows are filled after, serially, so their errors surface in individual order
+    deferred = [Tuple{Int, Int}[] for _ in chunks]
+    Threads.@threads for c in eachindex(chunks)
+        @inbounds _fill_blocks!(store, inds, source, chunks[c], starts[c], deferred[c])
+    end
+    for c in eachindex(chunks), (i, off) in deferred[c]
+        _fill_table_block!(store, inds[i], source, i, off)
     end
 
     # nothing gates entries yet, so every one applies
     resize!(store.active, length(store.entries))
     fill!(store.active, true)
     return store
+end
+
+_int32_column(col::Vector{Int32}) = col
+_int32_column(col::AbstractVector) = Int32.(col)
+
+# The rows `_membership_rows` returns, for a population without a membership table.
+_no_membership_rows() = (ind = Int[], tidx = UInt8[], sid = Int32[], primary = falses(0),
+    scale = Float64[], restates = falses(0))
+
+# The rows grouped by individual, each individual's primary first and the rest in file order.
+function _grouped_rows(rows)
+    order = sortperm(collect(zip(rows.ind, .!rows.primary)))
+    return map(v -> v[order], rows)
+end
+
+# Plan entries held by the individuals in `r`: population-row settings plus table rows that add one.
+function _count_plan_entries(source, r::UnitRange{Int})
+    rows = source.rows
+    m = 0
+    @inbounds for col in source.data, i in r
+        col[i] == DEFAULT_SETTING_ID || (m += 1)
+    end
+    q = searchsortedfirst(rows.ind, first(r))
+    @inbounds while q <= length(rows.ind) && rows.ind[q] <= last(r)
+        rows.restates[q] || (m += 1)
+        q += 1
+    end
+    return m
+end
+
+# Writes individual `i`'s population-row entries from slot `at`; returns (next slot, membership mask).
+@inline function _write_population_entries!(store::ActivityPlanStore, source, i::Int, at::Int)
+    mask = UInt16(0)
+    @inbounds for k in eachindex(source.data)
+        sid = source.data[k][i]
+        sid == DEFAULT_SETTING_ID && continue
+        t = source.tidx[k]
+        store.entries[at] = PlanEntry(sid, DEFAULT_MEMBER_INDEX, Float16(1.0), t)
+        at += 1
+        t <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(t))
+    end
+    return at, mask
+end
+
+# Points `ind` at its block of `n` entries from slot `off`.
+@inline function _set_plan!(ind::Individual, off::Int, n::Int, mask::UInt16, scaled::Bool)
+    ind.plan_offset = Int32(n == 0 ? 0 : off)
+    ind.plan_count = Int8(n)
+    ind.membership_mask = mask
+    ind.plan_scaled = scaled
+    return nothing
+end
+
+# Fills the blocks of the individuals in `r` from slot `at`; those with table rows go to `deferred`.
+function _fill_blocks!(store::ActivityPlanStore, inds::Vector{Individual}, source, r::UnitRange{Int},
+                       at::Int, deferred::Vector{Tuple{Int, Int}})
+    rows = source.rows
+    q = searchsortedfirst(rows.ind, first(r))
+    @inbounds for i in r
+        off = at
+        at, mask = _write_population_entries!(store, source, i, at)
+        if q <= length(rows.ind) && rows.ind[q] == i
+            while q <= length(rows.ind) && rows.ind[q] == i
+                rows.restates[q] || (at += 1)
+                q += 1
+            end
+            push!(deferred, (i, off))
+            continue
+        end
+        # every population-row entry has scale 1
+        _set_plan!(inds[i], off, at - off, mask, false)
+    end
+    return nothing
+end
+
+# Fills individual `i`'s block from slot `off` with its population and table rows, then sorts and checks it.
+function _fill_table_block!(store::ActivityPlanStore, ind::Individual, source, i::Int, off::Int)
+    rows = source.rows
+    at, mask = _write_population_entries!(store, source, i, off)
+    from_table = false
+    q = searchsortedfirst(rows.ind, i)
+    while q <= length(rows.ind) && rows.ind[q] == i
+        r = q
+        q += 1
+        if rows.restates[r]
+            # the population row's entry is the first of its type, so this finds it
+            k = off - 1 + findfirst(e -> setting_type_of(e) == rows.tidx[r], view(store.entries, off:(at - 1)))
+            store.entries[k] = _with_scale(store.entries[k], rows.scale[r])
+            continue
+        end
+        store.entries[at] = PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(rows.scale[r]), rows.tidx[r])
+        at += 1
+        rows.tidx[r] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(rows.tidx[r]))
+        from_table = true
+    end
+
+    n = at - off
+    if from_table
+        n <= typemax(Int8) || throw(ArgumentError(
+            "individual $(id(ind)) would hold $n plan entries; the cap is $(typemax(Int8))"))
+        block = view(store.entries, off:(off + n - 1))
+        # stable, so each type keeps its primary first and the rest in file order
+        sort!(block; alg = InsertionSort, by = setting_type_of)
+        _check_repeated_entries(block, ind)
+    end
+    # every entry starts active, so its own scale is the one that counts
+    _set_plan!(ind, off, n, mask, any(e -> entry_scale(e) != 1, view(store.entries, off:(off + n - 1))))
+    return nothing
 end
 
 """
