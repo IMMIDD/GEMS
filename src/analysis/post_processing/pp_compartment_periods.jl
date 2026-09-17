@@ -7,10 +7,10 @@ calc_rem(infs) = infs.removed
 # own onsets, and a phase it never reached lasts 0 ticks, not a negative number
 calc_exposed(infs, rem) = min.(infs.infectiousness_onset, rem) .- infs.tick
 calc_infectious(infs, rem) = rem .- min.(infs.infectiousness_onset, rem)
-# calculate asymptomatic, symptomatic and pre-symptomatic periods
-calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : 0).(infs.tick, infs.symptom_onset, rem)
-calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - min(so, r) : 0).(infs.symptom_onset, rem)
-calc_pre_symp(infs, rem) = ((so, t, r) -> so >= 0 ? min(so, r) - t : 0).(infs.symptom_onset, infs.tick, rem)
+# calculate asymptomatic, symptomatic and pre-symptomatic periods; `zero(r)`, not `0`, or the column widens to `Vector{Signed}`
+calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : zero(r)).(infs.tick, infs.symptom_onset, rem)
+calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - min(so, r) : zero(r)).(infs.symptom_onset, rem)
+calc_pre_symp(infs, rem) = ((so, t, r) -> so >= 0 ? min(so, r) - t : zero(r)).(infs.symptom_onset, infs.tick, rem)
 
 
 """

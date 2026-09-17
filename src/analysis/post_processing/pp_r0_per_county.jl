@@ -28,12 +28,7 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
     infs = infectionsDF(postProcessor)
     max_inf_id = isempty(infs) ? 0 : maximum(infs.infection_id)
 
-    secondary_counts = zeros(Int, max_inf_id)
-    for sid in infs.source_infection_id
-        if !ismissing(sid) && sid > 0 && sid <= max_inf_id
-            secondary_counts[sid] += 1
-        end
-    end
+    secondary_counts = _secondary_counts(infs.source_infection_id, max_inf_id)
 
     # calcuates R for infection ids in grouped dataframe
     function calc_r(infection_ids)
@@ -53,4 +48,15 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
         df -> DataFrames.select(df, :infection_id, :pathogen_id, :household_ags_a => (a -> county.(a)) => :ags) |>
         df -> groupby(df, [:ags, :pathogen_id]) |>
         df -> combine(df, :infection_id => calc_r => :r0)
+end
+
+# barrier: a DataFrame column is untyped where it is read, so count behind its concrete type
+function _secondary_counts(source_ids::AbstractVector, max_inf_id::Integer)
+    counts = zeros(Int, max_inf_id)
+    for sid in source_ids
+        if !ismissing(sid) && sid > 0 && sid <= max_inf_id
+            counts[sid] += 1
+        end
+    end
+    return counts
 end

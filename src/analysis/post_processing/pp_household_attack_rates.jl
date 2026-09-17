@@ -87,10 +87,8 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
     infs.started_chain = started_chain_col
 
     # generate dataframe of households
-    hh_sizes = DataFrame(
-        ind_id = Int32.(id.(postProcessor |> simulation |> individuals)),
-        hh_id = Int32.(id.((i -> household(i, postProcessor |> simulation)).(postProcessor |> simulation |> individuals))),
-        hh_size = Int16.(size.((i -> household(i, postProcessor |> simulation)).(postProcessor |> simulation |> individuals))))
+    sim = simulation(postProcessor)
+    hh_sizes = _household_sizes(individuals(sim), households(sim))
 
     return infs |>
         x -> leftjoin(x, hh_sizes, on = [:id_b => :ind_id]) |>
@@ -104,4 +102,18 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         x -> transform(x, [:chain_size, :hh_size] => ByRow((c, h) -> (h == 0 ? 0 : c / (h - 1))) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>
         x -> DataFrames.select(x, :pathogen_id, :first_introduction, :hh_id, :hh_size, :chain_size, :hh_attack_rate)
+end
+
+# Each individual's id, household id and household size, looking each household up once.
+function _household_sizes(inds::Vector{Individual}, hhs::Vector{Household})
+    ind_id = Vector{Int32}(undef, length(inds))
+    hh_id = Vector{Int32}(undef, length(inds))
+    hh_size = Vector{Int16}(undef, length(inds))
+    for (k, ind) in enumerate(inds)
+        hh = hhs[household_id(ind)]
+        ind_id[k] = id(ind)
+        hh_id[k] = id(hh)
+        hh_size[k] = Int16(size(hh))
+    end
+    return DataFrame(ind_id = ind_id, hh_id = hh_id, hh_size = hh_size)
 end
