@@ -930,13 +930,15 @@ function construct_and_add_settings!(
         end
         @inbounds nsettings[c + 1] = m
     end
+    # read through an abstract slot, so every setting stores this one box instead of boxing its own
+    sampling = Ref{ContactSamplingMethod}(default_sampling)
     first_position = length(container_vec) + 1
     nsettings[1] = first_position
     cumsum!(nsettings, nsettings)
     resize!(container_vec, nsettings[end] - 1)
 
     Threads.@threads for c in 1:nchunks
-        @inbounds _construct_settings_chunk!(container_vec, pairs, settingtype, plans, default_sampling,
+        @inbounds _construct_settings_chunk!(container_vec, pairs, settingtype, plans, sampling,
             bounds[c], bounds[c + 1] - 1, nsettings[c])
     end
     return nothing
@@ -944,7 +946,7 @@ end
 
 # Builds the settings for `pairs[lo:hi]` from `container_vec[at]`, setting member indices and scale bounds.
 function _construct_settings_chunk!(container_vec::Vector, pairs::Vector{Tuple{Int32, Int32, Individual}},
-        settingtype::Type{T}, plans::AbstractActivityPlanStore, default_sampling, lo::Int, hi::Int,
+        settingtype::Type{T}, plans::AbstractActivityPlanStore, sampling::Base.RefValue{ContactSamplingMethod}, lo::Int, hi::Int,
         at::Int) where {T <: Setting}
     i = lo
     @inbounds while i <= hi
@@ -963,7 +965,7 @@ function _construct_settings_chunk!(container_vec::Vector, pairs::Vector{Tuple{I
             bound = max(bound, Float32(entry_scale(plans.entries[slot])))
         end
 
-        setting = settingtype(id = current_id, individuals = members, contact_sampling_method = default_sampling)
+        setting = settingtype(id = current_id, individuals = members, contact_sampling_method = sampling[])
         hasfield(T, :scale_bound) && (setting.scale_bound = bound)
         container_vec[at] = setting
         at += 1
