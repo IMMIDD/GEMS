@@ -33,7 +33,10 @@ per pathogen.
 | `a81_90`      | `Float64` | Incidence in age cohort 81-90  |
 | `a91_100`     | `Float64` | Incidence in age cohort 91-100 |
 """
-function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::Int64)
+age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::Int64) =
+    _exclusive(() -> _age_incidence(postProcessor, timespan, basesize))
+
+function _age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::Int64)
 
     sim = simulation(postProcessor)
     betweenage(a, x, y) = count(v -> x <= v <= y, a)

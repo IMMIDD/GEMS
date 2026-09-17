@@ -39,7 +39,9 @@ Returns a `DataFrame` with columns `ags`, `pathogen_id` and one column for each 
 of the simulation (`week_1`, `week_2`, `...`).
 Each row contains the weekly incidence per 100,000 per county and pathogen.
 """
-function _weekly_county_incidence(postProcessor::PostProcessor)
+_weekly_county_incidence(postProcessor::PostProcessor) = _exclusive(() -> _weekly_county_incidence_inner(postProcessor))
+
+function _weekly_county_incidence_inner(postProcessor::PostProcessor)
 
     if postProcessor |> simulation |> municipalities |> isempty
         #@warn "There are no regions (municipalities) in the input model. Therefore, GEMS cannot process regional incidences."

@@ -3,7 +3,7 @@ DEFINES POSTPROCESSOR AND FUNCTIONALITY
 These functions handle the aggregation of interesting data from a simulation run
 and combine them into specific output variables
 =#
-export PostProcessor
+export PostProcessor, SerialOnly
 export simulation, infectionsDF, sim_infectionsDF, populationDF
 export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
 
@@ -139,6 +139,31 @@ mutable struct PostProcessor
     end
 
 end
+
+###
+### CONCURRENCY
+###
+
+"""
+    SerialOnly(f)
+
+Marks a result data entry that must not run concurrently with others, e.g. because it draws from the
+simulation's RNGs. `process_funcs` runs these sequentially.
+"""
+struct SerialOnly{F}
+    f::F
+end
+
+(s::SerialOnly)() = s.f()
+
+# Held by the post processing steps that need the most memory, so that two of them never run at the same time.
+const _EXCLUSIVE_POST_PROCESSING = ReentrantLock()
+
+# Runs `f` without any other memory-heavy post processing step running alongside it.
+_exclusive(f) = lock(f, _EXCLUSIVE_POST_PROCESSING)
+
+# A sampling step's own RNG: seeded per step, so its draws depend on neither order nor thread
+_post_processing_rng(sim::Simulation, step::String) = Xoshiro(hash((seed(sim), step)))
 
 ###
 ### CACHING

@@ -28,14 +28,18 @@ in `constants.jl`
 | `chain_size`         | `Int32`   | Number of individuals that got infected within the household          |
 | `hh_attack_rate`     | `Float64` | Number of infected individuals divided by household size              |
 """
-function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
+household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES) =
+    _exclusive(() -> _household_attack_rates(postProcessor, hh_samples))
+
+function _household_attack_rates(postProcessor::PostProcessor, hh_samples::Int64)
     # exception handling
     hh_samples <= 100 ? throw(ArgumentError("Sample too low. You need at least 100 households to proceed with the calculation")) : nothing
 
     # randomly sample the required number of households from the infections dataframe
     hh_col = infectionsDF(postProcessor).household_b
     hh_selection = _unique_households(hh_col) |>
-        x -> gems_sample(rng(postProcessor |> simulation), x, min(hh_samples, length(x)), replace = false)
+        x -> gems_sample(_post_processing_rng(simulation(postProcessor), "household_attack_rates"),
+            x, min(hh_samples, length(x)), replace = false)
 
     # sampled households marked by id, so finding their rows needs no hashing
     selected = falses(maximum(skipmissing(hh_col); init = 0))
