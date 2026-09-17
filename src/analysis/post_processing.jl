@@ -61,33 +61,24 @@ mutable struct PostProcessor
         # join all infections with additional info from population DF
         infections = simulation |> infectionlogger |> dataframe
 
-        # calculate generation time and serial interval (self join)
-        # Using a lightweight renamed view to avoid leftjoin allocation
-        source_info = DataFrames.select(infections, 
-            :infection_id, 
-            :tick => :tick_source, 
-            :symptom_onset => :symptom_onset_source, 
-            copycols=false
-        )
-        
-        leftjoin!(infections, source_info, on = [:source_infection_id => :infection_id])
-
-        transform!(infections,
-            [:tick, :tick_source] => ByRow(-) => :generation_time,
-            [:symptom_onset, :symptom_onset_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval
-        )
-        select!(infections, Not([:tick_source, :symptom_onset_source]))
+        # calculate generation time and serial interval against each infection's source infection
+        source_rows = _matching_rows(infections.source_infection_id, infections.infection_id)
+        tick_source = _gather(infections.tick, source_rows)
+        symptom_onset_source = _gather(infections.symptom_onset, source_rows)
+        infections.generation_time = infections.tick .- tick_source
+        infections.serial_interval = ((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing).(
+            infections.symptom_onset, symptom_onset_source)
 
         # add tests
         leftjoin!(infections, detection_ticks(tests), on = :infection_id)
 
-        # add poulation data
-        # We rename columns of a shallow copy of pop, avoiding copying the underlying arrays
-        pop_a = rename(pop, names(pop) .=> [n == "id" ? "id" : n * "_a" for n in names(pop)])
-        leftjoin!(infections, pop_a, on = [:id_a => :id])
-
-        pop_b = rename(pop, names(pop) .=> [n == "id" ? "id" : n * "_b" for n in names(pop)])
-        leftjoin!(infections, pop_b, on = [:id_b => :id])
+        # add population data of the infecter (_a) and the infectee (_b)
+        for (id_col, suffix) in ((:id_a, "_a"), (:id_b, "_b"))
+            rows = _matching_rows(infections[!, id_col], pop.id)
+            for name in names(pop, Not(:id))
+                infections[!, name * suffix] = _gather(pop[!, name], rows)
+            end
+        end
 
         sim_households = households(simulation)
 
@@ -189,6 +180,27 @@ end
 ###
 ### HELPER FUNCTIONS
 ###
+
+# The row of `ids` holding each key, 0 where none does: a left join's matching, by array index.
+# `ids` must be unique integers; ids that are close together keep the index small.
+function _matching_rows(keys::AbstractVector, ids::AbstractVector)
+    lo, hi = isempty(ids) ? (1, 0) : extrema(ids)
+    row_of = zeros(Int32, hi - lo + 1)
+    for (r, id) in enumerate(ids)
+        row_of[id - lo + 1] = r
+    end
+    rows = zeros(Int32, length(keys))
+    for (k, key) in enumerate(keys)
+        (ismissing(key) || key < lo || key > hi) && continue
+        rows[k] = row_of[key - lo + 1]
+    end
+    return rows
+end
+
+# `col` at each of `rows`, `missing` for row 0: the column a left join adds
+function _gather(col::AbstractVector{T}, rows::Vector{Int32}) where {T}
+    return Union{Missing, T}[r == 0 ? missing : col[r] for r in rows]
+end
 
 """
     detection_ticks(testDF::DataFrame)

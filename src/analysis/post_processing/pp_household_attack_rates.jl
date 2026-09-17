@@ -33,58 +33,28 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
     hh_samples <= 100 ? throw(ArgumentError("Sample too low. You need at least 100 households to proceed with the calculation")) : nothing
 
     # randomly sample the required number of households from the infections dataframe
-    hh_selection = (postProcessor |> infectionsDF).household_b |> unique |>
-        x -> gems_sample(rng(postProcessor |> simulation), x, min(hh_samples, length(x)), replace = false) |>
-        x -> DataFrame(household_b = x, select = fill(true, length(x)))
+    hh_col = infectionsDF(postProcessor).household_b
+    hh_selection = _unique_households(hh_col) |>
+        x -> gems_sample(rng(postProcessor |> simulation), x, min(hh_samples, length(x)), replace = false)
+
+    # sampled households marked by id, so finding their rows needs no hashing
+    selected = falses(maximum(skipmissing(hh_col); init = 0))
+    foreach(h -> selected[h] = true, hh_selection)
 
     # make a copy of the infections dataframe to
     # not add this calculation to the internal infections dataframe
-    # and take only a subset based on the specified sample size
+    # and take only the rows of the sampled households
     infs = postProcessor |> infectionsDF |>
-        x -> DataFrames.select(x, :tick, :id_b, :household_b, :infection_id, :source_infection_id, :setting_type, :pathogen_id) |>
-        x -> leftjoin(x, hh_selection, on = :household_b) |>
-        x -> subset(x, :select => ByRow(!ismissing), view=true) |>
-        x -> sort(x, :infection_id) |>
-        copy
+        x -> DataFrames.select(x, :tick, :id_b, :household_b, :infection_id, :source_infection_id, :setting_type, :pathogen_id, copycols = false) |>
+        x -> x[findall(h -> !ismissing(h) && selected[h], hh_col), :] |>
+        x -> sort(x, :infection_id)
 
     # return an empty DataFrame if there are no infections
     if nrow(infs) == 0
         return DataFrame(pathogen_id = Int8[], first_introduction = Int16[], hh_id = Int32[], hh_size = Int16[], chain_size = Int32[], hh_attack_rate = Float64[])
     end
 
-    # Extract columns to standard vectors for type-stable loop operations
-    source_id_col = infs.source_infection_id
-    inf_id_col = infs.infection_id
-    setting_col = infs.setting_type
-
-    # size of infection chain this particular infection started in a household
-    home_chain_col = zeros(Int32, nrow(infs))
-
-    # flag whether this infection was acquired outside the household (primary cases)
-    started_chain_col = fill(true, nrow(infs))
-
-    # Pre-calculate the parent->child relationships in a Dictionary
-    home_children = Dict{eltype(source_id_col), Vector{Int}}()
-    for j in 1:nrow(infs)
-        if setting_col[j] == 'h'
-            push!(get!(home_children, source_id_col[j], Int[]), j)
-        end
-    end
-
-    # iterate through sorted infections dataframe backwards
-    for i in nrow(infs):-1:1
-        current_inf_id = inf_id_col[i]
-
-        if haskey(home_children, current_inf_id)
-            for j in home_children[current_inf_id]
-                started_chain_col[j] = false
-                home_chain_col[i] += (1 + home_chain_col[j])
-            end
-        end
-    end
-
-    infs.home_chain = home_chain_col
-    infs.started_chain = started_chain_col
+    infs.home_chain, infs.started_chain = _home_chains(infs.infection_id, infs.source_infection_id, infs.setting_type)
 
     # generate dataframe of households
     sim = simulation(postProcessor)
@@ -116,4 +86,31 @@ function _household_sizes(inds::Vector{Individual}, hhs::Vector{Household})
         hh_size[k] = Int16(size(hh))
     end
     return DataFrame(ind_id = ind_id, hh_id = hh_id, hh_size = hh_size)
+end
+
+# Per infection, the size of the household chain it started, and whether it started one (was not infected
+# at home). Rows are sorted by infection id, so a source's row comes before its infectees' and every chain is
+# complete by the time it is added to its source.
+function _home_chains(inf_ids::AbstractVector, source_ids::AbstractVector, setting_types::AbstractVector)
+    source_rows = _matching_rows(source_ids, inf_ids)
+    home_chain = zeros(Int32, length(inf_ids))
+    started_chain = fill(true, length(inf_ids))
+    for j in length(inf_ids):-1:1
+        (setting_types[j] == 'h' && source_rows[j] != 0) || continue
+        started_chain[j] = false
+        home_chain[source_rows[j]] += 1 + home_chain[j]
+    end
+    return home_chain, started_chain
+end
+
+# `unique(col)` of household ids in first-appearance order, marking seen ids instead of hashing them
+function _unique_households(col::AbstractVector)
+    seen = falses(maximum(skipmissing(col); init = 0))
+    households = eltype(col)[]
+    for h in col
+        (ismissing(h) || seen[h]) && continue
+        seen[h] = true
+        push!(households, h)
+    end
+    return households
 end

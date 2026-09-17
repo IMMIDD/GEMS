@@ -14,6 +14,12 @@ function _county_infections_between(postProcessor::PostProcessor, start_tick::In
 
     return infectionsDF(postProcessor) |>
         df -> subset(df, :tick => ByRow(t -> start_tick <= t <= end_tick), view=true) |>
+        _county_infections
+end
+
+# the county counts of `_county_infections_between`, for infections already restricted to the time window
+function _county_infections(infs::AbstractDataFrame)
+    return infs |>
         df -> dropmissing(df, :household_ags_b, view=true) |>
         df -> groupby(df, [:household_ags_b, :pathogen_id]) |>
         df -> combine(df, nrow => :infections) |>
@@ -53,14 +59,15 @@ function _weekly_county_incidence(postProcessor::PostProcessor)
     # cross with all pathogens so every (ags, pathogen_id) gets an entry
     cnts = crossjoin(cnts, DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
+    # each week's rows, bucketed once instead of filtering every infection once per week
+    infs = infectionsDF(postProcessor)
+    week_rows = _rows_by_week(infs.tick, ft ÷ 7)
+
     week = 0
     while (week + 1) * 7 <= ft
         new_col = Symbol("week_$week")
 
-        cnts = _county_infections_between(
-            postProcessor,
-            week * 7 + 1,
-            (week + 1) * 7) |>
+        cnts = _county_infections(view(infs, week_rows[week + 1], :)) |>
         df -> rename(df, :infections => new_col) |>
         df -> leftjoin(cnts, df, on = [:ags, :pathogen_id]) |>
         df -> transform(df, new_col => ByRow(x -> coalesce(x, 0)) => new_col) |>
@@ -70,4 +77,15 @@ function _weekly_county_incidence(postProcessor::PostProcessor)
     end
 
     return DataFrames.select(cnts, Not(:size))
+end
+
+# row indices per week (week 1 = ticks 1-7), in row order
+function _rows_by_week(ticks::AbstractVector, nweeks::Int)
+    rows = [Int32[] for _ in 1:nweeks]
+    for (r, t) in enumerate(ticks)
+        t >= 1 || continue
+        w = (Int(t) - 1) ÷ 7 + 1
+        w <= nweeks && push!(rows[w], Int32(r))
+    end
+    return rows
 end

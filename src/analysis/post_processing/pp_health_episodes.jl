@@ -63,6 +63,9 @@ function _pair_episodes(groups::Vector{Int}, ids::AbstractVector, levels::Abstra
     care_level = eltype(levels)[]
     admission_tick = Int16[]
     discharge_tick = Int16[]
+    # at most one episode per admission, so the vectors are sized once
+    nadmissions = count(_is_admission, events)
+    foreach(v -> sizehint!(v, nadmissions), (host_id, care_level, admission_tick, discharge_tick))
     open_admission = Int16(-1)
     for (k, i) in enumerate(order)
         k > 1 && groups[i] != groups[order[k - 1]] && (open_admission = Int16(-1))
