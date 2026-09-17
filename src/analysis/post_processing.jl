@@ -184,7 +184,7 @@ end
 # The row of `ids` holding each key, 0 where none does: a left join's matching, by array index.
 # `ids` must be unique integers; ids that are close together keep the index small.
 function _matching_rows(keys::AbstractVector, ids::AbstractVector)
-    lo, hi = isempty(ids) ? (1, 0) : extrema(ids)
+    lo, hi = isempty(ids) ? (1, 0) : Int.(extrema(ids))
     row_of = zeros(Int32, hi - lo + 1)
     for (r, id) in enumerate(ids)
         row_of[id - lo + 1] = r
