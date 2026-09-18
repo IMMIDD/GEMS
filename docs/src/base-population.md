@@ -5,7 +5,7 @@ As such, all actions (contacts, infections, deaths, etc...) are being calculated
 
 ## Individuals and Settings
 
-Besides `Pathogene`s, the only two, other entities in GEMS are `Individual`s and `Setting`s.
+Besides `Pathogen`s, the only other two entities in GEMS are `Individual`s and `Setting`s.
 *Individuals* are people that have personal characteristics, such as `age`, `sex`, and many more.
 They can also be extended to hold additional characteristics.
 
@@ -61,7 +61,7 @@ GEMS arranges settings hierarchically to represent these nested structures.
 
 We differentiate between `IndividualSetting`s and `ContainerSetting`s.
 The former are the settings that individuals have direct connections with.
-They are the lowest-level settings (e.g., `SchoolClasses`, `Offices`, or `Households`).
+They are the lowest-level settings (e.g., `SchoolClass`es, `Office`s, or `Household`s).
 The latter are the settings that aggregate the low-level settings to bigger ones (e.g., `SchoolYears`, `Schools` or `Workplaces`).
 
 Individual Settings in GEMS are `Household`, `SchoolClass`, `Office`, and `Municipality`.

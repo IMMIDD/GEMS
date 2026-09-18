@@ -27,13 +27,15 @@ The config can be found [here](https://github.com/IMMIDD/GEMS/blob/main/data/Def
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
 | Number of Pathogens | `1` |
 | Name | `Covid19` |
-| Transmission rate | `20%` infection chance for each contact, given as `level` (probability) |
+| Transmission rate | `20%` infection chance for each contact, given as `transmission_rate` |
 | Infectiousness profile | `ConstantInfectiousness` (no changes between days, set to 100% each day) |
 | Progression assignment | Stratified by age groups (`-14`, `15-65`, `66-`) across 4 categories (`Asymptomatic`, `Mild`, `Severe`, `Critical`) |
 | Immunity profile | `FullImmunity` (a person is fully immune after the first infection) |
 
-### Disease Progression
-This is part of the pathogen and only separated for readability.
+```@raw html
+<h4 id="Disease-Progression">Disease Progression <span style="font-size: 0.8em; font-weight: normal;">(This is part of the pathogen and only separated for readability.)</span></h4>
+```
+
 | Parameter | Value |
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
 | **Progression Assignment** | |
@@ -63,15 +65,15 @@ This is part of the pathogen and only separated for readability.
 | Time to critical offset | `7` days after critical onset (Poisson-distributed) |
 | Time to severeness offset | `3` days after critical offset (Poisson-distributed) |
 | Time to recovery | `4` days after severeness offset (Poisson-distributed) |
-| Critical-tier hospital probability | `95%`; admitted `1` day severeness onset |
+| Critical-tier hospital probability | `95%` |
 | Critical-tier ICU probability | `50%` (of those admitted to the hospital, `47.5%` of all critical) |
 | Critical-tier ventilation probability | `0%` (disabled by default) |
 | Critical-tier death probability | `30%`, ungated by hospital/ICU |
-| Critical-tier hospital admission | `1` days after severeness onset (Poisson-distributed) |
+| Critical-tier hospital admission | `1` day after severeness onset (Poisson-distributed) |
 | Critical-tier hospital discharge | `10` days after admission when not admitted to ICU (Poisson-distributed) |
-| Critical-tier ICU admission | `1` days after hospital admission (Poisson-distributed) |
+| Critical-tier ICU admission | `1` day after critical onset (Poisson-distributed) |
 | Critical-tier ICU duration | `8` days (Poisson-distributed) |
-| Critical-tier ICU discharge | `5` days after ICU duration (Poisson-distributed) |
+| Critical-tier ward stay after ICU discharge | `5` days (Poisson-distributed) |
 | Critical-tier death | `7` days after critical onset (Poisson-distributed) |
 
 ## Settings

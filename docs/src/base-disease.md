@@ -1,9 +1,9 @@
 # Base Disease Model
 
-## Disease Progression 
+## Disease Progression
 
 For a given pathogen we assume a disease progression that branches out depending on the severity of the infection.
-While it is possible to input multiple pathogens, the mechanisms presented here hold true for all pathogens. 
+While it is possible to input multiple pathogens, the mechanisms presented here hold true for all pathogens.
 
 ```@raw html
 <p align="center">
@@ -29,11 +29,12 @@ GEMS categorizes disease states internally using symbols (e.g., `:Mild`, `:Criti
 
 As the symptom category and terminal state are closely related, the terms "exposed" and "asymptomatic" might be used synonymously, as well as "mild" and "symptomatic".
 
-Host-level care and mortality (hospitalization, ICU, ventilation, death) are **not** part of the disease progression: they are decided by a separate `HealthProgression`, which folds the demand of *all* of a host's currently active infections into one host-level care timeline. 
-This is what lets a host who is concurrently infected with multiple pathogens have their hospitalization or death decided jointly, rather than by whichever single infection happens to "win". 
-Each infection contributes when it arrives, and the policy is told what the host is already committed to, so an infection whose contribution has been decided is never re-decided by a later co-infection. 
-In the default configuration, only `Severe` and `Critical` infections demand any host care: a `Severe`-peak infection may lead to a ward admission; a `Critical`-peak infection may additionally require ICU admission (and, optionally, ventilation), and carries an ungated `30%` death probability. 
-In the default configuration, all care and timing offsets (admission delays and stay lengths) are drawn from Poisson distributions; see the `[.health]` blocks added to the individual progression categories in `DefaultConf.toml` for the concrete parameters. 
+Host-level care and mortality (hospitalization, ICU, ventilation, death) are **not** part of the disease progression: they are decided by a separate `HealthProgression`, which folds the demand of *all* of a host's currently active infections into one host-level care timeline.
+This is what lets a host who is concurrently infected with multiple pathogens have their hospitalization or death decided jointly, rather than by whichever single infection happens to "win".
+Each infection contributes when it arrives, and the policy is told what the host is already committed to, so an infection whose contribution has been decided is never re-decided by a later co-infection.
+In the default configuration, only `Severe` and `Critical` infections demand any host care: a `Severe`-peak infection may lead to a ward admission; a `Critical`-peak infection may additionally require ICU admission (and, optionally, ventilation), and carries an ungated `30%` death probability.
+In the default configuration, all care and timing offsets (admission delays and stay lengths) are drawn from Poisson distributions; see the `health` block on each progression in `DefaultConf.toml` for the concrete parameters.
+See the "Health Progression" section of the pathogen API reference for the extension API.
 
 ## Infectiousness
 
@@ -61,7 +62,7 @@ In this example, the first row contains the probability of an individual up to 1
 
 We generally differentiate "true" cases and "observed" cases.
 While a true case is an actual infection, an observed case is a recorded, thus "known" infection.
-Not every true infection will automatically result in an observed infection. 
+Not every true infection will automatically result in an observed infection.
 Depending on the specific pathogen, asymptomatic cases might be highly unlikely to get tested and thus will not be recorded.
 In general, one must keep in mind that the number of unrecorded cases can only be roughly estimated in reality and highly depends on the testing strategy in place.
 Depending on the kind of study you want to perform with GEMS, you will have to find a reasonable mechanism to map true to observed cases yourself.
