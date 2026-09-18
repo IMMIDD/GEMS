@@ -76,7 +76,8 @@ function process_funcs(func_dicts::Dict)
         end
     end
 
-    isempty(tasks) || print("\r$(_subinfo("Processing $(length(tasks)) functions across $(min(POST_PROCESSING_MAX_TASKS, Threads.nthreads())) threads"))")
+    nthreads = min(POST_PROCESSING_MAX_TASKS, Threads.nthreads())
+    isempty(tasks) || print("\r$(_subinfo("Processing $(length(tasks)) functions across $nthreads thread$(nthreads == 1 ? "" : "s")"))")
     for t in tasks
         (key, field_name, value) = _fetch_rethrow(t)
         data[key][field_name] = value
