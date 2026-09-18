@@ -379,76 +379,81 @@ find the correct updated values of the ids of the IndividualSettings and change 
 If the jld2file does not correspond to "" (corresponding to no settingfile) and does not exist, an error message is printed.
 """
 function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict = Dict())
-    if jld2file == "" 
-        return
-    elseif isfile(jld2file)
-        settings::Dict = load(jld2file, "data")
+    jld2file == "" && return
+    return _add_jld2_settings!(_read_settings_jld2(jld2file), cntnr, d)
+end
 
-        # Default sampling method
-        default_sampling = RandomSampling()
+# The settings file's contents, one DataFrame per setting type. It needs no population, so
+# construction reads it while the population is built.
+function _read_settings_jld2(jld2file::String)::Dict
+    isfile(jld2file) || error("The file $jld2file does not exist.\n Please provide a valid file path pointing to the desired settingfile!")
+    return load(jld2file, "data")
+end
 
-        # Get all setting types from the settings dictionary
-        prov_settingtypes = DataType[eval(x) for x in keys(settings)]
+# Adds what `_read_settings_jld2` read to `cntnr`, renaming ids through `d`.
+function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
+    # Default sampling method
+    default_sampling = RandomSampling()
 
-        # Add all setting types to the container
-        add_types!(cntnr, [s for s in prov_settingtypes if s <: Setting && isconcretetype(s)])
-        
-        # Iterate over all setting types in parallel and add the settings to the container
-        for (settingtypesym, df) in settings
-            settingtype::DataType = eval(settingtypesym)
-            if "ags" in names(df)
-                transform!(df, :ags => ByRow(AGS) => :ags)
+    # Get all setting types from the settings dictionary
+    prov_settingtypes = DataType[eval(x) for x in keys(settings)]
+
+    # Add all setting types to the container
+    add_types!(cntnr, [s for s in prov_settingtypes if s <: Setting && isconcretetype(s)])
+
+    # Iterate over all setting types in parallel and add the settings to the container
+    for (settingtypesym, df) in settings
+        settingtype::DataType = eval(settingtypesym)
+        if "ags" in names(df)
+            transform!(df, :ags => ByRow(AGS) => :ags)
+        end
+
+        # Handle individualsettings and containersettings differently
+        if :individuals in fieldnames(settingtype)
+            setting_vec = cntnr.settings[settingtype]
+            renaming_dict = haskey(d, settingtype) ? d[settingtype] : nothing
+            id_data = df[!, "id"]
+
+            # Add the correct additional values to the low level settings
+            valid_cols = Symbol[]
+            for col in names(df)
+                symcol = Symbol(col)
+                if symcol in fieldnames(settingtype) && symcol != :individuals && symcol != :id
+                    push!(valid_cols, symcol)
+                end
             end
 
-            # Handle individualsettings and containersettings differently
-            if :individuals in fieldnames(settingtype)
-                setting_vec = cntnr.settings[settingtype]
-                renaming_dict = haskey(d, settingtype) ? d[settingtype] : nothing
-                id_data = df[!, "id"]
+            for col in valid_cols
+                col_data = df[!, string(col)]
+                update_setting_column!(setting_vec, col_data, renaming_dict, id_data, settingtype, Val(col))
+            end
 
-                # Add the correct additional values to the low level settings
-                valid_cols = Symbol[]
-                for col in names(df)
-                    symcol = Symbol(col)
-                    if symcol in fieldnames(settingtype) && symcol != :individuals && symcol != :id
-                        push!(valid_cols, symcol)
-                    end
-                end
+        # Handle the container settings
+        else
+            setting_vec = cntnr.settings[settingtype]
 
-                for col in valid_cols
-                    col_data = df[!, string(col)]
-                    update_setting_column!(setting_vec, col_data, renaming_dict, id_data, settingtype, Val(col))
-                end
+            # Add the container settings from the dataframe
+            for nt in Tables.namedtupleiterator(df)
+                push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
+            end
 
-            # Handle the container settings
-            else
-                setting_vec = cntnr.settings[settingtype]
-                
-                # Add the container settings from the dataframe
-                for nt in Tables.namedtupleiterator(df)
-                    push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
-                end
+            # Sort the vector of settings by ID
+            sort!(setting_vec, by = x -> x.id)
 
-                # Sort the vector of settings by ID
-                sort!(setting_vec, by = x -> x.id)
-
-                # Check if the ids are continuous and start from 1
-                if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
-                    d[settingtype] = Dict()
-                    for (i, setting) in enumerate(setting_vec)
-                        d[settingtype][setting.id] = i
-                        setting.id = i
-                    end
+            # Check if the ids are continuous and start from 1
+            if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
+                d[settingtype] = Dict()
+                for (i, setting) in enumerate(setting_vec)
+                    d[settingtype][setting.id] = i
+                    setting.id = i
                 end
             end
         end
-
-        # Rename all the settings according to the new ids determined during the creation procedure
-        new_setting_ids!(cntnr, d)
-
-        # Delete all ids that are out of bounds and set them to the default setting id
-        delete_dangling_ids!(cntnr)
-    else 
-        error("The file $jld2file does not exist.\n Please provide a valid file path pointing to the desired settingfile!")
     end
+
+    # Rename all the settings according to the new ids determined during the creation procedure
+    new_setting_ids!(cntnr, d)
+
+    # Delete all ids that are out of bounds and set them to the default setting id
+    delete_dangling_ids!(cntnr)
 end

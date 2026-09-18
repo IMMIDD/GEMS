@@ -929,14 +929,19 @@ function determine_population(population::String, settingsfile, global_setting; 
         throw(ArgumentError("Provided population must be a valid population file path or a population model identifier (e.g., 'DE')!"))
     end
 
+    # the settings file does not depend on the population, so read it while the population is built
+    settings_read = nothing
+    if !isnothing(settings_path)
+        !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
+        settings_read = Threads.@spawn _read_settings_jld2(settings_path)
+    end
+
     pop = Population(pop_path; ind_extension = ind_extension)
     settings, renaming = settings_from_population(pop, global_setting)
 
-    # if settingsfile is provided, load the settings from the file
-    if !isnothing(settings_path)
-        !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
+    if !isnothing(settings_read)
         _printinfo("\u2514 Loading settings from $(basename(settings_path))")
-        settings_from_jld2!(settings_path, settings, renaming)
+        _add_jld2_settings!(_fetch_rethrow(settings_read), settings, renaming)
     end
 
     return pop, settings
@@ -1011,12 +1016,25 @@ Internal function barrier to set the contact sampling method on every setting in
 the loop ensures type-stable field access.
 
 Deepcopies `method` per setting so settings don't share a mutable sampling-method cache
-(e.g. `AgeBasedContactSampling.age_pyramid`) across concurrently-processed settings.
+(e.g. `AgeBasedContactSampling.age_pyramid`) across concurrently-processed settings. Bits methods
+have no state to share, so all settings hold the same one.
 """
 function _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
-    for s_abs in setting_list
-        s = s_abs::settingtype
-        s.contact_sampling_method = deepcopy(method)
+    isempty(setting_list) && return
+    if isbitstype(typeof(method))
+        # storing into the abstract field boxes; reuse the first setting's box instead of one per setting
+        first_setting = setting_list[1]::settingtype
+        first_setting.contact_sampling_method = method
+        boxed = first_setting.contact_sampling_method
+        for s_abs in setting_list
+            s = s_abs::settingtype
+            s.contact_sampling_method = boxed
+        end
+    else
+        for s_abs in setting_list
+            s = s_abs::settingtype
+            s.contact_sampling_method = deepcopy(method)
+        end
     end
 end
 """
