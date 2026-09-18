@@ -2,7 +2,7 @@
 
 This list shows the parameters that are applied when spawning a simulation without additional arguments like `sim = Simulation()`.
 
-The config can be found [here](https://github.com/IMMIDD/GEMS/blob/GEMS-Documentation-Update/data/DefaultConf.toml).
+The config can be found [here](https://github.com/IMMIDD/GEMS/blob/main/data/DefaultConf.toml).
 
 ## Simulation
 | Parameter | Value |
@@ -22,12 +22,12 @@ The config can be found [here](https://github.com/IMMIDD/GEMS/blob/GEMS-Document
 | Average office size | `5` individuals (everybody 18-65 years assigned) |
 | Average school size | `100` individuals (everybody 6-18 years assigned); internally handled as `SchoolClass` |
 
-## Pathogene
+## Pathogen
 | Parameter | Value |
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
-| Number of Pathogenes | `1` |
+| Number of Pathogens | `1` |
 | Name | `Covid19` |
-| Transmission rate | `20%` infection chance for each contact, given as `level` |
+| Transmission rate | `20%` infection chance for each contact, given as `level` (probability) |
 | Infectiousness profile | `ConstantInfectiousness` (no changes between days, set to 100% each day) |
 | Progression assignment | Stratified by age groups (`-14`, `15-65`, `66-`) across 4 categories (`Asymptomatic`, `Mild`, `Severe`, `Critical`) |
 | Immunity profile | `FullImmunity` (a person is fully immune after the first infection) |
@@ -79,7 +79,7 @@ This is part of the pathogen and only separated for readability.
 | Critical-tier ICU discharge | `5` days after ICU duration (Poisson-distributed) |
 | Critical-tier death | `7` days after critical onset (Poisson-distributed) |
 
-## Contacts
+## Settings
 | Parameter | Value |
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
 | Sampling Type | `ContactparameterSampling` for all settings |
