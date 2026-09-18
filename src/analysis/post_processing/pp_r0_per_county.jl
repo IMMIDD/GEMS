@@ -40,31 +40,24 @@ end
 function _county_r0(inf_ids::AbstractVector, pids::AbstractVector, counties::AbstractVector,
         secondary_counts::Vector{Int}, sample_fraction)
     # each infection's group by infection id, and each group's (county, pathogen) and size
-    group_keys = Tuple{eltype(counties), eltype(pids)}[]
-    group_index = Dict{eltype(group_keys), Int}()
-    group_sizes = Int[]
+    groups = OrderedCounter{Tuple{Int32, eltype(pids)}}()
     group_of_id = zeros(Int32, isempty(inf_ids) ? 0 : maximum(inf_ids))
     for r in eachindex(inf_ids)
-        g = get!(group_index, (counties[r], pids[r])) do
-            push!(group_keys, (counties[r], pids[r]))
-            push!(group_sizes, 0)
-            length(group_keys)
-        end
-        group_sizes[g] += 1
-        group_of_id[inf_ids[r]] = g
+        group_of_id[inf_ids[r]] = count!(groups, (counties[r].id, pids[r]))
     end
 
     # ids are dense, so walking them in order visits every group's infections sorted by id
-    sample_sizes = [max(Int(ceil(sample_fraction * n)), 1) for n in group_sizes]
-    sampled = zeros(Int, length(group_keys))
-    total_secondary = zeros(Int, length(group_keys))
+    sample_sizes = [max(Int(ceil(sample_fraction * n)), 1) for n in groups.counts]
+    sampled = zeros(Int, length(groups.keys))
+    total_secondary = zeros(Int, length(groups.keys))
     for (id, g) in enumerate(group_of_id)
         (g == 0 || sampled[g] == sample_sizes[g]) && continue
         sampled[g] += 1
         total_secondary[g] += id <= length(secondary_counts) ? secondary_counts[id] : 0
     end
 
-    return DataFrame(ags = first.(group_keys), pathogen_id = last.(group_keys), r0 = total_secondary ./ sample_sizes)
+    return DataFrame(ags = [AGS(Int(first(k))) for k in groups.keys], pathogen_id = last.(groups.keys),
+        r0 = total_secondary ./ sample_sizes)
 end
 
 # barrier: a DataFrame column is untyped where it is read, so count behind its concrete type

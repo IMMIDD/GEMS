@@ -39,20 +39,12 @@ function tick_cases_per_setting(postProcessor::PostProcessor)
     return merged_data
 end
 
-# `combine(groupby(df, [:tick, :setting_type, :pathogen_id]), nrow => :daily_cases)` for these three columns, with
-# groups in first-appearance order as `groupby` gives them, counted without its per-row group index
+# `combine(groupby(df, [:tick, :setting_type, :pathogen_id]), nrow => :daily_cases)`, counted in one pass
 function _count_rows(ticks::AbstractVector, setting_types::AbstractVector, pids::AbstractVector)
-    keys = Tuple{eltype(ticks), eltype(setting_types), eltype(pids)}[]
-    index = Dict{eltype(keys), Int}()
-    counts = Int[]
-    for k in zip(ticks, setting_types, pids)
-        g = get!(index, k) do
-            push!(keys, k)
-            push!(counts, 0)
-            length(keys)
-        end
-        counts[g] += 1
+    counter = OrderedCounter{Tuple{eltype(ticks), eltype(setting_types), eltype(pids)}}()
+    for key in zip(ticks, setting_types, pids)
+        count!(counter, key)
     end
-    return DataFrame(tick = getindex.(keys, 1), setting_type = getindex.(keys, 2), pathogen_id = getindex.(keys, 3),
-        daily_cases = counts)
+    return DataFrame(tick = getindex.(counter.keys, 1), setting_type = getindex.(counter.keys, 2),
+        pathogen_id = getindex.(counter.keys, 3), daily_cases = counter.counts)
 end

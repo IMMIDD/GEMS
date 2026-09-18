@@ -223,6 +223,44 @@ function _matching_rows(keys::AbstractVector, ids::AbstractVector)
     return rows
 end
 
+"""
+    OrderedCounter{K}()
+
+Counts values per key, keeping the keys in the order they first appear - the order `groupby` gives its
+groups. Lets a post processing step count in one pass where `groupby` would index every row.
+"""
+struct OrderedCounter{K}
+    index::Dict{K, Int}
+    keys::Vector{K}
+    counts::Vector{Int}
+end
+
+OrderedCounter{K}() where {K} = OrderedCounter{K}(Dict{K, Int}(), K[], Int[])
+
+# Adds `n` to `key`'s count and returns its slot, i.e. the number of the group it belongs to.
+function count!(counter::OrderedCounter{K}, key::K, n::Int = 1) where {K}
+    slot = get!(counter.index, key) do
+        push!(counter.keys, key)
+        push!(counter.counts, 0)
+        length(counter.keys)
+    end
+    counter.counts[slot] += n
+    return slot
+end
+
+# Rows per pathogen, for the pathogens of `pathogen_ids` (sorted by id, as `groupby` returns them).
+function _rows_per_pathogen(pids::AbstractVector, pathogen_ids::Vector)
+    counts = zeros(Int, length(pathogen_ids))
+    for p in pids
+        i = findfirst(==(p), pathogen_ids)
+        i === nothing || (counts[i] += 1)
+    end
+    return counts
+end
+
+# the pathogens of a simulation, sorted by id
+_sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
+
 # `col` at each of `rows`, `missing` for row 0: the column a left join adds
 function _gather(col::AbstractVector{T}, rows::Vector{Int32}) where {T}
     return Union{Missing, T}[r == 0 ? missing : col[r] for r in rows]
