@@ -156,12 +156,7 @@ end
 
 (s::SerialOnly)() = s.f()
 
-# Held by the post processing steps that need the most memory, so that two of them never run at the same time.
-const _EXCLUSIVE_POST_PROCESSING = ReentrantLock()
 
-# Runs `f` without any other memory-heavy post processing step running alongside it, unless the flag
-# allows those to run at the same time as well.
-_exclusive(f) = POST_PROCESSING_PARALLELISM in (:builtin_all, :all) ? f() : lock(f, _EXCLUSIVE_POST_PROCESSING)
 
 # A sampling step's own RNG: seeded per step, so its draws depend on neither order nor thread
 _post_processing_rng(sim::Simulation, step::String) = Xoshiro(hash((seed(sim), step)))

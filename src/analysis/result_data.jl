@@ -49,8 +49,8 @@ with their result value in a new output dictionary. Depending on the
 """
 function process_funcs(func_dicts::Dict)
 
-    if POST_PROCESSING_PARALLELISM in (:builtin_all, :all) && Sys.free_memory() / Sys.total_memory() < 0.25
-        @warn "Post processing runs with POST_PROCESSING_PARALLELISM = $POST_PROCESSING_PARALLELISM and less than 25% of the system memory is free. The memory-heavy steps run at the same time in this mode; set the flag to :builtin_light in constants.jl if the system runs out of memory."
+    if POST_PROCESSING_PARALLELISM == :all && Sys.free_memory() / Sys.total_memory() < 0.25
+        @warn "Post processing runs with POST_PROCESSING_PARALLELISM = :all and less than 25% of the system memory is free. Your own result functions run at the same time in this mode; set the flag to :builtin in constants.jl if the system runs out of memory."
     end
 
     data = Dict{String, Any}()

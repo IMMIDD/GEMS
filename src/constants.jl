@@ -153,15 +153,14 @@ const ENFORCE_SIM_RNGS = true
 ########################
 
 # how much of the post processing runs concurrently rather than sequentially:
-# ":none"          everything sequentially
-# ":builtin_light" the result functions GEMS ships run concurrently, but the few that need the most
-#                  memory take turns; functions of your own result data style run sequentially, as
-#                  they might not be safe to run in parallel
-# ":builtin_all"   as above, but the memory-heavy steps run at the same time as well
-# ":all"           your own functions run concurrently, too. They must not share mutable state or draw
-#                  from the simulation's RNGs, and their results must not depend on the order they run in.
+# ":none"    everything sequentially
+# ":builtin" the result functions GEMS ships run concurrently; functions of your own result data style
+#            run sequentially, as they might not be safe to run in parallel
+# ":all"     your own functions run concurrently, too. They must not share mutable state or draw from
+#            the simulation's RNGs, and their results must not depend on the order they run in.
+#            Wrap an entry of your style in `SerialOnly(...)` to keep it sequential in any mode.
 # Concurrent post processing needs more memory; Lower POST_PROCESSING_MAX_TASKS if memory is a bottleneck.
-POST_PROCESSING_PARALLELISM = :builtin_light
+POST_PROCESSING_PARALLELISM = :builtin
 
 # how many post processing steps may run at the same time
 POST_PROCESSING_MAX_TASKS = 4
