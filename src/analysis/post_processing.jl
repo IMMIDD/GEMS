@@ -82,23 +82,17 @@ mutable struct PostProcessor
 
         sim_households = households(simulation)
 
-        transform!(infections, 
-            :household_a => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_a,
-            :household_b => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_b
-        )
+        # each household's AGS once, so the rows read one compact vector rather than every household object
+        household_ags = ags.(sim_households)
+        infections.household_ags_a = _ags_of_households(infections.household_a, household_ags)
+        infections.household_ags_b = _ags_of_households(infections.household_b, household_ags)
 
         deaths = dataframe(deathlogger(simulation))
 
         # a host death ends every co-active infection: clear `:recovery` and record `:removed`
-        host_death = DataFrames.select(deaths, :id, :tick => :host_death, copycols=false)
-        leftjoin!(infections, host_death, on = [:id_b => :id])
-        transform!(infections,
-            [:recovery, :host_death] => ByRow((r, d) -> !ismissing(d) && d < r ?
-                (recovery = Int16(-1), removed = d) : (recovery = r, removed = r)) => AsTable)
-
-        cols = names(infections, Not([:host_death, :removed]))
-        i = findfirst(==("recovery"), cols)
-        select!(infections, cols[1:i]..., :removed, cols[i+1:end]...)
+        death_rows = _matching_rows(infections.id_b, deaths.id)
+        infections.recovery, removed = _recovery_and_removal(infections.recovery, deaths.tick, death_rows)
+        insertcols!(infections, columnindex(infections, :recovery) + 1, :removed => removed)
 
         # join deaths with additional info from population DF
         leftjoin!(deaths, pop, on = :id)
@@ -256,9 +250,46 @@ end
 # the pathogens of a simulation, sorted by id
 _sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
 
+# The AGS of each row's household, `missing` without one; typed like the `ByRow` it replaces, so a column
+# without `missing` values is a plain `Vector{AGS}`.
+function _ags_of_households(households::AbstractVector, household_ags::Vector{AGS})
+    n = length(households)
+    out = (n == 0 || any(ismissing, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)
+    _fill_ags!(out, households, household_ags)
+    return out
+end
+
+function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vector{AGS})
+    Threads.@threads for k in eachindex(households)
+        h = households[k]
+        out[k] = ismissing(h) ? missing : household_ags[h]
+    end
+    return out
+end
+
+# `recovery` cleared to -1 where the host died before it, and the tick each infection ended
+function _recovery_and_removal(recovery::AbstractVector, death_ticks::AbstractVector, death_rows::Vector{Int32})
+    new_recovery = similar(recovery)
+    removed = similar(recovery)
+    Threads.@threads for k in eachindex(recovery)
+        r, row = recovery[k], death_rows[k]
+        if row != 0 && death_ticks[row] < r
+            new_recovery[k], removed[k] = Int16(-1), death_ticks[row]
+        else
+            new_recovery[k], removed[k] = r, r
+        end
+    end
+    return new_recovery, removed
+end
+
 # `col` at each of `rows`, `missing` for row 0: the column a left join adds
 function _gather(col::AbstractVector{T}, rows::Vector{Int32}) where {T}
-    return Union{Missing, T}[r == 0 ? missing : col[r] for r in rows]
+    out = Vector{Union{Missing, T}}(undef, length(rows))
+    Threads.@threads for k in eachindex(rows)
+        r = rows[k]
+        out[k] = r == 0 ? missing : col[r]
+    end
+    return out
 end
 
 """
