@@ -63,7 +63,7 @@ This is part of the pathogen and only separated for readability.
 | Time to critical offset | `7` days after critical onset (Poisson-distributed) |
 | Time to severeness offset | `3` days after critical offset (Poisson-distributed) |
 | Time to recovery | `4` days after severeness offset (Poisson-distributed) |
-| Critical-tier hospital probability | `95%`; admitted `1` day after critical onset |
+| Critical-tier hospital probability | `95%`; admitted `1` day severeness onset |
 | Critical-tier ICU probability | `50%` (of those admitted to the hospital, `47.5%` of all critical) |
 | Critical-tier ventilation probability | `0%` (disabled by default) |
 | Critical-tier death probability | `30%`, ungated by hospital/ICU |
