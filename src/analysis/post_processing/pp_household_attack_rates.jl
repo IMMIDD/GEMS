@@ -28,10 +28,7 @@ in `constants.jl`
 | `chain_size`         | `Int32`   | Number of individuals that got infected within the household          |
 | `hh_attack_rate`     | `Float64` | Number of infected individuals divided by household size              |
 """
-household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES) =
-    _exclusive(() -> _household_attack_rates(postProcessor, hh_samples))
-
-function _household_attack_rates(postProcessor::PostProcessor, hh_samples::Int64)
+function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
     # exception handling
     hh_samples <= 100 ? throw(ArgumentError("Sample too low. You need at least 100 households to proceed with the calculation")) : nothing
 
