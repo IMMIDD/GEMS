@@ -1,7 +1,6 @@
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, individuals_in_ags, ags
 export geolocation, lat, lon, present_individuals, is_open, open!, close!
 export sample_individuals
-export activate!
 
 
 ### Setting access functions
@@ -543,7 +542,15 @@ end
 Opens the setting.
 """
 function open!(setting::Setting)
+    setting.isopen && return nothing
     setting.isopen = true
+    pool = _pool(setting)
+    if pool !== nothing
+        _count_closed!(pool, -1)
+        # the containers above now hold different members, so their block is repacked
+        _mark_dirty!(pool, setting)
+    end
+    return nothing
 end
 """
     open!(setting::Setting, simulation::Simulation)
@@ -551,7 +558,7 @@ end
 Sets the setting and all settings contained by it as open.
 """
 function open!(setting::Setting, simulation::Simulation)
-    setting.isopen = true
+    open!(setting)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
@@ -568,7 +575,15 @@ end
 Closes the setting.
 """
 function close!(setting::Setting)
+    setting.isopen || return nothing
     setting.isopen = false
+    pool = _pool(setting)
+    if pool !== nothing
+        _count_closed!(pool, +1)
+        # the containers above now hold different members, so their block is repacked
+        _mark_dirty!(pool, setting)
+    end
+    return nothing
 end
 
 """
@@ -577,7 +592,7 @@ end
 Sets the setting and all settings contained by it as closed (not open).
 """
 function close!(setting::Setting, simulation::Simulation)
-    setting.isopen = false
+    close!(setting)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
@@ -625,17 +640,49 @@ function remove_empty_settings!(sim::Simulation)
 end 
 
 
-"""
-    activate!(setting::Setting, sim::Simulation)
+###
+### MEMBERSHIP MUTATION - SIMULATION CONVENIENCE
+### The primitives take a `Population`; these are here because `Simulation` does not exist
+### yet where they are defined.
+###
 
-Activates setting and recursively activates the the containing setting.
 """
-function activate!(setting::Setting, sim::Simulation)
-    activate!(setting)
-    # Check if this setting is contained within a parent setting
-    if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
-        # Recursively activate the parent
-        parent_setting = settings(sim, contained_type(typeof(setting)))[setting.contained]
-        activate!(parent_setting, sim)
-    end
+    add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false, scale::Real = 1.0)
+
+Adds a member, taking the population from the simulation.
+"""
+add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false, scale::Real = 1.0) =
+    add_member!(setting, individual, population(sim); primary = primary, scale = scale)
+
+"""
+    set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+
+Makes setting `sid` the individual's primary setting of type `T`, taking the population from
+the simulation.
+"""
+set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting} =
+    set_primary!(population(sim), individual, T, sid)
+
+"""
+    set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+
+Sets the scale of the individual's entry for setting `sid` of type `T`, and that setting's scale bound.
+"""
+function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+    plans = activity_plans(sim)
+    _set_entry_scale!(plans, individual, T, sid, scale)
+    s = settings(sim, T)[sid]
+    # raising a scale can only raise the bound; lowering one may free it, so recount
+    # the bound must use the scale as rounded into the entry's Float16
+    stored = Float32(Float16(scale))
+    stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
+    return nothing
 end
+
+"""
+    remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Removes a member, taking the population from the simulation.
+"""
+remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    remove_member!(setting, individual, population(sim))

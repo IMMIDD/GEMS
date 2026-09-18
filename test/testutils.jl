@@ -62,3 +62,15 @@ function _free_cache_slot(ind::Individual)
     isnothing(i) && throw(ArgumentError("set_progression! cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual without a Simulation context."))
     return i
 end
+
+"""
+    fake_membership!(pop::Population, ind::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+
+Gives `ind` a plan entry for setting `sid` of type `T` without making it a member of that
+setting, for tests that only need the id to resolve. `assign_settings!` refuses this once the
+plans are indexed, because a simulation must not hold such an entry.
+"""
+function fake_membership!(pop::Population, ind::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+    GEMS.plan_add!(GEMS.activity_plans(pop), ind, PlanEntry(T, Int32(sid), GEMS.DEFAULT_MEMBER_INDEX))
+    return nothing
+end

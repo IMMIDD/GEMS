@@ -54,6 +54,13 @@ Base.show(io::IO, tf::CompositeTransmissionRate) =
            _apply_modifiers(Base.tail(mods), pathogen_id, infecter, infectee, setting, tick, sim, rng)
 end
 
+@inline _modifier_bounds(::Tuple{}, pathogen_id, infecter, setting, tick, sim) = 1.0
+
+@inline function _modifier_bounds(mods::Tuple, pathogen_id, infecter, setting, tick, sim)
+    return transmission_factor_bound(mods[1], pathogen_id, infecter, setting, tick, sim) *
+           _modifier_bounds(Base.tail(mods), pathogen_id, infecter, setting, tick, sim)
+end
+
 
 """
     transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
@@ -92,3 +99,15 @@ end
 
 transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+"""
+    transmission_bound(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Returns the base function's `transmission_bound` times the `transmission_factor_bound` of each modifier.
+"""
+function transmission_bound(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    p = transmission_bound(transFunc.base, pathogen_id, infecter, setting, tick, sim) *
+        _modifier_bounds(transFunc.modifiers, pathogen_id, infecter, setting, tick, sim)
+    # a zero factor zeroes the probability, whatever an unbounded one says
+    return isnan(p) ? 0.0 : p
+end

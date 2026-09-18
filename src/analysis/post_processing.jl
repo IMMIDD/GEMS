@@ -48,7 +48,11 @@ mutable struct PostProcessor
     Create a `PostProcessor` object for an associated `Simulation`. Post Processing requires a simulation to be done.
     """
     function PostProcessor(simulation::Simulation)
-       
+
+        # a run can end on settings opened or closed; repack their pools here, before result steps
+        # that may run concurrently read them
+        repack_dirty_pools!(settingscontainer(simulation))
+
         # convert population model to dataframe
         pop = dataframe(population(simulation))
         
@@ -60,6 +64,11 @@ mutable struct PostProcessor
 
         # join all infections with additional info from population DF
         infections = simulation |> infectionlogger |> dataframe
+
+        # the logger stores the progression index; resolve it here, where pathogens are known
+        infections[!, :progression_id] = progression_names(pathogens(simulation),
+            infections.pathogen_id, infections.progression_id)
+        DataFrames.rename!(infections, :progression_id => :progression_category)
 
         # calculate generation time and serial interval against each infection's source infection
         source_rows = _matching_rows(infections.source_infection_id, infections.infection_id)

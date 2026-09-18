@@ -1,5 +1,16 @@
-import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containers!, dead!,
+import GEMS: try_to_infect!, spread_infections!, update_individual!, get_containers!, dead!,
     push_infection!, push_immunity!, update_immunity!, _EndedInfection
+
+# a setting type GEMS does not ship, for the infectious-first loop's fallback lookup
+@with_kw mutable struct SpreadTestSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+end
+# registered at once: every simulation built from here on looks at each IndividualSetting subtype
+GEMS.register_setting_type!(SpreadTestSetting)
 
 @testset "Infections" begin
     test_rng = Xoshiro()
@@ -425,6 +436,8 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             GEMS.update_individual!(infecter, Int16(1), sim)
 
             @test try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
+            # the infection is only staged; its flags land on the host at the flush
+            GEMS.flush_pending_infections!(sim)
 
             # TRY TO INFECT INFECTER-INFECTEE (should NOT work - infectee already infected)
             @test !try_to_infect!(infecter, infectee, sim, first_pathogen(sim), households(sim)[1])
@@ -592,5 +605,294 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 df -> df[(df.setting_type .!= 'h'), :] |> nrow == 0
 
         end
+
+        @testset "Deferred Write Dedup" begin
+            # Two attempts on the same host and pathogen in one tick, staged out of canonical
+            # order. The flush must keep the one the sequential loop would have reached first:
+            # Household is walked before Office, whatever order the buffers arrive in.
+            sim = Simulation(pop_size = 100, infected_fraction = 0.0)
+            host = individuals(sim)[1]
+            pid = id(first_pathogen(sim))
+            t = tick(sim)
+            dp = DiseaseProgression(exposure = t, infectiousness_onset = t + Int16(2),
+                recovery = t + Int16(10))
+
+            stage(rank, char, sid) = GEMS._PendingInfection(
+                id(host), Int32(7), GEMS.DEFAULT_INFECTION_ID, Int32(sid), Int32(-1),
+                Int32(1), NaN32, NaN32, char, t, pid, Int8(1), rank, dp)
+
+            office = GEMS.setting_type_index(Office)
+            household = GEMS.setting_type_index(Household)
+            @test household < office
+
+            # push the office attempt first, so buffer order and canonical order disagree
+            buf = sim.infection_buffers[Threads.threadid(), GEMS._owner_shard(id(host))]
+            push!(buf, stage(office, 'o', 20))
+            push!(buf, stage(household, 'h', 10))
+
+            GEMS.flush_pending_infections!(sim)
+
+            df = infections(sim)
+            @test nrow(df) == 1
+            @test df.setting_type[1] == 'h'
+            @test df.setting_id[1] == 10
+            @test infected(host, pid)
+            @test number_of_infections(host) == 1
+        end
+
+        @testset "Infectious-first loop" begin
+            # The loop reaches settings from each infectious individual's plan. A walk over every
+            # setting's present members must find exactly the same (individual, setting type,
+            # setting id, position, scale) combinations.
+            Visit = Tuple{Int32, UInt8, Int32, Int, Float32}
+
+            function setting_first(sim)
+                cntnr = GEMS.settingscontainer(sim)
+                plans = GEMS.activity_plans(sim)
+                t = tick(sim)
+                found = Visit[]
+                GEMS.foreach_setting_vector(cntnr) do stngs
+                    for s in stngs, (k, ind) in enumerate(GEMS.present_members(s, cntnr))
+                        (GEMS.infectious(ind) && GEMS.can_infect(ind, s, t)) || continue
+                        scale = GEMS._membership_scale(plans, ind, s, cntnr)
+                        scale > 0 && push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), k, scale))
+                    end
+                end
+                return sort!(found)
+            end
+
+            # what the loop visits, and how many visits name a position holding someone else
+            function individual_first(sim)
+                cntnr = GEMS.settingscontainer(sim)
+                t = tick(sim)
+                found = Visit[]
+                misplaced = Ref(0)
+                for ind in individuals(sim)
+                    GEMS.infectious(ind) || continue
+                    GEMS._foreach_spread_setting(ind, sim) do s, pos, scale
+                        (scale > 0 && GEMS.can_infect(ind, s, t)) || return
+                        GEMS.present_members(s, cntnr)[pos] === ind || (misplaced[] += 1)
+                        push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), pos, scale))
+                    end
+                end
+                return sort!(found), misplaced[]
+            end
+
+            function agrees(sim)
+                expected = setting_first(sim)
+                visited, misplaced = individual_first(sim)
+                @test !isempty(expected)
+                @test visited == expected
+                @test misplaced == 0
+            end
+
+            BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+            sim = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+                settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+                global_setting = true, infected_fraction = 0.0, seed = 1)
+            @test length(settings(sim, GlobalSetting)) == 1
+            foreach(i -> GEMS.infectious!(i, true), individuals(sim))
+            agrees(sim)
+
+            # repeated members: a second class in the same year, and one in another year of the same
+            # school, scaled; and one member removed
+            pop = population(sim)
+            cntnr = GEMS.settingscontainer(sim)
+            classes, years, schools = settings(sim, SchoolClass), settings(sim, SchoolYear), settings(sim, School)
+            join!(m, c) = any(x -> x === m, individuals(c)) || add_member!(c, m, pop; scale = 0.5)
+            for y in years[1:50]
+                length(y.contains) > 1 || continue
+                c1, c2 = classes[y.contains[1]], classes[y.contains[2]]
+                isempty(individuals(c1)) || join!(individuals(c1)[1], c2)
+            end
+            for s in schools[1:50]
+                length(s.contains) > 1 || continue
+                y1, y2 = years[s.contains[1]], years[s.contains[2]]
+                (isempty(y1.contains) || isempty(y2.contains)) && continue
+                c1, c2 = classes[y1.contains[1]], classes[y2.contains[1]]
+                isempty(individuals(c1)) || join!(individuals(c1)[end], c2)
+            end
+            leaver = first(c for c in classes if length(individuals(c)) > 2)
+            remove_member!(leaver, individuals(leaver)[2], pop)
+            GEMS.repack_dirty_pools!(cntnr)
+            @test pop.activity_plans isa ActivityPlanStore && cntnr.pools[SchoolClass].repeats > 0
+            agrees(sim)
+
+            # closures at every level, and entries that do not apply
+            rng = Xoshiro(3)
+            foreach(close!, randsubseq(rng, classes, 0.05))
+            foreach(close!, randsubseq(rng, years, 0.02))
+            close!(schools[2])
+            foreach(close!, randsubseq(rng, settings(sim, Office), 0.05))
+            GEMS.repack_dirty_pools!(cntnr)
+            plans = GEMS.activity_plans(sim)
+            for ind in individuals(sim), slot in GEMS.plan_slots(plans, ind)
+                rand(rng) < 0.02 && entry_active!(plans, ind, slot, false)
+            end
+            agrees(sim)
+
+            # a setting type GEMS does not ship is reached through the runtime lookup
+            df = DataFrame(id = Int32.(1:4), age = Int8.(fill(30, 4)), sex = Int8.(ones(4)),
+                           household = Int32[1, 1, 2, 2])
+            custom_pop = Population(df)
+            foreach(ind -> assign_settings!(custom_pop, ind, SpreadTestSetting => 1), individuals(custom_pop))
+            custom = Simulation(population = custom_pop, infected_fraction = 0.0)
+            @test length(settings(custom, SpreadTestSetting)) == 1
+            foreach(i -> GEMS.infectious!(i, true), individuals(custom))
+            agrees(custom)
+            @test count(v -> v[2] == GEMS.setting_type_index(SpreadTestSetting), first(individual_first(custom))) == 4
+
+            # the sweep collects exactly the individuals who are infectious
+            sim = Simulation(pop_size = 2000, seed = 5)
+            seen = 0
+            for _ in 1:15
+                step!(sim)
+                collected = sort(id.(reduce(vcat, sim.infectious_individuals)))
+                @test collected == sort(id.(filter(GEMS.infectious, individuals(sim))))
+                seen += length(collected)
+            end
+            @test seen > 0
+        end
+    end
+
+    @testset "Joint transmission draw" begin
+        # the probability of an outcome when each pathogen transmits independently
+        indep(ps, mask) = prod(mask[i] ? ps[i] : 1 - ps[i] for i in eachindex(ps))
+        outcomes(N) = [ntuple(i -> (k >> (i - 1)) & 1 == 1, N) for k in 0:(2^N - 1)]
+        # whether every outcome's frequency over `n` draws is within 5 standard errors of `expected`
+        function matches(draw, expected, N, n)
+            counts = Dict(m => 0 for m in outcomes(N))
+            for _ in 1:n
+                counts[draw()] += 1
+            end
+            return all(outcomes(N)) do m
+                q = expected(m)
+                abs(counts[m] / n - q) <= 5 * sqrt(max(q * (1 - q), 0.0) / n) + 1 / n
+            end
+        end
+
+        rng = Xoshiro(42)
+        n = 200_000
+        # rounded up to Float32, as spreading does
+        roundup(x) = (t = Float32(x); t < x ? nextfloat(t) : t)
+        # probabilities, with bounds that are tight, loose, 0 or 1
+        cases = [((0.3, 0.3), (0.3, 0.3)), ((0.3, 0.3), (0.5, 0.4)), ((0.1, 0.6), (0.1, 0.6)),
+                 ((0.05, 0.9, 0.2), (0.1, 0.95, 0.5)), ((0.0, 0.4), (0.2, 0.4)), ((0.0, 0.0, 0.2), (0.0, 0.0, 0.2)),
+                 ((1e-6, 1e-6), (0.5, 0.5)), ((0.5, 0.5), (1.0, 0.5)), ((0.7,), (0.7,)), ((0.2,), (0.9,))]
+        for (ps, bounds) in cases
+            N = length(ps)
+            any_bound = 1 - prod(1 .- bounds)
+            nothing_ = ntuple(_ -> false, N)
+            # kept by thinning with at least the probability that any draw falls below its bound, the outcomes are the independent ones
+            for thin in (roundup(any_bound), roundup((any_bound + 1) / 2), 1.0f0)
+                thinned = () -> gems_rand(rng) < thin ? GEMS._draw_transmissions(ps, bounds, thin, rng) : nothing_
+                @test matches(thinned, m -> indep(ps, m), N, n)
+            end
+        end
+        @test @inferred(GEMS._draw_transmissions((0.1, 0.6), (0.2, 0.6), 0.68f0, rng)) isa NTuple{2, Bool}
+
+        # thinning by the largest bound and accepting each pathogen on its own inflates co-transmission
+        ps = (0.3, 0.3)
+        naive = () -> gems_rand(rng) < 0.3 ? ntuple(i -> gems_rand(rng) < ps[i] / 0.3, 2) : (false, false)
+        @test !matches(naive, m -> indep(ps, m), 2, n)
+    end
+
+    @testset "Transmission prethinning" begin
+        n = 4000
+        asymp = Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 7)
+        pathogen(pid, name, tf) = Pathogen(id = pid, name = name, progressions = [asymp], transmission_function = tf)
+        rate(r) = ConstantTransmissionRate(transmission_rate = r)
+
+        # the pathogens each second household member caught at home on the first infectious tick,
+        # with every first member infected with every pathogen
+        function caught(ps; prethinning, csm = RandomSampling(), host_scale = 1.0, ages = fill(30, n), setup! = sim -> nothing)
+            df = DataFrame(id = Int32.(1:2n), sex = Int8.(zeros(2n)), age = Int8.(vec(permutedims(hcat(fill(30, n), ages)))),
+                           household = Int32.(repeat(1:n, inner = 2)))
+            table = DataFrame(id = Int32.(1:2:2n), setting_type = fill("Household", n), setting_id = Int32.(1:n),
+                              scale = fill(host_scale, n))
+            pop = host_scale == 1 ? Population(df) : Population(df; memberships = table)
+            sim = Simulation(population = pop, pathogens = ps, infected_fraction = 0.0, household_contacts = csm,
+                seed = 42, transmission_prethinning = prethinning)
+            setup!(sim)
+            for k in 1:2:2n, p in GEMS.pathogens(sim)
+                infect!(individuals(sim)[k], tick(sim), p; sim = sim, rng = rng(sim))
+            end
+            GEMS.flush_pending_infections!(sim)
+            step!(sim)
+            step!(sim)
+            got = Dict{Int32, Set{Int8}}()
+            for r in eachrow(infections(sim))
+                iseven(r.id_b) && r.tick == 1 && r.setting_type == 'h' || continue
+                push!(get!(got, r.id_b, Set{Int8}()), r.pathogen_id)
+            end
+            return got
+        end
+        share(got, set) = count(==(set), values(got)) / n
+        A, B, AB = Set(Int8[1]), Set(Int8[2]), Set(Int8[1, 2])
+
+        # co-infection over one contact per tick: each pathogen transmits on its own
+        for on in (true, false), (a, b) in ((0.3, 0.3), (0.1, 0.6))
+            got = caught((pathogen(1, "A", rate(a)), pathogen(2, "B", rate(b))); prethinning = on)
+            @test isapprox(share(got, A), a * (1 - b); atol = 0.02)
+            @test isapprox(share(got, B), (1 - a) * b; atol = 0.02)
+            @test isapprox(share(got, AB), a * b; atol = 0.02)
+        end
+
+        # co-infection over Poisson(2) contacts, drawn by the sampler or by a host at scale 2
+        no_a, no_b, neither = exp(-0.6), exp(-0.6), exp(-2 * (1 - 0.7^2))
+        both = 1 - no_a - no_b + neither
+        for on in (true, false), (csm, scale) in ((ContactparameterSampling(2.0), 1.0), (ContactparameterSampling(1.0), 2.0))
+            got = caught((pathogen(1, "A", rate(0.3)), pathogen(2, "B", rate(0.3))); prethinning = on, csm = csm, host_scale = scale)
+            @test isapprox(share(got, A), 1 - no_a - both; atol = 0.02)
+            @test isapprox(share(got, B), 1 - no_b - both; atol = 0.02)
+            @test isapprox(share(got, AB), both; atol = 0.02)
+        end
+
+        # a loose bound: housemates of 10 and 60 are caught at 0.1 and 0.5, immune ones never
+        function immunize!(sim)
+            for h in 4:4:n
+                ind = individuals(sim)[2h]
+                push_immunity!(immunity_registry(sim, ind), ind, Int8(1), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+                ind.needs_immunity_update = true
+                update_immunity!(ind, immunity_registry(sim, ind), sim.pathogens, Int16(0), Xoshiro())
+            end
+        end
+        adtr = AgeDependentTransmissionRate(age_groups = ["0-19", "20-"], transmission_rates = [0.1, 0.5])
+        for on in (true, false)
+            got = caught((pathogen(1, "A", adtr),); prethinning = on, ages = repeat([10, 60], n ÷ 2), setup! = immunize!)
+            caught_share(hs) = count(h -> haskey(got, Int32(2h)), hs) / length(hs)
+            @test isapprox(caught_share(1:2:n), 0.1; atol = 0.03)
+            @test isapprox(caught_share(2:4:n), 0.5; atol = 0.05)
+            @test caught_share(4:4:n) == 0
+        end
+
+        # a modifier above 1: at its peak, seasonality raises 0.4 to 0.6
+        seasonal = SinusoidalSeasonalTransmissionRate(transmission_rate = 0.4, amplitude = 0.5, peak_day = 2)
+        for on in (true, false)
+            @test isapprox(length(caught((pathogen(1, "A", seasonal),); prethinning = on)) / n, 0.6; atol = 0.025)
+        end
+
+        # housemates carrying B cannot catch it again, and its interference cuts A from 0.5 to 0.2
+        interfered = CompositeTransmissionRate(rate(0.5), ViralInterferenceModifier(interferences = [("B", 0.4)]))
+        carry_b! = sim -> foreach(h -> infect!(individuals(sim)[2h], tick(sim), GEMS.pathogens(sim)[2]; sim = sim, rng = rng(sim)), 1:n)
+        for on in (true, false)
+            got = caught((pathogen(1, "A", interfered), pathogen(2, "B", rate(0.3))); prethinning = on, setup! = carry_b!)
+            @test isapprox(share(got, A), 0.2; atol = 0.02)
+            @test share(got, B) == 0 && share(got, AB) == 0
+        end
+
+        # a bound below the probability is an error, not a silent bias
+        struct UnderboundRate <: GEMS.TransmissionFunction end
+        GEMS.transmission_probability(::UnderboundRate, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+            setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.5
+        GEMS.transmission_bound(::UnderboundRate, pathogen_id::Int8, infecter::Individual, setting::Setting,
+            tick::Int16, sim::GEMS.Simulation) = 0.1
+        err = try
+            caught((pathogen(1, "A", UnderboundRate()),); prethinning = true)
+            nothing
+        catch e
+            e
+        end
+        @test err !== nothing && occursin("UnderboundRate", sprint(showerror, err))
     end
 end

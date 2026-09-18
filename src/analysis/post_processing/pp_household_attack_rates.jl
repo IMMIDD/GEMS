@@ -59,7 +59,7 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
 
     # generate dataframe of households
     sim = simulation(postProcessor)
-    hh_sizes = _household_sizes(individuals(sim), households(sim))
+    hh_sizes = _household_sizes(individuals(sim), households(sim), activity_plans(sim))
 
     return infs |>
         x -> leftjoin(x, hh_sizes, on = [:id_b => :ind_id]) |>
@@ -76,12 +76,12 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
 end
 
 # Each individual's id, household id and household size, looking each household up once.
-function _household_sizes(inds::Vector{Individual}, hhs::Vector{Household})
+function _household_sizes(inds::Vector{Individual}, hhs::Vector{Household}, plans::ActivityPlanStore)
     ind_id = Vector{Int32}(undef, length(inds))
     hh_id = Vector{Int32}(undef, length(inds))
     hh_size = Vector{Int16}(undef, length(inds))
     for (k, ind) in enumerate(inds)
-        hh = hhs[household_id(ind)]
+        hh = hhs[household_id(ind, plans)]
         ind_id[k] = id(ind)
         hh_id[k] = id(hh)
         hh_size[k] = Int16(size(hh))

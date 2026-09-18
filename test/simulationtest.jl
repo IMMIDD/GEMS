@@ -135,6 +135,18 @@ import GEMS: increment!, infected!
             @test label(sim) == "test_sim"
             sim = Simulation(pop_size = 100, label = 123)
             @test label(sim) == "123"
+
+            # TRANSMISSION PRE-THINNING
+            # passing
+            config(value) = Dict("Simulation" => Dict("transmission_prethinning" => value))
+            @test Simulation(pop_size = 100, transmission_prethinning = true).prethinning
+            @test !Simulation(pop_size = 100, transmission_prethinning = false).prethinning
+            @test GEMS.determine_transmission_prethinning(Dict(), nothing)
+            @test !GEMS.determine_transmission_prethinning(config(false), nothing)
+            @test GEMS.determine_transmission_prethinning(config(false), true)
+            # failing
+            @test_throws ArgumentError Simulation(pop_size = 100, transmission_prethinning = 1)
+            @test_throws ArgumentError GEMS.determine_transmission_prethinning(config("yes"), nothing)
         end
 
         @testset "Population & Settings" begin
@@ -1363,7 +1375,7 @@ import GEMS: increment!, infected!
     @testset "Multipathogen run!" begin
         # both pathogens are seeded at 30% so that ~9% of individuals start with both
         # simultaneously (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow
-        # block in _process_infections!
+        # iteration in _spread_with!
         p1 = Pathogen(id=1, name="PathA")
         p2 = Pathogen(id=2, name="PathB")
         mc = MultiStartCondition([
@@ -1378,6 +1390,31 @@ import GEMS: increment!, infected!
         inf_df = infections(sim_mp)
         @test Int8(1) in inf_df.pathogen_id
         @test Int8(2) in inf_df.pathogen_id
+    end
+
+    @testset "Transmission pre-thinning toggle" begin
+        # without usable bounds, spreading draws the same with the toggle on or off
+        struct UnboundedRate <: GEMS.TransmissionFunction end
+        GEMS.transmission_probability(::UnboundedRate, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+            setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.2
+        function runs(names)
+            return map((true, false)) do on
+                ps = Tuple(Pathogen(id = k, name = nm, transmission_function = UnboundedRate()) for (k, nm) in enumerate(names))
+                sim = Simulation(pathogens = ps, pop_size = 5000, infected_fraction = 0.01, seed = 7,
+                    stop_criterion = TimesUp(limit = 30), transmission_prethinning = on)
+                run!(sim)
+                return infections(sim)
+            end
+        end
+        single = runs(["A"])
+        @test nrow(single[1]) > 100 && isequal(single[1], single[2])
+        multi = runs(["A", "B"])
+        @test nrow(multi[1]) > 100 && isequal(multi[1], multi[2])
+
+        # the contact survey never thins
+        surveys = map(on -> GEMS.contact_samples(Simulation(pop_size = 1000, seed = 3, transmission_prethinning = on), Household, false),
+            (true, false))
+        @test isequal(surveys[1], surveys[2])
     end
 
     @testset "Closed Setting in Step" begin
@@ -1395,11 +1432,10 @@ import GEMS: increment!, infected!
         sim = Simulation()
         num_threads = Threads.maxthreadid()
         
-        @test length(present_buffers(sim)) == num_threads
         @test length(contact_buffers(sim)) == num_threads
         
         # Verify they are actual individual vectors
-        @test present_buffers(sim)[1] isa Vector{Individual}
+        @test contact_buffers(sim)[1] isa Vector{Individual}
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)
