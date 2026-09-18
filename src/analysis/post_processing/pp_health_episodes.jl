@@ -22,12 +22,12 @@ driven by several co-active infections. To attribute an episode to infections, j
 
 - `DataFrame` with the following columns:
 
-| Name             | Type     | Description                            |
-| :--------------- | :------- | :------------------------------------- |
-| `host_id`        | `Int32`  | Individual id                          |
-| `care_level`     | `Symbol` | `:hospital` / `:icu` / `:ventilation`  |
-| `admission_tick` | `Int16`  | Tick of admission                      |
-| `discharge_tick` | `Int16`  | Tick of discharge (capped at death)    |
+| Name             | Type     | Description                                                   |
+| :--------------- | :------- | :------------------------------------------------------------ |
+| `host_id`        | `Int32`  | Individual id                                                 |
+| `care_level`     | `Symbol` | `:hospital` / `:icu` / `:ventilation`                         |
+| `admission_tick` | `Int16`  | Tick of admission                                             |
+| `discharge_tick` | `Int16`  | Tick of discharge (capped at death), `-1` for an ongoing stay |
 """
 function health_episodes(postProcessor::PostProcessor)
 
@@ -55,7 +55,8 @@ function health_episodes(postProcessor::PostProcessor)
 end
 
 # Pairs each admission with the next discharge of its (host, care level) group, in one pass over the events
-# sorted by group, then tick with admissions before discharges (0-length stays pair correctly).
+# sorted by group, then tick with admissions before discharges (0-length stays pair correctly). A group's
+# last admission without a discharge is a stay the simulation ended during, reported with `DEFAULT_TICK`.
 function _pair_episodes(groups::Vector{Int}, ids::AbstractVector, levels::AbstractVector, ticks::AbstractVector,
         events::AbstractVector)
     order = sortperm(eachindex(groups); by = i -> (groups[i], ticks[i], !_is_admission(events[i])))
@@ -66,19 +67,22 @@ function _pair_episodes(groups::Vector{Int}, ids::AbstractVector, levels::Abstra
     # at most one episode per admission, so the vectors are sized once
     nadmissions = count(_is_admission, events)
     foreach(v -> sizehint!(v, nadmissions), (host_id, care_level, admission_tick, discharge_tick))
+    episode!(i, admission, discharge) = (push!(host_id, ids[i]); push!(care_level, levels[i]);
+        push!(admission_tick, admission); push!(discharge_tick, discharge))
     open_admission = Int16(-1)
     for (k, i) in enumerate(order)
-        k > 1 && groups[i] != groups[order[k - 1]] && (open_admission = Int16(-1))
+        if k > 1 && groups[i] != groups[order[k - 1]]
+            open_admission >= 0 && episode!(order[k - 1], open_admission, DEFAULT_TICK)
+            open_admission = Int16(-1)
+        end
         if _is_admission(events[i])
             open_admission = ticks[i]
         elseif open_admission >= 0
-            push!(host_id, ids[i])
-            push!(care_level, levels[i])
-            push!(admission_tick, open_admission)
-            push!(discharge_tick, ticks[i])
+            episode!(i, open_admission, ticks[i])
             open_admission = Int16(-1)
         end
     end
+    open_admission >= 0 && episode!(last(order), open_admission, DEFAULT_TICK)
     return DataFrame(host_id = host_id, care_level = care_level, admission_tick = admission_tick,
         discharge_tick = discharge_tick)
 end

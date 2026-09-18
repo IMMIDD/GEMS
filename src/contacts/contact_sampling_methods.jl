@@ -200,11 +200,11 @@ function create_contact_sampling_method(config::Dict)
     # we need to check the TF-name with and without the "GEMS.xxx" namespace
     # qualifier as the module name will be present if GEMS is imported as
     # a depenedncy into another module
-    id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", string.(subtypes(ContactSamplingMethod)))
+    id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", string.(_cached_subtypes(ContactSamplingMethod)))
     if isnothing(id)
-        error("The provided type is not a valid subtype of $ContactSamplingMethod use '$(join(string.(subtypes(ContactSamplingMethod)), "', '", "' or '"))'!")
+        error("The provided type is not a valid subtype of $ContactSamplingMethod use '$(join(string.(_cached_subtypes(ContactSamplingMethod)), "', '", "' or '"))'!")
     end
-    CSM_constructor = subtypes(ContactSamplingMethod)[id]
+    CSM_constructor = _cached_subtypes(ContactSamplingMethod)[id]
 
     # Convert the parameter keys to symbols for the use as keyword arguments
     # if no parameters are given, this evals to an empty Dict
