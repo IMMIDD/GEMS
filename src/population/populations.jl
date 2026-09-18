@@ -577,7 +577,8 @@ function dataframe(population::Population)
         occupation = map(occupation, population |> individuals),
         household = map(household_id, population |> individuals),
         office = map(office_id, population |> individuals),
-        schoolclass = map(class_id, population |> individuals)
+        schoolclass = map(class_id, population |> individuals);
+        copycols = false
     )
     
     inds = individuals(population)
