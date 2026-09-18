@@ -32,7 +32,7 @@ The config can be found [here](https://github.com/IMMIDD/GEMS/blob/main/data/Def
 | Progression assignment | Stratified by age groups (`-14`, `15-65`, `66-`) across 4 categories (`Asymptomatic`, `Mild`, `Severe`, `Critical`) |
 | Immunity profile | `FullImmunity` (a person is fully immune after the first infection) |
 
-## Disease Progression
+### Disease Progression
 This is part of the pathogen and only separated for readability.
 | Parameter | Value |
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
@@ -61,7 +61,7 @@ This is part of the pathogen and only separated for readability.
 | Time to severeness offset | `3` days after critical offset (Poisson-distributed) |
 | Time to recovery | `4` days after severeness offset (Poisson-distributed) |
 
-## Health Progression
+### Health Progression
 This is part of the pathogen and only separated for readability.
 | Parameter | Value |
 | :----------------------------------- | :------------------------------------------------------------------------------------------- |
