@@ -9,8 +9,7 @@ export gemscolors
 ### GENERAL UTILS
 ###
 
-# `fetch` wraps an error thrown inside a task in a `TaskFailedException`; rethrow the original, so a
-# caller sees the same exception as when the work ran inline.
+# fetch, but throws what the task threw instead of a `TaskFailedException`
 function _fetch_rethrow(t::Task)
     try
         return fetch(t)
@@ -531,10 +530,9 @@ end
 
 
 function _read_git_repo()
-    cmd = `git config --get remote.origin.url`
+    cmd = pipeline(`git config --get remote.origin.url`, stderr = devnull)
     try
-        @suppress result = strip(String(read(cmd)))
-        return result
+        return strip(read(cmd, String))
     catch e
         return "No repository information available."
     end
@@ -542,20 +540,18 @@ end
 
 
 function _read_git_branch()
-    cmd  = `git rev-parse --abbrev-ref HEAD`
+    cmd = pipeline(`git rev-parse --abbrev-ref HEAD`, stderr = devnull)
     try
-        @suppress result = strip(String(read(cmd)))
-        return result
+        return strip(read(cmd, String))
     catch e
         return "No branch information available."
     end
 end
 
 function _read_git_commit()
-    cmd = `git rev-parse HEAD`
+    cmd = pipeline(`git rev-parse HEAD`, stderr = devnull)
     try
-        @suppress result = strip(String(read(cmd)))
-        return result
+        return strip(read(cmd, String))
     catch e
         return "No commit information available."
     end

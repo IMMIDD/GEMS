@@ -19,9 +19,8 @@ per pathogen.
 """
 function tick_cases_per_setting(postProcessor::PostProcessor)
     # Group by tick, setting_type and pathogen and count the number of infections
-    tick_cases = infectionsDF(postProcessor) |>
-        x -> groupby(x, [:tick, :setting_type, :pathogen_id]) |>
-        x -> combine(x, nrow => :daily_cases)
+    infs = infectionsDF(postProcessor)
+    tick_cases = _count_rows(infs.tick, infs.setting_type, infs.pathogen_id)
 
     all_ticks = DataFrame(tick = 1:tick(simulation(postProcessor)))
 
@@ -38,4 +37,14 @@ function tick_cases_per_setting(postProcessor::PostProcessor)
         x -> sort!(x, [:pathogen_id, :tick])
 
     return merged_data
+end
+
+# `combine(groupby(df, [:tick, :setting_type, :pathogen_id]), nrow => :daily_cases)`, counted in one pass
+function _count_rows(ticks::AbstractVector, setting_types::AbstractVector, pids::AbstractVector)
+    counter = OrderedCounter{Tuple{eltype(ticks), eltype(setting_types), eltype(pids)}}()
+    for key in zip(ticks, setting_types, pids)
+        count!(counter, key)
+    end
+    return DataFrame(tick = getindex.(counter.keys, 1), setting_type = getindex.(counter.keys, 2),
+        pathogen_id = getindex.(counter.keys, 3), daily_cases = counter.counts)
 end

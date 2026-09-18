@@ -60,9 +60,11 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
     cntnr = settingscontainer(simulation)
     # a run can end on settings opened or closed, whose pools are unreadable until repacked
     repack_dirty_pools!(cntnr)
-    contacts = simulation.contact_buffers[Threads.threadid()]
-    draws = simulation.draw_buffers[Threads.threadid()]
     plans = activity_plans(simulation)
+    # own RNG and buffers: post processing steps may run concurrently
+    survey_rng = _post_processing_rng(simulation, "contact_samples/" * string(T))
+    contacts = Individual[]
+    draws = Individual[]
 
     # batches are sorted, so consecutive samples usually hit the same setting; keep its member
     # view rather than re-deriving it per sample.
@@ -76,7 +78,7 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
         # sample a batch of setting indices and sort for cache coherence
         for i in eachindex(batch)
-            batch[i] = gems_rand(simulation, 1:length(stngs))
+            batch[i] = gems_rand(survey_rng, 1:length(stngs))
         end
         sort!(batch)
 
@@ -94,12 +96,12 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
             isempty(present_inds) && continue
 
-            ind_index = gems_rand(simulation, 1:length(present_inds))
+            ind_index = gems_rand(survey_rng, 1:length(present_inds))
             ind = present_inds[ind_index]
 
             s_host = _membership_scale(plans, ind, s, cntnr)
             sample_scaled_contacts!(contacts, draws, s.contact_sampling_method, s, ind_index, present_inds,
-                tick(simulation), true, rng(simulation), plans, cntnr, s_host, _scale_bound(s))
+                tick(simulation), true, survey_rng, plans, cntnr, s_host, _scale_bound(s))
 
             if length(contacts) > 0
                 for contact in contacts

@@ -498,6 +498,17 @@ import GEMS: increment!, infected!
             # determine_setting_type_config!: section present but no contact_sampling_method -> warns
             @test_logs (:warn, r"contact_sampling_method") GEMS.determine_setting_type_config!(sc_w, Household, Dict("Settings" => Dict("Household" => Dict())))
 
+            # determine_setting_type_config!: a non-bits method is deepcopied per setting, so no cache is shared
+            m = fill(0.1, 10, 10)
+            abcs = AgeBasedContactSampling(1.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
+            GEMS.determine_setting_type_config!(sc_w, Household, Dict(); custom_par = abcs)
+            hh = get(sc_w, Household)
+            @test length(hh) > 1
+            @test all(h -> h.contact_sampling_method isa AgeBasedContactSampling, hh)
+            @test all(h -> h.contact_sampling_method !== abcs, hh)
+            @test hh[1].contact_sampling_method !== hh[2].contact_sampling_method
+            @test hh[1].contact_sampling_method.contact_matrix.data == m
+
             # determine_pathogen: transmission_function + transmission_rate -> warns, tf wins
             default_config = GEMS.load_configfile(GEMS.configfile_path(""))
             tf_ref2 = ConstantTransmissionRate(transmission_rate=0.3)

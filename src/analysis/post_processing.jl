@@ -3,7 +3,7 @@ DEFINES POSTPROCESSOR AND FUNCTIONALITY
 These functions handle the aggregation of interesting data from a simulation run
 and combine them into specific output variables
 =#
-export PostProcessor
+export PostProcessor, SerialOnly
 export simulation, infectionsDF, sim_infectionsDF, populationDF
 export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
 
@@ -48,7 +48,11 @@ mutable struct PostProcessor
     Create a `PostProcessor` object for an associated `Simulation`. Post Processing requires a simulation to be done.
     """
     function PostProcessor(simulation::Simulation)
-       
+
+        # a run can end on settings opened or closed; repack their pools here, before result steps
+        # that may run concurrently read them
+        repack_dirty_pools!(settingscontainer(simulation))
+
         # convert population model to dataframe
         pop = dataframe(population(simulation))
         
@@ -66,53 +70,38 @@ mutable struct PostProcessor
             infections.pathogen_id, infections.progression_id)
         DataFrames.rename!(infections, :progression_id => :progression_category)
 
-        # calculate generation time and serial interval (self join)
-        # Using a lightweight renamed view to avoid leftjoin allocation
-        source_info = DataFrames.select(infections, 
-            :infection_id, 
-            :tick => :tick_source, 
-            :symptom_onset => :symptom_onset_source, 
-            copycols=false
-        )
-        
-        leftjoin!(infections, source_info, on = [:source_infection_id => :infection_id])
-
-        transform!(infections,
-            [:tick, :tick_source] => ByRow(-) => :generation_time,
-            [:symptom_onset, :symptom_onset_source] => ByRow((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing) => :serial_interval
-        )
-        select!(infections, Not([:tick_source, :symptom_onset_source]))
+        # calculate generation time and serial interval against each infection's source infection
+        source_rows = _matching_rows(infections.source_infection_id, infections.infection_id)
+        tick_source = _gather(infections.tick, source_rows)
+        symptom_onset_source = _gather(infections.symptom_onset, source_rows)
+        infections.generation_time = infections.tick .- tick_source
+        infections.serial_interval = ((t, s) -> (t >= 0 && !ismissing(s) && s >= 0) ? t - s : missing).(
+            infections.symptom_onset, symptom_onset_source)
 
         # add tests
         leftjoin!(infections, detection_ticks(tests), on = :infection_id)
 
-        # add poulation data
-        # We rename columns of a shallow copy of pop, avoiding copying the underlying arrays
-        pop_a = rename(pop, names(pop) .=> [n == "id" ? "id" : n * "_a" for n in names(pop)])
-        leftjoin!(infections, pop_a, on = [:id_a => :id])
-
-        pop_b = rename(pop, names(pop) .=> [n == "id" ? "id" : n * "_b" for n in names(pop)])
-        leftjoin!(infections, pop_b, on = [:id_b => :id])
+        # add population data of the infecter (_a) and the infectee (_b)
+        for (id_col, suffix) in ((:id_a, "_a"), (:id_b, "_b"))
+            rows = _matching_rows(infections[!, id_col], pop.id)
+            for name in names(pop, Not(:id))
+                infections[!, name * suffix] = _gather(pop[!, name], rows)
+            end
+        end
 
         sim_households = households(simulation)
 
-        transform!(infections, 
-            :household_a => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_a,
-            :household_b => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags_b
-        )
+        # each household's AGS once, so the rows read one compact vector rather than every household object
+        household_ags = ags.(sim_households)
+        infections.household_ags_a = _ags_of_households(infections.household_a, household_ags)
+        infections.household_ags_b = _ags_of_households(infections.household_b, household_ags)
 
         deaths = dataframe(deathlogger(simulation))
 
         # a host death ends every co-active infection: clear `:recovery` and record `:removed`
-        host_death = DataFrames.select(deaths, :id, :tick => :host_death, copycols=false)
-        leftjoin!(infections, host_death, on = [:id_b => :id])
-        transform!(infections,
-            [:recovery, :host_death] => ByRow((r, d) -> !ismissing(d) && d < r ?
-                (recovery = Int16(-1), removed = d) : (recovery = r, removed = r)) => AsTable)
-
-        cols = names(infections, Not([:host_death, :removed]))
-        i = findfirst(==("recovery"), cols)
-        select!(infections, cols[1:i]..., :removed, cols[i+1:end]...)
+        death_rows = _matching_rows(infections.id_b, deaths.id)
+        infections.recovery, removed = _recovery_and_removal(infections.recovery, deaths.tick, death_rows)
+        insertcols!(infections, columnindex(infections, :recovery) + 1, :removed => removed)
 
         # join deaths with additional info from population DF
         leftjoin!(deaths, pop, on = :id)
@@ -155,6 +144,27 @@ mutable struct PostProcessor
 end
 
 ###
+### CONCURRENCY
+###
+
+"""
+    SerialOnly(f)
+
+Marks a result data entry that must not run concurrently with others, e.g. because it draws from the
+simulation's RNGs. `process_funcs` runs these sequentially.
+"""
+struct SerialOnly{F}
+    f::F
+end
+
+(s::SerialOnly)() = s.f()
+
+
+
+# A sampling step's own RNG: seeded per step, so its draws depend on neither order nor thread
+_post_processing_rng(sim::Simulation, step::String) = Xoshiro(hash((seed(sim), step)))
+
+###
 ### CACHING
 ###
 
@@ -194,6 +204,102 @@ end
 ###
 ### HELPER FUNCTIONS
 ###
+
+# The row of `ids` holding each key, 0 where none does: a left join's matching, by array index.
+# `ids` must be unique integers; ids that are close together keep the index small.
+function _matching_rows(keys::AbstractVector, ids::AbstractVector)
+    lo, hi = isempty(ids) ? (1, 0) : Int.(extrema(ids))
+    row_of = zeros(Int32, hi - lo + 1)
+    for (r, id) in enumerate(ids)
+        row_of[id - lo + 1] = r
+    end
+    rows = zeros(Int32, length(keys))
+    for (k, key) in enumerate(keys)
+        (ismissing(key) || key < lo || key > hi) && continue
+        rows[k] = row_of[key - lo + 1]
+    end
+    return rows
+end
+
+"""
+    OrderedCounter{K}()
+
+Counts values per key, keeping the keys in the order they first appear - the order `groupby` gives its
+groups. Lets a post processing step count in one pass where `groupby` would index every row.
+"""
+struct OrderedCounter{K}
+    index::Dict{K, Int}
+    keys::Vector{K}
+    counts::Vector{Int}
+end
+
+OrderedCounter{K}() where {K} = OrderedCounter{K}(Dict{K, Int}(), K[], Int[])
+
+# Adds `n` to `key`'s count and returns its slot, i.e. the number of the group it belongs to.
+function count!(counter::OrderedCounter{K}, key::K, n::Int = 1) where {K}
+    slot = get!(counter.index, key) do
+        push!(counter.keys, key)
+        push!(counter.counts, 0)
+        length(counter.keys)
+    end
+    counter.counts[slot] += n
+    return slot
+end
+
+# Rows per pathogen, for the pathogens of `pathogen_ids` (sorted by id, as `groupby` returns them).
+function _rows_per_pathogen(pids::AbstractVector, pathogen_ids::Vector)
+    counts = zeros(Int, length(pathogen_ids))
+    for p in pids
+        i = findfirst(==(p), pathogen_ids)
+        i === nothing || (counts[i] += 1)
+    end
+    return counts
+end
+
+# the pathogens of a simulation, sorted by id
+_sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
+
+# The AGS of each row's household, `missing` without one; typed like the `ByRow` it replaces, so a column
+# without `missing` values is a plain `Vector{AGS}`.
+function _ags_of_households(households::AbstractVector, household_ags::Vector{AGS})
+    n = length(households)
+    out = (n == 0 || any(ismissing, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)
+    _fill_ags!(out, households, household_ags)
+    return out
+end
+
+function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vector{AGS})
+    Threads.@threads for k in eachindex(households)
+        h = households[k]
+        out[k] = ismissing(h) ? missing : household_ags[h]
+    end
+    return out
+end
+
+# `recovery` cleared to -1 where the host died before it, and the tick each infection ended
+function _recovery_and_removal(recovery::AbstractVector, death_ticks::AbstractVector, death_rows::Vector{Int32})
+    new_recovery = similar(recovery)
+    removed = similar(recovery)
+    Threads.@threads for k in eachindex(recovery)
+        r, row = recovery[k], death_rows[k]
+        if row != 0 && death_ticks[row] < r
+            new_recovery[k], removed[k] = Int16(-1), death_ticks[row]
+        else
+            new_recovery[k], removed[k] = r, r
+        end
+    end
+    return new_recovery, removed
+end
+
+# `col` at each of `rows`, `missing` for row 0: the column a left join adds
+function _gather(col::AbstractVector{T}, rows::Vector{Int32}) where {T}
+    out = Vector{Union{Missing, T}}(undef, length(rows))
+    Threads.@threads for k in eachindex(rows)
+        r = rows[k]
+        out[k] = r == 0 ? missing : col[r]
+    end
+    return out
+end
 
 """
     detection_ticks(testDF::DataFrame)

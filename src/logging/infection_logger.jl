@@ -212,7 +212,8 @@ function dataframe(logger::InfectionLogger)
         lat = vcat(logger.lat...),
         lon = vcat(logger.lon...),
         ags = vcat(logger.ags...),
-        source_infection_id = vcat(logger.source_infection_id...)
+        source_infection_id = vcat(logger.source_infection_id...);
+        copycols = false
     )
 end
 

@@ -30,40 +30,34 @@ function tick_cases(postProcessor::PostProcessor)::DataFrame
     end
 
     infs = infectionsDF(postProcessor)
-    base = crossjoin(
-        DataFrame(tick = collect(Int16, 0:tick(simulation(postProcessor)))),
-        DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
+    deaths = deathsDF(postProcessor)
+    final_tick = tick(simulation(postProcessor))
+    # rows are sorted by pathogen, then tick
+    pathogen_ids = sort(collect(map(id, pathogens(simulation(postProcessor)))))
+    counts(ticks, pids) = vec(_tick_counts(ticks, pids, pathogen_ids, final_tick))
 
-    exposed = groupby(infs, [:tick, :pathogen_id]) |>
-        x -> combine(x, nrow => :exposed_cnt)
-
-    infectious = groupby(infs, [:infectiousness_onset, :pathogen_id]) |>
-        x -> combine(x, nrow => :infectious_cnt) |>
-        x -> DataFrames.select(x, :infectiousness_onset => :tick, :pathogen_id, :infectious_cnt)
-
-    recovered = groupby(infs, [:recovery, :pathogen_id]) |>
-        x -> combine(x, nrow => :recovered_cnt) |>
-        x -> DataFrames.select(x, :recovery => :tick, :pathogen_id, :recovered_cnt)
-
-    # a host death is one event attributed to one pathogen, so it comes from the death log
-    dead = deathsDF(postProcessor) |>
-        x -> groupby(x, [:tick, :pathogen_id]) |>
-        x -> combine(x, nrow => :dead_cnt) |>
-        x -> DataFrames.select(x, :tick, :pathogen_id, :dead_cnt)
-
-    res = leftjoin!(base, exposed, on = [:tick, :pathogen_id])
-    leftjoin!(res, infectious, on = [:tick, :pathogen_id])
-    leftjoin!(res, recovered, on = [:tick, :pathogen_id])
-    leftjoin!(res, dead, on = [:tick, :pathogen_id])
-    select!(res, :tick, :pathogen_id,
-        :exposed_cnt => ByRow(x -> coalesce(x, 0)) => :exposed_cnt,
-        :infectious_cnt => ByRow(x -> coalesce(x, 0)) => :infectious_cnt,
-        :recovered_cnt => ByRow(x -> coalesce(x, 0)) => :recovered_cnt,
-        :dead_cnt => ByRow(x -> coalesce(x, 0)) => :dead_cnt)
-    sort!(res, [:pathogen_id, :tick])
+    res = DataFrame(
+        tick = repeat(collect(Int16, 0:final_tick), outer = length(pathogen_ids)),
+        pathogen_id = repeat(pathogen_ids, inner = final_tick + 1),
+        exposed_cnt = counts(infs.tick, infs.pathogen_id),
+        infectious_cnt = counts(infs.infectiousness_onset, infs.pathogen_id),
+        recovered_cnt = counts(infs.recovery, infs.pathogen_id),
+        # a host death is one event attributed to one pathogen, so it comes from the death log
+        dead_cnt = counts(deaths.tick, deaths.pathogen_id))
 
     # cache dataframe
     store_cache(postProcessor, "tick_cases", res)
 
     return(res)
+end
+
+# Rows per tick (0:final_tick) and pathogen, as a ticks × pathogens matrix; other ticks and pathogens are skipped
+function _tick_counts(ticks::AbstractVector, pids::AbstractVector, pathogen_ids::Vector, final_tick::Integer)
+    counts = zeros(Int, final_tick + 1, length(pathogen_ids))
+    for (t, pid) in zip(ticks, pids)
+        (ismissing(t) || ismissing(pid) || !(0 <= t <= final_tick)) && continue
+        p = findfirst(==(pid), pathogen_ids)
+        p === nothing || (counts[t + 1, p] += 1)
+    end
+    return counts
 end

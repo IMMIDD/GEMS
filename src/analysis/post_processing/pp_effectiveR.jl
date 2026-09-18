@@ -35,86 +35,97 @@ function effectiveR(postProcessor::PostProcessor)
     sim = simulation(postProcessor)
 
     sim_infs = sim_infectionsDF(postProcessor)
+    pathogen_ids = collect(map(id, pathogens(sim)))
+    nticks = Int(tick(sim))
 
-    # calculate effective R over time from post processor data
+    # secondary infections per infection, summed per (pathogen, tick) of the spreader
+    infections, in_hh, out_hh, spreaders = _effective_r_counts(sim_infs.infection_id, sim_infs.source_infection_id,
+        sim_infs.pathogen_id, sim_infs.tick, sim_infs.setting_type, pathogen_ids, nticks)
 
-    # 1. Pre-aggregate secondary infections by source and pathogen
-    secondary_infs = combine(groupby(sim_infs, [:source_infection_id, :pathogen_id]),
-        nrow => :infections,
-        :setting_type => (st -> count(==('h'), st)) => :in_hh_infections,
-        :setting_type => (st -> count(!=('h'), st)) => :out_hh_infections
-    )
+    # one row per pathogen and tick, sorted by pathogen id, then tick; 0 where nobody spread
+    porder = sortperm(pathogen_ids)
+    n = length(pathogen_ids) * nticks
+    tick_col = Vector{Int16}(undef, n)
+    pid_col = Vector{eltype(pathogen_ids)}(undef, n)
+    er_col = zeros(Float64, n)
+    ih_col = zeros(Float64, n)
+    oh_col = zeros(Float64, n)
+    row = 0
+    for p in porder, t in 1:nticks
+        row += 1
+        tick_col[row] = Int16(t)
+        pid_col[row] = pathogen_ids[p]
+        s = spreaders[p, t]
+        if s > 0
+            er_col[row] = infections[p, t] / s
+            ih_col[row] = in_hh[p, t] / s
+            oh_col[row] = out_hh[p, t] / s
+        end
+    end
 
-    # take infectees to calculate R (to also cover individuals who don't infect anybody)
-    eff_r = DataFrames.select(sim_infs, :infection_id, :tick, :pathogen_id, copycols=true)
-
-    # join to find individuals who subsequently been infected by an infectee
-    leftjoin!(eff_r, secondary_infs, on = [:infection_id => :source_infection_id, :pathogen_id])
-    rename!(eff_r, :infection_id => :id)
-
-    # for individuals who didn't infect anybody, set "infections" to 0
-    transform!(eff_r,
-        :infections => (x -> coalesce.(x, 0)) => :infections,
-        :in_hh_infections => (x -> coalesce.(x, 0)) => :in_hh_infections,
-        :out_hh_infections => (x -> coalesce.(x, 0)) => :out_hh_infections
-    )
-
-    # calulate total_infections / spreaders per tick and pathogen (effective R)
-    eff_r = combine(groupby(eff_r, [:tick, :pathogen_id]),
-        :infections => sum => :tick_infections,
-        :in_hh_infections => sum => :tick_in_hh_infections,
-        :out_hh_infections => sum => :tick_out_hh_infections,
-        nrow => :spreaders
-    )
-
-    transform!(eff_r,
-        [:tick_infections, :spreaders] => ByRow((i, s) -> i / s) => :effective_R,
-        [:tick_in_hh_infections, :spreaders] => ByRow((i, s) -> i / s) => :in_hh_effective_R,
-        [:tick_out_hh_infections, :spreaders] => ByRow((i, s) -> i / s) => :out_hh_effective_R
-    )
-    select!(eff_r, :tick, :pathogen_id, :effective_R, :in_hh_effective_R, :out_hh_effective_R)
-
-    # join with scaffold of all ticks × pathogens to also get ticks with 0 infections
-    full_ticks = crossjoin(
-        DataFrame(tick = collect(Int16, 1:tick(sim))),
-        DataFrame(pathogen_id = collect(map(id, pathogens(sim)))))
-    leftjoin!(full_ticks, eff_r, on = [:tick, :pathogen_id])
-    eff_r = full_ticks
-
-    # remove missing Rs for ticks
-    transform!(eff_r,
-        :effective_R => (x -> coalesce.(x, 0.0)) => :effective_R,
-        :in_hh_effective_R => (x -> coalesce.(x, 0.0)) => :in_hh_effective_R,
-        :out_hh_effective_R => (x -> coalesce.(x, 0.0)) => :out_hh_effective_R
-    )
+    eff_r = DataFrame(tick = tick_col, pathogen_id = pid_col,
+        effective_R = er_col, in_hh_effective_R = ih_col, out_hh_effective_R = oh_col)
 
     # calculating rolling R per pathogen with windowsize
-    sort!(eff_r, [:pathogen_id, :tick])
+    eff_r.rolling_R = _rolling_mean(er_col, pid_col, windowsize)
+    eff_r.rolling_in_hh_R = _rolling_mean(ih_col, pid_col, windowsize)
+    eff_r.rolling_out_hh_R = _rolling_mean(oh_col, pid_col, windowsize)
 
-    rolling_R = Vector{Float64}(undef, nrow(eff_r))
-    rolling_in_hh_R = Vector{Float64}(undef, nrow(eff_r))
-    rolling_out_hh_R = Vector{Float64}(undef, nrow(eff_r))
+    return eff_r
+end
 
-    er_col = eff_r.effective_R
-    ih_col = eff_r.in_hh_effective_R
-    oh_col = eff_r.out_hh_effective_R
-    pid_col = eff_r.pathogen_id
+# Per (pathogen index, tick): secondary infections (all, household, non-household) caused by the infections
+# of that tick, and how many infections that tick had. Infection ids are dense, so sources are found by index.
+function _effective_r_counts(inf_ids::AbstractVector, source_ids::AbstractVector, pids::AbstractVector,
+        ticks::AbstractVector, setting_types::AbstractVector, pathogen_ids::Vector, nticks::Int)
+    nrows = length(inf_ids)
+    max_id = nrows == 0 ? 0 : Int(maximum(inf_ids))
+    # Int32 rather than Int: three arrays the length of all infections
+    row_of = zeros(Int32, max_id)
+    for r in 1:nrows
+        row_of[inf_ids[r]] = Int32(r)
+    end
 
-    # track the start index of the current pathogen's rows for the rolling window
+    # secondaries per source row, only counting sources of the same pathogen
+    total = zeros(Int32, nrows)
+    hh = zeros(Int32, nrows)
+    for r in 1:nrows
+        sid = source_ids[r]
+        (ismissing(sid) || sid < 1 || sid > max_id) && continue
+        src = row_of[sid]
+        (src == 0 || pids[src] != pids[r]) && continue
+        total[src] += 1
+        setting_types[r] == 'h' && (hh[src] += 1)
+    end
+
+    npathogens = length(pathogen_ids)
+    infections = zeros(Int, npathogens, nticks)
+    in_hh = zeros(Int, npathogens, nticks)
+    out_hh = zeros(Int, npathogens, nticks)
+    spreaders = zeros(Int, npathogens, nticks)
+    for r in 1:nrows
+        t = Int(ticks[r])
+        1 <= t <= nticks || continue
+        p = findfirst(==(pids[r]), pathogen_ids)
+        p === nothing && continue
+        infections[p, t] += total[r]
+        in_hh[p, t] += hh[r]
+        out_hh[p, t] += total[r] - hh[r]
+        spreaders[p, t] += 1
+    end
+    return infections, in_hh, out_hh, spreaders
+end
+
+# mean over the current and `windowsize` previous values, restarting where the pathogen changes
+function _rolling_mean(values::Vector{Float64}, pid_col::AbstractVector, windowsize::Int)
+    rolling = Vector{Float64}(undef, length(values))
     pid_start = 1
-    for i in 1:nrow(eff_r)
+    for i in eachindex(values)
         if i > 1 && pid_col[i] != pid_col[i-1]
             pid_start = i
         end
         start_idx = max(pid_start, i - windowsize)
-        rolling_R[i] = mean(view(er_col, start_idx:i))
-        rolling_in_hh_R[i] = mean(view(ih_col, start_idx:i))
-        rolling_out_hh_R[i] = mean(view(oh_col, start_idx:i))
+        rolling[i] = mean(view(values, start_idx:i))
     end
-
-    eff_r.rolling_R = rolling_R
-    eff_r.rolling_in_hh_R = rolling_in_hh_R
-    eff_r.rolling_out_hh_R = rolling_out_hh_R
-
-    return eff_r
+    return rolling
 end

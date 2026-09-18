@@ -48,9 +48,10 @@ function compartment_periods(postProcessor::PostProcessor)
     res = infectionsDF(postProcessor) |>
         # tick each infection ended, recovery or death (as removed (rem))
         infs -> (infs, calc_rem(infs)) |>
+        # the periods are new vectors, so they are not copied again; the two id columns are
         splat((infs, rem) -> DataFrame(
-            infection_id = infs.infection_id,
-            pathogen_id = infs.pathogen_id,
+            infection_id = copy(infs.infection_id),
+            pathogen_id = copy(infs.pathogen_id),
             total = rem .- infs.tick,
             exposed = calc_exposed(infs, rem),
             infectious = calc_infectious(infs, rem),
@@ -58,7 +59,8 @@ function compartment_periods(postProcessor::PostProcessor)
             pre_symptomatic = calc_pre_symp(infs, rem),
             symptomatic = calc_symp(infs, rem),
             severe = infs.severeness_offset .- infs.severeness_onset,
-            critical = infs.critical_offset .- infs.critical_onset
+            critical = infs.critical_offset .- infs.critical_onset;
+            copycols = false
         ))
 
     # cache dataframe

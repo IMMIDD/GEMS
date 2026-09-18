@@ -28,20 +28,15 @@ function _hospital_df(postProcessor::PostProcessor)
     events = dataframe(healthlogger(sim))
     base = DataFrame(tick = collect(Int16, 0:tick(sim)))
 
-    # number of events of the given type per tick
-    function _counts(event::Symbol, name::Symbol)
-        sub = subset(events, :event => ByRow(==(event)), view = true)
-        return DataFrames.select(combine(groupby(sub, :tick), nrow => name), :tick, name)
-    end
+    # all event types counted per tick in one pass over the events
+    event_types = [:hospital_admission, :hospital_discharge, :icu_admission, :icu_discharge,
+        :ventilation_admission, :ventilation_discharge]
+    counts = _events_per_tick(events.tick, events.event, event_types, tick(sim))
 
-    result = leftjoin!(base, _counts(:hospital_admission, :hospital_admissions), on = :tick)
-    leftjoin!(result, _counts(:hospital_discharge, :hospital_discharges), on = :tick)
-    leftjoin!(result, _counts(:icu_admission, :icu_admissions), on = :tick)
-    leftjoin!(result, _counts(:icu_discharge, :icu_discharges), on = :tick)
-    leftjoin!(result, _counts(:ventilation_admission, :ventilation_admissions), on = :tick)
-    leftjoin!(result, _counts(:ventilation_discharge, :ventilation_discharges), on = :tick)
-    sort!(result, :tick)
-    mapcols!(col -> replace(col, missing => 0), result)
+    result = base
+    for (i, event) in enumerate(event_types)
+        result[!, Symbol(string(event, "s"))] = counts[:, i]
+    end
 
     # current occupancy per tick
     transform!(result,
@@ -51,4 +46,15 @@ function _hospital_df(postProcessor::PostProcessor)
     )
 
     return result
+end
+
+# events of each type in `event_types` per tick (0:final_tick), as a ticks x types matrix
+function _events_per_tick(ticks::AbstractVector, events::AbstractVector, event_types::Vector{Symbol}, final_tick::Integer)
+    counts = zeros(Int, final_tick + 1, length(event_types))
+    for (t, e) in zip(ticks, events)
+        (ismissing(t) || !(0 <= t <= final_tick)) && continue
+        i = findfirst(==(e), event_types)
+        i === nothing || (counts[t + 1, i] += 1)
+    end
+    return counts
 end
