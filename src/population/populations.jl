@@ -596,12 +596,7 @@ activity plans; further settings of a type are not included.
 function dataframe(population::Population)
 
     inds = individuals(population)
-    df = DataFrame(_population_columns(inds); copycols = false)
-
-    plans = activity_plans(population)
-    for T in membership_setting_types(Individual)
-        df[!, membership_column(T)] = _primary_setting_ids(inds, T, plans)
-    end
+    df = DataFrame(_population_columns(inds, activity_plans(population)); copycols = false)
 
     ext_idx = findfirst(ind -> ind.extensions !== nothing, inds)
     if ext_idx !== nothing
@@ -615,17 +610,14 @@ function dataframe(population::Population)
     return df
 end
 
-# barrier: `T` is the caller's loop variable, so the per-individual lookup compiles once per type
-function _primary_setting_ids(inds::Vector{Individual}, ::Type{T}, plans) where {T}
-    return Int32[setting_id(ind, T, plans) for ind in inds]
-end
-
-# The base columns of `dataframe(population)`, filled in one pass: each individual is a separate object,
+# The columns of `dataframe(population)`, filled in one pass: each individual is a separate object,
 # so a pass per column would fetch every one of them from memory again.
-function _population_columns(inds::Vector{Individual})
+function _population_columns(inds::Vector{Individual}, plans)
     n = length(inds)
     cols = (id = Vector{Int32}(undef, n), sex = Vector{Int8}(undef, n), age = Vector{Int8}(undef, n),
-        education = Vector{Int8}(undef, n), occupation = Vector{Int16}(undef, n))
+        education = Vector{Int8}(undef, n), occupation = Vector{Int16}(undef, n),
+        household = Vector{Int32}(undef, n), office = Vector{Int32}(undef, n),
+        schoolclass = Vector{Int32}(undef, n), municipality = Vector{Int32}(undef, n))
     Threads.@threads for k in eachindex(inds)
         ind = inds[k]
         cols.id[k] = id(ind)
@@ -633,6 +625,10 @@ function _population_columns(inds::Vector{Individual})
         cols.age[k] = age(ind)
         cols.education[k] = education(ind)
         cols.occupation[k] = occupation(ind)
+        cols.household[k] = setting_id(ind, Household, plans)
+        cols.office[k] = setting_id(ind, Office, plans)
+        cols.schoolclass[k] = setting_id(ind, SchoolClass, plans)
+        cols.municipality[k] = setting_id(ind, Municipality, plans)
     end
     return cols
 end
