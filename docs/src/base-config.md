@@ -52,6 +52,9 @@ This is part of the pathogen and only separated for readability.
 | Time to severeness onset | `1` day after symptom onset (Poisson-distributed) |
 | Time to severeness offset | `7` days after severeness onset (Poisson-distributed) |
 | Time to recovery | `4` days after severeness offset (Poisson-distributed) |
+| Severe-tier hospital probability | `5%` |
+| Severe-tier hospital admission | `2` days after severeness onset (Poisson-distributed) |
+| Severe-tier hospital discharge | `10` days after admission (Poisson-distributed) |
 | **Critical Progression** | |
 | Time to infectiousness | `1` day after exposure (Poisson-distributed) |
 | Time to symptom onset | `1` day after infectiousness onset (Poisson-distributed) |
@@ -60,14 +63,6 @@ This is part of the pathogen and only separated for readability.
 | Time to critical offset | `7` days after critical onset (Poisson-distributed) |
 | Time to severeness offset | `3` days after critical offset (Poisson-distributed) |
 | Time to recovery | `4` days after severeness offset (Poisson-distributed) |
-
-### Health Progression
-This is part of the pathogen and only separated for readability.
-| Parameter | Value |
-| :----------------------------------- | :------------------------------------------------------------------------------------------- |
-| Severe-tier hospital probability | `5%` |
-| Severe-tier hospital admission | `2` days after severeness onset (Poisson-distributed) |
-| Severe-tier hospital discharge | `10` days after admission (Poisson-distributed) |
 | Critical-tier hospital probability | `95%`; admitted `1` day after critical onset |
 | Critical-tier ICU probability | `50%` (of those admitted to the hospital, `47.5%` of all critical) |
 | Critical-tier ventilation probability | `0%` (disabled by default) |
