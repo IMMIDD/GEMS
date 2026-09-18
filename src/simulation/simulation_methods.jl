@@ -494,8 +494,8 @@ function flush_pending_infections!(sim::Simulation)
                 ind = get_individual_by_id(pop, p.host_id)
                 state = push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
                 # contribute the new infection's care demand
-                compute_health!(ind, infections, health_progression(sim), state, tick(sim),
-                    sim.rngs[shard_id], sim.health_schedules[shard_id])
+                compute_health!(ind, infections, health_progression(sim), sim.health_profiles,
+                    state, tick(sim), sim.rngs[shard_id], sim.health_schedules[shard_id])
             end
             empty!(buf)
         end
@@ -648,7 +648,7 @@ negative.
 """
 @inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
     for level in reverse(instances(CareLevel))
-        _demand(indiv, level) > 0 || continue
+        _get_demand(indiv, level) > 0 || continue
         _set_demand!(indiv, level, Int16(0))
         log!(hl, id(indiv), _care_event(level, false), tick)
     end

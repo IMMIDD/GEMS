@@ -7,7 +7,7 @@ Backwards-compatibility category for the pre-decoupling `Critical` progression (
 hospital -> ICU, probabilistic death anchored at ICU admission). The `Critical` name now denotes a
 pure disease tier, so this reproduces the old coupled behavior instead: it produces a critical-shaped
 [`DiseaseProgression`](@ref) whose `critical_onset` anchors at the old hospital admission, and hands
-its care/death delays to the [`LegacyHealthProgression`](@ref) harvest. Config files keep using the
+its care/death delays to the legacy health profile harvest. Config files keep using the
 name `Critical` (rerouted here during parsing); Julia code must call `LegacyCritical` directly.
 
 Reproduction is distributional, not bit-exact: disease and health now roll in separate passes.

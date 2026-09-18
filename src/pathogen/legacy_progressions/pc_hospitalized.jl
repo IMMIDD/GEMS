@@ -7,7 +7,7 @@ Backwards-compatibility category for the pre-decoupling `Hospitalized` progressi
 disease course and a (deterministic) ward stay into one category. On the decoupled model the disease
 course is a plain severe tier and the ward stay is host care, so this category produces a
 severe-shaped [`DiseaseProgression`](@ref) and hands its ward-care delays to the
-[`LegacyHealthProgression`](@ref) harvest (always hospitalized, no ICU, no death). Prefer a modern
+legacy health profile harvest (always hospitalized, no ICU, no death). Prefer a modern
 `Severe` category with an embedded `SevereHealthProfile` in new code.
 
 # Parameters

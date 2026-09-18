@@ -1,7 +1,7 @@
 ###
 ### INDIVIDUAL METHODS
-### Methods on Individual that depend on Simulation (cannot be in individuals.jl
-### due to include-order circular dependency) and the disease-progression engine.
+### Methods on Individual that depend on Simulation or on any other type defined after
+### individuals.jl (cannot live there due to include order), and the disease-progression engine.
 ###
 
 # EXPORTS
@@ -570,6 +570,47 @@ function is_detected(individual::Individual, infections::InfectionRegistry, path
 end
 isdetected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
 detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
+
+
+### CARE DEMAND ###
+
+"""
+    _get_demand(individual::Individual, level::CareLevel)
+
+The host's current demand count for one care level.
+"""
+@inline function _get_demand(individual::Individual, level::CareLevel)
+    level === CARE_HOSPITAL && return individual.hospital_demands
+    level === CARE_ICU && return individual.icu_demands
+    level === CARE_VENTILATION && return individual.ventilation_demands
+    throw(ArgumentError("no demand field on Individual for care level $level"))
+end
+
+"""
+    _set_demand!(individual::Individual, level::CareLevel, n::Int16)
+
+Writes one care level's demand count and returns it.
+"""
+@inline function _set_demand!(individual::Individual, level::CareLevel, n::Int16)
+    level === CARE_HOSPITAL && return (individual.hospital_demands = n)
+    level === CARE_ICU && return (individual.icu_demands = n)
+    level === CARE_VENTILATION && return (individual.ventilation_demands = n)
+    throw(ArgumentError("no demand field on Individual for care level $level"))
+end
+
+"""
+    _adjust_demand!(individual::Individual, level::CareLevel, delta::Int16)
+
+Adds `delta` to one care level's demand count and returns the new value, from which the caller
+detects the 0-1 and 1-0 edges.
+
+Throws on a negative result, which also catches overflow since `Int16` wraps.
+"""
+@inline function _adjust_demand!(individual::Individual, level::CareLevel, delta::Int16)
+    n = _get_demand(individual, level) + delta
+    n < 0 && throw(ArgumentError("care demand for $level went negative on host $(individual.id): a discharge with no matching admission. Only simulation-level reset! is safe."))
+    return _set_demand!(individual, level, n)
+end
 
 
 ### TESTING STATUS ###

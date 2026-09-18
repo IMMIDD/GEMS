@@ -31,40 +31,6 @@ The `HealthLogger` event symbol for one care level's admission or discharge.
 end
 
 """
-    _demand(individual::Individual, level::CareLevel)
-
-The host's current demand count for one care level.
-"""
-@inline _demand(individual::Individual, level::CareLevel) =
-    level === CARE_HOSPITAL ? individual.hospital_demands :
-    level === CARE_ICU ? individual.icu_demands : individual.ventilation_demands
-
-"""
-    _set_demand!(individual::Individual, level::CareLevel, n::Int16)
-
-Writes one care level's demand count and returns it.
-"""
-@inline function _set_demand!(individual::Individual, level::CareLevel, n::Int16)
-    level === CARE_HOSPITAL ? (individual.hospital_demands = n) :
-    level === CARE_ICU ? (individual.icu_demands = n) : (individual.ventilation_demands = n)
-    return n
-end
-
-"""
-    _adjust_demand!(individual::Individual, level::CareLevel, delta::Int16)
-
-Adds `delta` to one care level's demand count and returns the new value, from which the caller
-detects the 0-1 and 1-0 edges.
-
-Throws on a negative result, which also catches overflow since `Int16` wraps.
-"""
-@inline function _adjust_demand!(individual::Individual, level::CareLevel, delta::Int16)
-    n = _demand(individual, level) + delta
-    n < 0 && throw(ArgumentError("care demand for $level went negative on host $(individual.id): a discharge with no matching admission. Only simulation-level reset! is safe."))
-    return _set_demand!(individual, level, n)
-end
-
-"""
     CareContribution
 
 Isbits value type holding a host's precomputed care timeline: hospital/ICU/ventilation
@@ -245,22 +211,30 @@ function _validate_health_plan(contributions::Vector{CareContribution}, outcome:
 end
 
 """
-    compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
+    AbstractHealthSchedule
+
+Supertype of the concrete `HealthSchedule`, which is defined after `CareContribution` and so cannot
+be named in `compute_health!`'s signature directly.
+"""
+abstract type AbstractHealthSchedule end
+
+"""
+    compute_health!(individual::Individual, infections::InfectionRegistry, hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState, tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
 
 Framework entry point, not overridable. Hands `calculate_health_progression!` the shard's buffer to
-contribute care into, folds the death it proposes with the host's committed one, validates the whole
-result, and only then files the transitions and writes the death. Invoked whenever a new infection is
-added to a host.
+contribute care into and the profile `index` to draw from, folds the death it proposes with the host's
+committed one, validates the whole result, and only then files the transitions and writes the death.
+Invoked whenever a new infection is added to a host.
 """
 function compute_health!(individual::Individual, infections::InfectionRegistry,
-        hp::HealthProgression, new_infection::InfectionState, tick::Int16, rng::Xoshiro,
-        sched::AbstractHealthSchedule)
+        hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState,
+        tick::Int16, rng::Xoshiro, sched::AbstractHealthSchedule)
     dead(individual) && return nothing
 
     contributions = sched.buffer
     empty!(contributions)
     proposed = calculate_health_progression!(contributions, individual, infections, hp,
-        new_infection, tick, rng)
+        new_infection, index, tick, rng)
     outcome = combine_outcome(_committed_outcome(individual), proposed)
 
     _validate_health_plan(contributions, outcome, tick)
