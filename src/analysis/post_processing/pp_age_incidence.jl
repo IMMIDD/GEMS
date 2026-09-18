@@ -54,11 +54,12 @@ function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::
         pid = id(p)
         p_infs = subset(sim_infs, :pathogen_id => ByRow(==(pid)), view=true)
 
-        cohort_counts = [:age_a => (a -> betweenage(a, lo, hi)) => col for (col, lo, hi) in age_cohorts]
+        # one selection of :age_a for all cohorts; each selection copies the column in group order
+        cohort_counts = :age_a => (a -> NamedTuple(col => betweenage(a, lo, hi) for (col, lo, hi) in age_cohorts)) => AsTable
         coalesce_zero = [col => ByRow(x -> coalesce(x, 0)) => col for col in value_cols]
 
         incidence = groupby(p_infs, :tick) |>
-            x -> combine(x, nrow => :total, cohort_counts...) |>
+            x -> combine(x, nrow => :total, cohort_counts) |>
             x -> rightjoin(x, DataFrame(tick = 1:final_tick), on = :tick) |>
             x -> DataFrames.select(x, :tick, coalesce_zero...)
 

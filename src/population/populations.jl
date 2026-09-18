@@ -569,18 +569,9 @@ homogeneous).
 """
 function dataframe(population::Population)
 
-    df = DataFrame(
-        id = map(id, population |> individuals),
-        sex = map(sex, population |> individuals),
-        age = map(age, population |> individuals),
-        education = map(education, population |> individuals),
-        occupation = map(occupation, population |> individuals),
-        household = map(household_id, population |> individuals),
-        office = map(office_id, population |> individuals),
-        schoolclass = map(class_id, population |> individuals)
-    )
-    
     inds = individuals(population)
+    df = DataFrame(_population_columns(inds); copycols = false)
+
     ext_idx = findfirst(ind -> ind.extensions !== nothing, inds)
     if ext_idx !== nothing
         ext = inds[ext_idx].extensions
@@ -591,6 +582,28 @@ function dataframe(population::Population)
     end
 
     return df
+end
+
+# The base columns of `dataframe(population)`, filled in one pass: each individual is a separate object,
+# so a pass per column would fetch every one of them from memory again.
+function _population_columns(inds::Vector{Individual})
+    n = length(inds)
+    cols = (id = Vector{Int32}(undef, n), sex = Vector{Int8}(undef, n), age = Vector{Int8}(undef, n),
+        education = Vector{Int8}(undef, n), occupation = Vector{Int16}(undef, n),
+        household = Vector{Int32}(undef, n), office = Vector{Int32}(undef, n), schoolclass = Vector{Int32}(undef, n))
+        
+    Threads.@threads for k in eachindex(inds)
+        ind = inds[k]
+        cols.id[k] = id(ind)
+        cols.sex[k] = sex(ind)
+        cols.age[k] = age(ind)
+        cols.education[k] = education(ind)
+        cols.occupation[k] = occupation(ind)
+        cols.household[k] = household_id(ind)
+        cols.office[k] = office_id(ind)
+        cols.schoolclass[k] = class_id(ind)
+    end
+    return cols
 end
 
 """

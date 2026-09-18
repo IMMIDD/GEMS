@@ -44,34 +44,45 @@ function health_episodes(postProcessor::PostProcessor)
     if nrow(events) > 0
         # tag each event with its care level, then pair admission -> discharge within (host, level)
         ev = transform(events, :event => ByRow(e -> _CARE_LEVEL[e]) => :care_level)
-        result = combine(groupby(ev, [:id, :care_level])) do sdf
-            # by tick, admissions before discharges within a tick (0-length stays pair correctly)
-            order = sortperm(collect(zip(sdf.tick, .!_is_admission.(sdf.event))))
-            ticks = sdf.tick[order]
-            evs = sdf.event[order]
-            admission_tick = Int16[]
-            discharge_tick = Int16[]
-            open_admission = Int16(-1)
-            for i in eachindex(ticks)
-                if _is_admission(evs[i])
-                    open_admission = ticks[i]
-                elseif open_admission >= 0
-                    push!(admission_tick, open_admission)
-                    push!(discharge_tick, ticks[i])
-                    open_admission = Int16(-1)
-                end
-            end
-            # the simulation ended during this stay, so it has no discharge
-            if open_admission >= 0
-                push!(admission_tick, open_admission)
-                push!(discharge_tick, DEFAULT_TICK)
-            end
-            return (admission_tick = admission_tick, discharge_tick = discharge_tick)
-        end
-        rename!(result, :id => :host_id)
+        # grouped only for the group order, which the rows come out in
+        groups = collect(Int, groupindices(groupby(ev, [:id, :care_level])))
+        result = _pair_episodes(groups, ev.id, ev.care_level, ev.tick, ev.event)
     end
 
     store_cache(postProcessor, "health_episodes", result)
 
     return result
+end
+
+# Pairs each admission with the next discharge of its (host, care level) group, in one pass over the events
+# sorted by group, then tick with admissions before discharges (0-length stays pair correctly). A group's
+# last admission without a discharge is a stay the simulation ended during, reported with `DEFAULT_TICK`.
+function _pair_episodes(groups::Vector{Int}, ids::AbstractVector, levels::AbstractVector, ticks::AbstractVector,
+        events::AbstractVector)
+    order = sortperm(eachindex(groups); by = i -> (groups[i], ticks[i], !_is_admission(events[i])))
+    host_id = eltype(ids)[]
+    care_level = eltype(levels)[]
+    admission_tick = Int16[]
+    discharge_tick = Int16[]
+    # at most one episode per admission, so the vectors are sized once
+    nadmissions = count(_is_admission, events)
+    foreach(v -> sizehint!(v, nadmissions), (host_id, care_level, admission_tick, discharge_tick))
+    episode!(i, admission, discharge) = (push!(host_id, ids[i]); push!(care_level, levels[i]);
+        push!(admission_tick, admission); push!(discharge_tick, discharge))
+    open_admission = Int16(-1)
+    for (k, i) in enumerate(order)
+        if k > 1 && groups[i] != groups[order[k - 1]]
+            open_admission >= 0 && episode!(order[k - 1], open_admission, DEFAULT_TICK)
+            open_admission = Int16(-1)
+        end
+        if _is_admission(events[i])
+            open_admission = ticks[i]
+        elseif open_admission >= 0
+            episode!(i, open_admission, ticks[i])
+            open_admission = Int16(-1)
+        end
+    end
+    open_admission >= 0 && episode!(last(order), open_admission, DEFAULT_TICK)
+    return DataFrame(host_id = host_id, care_level = care_level, admission_tick = admission_tick,
+        discharge_tick = discharge_tick)
 end

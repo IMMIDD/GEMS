@@ -58,8 +58,10 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
     cnt = 1
     last_s = nothing
-    present_inds = simulation.present_buffers[Threads.threadid()]
-    contacts = simulation.contact_buffers[Threads.threadid()]
+    # own RNG and buffers: post processing steps may run concurrently
+    survey_rng = _post_processing_rng(simulation, "contact_samples/" * string(T))
+    present_inds = Individual[]
+    contacts = Individual[]
 
     # reusable batch buffer
     batch = Vector{Int}(undef, CONTACT_SAMPLES)
@@ -68,7 +70,7 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
         # sample a batch of setting indices and sort for cache coherence
         for i in eachindex(batch)
-            batch[i] = gems_rand(simulation, 1:length(stngs))
+            batch[i] = gems_rand(survey_rng, 1:length(stngs))
         end
         sort!(batch)
 
@@ -87,11 +89,11 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
             isempty(present_inds) && continue
 
-            ind_index = gems_rand(simulation, 1:length(present_inds))
+            ind_index = gems_rand(survey_rng, 1:length(present_inds))
             ind = present_inds[ind_index]
 
             empty!(contacts)
-            sample_contacts!(contacts, s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, rng(simulation))
+            sample_contacts!(contacts, s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, survey_rng)
 
             if length(contacts) > 0
                 for contact in contacts

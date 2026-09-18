@@ -43,42 +43,44 @@ end
     process_funcs(func_dicts::Dict)
 
 Takes a nested dictionary of functions (which must be created by
-ResultData initializers) and runs the functions, replacing them 
-with their result value in a new output dictionary. This way,
-the generation of ResultData can be parallelized.
+ResultData initializers) and runs the functions, replacing them
+with their result value in a new output dictionary. Depending on the
+`POST_PROCESSING_PARALLELISM` flag, functions run concurrently (see `constants.jl`).
 """
 function process_funcs(func_dicts::Dict)
 
-    if PARALLEL_POST_PROCESSING
-        # print warning if memory might not suffice
-        if Sys.free_memory() / Sys.total_memory() < 0.5
-            @warn "You are running the Post Processor in parallel-mode with less than 50% available system memory. If you encounter severe performance issues, please disable the PARALLEL_POST_PROCESSING flag in constants.jl"
-        end 
+    if POST_PROCESSING_PARALLELISM == :all && Sys.free_memory() / Sys.total_memory() < 0.25
+        @warn "Post processing runs with POST_PROCESSING_PARALLELISM = :all and less than 25% of the system memory is free. Your own result functions run at the same time in this mode; set the flag to :builtin in constants.jl if the system runs out of memory."
     end
 
     data = Dict{String, Any}()
+    tasks = Task[]
+    slots = Base.Semaphore(max(POST_PROCESSING_MAX_TASKS, 1))
 
     for (key, dct) in func_dicts
         data[key] = Dict()
 
-        #if parallel post processing is enabled
-        if PARALLEL_POST_PROCESSING
+        for field_name in collect(keys(dct))
+            func = dct[field_name]
 
-            l = ReentrantLock()
-            Threads.@threads for field_name in collect(keys(dct))
-                val = dct[field_name]()
-                lock(l) do
-                    data[key][field_name] = val
-                end
-            end
-
-        # non-parallel post processing
-        else
-            for field_name in collect(keys(dct))
+            # sequential steps keep the dictionary's order
+            if !_runs_concurrently(func)
                 print("\r$(_subinfo("$key/$field_name"))")
-                data[key][field_name] = dct[field_name]()
+                data[key][field_name] = func()
+                continue
             end
+
+            push!(tasks, Threads.@spawn Base.acquire(slots) do
+                (key, field_name, func())
+            end)
         end
+    end
+
+    nthreads = min(POST_PROCESSING_MAX_TASKS, Threads.nthreads())
+    isempty(tasks) || print("\r$(_subinfo("Processing $(length(tasks)) functions across $nthreads thread$(nthreads == 1 ? "" : "s")"))")
+    for t in tasks
+        (key, field_name, value) = _fetch_rethrow(t)
+        data[key][field_name] = value
     end
 
     print("\r$(_subinfo("Done"))")
@@ -86,6 +88,13 @@ function process_funcs(func_dicts::Dict)
     return(data)
 end
 
+# the ":builtin" flags only run GEMS' own functions, as a style of the user's own may not be safe in parallel
+function _runs_concurrently(func)
+    func isa SerialOnly && return false
+    POST_PROCESSING_PARALLELISM == :none && return false
+    POST_PROCESSING_PARALLELISM == :all && return true
+    return parentmodule(typeof(func)) === GEMS
+end
 
 """
     ResultDataStyle
