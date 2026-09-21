@@ -9,7 +9,7 @@ export Department, Office, WorkplaceSite, Workplace
 export settingchar, settingstring
 export contact_sampling_method, contact_sampling_method!
 export add!, remove!
-export add_member!, remove_member!
+export add_member!, remove_member!, mark_deceased!
 export id, individuals
 export open!, close!
 
@@ -97,6 +97,7 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 - `lat::Float32 = NaN`: Latitude of the household
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct Household <: Geolocated
     id::Int32 # 4 bytes
@@ -114,6 +115,8 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 
     # upper bound on its members' scales
     scale_bound::Float32 = 1
+    # members at the end of `individuals` who have died
+    deceased::Int32 = 0
 end
 
 ###
@@ -142,6 +145,7 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the municipality.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct Municipality <: IndividualSetting
     id::Int32 # 4 bytes // Municipality identifier
@@ -153,6 +157,8 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 
     # upper bound on its members' scales
     scale_bound::Float32 = 1
+    # members at the end of `individuals` who have died
+    deceased::Int32 = 0
 end
 
 ###
@@ -193,6 +199,7 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 - `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
     finds the block it has to dirty.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct SchoolClass <: Geolocated
     id::Int32 # 4 bytes
@@ -215,6 +222,8 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on its members' scales
     scale_bound::Float32 = 1
+    # members at the end of `individuals` who have died
+    deceased::Int32 = 0
 
 end
 
@@ -591,6 +600,7 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 - `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
     finds the block it has to dirty.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct Office <: Geolocated
     id::Int32 # 4 bytes
@@ -616,6 +626,8 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on its members' scales
     scale_bound::Float32 = 1
+    # members at the end of `individuals` who have died
+    deceased::Int32 = 0
 
 end
 ###
@@ -754,6 +766,8 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
     end
     plan_add!(plans, individual,
               PlanEntry(typeof(setting), id(setting), length(setting.individuals), scale); primary = primary)
+    # a newcomer joins the living members, ahead of the deceased
+    _deceased(setting) > 0 && _swap_members!(setting, length(setting.individuals), _alive(setting), plans)
     # the bound must use the scale as rounded into the entry's Float16
     stored = Float32(Float16(scale))
     stored > _scale_bound(setting) && _set_scale_bound!(setting, stored)
@@ -772,6 +786,13 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
     members = setting.individuals
     idx = findfirst(i -> i === individual, members)
     isnothing(idx) && return nothing
+    if _is_deceased(setting, idx)
+        _add_deceased!(setting, -1)
+    elseif _deceased(setting) > 0
+        # swap-with-last would pull a deceased member forward, so move to the last living slot first
+        _swap_members!(setting, idx, _alive(setting), plans)
+        idx = _alive(setting)
+    end
     # the member that swap-with-last will move into `idx`
     displaced = @inbounds members[end]
 
@@ -796,6 +817,52 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
     # the removed member may have held the bound
     _scale_bound(setting) > 1 && _refresh_scale_bound!(plans, setting)
     membership_changed!(contact_sampling_method(setting), setting)
+    return nothing
+end
+
+"""
+    mark_deceased!(setting::IndividualSetting, individual::Individual, pop::Population)
+
+Takes a member out of the setting's contacts but keeps the membership. Does nothing if they
+are not a member or have already been marked.
+"""
+function mark_deceased!(setting::T, individual::Individual, pop::Population) where {T<:IndividualSetting}
+    hasfield(T, :deceased) || return nothing
+    plans = activity_plans(pop)
+    _check_indexed(plans)
+    slot = plan_slot(plans, individual, T, id(setting))
+    slot == 0 && return nothing
+    idx = Int(member_index(@inbounds plans.entries[slot]))
+    _is_deceased(setting, idx) && return nothing
+    _swap_members!(setting, idx, _alive(setting), plans)
+    _add_deceased!(setting, 1)
+    # the deceased member may have held the bound
+    _scale_bound(setting) > 1 && _refresh_scale_bound!(plans, setting)
+    membership_changed!(contact_sampling_method(setting), setting)
+    return nothing
+end
+
+# Swaps two members and repoints their plan entries.
+function _swap_members!(s::T, i::Int, j::Int, plans) where {T<:IndividualSetting}
+    i == j && return nothing
+    v = s.individuals
+    @inbounds a, b = v[i], v[j]
+    @inbounds v[i], v[j] = b, a
+    sa = plan_slot(plans, a, T, id(s))
+    sa == 0 || plan_set_member_index!(plans, sa, j)
+    sb = plan_slot(plans, b, T, id(s))
+    sb == 0 || plan_set_member_index!(plans, sb, i)
+    return nothing
+end
+
+# changes the deceased count, dirtying the pool so its frames follow
+function _add_deceased!(s::IndividualSetting, n::Int)
+    s.deceased += Int32(n)
+    pool = _pool(s)
+    if pool !== nothing
+        pool.deceased += n
+        _mark_dirty!(pool, s)
+    end
     return nothing
 end
 

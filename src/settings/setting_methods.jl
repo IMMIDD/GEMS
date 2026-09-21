@@ -260,7 +260,7 @@ Pushes the individuals present in a given IndividualSetting, i.e., only those in
 """
 function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     if is_open(setting)
-        append!(indivs, setting |> individuals)
+        append!(indivs, view(individuals(setting), 1:_alive(setting)))
     end
 end
 
@@ -675,7 +675,9 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
     # raising a scale can only raise the bound; lowering one may free it, so recount
     # the bound must use the scale as rounded into the entry's Float16
     stored = Float32(Float16(scale))
-    stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
+    # a deceased member's scale does not count
+    deceased = _is_deceased(s, member_index(plans.entries[plan_slot(plans, individual, T, sid)]))
+    !deceased && stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
     return nothing
 end
 
@@ -686,3 +688,11 @@ Removes a member, taking the population from the simulation.
 """
 remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
     remove_member!(setting, individual, population(sim))
+
+"""
+    mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Marks a member deceased, taking the population from the simulation.
+"""
+mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    mark_deceased!(setting, individual, population(sim))

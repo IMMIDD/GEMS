@@ -1451,4 +1451,21 @@ import GEMS: increment!, infected!
         simB = Simulation(pop_size=100, seed=999)
         @test rand(rngs(simA)[1]) == rand(rngs(simB)[1])
     end
+
+    @testset "The dead leave their settings' contacts" begin
+        sim = Simulation(seed = 1)
+        run!(sim)
+        dead_inds = filter(dead, individuals(sim))
+        @test !isempty(dead_inds)
+        cntnr = settingscontainer(sim)
+        repack_dirty_pools!(cntnr)
+        plans = GEMS.activity_plans(sim)
+        for d in dead_inds, e in GEMS.plan_entries(plans, d)
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            # still a member, but never drawn
+            @test d in individuals(s)
+            @test !(d in GEMS.present_members(s, cntnr))
+        end
+        @test GEMS.validate_plans(population(sim), cntnr)
+    end
 end

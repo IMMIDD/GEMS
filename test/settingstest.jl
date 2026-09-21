@@ -955,6 +955,57 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             # membership of it is answered from the constant, not from a plan entry
             @test setting_id(i, GlobalSetting, plans) == GEMS.GLOBAL_SETTING_ID
         end
+
+        @testset "mark_deceased! keeps the membership but leaves the frame" begin
+            h, inds, pop, plans = make_household(3)
+            mark_deceased!(h, inds[1], pop)
+            @test length(individuals(h)) == 3
+            @test household_id(inds[1], plans) == id(h)
+            @test !(inds[1] in GEMS.present_members(h, SettingsContainer()))
+            for ind in inds
+                @test individuals(h)[GEMS.member_index(ind, Household, plans)] === ind
+            end
+            # marking twice changes nothing
+            mark_deceased!(h, inds[1], pop)
+            @test h.deceased == 1
+        end
+
+        @testset "a death samples like the smaller household" begin
+            h, inds, pop, plans = make_household(3)
+            mark_deceased!(h, inds[1], pop)
+            h2, inds2, _, plans2 = make_household(2)
+            csm = ContactparameterSampling(2.0)
+            draw(s, host, p) = [sample_contacts(csm, s, Int(GEMS.member_index(host, Household, p)),
+                GEMS.present_members(s, SettingsContainer()), Int16(0); rng = Xoshiro(k)) for k in 1:200]
+            c3 = draw(h, inds[2], plans)
+            @test length.(c3) == length.(draw(h2, inds2[1], plans2))
+            @test all(c -> all(x -> x === inds[3], c), c3)
+        end
+
+        @testset "add! and remove! keep the deceased at the end" begin
+            for pos in 1:5
+                h, inds, pop, plans = make_household(5)
+                mark_deceased!(h, inds[4], pop)
+                mark_deceased!(h, inds[5], pop)
+                remove_member!(h, inds[pos], pop)
+                gone = setdiff(inds[4:5], [inds[pos]])
+                @test h.deceased == length(gone)
+                @test Set(individuals(h)[GEMS._alive(h)+1:end]) == Set(gone)
+                for ind in individuals(h)
+                    @test individuals(h)[GEMS.member_index(ind, Household, plans)] === ind
+                end
+            end
+
+            h, inds, pop, plans = make_household(3)
+            mark_deceased!(h, inds[1], pop)
+            newcomer = Individual(id = Int32(99), age = 5, sex = 0)
+            add_member!(h, newcomer, pop)
+            @test GEMS._alive(h) == 3
+            @test individuals(h)[end] === inds[1]
+            for ind in individuals(h)
+                @test individuals(h)[GEMS.member_index(ind, Household, plans)] === ind
+            end
+        end
     end
 
     @testset "Pooled hierarchy storage" begin
@@ -1361,6 +1412,51 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4]
             open!(cs[2]); GEMS.repack_dirty_pools!(sc)
             @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+        end
+
+        @testset "Deceased members" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            mark_deceased!(cs[1], inds[2], pop)
+            @test (try; GEMS.present_members(sch, sc); false; catch; true; end)
+            GEMS.repack_dirty_pools!(sc)
+            @test length(individuals(cs[1])) == 3
+            @test sort(ids(GEMS.present_members(cs[1], sc))) == [1, 3]
+            @test sort(ids(GEMS.present_members(sch, sc))) == [1, 3, 4, 5, 6, 7, 8, 9]
+            @test !contiguous(GEMS.present_members(sch, sc))
+            @test GEMS.container_frame_index(sc, ys[1], cs[1],
+                GEMS.member_index(inds[2], SchoolClass, plans)) == GEMS.DEFAULT_MEMBER_INDEX
+
+            # one in the last leaf keeps the frame one span
+            mark_deceased!(cs[3], inds[9], pop); GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(ys[2], sc)) == [7, 8]
+            @test contiguous(GEMS.present_members(ys[2], sc))
+
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(sch, sc))) == [1, 3, 7, 8]
+            @test GEMS.validate_plans(pop, sc)
+        end
+
+        @testset "A repeated member dies" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[1], inds[4], pop); GEMS.repack_dirty_pools!(sc)
+            mark_deceased!(cs[2], inds[4], pop); GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(ys[1], sc))) == [1, 2, 3, 4, 5, 6]
+            mark_deceased!(cs[1], inds[4], pop); GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(ys[1], sc))) == [1, 2, 3, 5, 6]
+        end
+
+        @testset "Pooled add! and remove! across the deceased" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            mark_deceased!(cs[2], inds[4], pop)
+            newcomer = Individual(id = Int32(42), age = 10, sex = 1)
+            add_member!(cs[2], newcomer, pop)
+            remove_member!(cs[2], inds[5], pop)
+            GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(cs[2], sc))) == [6, 42]
+            @test individuals(cs[2])[end] === inds[4]
+            for ind in individuals(cs[2])
+                @test individuals(cs[2])[GEMS.member_index(ind, SchoolClass, plans)] === ind
+            end
         end
     end
 

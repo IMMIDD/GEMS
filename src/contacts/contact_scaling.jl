@@ -164,6 +164,7 @@ function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::
         leaf = leaves[setting_id(e)]
         Int(leaf.pool_leaf) in below || continue
         (!closed || _open_below(cntnr, leaf, c)) || continue
+        _is_deceased(leaf, member_index(e)) && continue
         s = Float32(_effective_scale(plans, k))
         total += s
         largest = max(largest, s)
@@ -183,7 +184,8 @@ end
 function _refresh_scale_bound!(plans::ActivityPlanStore, s::T) where {T<:IndividualSetting}
     hasfield(T, :scale_bound) || return nothing
     b = 1.0f0
-    for m in individuals(s)
+    # deceased members draw no contacts, so their scales do not count
+    for m in view(individuals(s), 1:_alive(s))
         m.plan_scaled || continue
         slot = plan_slot(plans, m, T, id(s))
         slot == 0 || (b = max(b, Float32(entry_scale(@inbounds plans.entries[slot]))))

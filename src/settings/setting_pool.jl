@@ -199,6 +199,8 @@ mutable struct SettingPool
     members::Vector{Individual}
     # how many settings in this hierarchy are currently closed
     closed::Int
+    # deceased members across its leaves; zero lets a repack skip narrowing the frames
+    deceased::Int
     # memberships beyond the first; zero lets a repack skip the duplicate scan
     repeats::Int
     # everything a repack needs, so a member edit does not have to find the hierarchy again

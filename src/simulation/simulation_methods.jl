@@ -350,6 +350,7 @@ function step!(simulation::Simulation)
     if !dormant
         update_individuals!(simulation)
         flush_ended_infections!(simulation)
+        apply_deaths!(simulation)
     end
 
     # fire hospitalization_triggers
@@ -765,6 +766,8 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
             _close_care_at_death!(indiv, healthlogger(sim), tick)
+            # leaves its settings in the serial `apply_deaths!`
+            push!(sim.newly_dead[Threads.threadid()], indiv)
         end
     end
 
@@ -793,6 +796,44 @@ function update_individuals!(sim::Simulation)
         infectious(i) && push!(sim.infectious_individuals[Threads.threadid()], i)
         @inbounds active[k] = _stays_active(i)
     end
+    return nothing
+end
+
+"""
+    lingers_after_death(tf::TransmissionFunction, ::Type{<:Setting})
+
+Whether a host killed by a pathogen with transmission function `tf` stays among a setting's
+contacts after death. `false` unless a pathogen that spreads from the dead overrides it.
+"""
+lingers_after_death(::TransmissionFunction, ::Type{<:Setting}) = false
+
+"""
+    mark_deceased!(individual::Individual, sim::Simulation)
+
+Marks a dead individual deceased in each of their settings, except those their killing pathogen
+lets them linger in.
+"""
+function mark_deceased!(individual::Individual, sim::Simulation)
+    pid = individual.killing_pathogen_id
+    tf = pid == DEFAULT_PATHOGEN_ID ? nothing : transmission_function(get_pathogen(sim, pid))
+    for e in plan_entries(activity_plans(sim), individual)
+        _with_entry_setting(sim, e) do s
+            (tf !== nothing && lingers_after_death(tf, typeof(s))) || mark_deceased!(s, individual, sim)
+        end
+    end
+    return nothing
+end
+
+# Marks this tick's dead deceased. Serial, as marking one also moves the member it swaps with.
+function apply_deaths!(sim::Simulation)
+    any(!isempty, sim.newly_dead) || return nothing
+    # thread order is population order, so the result does not depend on who found a death
+    for buf in sim.newly_dead
+        foreach(i -> mark_deceased!(i, sim), buf)
+        empty!(buf)
+    end
+    # spreading reads the frames this tick
+    repack_dirty_pools!(settingscontainer(sim))
     return nothing
 end
 

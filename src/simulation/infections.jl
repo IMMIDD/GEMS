@@ -397,6 +397,8 @@ function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation) whe
     for e in plan_entries(plans, ind)
         idx = member_index(e)
         _with_entry_setting(sim, e) do setting
+            # deceased, so absent from its frames
+            _is_deceased(setting, idx) && return nothing
             # the entry's own setting
             visit(setting, Int(idx), _membership_scale(plans, ind, setting, cntnr))
             # each container above it that holds this individual's copy. An inactive entry climbs

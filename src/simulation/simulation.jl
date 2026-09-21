@@ -253,6 +253,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     contact_buffers::Vector{Vector{Individual}}
     # one sampler call's draws, for scaled hosts that call a sampler more than once
     draw_buffers::Vector{Vector{Individual}}
+    # who each thread's part of the disease-update sweep found dead this tick
+    newly_dead::Vector{Vector{Individual}}
     infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{_EndedInfection}}
     # per shard, the attempt that wins each contested (host, pathogen) this tick
@@ -341,6 +343,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # INITIALIZE BUFFERS
             _thread_local_vector(Vector{Individual}), # contact_buffers
             _thread_local_vector(Vector{Individual}), # draw_buffers
+            _thread_local_vector(Vector{Individual}), # newly_dead
             _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
             _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)), # removal buffers matrix
             _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards)) # deduplication winners

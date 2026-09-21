@@ -26,10 +26,10 @@ function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
     if pool === nothing
         # standalone leaf: its own vector already holds exactly the members
         v = s.individuals::Vector{Individual}
-        return is_open(s) ? MemberView(v, Int32(1), Int32(length(v))) : MemberView(v, Int32(1), Int32(0))
+        return is_open(s) ? MemberView(v, Int32(1), Int32(_alive(s))) : MemberView(v, Int32(1), Int32(0))
     end
     _check_clean(s, pool)
-    return is_open(s) ? MemberView(pool.members, s.pool_offset, s.pool_length) :
+    return is_open(s) ? MemberView(pool.members, s.pool_offset, s.pool_length - Int32(_deceased(s))) :
                         MemberView(pool.members, Int32(1), Int32(0))
 end
 
@@ -189,7 +189,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
         push!(groups, ContainerLevel(settings(cntnr, C), ranges[k], ptr, idx))
     end
 
-    pool = SettingPool(Individual[], 0, 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
+    pool = SettingPool(Individual[], 0, sum(_deceased, leaves; init = 0), 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
     for (i, l) in enumerate(leaves); l.pool = pool; l.pool_leaf = Int32(i); end
     for g in pool.container_groups, c in g.containers; c.pool = pool; end
     # counted once here; the edits keep it exact
@@ -592,8 +592,8 @@ end
     # a member in two leaves below sits in the span twice, and only the first copy counts
     pool.repeats == 0 ||
         _dedup_container!(c, pool, Int(lo.pool_offset), Int(len))
-    # a closure below takes its members out of the frame
-    pool.closed == 0 || _drop_closed!(c, r, pool, leaves)
+    # a closure or death below takes members out of the frame
+    (pool.closed == 0 && pool.deceased == 0) || _drop_closed!(c, r, pool, leaves)
     return nothing
 end
 
@@ -607,14 +607,16 @@ function _drop_closed!(c::C, r::UnitRange{Int}, pool::SettingPool,
     total = 0
     @inbounds for j in r
         l = leaves[j]
-        (l.pool_length > 0 && _open_up_to(pool, l, C)) || continue
+        # deceased members sit at the end of the leaf, past its living ones
+        n = Int(l.pool_length) - _deceased(l)
+        (n > 0 && _open_up_to(pool, l, C)) || continue
         lo = Int(l.pool_offset)
         # merge with the previous run when the leaves are adjacent in the pool
         if isempty(starts) || Int(starts[end]) + (total - Int(prefix[end])) != lo
             push!(starts, Int32(lo))
             push!(prefix, Int32(total))
         end
-        total += Int(l.pool_length)
+        total += n
     end
 
     # of a repeated member, the first copy still present is the one kept
@@ -636,7 +638,7 @@ function _all_present(pool::SettingPool, leaves::Vector{T}, r::UnitRange{Int},
                       ::Type{C}) where {C<:ContainerSetting, T<:IndividualSetting}
     @inbounds for j in r
         l = leaves[j]
-        (l.pool_length == 0 || _open_up_to(pool, l, C)) || return false
+        (l.pool_length == 0 || (_deceased(l) == 0 && _open_up_to(pool, l, C))) || return false
     end
     return true
 end
@@ -869,3 +871,12 @@ end
 # The setting's pool, or `nothing` when unpooled. `hasfield` folds on a concrete type, so
 # this compiles to a field load or a constant.
 @inline _pool(s::T) where {T<:Setting} = hasfield(T, :pool) ? s.pool : nothing
+
+# how many members at the end of the setting's list have died; none for a type without the field
+@inline _deceased(s::T) where {T<:Setting} = hasfield(T, :deceased) ? Int(s.deceased) : 0
+
+# how many members come before the deceased ones
+@inline _alive(s::IndividualSetting) = length(s.individuals) - _deceased(s)
+
+# whether the member at position `idx` is deceased
+@inline _is_deceased(s::IndividualSetting, idx::Integer) = idx > _alive(s)
