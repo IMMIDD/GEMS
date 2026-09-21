@@ -232,7 +232,7 @@ Injectors are plain data and can be shared across simulations or saved for later
 ## Deaths in detail
 
 - A staged event on the death column `:death` marks the individual **dead from the event's timestamp** (the staged value — flag or day — is not interpreted as a tick).
-- The engine mirrors GEMS' native death state: `ind.death` is set to the application tick (`0` when baked in), the `FLAG_DEAD` flag is set, and the infection masks are cleared — so the state is consistent even on dormant ticks. `killing_pathogen_id` stays at the default.
+- The engine mirrors GEMS' native death state: `ind.death` is set to the application tick (`0` when baked in), the `FLAG_DEAD` flag is set, and the infection masks are cleared — so the state is consistent even on dormant ticks. `death_reason` stays at the default.
 - Run-time deaths are recorded **exactly once** in the `DeathLogger`, attributed to `DEFAULT_PATHOGEN_ID` (no pathogen). Baked-in (pre-run) deaths are initial state and are **not** logged.
 - Dead individuals remain in the population and are excluded from transmission and seeding, exactly like simulation-caused deaths.
 - **Base-file requirement:** if the base population file used with `create_column_schema` has a death column, it must use GEMS' `Individual.death` tick semantics: alive = `-1` (`DEFAULT_TICK`), dead = the tick of death. A 0/1 "is dead" flag column would be misread (`0` = "died at tick 0" → everyone dies at tick 0). Convert such files before building the schema.

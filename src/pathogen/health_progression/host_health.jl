@@ -208,7 +208,7 @@ end
 The host's currently scheduled death, read off the individual into a `HealthOutcome`.
 """
 @inline _committed_outcome(individual::Individual) =
-    HealthOutcome(death = individual.death, death_pathogen_id = individual.killing_pathogen_id)
+    HealthOutcome(death = individual.death, death_pathogen_id = individual.death_reason)
 
 """
     _check_contribution(care::CareContribution, tick::Int16)
@@ -271,7 +271,7 @@ function compute_health!(individual::Individual, infections::InfectionRegistry,
     end
     wake_at!(sched, outcome.death)
     individual.death = outcome.death
-    individual.killing_pathogen_id = outcome.death >= 0 ? outcome.death_pathogen_id : DEFAULT_PATHOGEN_ID
+    individual.death_reason = outcome.death >= 0 ? outcome.death_pathogen_id : DEFAULT_DEATH_REASON
     empty!(contributions)
     return nothing
 end

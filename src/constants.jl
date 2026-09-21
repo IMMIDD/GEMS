@@ -93,6 +93,10 @@ const QUARANTINE_STATE_NO_QUARANTINE = Int8(0)
 const QUARANTINE_STATE_HOUSEHOLD_QUARANTINE = Int8(1)
 const QUARANTINE_STATE_HOSPITAL = Int8(2)
 
+# death_reason: killing pathogen id (> 0) for infection deaths, negative codes for other causes
+const DEFAULT_DEATH_REASON = Int8(-1)
+const DEATH_REASON_NATURAL = Int8(-2)
+
 # Maximum number of distinct pathogens a simulation can track. Bounded by the per-individual
 # UInt32 pathogen bitmasks (`active_pathogens_mask`/`detected_mask`, bit `id - 1`) and the
 # `_test_key` packing. Raising this requires widening those mask fields.
