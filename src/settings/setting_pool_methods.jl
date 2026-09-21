@@ -12,8 +12,8 @@ export build_pools!, repack_dirty_pools!, present_members
 
 The setting's present members, as an indexable view. Nothing is copied and nothing is built
 per tick: an open leaf and an all-open container are both a contiguous slice of the
-hierarchy pool, and only a container with closed descendants or a repeated member needs run
-indexing.
+hierarchy pool, and only a container with closed descendants, deceased members or a repeated
+member needs run indexing.
 
 Equal element for element to `present_individuals(setting, sim)`, except that a member in two
 leaves of one container appears once here and twice there.
@@ -38,7 +38,7 @@ function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     _check_clean(s, pool)
     is_open(s) || return MemberView(pool.members, Int32(1), Int32(0))
 
-    # the repack stores the frame, as runs when a member repeats or something below is closed
+    # the repack stores the frame, as runs when a member repeats or something below is closed or deceased
     r = s.pool_runs
     # one run, or none when everything below is closed, is a plain slice again
     (r === nothing || length(r.starts) <= 1) &&
@@ -53,7 +53,7 @@ end
 @inline function _check_clean(s::Setting, pool::SettingPool)
     isempty(pool.blocks.dirty) || error(
         "$(typeof(s)) belongs to a setting pool with pending member edits or closures. Call " *
-        "`repack_dirty_pools!` after editing membership or opening or closing settings, and " *
+        "`repack_dirty_pools!` after editing membership, marking members deceased, or opening or closing settings, and " *
         "before reading members.")
     return nothing
 end
@@ -352,7 +352,7 @@ end
 """
     repack_dirty_pools!(cntnr::SettingsContainer)
 
-Repack every pool left stale by a member edit, a scale change, or a setting opened or closed.
+Repack every pool left stale by a member edit, a death, a scale change, or a setting opened or closed.
 Must run between such a change and the next read of `present_members`. `step!` calls it ahead
 of the transmission phase, which is the only reader inside a tick, so changes made anywhere in
 the previous tick are covered.

@@ -284,7 +284,8 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
             error("individual $(id(ind)) has member index $idx in $T $(setting_id(e)), but that slot holds individual $(id(individuals(s)[idx]))")
         0 <= entry_scale(e) <= floatmax(Float16) ||
             error("individual $(id(ind)) has scale $(entry_scale(e)) in $T $(setting_id(e)), outside [0, $(floatmax(Float16))]")
-        entry_scale(e) <= _scale_bound(s) ||
+        # a deceased member's scale does not count toward the bound
+        (_is_deceased(s, idx) || entry_scale(e) <= _scale_bound(s)) ||
             error("the scale bound of $T $(setting_id(e)) is below individual $(id(ind))'s scale $(entry_scale(e))")
     end
 
@@ -297,6 +298,14 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
     for T in settingtypes(cntnr)
         (T <: IndividualSetting && T !== GlobalSetting) || continue
         _check_member_entries(plans, cntnr, T)
+        for s in settings(cntnr, T)
+            0 <= _deceased(s) <= length(individuals(s)) ||
+                error("$T $(id(s)) counts $(_deceased(s)) deceased among $(length(individuals(s))) members")
+        end
+    end
+    for (T, pool) in cntnr.pools
+        pool.deceased == sum(_deceased, pool.leaves; init = 0) ||
+            error("the $T pool counts $(pool.deceased) deceased, its leaves $(sum(_deceased, pool.leaves; init = 0))")
     end
     return true
 end

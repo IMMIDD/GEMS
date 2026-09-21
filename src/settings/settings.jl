@@ -260,7 +260,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed, `nothing` when the span already covers each present member once.
+    below is closed or deceased, `nothing` when the span already covers each present member once.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolYear <: ContainerSetting
@@ -277,7 +277,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed
+    # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -317,7 +317,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed, `nothing` when the span already covers each present member once.
+    below is closed or deceased, `nothing` when the span already covers each present member once.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct School <: ContainerSetting
@@ -333,7 +333,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed
+    # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -371,7 +371,7 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed, `nothing` when the span already covers each present member once.
+    below is closed or deceased, `nothing` when the span already covers each present member once.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolComplex <: ContainerSetting
@@ -387,7 +387,7 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed
+    # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -427,7 +427,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed, `nothing` when the span already covers each present member once.
+    below is closed or deceased, `nothing` when the span already covers each present member once.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct WorkplaceSite <: ContainerSetting
@@ -443,7 +443,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed
+    # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -481,7 +481,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed, `nothing` when the span already covers each present member once.
+    below is closed or deceased, `nothing` when the span already covers each present member once.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Workplace <: ContainerSetting
@@ -497,7 +497,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed
+    # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -535,7 +535,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     members. A container stores no members itself, so `present_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed, `nothing` when the span already covers each present member once.
+    below is closed or deceased, `nothing` when the span already covers each present member once.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Department <: ContainerSetting
@@ -554,7 +554,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed
+    # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, SettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -852,6 +852,15 @@ function _swap_members!(s::T, i::Int, j::Int, plans) where {T<:IndividualSetting
     sa == 0 || plan_set_member_index!(plans, sa, j)
     sb = plan_slot(plans, b, T, id(s))
     sb == 0 || plan_set_member_index!(plans, sb, i)
+    return nothing
+end
+
+# returns the deceased to the setting's frame, for a simulation that is reset
+function _clear_deceased!(s::IndividualSetting, plans)
+    _deceased(s) == 0 && return nothing
+    _add_deceased!(s, -_deceased(s))
+    _refresh_scale_bound!(plans, s)
+    membership_changed!(contact_sampling_method(s), s)
     return nothing
 end
 

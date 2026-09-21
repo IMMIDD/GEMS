@@ -1467,5 +1467,13 @@ import GEMS: increment!, infected!
             @test !(d in GEMS.present_members(s, cntnr))
         end
         @test GEMS.validate_plans(population(sim), cntnr)
+
+        # a reset brings them back
+        reset!(sim)
+        for d in dead_inds, e in GEMS.plan_entries(plans, d)
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            @test d in GEMS.present_members(s, cntnr)
+        end
+        @test GEMS.validate_plans(population(sim), cntnr)
     end
 end

@@ -2403,6 +2403,16 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     fill!(simulation.quarantined_individuals, false)
     reset_tick!(simulation)
 
+    # the dead are alive again, so they return to their settings' frames
+    plans = activity_plans(simulation)
+    foreach_setting_vector(settingscontainer(simulation)) do vec
+        for s in vec
+            s isa IndividualSetting && _clear_deceased!(s, plans)
+        end
+    end
+    repack_dirty_pools!(settingscontainer(simulation))
+    foreach(empty!, simulation.newly_dead)
+
     # Reset all loggers
     pop = population(simulation)
     simulation.infectionlogger = InfectionLogger(minid = pop.minid, maxid = pop.maxid)

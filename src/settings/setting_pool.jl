@@ -23,8 +23,8 @@ const MemberStorage = Union{Vector{Individual}, MemberSlice}
     MemberRuns
 
 A container's frame when it is not one span: a member sits in two of its leaves at once, or
-something below it is closed. The frame skips those positions, and `groups` records where the
-repeats were, so a closure keeps the first copy still present.
+something below it is closed or holds deceased members. The frame skips those positions, and
+`groups` records where the repeats were, so a closure keeps the first copy still present.
 
 # Fields
 
@@ -48,8 +48,8 @@ const NO_RUNS = Int32[]
     MemberView
 
 A setting's present members, as a window onto its hierarchy's pool. Usually one unbroken span,
-described by `offset` and `len`. A container with closed descendants or with a member in two of
-its leaves needs several runs, and then `starts`/`prefix` describe them and indexing
+described by `offset` and `len`. A container with closed descendants, deceased members or a member in
+two of its leaves needs several runs, and then `starts`/`prefix` describe them and indexing
 binary-searches `prefix`.
 
 The result aliases real member storage, so writing to it edits membership.
