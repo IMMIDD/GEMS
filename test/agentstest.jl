@@ -496,6 +496,22 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             @test !is_quarantined(i_quar, Int16(10))
             @test isquarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
             @test quarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
+
+            # sim wrappers route to the correct registry shard
+            sim = Simulation()
+            @test get_infection_state(i, sim, pid) == get_infection_state(i, reg, pid)
+            @test get_immunity_state(i, sim, pid) == get_immunity_state(i, ImmunityRegistry(), pid)
+            for f in (exposure, infectiousness_onset, symptom_onset, severeness_onset, severeness_offset,
+                      GEMS.critical_onset, GEMS.critical_offset, recovery)
+                @test f(i, sim, pid) == f(i, reg, pid)
+            end
+            for f in (is_infected, isinfected, infected, is_infectious, isinfectious, infectious,
+                      is_exposed, isexposed, exposed, is_presymptomatic, ispresymptomatic, presymptomatic,
+                      is_symptomatic, issymptomatic, symptomatic, is_asymptomatic, isasymptomatic, asymptomatic,
+                      is_severe, issevere, severe, is_mild, ismild, mild, is_critical, iscritical, critical,
+                      is_recovered, isrecovered, recovered, is_detected, isdetected, detected)
+                @test f(i, sim, pid, Int16(12)) == f(i, reg, pid, Int16(12))
+            end
         end
 
         @testset "Testing Registry" begin
