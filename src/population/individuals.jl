@@ -27,7 +27,7 @@ export is_hospitalized, ishospitalized, hospitalized
 export is_icu, isicu, icu
 export is_ventilated, isventilated, ventilated
 export is_recovered, isrecovered, recovered
-export is_dead, isdead, dead, death
+export is_dead, isdead, dead, death, death_reason, killing_pathogen_id
 export is_detected, isdetected, detected
 export active_pathogens_mask
 export number_of_infections
@@ -109,7 +109,7 @@ A type to represent individuals that act as agents inside the simulation.
     - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
     - `number_of_infections::Int8`: Lifetime infection count
     - `disease_flags::UInt8`: Bitpacked disease-state flags (`infected`/`infectious`/`symptomatic`/`severe`/`critical`/`dead`), accessed via the `is_*`/`*!` accessors
-    - `killing_pathogen_id::Int8`: Pathogen credited for the host death (set when death is scheduled, read by the death logger)
+    - `death_reason::Int8`: Cause of the host death: killing pathogen id (> 0), or a negative non-infection reason (set when death is scheduled, read by the death logger)
 
 - Interventions
     - `detected_mask::UInt32`: Bitmask of pathogens for which an infection is detected
@@ -160,7 +160,7 @@ A type to represent individuals that act as agents inside the simulation.
     needs_immunity_update::Bool = false             # off 36,  1B,  line 0
     number_of_infections::Int8 = 0                  # off 37,  1B,  line 0
     disease_flags::DiseaseFlags = DiseaseFlags()    # off 38,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 39,  1B,  line 0
+    death_reason::Int8 = DEFAULT_DEATH_REASON       # off 39,  1B,  line 0
 
     # INTERVENTIONS
     detected_mask::UInt32 = 0                       # off 40,  4B,  line 0
@@ -576,6 +576,22 @@ dead!(individual::Individual, dead::Bool) = (individual.disease_flags = _set_fla
 Returns the tick the individual is scheduled to die at, `DEFAULT_TICK` if none.
 """
 death(individual::Individual)::Int16 = individual.death
+
+"""
+    death_reason(individual::Individual)
+
+Returns the cause of the individual's (scheduled) death: the killing pathogen id (> 0),
+a negative non-infection reason, or `DEFAULT_DEATH_REASON` if none.
+"""
+death_reason(individual::Individual)::Int8 = individual.death_reason
+
+"""
+    killing_pathogen_id(individual::Individual)
+
+Returns the id of the pathogen credited for the individual's death, `nothing` if the
+individual did not die (or is not scheduled to die) of an infection.
+"""
+killing_pathogen_id(individual::Individual) = individual.death_reason > 0 ? individual.death_reason : nothing
 
 """
     is_detected(individual::Individual)

@@ -106,6 +106,7 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             severe!(i, true)
             i.hospital_demands = Int16(1); i.icu_demands = Int16(1); i.ventilation_demands = Int16(1)
             dead!(i, true)
+            i.death_reason = Int8(1)
             detected!(i, true)
 
             @test is_hospitalized(i)
@@ -135,6 +136,7 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             @test !is_icu(i)
             @test !is_ventilated(i)
             @test !isdead(i)
+            @test death_reason(i) == GEMS.DEFAULT_DEATH_REASON
             @test !isdetected(i)
 
             # Assert infection count and masks cleared
@@ -477,6 +479,15 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             @test is_dead(i_dead)
             @test isdead(i_dead) == is_dead(i_dead)
             @test dead(i_dead) == is_dead(i_dead)
+
+            # death_reason / killing_pathogen_id
+            @test death_reason(i_dead) == GEMS.DEFAULT_DEATH_REASON
+            @test killing_pathogen_id(i_dead) === nothing
+            i_dead.death_reason = Int8(2)
+            @test killing_pathogen_id(i_dead) == 2
+            i_dead.death_reason = GEMS.DEATH_REASON_NATURAL
+            @test death_reason(i_dead) == GEMS.DEATH_REASON_NATURAL
+            @test killing_pathogen_id(i_dead) === nothing
 
             # is_asymptomatic / isasymptomatic / asymptomatic
             i_asymp = Individual(id=3, sex=0, age=25)

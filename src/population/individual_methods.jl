@@ -846,14 +846,14 @@ function _infectiousness_level(pathogen, state::InfectionState, individual::Indi
 end
 
 """
-    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
+    _process_death!(individual::Individual, reason::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
 
 Handles the health flags and memory-management when an individual dies.
 """
-@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
+@inline function _process_death!(individual::Individual, reason::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
     individual.disease_flags = DiseaseFlags(FLAG_DEAD)
 
-    individual.killing_pathogen_id = pathogen_id
+    individual.death_reason = reason
     individual.active_pathogens_mask = 0
     individual.detected_mask = 0
 
@@ -952,7 +952,7 @@ function progress_disease!(
 
     # host death is driven by the precomputed host timeline, not per-infection
     if Int16(0) <= individual.death <= tick
-        _process_death!(individual, individual.killing_pathogen_id, infections, removal_buf)
+        _process_death!(individual, individual.death_reason, infections, removal_buf)
         return nothing
     end
 
@@ -1011,7 +1011,7 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.number_of_infections = 0
     individual.active_pathogens_mask = 0
     individual.detected_mask = 0
-    individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
+    individual.death_reason = DEFAULT_DEATH_REASON
 
     individual.immunity_cache = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)
     individual.needs_immunity_update = false

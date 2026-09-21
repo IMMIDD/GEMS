@@ -134,8 +134,8 @@ end
 
 Mark `ind` dead with death tick `t` (simulation time). Mirrors the flag/mask effects of
 GEMS' `_process_death!` so the state is consistent even when the individual update loop
-does not run (dormant simulation). Idempotent. `killing_pathogen_id` is intentionally
-left at `DEFAULT_PATHOGEN_ID` (non-disease death; grants no immunity, cf. `_EndedInfection`).
+does not run (dormant simulation). Idempotent. `death_reason` is intentionally
+left at `DEFAULT_DEATH_REASON` (non-disease death; grants no immunity, cf. `_EndedInfection`).
 """
 function _realize_death!(ind::Individual, t::Int16)
     ind.death = t

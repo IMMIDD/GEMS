@@ -172,7 +172,7 @@ import GEMS: _mean_contacts_per_age_group,
         @test n_deaths > 0
         # the death tick is deliberately not on the infection rows
         @test !(:death in propertynames(infectionsDF(pp_ci)))
-        @test !(:killing_pathogen_id in propertynames(infectionsDF(pp_ci)))
+        @test !(:death_reason in propertynames(infectionsDF(pp_ci)))
         @test sum(tick_deaths(pp_ci).death_cnt) == n_deaths
         @test sum(tick_cases(pp_ci).dead_cnt) == n_deaths
         @test sum(combine(groupby(cumulative_deaths(pp_ci), :pathogen_id),

@@ -682,7 +682,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, rng(sim))
 
         if !was_dead && dead(indiv)
-            log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
+            log!(deathlogger(sim), id(indiv), indiv.death_reason, tick)
             _close_care_at_death!(indiv, healthlogger(sim), tick)
         end
     end
