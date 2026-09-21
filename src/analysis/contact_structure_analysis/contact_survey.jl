@@ -98,6 +98,8 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
             ind_index = gems_rand(survey_rng, 1:length(present_inds))
             ind = present_inds[ind_index]
+            # the dead, hospitalized and quarantined answer no survey, as they are never contacted
+            can_be_contacted(ind, s) || continue
 
             s_host = _membership_scale(plans, ind, s, cntnr)
             sample_scaled_contacts!(contacts, draws, s.contact_sampling_method, s, ind_index, present_inds,

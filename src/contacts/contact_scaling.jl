@@ -103,8 +103,8 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
     return contacts
 end
 
-# Keeps a drawn contact with `f * thin` times its scale over `bound`. A contact's scale is at most
-# `bound`, so a draw above `f * thin` rejects it without reading the contact.
+# Keeps a drawn contact with `f * thin` times its scale over `bound`, if it can be contacted here.
+# A contact's scale is at most `bound`, so a draw above `f * thin` rejects it without reading the contact.
 @inline function _keep_contact(c::Individual, f::Float32, thin::Float32, bound::Float32,
         plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
     ft = f * thin
@@ -113,18 +113,20 @@ end
     if reach < 1
         x = gems_rand(rng)
         x < reach || return false
-        return x < ft * _membership_scale(plans, c, setting, cntnr) / bound
+        kept = x < ft * _membership_scale(plans, c, setting, cntnr) / bound
+    else
+        p = ft * _membership_scale(plans, c, setting, cntnr) / bound
+        kept = p >= 1 || gems_rand(rng) < p
     end
-    p = ft * _membership_scale(plans, c, setting, cntnr) / bound
-    return p >= 1 || gems_rand(rng) < p
+    return kept && can_be_contacted(c, setting)
 end
 
-# Keeps a contact drawn without replacement with `thin` times its capped keep probability.
+# Keeps a contact drawn without replacement with `thin` times its capped keep probability
 @inline function _keep_unique_contact(c::Individual, w::Float32, thin::Float32, bound::Float32,
         plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
     p = w * _membership_scale(plans, c, setting, cntnr) / bound
-    p >= 1 && return (thin >= 1 || gems_rand(rng) < thin)
-    return gems_rand(rng) < p * thin
+    kept = p >= 1 ? (thin >= 1 || gems_rand(rng) < thin) : gems_rand(rng) < p * thin
+    return kept && can_be_contacted(c, setting)
 end
 
 ###

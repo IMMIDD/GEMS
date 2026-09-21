@@ -333,7 +333,7 @@ end
     can_be_contacted(ind::Individual, setting::Setting)::Bool
 
 Determines whether the individual can be contacted (and thus infected) in the given setting.
-Checks for death and quarantine status.
+Checks for death, hospitalization and quarantine status.
 
 # Parameters
 - `ind::Individual`: Individual to check
@@ -342,7 +342,7 @@ Checks for death and quarantine status.
 # Returns
 - `Bool`: True if the individual can be contacted in the setting, false otherwise
 """
-function can_be_contacted(ind::Individual, setting::Setting, tick::Int16)::Bool
+function can_be_contacted(ind::Individual, setting::Setting)::Bool
     # if individual is dead
     if dead(ind)
         return false
@@ -489,7 +489,7 @@ function _spread_with!(csm, setting, pos::Int, s_host::Float32, ind::Individual,
         s_host, _scale_bound(setting); thin = thin)
 
     type_rank = setting_type_index(typeof(setting))
-    _spread_to_contacts!(ind, c_buffer, sim, setting, bounds, thin, current_tick, Int32(pos), type_rank)
+    _spread_to_contacts!(ind, c_buffer, sim, setting, bounds, thin, Int32(pos), type_rank)
     return nothing
 end
 
@@ -507,11 +507,10 @@ end
     return bounds, thin < any_bound ? nextfloat(thin) : thin
 end
 
-function _spread_to_contacts!(ind, c_buffer, sim, setting, bounds, thin::Float32, tick::Int16,
+# every contact in the buffer passed `can_be_contacted` when it was sampled
+function _spread_to_contacts!(ind, c_buffer, sim, setting, bounds, thin::Float32,
         infecter_position::Int32, type_rank::UInt8)
     for c in c_buffer
-        if can_be_contacted(c, setting, tick)
-            _try_to_infect!(ind, c, sim, setting, bounds, thin, infecter_position, type_rank)
-        end
+        _try_to_infect!(ind, c, sim, setting, bounds, thin, infecter_position, type_rank)
     end
 end
