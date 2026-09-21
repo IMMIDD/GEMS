@@ -292,6 +292,22 @@ Returns an empty sentinel `ImmunityState` if no record exists for `pathogen_id`.
     return ImmunityState(pathogen_id)
 end
 
+"""
+    get_infection_state(ind::Individual, sim::Simulation, pathogen_id::Int8)::InfectionState
+
+Convenience wrapper that routes to the correct `InfectionRegistry` shard for the given individual.
+"""
+@inline get_infection_state(ind::Individual, sim::Simulation, pathogen_id::Int8)::InfectionState =
+    get_infection_state(ind, infection_registry(sim, ind), pathogen_id)
+
+"""
+    get_immunity_state(ind::Individual, sim::Simulation, pathogen_id::Int8)::ImmunityState
+
+Convenience wrapper that routes to the correct `ImmunityRegistry` shard for the given individual.
+"""
+@inline get_immunity_state(ind::Individual, sim::Simulation, pathogen_id::Int8)::ImmunityState =
+    get_immunity_state(ind, immunity_registry(sim, ind), pathogen_id)
+
 ### PATHOGEN ATTRIBUTES ###
 
 """
@@ -385,6 +401,15 @@ critical_onset(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_
 critical_offset(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).critical_offset
 recovery(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infection_state(ind, infections, pid).recovery
 
+exposure(ind::Individual, sim::Simulation, pid::Int8) = exposure(ind, infection_registry(sim, ind), pid)
+infectiousness_onset(ind::Individual, sim::Simulation, pid::Int8) = infectiousness_onset(ind, infection_registry(sim, ind), pid)
+symptom_onset(ind::Individual, sim::Simulation, pid::Int8) = symptom_onset(ind, infection_registry(sim, ind), pid)
+severeness_onset(ind::Individual, sim::Simulation, pid::Int8) = severeness_onset(ind, infection_registry(sim, ind), pid)
+severeness_offset(ind::Individual, sim::Simulation, pid::Int8) = severeness_offset(ind, infection_registry(sim, ind), pid)
+critical_onset(ind::Individual, sim::Simulation, pid::Int8) = critical_onset(ind, infection_registry(sim, ind), pid)
+critical_offset(ind::Individual, sim::Simulation, pid::Int8) = critical_offset(ind, infection_registry(sim, ind), pid)
+recovery(ind::Individual, sim::Simulation, pid::Int8) = recovery(ind, infection_registry(sim, ind), pid)
+
 
 ### DISEASE STATUS ###
 
@@ -392,6 +417,9 @@ recovery(ind::Individual, infections::InfectionRegistry, pid::Int8) = get_infect
     is_infected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     isinfected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     infected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_infected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    isinfected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    infected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is infected with the given pathogen at tick `t`.
 """
@@ -402,11 +430,17 @@ function is_infected(individual::Individual, infections::InfectionRegistry, path
 end
 isinfected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t)
 infected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_infected(individual, infections, pathogen_id, t)
+is_infected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_infected(individual, infection_registry(sim, individual), pathogen_id, t)
+isinfected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_infected(individual, sim, pathogen_id, t)
+infected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_infected(individual, sim, pathogen_id, t)
 
 """
     is_infectious(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     isinfectious(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     infectious(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_infectious(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    isinfectious(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    infectious(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is infectious with the given pathogen at tick `t`.
 """
@@ -419,11 +453,17 @@ function is_infectious(individual::Individual, infections::InfectionRegistry, pa
 end
 isinfectious(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_infectious(individual, infections, pathogen_id, t)
 infectious(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_infectious(individual, infections, pathogen_id, t)
+is_infectious(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_infectious(individual, infection_registry(sim, individual), pathogen_id, t)
+isinfectious(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_infectious(individual, sim, pathogen_id, t)
+infectious(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_infectious(individual, sim, pathogen_id, t)
 
 """
     is_exposed(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     isexposed(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     exposed(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_exposed(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    isexposed(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    exposed(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is exposed with the given pathogen at tick `t`.
 Exposed means infected but not yet infectious.
@@ -436,11 +476,17 @@ function is_exposed(individual::Individual, infections::InfectionRegistry, patho
 end
 isexposed(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_exposed(individual, infections, pathogen_id, t)
 exposed(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_exposed(individual, infections, pathogen_id, t)
+is_exposed(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_exposed(individual, infection_registry(sim, individual), pathogen_id, t)
+isexposed(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_exposed(individual, sim, pathogen_id, t)
+exposed(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_exposed(individual, sim, pathogen_id, t)
 
 """
     is_presymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     ispresymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     presymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_presymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    ispresymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    presymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is presymptomatic with the given pathogen at tick `t`.
 Presymptomatic means infected, will develop symptoms, but is not yet symptomatic.
@@ -453,11 +499,17 @@ function is_presymptomatic(individual::Individual, infections::InfectionRegistry
 end
 ispresymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, infections, pathogen_id, t)
 presymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, infections, pathogen_id, t)
+is_presymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, infection_registry(sim, individual), pathogen_id, t)
+ispresymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, sim, pathogen_id, t)
+presymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_presymptomatic(individual, sim, pathogen_id, t)
 
 """
     is_symptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     issymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     symptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_symptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    issymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    symptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is symptomatic with the given pathogen at tick `t`.
 """
@@ -470,11 +522,17 @@ function is_symptomatic(individual::Individual, infections::InfectionRegistry, p
 end
 issymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, infections, pathogen_id, t)
 symptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, infections, pathogen_id, t)
+is_symptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, infection_registry(sim, individual), pathogen_id, t)
+issymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, sim, pathogen_id, t)
+symptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_symptomatic(individual, sim, pathogen_id, t)
 
 """
     is_asymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     isasymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     asymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_asymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    isasymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    asymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is asymptomatic with the given pathogen at tick `t`.
 Asymptomatic means infected and will not develop symptoms.
@@ -489,11 +547,17 @@ function is_asymptomatic(individual::Individual, infections::InfectionRegistry, 
 end
 isasymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_asymptomatic(individual, infections, pathogen_id, t)
 asymptomatic(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_asymptomatic(individual, infections, pathogen_id, t)
+is_asymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_asymptomatic(individual, infection_registry(sim, individual), pathogen_id, t)
+isasymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_asymptomatic(individual, sim, pathogen_id, t)
+asymptomatic(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_asymptomatic(individual, sim, pathogen_id, t)
 
 """
     is_severe(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     issevere(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     severe(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_severe(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    issevere(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    severe(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is in a severe infections with the given pathogen at tick `t`.
 """
@@ -505,11 +569,17 @@ function is_severe(individual::Individual, infections::InfectionRegistry, pathog
 end
 issevere(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_severe(individual, infections, pathogen_id, t)
 severe(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_severe(individual, infections, pathogen_id, t)
+is_severe(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_severe(individual, infection_registry(sim, individual), pathogen_id, t)
+issevere(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_severe(individual, sim, pathogen_id, t)
+severe(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_severe(individual, sim, pathogen_id, t)
 
 """
     is_mild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     ismild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     mild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_mild(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    ismild(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    mild(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is in a mild infections with the given pathogen at tick `t`.
 Mild means symptomatic but not severe.
@@ -525,11 +595,17 @@ function is_mild(individual::Individual, infections::InfectionRegistry, pathogen
 end
 ismild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_mild(individual, infections, pathogen_id, t)
 mild(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_mild(individual, infections, pathogen_id, t)
+is_mild(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_mild(individual, infection_registry(sim, individual), pathogen_id, t)
+ismild(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_mild(individual, sim, pathogen_id, t)
+mild(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_mild(individual, sim, pathogen_id, t)
 
 """
     is_critical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     iscritical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     critical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_critical(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    iscritical(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    critical(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is in a critical infection with the given pathogen at tick `t`.
 """
@@ -541,11 +617,17 @@ function is_critical(individual::Individual, infections::InfectionRegistry, path
 end
 iscritical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_critical(individual, infections, pathogen_id, t)
 critical(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_critical(individual, infections, pathogen_id, t)
+is_critical(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_critical(individual, infection_registry(sim, individual), pathogen_id, t)
+iscritical(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_critical(individual, sim, pathogen_id, t)
+critical(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_critical(individual, sim, pathogen_id, t)
 
 """
     is_recovered(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     isrecovered(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
     recovered(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_recovered(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    isrecovered(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    recovered(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is recovered from the given pathogen at tick `t`.
 """
@@ -556,9 +638,17 @@ function is_recovered(individual::Individual, infections::InfectionRegistry, pat
 end
 isrecovered(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_recovered(individual, infections, pathogen_id, t)
 recovered(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_recovered(individual, infections, pathogen_id, t)
+is_recovered(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_recovered(individual, infection_registry(sim, individual), pathogen_id, t)
+isrecovered(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_recovered(individual, sim, pathogen_id, t)
+recovered(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_recovered(individual, sim, pathogen_id, t)
 
 """
     is_detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    isdetected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16)
+    is_detected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    isdetected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
+    detected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16)
 
 Returns `true` if the individual is currently infected with the given pathogen and has been detected at any point during this infection.
 """
@@ -570,6 +660,9 @@ function is_detected(individual::Individual, infections::InfectionRegistry, path
 end
 isdetected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
 detected(individual::Individual, infections::InfectionRegistry, pathogen_id::Int8, t::Int16) = is_detected(individual, infections, pathogen_id, t)
+is_detected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_detected(individual, infection_registry(sim, individual), pathogen_id, t)
+isdetected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_detected(individual, sim, pathogen_id, t)
+detected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) = is_detected(individual, sim, pathogen_id, t)
 
 
 ### CARE DEMAND ###
