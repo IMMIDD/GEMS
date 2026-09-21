@@ -879,4 +879,4 @@ end
 @inline _alive(s::IndividualSetting) = length(s.individuals) - _deceased(s)
 
 # whether the member at position `idx` is deceased
-@inline _is_deceased(s::IndividualSetting, idx::Integer) = idx > _alive(s)
+@inline _is_deceased(s::IndividualSetting, idx::Integer) = _deceased(s) > 0 && idx > _alive(s)
