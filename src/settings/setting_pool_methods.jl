@@ -568,6 +568,8 @@ end
 @inline function _refresh_container!(c::C, r::UnitRange{Int}, pool::SettingPool,
                                      leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
     c.pool_runs = nothing
+    # state sampling methods derived from from frame as stale
+    membership_changed!(contact_sampling_method(c), c)
     # a member's scale here never exceeds 1 or its largest leaf's, so the leaves bound it
     if hasfield(C, :scale_bound)
         b = 1.0f0

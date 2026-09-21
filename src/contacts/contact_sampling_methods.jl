@@ -288,8 +288,8 @@ end
 """
     membership_changed!(csm::ContactSamplingMethod, setting::Setting)
 
-Signals that `setting`'s member list changed, so a sampling method can drop state derived
-from it. Called by `add!` and `remove!`. No-op by default.
+Signals that `setting`'s members or frame changed, so a sampling method can drop state derived
+from them. Called on member edits and deaths, and when a container's frame is rebuilt. No-op by default.
 """
 membership_changed!(csm::ContactSamplingMethod, setting::Setting) = nothing
 

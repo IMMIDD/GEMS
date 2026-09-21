@@ -800,26 +800,13 @@ function update_individuals!(sim::Simulation)
 end
 
 """
-    lingers_after_death(tf::TransmissionFunction, ::Type{<:Setting})
-
-Whether a host killed by a pathogen with transmission function `tf` stays among a setting's
-contacts after death. `false` unless a pathogen that spreads from the dead overrides it.
-"""
-lingers_after_death(::TransmissionFunction, ::Type{<:Setting}) = false
-
-"""
     mark_deceased!(individual::Individual, sim::Simulation)
 
-Marks a dead individual deceased in each of their settings, except those their killing pathogen
-lets them linger in.
+Marks a dead individual deceased in each of their settings.
 """
 function mark_deceased!(individual::Individual, sim::Simulation)
-    pid = individual.killing_pathogen_id
-    tf = pid == DEFAULT_PATHOGEN_ID ? nothing : transmission_function(get_pathogen(sim, pid))
     for e in plan_entries(activity_plans(sim), individual)
-        _with_entry_setting(sim, e) do s
-            (tf !== nothing && lingers_after_death(tf, typeof(s))) || mark_deceased!(s, individual, sim)
-        end
+        _with_entry_setting(s -> mark_deceased!(s, individual, sim), sim, e)
     end
     return nothing
 end
