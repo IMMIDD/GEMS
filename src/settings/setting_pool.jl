@@ -162,7 +162,7 @@ in practice it is always a `ContainerSetting`.
     Block `b` holds `containers[block_idx[block_ptr[b]:(block_ptr[b + 1] - 1)]]`, which is how
     a block-local repack skips every other container at this level.
 """
-struct ContainerLevel{C}
+mutable struct ContainerLevel{C}
     containers::Vector{C}
     ranges::Vector{UnitRange{Int}}
     block_ptr::Vector{Int32}
@@ -194,6 +194,8 @@ a member sits in two of its leaves, which costs that container contiguity but no
     leaves of one container. Grown to the widest span it is asked to scan and reused from there;
     `_refresh_container!` sizes it per container, `_count_repeats` per block.
 - `scratch::Vector{Individual}` *(internal)*: Holds one block while it is relaid on itself.
+- `run_starts::Vector{Int32}`, `run_prefix::Vector{Int32}` *(internal)*: Repack scratch a
+    container's frame is built in.
 """
 mutable struct SettingPool
     members::Vector{Individual}
@@ -213,4 +215,7 @@ mutable struct SettingPool
     dup_table::DupTable
     # repack scratch: a block is relaid on top of itself
     scratch::Vector{Individual}
+    # repack scratch: a container's frame, before it is known to need runs
+    run_starts::Vector{Int32}
+    run_prefix::Vector{Int32}
 end

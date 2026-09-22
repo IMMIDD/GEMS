@@ -189,7 +189,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
         push!(groups, ContainerLevel(settings(cntnr, C), ranges[k], ptr, idx))
     end
 
-    pool = SettingPool(Individual[], 0, sum(_deceased, leaves; init = 0), 0, leaves, Tuple(groups), blocks, DupTable(), Individual[])
+    pool = SettingPool(Individual[], 0, sum(_deceased, leaves; init = 0), 0, leaves, Tuple(groups), blocks, DupTable(), Individual[], Int32[], Int32[])
     for (i, l) in enumerate(leaves); l.pool = pool; l.pool_leaf = Int32(i); end
     for g in pool.container_groups, c in g.containers; c.pool = pool; end
     # counted once here; the edits keep it exact
@@ -421,8 +421,9 @@ end
 _repack_blocks!(pool::SettingPool, dirty) =
     _repack_blocks!(pool, pool.leaves, dirty, pool.container_groups...)
 
+# `Vararg{Any, N}`: Julia does not specialise on varargs a method only passes on
 function _repack_blocks!(pool::SettingPool, leaves::Vector{T}, dirty,
-                         levels...) where {T<:IndividualSetting}
+                         levels::Vararg{Any, N}) where {T<:IndividualSetting, N}
     for b in dirty
         _repack_block_leaves!(pool, leaves, Int(b))
         _refresh_levels!(pool, leaves, InBlock(Int(b)), levels...)
@@ -506,10 +507,13 @@ function _repack_block_leaves!(pool::SettingPool, leaves::Vector{T}, b::Int) whe
     off = Int(bl.offset[b])
     @inbounds for j in r
         l = leaves[j]
-        m = length(l.individuals)
+        s = l.individuals
+        m = length(s)
         l.pool_offset = Int32(off)
         l.pool_length = Int32(m)
-        l.individuals = view(members, off:(off + m - 1))
+        # a leaf that already holds this slice keeps it, as storing a new view in the union field boxes it
+        (s isa MemberSlice && parent(s) === members && s.indices[1] == off:(off + m - 1)) ||
+            (l.individuals = view(members, off:(off + m - 1)))
         off += m
     end
     return nothing
@@ -540,9 +544,9 @@ struct InBlock
     b::Int
 end
 
-# recursive, so each call specialises on that level's concrete container vector
+# recursive and `Vararg{Any, N}`, so each call specialises on that level's concrete container vector
 @inline _refresh_levels!(pool, leaves, sel) = nothing
-@inline function _refresh_levels!(pool, leaves, sel, level, rest...)
+@inline function _refresh_levels!(pool, leaves, sel, level, rest::Vararg{Any, N}) where {N}
     _refresh_level!(level, sel, pool, leaves)
     _refresh_levels!(pool, leaves, sel, rest...)
 end
@@ -605,7 +609,8 @@ function _drop_closed!(c::C, r::UnitRange{Int}, pool::SettingPool,
                        leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
     _all_present(pool, leaves, r, C) && return nothing
 
-    starts = Int32[]; prefix = Int32[]
+    # built in the pool's scratch, so a frame that stays one run allocates nothing
+    starts = empty!(pool.run_starts); prefix = empty!(pool.run_prefix)
     total = 0
     @inbounds for j in r
         l = leaves[j]
@@ -621,15 +626,16 @@ function _drop_closed!(c::C, r::UnitRange{Int}, pool::SettingPool,
         total += n
     end
 
-    # of a repeated member, the first copy still present is the one kept
     runs = c.pool_runs
-    groups = runs === nothing ? Int32[] : runs.groups
-    bounds = runs === nothing ? Int32[] : runs.bounds
     if runs !== nothing
+        # of a repeated member, the first copy still present is the one kept
         skips = _repeat_skips(runs, starts, prefix, total)
         isempty(skips) || ((starts, prefix, total) = _drop_skips(starts, prefix, total, skips))
+        c.pool_runs = MemberRuns(copy(starts), copy(prefix), runs.groups, runs.bounds)
+    elseif length(starts) > 1
+        c.pool_runs = MemberRuns(copy(starts), copy(prefix), NO_RUNS, NO_RUNS)
     end
-    c.pool_runs = MemberRuns(starts, prefix, groups, bounds)
+    # without repeats, one run or none is a plain span and stores no runs
     c.pool_offset = isempty(starts) ? Int32(0) : starts[1]
     c.pool_length = Int32(total)
     return nothing
