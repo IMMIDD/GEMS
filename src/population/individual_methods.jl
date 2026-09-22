@@ -21,6 +21,8 @@ export last_test
 export last_test_result
 export was_reported
 export record_test!
+# quarantine
+export quarantine_release_tick!
 # vaccination
 export vaccinate!
 export vaccination_tick, vaccine_id, isvaccinated, number_of_vaccinations
@@ -796,7 +798,7 @@ end
 Sets an individual's quarantine release tick and flags the individual for the quarantine update.
 """
 function quarantine_release_tick!(individual::Individual, sim::Simulation, tick::Int16)
-    quarantine_release_tick!(individual, tick)
+    _quarantine_release_tick!(individual, tick)
     _mark_quarantined!(sim, individual)
 end
 
@@ -807,9 +809,16 @@ end
 """
     vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
 
-Vaccinates an individual against a pathogen.
+Vaccinates an individual against a pathogen. Deprecated: during a simulation, the disease update only
+recomputes the immunity of individuals vaccinated through `vaccinate!(individual, sim, vaccine, tick)`.
 """
 function vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
+    @warn "vaccinate!(individual, registry, vaccine, tick) is deprecated: the simulation's disease update does not see this individual. Use vaccinate!(individual, sim, vaccine, tick)." maxlog=1
+    _vaccinate!(individual, registry, vaccine, tick)
+end
+
+# records the vaccination in `registry` only, without flagging the individual
+function _vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
     log!(logger(vaccine), id(individual), target_pathogen_id(vaccine), tick)
     push_immunity!(registry, individual, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
     individual.needs_immunity_update = true
@@ -818,10 +827,11 @@ end
 """
     vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
 
-Convenience wrapper that routes to the correct `ImmunityRegistry` shard and flags the individual as active.
+Vaccinates an individual against the vaccine's target pathogen at `tick` and flags the individual
+for the disease update, which recomputes its immunity.
 """
 function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
-    vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
+    _vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
     _mark_active!(sim, individual)
 end
 
