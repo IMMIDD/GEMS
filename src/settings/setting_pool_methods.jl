@@ -882,3 +882,20 @@ end
 
 # whether the member at position `idx` is deceased
 @inline _is_deceased(s::IndividualSetting, idx::Integer) = _deceased(s) > 0 && idx > _alive(s)
+
+# c's leaves, as the range of its pool's leaves `_build_pool!` recorded for it
+@inline function _leaf_range(c::C) where {C<:ContainerSetting}
+    level = (_pool(c)::SettingPool).container_groups[_container_depth(C)]::ContainerLevel{C}
+    return @inbounds level.ranges[id(c)]
+end
+
+# levels above the leaf type, which is C's position in `container_groups`
+_container_depth(::Type{T}) where {T<:IndividualSetting} = 0
+_container_depth(::Type{C}) where {C<:ContainerSetting} = 1 + _container_depth(contains_type(C))
+
+# whether `s` and every container between it and `c` are open
+function _open_below(cntnr::SettingsContainer, s::Setting, c::ContainerSetting)
+    is_open(s) || return false
+    typeof(s) === typeof(c) && return true
+    return _open_below(cntnr, settings(cntnr, contained_type(typeof(s)))[s.contained], c)
+end

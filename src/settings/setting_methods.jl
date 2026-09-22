@@ -641,6 +641,37 @@ end
 
 
 ###
+### SCALE BOUNDS
+### Each setting keeps an upper bound on its members' scales: a leaf the largest among its
+### members, a container the largest among its leaves, refreshed with its span.
+###
+
+@inline _scale_bound(s::T) where {T<:Setting} = hasfield(T, :scale_bound) ? s.scale_bound : 1.0f0
+
+# recounts a leaf's bound from its members
+function _refresh_scale_bound!(plans::ActivityPlanStore, s::T) where {T<:IndividualSetting}
+    hasfield(T, :scale_bound) || return nothing
+    b = 1.0f0
+    # deceased members draw no contacts, so their scales do not count
+    for m in view(individuals(s), 1:_alive(s))
+        m.plan_scaled || continue
+        slot = plan_slot(plans, m, T, id(s))
+        slot == 0 || (b = max(b, Float32(entry_scale(@inbounds plans.entries[slot]))))
+    end
+    return _set_scale_bound!(s, b)
+end
+
+# a pooled leaf's containers pick up its new bound when its block is repacked
+function _set_scale_bound!(s::T, b::Float32) where {T<:IndividualSetting}
+    (hasfield(T, :scale_bound) && s.scale_bound != b) || return nothing
+    s.scale_bound = b
+    pool = _pool(s)
+    pool === nothing || _mark_dirty!(pool, s)
+    return nothing
+end
+
+
+###
 ### MEMBERSHIP MUTATION - SIMULATION CONVENIENCE
 ### The primitives take a `Population`; these are here because `Simulation` does not exist
 ### yet where they are defined.

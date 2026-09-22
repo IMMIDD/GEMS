@@ -7,7 +7,7 @@ export GlobalSetting, Household, Municipality, Setting
 export SchoolComplex, School, SchoolYear, SchoolClass
 export Department, Office, WorkplaceSite, Workplace
 export settingchar, settingstring
-export contact_sampling_method, contact_sampling_method!
+export ContactSamplingMethod, contact_sampling_method, contact_sampling_method!
 export add!, remove!
 export add_member!, remove_member!, mark_deceased!
 export id, individuals
@@ -37,6 +37,20 @@ abstract type Geolocated <: IndividualSetting end
 Supertype for all simulation settings which act as containers of settings.
 """
 abstract type ContainerSetting <: Setting end
+
+"""
+    ContactSamplingMethod
+
+Supertype for all contact sampling methods. This type is intended to be extended by providing different sampling methods suitable for the structure of the simulation model.
+
+Implement `sample_contacts!` for your subtype. Its `present_inds` argument is a view of the
+setting's real members, not a scratch buffer: writing to it edits membership. Read only, and
+write results into `indivs`.
+
+Simulations often keep only a share of the sampled contacts. Optionally implement
+`sample_thinned_contacts!` to skip the dropped ones before drawing them.
+"""
+abstract type ContactSamplingMethod end
 
 ###
 ### GLOBALSETTING
