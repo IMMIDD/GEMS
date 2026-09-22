@@ -983,7 +983,7 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
         assign_member_indices!(pop, cntnr)
         plans = activity_plans(pop)
 
-        # with thin = 1 both keeps decide and draw exactly as the unthinned keep
+        # the scale keep, and the unique keep with thin = 1, decide and draw exactly as the unthinned keep
         function unthinned_keep(c, f, bound, s, rng)
             p = f * GEMS._membership_scale(plans, c, s, cntnr) / bound
             return p >= 1 || gems_rand(rng) < p
@@ -995,9 +995,7 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
             # the setting's bound, and a bound equal to the contact's own scale
             for bound in unique((GEMS._scale_bound(s), sc))
                 bound > 0 || continue
-                for f in Float32[0, 1f-3, 0.3, 0.5, prevfloat(1.0f0), 1, 1.7]
-                    same &= GEMS._keep_contact(c, f, 1.0f0, bound, plans, s, cntnr, r1) == unthinned_keep(c, f, bound, s, r2)
-                end
+                same &= GEMS._keep_contact(c, bound, plans, s, cntnr, r1) == unthinned_keep(c, 1.0f0, bound, s, r2)
                 for w in Float32[0.2, 1, 1.5, 3]
                     same &= GEMS._keep_unique_contact(c, w, 1.0f0, bound, plans, s, cntnr, r1) == unthinned_keep(c, w, bound, s, r2)
                 end
@@ -1006,12 +1004,15 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
         @test same
         @test r1 == r2
 
-        # a contact's scale is read only for the draws thinning keeps
+        # the sampler thins before drawing, so a contact's scale is read only for the draws thinning keeps
         SCALE_READS[] = 0
         rr = Xoshiro(5)
-        kept = count(_ -> GEMS._keep_contact(inds[1], 1.0f0, 0.1f0, 1.0f0, plans, ScaleReadSetting(), cntnr, rr), 1:10_000)
+        kept = sum(1:10_000) do _
+            length(GEMS.sample_scaled_contacts!(Individual[], Individual[], ContactparameterSampling(2.0), ScaleReadSetting(),
+                1, inds, Int16(1), true, rr, plans, cntnr, 1.0f0, 1.0f0; thin = 0.1f0))
+        end
         @test SCALE_READS[] == kept
-        @test isapprox(kept / 10_000, 0.1; atol = 0.015)
+        @test isapprox(kept / 10_000, 0.2; atol = 0.02)
 
         plain = ActivityPlanStore()
         scaled = ActivityPlanStore()

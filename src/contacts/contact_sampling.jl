@@ -13,6 +13,9 @@ Supertype for all contact sampling methods. This type is intended to be extended
 Implement `sample_contacts!` for your subtype. Its `present_inds` argument is a view of the
 setting's real members, not a scratch buffer: writing to it edits membership. Read only, and
 write results into `indivs`.
+
+Simulations often keep only a share of the sampled contacts. Optionally implement
+`sample_thinned_contacts!` to skip the dropped ones before drawing them.
 """
 abstract type ContactSamplingMethod end
 

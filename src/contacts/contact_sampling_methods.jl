@@ -1,4 +1,4 @@
-export sample_contacts!, sample_contacts
+export sample_contacts!, sample_contacts, sample_thinned_contacts!
 export create_contact_sampling_method
 export membership_changed!
 
@@ -46,19 +46,44 @@ function sample_contacts!(
 end
 
 """
+    sample_thinned_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+
+Like `sample_contacts!`, but keeps each sampled contact independently with the same probability `p`.
+Returns `indivs`, which is expected to be empty on entry.
+
+Implement it for a sampling method that can skip the dropped contacts before drawing them.
+At `p = 1` it must return exactly what `sample_contacts!` returns.
+"""
+function sample_thinned_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return _keep_each!(indivs, p, rng)
+end
+
+"""
     sample_contacts!(indivs::Vector{Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Sample exactly 1 random contact from the individuals in `setting`. 
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+sample_contacts!(indivs::Vector{Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro) =
+    sample_thinned_contacts!(indivs, random_sampling_method, setting, individual_index, present_inds, tick, replace, rng, 1.0f0)
+
+"""
+    sample_thinned_contacts!(indivs::Vector{Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+
+Sample 1 random contact from the individuals in `setting` with probability `p`, and none otherwise.
+"""
+function sample_thinned_contacts!(indivs::Vector{Individual}, random_sampling_method::RandomSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
+    # decide whether the one contact is kept before drawing it
+    p < 1 && gems_rand(rng) >= p && return indivs
+
     offset = gems_rand(rng, 1:length(present_inds) -1 )
     contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-    push!(indivs, present_inds[contact_index])  
+    push!(indivs, present_inds[contact_index])
 end
 
 
@@ -69,38 +94,43 @@ Sample random contacts based on a Poisson-Distribution spread around `contactpar
 The `replace` parameter determines whether contacts are sampled with replacement (`true`) or without replacement (`false`).
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro) =
+    sample_thinned_contacts!(indivs, contactparameter_sampling, setting, individual_index, present_inds, tick, replace, rng, 1.0f0)
+
+"""
+    sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+
+With replacement, draws only the kept contacts: their number is Poisson with `p` times `contactparameter_sampling.contactparameter`.
+Without replacement, samples as `sample_contacts!` does and then keeps each contact with probability `p`.
+"""
+function sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
     if length(present_inds) == 1
-        return
+        return indivs
+    end
+
+    if replace
+        # a Poisson number of contacts, each kept with `p`, is a Poisson number with `p` times the mean
+        number_of_contacts = gems_rand(rng, Poisson(contactparameter_sampling.contactparameter * p))
+        return _draw_others!(indivs, present_inds, individual_index, number_of_contacts, rng)
     end
 
     # get number of contacts
     number_of_contacts = gems_rand(rng, Poisson(contactparameter_sampling.contactparameter))
+    number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
+    resize!(indivs, number_of_contacts)
 
-    if replace
-        resize!(indivs, number_of_contacts)
-        # sample contacts
-        @inbounds for i in 1:number_of_contacts
-            offset = gems_rand(rng, 1:length(present_inds) - 1)
-            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-            indivs[i] = present_inds[contact_index]
-        end
-    else
-        number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
-        resize!(indivs, number_of_contacts)
-
-        gems_sample!(rng, @view(present_inds[1:end-1]), indivs; replace=false)
-        for i = 1:length(indivs)
-            if indivs[i] === present_inds[individual_index]
-                indivs[i] = present_inds[end]
-                break
-            end
+    gems_sample!(rng, @view(present_inds[1:end-1]), indivs; replace=false)
+    for i = 1:length(indivs)
+        if indivs[i] === present_inds[individual_index]
+            indivs[i] = present_inds[end]
+            break
         end
     end
+    return _keep_each!(indivs, p, rng)
 end
 
 """
@@ -109,13 +139,22 @@ end
 Sample random contacts based on a spread around `contactparameter_sampling.contactparameter` with weighted sampling based on age distance.
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro) =
+    sample_thinned_contacts!(indivs, contactparameter_sampling, setting, individual_index, present_inds, tick, replace, rng, 1.0f0)
+
+"""
+    sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+
+With replacement, draws only the first-order contacts that are kept: their number is Poisson with `p` times the mean.
+Without replacement, samples as `sample_contacts!` does and then keeps each contact with probability `p`.
+"""
+function sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
     if length(present_inds) == 1
-        return
+        return indivs
     end
 
     individual = present_inds[individual_index]
@@ -123,7 +162,7 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     # get sampling parameters
     expected_number_of_contacts = contactparameter_sampling.contactparameter
     if expected_number_of_contacts == 0.0
-        return
+        return indivs
     end
     
     interval = contactparameter_sampling.contact_matrix.interval_steps
@@ -150,18 +189,16 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     m_max = maximum(contact_matrix[orig_bin, :])
     
     # first order sampling (i.e. uniform), qi is missing since we sample from population according to age distribution
-    number_of_contacts = gems_rand(rng, Poisson(expected_number_of_contacts * w * m_max))
+    # with replacement, only the contacts `p` keeps are drawn
+    mean_contacts = expected_number_of_contacts * w * m_max
+    number_of_contacts = gems_rand(rng, Poisson(replace ? mean_contacts * p : mean_contacts))
     if number_of_contacts < 1
-        return
+        return indivs
     end
 
     if replace
         # sample contacts 
-        for i in 1:number_of_contacts
-            offset = gems_rand(rng, 1:length(present_inds) - 1)
-            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-            push!(indivs, present_inds[contact_index])
-        end
+        _draw_others!(indivs, present_inds, individual_index, number_of_contacts, rng)
     else
         number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
         resize!(indivs, number_of_contacts)
@@ -195,6 +232,9 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     
     # Shrink the indivs down to only the individuals that passed the probability check
     resize!(indivs, keep_count)
+
+    # without replacement, the kept contacts are thinned after sampling
+    return replace ? indivs : _keep_each!(indivs, p, rng)
 end
 
 """
@@ -315,4 +355,26 @@ function _user_method(f, argtypes::Type{<:Tuple}, csm_pos::Int)
     hasmethod(f, argtypes) || return false
     sig = Base.unwrap_unionall(which(f, argtypes).sig)
     return sig.parameters[csm_pos + 1] !== ContactSamplingMethod
+end
+
+# Appends `n` members drawn with replacement from everyone present but the one at `individual_index`
+function _draw_others!(indivs::Vector{Individual}, present_inds::AbstractVector{Individual}, individual_index::Int, n::Int, rng::Xoshiro)
+    n0 = length(indivs)
+    resize!(indivs, n0 + n)
+    @inbounds for i in 1:n
+        offset = gems_rand(rng, 1:length(present_inds) - 1)
+        contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+        indivs[n0 + i] = present_inds[contact_index]
+    end
+    return indivs
+end
+
+# Keeps each of `indivs` independently with probability `p`, drawing nothing when `p >= 1`
+function _keep_each!(indivs::Vector{Individual}, p::Float32, rng::Xoshiro)
+    p >= 1 && return indivs
+    kept = 0
+    for c in indivs
+        gems_rand(rng) < p && (indivs[kept += 1] = c)
+    end
+    return resize!(indivs, kept)
 end

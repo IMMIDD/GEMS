@@ -2,13 +2,15 @@
 ### CONTACT SCALING
 ### Scales a setting's contacts by both parties' scales there. A host draws `s_host * bound` times
 ### its sampler's contacts and keeps each with the contact's scale over `bound`, so every pair
-### meets at `s_host * s_contact` times the unscaled rate.
+### meets at `s_host * s_contact` times the unscaled rate. The part of the keep that is the same
+### for every contact goes to the sampler, see `sample_thinned_contacts!`.
 ###
 
 # Samples the host's contacts in `setting` into `contacts`, drawing into `draws` when the sampler
 # has to be called more than once. Draws nothing extra while every scale involved is 1.
 # `oversample` only acts without replacement, see `_sample_unique_scaled!`.
 # `thin` keeps each contact with that probability on top of its scales.
+# The sampler applies `thin` and the host's draw fraction, skipping those draws where it can.
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
@@ -19,11 +21,11 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
     (r == 0 || length(present) <= 1) && return contacts
 
     if r <= 1
-        # one draw, thinned in place
-        sample_contacts!(contacts, csm, setting, idx, present, tick, replace, rng)
+        # one draw, the sampler thinning by `r * thin`, then by each contact's scale in place
+        sample_thinned_contacts!(contacts, csm, setting, idx, present, tick, replace, rng, r * thin)
         kept = 0
         for c in contacts
-            _keep_contact(c, r, thin, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
+            _keep_contact(c, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
         end
         return resize!(contacts, kept)
     end
@@ -38,9 +40,9 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         # the last draw stands for the fraction beyond the whole ones
         f = call > calls ? frac : 1.0f0
         empty!(draws)
-        sample_contacts!(draws, csm, setting, idx, present, tick, true, rng)
+        sample_thinned_contacts!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
         for c in draws
-            _keep_contact(c, f, thin, bound, plans, setting, cntnr, rng) && push!(contacts, c)
+            _keep_contact(c, bound, plans, setting, cntnr, rng) && push!(contacts, c)
         end
     end
     return contacts
@@ -103,21 +105,11 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
     return contacts
 end
 
-# Keeps a drawn contact with `f * thin` times its scale over `bound`, if it can be contacted here.
-# A contact's scale is at most `bound`, so a draw above `f * thin` rejects it without reading the contact.
-@inline function _keep_contact(c::Individual, f::Float32, thin::Float32, bound::Float32,
+# Keeps a drawn contact with its scale over `bound`, if it can be contacted here
+@inline function _keep_contact(c::Individual, bound::Float32,
         plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
-    ft = f * thin
-    # headroom for rounding in the scale over the bound
-    reach = ft * 1.000001f0
-    if reach < 1
-        x = gems_rand(rng)
-        x < reach || return false
-        kept = x < ft * _membership_scale(plans, c, setting, cntnr) / bound
-    else
-        p = ft * _membership_scale(plans, c, setting, cntnr) / bound
-        kept = p >= 1 || gems_rand(rng) < p
-    end
+    p = _membership_scale(plans, c, setting, cntnr) / bound
+    kept = p >= 1 || gems_rand(rng) < p
     return kept && can_be_contacted(c, setting)
 end
 
