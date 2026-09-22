@@ -145,14 +145,27 @@ end
 
 
 """
-    _rand_val(val::Real, rng::Xoshiro)
-    _rand_val(dist::Distribution, rng::Xoshiro)
+    _rand_val(val::Union{Distribution, Real}, rng::Xoshiro)::Float64
 
 If the input is a real number, it is returned as is.
 If the input is a distribution, a random value is drawn from it.
+
+One method with explicit checks for the common types, so a call on an abstractly typed field
+dispatches statically for those.
 """
-_rand_val(val::Real, rng::Xoshiro) = val
-_rand_val(dist::Distribution, rng::Xoshiro) = gems_rand(rng, dist)
+@inline function _rand_val(val::Union{Distribution, Real}, rng::Xoshiro)::Float64
+    val isa Poisson{Float64} && return _draw_val(val, rng)
+    val isa Uniform{Float64} && return _draw_val(val, rng)
+    val isa LogNormal{Float64} && return _draw_val(val, rng)
+    val isa Exponential{Float64} && return _draw_val(val, rng)
+    val isa Int && return val
+    val isa Float64 && return val
+    return _draw_val(val, rng)
+end
+
+# kept out of line so `_rand_val` stays small enough to inline
+@noinline _draw_val(dist::Distribution, rng::Xoshiro)::Float64 = gems_rand(rng, dist)
+@noinline _draw_val(val::Real, ::Xoshiro)::Float64 = val
 
 
 """
