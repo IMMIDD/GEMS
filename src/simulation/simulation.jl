@@ -234,6 +234,12 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # PER-INDIVIDUAL FLAGS
+    # who the disease-update loop and state log must visit
+    active_individuals::Vector{Bool}
+    # who has a quarantine that has not ended yet
+    quarantined_individuals::Vector{Bool}
+
     # THREAD-LOCAL BUFFERS
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
@@ -309,6 +315,10 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # RNG
             seed,
             rngs,
+
+            # PER-INDIVIDUAL FLAGS
+            zeros(Bool, length(population.individuals)),
+            zeros(Bool, length(population.individuals)),
             
             # INITIALIZE BUFFERS
             _thread_local_vector(Vector{Individual}), # present_buffers
@@ -2319,6 +2329,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     for ind in individuals(simulation)
         reset!(ind, infection_registry(simulation, id(ind)), immunity_registry(simulation, id(ind)))
     end
+    fill!(simulation.active_individuals, false)
+    fill!(simulation.quarantined_individuals, false)
     reset_tick!(simulation)
 
     # Reset all loggers

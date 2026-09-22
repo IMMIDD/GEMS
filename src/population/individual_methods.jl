@@ -788,6 +788,20 @@ end
 
 
 
+### QUARANTINE STATUS ###
+
+"""
+    quarantine_release_tick!(individual::Individual, sim::Simulation, tick::Int16)
+
+Sets an individual's quarantine release tick and flags the individual for the quarantine update.
+"""
+function quarantine_release_tick!(individual::Individual, sim::Simulation, tick::Int16)
+    quarantine_release_tick!(individual, tick)
+    _mark_quarantined!(sim, individual)
+end
+
+
+
 ### VACCINATION STATUS ###
 
 """
@@ -804,10 +818,11 @@ end
 """
     vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
 
-Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
+Convenience wrapper that routes to the correct `ImmunityRegistry` shard and flags the individual as active.
 """
 function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
     vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
+    _mark_active!(sim, individual)
 end
 
 """
