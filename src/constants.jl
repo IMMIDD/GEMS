@@ -133,12 +133,14 @@ const LOCALDATA_PATH = BASE_FOLDER = joinpath(dirname(dirname(pathof(GEMS))), "l
 #Default Config File
 const DEFAULT_CONFIGFILE::String = "data/DefaultConf.toml"
 
+# version of the population files, stored under their "version" key and tagged on their release
+const POP_DATA_VERSION = "3.1"
 # remote location of population files (ZIP)
-const popurl(identifier::String) = "https://github.com/IMMIDD/GEMS/releases/download/v0.7.1/$(identifier).zip"
+const popurl(identifier::String) = "https://github.com/Julian-Patzner/GEMS-Populations/releases/download/v$(POP_DATA_VERSION)/$(identifier).zip"
 # local location of population and setting files (JLD2)
 const poplocal(identifier::String) = joinpath(LOCALDATA_PATH, identifier)
-const peoplelocal(identifier::String) = joinpath(poplocal(identifier), "people_$identifier.jld2")
-const settingslocal(identifier::String) = joinpath(poplocal(identifier), "settings_$identifier.jld2")
+const peoplelocal(identifier::String, dir::String = poplocal(identifier)) = joinpath(dir, "people_$identifier.jld2")
+const settingslocal(identifier::String, dir::String = poplocal(identifier)) = joinpath(dir, "settings_$identifier.jld2")
 
 # local location of shapefile (obtained from here: https://gdz.bkg.bund.de/index.php/default/verwaltungsgebiete-1-250-000-mit-einwohnerzahlen-stand-31-12-vg250-ew-31-12.html) (first download link)
 const SHAPEFILE_FOLDER_PATH = joinpath(LOCALDATA_PATH, "shapefiles")

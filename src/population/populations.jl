@@ -121,7 +121,12 @@ mutable struct Population
         elseif file_ext == "jld2"
             _printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
-            pop = Population(load(path, "data"); ind_extension = ind_extension)
+            df = load(path, "data")
+            # population data v3.1 moved the former `occupation` values to `industry`
+            if hasproperty(df, :industry) && !(ind_extension isa AbstractVector && :industry in ind_extension)
+                @warn "Since population data v3.1, `occupation` holds the main activity at work. The former `occupation` values are in the `industry` column; load them with `ind_extension = [:industry]`." maxlog = 1
+            end
+            pop = Population(df; ind_extension = ind_extension)
 
         else
             error("File Extension .$file_ext is not supported")

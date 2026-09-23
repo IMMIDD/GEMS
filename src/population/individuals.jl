@@ -89,8 +89,8 @@ A type to represent individuals that act as agents inside the simulation.
     - `id::Int32`: Unique identifier of the individual
     - `sex::Int8`: Sex (Female (1), Male(2), Diverse (3))
     - `age::Int8`: Age
-    - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
-    - `education::Int8`: Education class (i.e. highest degree)
+    - `occupation::Int16`: Occupation class (GEMS populations: main activity at work, Mikrozensus EF172)
+    - `education::Int8`: Education class (GEMS populations: highest degree as ISCED 2011 level)
 
 - Comorbidities
     - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
