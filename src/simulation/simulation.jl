@@ -1677,7 +1677,9 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
     if found !== nothing && !forcedownload
         if found != POP_DATA_VERSION
-            @warn "The local files of population \"$identifier\" have data version $(isempty(found) ? "unknown (before 3.1)" : found), but this GEMS version uses $POP_DATA_VERSION. Using the local files. To switch, call `archive_population(\"$identifier\")` and load the population again." maxlog = 1 _id = Symbol(:pop_version_, identifier)
+            # files from before 3.1 still use the former `occupation` coding
+            note = isempty(found) || VersionNumber(found) < v"3.1" ? " Note: from data version 3.1 on, `occupation` holds the main activity at work; the former values are in `industry` (load them with `ind_extension = [:industry]`)." : ""
+            @warn "The local files of population \"$identifier\" have data version $(isempty(found) ? "unknown (before 3.1)" : found), but this GEMS version uses $POP_DATA_VERSION. Using the local files. To switch, call `archive_population(\"$identifier\")` and load the population again.$note" maxlog = 1 _id = Symbol(:pop_version_, identifier)
         end
         _printinfo("\u2514 Retrieving population and settings from $dir")
         return (peoplelocal(identifier, dir), settingslocal(identifier, dir))
