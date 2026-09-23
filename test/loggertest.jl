@@ -1,6 +1,65 @@
 @testset "Logger" begin
     test_rng = Xoshiro()
 
+    @testset "ChunkedVector" begin
+
+        @testset "Creation" begin
+            v = GEMS.ChunkedVector{Int32}()
+            @test length(v) == 0
+            @test isempty(v)
+            @test GEMS.chunk_size(v) == 2^14
+            # chunks are only allocated on the first push
+            @test isempty(v.chunks)
+
+            @test GEMS.chunk_size(GEMS.ChunkedVector{Int32}(chunk_size = 1)) == 1
+            @test_throws ArgumentError GEMS.ChunkedVector{Int32}(chunk_size = 0)
+            @test_throws ArgumentError GEMS.ChunkedVector{Int32}(chunk_size = 3)
+            @test_throws ArgumentError GEMS.ChunkedVector{Int32}(chunk_size = 1000)
+        end
+
+        @testset "Push And Index Across Chunks" begin
+            v = GEMS.ChunkedVector{Int16}(chunk_size = 4)
+            ref = Int16[]
+            for i in 1:10
+                push!(v, i)
+                push!(ref, i)
+            end
+
+            @test length(v) == 10
+            @test length(v.chunks) == 3
+            @test collect(v) == ref
+            # last entry of a chunk and first entry of the next
+            @test v[4] == 4 && v[5] == 5
+            @test v[end] == 10
+            @test eltype(v) == Int16
+            @test_throws BoundsError v[0]
+            @test_throws BoundsError v[11]
+
+            # a full chunk gets no successor until the next push
+            w = GEMS.ChunkedVector{Int16}(chunk_size = 4)
+            foreach(i -> push!(w, i), 1:4)
+            @test length(w.chunks) == 1
+        end
+
+        @testset "vcat" begin
+            a = GEMS.ChunkedVector{Int32}(chunk_size = 4)
+            b = GEMS.ChunkedVector{Int32}(chunk_size = 4)
+            foreach(i -> push!(a, i), 1:6)
+            foreach(i -> push!(b, -i), 1:4)
+
+            joined = vcat(a, GEMS.ChunkedVector{Int32}(), b)
+            @test joined isa Vector{Int32}
+            @test joined == vcat(collect(a), collect(b))
+            @test vcat(GEMS.ChunkedVector{Int32}(), GEMS.ChunkedVector{Int32}()) == Int32[]
+        end
+
+        @testset "Logger Columns" begin
+            il = InfectionLogger()
+            @test il.id_a[1] isa GEMS.ChunkedVector{Int32}
+            @test il.tick[1] isa GEMS.ChunkedVector{Int16}
+        end
+    end
+
     @testset "InfectionLogger" begin
 
         attributes = [
@@ -31,7 +90,7 @@
             # test new last_modified_tick attribute initialization
             @test il.last_modified_tick[] == GEMS.DEFAULT_TICK
 
-            # logger works with Vector of Vectors now, check if total length is 0
+            # logger columns are per-thread vectors, check if total length is 0
             for attr in attributes
                 @test sum(length, getproperty(il, Symbol(attr))) == 0
             end
