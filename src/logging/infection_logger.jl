@@ -5,7 +5,8 @@
     InfectionLogger <: EventLogger
 
 A logging structure specifically for infections. An infection event is given by all
-entries of the field-vectors at a given index. Data is thread-local to prevent lock contention.
+entries of the field-vectors at a given index. Data is thread-local to prevent lock contention
+and stored in `ChunkedVector`s, which grow without reallocating.
 """
 @with_kw mutable struct InfectionLogger <: EventLogger
     # Atomic counter for generating unique infection IDs safely across threads
@@ -14,31 +15,31 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
     # Infection ID
-    infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+    infection_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
 
     # Infecting data
-    id_a::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+    id_a::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
 
     # Infected data
-    id_b::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    progression_category::Vector{Vector{Symbol}} = [Vector{Symbol}() for _ in 1:Threads.maxthreadid()]
-    infectiousness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    symptom_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    severeness_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    critical_onset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    critical_offset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    severeness_offset::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    recovery::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
+    id_b::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    pathogen_id::Vector{ChunkedVector{Int8}} = [ChunkedVector{Int8}() for _ in 1:Threads.maxthreadid()]
+    progression_category::Vector{ChunkedVector{Symbol}} = [ChunkedVector{Symbol}() for _ in 1:Threads.maxthreadid()]
+    infectiousness_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    symptom_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    severeness_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    critical_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    critical_offset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    severeness_offset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    recovery::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
 
     # External data
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    setting_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    setting_type::Vector{Vector{Char}} = [Vector{Char}() for _ in 1:Threads.maxthreadid()]
-    lat::Vector{Vector{Float32}} = [Vector{Float32}() for _ in 1:Threads.maxthreadid()]
-    lon::Vector{Vector{Float32}} = [Vector{Float32}() for _ in 1:Threads.maxthreadid()]
-    ags::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    source_infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
+    tick::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    setting_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    setting_type::Vector{ChunkedVector{Char}} = [ChunkedVector{Char}() for _ in 1:Threads.maxthreadid()]
+    lat::Vector{ChunkedVector{Float32}} = [ChunkedVector{Float32}() for _ in 1:Threads.maxthreadid()]
+    lon::Vector{ChunkedVector{Float32}} = [ChunkedVector{Float32}() for _ in 1:Threads.maxthreadid()]
+    ags::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    source_infection_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
 
     # Individual id range of the logged population
     minid::Int32 = Int32(1)
