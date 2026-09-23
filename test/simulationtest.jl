@@ -77,6 +77,82 @@ import GEMS: increment!, infected!
             @test_throws ArgumentError Simulation(population = "ABC")
         end
 
+        @testset "Population Data Versions" begin
+            id = "VERSIONTEST"
+            root = GEMS.poplocal(id)
+            current = GEMS.POP_DATA_VERSION
+            files_in(dir) = (GEMS.peoplelocal(id, dir), GEMS.settingslocal(id, dir))
+
+            # minimal people and settings files; `nothing` leaves out the version key
+            function write_pop_files(dir, people_version, settings_version = people_version)
+                mkpath(dir)
+                for (f, v) in zip(files_in(dir), (people_version, settings_version))
+                    isnothing(v) ? jldsave(f; data = 1) : jldsave(f; data = 1, version = v)
+                end
+            end
+            function reset_pop_files(args...)
+                rm(root; recursive = true, force = true)
+                write_pop_files(root, args...)
+            end
+
+            try
+                @testset "Current Version" begin
+                    reset_pop_files(current)
+                    @test (@test_logs min_level = Logging.Warn GEMS.obtain_remote_files(id)) == files_in(root)
+                end
+
+                @testset "Other Versions Are Used With A Warning" begin
+                    # unversioned files get the note on the former occupation values
+                    reset_pop_files(nothing)
+                    paths = @test_logs (:warn, r"version unknown \(before 3\.1\).*archive_population\(\"VERSIONTEST\"\).*industry") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+                    @test paths == files_in(root)
+                    @test all(isfile, files_in(root))
+
+                    reset_pop_files("3.0")
+                    @test_logs (:warn, r"version 3\.0,.*industry") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+
+                    # newer files get no note
+                    reset_pop_files("99.0")
+                    @test_logs (:warn, r"^(?!.*industry).*version 99\.0,") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+
+                    # people and settings of different versions count as unversioned
+                    reset_pop_files(current, "3.0")
+                    @test_logs (:warn, r"version unknown") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+                end
+
+                @testset "Own Version In Its Subfolder" begin
+                    reset_pop_files("99.0")
+                    sub = joinpath(root, "v$current")
+                    write_pop_files(sub, current)
+                    @test (@test_logs min_level = Logging.Warn GEMS.obtain_remote_files(id)) == files_in(sub)
+                end
+
+                @testset "archive_population" begin
+                    reset_pop_files("3.0")
+                    archive_population(id)
+                    @test !any(isfile, files_in(root))
+                    @test all(isfile, files_in(joinpath(root, "v3.0")))
+
+                    reset_pop_files(nothing)
+                    archive_population(id)
+                    @test all(isfile, files_in(joinpath(root, "unversioned")))
+
+                    # nothing left to archive
+                    @test_throws ArgumentError archive_population(id)
+                end
+
+                @testset "Forced Download Archives Other Versions" begin
+                    # VERSIONTEST is not on the release, so the download itself fails
+                    reset_pop_files("3.0")
+                    @test_throws String GEMS.obtain_remote_files(id; forcedownload = true)
+                    @test !any(isfile, files_in(root))
+                    @test all(isfile, files_in(joinpath(root, "v3.0")))
+                end
+            finally
+                rm(root; recursive = true, force = true)
+            end
+        end
+
         @testset "General Parameters" begin
             # SEED
             # passing

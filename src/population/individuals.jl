@@ -89,8 +89,8 @@ A type to represent individuals that act as agents inside the simulation.
     - `id::Int32`: Unique identifier of the individual
     - `sex::Int8`: Sex (Female (1), Male(2), Diverse (3))
     - `age::Int8`: Age
-    - `occupation::Int16`: Occupation class (i.e. manual labour, office job, etc...)
-    - `education::Int8`: Education class (i.e. highest degree)
+    - `occupation::Int16`: Occupation class (GEMS populations: main activity at work, Mikrozensus EF172)
+    - `education::Int8`: Education class (GEMS populations: highest degree as ISCED 2011 level)
 
 - Comorbidities
     - `comorbidities::UInt16`: Bitmask indicating prevalence of certain health conditions
@@ -665,9 +665,16 @@ end
 """
     quarantine_release_tick!(individual::Individual, tick::Int16)
 
-Sets an individual's quarantine release tick.
+Sets an individual's quarantine release tick. Deprecated: during a simulation, the quarantine update
+and state log only see individuals set through `quarantine_release_tick!(individual, sim, tick)`.
 """
 function quarantine_release_tick!(individual::Individual, tick::Int16)
+    @warn "quarantine_release_tick!(individual, tick) is deprecated: the simulation's quarantine update does not see this individual. Use quarantine_release_tick!(individual, sim, tick)." maxlog=1
+    _quarantine_release_tick!(individual, tick)
+end
+
+# sets the release tick only, without flagging the individual
+function _quarantine_release_tick!(individual::Individual, tick::Int16)
     individual.quarantine_release_tick = tick
 end
 

@@ -127,7 +127,7 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             # Modify interventions
             home_quarantine!(i)
             quarantine_tick!(i, Int16(5))
-            quarantine_release_tick!(i, Int16(15))
+            GEMS._quarantine_release_tick!(i, Int16(15))
 
             # Call reset! with empty registries (no overflow state to clean up)
             GEMS.reset!(i, InfectionRegistry(), ImmunityRegistry())
@@ -495,13 +495,29 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             # is_quarantined / isquarantined / quarantined (with tick)
             i_quar = Individual(id=4, sex=1, age=40)
             quarantine_tick!(i_quar, Int16(5))
-            quarantine_release_tick!(i_quar, Int16(10))
+            GEMS._quarantine_release_tick!(i_quar, Int16(10))
             @test !is_quarantined(i_quar, Int16(4))
             @test is_quarantined(i_quar, Int16(5))
             @test is_quarantined(i_quar, Int16(9))
             @test !is_quarantined(i_quar, Int16(10))
             @test isquarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
             @test quarantined(i_quar, Int16(5)) == is_quarantined(i_quar, Int16(5))
+
+            # sim wrappers route to the correct registry shard
+            sim = Simulation()
+            @test get_infection_state(i, sim, pid) == get_infection_state(i, reg, pid)
+            @test get_immunity_state(i, sim, pid) == get_immunity_state(i, ImmunityRegistry(), pid)
+            for f in (exposure, infectiousness_onset, symptom_onset, severeness_onset, severeness_offset,
+                      GEMS.critical_onset, GEMS.critical_offset, recovery)
+                @test f(i, sim, pid) == f(i, reg, pid)
+            end
+            for f in (is_infected, isinfected, infected, is_infectious, isinfectious, infectious,
+                      is_exposed, isexposed, exposed, is_presymptomatic, ispresymptomatic, presymptomatic,
+                      is_symptomatic, issymptomatic, symptomatic, is_asymptomatic, isasymptomatic, asymptomatic,
+                      is_severe, issevere, severe, is_mild, ismild, mild, is_critical, iscritical, critical,
+                      is_recovered, isrecovered, recovered, is_detected, isdetected, detected)
+                @test f(i, sim, pid, Int16(12)) == f(i, reg, pid, Int16(12))
+            end
         end
 
         @testset "Testing Registry" begin
@@ -538,7 +554,7 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
             @test !isquarantined(i)
             @test quarantine_status(i) == GEMS.QUARANTINE_STATE_NO_QUARANTINE
 
-            quarantine_release_tick!(i, Int16(42))
+            GEMS._quarantine_release_tick!(i, Int16(42))
             @test quarantine_release_tick(i) == 42
 
             quarantine_tick!(i, Int16(42))
@@ -554,6 +570,21 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
 
             i.hospital_demands = Int16(1)
             @test ishospitalized(i)
+
+            # through the simulation, a member is also flagged for the quarantine update
+            sim_q = Simulation()
+            k = findfirst(!, sim_q.quarantined_individuals)
+            member = individuals(sim_q)[k]
+            quarantine_release_tick!(member, sim_q, Int16(7))
+            @test quarantine_release_tick(member) == 7
+            @test sim_q.quarantined_individuals[k]
+
+            # the deprecated variant still sets the tick, but warns and does not flag
+            k2 = findfirst(!, sim_q.quarantined_individuals)
+            other = individuals(sim_q)[k2]
+            @test_logs (:warn, r"deprecated") quarantine_release_tick!(other, Int16(9))
+            @test quarantine_release_tick(other) == 9
+            @test !sim_q.quarantined_individuals[k2]
         end
     end
     

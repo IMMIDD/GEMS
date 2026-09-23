@@ -12,7 +12,7 @@ export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
 export health_progression, health_profiles
 export infection_registry, immunity_registry, test_registry, health_schedule
-export configfile, populationfile
+export configfile, populationfile, archive_population
 export evaluate
 export initialize!, reinitialize!
 export reset!
@@ -1691,24 +1691,76 @@ function is_pop_file(filename::String)
 end
 
 
+# The data version of the population files in `dir`: `nothing` without files, "" if unversioned.
+function _local_pop_version(dir::String, identifier::String)
+    files = (peoplelocal(identifier, dir), settingslocal(identifier, dir))
+    all(isfile, files) || return nothing
+    versions = [jldopen(f -> haskey(f, "version") ? string(f["version"]) : "", path) for path in files]
+    # people and settings from different versions count as unversioned
+    return versions[1] == versions[2] ? versions[1] : ""
+end
+
+# Moves population files replaced by another data version into a subfolder named after their version.
+function _archive_pop_files(dir::String, identifier::String, version::String)
+    target = joinpath(dir, isempty(version) ? "unversioned" : "v$version")
+    mkpath(target)
+    for f in (peoplelocal(identifier, dir), settingslocal(identifier, dir))
+        mv(f, joinpath(target, basename(f)); force = true)
+    end
+    _printinfo("\u2514 Moved $(isempty(version) ? "unversioned" : "v$version") population data to $target")
+end
+
+"""
+    archive_population(identifier::String)
+
+Moves the local files of population `identifier` into a subfolder named after their data version
+(`unversioned` if they have none). The next use of `identifier` downloads version `POP_DATA_VERSION`.
+"""
+function archive_population(identifier::String)
+    dir = poplocal(identifier)
+    version = _local_pop_version(dir, identifier)
+    version === nothing && throw(ArgumentError("There are no local files of population \"$identifier\" in $dir."))
+    _archive_pop_files(dir, identifier, version)
+end
+
 """
     obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
-Interface to remotely access a setting and population file
+Returns the paths of the people and settings file of population `identifier`, downloading them
+if there are no local files. Local files of another data version than `POP_DATA_VERSION` are used
+with a warning, unless the subfolder `v<POP_DATA_VERSION>` holds this version.
+`forcedownload` moves other versions into a subfolder named after them and downloads this one.
 """
 function obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
     _printinfo("\u2514 Looking for \"$identifier\" population model")
 
-    # if argument points to existing population and setting files and forcedownload is deactivated
-    if peoplelocal(identifier) |> isfile && settingslocal(identifier) |> isfile && !forcedownload
-        _printinfo("\u2514 Retrieving population and settings from $(poplocal(identifier))")
-        return (peoplelocal(identifier) , settingslocal(identifier))
+    dir = poplocal(identifier)
+    found = _local_pop_version(dir, identifier)
+
+    # another data version in the main folder; this one may be archived in its subfolder
+    if found !== nothing && found != POP_DATA_VERSION
+        sub = joinpath(dir, "v$POP_DATA_VERSION")
+        if _local_pop_version(sub, identifier) == POP_DATA_VERSION
+            dir, found = sub, POP_DATA_VERSION
+        end
     end
 
-    # if not, download files
-    _printinfo("Population and setting file not available locally. Downloading files...")
-    zipath = joinpath(poplocal(identifier), "data.zip")
+    if found !== nothing && !forcedownload
+        if found != POP_DATA_VERSION
+            # files from before 3.1 still use the former `occupation` coding
+            note = isempty(found) || VersionNumber(found) < v"3.1" ? " Note: from data version 3.1 on, `occupation` holds the main activity at work; the former values are in `industry` (load them with `ind_extension = [:industry]`)." : ""
+            @warn "The local files of population \"$identifier\" have data version $(isempty(found) ? "unknown (before 3.1)" : found), but this GEMS version uses $POP_DATA_VERSION. Using the local files. To switch, call `archive_population(\"$identifier\")` and load the population again.$note" maxlog = 1 _id = Symbol(:pop_version_, identifier)
+        end
+        _printinfo("\u2514 Retrieving population and settings from $dir")
+        return (peoplelocal(identifier, dir), settingslocal(identifier, dir))
+    end
+
+    # files of another version make way for this one
+    found !== nothing && found != POP_DATA_VERSION && _archive_pop_files(dir, identifier, found)
+
+    _printinfo("Downloading population data v$POP_DATA_VERSION...")
+    zipath = joinpath(dir, "data.zip")
     # make sure directory exists
     mkpath(dirname(zipath))
     # download stuff
@@ -1727,7 +1779,7 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
     z = ZipFile.Reader(zipath)
     for f in z.files
         # Determine the output file path
-        out_path = joinpath(poplocal(identifier), f.name)
+        out_path = joinpath(dir, f.name)
         
         # Ensure that the output directory exists
         mkpath(dirname(out_path))
@@ -1746,7 +1798,7 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
     rm(zipath, force = true)
 
     # return local data paths
-    return (peoplelocal(identifier) , settingslocal(identifier))       
+    return (peoplelocal(identifier, dir), settingslocal(identifier, dir))
 end
 
 ### INTERFACE FOR CONDITION AND CRITERIA ###
