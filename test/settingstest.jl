@@ -271,6 +271,31 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             end
         end
 
+        @testset "Settings from Population: Sparse IDs" begin
+            # ids this far apart are ranked among the distinct ids rather than offset from the smallest
+            df = DataFrame(id = Int32.(1:6), age = Int8.(fill(30, 6)), sex = Int8.(ones(6)),
+                           household = Int32[1_000_000, 1, 1000, 1, 1_000_000, 1_000_000],
+                           office = Int32[500_000, 500_000, 7, -1, 7, 500_000])
+            pop = Population(df)
+            stngs, rnm = settings_from_population(pop)
+            plans = GEMS.activity_plans(pop)
+
+            # ascending old ids, members in individual order, renamed to 1:n
+            @test id.(get(stngs, Household)) == [1, 2, 3]
+            @test [id.(individuals(h)) for h in get(stngs, Household)] == [[2, 4], [3], [1, 5, 6]]
+            @test rnm[Household] == Dict(1 => 1, 1000 => 2, 1_000_000 => 3)
+            @test [id.(individuals(o)) for o in get(stngs, Office)] == [[3, 5], [1, 2, 6]]
+            @test rnm[Office] == Dict(7 => 1, 500_000 => 2)
+
+            # every entry points at its setting and at its position there; read from the entry, since
+            # the plans count as indexed only once the settings are pooled
+            for T in (Household, Office), s in get(stngs, T), (k, ind) in enumerate(individuals(s))
+                entry = plans.entries[GEMS.plan_slot(plans, ind, T)]
+                @test GEMS.setting_id(entry) == id(s)
+                @test GEMS.member_index(entry) == k
+            end
+        end
+
     end
 
     @testset "SettingsContainer" begin
@@ -493,7 +518,8 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             JLD2.save(path, Dict("settings" => flat, "version" => "3.2"))
         end
 
-        # every field of every setting, members compared by id and atomics by value
+        # every field of every setting, members compared by id and atomics by value; the flat pool
+        # a setting shares is new in every build, and its members are compared through `individuals`
         unwrap(x) = x isa Threads.Atomic ? x[] : x
         function same_settings(a, b)
             keys(settings(a)) == keys(settings(b)) || return false
@@ -503,7 +529,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
                 for (s, t) in zip(list, other)
                     T <: GEMS.IndividualSetting && id.(individuals(s)) != id.(individuals(t)) && return false
                     for f in fieldnames(T)
-                        f in (:individuals, :contact_sampling_method) && continue
+                        f in (:individuals, :contact_sampling_method, :flat_pool) && continue
                         isequal(unwrap(getfield(s, f)), unwrap(getfield(t, f))) || return false
                     end
                 end
@@ -528,7 +554,11 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             save_flat(new_path, frames())
 
             function build(path)
-                pop = Population([Individual(id=i, age=1, sex=1, schoolclass=i + 1) for i in 1:4])
+                inds = [Individual(id=i, age=1, sex=1) for i in 1:4]
+                pop = Population(inds)
+                for (k, ind) in enumerate(inds)
+                    assign_settings!(pop, ind, SchoolClass => k + 1)
+                end
                 sc, rnm = settings_from_population(pop)
                 settings_from_jld2!(path, sc, rnm)
                 return sc
