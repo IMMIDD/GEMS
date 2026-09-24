@@ -224,16 +224,24 @@ end
     FlatSettingPool
 
 Backing storage for the settings of one type that no container holds (`GlobalSetting`,
-`Household`, `Municipality`). Each setting owns one range of `members`, edited in place. Unlike a
-`HierarchicalSettingPool`, it lays out no hierarchy, so nothing has to be repacked after an edit.
+`Household`, `Municipality`). Each setting owns `cap` slots of `members` starting at its `offset`,
+its members in the first `len`, edited in place. Unlike a `HierarchicalSettingPool`, it lays out
+no hierarchy, so an edit that fits never waits for a repack.
 
-A setting that grows moves its range to the end, stranding its old slots. Edits are rare, so
-that space is not reclaimed.
+A removal keeps its slot, so the next addition fills it. A setting that outgrows its slots moves
+to the end of the pool with `slack` to spare, stranding the slots it held; `repack_dirty_pools!`
+compacts the pool once those make up a third of it.
 
 # Fields
 
-- `members::Vector{Individual}`: Every setting's members, one range per setting.
+- `members::Vector{Individual}`: Every setting's slots, plus any stranded by a move.
+- `dead::Int`: Slots stranded by moves, reclaimed by the next compaction.
+- `slack::Float64`: Room a moved setting gets to grow into, as a fraction of its members.
 """
-struct FlatSettingPool
+mutable struct FlatSettingPool
     members::Vector{Individual}
+    dead::Int
+    slack::Float64
 end
+
+FlatSettingPool(members::AbstractVector) = FlatSettingPool(convert(Vector{Individual}, members), 0, DEFAULT_POOL_SLACK)

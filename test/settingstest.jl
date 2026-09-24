@@ -1026,6 +1026,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test hs[1].offset == 1
             @test all(k -> hs[k].offset == hs[k - 1].offset + hs[k - 1].len, 2:length(hs))
             @test hs[end].offset + hs[end].len - 1 == length(members)
+            # built exact-fit, and registered so a repack can compact it
+            @test all(h -> h.cap == h.len, hs)
+            @test cntnr.flat_pools[Household] === hs[1].flat_pool
             @test all(h -> individuals(h) isa GEMS.MemberSlice, hs)
             @test individuals(GEMS.settings(cntnr, GlobalSetting)[1]) == individuals(pop)
             # the reordered fields keep a household in the 64-byte size class
@@ -1045,21 +1048,115 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             mover = individuals(hs[j])[1]
             remove_member!(hs[j], mover, pop)
             add_member!(h, mover, pop; primary = true)
-            # h did not end the pool, so its range moved there
+            # h was full and did not end the pool, so it moved there with slack, stranding its slots
             @test h.offset == n + 1
+            @test h.cap == length(before[k]) + max(1, ceil(Int, h.flat_pool.slack * length(before[k])))
+            @test length(members) == n + h.cap
+            @test h.flat_pool.dead == length(before[k])
             @test individuals(h) == vcat(before[k], [mover])
             @test Set(individuals(hs[j])) == Set(before[j][2:end])
             @test all(x -> individuals(hs[x]) == before[x], setdiff(eachindex(hs), [j, k]))
             @test household_id(mover, GEMS.activity_plans(pop)) == id(h)
             @test GEMS.validate_plans(pop, cntnr)
 
-            # now it ends the pool, so the next member is appended in place
+            # it ends the pool now, so the next member lands where it is, in its slack or by growing it
             mover2 = individuals(hs[j])[1]
             remove_member!(hs[j], mover2, pop)
             add_member!(h, mover2, pop; primary = true)
             @test h.offset == n + 1
-            @test length(members) == n + h.len
+            @test length(members) == n + h.cap
             @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "A removal leaves room for the next member" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            h = hs[k]
+            members = h.flat_pool.members
+            n, offset, cap = length(members), h.offset, h.cap
+
+            leaver = individuals(h)[1]
+            remove_member!(h, leaver, pop)
+            @test h.cap == cap
+            add_member!(h, leaver, pop; primary = true)
+            # back into the freed slot: nothing moved and nothing stranded
+            @test (h.offset, h.cap, length(members), h.flat_pool.dead) == (offset, cap, n, 0)
+            @test Set(individuals(h)) == Set(snapshot(hs)[k])
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "The last setting grows in place" begin
+            pop, cntnr, hs = make_sim()
+            h = hs[end]
+            offset = h.offset
+            donor = hs[inner_index(hs)]
+            mover = individuals(donor)[1]
+            remove_member!(donor, mover, pop)
+            add_member!(h, mover, pop; primary = true)
+            @test h.offset == offset
+            @test h.flat_pool.dead == 0
+            @test h.offset + h.cap - 1 == length(h.flat_pool.members)
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "A repack leaves a pool less than a third stranded" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            pool = hs[k].flat_pool
+            members = pool.members
+            donor = hs[findfirst(x -> x != k && hs[x].len >= 2, eachindex(hs))]
+            mover = individuals(donor)[1]
+            remove_member!(donor, mover, pop)
+            add_member!(hs[k], mover, pop; primary = true)
+            # one household moved, so few slots are stranded
+            @test 0 < pool.dead * 3 <= length(members)
+            GEMS.repack_dirty_pools!(cntnr)
+            @test pool.members === members
+            @test pool.dead > 0
+        end
+
+        @testset "A repack compacts a pool past a third stranded" begin
+            pop, cntnr, hs = make_sim()
+            pool = hs[1].flat_pool
+            # each move fills a full household that does not end the pool, moving it to the end,
+            # so once all have moved nearly the whole original layout is stranded
+            for k in 1:(length(hs) - 1)
+                hs[k].len == 0 && continue
+                mover = individuals(hs[k])[1]
+                remove_member!(hs[k], mover, pop)
+                add_member!(hs[k + 1], mover, pop; primary = true)
+            end
+            @test pool.dead * 3 > length(pool.members)
+            @test GEMS.validate_plans(pop, cntnr)
+            before = snapshot(hs)
+            caps = [h.cap for h in hs]
+
+            GEMS.repack_dirty_pools!(cntnr)
+            @test pool.dead == 0
+            @test length(pool.members) == sum(caps)
+            # laid out in id order, each keeping its slots and its members in order
+            @test hs[1].offset == 1
+            @test all(k -> hs[k].offset == hs[k - 1].offset + hs[k - 1].cap, 2:length(hs))
+            @test [h.cap for h in hs] == caps
+            @test snapshot(hs) == before
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "Removing an empty setting strands its slots" begin
+            sim = Simulation(pop_size = 200, seed = 1234)
+            pop, cntnr = population(sim), GEMS.settingscontainer(sim)
+            hs = GEMS.settings(cntnr, Household)
+            pool = hs[1].flat_pool
+            emptied = hs[inner_index(hs)]
+            cap = Int(emptied.cap)
+            while emptied.len > 0
+                remove_member!(emptied, individuals(emptied)[1], pop)
+            end
+            remove_empty_settings!(sim)
+            @test !any(h -> h === emptied, GEMS.settings(cntnr, Household))
+            @test pool.dead == cap
+            # every slot of the pool is still either a setting's or stranded
+            @test GEMS._check_flat_ranges(GEMS.settings(cntnr, Household)) === nothing
         end
 
         @testset "Deaths and closures stay inside the range" begin

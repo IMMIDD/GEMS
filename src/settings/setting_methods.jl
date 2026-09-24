@@ -626,6 +626,8 @@ function remove_empty_settings!(sim::Simulation)
         for (i, s) in enumerate(settinglist)
             if length(individuals(s, sim)) == 0
                 push!(rem_dict[type], i)
+                # its slots in a flat pool are stranded, for the next compaction to reclaim
+                s isa FlatSetting && (s.flat_pool.dead += Int(s.cap))
             end
         end
     end

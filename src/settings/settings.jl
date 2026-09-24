@@ -69,13 +69,15 @@ There should only be one `GlobalSetting` instance in any simulation.
 - `contact_sampling_method::ContactSamplingMethod`: Sampling Method, defining how contacts are drawn.
 - `isopen::Bool`: Whether the setting is open for contacts.
     conditions
-- `flat_pool`, `offset`, `len` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`.
+- `flat_pool`, `offset`, `len`, `cap` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
+    in `cap` slots of that pool.
 """
 mutable struct GlobalSetting <: IndividualSetting
     id::Int32 # ONLY ONE GLOBALSETTING SHOULD EXIST!!!
-    # this setting's range of flat_pool.members
+    # this setting's slots of flat_pool.members, its members in the first len
     offset::Int32
     len::Int32
+    cap::Int32
     flat_pool::FlatSettingPool
     contact_sampling_method::ContactSamplingMethod
     ags::AGS # 4 bytes
@@ -85,9 +87,9 @@ mutable struct GlobalSetting <: IndividualSetting
 end
 
 function GlobalSetting(; id = GLOBAL_SETTING_ID, individuals = nothing, flat_pool = nothing, offset = 1, len = 0,
-        contact_sampling_method::ContactSamplingMethod, ags = AGS(), isopen = true)
-    flat_pool, offset, len = _flat_storage(individuals, flat_pool, offset, len)
-    return GlobalSetting(id, offset, len, flat_pool, contact_sampling_method, ags, isopen)
+        cap = len, contact_sampling_method::ContactSamplingMethod, ags = AGS(), isopen = true)
+    flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
+    return GlobalSetting(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen)
 end
 
 ###
@@ -120,22 +122,23 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 - `lon::Float32 = NaN` *(optional)*: Longitude of the household
 - `lat::Float32 = NaN`: Latitude of the household
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
-- `flat_pool`, `offset`, `len` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
-    one range of the pool all households share.
+- `flat_pool`, `offset`, `len`, `cap` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
+    in `cap` slots of the pool all households share.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 - `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 mutable struct Household <: Geolocated
     # ordered so the object stays at 56 bytes, in the 64-byte size class
     id::Int32
-    # this setting's range of flat_pool.members
+    # this setting's slots of flat_pool.members, its members in the first len
     offset::Int32
     len::Int32
+    cap::Int32
     # members at the end of `individuals` who have died
     deceased::Int32
+    ags::AGS
     flat_pool::FlatSettingPool
     contact_sampling_method::ContactSamplingMethod
-    ags::AGS
     lon::Float32
     lat::Float32
     # upper bound on its members' scales
@@ -147,11 +150,11 @@ mutable struct Household <: Geolocated
     isopen::Bool
 end
 
-function Household(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0, income = -1, dwelling = -1,
-        contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0), ags = AGS(), lon = NaN, lat = NaN,
-        isopen = true, scale_bound = 1, deceased = 0)
-    flat_pool, offset, len = _flat_storage(individuals, flat_pool, offset, len)
-    return Household(id, offset, len, deceased, flat_pool, contact_sampling_method, ags, lon, lat, scale_bound,
+function Household(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0, cap = len, income = -1,
+        dwelling = -1, contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0), ags = AGS(),
+        lon = NaN, lat = NaN, isopen = true, scale_bound = 1, deceased = 0)
+    flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
+    return Household(id, offset, len, cap, deceased, ags, flat_pool, contact_sampling_method, lon, lat, scale_bound,
         income, dwelling, isopen)
 end
 
@@ -180,16 +183,17 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the municipality.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
-- `flat_pool`, `offset`, `len` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
-    one range of the pool all municipalities share.
+- `flat_pool`, `offset`, `len`, `cap` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
+    in `cap` slots of the pool all municipalities share.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 - `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 mutable struct Municipality <: IndividualSetting
     id::Int32 # 4 bytes // Municipality identifier
-    # this setting's range of flat_pool.members
+    # this setting's slots of flat_pool.members, its members in the first len
     offset::Int32
     len::Int32
+    cap::Int32
     flat_pool::FlatSettingPool
     contact_sampling_method::ContactSamplingMethod
     ags::AGS # 4 bytes
@@ -202,25 +206,25 @@ mutable struct Municipality <: IndividualSetting
     deceased::Int32
 end
 
-function Municipality(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0,
+function Municipality(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0, cap = len,
         contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0), ags = AGS(), isopen = true,
         scale_bound = 1, deceased = 0)
-    flat_pool, offset, len = _flat_storage(individuals, flat_pool, offset, len)
-    return Municipality(id, offset, len, flat_pool, contact_sampling_method, ags, isopen, scale_bound, deceased)
+    flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
+    return Municipality(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen, scale_bound, deceased)
 end
 
-# The settings no container holds. Each keeps its members as a range of its type's FlatSettingPool.
+# The settings no container holds. Each keeps its members in slots of its type's FlatSettingPool.
 const FlatSetting = Union{GlobalSetting, Household, Municipality}
 
 # What a flat setting's keyword constructor stores: its own `individuals` in a pool of their own,
-# or a range of a shared pool.
-function _flat_storage(individuals, flat_pool, offset, len)
+# or slots of a shared pool.
+function _flat_storage(individuals, flat_pool, offset, len, cap)
     if flat_pool === nothing
-        members = individuals === nothing ? Individual[] : individuals
-        return FlatSettingPool(members), 1, length(members)
+        pool = FlatSettingPool(individuals === nothing ? Individual[] : individuals)
+        return pool, 1, length(pool.members), length(pool.members)
     end
     individuals === nothing || throw(ArgumentError("pass either `individuals` or `flat_pool`, not both"))
-    return flat_pool, offset, len
+    return flat_pool, offset, len, cap
 end
 
 # The default would print the whole pool
@@ -1034,7 +1038,8 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 
 Helper function to construct settings from a sorted list of (setting id, plan slot, individual)
 triples without dynamic dispatch. Sets each entry's `member_index` and each setting's scale bound
-on the way, since pooling keeps a leaf's member order.
+on the way, since pooling keeps a leaf's member order. Returns the `FlatSettingPool` the new
+settings share, or `nothing` for a type that is not flat.
 """
 function construct_and_add_settings!(
     container_vec::Vector,
@@ -1082,7 +1087,7 @@ function construct_and_add_settings!(
         @inbounds _construct_settings_chunk!(container_vec, pairs, settingtype, plans, sampling, flat,
             bounds[c], bounds[c + 1] - 1, nsettings[c])
     end
-    return nothing
+    return flat
 end
 
 # Builds the settings for `pairs[lo:hi]` from `container_vec[at]`, setting member indices and scale bounds.
@@ -1271,7 +1276,9 @@ function _settings_for_type!(
     add_type!(settings, T)
     setting_vec = get(settings, T)
 
-    construct_and_add_settings!(setting_vec, sorted, T, plans, default_sampling)
+    flat = construct_and_add_settings!(setting_vec, sorted, T, plans, default_sampling)
+    # registered so `repack_dirty_pools!` can compact it
+    flat === nothing || (settings.flat_pools[T] = flat)
 
     # Sort the vector of settings by ID and check if the ids are continuous and start from 1
     if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))

@@ -313,20 +313,25 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
     return true
 end
 
-# Each flat setting's range lies inside its pool, and no two ranges of one pool overlap.
+# Each flat setting's slots lie inside its pool and hold its members, no two settings of one pool
+# share a slot, and a pool's slots and stranded slots account for all of it.
 function _check_flat_ranges(stngs::Vector{T}) where {T<:FlatSetting}
-    spans = Dict{UInt, Vector{UnitRange{Int}}}()
+    slots = IdDict{FlatSettingPool, Vector{UnitRange{Int}}}()
     for s in stngs
-        m = s.flat_pool.members
-        r = _flat_range(s)
-        (s.offset >= 1 && s.len >= 0 && last(r) <= length(m)) ||
-            error("$T $(id(s)) spans $r of a pool holding $(length(m)) members")
-        isempty(r) || push!(get!(Vector{UnitRange{Int}}, spans, objectid(m)), r)
+        pool = s.flat_pool
+        r = Int(s.offset):(Int(s.offset) + Int(s.cap) - 1)
+        (s.offset >= 1 && 0 <= s.len <= s.cap && last(r) <= length(pool.members)) ||
+            error("$T $(id(s)) holds $(s.len) members in slots $r of a pool of $(length(pool.members))")
+        push!(get!(Vector{UnitRange{Int}}, slots, pool), r)
     end
-    for rs in values(spans)
+    for (pool, rs) in slots
+        used = sum(length, rs) + pool.dead
+        used == length(pool.members) ||
+            error("the $T pool holds $(length(pool.members)) slots, its settings and stranded slots $used")
+        filter!(!isempty, rs)
         sort!(rs, by = first)
         for k in 2:length(rs)
-            first(rs[k]) > last(rs[k - 1]) || error("two $T settings share pool positions: $(rs[k - 1]) and $(rs[k])")
+            first(rs[k]) > last(rs[k - 1]) || error("two $T settings share pool slots: $(rs[k - 1]) and $(rs[k])")
         end
     end
     return nothing

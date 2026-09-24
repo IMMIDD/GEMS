@@ -143,10 +143,14 @@ const DEFAULT_POOL_SLACK = 0.25
 Move each pooled hierarchy's leaf members into one `HierarchicalSettingPool` and repoint the leaves at
 their slices. Relocates storage rather than duplicating it. Idempotent per container.
 
-`slack` is each block's headroom as a fraction of its length; zero packs blocks exact-fit.
+`slack` is each block's headroom as a fraction of its length; zero packs blocks exact-fit. The
+flat pools take it too, as the room a setting gets when it outgrows its slots.
 """
 function build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK)
     slack >= 0 || throw(ArgumentError("pool slack must not be negative, got $slack"))
+    for pool in values(cntnr.flat_pools)
+        pool.slack = Float64(slack)
+    end
     _check_contiguous_ids(cntnr)
     types = [L for L in settingtypes_sorted(cntnr) if is_pooled_leaf(L) && !isempty(get(cntnr.settings, L, ()))]
     # the hierarchies share no settings, so their pools build in parallel
@@ -358,13 +362,19 @@ end
 """
     repack_dirty_pools!(cntnr::SettingsContainer)
 
-Repack every pool left stale by a member edit, a death, a scale change, or a setting opened or closed.
+Repack every pool left stale by a member edit, a death, a scale change, or a setting opened or closed,
+and compact every flat pool that moved settings have left a third stranded.
 Must run between such a change and the next read of `present_members`. `step!` calls it ahead
 of the transmission phase, which is the only reader inside a tick, so changes made anywhere in
 the previous tick are covered.
 Cheap when nothing changed.
 """
 function repack_dirty_pools!(cntnr::SettingsContainer)
+    for (T, pool) in cntnr.flat_pools
+        # A third, not half as for a hierarchy pool: a move strands a whole setting and copies it
+        # with slack, so once every setting has moved, 1 slot in 2.25 is stranded, never half.
+        pool.dead * 3 > length(pool.members) && _compact!(pool, settings(cntnr, T))
+    end
     for pool in values(cntnr.pools)
         bl = pool.blocks
         isempty(bl.dirty) && continue
@@ -831,18 +841,26 @@ function _store_member!(s::IndividualSetting, individual::Individual, plans)
     return nothing
 end
 
-# A flat setting grows at the end of its range. A range that does not end the pool moves there
-# first, stranding its old slots.
+# A flat setting fills its next free slot. Out of slots, it grows in place when it ends the pool,
+# and otherwise moves to the end, stranding the slots it held. Either way it gains slack.
 function _store_member!(s::FlatSetting, individual::Individual, _)
-    m = s.flat_pool.members
-    r = _flat_range(s)
-    if last(r) != length(m)
-        at = length(m) + 1
-        resize!(m, length(m) + length(r))
-        copyto!(m, at, m, first(r), length(r))
-        s.offset = at
+    pool = s.flat_pool
+    m = pool.members
+    n = Int(s.len)
+    if n == Int(s.cap)
+        grow = max(1, ceil(Int, pool.slack * n))
+        if Int(s.offset) + n - 1 == length(m)
+            resize!(m, length(m) + grow)
+        else
+            at = length(m) + 1
+            resize!(m, length(m) + n + grow)
+            copyto!(m, at, m, Int(s.offset), n)
+            pool.dead += n
+            s.offset = at
+        end
+        s.cap += Int32(grow)
     end
-    push!(m, individual)
+    @inbounds m[Int(s.offset) + n] = individual
     s.len += Int32(1)
     return nothing
 end
@@ -862,11 +880,33 @@ function _unstore_member!(s::IndividualSetting, individual::Individual, idx::Int
     return nothing
 end
 
+# The freed slot stays the setting's, for its next member.
 function _unstore_member!(s::FlatSetting, ::Individual, idx::Int, _)
     m = s.flat_pool.members
     r = _flat_range(s)
     @inbounds m[r[idx]] = m[last(r)]
     s.len -= Int32(1)
+    return nothing
+end
+
+# Lays the pool's settings out again in id order, each keeping its slots, and drops the stranded
+# ones. Moves no member within its setting.
+function _compact!(pool::FlatSettingPool, stngs::Vector{T}) where {T<:FlatSetting}
+    old = pool.members
+    n = 0
+    for s in stngs
+        s.flat_pool === pool && (n += Int(s.cap))
+    end
+    members = Vector{Individual}(undef, n)
+    at = 1
+    for s in stngs
+        s.flat_pool === pool || continue
+        copyto!(members, at, old, Int(s.offset), Int(s.len))
+        s.offset = at
+        at += Int(s.cap)
+    end
+    pool.members = members
+    pool.dead = 0
     return nothing
 end
 

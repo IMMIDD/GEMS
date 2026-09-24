@@ -27,6 +27,8 @@ mutable struct SettingsContainer
     settings::Dict{DataType, Vector}
     # member storage for hierarchies that have containers, keyed by leaf type
     pools::Dict{DataType, HierarchicalSettingPool}
+    # the pool the built settings of a type without containers share, keyed by that type
+    flat_pools::Dict{DataType, FlatSettingPool}
 end
 
 
@@ -40,7 +42,8 @@ end
 Return a empty container object.
 """
 function SettingsContainer()
-    return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}())
+    return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
+        Dict{DataType, FlatSettingPool}())
 end
 
 
@@ -428,7 +431,7 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
             valid_cols = Symbol[]
             for col in names(df)
                 symcol = Symbol(col)
-                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len)
+                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len, :cap)
                     push!(valid_cols, symcol)
                 end
             end
