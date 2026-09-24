@@ -377,18 +377,40 @@ Loads the settings saved in `jld2file` and add them to the existing SettingsCont
 The renaming dictionary is used to
 find the correct updated values of the ids of the IndividualSettings and change the values in the containers accordingly.
 If the jld2file does not correspond to "" (corresponding to no settingfile) and does not exist, an error message is printed.
+
+Both file layouts are read. From data version 3.2 on, the file's `"settings"` entry holds, per
+setting type, a `table` of its scalar columns and its vector columns (`contains`) under `vectors`,
+each stored flat as `values` and `offsets`: setting `i` holds `values[offsets[i]:offsets[i+1]-1]`.
+Earlier files hold one DataFrame per setting type under `"data"`.
 """
 function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict = Dict())
     jld2file == "" && return
     return _add_jld2_settings!(_read_settings_jld2(jld2file), cntnr, d)
 end
 
-# The settings file's contents, one DataFrame per setting type. It needs no population, so
-# construction reads it while the population is built.
+# The settings file's contents, one DataFrame per setting type, whichever layout the file has.
 function _read_settings_jld2(jld2file::String)::Dict
     isfile(jld2file) || error("The file $jld2file does not exist.\n Please provide a valid file path pointing to the desired settingfile!")
-    return load(jld2file, "data")
+    return jldopen(jld2file, "r") do f
+        # before data version 3.2, vector columns were stored one vector per setting, which JLD2
+        # reads as one dataset each
+        haskey(f, "settings") || return f["data"]
+        return Dict(T => _settings_table(entry) for (T, entry) in f["settings"])
+    end
 end
+
+# A setting type's table with its flat vector columns restored to one vector per setting.
+function _settings_table(entry)
+    df = entry.table
+    for (col, v) in entry.vectors
+        df[!, col] = _unflatten_settings(v.offsets, v.values)
+    end
+    return df
+end
+
+# Splits `values` into one vector per setting; setting `i` holds `values[offsets[i]:offsets[i+1]-1]`.
+_unflatten_settings(offsets::AbstractVector{<:Integer}, values::AbstractVector) =
+    [values[offsets[i]:offsets[i+1]-1] for i in 1:length(offsets)-1]
 
 # Adds what `_read_settings_jld2` read to `cntnr`, renaming ids through `d`.
 function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
