@@ -279,7 +279,7 @@ position here.
 """
 function container_frame_index(::SettingsContainer, container::ContainerSetting,
                                leaf::IndividualSetting, leaf_index::Integer)::Int32
-    pool = _pool(container)::SettingPool
+    pool = _pool(container)::HierarchicalSettingPool
     _check_clean(container, pool)
     (is_open(container) && is_open(leaf)) || return DEFAULT_MEMBER_INDEX
 

@@ -6,7 +6,7 @@
 ### MEMBER STORAGE
 ###
 
-# A contiguous view into a `SettingPool`'s member vector.
+# A contiguous view into a `HierarchicalSettingPool`'s member vector.
 const MemberSlice = SubArray{Individual, 1, Vector{Individual}, Tuple{UnitRange{Int64}}, true}
 
 # What a hierarchy leaf's `individuals` field may hold. Until its hierarchy is pooled it owns
@@ -170,11 +170,13 @@ mutable struct ContainerLevel{C}
 end
 
 """
-    SettingPool
+    HierarchicalSettingPool
 
 Backing storage for one setting hierarchy. Holds every member of every leaf, leaves laid out
 in DFS order over `contains`, so any container's members form a contiguous range of it - unless
 a member sits in two of its leaves, which costs that container contiguity but not the members.
+Keeping that layout means repacking after edits; settings no container holds use a
+`FlatSettingPool` instead.
 
 # Fields
 
@@ -197,7 +199,7 @@ a member sits in two of its leaves, which costs that container contiguity but no
 - `run_starts::Vector{Int32}`, `run_prefix::Vector{Int32}` *(internal)*: Repack scratch a
     container's frame is built in.
 """
-mutable struct SettingPool
+mutable struct HierarchicalSettingPool
     members::Vector{Individual}
     # how many settings in this hierarchy are currently closed
     closed::Int
@@ -229,7 +231,7 @@ end
 
 Backing storage for the settings of one type that no container holds (`GlobalSetting`,
 `Household`, `Municipality`). Each setting owns one range of `members`, edited in place. Unlike a
-`SettingPool`, it lays out no hierarchy, so nothing has to be repacked after an edit.
+`HierarchicalSettingPool`, it lays out no hierarchy, so nothing has to be repacked after an edit.
 
 A setting that grows moves its range to the end, stranding its old slots. Edits are rare, so
 that space is not reclaimed.

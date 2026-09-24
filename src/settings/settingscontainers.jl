@@ -16,7 +16,7 @@ A container structure for all settings.
 - `settings::Dict{DataType, Vector}`: A dictionary holding all known settings
     structured by type. Each value is a concretely-typed `Vector{T}` where `T` is the
     corresponding setting type; the dict value type is widened to `Vector` to allow this.
-- `pools::Dict{DataType, SettingPool}`: Member storage for the hierarchies that have
+- `pools::Dict{DataType, HierarchicalSettingPool}`: Member storage for the hierarchies that have
     containers, keyed by leaf type (`SchoolClass`, `Office`). Filled by `build_pools!`.
     A hierarchy's leaves hold slices of its pool instead of their own vectors, so a
     container addresses its members as a range rather than rebuilding a list each tick.
@@ -26,7 +26,7 @@ A container structure for all settings.
 mutable struct SettingsContainer
     settings::Dict{DataType, Vector}
     # member storage for hierarchies that have containers, keyed by leaf type
-    pools::Dict{DataType, SettingPool}
+    pools::Dict{DataType, HierarchicalSettingPool}
 end
 
 
@@ -40,7 +40,7 @@ end
 Return a empty container object.
 """
 function SettingsContainer()
-    return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, SettingPool}())
+    return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}())
 end
 
 

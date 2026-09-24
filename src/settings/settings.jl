@@ -126,25 +126,25 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 - `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 mutable struct Household <: Geolocated
-    # ordered so the object stays at 56 bytes
-    id::Int32 # 4 bytes
+    # ordered so the object stays at 56 bytes, in the 64-byte size class
+    id::Int32
     # this setting's range of flat_pool.members
-    offset::Int32 # 4 bytes
-    len::Int32 # 4 bytes
+    offset::Int32
+    len::Int32
     # members at the end of `individuals` who have died
-    deceased::Int32 # 4 bytes
-    flat_pool::FlatSettingPool # 8 bytes
-    contact_sampling_method::ContactSamplingMethod # 8 bytes
-    ags::AGS # 4 bytes
-    lon::Float32 # 4 bytes
-    lat::Float32 # 4 bytes
+    deceased::Int32
+    flat_pool::FlatSettingPool
+    contact_sampling_method::ContactSamplingMethod
+    ags::AGS
+    lon::Float32
+    lat::Float32
     # upper bound on its members' scales
-    scale_bound::Float32 # 4 bytes
-    income::Int8 # 1 byte
-    dwelling::Int8 # 1 byte
+    scale_bound::Float32
+    income::Int8
+    dwelling::Int8
 
     # if closed, no contacts can happen here
-    isopen::Bool # 1 byte
+    isopen::Bool
 end
 
 function Household(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0, income = -1, dwelling = -1,
@@ -279,12 +279,12 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # index in pool.leaves, so an edit finds the block it dirties without a search
     pool_leaf::Int32 = 0
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on its members' scales
     scale_bound::Float32 = 1
     # members at the end of `individuals` who have died
@@ -339,12 +339,12 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
     scale_bound::Float32 = 1
 
@@ -395,12 +395,12 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
     scale_bound::Float32 = 1
 
@@ -449,12 +449,12 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
     scale_bound::Float32 = 1
 
@@ -505,12 +505,12 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
     scale_bound::Float32 = 1
 
@@ -559,12 +559,12 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
     scale_bound::Float32 = 1
 
@@ -616,12 +616,12 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # set when a member sits in two leaves below or something below is closed or deceased
     pool_runs::Union{Nothing, MemberRuns} = nothing
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
     scale_bound::Float32 = 1
 
@@ -683,12 +683,12 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     # if closed, no contacts can happen here
     isopen::Bool = true
 
-    # position of this setting's members in its hierarchy's SettingPool (0 = not pooled)
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
     # index in pool.leaves, so an edit finds the block it dirties without a search
     pool_leaf::Int32 = 0
-    pool::Union{Nothing, SettingPool} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on its members' scales
     scale_bound::Float32 = 1
     # members at the end of `individuals` who have died
@@ -821,16 +821,7 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
     # checked before the member list is touched, so a refusal leaves both sides as they were
     plan_slot(plans, individual, typeof(setting), id(setting)) == 0 || throw(ArgumentError(
         "individual $(id(individual)) is already a member of $(typeof(setting)) $(id(setting))"))
-    pool = _pool(setting)
-    if setting isa FlatSetting
-        _flat_add_member!(setting, individual)
-    elseif pool === nothing
-        push!(setting.individuals, individual)
-    else
-        # already in the block, so this is a second membership
-        _in_block(pool, plans, setting, individual) && (pool.repeats += 1)
-        _pool_add_member!(setting, individual)
-    end
+    _store_member!(setting, individual, plans)
     plan_add!(plans, individual,
               PlanEntry(typeof(setting), id(setting), length(individuals(setting)), scale); primary = primary)
     # a newcomer joins the living members, ahead of the deceased
@@ -862,18 +853,7 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
     end
     # the member that swap-with-last will move into `idx`
     displaced = @inbounds members[end]
-
-    pool = _pool(setting)
-    if setting isa FlatSetting
-        _flat_remove_member!(setting, idx)
-    elseif pool === nothing
-        @inbounds members[idx] = members[end]
-        pop!(members)
-    else
-        # in the block twice, so this removal leaves one behind
-        _repeated_in_block(pool, plans, setting, individual) && (pool.repeats -= 1)
-        _pool_remove_member!(setting, individual, idx)
-    end
+    _unstore_member!(setting, individual, idx, plans)
 
     T = typeof(setting)
     sid = id(setting)
@@ -1030,7 +1010,10 @@ function individuals(setting::IndividualSetting)
     return setting.individuals
 end
 
-individuals(s::FlatSetting) = view(s.flat_pool.members, Int(s.offset):(Int(s.offset) + Int(s.len) - 1))
+individuals(s::FlatSetting) = view(s.flat_pool.members, _flat_range(s))
+
+# the setting's positions in its flat pool
+_flat_range(s::FlatSetting) = Int(s.offset):(Int(s.offset) + Int(s.len) - 1)
 
 
 Base.size(setting::IndividualSetting) = setting |> individuals |> length

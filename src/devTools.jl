@@ -318,7 +318,7 @@ function _check_flat_ranges(stngs::Vector{T}) where {T<:FlatSetting}
     spans = Dict{UInt, Vector{UnitRange{Int}}}()
     for s in stngs
         m = s.flat_pool.members
-        r = Int(s.offset):(Int(s.offset) + Int(s.len) - 1)
+        r = _flat_range(s)
         (s.offset >= 1 && s.len >= 0 && last(r) <= length(m)) ||
             error("$T $(id(s)) spans $r of a pool holding $(length(m)) members")
         isempty(r) || push!(get!(Vector{UnitRange{Int}}, spans, objectid(m)), r)

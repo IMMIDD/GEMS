@@ -310,7 +310,7 @@ function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::
     length(slots) == 1 && return Float32(_effective_scale(plans, first(slots)))
     leaves = settings(cntnr, L)
     below = _leaf_range(c)
-    closed = (_pool(c)::SettingPool).closed != 0
+    closed = (_pool(c)::HierarchicalSettingPool).closed != 0
     total = 0.0f0
     largest = 0.0f0
     for k in slots
