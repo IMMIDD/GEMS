@@ -39,13 +39,18 @@ function cpudata()
     return(processorInfo)
 end
 
+# The `max_tasks` of the `ResultData` call being processed. Set around the style's constructor, so
+# `process_funcs` sees it without every style passing it on; `nothing` outside such a call.
+const _MAX_TASKS = Base.ScopedValues.ScopedValue{Union{Nothing, Int}}(nothing)
+
 """
     process_funcs(func_dicts::Dict)
 
 Takes a nested dictionary of functions (which must be created by
 ResultData initializers) and runs the functions, replacing them
 with their result value in a new output dictionary. Depending on the
-`POST_PROCESSING_PARALLELISM` flag, functions run concurrently (see `constants.jl`).
+`POST_PROCESSING_PARALLELISM` flag, functions run concurrently (see `constants.jl`), at most the
+`max_tasks` passed to `ResultData` at once, or `POST_PROCESSING_MAX_TASKS` without one.
 """
 function process_funcs(func_dicts::Dict)
 
@@ -55,7 +60,8 @@ function process_funcs(func_dicts::Dict)
 
     data = Dict{String, Any}()
     tasks = Task[]
-    slots = Base.Semaphore(max(POST_PROCESSING_MAX_TASKS, 1))
+    max_tasks = something(_MAX_TASKS[], POST_PROCESSING_MAX_TASKS)
+    slots = Base.Semaphore(max(max_tasks, 1))
 
     for (key, dct) in func_dicts
         data[key] = Dict()
@@ -76,7 +82,7 @@ function process_funcs(func_dicts::Dict)
         end
     end
 
-    nthreads = min(POST_PROCESSING_MAX_TASKS, Threads.nthreads())
+    nthreads = min(max_tasks, Threads.nthreads())
     isempty(tasks) || print("\r$(_subinfo("Processing $(length(tasks)) functions across $nthreads thread$(nthreads == 1 ? "" : "s")"))")
     for t in tasks
         (key, field_name, value) = _fetch_rethrow(t)
@@ -177,16 +183,21 @@ mutable struct ResultData <: AbstractResultData
 
     @doc """
 
-        ResultData(postProcessor::PostProcessor; style::String="")
+        ResultData(postProcessor::PostProcessor; style::String="", max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
 
-    Create a `ResultData` object using a `PostProcessor` and a key, that describes the level of detail 
+    Create a `ResultData` object using a `PostProcessor` and a key, that describes the level of detail
     for the fields to be calculated. Post Processing requires a simulation to be done.
+    At most `max_tasks` result functions run at the same time; lower it if memory is a bottleneck.
     """
-    function ResultData(postProcessor::PostProcessor; style::String="DefaultResultData")
+    function ResultData(postProcessor::PostProcessor; style::String="DefaultResultData",
+            max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
+        max_tasks >= 1 || throw(ArgumentError("max_tasks must be at least 1, got $max_tasks"))
         _printinfo("Processing simulation data")
-        
-        # Create the style struct
-        style = get_style(style)(postProcessor)
+
+        # Create the style struct; its `process_funcs` call reads `max_tasks` from the scope
+        style = Base.ScopedValues.with(_MAX_TASKS => Int(max_tasks)) do
+            get_style(style)(postProcessor)
+        end
         # Use the data to create the ResultData struct
         rd = new(style.data)
 
@@ -202,14 +213,16 @@ mutable struct ResultData <: AbstractResultData
 
     @doc """
 
-        ResultData(postProcessors::Vector{PostProcessor}; style::String="DefaultResultData", print_infos::Bool = false)
+        ResultData(postProcessors::Vector{PostProcessor}; style::String="DefaultResultData", print_infos::Bool = false, max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
 
-    Create a vector `ResultData` objects using a vector of associated `PostProcessor` objects and a key, that describes the level of detail 
+    Create a vector `ResultData` objects using a vector of associated `PostProcessor` objects and a key, that describes the level of detail
     for the fields to be calculated. Post Processing requires a simulation to be done.
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
+    At most `max_tasks` result functions run at the same time.
     """
-    function ResultData(postProcessors::Vector{PostProcessor}; style::String="DefaultResultData", print_infos::Bool = false)
+    function ResultData(postProcessors::Vector{PostProcessor}; style::String="DefaultResultData", print_infos::Bool = false,
+            max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
         
         prev_print_state = GEMS.PRINT_INFOS
         cnt = 0 # counter for printing
@@ -218,7 +231,7 @@ mutable struct ResultData <: AbstractResultData
         for pp in postProcessors
             _printinfo("Processing Simulation $(cnt = cnt + 1)/$(postProcessors |> length) in Batch")
             GEMS.PRINT_INFOS = print_infos
-            push!(rds, ResultData(pp, style = style))
+            push!(rds, ResultData(pp, style = style, max_tasks = max_tasks))
             GEMS.PRINT_INFOS = prev_print_state
         end
 
@@ -227,28 +240,33 @@ mutable struct ResultData <: AbstractResultData
 
     @doc """
 
-        ResultData(sim::Simulation; style::String = "DefaultResultData")
+        ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
 
-    Create a `ResultData` object using a `Simulation` and the name of a `ResultDataStyle`, that describes the level of detail 
-    for the fields to be calculated. This constructor instantiates a default `PostProcessor` for 
+    Create a `ResultData` object using a `Simulation` and the name of a `ResultDataStyle`, that describes the level of detail
+    for the fields to be calculated. This constructor instantiates a default `PostProcessor` for
     the passed simulation object. If you want to manually configure the `PostProcessor`,
     you need to instantiate it first and pass the `PostProcessor` to the `ResultData` constructor instead.
     Post Processing requires a simulation to be done.
+    At most `max_tasks` result functions run at the same time.
     """
-    ResultData(sim::Simulation; style::String = "DefaultResultData") = ResultData(PostProcessor(sim), style = style)
+    ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS) =
+        ResultData(PostProcessor(sim), style = style, max_tasks = max_tasks)
 
     @doc """
 
-        ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false)
+        ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false, max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
 
-    Create a vector `ResultData` objects using a vector of `Simulation` objects and the name of a `ResultDataStyle`, that describes the level of detail 
+    Create a vector `ResultData` objects using a vector of `Simulation` objects and the name of a `ResultDataStyle`, that describes the level of detail
     for the fields to be calculated. If you want to manually configure the `PostProcessor`,
     you need to instantiate it first and pass the `PostProcessor` to the `ResultData` constructor instead.
     Post Processing requires a simulation to be done.
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
+    At most `max_tasks` result functions run at the same time.
     """
-    ResultData(sim::Vector{<:Simulation}; style::String = "DefaultResultData", print_infos::Bool = false) = ResultData(PostProcessor(sim), style = style, print_infos = print_infos)
+    ResultData(sim::Vector{<:Simulation}; style::String = "DefaultResultData", print_infos::Bool = false,
+            max_tasks::Integer = POST_PROCESSING_MAX_TASKS) =
+        ResultData(PostProcessor(sim), style = style, print_infos = print_infos, max_tasks = max_tasks)
 
 end
 
