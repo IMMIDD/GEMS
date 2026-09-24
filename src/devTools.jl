@@ -307,7 +307,29 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
         pool.deceased == sum(_deceased, pool.leaves; init = 0) ||
             error("the $T pool counts $(pool.deceased) deceased, its leaves $(sum(_deceased, pool.leaves; init = 0))")
     end
+    for T in settingtypes(cntnr)
+        T <: FlatSetting && _check_flat_ranges(settings(cntnr, T))
+    end
     return true
+end
+
+# Each flat setting's range lies inside its pool, and no two ranges of one pool overlap.
+function _check_flat_ranges(stngs::Vector{T}) where {T<:FlatSetting}
+    spans = Dict{UInt, Vector{UnitRange{Int}}}()
+    for s in stngs
+        m = s.flat_pool.members
+        r = Int(s.offset):(Int(s.offset) + Int(s.len) - 1)
+        (s.offset >= 1 && s.len >= 0 && last(r) <= length(m)) ||
+            error("$T $(id(s)) spans $r of a pool holding $(length(m)) members")
+        isempty(r) || push!(get!(Vector{UnitRange{Int}}, spans, objectid(m)), r)
+    end
+    for rs in values(spans)
+        sort!(rs, by = first)
+        for k in 2:length(rs)
+            first(rs[k]) > last(rs[k - 1]) || error("two $T settings share pool positions: $(rs[k - 1]) and $(rs[k])")
+        end
+    end
+    return nothing
 end
 
 

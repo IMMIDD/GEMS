@@ -809,7 +809,7 @@ end
         GEMS.trigger(s_tick_trigger, sim)
         sim_settings = offices(sim)
         step!(sim)
-        @test all(h -> (length(h.individuals) <= 5 || !h.isopen), sim_settings)
+        @test all(h -> (length(individuals(h)) <= 5 || !h.isopen), sim_settings)
 
         #test other return cases of trigger function        
         sim = Simulation()
@@ -857,7 +857,7 @@ end
         GEMS.trigger(s_tick_trigger, sim)
         sim_settings = offices(sim)
         step!(sim)
-        @test all(h -> (length(h.individuals) <= 5 || h.isopen), sim_settings)
+        @test all(h -> (length(individuals(h)) <= 5 || h.isopen), sim_settings)
 
         sim = Simulation()
         i = Individual(id=1, age=10, sex=1)

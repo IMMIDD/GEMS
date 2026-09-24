@@ -499,11 +499,11 @@ function params(population::Population)
 end
 
 """
-    num_of_infected(individuals::Vector{Individual})
+    num_of_infected(individuals::AbstractVector{Individual})
 
 Takes a vector of individuals and returns the number of infected individuals.
 """
-function num_of_infected(individuals::Vector{Individual})
+function num_of_infected(individuals::AbstractVector{Individual})
     return count(infected, individuals)
 end
 
@@ -517,12 +517,12 @@ function num_of_infected(population::Population)
 end
 
 """
-    num_of_infected(individuals::Vector{Individual}, pathogen_id::Int8)
+    num_of_infected(individuals::AbstractVector{Individual}, pathogen_id::Int8)
 
 Returns the number of individuals currently infected with the given `pathogen_id`.
 Uses the per-individual `active_pathogens_mask.
 """
-function num_of_infected(individuals::Vector{Individual}, pathogen_id::Int8)
+function num_of_infected(individuals::AbstractVector{Individual}, pathogen_id::Int8)
     mask = UInt32(1) << (pathogen_id - 1)
     return count(ind -> (ind.active_pathogens_mask & mask) != 0, individuals)
 end

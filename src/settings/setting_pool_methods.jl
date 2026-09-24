@@ -21,10 +21,14 @@ leaves of one container appears once here and twice there.
 The result aliases real member storage, so writing to it edits membership - see the note on
 `ContactSamplingMethod`.
 """
+function present_members(s::FlatSetting, ::SettingsContainer)::MemberView
+    return MemberView(s.flat_pool.members, s.offset, is_open(s) ? Int32(_alive(s)) : Int32(0))
+end
+
 function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
     pool = _pool(s)
     if pool === nothing
-        # standalone leaf: its own vector already holds exactly the members
+        # hierarchy leaf not pooled yet: its own vector already holds exactly the members
         v = s.individuals::Vector{Individual}
         return is_open(s) ? MemberView(v, Int32(1), Int32(_alive(s))) : MemberView(v, Int32(1), Int32(0))
     end
@@ -782,7 +786,7 @@ end
 
 ###
 ### MEMBER EDITS
-### Called by `add_member!` / `remove_member!` in settings.jl when the leaf is pooled.
+### Called by `add_member!` / `remove_member!` in settings.jl when the leaf is pooled or flat.
 ###
 
 # Both primitives detach the leaf's members into a vector it owns and edit that, leaving the
@@ -812,6 +816,30 @@ function _pool_remove_member!(s::IndividualSetting, individual::Individual, idx:
     pop!(v)
     s.individuals = v
     _mark_dirty!(pool, s)
+    return nothing
+end
+
+# A flat setting grows at the end of its range. A range that does not end the pool moves there
+# first, stranding its old slots.
+function _flat_add_member!(s::FlatSetting, individual::Individual)
+    m = s.flat_pool.members
+    n = Int(s.len)
+    if Int(s.offset) + n - 1 != length(m)
+        at = length(m) + 1
+        resize!(m, length(m) + n)
+        copyto!(m, at, m, Int(s.offset), n)
+        s.offset = at
+    end
+    push!(m, individual)
+    s.len += Int32(1)
+    return nothing
+end
+
+# Swap with last inside the range, as for an owned vector.
+function _flat_remove_member!(s::FlatSetting, idx::Int)
+    m = s.flat_pool.members
+    @inbounds m[Int(s.offset) + idx - 1] = m[Int(s.offset) + Int(s.len) - 1]
+    s.len -= Int32(1)
     return nothing
 end
 
@@ -884,7 +912,7 @@ end
 @inline _deceased(s::T) where {T<:Setting} = hasfield(T, :deceased) ? Int(s.deceased) : 0
 
 # how many members come before the deceased ones
-@inline _alive(s::IndividualSetting) = length(s.individuals) - _deceased(s)
+@inline _alive(s::IndividualSetting) = length(individuals(s)) - _deceased(s)
 
 # whether the member at position `idx` is deceased
 @inline _is_deceased(s::IndividualSetting, idx::Integer) = _deceased(s) > 0 && idx > _alive(s)

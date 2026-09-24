@@ -1008,6 +1008,96 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         end
     end
 
+    @testset "Flat setting pools" begin
+
+        make_sim() = begin
+            sim = Simulation(pop_size = 200, seed = 1234, global_setting = true)
+            cntnr = GEMS.settingscontainer(sim)
+            (population(sim), cntnr, GEMS.settings(cntnr, Household))
+        end
+        # a household with several members whose range does not end the pool
+        inner_index(hs) = findfirst(h -> h.len >= 2, hs[1:(end - 1)])
+        snapshot(hs) = [copy(individuals(h)) for h in hs]
+
+        @testset "Built settings share one pool, tiled in id order" begin
+            pop, cntnr, hs = make_sim()
+            members = hs[1].flat_pool.members
+            @test all(h -> h.flat_pool.members === members, hs)
+            @test hs[1].offset == 1
+            @test all(k -> hs[k].offset == hs[k - 1].offset + hs[k - 1].len, 2:length(hs))
+            @test hs[end].offset + hs[end].len - 1 == length(members)
+            @test all(h -> individuals(h) isa GEMS.MemberSlice, hs)
+            @test individuals(GEMS.settings(cntnr, GlobalSetting)[1]) == individuals(pop)
+            # the reordered fields keep a household in the 64-byte size class
+            @test sizeof(Household) <= 56
+        end
+
+        @testset "Moving a member between households" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            h = hs[k]
+            # the household the members leave
+            j = findfirst(x -> x != k && hs[x].len >= 2, eachindex(hs))
+            members = h.flat_pool.members
+            n = length(members)
+            before = snapshot(hs)
+
+            mover = individuals(hs[j])[1]
+            remove_member!(hs[j], mover, pop)
+            add_member!(h, mover, pop; primary = true)
+            # h did not end the pool, so its range moved there
+            @test h.offset == n + 1
+            @test individuals(h) == vcat(before[k], [mover])
+            @test Set(individuals(hs[j])) == Set(before[j][2:end])
+            @test all(x -> individuals(hs[x]) == before[x], setdiff(eachindex(hs), [j, k]))
+            @test household_id(mover, GEMS.activity_plans(pop)) == id(h)
+            @test GEMS.validate_plans(pop, cntnr)
+
+            # now it ends the pool, so the next member is appended in place
+            mover2 = individuals(hs[j])[1]
+            remove_member!(hs[j], mover2, pop)
+            add_member!(h, mover2, pop; primary = true)
+            @test h.offset == n + 1
+            @test length(members) == n + h.len
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "Deaths and closures stay inside the range" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            h = hs[k]
+            offset = h.offset
+            before = snapshot(hs)
+
+            victim = individuals(h)[1]
+            mark_deceased!(h, victim, pop)
+            @test h.offset == offset
+            @test !(victim in GEMS.present_members(h, cntnr))
+            @test length(GEMS.present_members(h, cntnr)) == h.len - 1
+            @test Set(individuals(h)) == Set(before[k])
+            @test all(x -> individuals(hs[x]) == before[x], setdiff(eachindex(hs), [k]))
+            @test GEMS.validate_plans(pop, cntnr)
+
+            close!(h)
+            @test isempty(GEMS.present_members(h, cntnr))
+        end
+
+        @testset "Callers accept the view" begin
+            pop, cntnr, hs = make_sim()
+            h = hs[inner_index(hs)]
+            @test num_of_infected(individuals(h)) == 0
+            @test length(GEMS.sample_individuals!(Individual[], individuals(h), 1, rng = Xoshiro(1))) == 1
+            @test sample_individuals(h, 1, rng = Xoshiro(1))[1] in individuals(h)
+        end
+
+        @testset "Constructor takes members or a pool range, not both" begin
+            @test_throws ArgumentError Household(id = 1, individuals = Individual[],
+                flat_pool = GEMS.FlatSettingPool(Individual[]))
+            # the default show would print the whole pool
+            @test sprint(show, Household(id = 3)) == "Household(id = 3, 0 individuals)"
+        end
+    end
+
     @testset "Pooled hierarchy storage" begin
 
         # three classes over two years over one school, wired by hand so the test does not

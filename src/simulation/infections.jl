@@ -449,7 +449,7 @@ function _global_position(ind::Individual, sim::Simulation)::Int
     # not `settings(sim, GlobalSetting)`, which builds an empty vector per call when there is none
     gs = get(settingscontainer(sim).settings, GlobalSetting, nothing)
     (gs === nothing || isempty(gs)) && return 0
-    members = (@inbounds (gs::Vector{GlobalSetting})[1]).individuals
+    members = individuals(@inbounds (gs::Vector{GlobalSetting})[1])
     pop = population(sim)
     i = id(ind) - pop.minid + 1
     k = 1 <= i <= length(pop.id_map) ? Int(pop.id_map[i]) : 0

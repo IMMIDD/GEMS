@@ -419,7 +419,7 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
         end
 
         # Handle individualsettings and containersettings differently
-        if :individuals in fieldnames(settingtype)
+        if settingtype <: IndividualSetting
             setting_vec = cntnr.settings[settingtype]
             renaming_dict = haskey(d, settingtype) ? d[settingtype] : nothing
             id_data = df[!, "id"]
@@ -428,7 +428,7 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
             valid_cols = Symbol[]
             for col in names(df)
                 symcol = Symbol(col)
-                if symcol in fieldnames(settingtype) && symcol != :individuals && symcol != :id
+                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len)
                     push!(valid_cols, symcol)
                 end
             end

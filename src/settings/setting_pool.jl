@@ -9,10 +9,10 @@
 # A contiguous view into a `SettingPool`'s member vector.
 const MemberSlice = SubArray{Individual, 1, Vector{Individual}, Tuple{UnitRange{Int64}}, true}
 
-# What an `individuals` field may hold. A setting outside a hierarchy owns its members
-# outright; one inside a pooled hierarchy holds a slice of that pool, so its members are not
-# duplicated and its containers can address them as a range. Both alternatives are concrete,
-# so reading the field splits a two-way union rather than dispatching dynamically.
+# What a hierarchy leaf's `individuals` field may hold. Until its hierarchy is pooled it owns
+# its members outright; then it holds a slice of that pool, so its members are not duplicated
+# and its containers can address them as a range. Both alternatives are concrete, so reading
+# the field splits a two-way union rather than dispatching dynamically.
 const MemberStorage = Union{Vector{Individual}, MemberSlice}
 
 ###
@@ -218,4 +218,26 @@ mutable struct SettingPool
     # repack scratch: a container's frame, before it is known to need runs
     run_starts::Vector{Int32}
     run_prefix::Vector{Int32}
+end
+
+###
+### THE FLAT POOL
+###
+
+"""
+    FlatSettingPool
+
+Backing storage for the settings of one type that no container holds (`GlobalSetting`,
+`Household`, `Municipality`). Each setting owns one range of `members`, edited in place. Unlike a
+`SettingPool`, it lays out no hierarchy, so nothing has to be repacked after an edit.
+
+A setting that grows moves its range to the end, stranding its old slots. Edits are rare, so
+that space is not reclaimed.
+
+# Fields
+
+- `members::Vector{Individual}`: Every setting's members, one range per setting.
+"""
+struct FlatSettingPool
+    members::Vector{Individual}
 end
