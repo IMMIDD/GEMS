@@ -248,7 +248,6 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 # Parameters
 
 - `id::Int32`: Unique identifier of the school class
-- `individuals::MemberStorage = []` *(optional)*: List of associated individuals
 - `type::Int32 = -1` *(optional)*: Type of school class (e.g. grade)
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`SchoolYear`)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
@@ -260,15 +259,16 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 - `pool` *(internal)*: The hierarchy's shared member storage. Members are held there rather
     than in this setting, so its containers can address them without a copy.
 - `pool_offset`, `pool_length` *(internal)*: Where this setting's members sit in that pool.
-    `individuals` is a view of exactly that span.
+    `individuals(s)` is a view of exactly that span.
 - `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
     finds the block it has to dirty.
+- `individuals::Vector{Individual} = []` *(optional)*: The members, held here until the pool is built
+    and while an edit waits for a repack, `nothing` otherwise. Read them with `individuals(s)`.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 - `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct SchoolClass <: Geolocated
     id::Int32 # 4 bytes
-    individuals::MemberStorage = Vector{Individual}() # a slice of the hierarchy pool once built
     type::Int32 = -1 # 1 byte
     contained::Int32 = DEFAULT_SETTING_ID # 4 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
@@ -284,6 +284,8 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
     pool_length::Int32 = 0
     # index in pool.leaves, so an edit finds the block it dirties without a search
     pool_leaf::Int32 = 0
+    # the members until the pool is built, or while an edit waits for a repack; nothing otherwise
+    individuals::Union{Nothing, Vector{Individual}} = Vector{Individual}()
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on its members' scales
     scale_bound::Float32 = 1
@@ -646,7 +648,6 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 # Parameters
 
 - `id::Int32`: Unique identifier of the office.
-- `individuals::MemberStorage = []` *(optional)*: List of individuals associated with this office
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`Department`) 
 - `contained_type::DataType = Department` *(optional)*: Parent setting tye (`Department`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of office
@@ -661,15 +662,16 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 - `pool` *(internal)*: The hierarchy's shared member storage. Members are held there rather
     than in this setting, so its containers can address them without a copy.
 - `pool_offset`, `pool_length` *(internal)*: Where this setting's members sit in that pool.
-    `individuals` is a view of exactly that span.
+    `individuals(s)` is a view of exactly that span.
 - `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
     finds the block it has to dirty.
+- `individuals::Vector{Individual} = []` *(optional)*: The members, held here until the pool is built
+    and while an edit waits for a repack, `nothing` otherwise. Read them with `individuals(s)`.
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 - `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct Office <: Geolocated
     id::Int32 # 4 bytes
-    individuals::MemberStorage = Vector{Individual}() # a slice of the hierarchy pool once built
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
@@ -688,6 +690,8 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     pool_length::Int32 = 0
     # index in pool.leaves, so an edit finds the block it dirties without a search
     pool_leaf::Int32 = 0
+    # the members until the pool is built, or while an edit waits for a repack; nothing otherwise
+    individuals::Union{Nothing, Vector{Individual}} = Vector{Individual}()
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on its members' scales
     scale_bound::Float32 = 1
@@ -1003,11 +1007,15 @@ _leaf_type(::Type{T}) where {T<:ContainerSetting} = _leaf_type(contains_type(T))
 """
     individuals(setting::IndividualSetting)
 
-Returns the individuals associated with the given setting. For a setting whose members live in a
-pool, this is a view of that pool.
+Returns the individuals associated with the given setting, as a view of wherever they are stored.
 """
 function individuals(setting::IndividualSetting)
-    return setting.individuals
+    v = setting.individuals
+    # a view in both cases: a union return would box the view it builds
+    v === nothing || return view(v, 1:length(v))
+    # a pooled leaf holds no members itself unless an edit detached them
+    lo = Int(setting.pool_offset)
+    return view((setting.pool::HierarchicalSettingPool).members, lo:(lo + Int(setting.pool_length) - 1))
 end
 
 individuals(s::FlatSetting) = view(s.flat_pool.members, _flat_range(s))

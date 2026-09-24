@@ -195,7 +195,8 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
 
     pool = HierarchicalSettingPool(Individual[], 0, sum(_deceased, leaves; init = 0), 0, leaves, Tuple(groups), blocks,
                                    DupTable(), Individual[], Int32[], Int32[])
-    for (i, l) in enumerate(leaves); l.pool = pool; l.pool_leaf = Int32(i); end
+    # detach first: a rebuilt leaf would otherwise read its old offsets from the new, empty pool
+    for (i, l) in enumerate(leaves); l.individuals = _detached(l); l.pool = pool; l.pool_leaf = Int32(i); end
     for g in pool.container_groups, c in g.containers; c.pool = pool; end
     # counted once here; the edits keep it exact
     pool.repeats = _count_repeats(pool, leaves)
@@ -445,7 +446,7 @@ end
 @inline function _block_members(bl::PoolBlocks, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
     n = 0
     @inbounds for j in leaves_of(bl, b)
-        n += length(leaves[j].individuals)
+        n += length(individuals(leaves[j]))
     end
     return n
 end
@@ -470,19 +471,18 @@ function _repack_leaves!(bl::PoolBlocks, leaves::Vector{T}) where {T<:Individual
         off = Int(bl.offset[b])
         for j in leaves_of(bl, b)
             l = leaves[j]
-            n = length(l.individuals)
-            copyto!(members, off, l.individuals, 1, n)
+            v = individuals(l)
+            n = length(v)
+            copyto!(members, off, v, 1, n)
             l.pool_offset = Int32(off)
             l.pool_length = Int32(n)
             off += n
         end
     end
 
-    # repoint only after all copying, so no leaf is read after its storage was replaced
+    # release detached members only after all copying, so no leaf is read after its storage was replaced
     @inbounds for j in eachindex(leaves)
-        l = leaves[j]
-        lo = Int(l.pool_offset)
-        l.individuals = view(members, lo:(lo + Int(l.pool_length) - 1))
+        leaves[j].individuals = nothing
     end
     bl.dead = 0
     return members
@@ -502,8 +502,9 @@ function _repack_block_leaves!(pool::HierarchicalSettingPool, leaves::Vector{T},
     at = 1
     @inbounds for j in r
         l = leaves[j]
-        m = length(l.individuals)
-        copyto!(scratch, at, l.individuals, 1, m)
+        v = individuals(l)
+        m = length(v)
+        copyto!(scratch, at, v, 1, m)
         at += m
     end
 
@@ -512,13 +513,10 @@ function _repack_block_leaves!(pool::HierarchicalSettingPool, leaves::Vector{T},
     off = Int(bl.offset[b])
     @inbounds for j in r
         l = leaves[j]
-        s = l.individuals
-        m = length(s)
+        m = length(individuals(l))
         l.pool_offset = Int32(off)
         l.pool_length = Int32(m)
-        # a leaf that already holds this slice keeps it, as storing a new view in the union field boxes it
-        (s isa MemberSlice && parent(s) === members && s.indices[1] == off:(off + m - 1)) ||
-            (l.individuals = view(members, off:(off + m - 1)))
+        l.individuals = nothing
         off += m
     end
     return nothing
@@ -530,7 +528,7 @@ function _relocate_block!(pool::HierarchicalSettingPool, b::Int, n::Int)
     bl.dead += Int(bl.capacity[b])
     cap = _with_slack(n, bl.slack)
     off = length(pool.members) + 1
-    # safe despite the leaves' views: a `SubArray` keeps the parent `Vector`, not a pointer
+    # safe for the leaves: `individuals` reads `pool.members` afresh, never a stored pointer
     resize!(pool.members, length(pool.members) + Int(cap))
     bl.offset[b] = Int32(off)
     bl.capacity[b] = cap
@@ -777,7 +775,7 @@ function _count_repeats(pool::HierarchicalSettingPool, leaves::Vector{T}) where 
         _size_dup_table!(tbl, total)
         _next_container!(tbl)
         p = 0
-        @inbounds for j in r, m in leaves[j].individuals
+        @inbounds for j in r, m in individuals(leaves[j])
             p += 1
             _first_seen!(tbl, _identity(m), p) == 0 || (n += 1)
         end
@@ -797,7 +795,7 @@ end
 # The leaf's members as a vector it owns. Already detached by an earlier edit in the same
 # batch, it is returned as is - copying again would make k edits on one leaf O(k^2).
 _detached(s::IndividualSetting)::Vector{Individual} =
-    s.individuals isa MemberSlice ? collect(s.individuals) : s.individuals
+    s.individuals === nothing ? collect(individuals(s)) : s.individuals
 
 function _pool_add_member!(s::IndividualSetting, individual::Individual)
     pool = _pool(s)::HierarchicalSettingPool
@@ -824,7 +822,7 @@ end
 function _store_member!(s::IndividualSetting, individual::Individual, plans)
     pool = _pool(s)
     if pool === nothing
-        push!(s.individuals, individual)
+        push!(s.individuals::Vector{Individual}, individual)
     else
         # already in the block, so this is a second membership
         _in_block(pool, plans, s, individual) && (pool.repeats += 1)
@@ -853,7 +851,7 @@ end
 function _unstore_member!(s::IndividualSetting, individual::Individual, idx::Int, plans)
     pool = _pool(s)
     if pool === nothing
-        v = s.individuals
+        v = s.individuals::Vector{Individual}
         @inbounds v[idx] = v[end]
         pop!(v)
     else
@@ -892,7 +890,7 @@ function _occurrences(pool::HierarchicalSettingPool, leaves::Vector{T}, s::Indiv
                       individual::Individual) where {T<:IndividualSetting}
     n = 0
     @inbounds for j in leaves_of(pool.blocks, Int(pool.blocks.of_leaf[s.pool_leaf]))
-        for m in leaves[j].individuals
+        for m in individuals(leaves[j])
             m === individual && (n += 1)
         end
     end

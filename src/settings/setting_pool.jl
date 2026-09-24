@@ -6,14 +6,8 @@
 ### MEMBER STORAGE
 ###
 
-# A contiguous view into a `HierarchicalSettingPool`'s member vector.
+# A contiguous view into a pool's member vector, as `individuals` returns for a pooled setting.
 const MemberSlice = SubArray{Individual, 1, Vector{Individual}, Tuple{UnitRange{Int64}}, true}
-
-# What a hierarchy leaf's `individuals` field may hold. Until its hierarchy is pooled it owns
-# its members outright; then it holds a slice of that pool, so its members are not duplicated
-# and its containers can address them as a range. Both alternatives are concrete, so reading
-# the field splits a two-way union rather than dispatching dynamically.
-const MemberStorage = Union{Vector{Individual}, MemberSlice}
 
 ###
 ### MEMBER VIEWS

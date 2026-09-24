@@ -1134,8 +1134,8 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             # slack its one block carries
             @test sum(Int(c.pool_length) for c in cs) == 9
             @test length(pool.members) == GEMS._with_slack(9, pool.blocks.slack)
-            @test all(c -> c.individuals isa GEMS.MemberSlice, cs)
-            @test all(c -> parent(c.individuals) === pool.members, cs)
+            @test all(c -> c.individuals === nothing && individuals(c) isa GEMS.MemberSlice, cs)
+            @test all(c -> parent(individuals(c)) === pool.members, cs)
 
             @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3]
             @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
@@ -1150,8 +1150,12 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             newcomer = Individual(id = Int32(42), age = 10, sex = 1)
 
             add_member!(cs[2], newcomer, pop)
+            # the edit detaches the leaf into a vector of its own until the repack
+            @test cs[2].individuals isa Vector{Individual}
+            @test ids(individuals(cs[2])) == [4, 5, 6, 42]
             GEMS.repack_dirty_pools!(sc)
             @test class_id(newcomer, plans) == id(cs[2])
+            @test cs[2].individuals === nothing
             @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 42]
             # the untouched leaves must survive the pool being resized underneath them
             @test ids(GEMS.present_members(cs[1], sc)) == before1
@@ -1162,9 +1166,16 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test contiguous(GEMS.present_members(sch, sc))
         end
 
+        @testset "Rebuilding the pools" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            GEMS.build_pools!(sc)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test all(c -> c.individuals === nothing && parent(individuals(c)) === sc.pools[SchoolClass].members, cs)
+        end
+
         @testset "Removing a member" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
-            victim = cs[1].individuals[2]
+            victim = individuals(cs[1])[2]
 
             remove_member!(cs[1], victim, pop)
             GEMS.repack_dirty_pools!(sc)
@@ -1182,8 +1193,8 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
         @testset "Draining a leaf" begin
             sc, cs, ys, sch, _, pop, plans = make_school()
-            while length(cs[3].individuals) > 0
-                remove_member!(cs[3], cs[3].individuals[1], pop)
+            while length(individuals(cs[3])) > 0
+                remove_member!(cs[3], individuals(cs[3])[1], pop)
             end
             GEMS.repack_dirty_pools!(sc)
             @test isempty(GEMS.present_members(cs[3], sc))
@@ -1231,7 +1242,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             open!(cs[3])
 
             # a container whose leaves are all empty is empty, not malformed
-            for c in cs; while !isempty(c.individuals); remove_member!(c, c.individuals[1], pop); end; end
+            for c in cs; while !isempty(individuals(c)); remove_member!(c, individuals(c)[1], pop); end; end
             GEMS.repack_dirty_pools!(sc)
             @test isempty(GEMS.present_members(sch, sc))
             @test isempty(GEMS.present_members(y, sc))
