@@ -623,7 +623,7 @@ import GEMS: increment!, infected!
 
             pop_path = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2")
             @test_throws ArgumentError Simulation(population=pop_path, settingsfile="notajld2file.csv")
-            # the settings file is read in a task; a missing one still throws the plain error
+            # a missing settings file throws the plain error
             @test_throws ErrorException Simulation(population=pop_path, settingsfile="/nonexistent/settings.jld2")
 
             @test_throws GEMS.ConfigfileError GEMS.determine_start_condition(Dict(), nothing, nothing)

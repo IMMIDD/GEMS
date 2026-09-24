@@ -138,7 +138,7 @@ const LOCALDATA_PATH = BASE_FOLDER = joinpath(dirname(dirname(pathof(GEMS))), "l
 const DEFAULT_CONFIGFILE::String = "data/DefaultConf.toml"
 
 # version of the population files, stored under their "version" key and tagged on their release
-const POP_DATA_VERSION = "3.1"
+const POP_DATA_VERSION = "3.2"
 # remote location of population files (ZIP)
 const popurl(identifier::String) = "https://github.com/Julian-Patzner/GEMS-Populations/releases/download/v$(POP_DATA_VERSION)/$(identifier).zip"
 # local location of population and setting files (JLD2)
