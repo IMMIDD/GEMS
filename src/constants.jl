@@ -168,7 +168,7 @@ const ENFORCE_SIM_RNGS = true
 # Concurrent post processing needs more memory; Lower POST_PROCESSING_MAX_TASKS if memory is a bottleneck.
 POST_PROCESSING_PARALLELISM = :builtin
 
-# how many post processing steps may run at the same time
+# how many post processing steps may run at the same time; the default of `ResultData`'s `max_tasks`
 POST_PROCESSING_MAX_TASKS = 4
 
 # if "true" the post processor stores result dataframes from individual function

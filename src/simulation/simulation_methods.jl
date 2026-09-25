@@ -877,10 +877,13 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
         # The unified step! handles both active and dormant states
         step!(simulation)
 
-        if !has_time_limit 
+        if !has_time_limit
             @info "\r  \u2514 Currently simulating $(tickunit(simulation)): $(tick(simulation))"
         end
     end
+
+    # the buffers are sized by the busiest tick
+    _release_tick_buffers!(simulation)
 
     println()
     return simulation

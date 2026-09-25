@@ -1513,6 +1513,15 @@ import GEMS: increment!, infected!
         # Verify they are actual individual vectors
         @test contact_buffers(sim)[1] isa Vector{Individual}
 
+        # run! releases the capacity the buffers grew to, down to what they still hold
+        capacity(v) = length(v.ref.mem)
+        @test any(b -> capacity(b) > 0, sim.infection_buffers)  # reserved up front
+        run!(sim)
+        @test all(b -> capacity(b) == length(b), present_buffers(sim))
+        @test all(b -> capacity(b) == length(b), contact_buffers(sim))
+        @test all(b -> capacity(b) == length(b), sim.infection_buffers)
+        @test all(b -> capacity(b) == length(b), sim.removal_buffers)
+
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)
         @test rng_vec isa Vector{Xoshiro}
