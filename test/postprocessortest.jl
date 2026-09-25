@@ -45,6 +45,14 @@ import GEMS: _mean_contacts_per_age_group,
         @test deathsDF(pp_copy).id !== deathlogger(sim).id[1]
         @test isequal(deathsDF(pp_copy), deathsDF(pp))
 
+        # the health and custom logger tables follow the same flag
+        @test healthDF(pp).id === healthlogger(sim).id[1]
+        @test customDF(pp) === dataframe(customlogger(sim))
+        @test healthDF(pp_copy).id !== healthlogger(sim).id[1]
+        @test isequal(healthDF(pp_copy), healthDF(pp))
+        @test customDF(pp_copy) !== dataframe(customlogger(sim))
+        @test isequal(customDF(pp_copy), customDF(pp))
+
         # compartmentsDF returns the state-logger compartment data
         @test compartmentsDF(pp) isa DataFrame
         @test nrow(compartmentsDF(pp)) > 0

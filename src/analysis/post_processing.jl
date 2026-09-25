@@ -5,7 +5,7 @@ and combine them into specific output variables
 =#
 export PostProcessor, SerialOnly
 export simulation, infectionsDF, sim_infectionsDF, populationDF
-export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
+export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF, healthDF, customDF
 
 """
     PostProcessor
@@ -23,6 +23,8 @@ A type to provide data processing features supplying reports, plots, or other da
 - `pooltestsDF::DataFrame`: Output of the pool test logger
 - `serotestsDF::DataFrame`: Output of the seroprevalence test logger
 - `quarantinesDF::DataFrame`: Output of th quarantine logger
+- `healthDF::DataFrame`: Output of the health logger
+- `customDF::DataFrame`: Output of the custom logger
 - `cache::Dict{String, Any}`: Internal cache to store and retrieve intermediate results
 
 """
@@ -37,6 +39,8 @@ mutable struct PostProcessor
     serotestsDF::DataFrame
     quarantinesDF::DataFrame
     compartmentsDF::DataFrame
+    healthDF::DataFrame
+    customDF::DataFrame
 
     # dataframe cache to speed up calculations
     cache::Dict{String, Any}
@@ -130,7 +134,14 @@ mutable struct PostProcessor
             :detected => :detected_cnt,
             :dead => :dead_cnt)
 
-        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, Dict{String, Any}())
+        health = dataframe(healthlogger(simulation); share = share_logger_data)
+
+        # the custom logger keeps its data as a DataFrame already
+        custom = dataframe(customlogger(simulation))
+        share_logger_data || (custom = copy(custom))
+
+        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, health, custom,
+            Dict{String, Any}())
     end
 
 
@@ -582,6 +593,33 @@ Returns the internal flat compartments `DataFrame`.
 """
 function compartmentsDF(postProcessor::PostProcessor)
     return(postProcessor.compartmentsDF)
+end
+
+"""
+    healthDF(postProcessor::PostProcessor)
+
+Returns a `DataFrame` of the host care events (hospital, ICU and ventilation admissions and discharges).
+
+# Columns
+
+| Name    | Type     | Description                                              |
+| :------ | :------- | :------------------------------------------------------- |
+| `tick`  | `Int16`  | Tick of the event                                        |
+| `id`    | `Int32`  | Individual id                                            |
+| `event` | `Symbol` | Event, e.g. `:hospital_admission` or `:icu_discharge`    |
+"""
+function healthDF(postProcessor::PostProcessor)
+    return postProcessor.healthDF
+end
+
+"""
+    customDF(postProcessor::PostProcessor)
+
+Returns the `DataFrame` of the simulation's custom logger, one row per tick and one column per
+logged function.
+"""
+function customDF(postProcessor::PostProcessor)
+    return postProcessor.customDF
 end
 
 ### DATA ANALYSIS ###

@@ -78,7 +78,7 @@ mutable struct OptimisedResultData <: ResultDataStyle
                     "tick_tests" => () -> pP |> tick_tests,
                     "tick_pooltests" => () -> pP |> tick_pooltests,
                     "tick_serotests" => () -> pP |> tick_serotests,
-                    "customlogger" => () -> pP |> simulation |> customlogger |> dataframe
+                    "customlogger" => () -> pP |> customDF
                 )        
         )
         
