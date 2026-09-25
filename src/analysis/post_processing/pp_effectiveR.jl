@@ -26,9 +26,9 @@ If an individual was infected multiple times, secondary infections will inflate 
 | `effective_R`        | `Float64` | Effective R-value                                                                |
 | `in_hh_effective_R`  | `Float64` | Effective R-value for household infections                                       |
 | `out_hh_effective_R` | `Float64` | Effective R-value for non-household infections                                   |
-| `rolling_R`          | `Float64` | Effective R rolling average of the 7 previous ticks                              |
-| `rolling_in_hh_R`    | `Float64` | Effective R rolling average for household infections of the 7 previous ticks     |
-| `rolling_out_hh_R`   | `Float64` | Effective R rolling average for non-household infections of the 7 previous ticks |
+| `rolling_R`          | `Float64` | Effective R rolling average of the last 7 ticks                                  |
+| `rolling_in_hh_R`    | `Float64` | Effective R rolling average for household infections of the last 7 ticks         |
+| `rolling_out_hh_R`   | `Float64` | Effective R rolling average for non-household infections of the last 7 ticks     |
 """
 function effectiveR(postProcessor::PostProcessor)
     windowsize = 7 # for rolling R calculation
@@ -127,7 +127,7 @@ function _rolling_mean(values::Vector{Float64}, pid_col::AbstractVector, windows
         if i > 1 && pid_col[i] != pid_col[i-1]
             pid_start = i
         end
-        start_idx = max(pid_start, i - windowsize)
+        start_idx = max(pid_start, i - windowsize + 1)
         rolling[i] = mean(view(values, start_idx:i))
     end
     return rolling

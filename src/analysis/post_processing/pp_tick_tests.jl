@@ -21,7 +21,7 @@ as well as the people reported positive for the first time per tick, with a `pat
 | `negative_tests`        | `Int64`   | Number of negative tests                              |
 | `total_tests`           | `Int64`   | Number of tests performed                             |
 | `positive_rate`         | `Float64` | Fraction of positive tests                            |
-| `rolling_positive_rate` | `Float64` | Positive rate rolling average of the 7 previous ticks |
+| `rolling_positive_rate` | `Float64` | Positive rate rolling average of the last 7 ticks     |
 """
 function tick_tests(postProcessor::PostProcessor)::Dict
 
@@ -65,7 +65,7 @@ function tick_tests(postProcessor::PostProcessor)::Dict
             if i > 1 && pid_col[i] != pid_col[i-1]
                 pid_start = i
             end
-            start_idx = max(pid_start, i - windowsize)
+            start_idx = max(pid_start, i - windowsize + 1)
             rolling_pr[i] = mean(view(pr_col, start_idx:i))
         end
         df.rolling_positive_rate = rolling_pr
