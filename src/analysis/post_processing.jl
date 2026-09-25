@@ -247,6 +247,17 @@ function _rows_per_pathogen(pids::AbstractVector, pathogen_ids::Vector)
     return counts
 end
 
+# As `_rows_per_pathogen`, counting only the seeds: rows without an infecter (`id_a <= 0`)
+function _seed_rows_per_pathogen(pids::AbstractVector, id_a::AbstractVector, pathogen_ids::Vector)
+    counts = zeros(Int, length(pathogen_ids))
+    for (p, a) in zip(pids, id_a)
+        a > 0 && continue
+        i = findfirst(==(p), pathogen_ids)
+        i === nothing || (counts[i] += 1)
+    end
+    return counts
+end
+
 # the pathogens of a simulation, sorted by id
 _sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
 

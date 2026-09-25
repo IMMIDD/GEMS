@@ -34,13 +34,13 @@ function effectiveR(postProcessor::PostProcessor)
     windowsize = 7 # for rolling R calculation
     sim = simulation(postProcessor)
 
-    sim_infs = sim_infectionsDF(postProcessor)
+    infs = infectionsDF(postProcessor)
     pathogen_ids = collect(map(id, pathogens(sim)))
     nticks = Int(tick(sim))
 
     # secondary infections per infection, summed per (pathogen, tick) of the spreader
-    infections, in_hh, out_hh, spreaders = _effective_r_counts(sim_infs.infection_id, sim_infs.source_infection_id,
-        sim_infs.pathogen_id, sim_infs.tick, sim_infs.setting_type, pathogen_ids, nticks)
+    infections, in_hh, out_hh, spreaders = _effective_r_counts(infs.infection_id, infs.source_infection_id,
+        infs.pathogen_id, infs.tick, infs.setting_type, infs.id_a, pathogen_ids, nticks)
 
     # one row per pathogen and tick, sorted by pathogen id, then tick; 0 where nobody spread
     porder = sortperm(pathogen_ids)
@@ -76,20 +76,22 @@ end
 
 # Per (pathogen index, tick): secondary infections (all, household, non-household) caused by the infections
 # of that tick, and how many infections that tick had. Infection ids are dense, so sources are found by index.
+# Seeds (`id_a <= 0`) count neither as infections nor as sources.
 function _effective_r_counts(inf_ids::AbstractVector, source_ids::AbstractVector, pids::AbstractVector,
-        ticks::AbstractVector, setting_types::AbstractVector, pathogen_ids::Vector, nticks::Int)
+        ticks::AbstractVector, setting_types::AbstractVector, id_a::AbstractVector, pathogen_ids::Vector, nticks::Int)
     nrows = length(inf_ids)
     max_id = nrows == 0 ? 0 : Int(maximum(inf_ids))
     # Int32 rather than Int: three arrays the length of all infections
     row_of = zeros(Int32, max_id)
     for r in 1:nrows
-        row_of[inf_ids[r]] = Int32(r)
+        id_a[r] > 0 && (row_of[inf_ids[r]] = Int32(r))
     end
 
     # secondaries per source row, only counting sources of the same pathogen
     total = zeros(Int32, nrows)
     hh = zeros(Int32, nrows)
     for r in 1:nrows
+        id_a[r] > 0 || continue
         sid = source_ids[r]
         (ismissing(sid) || sid < 1 || sid > max_id) && continue
         src = row_of[sid]
@@ -104,6 +106,7 @@ function _effective_r_counts(inf_ids::AbstractVector, source_ids::AbstractVector
     out_hh = zeros(Int, npathogens, nticks)
     spreaders = zeros(Int, npathogens, nticks)
     for r in 1:nrows
+        id_a[r] > 0 || continue
         t = Int(ticks[r])
         1 <= t <= nticks || continue
         p = findfirst(==(pids[r]), pathogen_ids)
