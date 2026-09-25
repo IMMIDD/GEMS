@@ -195,11 +195,11 @@ mutable struct ResultData <: AbstractResultData
         _printinfo("Processing simulation data")
 
         # Create the style struct; its `process_funcs` call reads `max_tasks` from the scope
-        style = Base.ScopedValues.with(_MAX_TASKS => Int(max_tasks)) do
+        rd_style = Base.ScopedValues.with(_MAX_TASKS => Int(max_tasks)) do
             get_style(style)(postProcessor)
         end
         # Use the data to create the ResultData struct
-        rd = new(style.data)
+        rd = new(rd_style.data)
 
         # add unique ID
         if !haskey(rd.data, "meta_data")
