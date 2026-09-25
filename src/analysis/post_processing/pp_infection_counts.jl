@@ -38,8 +38,9 @@ clock starts) per pathogen.
 """
 function initial_infections(postProcessor::PostProcessor)
     pathogen_ids = _sorted_pathogen_ids(postProcessor)
-    all_c = _rows_per_pathogen(infectionsDF(postProcessor).pathogen_id, pathogen_ids)
-    sim_c = _rows_per_pathogen(sim_infectionsDF(postProcessor).pathogen_id, pathogen_ids)
+    infs = infectionsDF(postProcessor)
+    all_c = _rows_per_pathogen(infs.pathogen_id, pathogen_ids)
+    seed_c = _seed_rows_per_pathogen(infs.pathogen_id, infs.id_a, pathogen_ids)
     infected = all_c .> 0
-    return DataFrame(pathogen_id = pathogen_ids[infected], initial_infections = (all_c .- sim_c)[infected])
+    return DataFrame(pathogen_id = pathogen_ids[infected], initial_infections = seed_c[infected])
 end
