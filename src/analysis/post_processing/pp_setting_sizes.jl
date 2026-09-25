@@ -1,15 +1,8 @@
 export setting_sizes
 
-"""
-    _get_size(indivs, x::T, sim) where T
-
-Internal function barrier to efficiently calculate the number of individuals in a setting `x`. This resolves potential type instabilities when iterating over settings.
-"""
-function _get_size(indivs, x::T, sim) where T
-    empty!(indivs)
-    individuals!(indivs, x, sim)
-    return length(indivs)
-end
+# A countmap of the settings' sizes, counted without copying their members. A function barrier,
+# so the loop is compiled for the concrete setting type.
+_setting_size_counts(stngs::Vector, sim) = countmap(size(x, sim) for x in stngs)
 
 """ 
     setting_sizes(postProcessor::PostProcessor)
@@ -28,12 +21,10 @@ of the setting sizes.
 function setting_sizes(postProcessor::PostProcessor)
     dic = Dict()
     sim = simulation(postProcessor)
-    # own buffer: post processing steps may run concurrently
-    indivs = Individual[]
 
     for (type, stngs) in settings(sim)
         if !isempty(stngs)
-            dic[string(type)] = countmap(_get_size(indivs, x, sim) for x in stngs)
+            dic[string(type)] = _setting_size_counts(stngs, sim)
         end
     end
     return dic

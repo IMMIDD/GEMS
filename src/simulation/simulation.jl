@@ -25,7 +25,7 @@ export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export InfectionSeed, seeding_schedule
 export rng, rngs, seed
-export present_buffers, contact_buffers
+export contact_buffers
 
 export info
 
@@ -84,6 +84,7 @@ Here's a list of all available parameters:
 | `avg_office_size`         | `Float`                                | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
 | `avg_school_size`         | `Float`                                | Average school size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
 | `global_setting`          | `Bool`                                 | Flag indicating whether to use the global setting.                                                                                                                                |
+| `membershipsfile`         | `String`                               | Path to a CSV file holding settings beyond each type's primary (see `memberships`).                                                                                               |
 | `settingsfile`            | `String`                               | Path to a settings file.                                                                                                                                                          |
 | `household_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
 | `office_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
@@ -234,6 +235,14 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # TRANSMISSION PRE-THINNING
+    prethinning::Bool
+
+    # INFECTIOUS INDIVIDUALS
+    # who each thread's part of the disease-update sweep found infectious this tick; the
+    # transmission phase goes through exactly these
+    infectious_individuals::Vector{Vector{Individual}}
+
     # PER-INDIVIDUAL FLAGS
     # who the disease-update loop and state log must visit
     active_individuals::Vector{Bool}
@@ -241,10 +250,15 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     quarantined_individuals::Vector{Bool}
 
     # THREAD-LOCAL BUFFERS
-    present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
+    # one sampler call's draws, for scaled hosts that call a sampler more than once
+    draw_buffers::Vector{Vector{Individual}}
+    # who each thread's part of the disease-update sweep found dead this tick
+    newly_dead::Vector{Vector{Individual}}
     infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{_EndedInfection}}
+    # per shard, the attempt that wins each contested (host, pathogen) this tick
+    deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
 
     # inner default constructor
     function Simulation(
@@ -316,15 +330,23 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             seed,
             rngs,
 
+            # TRANSMISSION PRE-THINNING
+            all(_prethinnable, pathogens),
+            
+            # INFECTIOUS INDIVIDUALS
+            _thread_local_vector(Vector{Individual}),
+
             # PER-INDIVIDUAL FLAGS
             zeros(Bool, length(population.individuals)),
             zeros(Bool, length(population.individuals)),
-            
+
             # INITIALIZE BUFFERS
-            _thread_local_vector(Vector{Individual}), # present_buffers
             _thread_local_vector(Vector{Individual}), # contact_buffers
+            _thread_local_vector(Vector{Individual}), # draw_buffers
+            _thread_local_vector(Vector{Individual}), # newly_dead
             _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
-            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)) # removal buffers matrix
+            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)), # removal buffers matrix
+            _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards)) # deduplication winners
         )
 
         # increase simulation counter
@@ -383,6 +405,7 @@ function _BUILD_Simulation(;
         # settings
         global_setting = nothing,
         settingsfile = nothing,
+        membershipsfile = nothing,
 
         # contacts
         household_contacts = nothing,
@@ -419,6 +442,12 @@ function _BUILD_Simulation(;
         # seed
         seed = nothing,
 
+        # setting pool
+        pool_slack = nothing,
+
+        # transmission pre-thinning
+        transmission_prethinning = nothing,
+
         # individual extensions
         ind_extension = nothing
 )
@@ -446,7 +475,8 @@ function _BUILD_Simulation(;
         avg_school_size,
         settingsfile,
         rngs[1],
-        ind_extension
+        ind_extension;
+        membershipsfile = membershipsfile
     )
 
     # everything after this is just generating, not loading from disk
@@ -521,6 +551,9 @@ function _BUILD_Simulation(;
     )
 
     precompute_ags!(sim)
+    build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
+    determine_transmission_prethinning(config, transmission_prethinning) || (sim.prethinning = false)
+    _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
 
     # update label
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
@@ -929,9 +962,10 @@ end
 Determines the population and settings for the simulation based on the provided parameters.
 If a `population` string is provided, it will be used to load the population from a file or obtain remote files.
 If a `settingsfile` is provided, it will be used to load the settings from a file.
+If a `membershipsfile` is provided, the settings beyond each type's primary are read from it.
 If neither is provided, an error will be thrown.
 """
-function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing)
+function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing, membershipsfile = nothing)
     # if a path was provided, load the population from the file, otherwise assume it's a population identifier
     (pop_path, settings_path) = try
         is_pop_file(population) ? (population, settingsfile) : obtain_remote_files(population)
@@ -939,19 +973,16 @@ function determine_population(population::String, settingsfile, global_setting; 
         throw(ArgumentError("Provided population must be a valid population file path or a population model identifier (e.g., 'DE')!"))
     end
 
-    # the settings file does not depend on the population, so read it while the population is built
-    settings_read = nothing
     if !isnothing(settings_path)
         !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
-        settings_read = Threads.@spawn _read_settings_jld2(settings_path)
     end
 
-    pop = Population(pop_path; ind_extension = ind_extension)
+    pop = Population(pop_path; ind_extension = ind_extension, memberships = membershipsfile)
     settings, renaming = settings_from_population(pop, global_setting)
 
-    if !isnothing(settings_read)
+    if !isnothing(settings_path)
         _printinfo("\u2514 Loading settings from $(basename(settings_path))")
-        _add_jld2_settings!(_fetch_rethrow(settings_read), settings, renaming)
+        settings_from_jld2!(settings_path, settings, renaming)
     end
 
     return pop, settings
@@ -964,20 +995,20 @@ Determines the population and settings for the simulation based on the provided 
 If a `population` is provided, it will be used to load the population from a file or obtain remote files.
 If not, it will create a new population based on the provided parameters or config file parameters.
 """
-function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension)
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension; membershipsfile = nothing)
     # if population is provided, use it
     if !isnothing(population)
         # if a Population object is provided, use it
         if isa(population, Population)
             # throw warning if any other parameters were provided
-            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, and settingsfile will be ignored."
+            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, membershipsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, and membershipsfile will be ignored."
             if ind_extension isa AbstractVector{Symbol}
                 @warn """ind_extension as Vector{Symbol} requires the original DataFrame, which is not retained in a pre-built Population. Either:
                         - pass the DataFrame directly:  Simulation(population = df, ind_extension = ...)
                         - or apply it at construction:  Population(df; ind_extension = ...)"""
             elseif !isnothing(ind_extension)
                 # apply ind_extension to the population if provided
-                population = Population(dataframe(population); ind_extension = ind_extension) 
+                population = Population(dataframe(population); ind_extension = ind_extension, memberships = memberships(population)) 
             end
             settings, renaming = settings_from_population(population, global_setting)
             return population, settings
@@ -986,7 +1017,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         # if a DataFrame is provided, build the population from it directly
         if isa(population, DataFrame)
             !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A DataFrame was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
-            pop = Population(population; ind_extension = ind_extension)
+            pop = Population(population; ind_extension = ind_extension, memberships = membershipsfile)
             settings, renaming = settings_from_population(pop, global_setting)
             return pop, settings
         end
@@ -997,7 +1028,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
 
         # if a population file path is provided, load the population from the file
-        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension)
+        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension, membershipsfile = membershipsfile)
     end
 
     # if no population is provided, use the provided parameters
@@ -1211,6 +1242,43 @@ function determine_seed(configfile_params::Dict, seed)
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
     _printinfo("\u2514 Initializing RNG with seed $sd")
     return sd
+end
+
+"""
+    determine_pool_slack(configfile_params::Dict, pool_slack)
+
+Determines the headroom each setting pool block carries, as a fraction of its length.
+If a `pool_slack` is provided, it will be used.
+If not, it will look for `Simulation.pool_slack` in the config file.
+If neither is found, it defaults to `DEFAULT_POOL_SLACK`.
+"""
+function determine_pool_slack(configfile_params::Dict, pool_slack)
+    ps = pool_slack
+    if isnothing(ps)
+        _haspath(configfile_params, ["Simulation", "pool_slack"]) || return DEFAULT_POOL_SLACK
+        ps = configfile_params["Simulation"]["pool_slack"]
+    end
+    !isa(ps, Real) && throw(ArgumentError("Provided pool slack must be a non-negative number."))
+    ps < 0 && throw(ArgumentError("Provided pool slack must not be negative, got $ps."))
+    return Float64(ps)
+end
+
+"""
+    determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+
+Determines whether spreading thins contacts by the pathogens' transmission bounds.
+If a `transmission_prethinning` flag is provided, it will be used.
+If not, it will look for `Simulation.transmission_prethinning` in the config file.
+If neither is found, it defaults to `true`.
+"""
+function determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+    tp = transmission_prethinning
+    if isnothing(tp)
+        _haspath(configfile_params, ["Simulation", "transmission_prethinning"]) || return true
+        tp = configfile_params["Simulation"]["transmission_prethinning"]
+    end
+    !isa(tp, Bool) && throw(ArgumentError("transmission_prethinning flag must be a boolean value!"))
+    return tp
 end
 
 
@@ -1858,14 +1926,6 @@ function seed(simulation::Simulation)
     return simulation.seed
 end
 
-"""
-    present_buffers(simulation::Simulation)
-
-Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
-"""
-function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
-    return simulation.present_buffers
-end
 
 """
     contact_buffers(simulation::Simulation)
@@ -1874,6 +1934,19 @@ Returns the thread-local buffers for storing sampled contacts, used to eliminate
 """
 function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
     return simulation.contact_buffers
+end
+
+# Frees the capacity the per-tick buffers grew to during a run
+function _release_tick_buffers!(simulation::Simulation)
+    release!(buf) = sizehint!(buf, length(buf))
+    foreach(release!, simulation.infectious_individuals)
+    foreach(release!, simulation.contact_buffers)
+    foreach(release!, simulation.draw_buffers)
+    foreach(release!, simulation.newly_dead)
+    foreach(release!, simulation.infection_buffers)
+    foreach(release!, simulation.removal_buffers)
+    foreach(release!, simulation.deduplication_winners)
+    return nothing
 end
 
 """
@@ -1903,6 +1976,13 @@ Returns the population associated with the simulation run.
 function population(simulation::Simulation)
     return simulation.population
 end
+
+"""
+    activity_plans(simulation::Simulation)
+
+Returns the `ActivityPlanStore` holding every individual's setting memberships.
+"""
+@inline activity_plans(simulation::Simulation)::ActivityPlanStore = activity_plans(simulation.population)
 
 """
     populationDF(simulation::Simulation)
@@ -2384,6 +2464,16 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     fill!(simulation.active_individuals, false)
     fill!(simulation.quarantined_individuals, false)
     reset_tick!(simulation)
+
+    # the dead are alive again, so they return to their settings' frames
+    plans = activity_plans(simulation)
+    foreach_setting_vector(settingscontainer(simulation)) do vec
+        for s in vec
+            s isa IndividualSetting && _clear_deceased!(s, plans)
+        end
+    end
+    repack_dirty_pools!(settingscontainer(simulation))
+    foreach(empty!, simulation.newly_dead)
 
     # Reset all loggers
     pop = population(simulation)

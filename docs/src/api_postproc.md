@@ -72,4 +72,5 @@ total_quarantines(::PostProcessor)
 total_tests(::PostProcessor)
 weighted_error_sum
 weekly_county_incidence(postProcessor::PostProcessor)
+with_population_columns
 ```

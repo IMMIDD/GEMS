@@ -232,6 +232,15 @@ Boolean flag that adds a single setting containing all individuals of the simula
 ```
 Can be activated or deactivated with `true` or `false`.
 
+#### `transmission_prethinning`
+Boolean flag that thins sampled contacts by an upper bound on their infection probability before attempting infections. This saves work without changing the distribution of results, but not the random draws of a seeded run. Defaults to `true`.
+
+```toml
+[Simulation]
+    transmission_prethinning = true
+    ...
+```
+
 #### `startdate`
 Start date in a `YYYY-MM-DD` format (e.g. `2024-01-01`).
 

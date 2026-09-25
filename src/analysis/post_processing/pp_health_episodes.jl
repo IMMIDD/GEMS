@@ -36,7 +36,7 @@ function health_episodes(postProcessor::PostProcessor)
         return load_cache(postProcessor, "health_episodes")
     end
 
-    events = dataframe(healthlogger(simulation(postProcessor)))
+    events = healthDF(postProcessor)
 
     result = DataFrame(host_id = Int32[], care_level = Symbol[],
         admission_tick = Int16[], discharge_tick = Int16[])

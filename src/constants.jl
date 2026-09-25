@@ -8,8 +8,12 @@ const DEFAULT_PATHOGEN_ID = Int8(-1)
 const DEFAULT_VACCINE_ID = Int8(-1)
 const DEFAULT_TICK = Int16(-1)
 const DEFAULT_INFECTION_ID = Int32(-1)
+const DEFAULT_MEMBER_INDEX = Int32(-1)
 const DEFAULT_AGS = Int32(-1)
 const GLOBAL_SETTING_ID = Int32(1)
+# where a setting id is expected, stands for the individual's primary setting of the type;
+# real ids start at 1
+const PRIMARY_SETTING_ID = Int32(0)
 
 # start condition pathogen name meaning "every pathogen in the simulation"
 const ALL_PATHOGENS = "all"
@@ -134,7 +138,7 @@ const LOCALDATA_PATH = BASE_FOLDER = joinpath(dirname(dirname(pathof(GEMS))), "l
 const DEFAULT_CONFIGFILE::String = "data/DefaultConf.toml"
 
 # version of the population files, stored under their "version" key and tagged on their release
-const POP_DATA_VERSION = "3.1"
+const POP_DATA_VERSION = "3.2"
 # remote location of population files (ZIP)
 const popurl(identifier::String) = "https://github.com/Julian-Patzner/GEMS-Populations/releases/download/v$(POP_DATA_VERSION)/$(identifier).zip"
 # local location of population and setting files (JLD2)
@@ -164,7 +168,7 @@ const ENFORCE_SIM_RNGS = true
 # Concurrent post processing needs more memory; Lower POST_PROCESSING_MAX_TASKS if memory is a bottleneck.
 POST_PROCESSING_PARALLELISM = :builtin
 
-# how many post processing steps may run at the same time
+# how many post processing steps may run at the same time; the default of `ResultData`'s `max_tasks`
 POST_PROCESSING_MAX_TASKS = 4
 
 # if "true" the post processor stores result dataframes from individual function

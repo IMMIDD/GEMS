@@ -49,5 +49,6 @@ get_contacts
 mean_contacts_per_age_group
 membership_changed!
 sample_contacts!
+sample_thinned_contacts!
 setting_age_contacts
 ```

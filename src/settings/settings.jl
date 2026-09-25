@@ -7,10 +7,10 @@ export GlobalSetting, Household, Municipality, Setting
 export SchoolComplex, School, SchoolYear, SchoolClass
 export Department, Office, WorkplaceSite, Workplace
 export settingchar, settingstring
-export contact_sampling_method, contact_sampling_method!
+export ContactSamplingMethod, contact_sampling_method, contact_sampling_method!
 export add!, remove!
+export add_member!, remove_member!, mark_deceased!
 export id, individuals
-export activate!, deactivate!, isactive
 export open!, close!
 
 ###
@@ -38,6 +38,20 @@ Supertype for all simulation settings which act as containers of settings.
 """
 abstract type ContainerSetting <: Setting end
 
+"""
+    ContactSamplingMethod
+
+Supertype for all contact sampling methods. This type is intended to be extended by providing different sampling methods suitable for the structure of the simulation model.
+
+Implement `sample_contacts!` for your subtype. Its `present_inds` argument is a view of the
+setting's real members, not a scratch buffer: writing to it edits membership. Read only, and
+write results into `indivs`.
+
+Simulations often keep only a share of the sampled contacts. Optionally implement
+`sample_thinned_contacts!` to skip the dropped ones before drawing them.
+"""
+abstract type ContactSamplingMethod end
+
 ###
 ### GLOBALSETTING
 ###
@@ -53,21 +67,29 @@ There should only be one `GlobalSetting` instance in any simulation.
 
 - `individuals::Vector{Individual}`: List of associated individuals
 - `contact_sampling_method::ContactSamplingMethod`: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool`: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool`: Whether the setting is open for contacts.
     conditions
+- `flat_pool`, `offset`, `len`, `cap` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
+    in `cap` slots of that pool.
 """
-@with_kw mutable struct GlobalSetting <: IndividualSetting
-    id::Int32 = GLOBAL_SETTING_ID # ONLY ONE GLOBALSETTING SHOULD EXIST!!!
-    individuals::Vector{Individual} = Vector{Individual}()
-    contact_sampling_method::ContactSamplingMethod   
-    ags::AGS= AGS() # 4 bytes
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(true)
+mutable struct GlobalSetting <: IndividualSetting
+    id::Int32 # ONLY ONE GLOBALSETTING SHOULD EXIST!!!
+    # this setting's slots of flat_pool.members, its members in the first len
+    offset::Int32
+    len::Int32
+    cap::Int32
+    flat_pool::FlatSettingPool
+    contact_sampling_method::ContactSamplingMethod
+    ags::AGS # 4 bytes
 
     # if closed, no contacts can happen here
-    isopen::Bool = true
+    isopen::Bool
+end
+
+function GlobalSetting(; id = GLOBAL_SETTING_ID, individuals = nothing, flat_pool = nothing, offset = 1, len = 0,
+        cap = len, contact_sampling_method::ContactSamplingMethod, ags = AGS(), isopen = true)
+    flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
+    return GlobalSetting(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen)
 end
 
 ###
@@ -94,32 +116,46 @@ h2 = Household(id = 2, individuals = [i1, i2, i3])
 - `individuals::Vector{Individual} = []` *(optional)*: List of associated individuals
 - `income::Int8 = -1` *(optional)*: Category of income for the household
 - `dwelling::Int8 = -1  *(optional)*`: Category of dwelliung size
-- `last_infectious::Int16 = -1` *(optional)*: Tick indicating the last presence of an infected individual
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the Household.
 - `lon::Float32 = NaN` *(optional)*: Longitude of the household
 - `lat::Float32 = NaN`: Latitude of the household
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `flat_pool`, `offset`, `len`, `cap` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
+    in `cap` slots of the pool all households share.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
-@with_kw mutable struct Household <: Geolocated
-    id::Int32 # 4 bytes
-    individuals::Vector{Individual} = Vector{Individual}() # 40 + n*8 bytes
-    income::Int8 = -1 # 1 byte
-    dwelling::Int8 = -1 # 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
-    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
-    ags::AGS= AGS() # 4 bytes
-    lon::Float32 = NaN # 4 bytes
-    lat::Float32 = NaN # 4 bytes
-
-
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
+mutable struct Household <: Geolocated
+    # ordered so the object stays at 56 bytes, in the 64-byte size class
+    id::Int32
+    # this setting's slots of flat_pool.members, its members in the first len
+    offset::Int32
+    len::Int32
+    cap::Int32
+    # members at the end of `individuals` who have died
+    deceased::Int32
+    ags::AGS
+    flat_pool::FlatSettingPool
+    contact_sampling_method::ContactSamplingMethod
+    lon::Float32
+    lat::Float32
+    # upper bound on its members' scales
+    scale_bound::Float32
+    income::Int8
+    dwelling::Int8
 
     # if closed, no contacts can happen here
-    isopen::Bool = true
+    isopen::Bool
+end
+
+function Household(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0, cap = len, income = -1,
+        dwelling = -1, contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0), ags = AGS(),
+        lon = NaN, lat = NaN, isopen = true, scale_bound = 1, deceased = 0)
+    flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
+    return Household(id, offset, len, cap, deceased, ags, flat_pool, contact_sampling_method, lon, lat, scale_bound,
+        income, dwelling, isopen)
 end
 
 ###
@@ -146,20 +182,53 @@ m2 = Municipality(id = 2, individuals = [i1, i2, i3])
 - `individuals::Vector{Individual} = []` *(optional)*: List of associated individuals
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the municipality.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `flat_pool`, `offset`, `len`, `cap` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
+    in `cap` slots of the pool all municipalities share.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
-@with_kw mutable struct Municipality <: IndividualSetting
+mutable struct Municipality <: IndividualSetting
     id::Int32 # 4 bytes // Municipality identifier
-    individuals::Vector{Individual} = [] # 40 + n*8 bytes // List of associated individuals
-    contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
-    ags::AGS= AGS() # 4 bytes
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
+    # this setting's slots of flat_pool.members, its members in the first len
+    offset::Int32
+    len::Int32
+    cap::Int32
+    flat_pool::FlatSettingPool
+    contact_sampling_method::ContactSamplingMethod
+    ags::AGS # 4 bytes
     # if closed, no contacts can happen here
-    isopen::Bool = true
+    isopen::Bool
+
+    # upper bound on its members' scales
+    scale_bound::Float32
+    # members at the end of `individuals` who have died
+    deceased::Int32
 end
+
+function Municipality(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0, cap = len,
+        contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0), ags = AGS(), isopen = true,
+        scale_bound = 1, deceased = 0)
+    flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
+    return Municipality(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen, scale_bound, deceased)
+end
+
+# The settings no container holds. Each keeps its members in slots of its type's FlatSettingPool.
+const FlatSetting = Union{GlobalSetting, Household, Municipality}
+
+# What a flat setting's keyword constructor stores: its own `individuals` in a pool of their own,
+# or slots of a shared pool.
+function _flat_storage(individuals, flat_pool, offset, len, cap)
+    if flat_pool === nothing
+        pool = FlatSettingPool(individuals === nothing ? Individual[] : individuals)
+        return pool, 1, length(pool.members), length(pool.members)
+    end
+    individuals === nothing || throw(ArgumentError("pass either `individuals` or `flat_pool`, not both"))
+    return flat_pool, offset, len, cap
+end
+
+# The default would print the whole pool
+Base.show(io::IO, s::FlatSetting) = print(io, nameof(typeof(s)), "(id = ", id(s), ", ", s.len, " individuals)")
 
 ###
 ### SCHOOLCLASS
@@ -183,34 +252,50 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 # Parameters
 
 - `id::Int32`: Unique identifier of the school class
-- `individuals::Vector{Individual} = []` *(optional)*: List of associated individuals
 - `type::Int32 = -1` *(optional)*: Type of school class (e.g. grade)
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`SchoolYear`)
-- `last_infectious::Int16 = -1` *(optional)*: Tick indicating the last presence of an infected individual
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
 - `ags::Int32 = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the schoolclass.
 - `lon::Float32 = NaN` *(optional)*: Longitude of the schoolclass
 - `lat::Float32 = NaN` *(optional)*: Latitude of the schoolclass
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `pool` *(internal)*: The hierarchy's shared member storage. Members are held there rather
+    than in this setting, so its containers can address them without a copy.
+- `pool_offset`, `pool_length` *(internal)*: Where this setting's members sit in that pool.
+    `individuals(s)` is a view of exactly that span.
+- `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
+    finds the block it has to dirty.
+- `individuals::Vector{Individual} = []` *(optional)*: The members, held here until the pool is built
+    and while an edit waits for a repack, `nothing` otherwise. Read them with `individuals(s)`.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct SchoolClass <: Geolocated
     id::Int32 # 4 bytes
-    individuals::Vector{Individual} = [] # 40 + n*8 bytes
     type::Int32 = -1 # 1 byte
     contained::Int32 = DEFAULT_SETTING_ID # 4 bytes
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     lon::Float32 = NaN # 4 bytes
     lat::Float32 = NaN # 4 bytes
 
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # index in pool.leaves, so an edit finds the block it dirties without a search
+    pool_leaf::Int32 = 0
+    # the members until the pool is built, or while an edit waits for a repack; nothing otherwise
+    individuals::Union{Nothing, Vector{Individual}} = Vector{Individual}()
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on its members' scales
+    scale_bound::Float32 = 1
+    # members at the end of `individuals` who have died
+    deceased::Int32 = 0
+
 end
 
 ###
@@ -239,8 +324,15 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`School`)
 - `type::Int32 = -1` *(optional)*: Type of school year (e.g. grade)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
+    leaf below this container.
+- `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
+    members. A container stores no members itself, so `present_members` hands back this span
+    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
+    below is closed or deceased, `nothing` when the span already covers each present member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolYear <: ContainerSetting
     id::Int32 # 4 bytes
@@ -250,11 +342,18 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
 
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # set when a member sits in two leaves below or something below is closed or deceased
+    pool_runs::Union{Nothing, MemberRuns} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
+
 end
 
 ###
@@ -282,8 +381,15 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*:  Parent setting id (`SchoolComplex`)
 - `type::Int32 = -1` *(optional)*: Type of school (e.g. primary, highschool, ...)
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
+    leaf below this container.
+- `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
+    members. A container stores no members itself, so `present_members` hands back this span
+    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
+    below is closed or deceased, `nothing` when the span already covers each present member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct School <: ContainerSetting
     id::Int32 # 4 bytes
@@ -292,11 +398,18 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     type::Int32 = -1# 1 byte
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # set when a member sits in two leaves below or something below is closed or deceased
+    pool_runs::Union{Nothing, MemberRuns} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
+
 end
 
 ###
@@ -322,8 +435,15 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 - `id::Int32`: Unique identifier of the school complex
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `School`s
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: A flag to represent if the setting is considered active for simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
+    leaf below this container.
+- `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
+    members. A container stores no members itself, so `present_members` hands back this span
+    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
+    below is closed or deceased, `nothing` when the span already covers each present member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolComplex <: ContainerSetting
     id::Int32 # 4 bytes
@@ -332,11 +452,18 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
 
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # set when a member sits in two leaves below or something below is closed or deceased
+    pool_runs::Union{Nothing, MemberRuns} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
+
 end
 
 ###
@@ -363,24 +490,36 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 - `id::Int32`: Unique identifier of the workplace.
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Workplace`s
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace site.
-- `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*: Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: Whether the workplace is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
+    leaf below this container.
+- `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
+    members. A container stores no members itself, so `present_members` hands back this span
+    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
+    below is closed or deceased, `nothing` when the span already covers each present member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct WorkplaceSite <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     type::Int32 = -1# 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
 
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # set when a member sits in two leaves below or something below is closed or deceased
+    pool_runs::Union{Nothing, MemberRuns} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
+
 end
 
 """
@@ -404,25 +543,37 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Department`s
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`WorkplaceSite`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of workplace (e.g., farm, office).
-- `last_infectious::Int16 -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: Whether the workplace is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
+    leaf below this container.
+- `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
+    members. A container stores no members itself, so `present_members` hands back this span
+    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
+    below is closed or deceased, `nothing` when the span already covers each present member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Workplace <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1 # 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # set when a member sits in two leaves below or something below is closed or deceased
+    pool_runs::Union{Nothing, MemberRuns} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
+
 end
 
 """
@@ -446,28 +597,40 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 - `contains::Vector{Int32} = []` *(optional)*: List of associated `Office`s
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`Workplace`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of department.
-- `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present.
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn.
-- `isactive::Bool = false` *(optional)*: Whether the department is active in the simulation.
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts.
+- `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
+    leaf below this container.
+- `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
+    members. A container stores no members itself, so `present_members` hands back this span
+    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
+    below is closed or deceased, `nothing` when the span already covers each present member once.
+- `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Department <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1# 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
 
     
     
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # set when a member sits in two leaves below or something below is closed or deceased
+    pool_runs::Union{Nothing, MemberRuns} = nothing
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on the scales of the members below, refreshed with the span
+    scale_bound::Float32 = 1
+
 end
 
 
@@ -489,11 +652,9 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 # Parameters
 
 - `id::Int32`: Unique identifier of the office.
-- `individuals::Vector{Individual} = []` *(optional)*: List of individuals associated with this office
 - `contained::Int32 = DEFAULT_SETTING_ID` *(optional)*: Parent setting id (`Department`) 
 - `contained_type::DataType = Department` *(optional)*: Parent setting tye (`Department`)
 - `type::Int32 = -1` *(optional)*: Numerical code representing the type of office
-- `last_infectious::Int16 = -1` *(optional)*: The last simulation tick when an infectious individual was present
 - `contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)` *(optional)*:
     Sampling Method, defining how contacts are drawn
 - `ags::AGS = AGS()` *(optional)*: The Amtlicher Gemeindeschlüssel (AGS) of the office
@@ -501,15 +662,22 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 - `workhome::Int8 = -1` *(optional)*: Describes the amount of work done from home
 - `lon::Float32 = NaN` *(optional)*: Longitude of the office
 - `lat::Float32 = NaN` *(optional)*: Latitude of the office
-- `isactive::Bool = false` *(optional)*: Whether the office is active in the simulation
 - `isopen::Bool = true` *(optional)*: Whether the setting is open for contacts
+- `pool` *(internal)*: The hierarchy's shared member storage. Members are held there rather
+    than in this setting, so its containers can address them without a copy.
+- `pool_offset`, `pool_length` *(internal)*: Where this setting's members sit in that pool.
+    `individuals(s)` is a view of exactly that span.
+- `pool_leaf` *(internal)*: This setting's index in `pool.leaves`, which is how a member edit
+    finds the block it has to dirty.
+- `individuals::Vector{Individual} = []` *(optional)*: The members, held here until the pool is built
+    and while an edit waits for a repack, `nothing` otherwise. Read them with `individuals(s)`.
+- `scale_bound` *(internal)*: Upper bound on its members' scales.
+- `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
 @with_kw mutable struct Office <: Geolocated
     id::Int32 # 4 bytes
-    individuals::Vector{Individual} = Vector{Individual}() # 40 + n*8 bytes
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1# 1 byte
-    last_infectious::Int16 = -1 # 2 bytes
     contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS= AGS() # 4 bytes
     inroom::Int8 = -1 # 1 byte
@@ -518,11 +686,22 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     lat::Float32 = NaN # 4 bytes
 
 
-    # active settings approach
-    isactive::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
-
     # if closed, no contacts can happen here
     isopen::Bool = true
+
+    # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
+    pool_offset::Int32 = 0
+    pool_length::Int32 = 0
+    # index in pool.leaves, so an edit finds the block it dirties without a search
+    pool_leaf::Int32 = 0
+    # the members until the pool is built, or while an edit waits for a repack; nothing otherwise
+    individuals::Union{Nothing, Vector{Individual}} = Vector{Individual}()
+    pool::Union{Nothing, HierarchicalSettingPool} = nothing
+    # upper bound on its members' scales
+    scale_bound::Float32 = 1
+    # members at the end of `individuals` who have died
+    deceased::Int32 = 0
+
 end
 ###
 ### SETTING UTILS
@@ -608,7 +787,7 @@ end
 ###
 #   You can override the functions for different settings, but this is the default behaviour   
 #   A Setting should thus have the following fields by default
-#       id, individuals, infected_individuals, isactive
+#       id, individuals, contact_sampling_method, isopen
 
 """
     id(setting::Setting)
@@ -639,80 +818,127 @@ function contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
 end
 
 """
-    add_member!(setting::IndividualSetting, individual::Individual)
+    add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false, scale::Real = 1.0)
 
-Adds the given individual to the setting and records the membership on the individual.
-`setting_id!` is a no-op for setting types without an id field on `Individual` (`GlobalSetting`).
-
+Adds the given individual to the setting and the matching entry at `scale` to their activity
+plan, as their primary setting of that type if `primary`. Throws if they already belong to it.
 Must not be called while the threaded transmission phase is running.
 """
-function add_member!(setting::IndividualSetting, individual::Individual)
-    push!(setting.individuals, individual)
-    setting_id!(individual, typeof(setting), id(setting))
+function add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false, scale::Real = 1.0)
+    plans = activity_plans(pop)
+    # checked before the member list is touched, so a refusal leaves both sides as they were
+    plan_slot(plans, individual, typeof(setting), id(setting)) == 0 || throw(ArgumentError(
+        "individual $(id(individual)) is already a member of $(typeof(setting)) $(id(setting))"))
+    _store_member!(setting, individual, plans)
+    plan_add!(plans, individual,
+              PlanEntry(typeof(setting), id(setting), length(individuals(setting)), scale); primary = primary)
+    # a newcomer joins the living members, ahead of the deceased
+    _deceased(setting) > 0 && _swap_members!(setting, length(individuals(setting)), _alive(setting), plans)
+    # the bound must use the scale as rounded into the entry's Float16
+    stored = Float32(Float16(scale))
+    stored > _scale_bound(setting) && _set_scale_bound!(setting, stored)
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
 
 """
-    remove_member!(setting::IndividualSetting, individual::Individual)
+    remove_member!(setting::IndividualSetting, individual::Individual, pop::Population)
 
-Removes the given individual from the setting and clears the membership on the individual.
-Does nothing if it is not a member.
-
-The member is swapped with the last element, so member order is not preserved.
-
-Must not be called while the threaded transmission phase is running.
+Removes the given individual from the setting and their matching plan entry, or does nothing
+if they are not a member. Must not be called while the threaded transmission phase is running.
 """
-function remove_member!(setting::IndividualSetting, individual::Individual)
-    inds = setting.individuals
-    idx = findfirst(i -> i === individual, inds)
+function remove_member!(setting::IndividualSetting, individual::Individual, pop::Population)
+    plans = activity_plans(pop)
+    members = individuals(setting)
+    idx = findfirst(i -> i === individual, members)
     isnothing(idx) && return nothing
+    if _is_deceased(setting, idx)
+        _add_deceased!(setting, -1)
+    elseif _deceased(setting) > 0
+        # swap-with-last would pull a deceased member forward, so move to the last living slot first
+        _swap_members!(setting, idx, _alive(setting), plans)
+        idx = _alive(setting)
+    end
+    # the member that swap-with-last will move into `idx`
+    displaced = @inbounds members[end]
+    _unstore_member!(setting, individual, idx, plans)
 
-    @inbounds inds[idx] = inds[end]
-    pop!(inds)
-    setting_id!(individual, typeof(setting), DEFAULT_SETTING_ID)
+    T = typeof(setting)
+    sid = id(setting)
+    slot = plan_slot(plans, individual, T, sid)
+    slot != 0 && plan_remove!(plans, individual, slot)
+    if displaced !== individual
+        dslot = plan_slot(plans, displaced, T, sid)
+        dslot != 0 && plan_set_member_index!(plans, dslot, idx)
+    end
+    # the removed member may have held the bound
+    _scale_bound(setting) > 1 && _refresh_scale_bound!(plans, setting)
     membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
 
 """
-    isactive(setting::Setting)
+    mark_deceased!(setting::IndividualSetting, individual::Individual, pop::Population)
 
-Returns whether the setting is considered active for simulation, e.g. an infection could
-spread in the setting.
+Takes a member out of the setting's contacts but keeps the membership. Does nothing if they
+are not a member or have already been marked.
 """
-function isactive(setting::Setting)::Bool
-    return setting.isactive[]
-end
-
-"""
-    activate!(setting::Setting)
-
-Sets the setting active for simulation.
-"""
-function activate!(setting::Setting)
-    if hasproperty(setting, :contains) || setting |> individuals |> length > 1
-        Threads.atomic_xchg!(setting.isactive, true)
-    end
-end
-
-"""
-    deactivate!(setting::Setting)
-
-Sets the setting as inactive for simulation.
-"""
-function deactivate!(setting::Setting)
-    Threads.atomic_xchg!(setting.isactive, false)
-end
-
-"""
-    deactivate!(setting::GlobalSetting)
-
-Deactivating GlobalSetting is a no-op
-"""
-function deactivate!(setting::GlobalSetting)
+function mark_deceased!(setting::T, individual::Individual, pop::Population) where {T<:IndividualSetting}
+    hasfield(T, :deceased) || return nothing
+    plans = activity_plans(pop)
+    _check_indexed(plans)
+    slot = plan_slot(plans, individual, T, id(setting))
+    slot == 0 && return nothing
+    idx = Int(member_index(@inbounds plans.entries[slot]))
+    _is_deceased(setting, idx) && return nothing
+    _swap_members!(setting, idx, _alive(setting), plans)
+    _add_deceased!(setting, 1)
+    # the deceased member may have held the bound
+    _scale_bound(setting) > 1 && _refresh_scale_bound!(plans, setting)
+    membership_changed!(contact_sampling_method(setting), setting)
     return nothing
 end
+
+# Swaps two members and repoints their plan entries.
+function _swap_members!(s::T, i::Int, j::Int, plans) where {T<:IndividualSetting}
+    i == j && return nothing
+    v = individuals(s)
+    @inbounds a, b = v[i], v[j]
+    @inbounds v[i], v[j] = b, a
+    sa = plan_slot(plans, a, T, id(s))
+    sa == 0 || plan_set_member_index!(plans, sa, j)
+    sb = plan_slot(plans, b, T, id(s))
+    sb == 0 || plan_set_member_index!(plans, sb, i)
+    return nothing
+end
+
+# returns the deceased to the setting's frame, for a simulation that is reset
+function _clear_deceased!(s::IndividualSetting, plans)
+    _deceased(s) == 0 && return nothing
+    _add_deceased!(s, -_deceased(s))
+    _refresh_scale_bound!(plans, s)
+    membership_changed!(contact_sampling_method(s), s)
+    return nothing
+end
+
+# changes the deceased count, dirtying the pool so its frames follow
+function _add_deceased!(s::IndividualSetting, n::Int)
+    s.deceased += Int32(n)
+    pool = _pool(s)
+    if pool !== nothing
+        pool.deceased += n
+        _mark_dirty!(pool, s)
+    end
+    return nothing
+end
+
+# The GlobalSetting is the whole population by definition, so its membership is not editable -
+# and an individual holds no plan entry for it, since `setting_id` answers from the constant.
+add_member!(::GlobalSetting, ::Individual, ::Population; primary::Bool = false, scale::Real = 1.0) =
+    throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
+remove_member!(::GlobalSetting, ::Individual, ::Population) =
+    throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
+
 
 """
     contains(setting::ContainerSetting)
@@ -778,14 +1004,28 @@ trait on `typeof(setting)`.
 """
 contained_type(setting::Setting) = contained_type(typeof(setting))
 
+# The individual-setting type at the bottom of `T`'s hierarchy, `T` itself for an individual setting.
+_leaf_type(::Type{T}) where {T<:IndividualSetting} = T
+_leaf_type(::Type{T}) where {T<:ContainerSetting} = _leaf_type(contains_type(T))
+
 """
     individuals(setting::IndividualSetting)
 
-Returns the individuals associated with the given setting.
+Returns the individuals associated with the given setting, as a view of wherever they are stored.
 """
-function individuals(setting::IndividualSetting)::Vector{Individual}
-    return setting.individuals
+function individuals(setting::IndividualSetting)
+    v = setting.individuals
+    # a view in both cases: a union return would box the view it builds
+    v === nothing || return view(v, 1:length(v))
+    # a pooled leaf holds no members itself unless an edit detached them
+    lo = Int(setting.pool_offset)
+    return view((setting.pool::HierarchicalSettingPool).members, lo:(lo + Int(setting.pool_length) - 1))
 end
+
+individuals(s::FlatSetting) = view(s.flat_pool.members, _flat_range(s))
+
+# the setting's positions in its flat pool
+_flat_range(s::FlatSetting) = Int(s.offset):(Int(s.offset) + Int(s.len) - 1)
 
 
 Base.size(setting::IndividualSetting) = setting |> individuals |> length
@@ -794,53 +1034,131 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 ### CREATION OF SETTINGS
 
 """
-    construct_and_add_settings!(container_vec::Vector, pairs::Vector{Tuple{Int32, Individual}}, settingtype::Type{T}, default_sampling) where {T <: Setting}
+    construct_and_add_settings!(container_vec::Vector, members::Vector{Individual}, starts::Vector{Int32}, ids::AbstractVector{Int32}, settingtype::Type{T}, plans, flat, default_sampling) where {T <: Setting}
 
-Helper function to construct settings from a sorted list of ID-Individual pairs without dynamic dispatch.
+Helper function to construct the settings `_place_members!` laid out, in ascending id order and
+without dynamic dispatch: the setting with id `ids[k]` holds `members[starts[k]:(starts[k + 1] - 1)]`,
+in the flat pool `flat` or in a vector of its own, and ids without members get no setting. Sets
+each entry's `member_index` and each setting's scale bound on the way, since pooling keeps a
+leaf's member order.
 """
 function construct_and_add_settings!(
     container_vec::Vector,
-    pairs::Vector{Tuple{Int32, Individual}},
+    members::Vector{Individual},
+    starts::Vector{Int32},
+    ids::AbstractVector{Int32},
     settingtype::Type{T},
+    plans::AbstractActivityPlanStore,
+    flat::Union{Nothing, FlatSettingPool},
     default_sampling
 ) where {T <: Setting}
-    n = length(pairs)
+    n = length(ids)
+    n == 0 && return nothing
 
-    # Pre-calculate the number of unique settings to avoid push! reallocations
-    if n > 0
-        num_unique = 1
-        for k in 2:n
-            if pairs[k][1] != pairs[k-1][1]
-                num_unique += 1
-            end
+    # chunks of the ids; settings per chunk, counted in parallel, give each chunk the position of
+    # its first setting
+    nchunks = min(n, 8 * Threads.nthreads())
+    step = cld(n, nchunks)
+    nsettings = zeros(Int, nchunks + 1)
+    Threads.@threads for c in 1:nchunks
+        m = 0
+        @inbounds for k in ((c - 1) * step + 1):min(c * step, n)
+            starts[k + 1] > starts[k] && (m += 1)
         end
-        # Pre-allocate the memory needed
-        sizehint!(container_vec, length(container_vec) + num_unique)
+        @inbounds nsettings[c + 1] = m
     end
+    # read through an abstract slot, so every setting stores this one box instead of boxing its own
+    sampling = Ref{ContactSamplingMethod}(default_sampling)
+    nsettings[1] = length(container_vec) + 1
+    cumsum!(nsettings, nsettings)
+    resize!(container_vec, nsettings[end] - 1)
 
-    i = 1
-    # Iterate through the sorted pairs
-    while i <= n
-        current_id = pairs[i][1]
+    Threads.@threads for c in 1:nchunks
+        @inbounds _construct_settings_chunk!(container_vec, members, starts, ids, settingtype, plans, sampling, flat,
+            ((c - 1) * step + 1):min(c * step, n), nsettings[c])
+    end
+    return nothing
+end
 
-        # Find the block of individuals sharing this ID
-        j = i
-        while j <= n && pairs[j][1] == current_id
+# Builds the settings of `ids[ks]` from `container_vec[at]`, setting member indices and scale bounds.
+function _construct_settings_chunk!(container_vec::Vector, members::Vector{Individual}, starts::Vector{Int32},
+        ids::AbstractVector{Int32}, settingtype::Type{T}, plans::AbstractActivityPlanStore,
+        sampling::Base.RefValue{ContactSamplingMethod}, flat::Union{Nothing, FlatSettingPool}, ks::UnitRange{Int},
+        at::Int) where {T <: Setting}
+    tidx = setting_type_index(T)
+    @inbounds for k in ks
+        lo = Int(starts[k])
+        hi = Int(starts[k + 1]) - 1
+        hi < lo && continue
+        sid = ids[k]
+
+        bound = 1.0f0
+        for pos in lo:hi
+            # an individual holds one entry per setting, so the setting id finds it
+            slot = _entry_slot(plans, members[pos], tidx, sid)
+            plan_set_member_index!(plans, slot, pos - lo + 1)
+            bound = max(bound, Float32(entry_scale(plans.entries[slot])))
+        end
+
+        setting = _make_setting(settingtype, sid, members, lo, hi, flat, sampling[])
+        hasfield(T, :scale_bound) && (setting.scale_bound = bound)
+        container_vec[at] = setting
+        at += 1
+    end
+    return nothing
+end
+
+_new_flat_pool(::Type{<:FlatSetting}, n::Int) = FlatSettingPool(Vector{Individual}(undef, n))
+_new_flat_pool(::Type{<:Setting}, ::Int) = nothing
+
+# A setting holding `members[lo:hi]`: at those same positions of the flat pool, which `members`
+# is, or in a vector of its own.
+_make_setting(::Type{T}, sid::Int32, ::Vector{Individual}, lo::Int, hi::Int,
+        flat::FlatSettingPool, csm::ContactSamplingMethod) where {T <: Setting} =
+    T(id = sid, flat_pool = flat, offset = lo, len = hi - lo + 1, contact_sampling_method = csm)
+
+_make_setting(::Type{T}, sid::Int32, members::Vector{Individual}, lo::Int, hi::Int,
+        ::Nothing, csm::ContactSamplingMethod) where {T <: Setting} =
+    T(id = sid, individuals = members[lo:hi], contact_sampling_method = csm)
+
+# Lays out the individuals' type-`T` entries by setting, a counting sort that places the individuals
+# directly: the setting with id `ids[k]` gets `members[starts[k]:(starts[k + 1] - 1)]`, in individual
+# and plan order. `ids` is sorted, so a setting's position `k` is `searchsortedfirst(ids, sid)`.
+# `parts[c]` holds the setting ids of chunk `c`'s entries and is overwritten on the way. Only the
+# passes that fix the order run serially, over these ids rather than the individuals.
+function _place_members!(members::Vector{Individual}, starts::Vector{Int32}, ids::AbstractVector{Int32},
+        parts::Vector{Vector{Int32}}, plans::AbstractActivityPlanStore, inds::Vector{Individual},
+        chunks::Vector{UnitRange{Int}}, ::Type{T}) where {T <: Setting}
+    # each entry's setting id becomes its setting's position; each setting's member count, one
+    # position ahead, is summed into each setting's first position
+    @inbounds for part in parts, j in eachindex(part)
+        k = searchsortedfirst(ids, part[j])
+        part[j] = k
+        starts[k + 1] += 1
+    end
+    starts[1] = 1
+    cumsum!(starts, starts)
+    # each entry's setting position becomes its place in `members`; each start advances past its
+    # entries, ending on the next setting's start
+    @inbounds for part in parts, j in eachindex(part)
+        k = part[j]
+        part[j] = starts[k]
+        starts[k] += 1
+    end
+    # so move every start back by one setting
+    @inbounds for k in (length(starts) - 1):-1:2
+        starts[k] = starts[k - 1]
+    end
+    starts[1] = 1
+    # the chunks place their individuals in parallel, walking their entries in the same order
+    Threads.@threads for c in eachindex(chunks)
+        j = 1
+        @inbounds for i in chunks[c], _ in plan_slots(plans, inds[i], T)
+            members[parts[c][j]] = inds[i]
             j += 1
         end
-
-        # Exact pre-allocation for the members array
-        count = j - i
-        members = Vector{Individual}(undef, count)
-        for k in 0:(count-1)
-            members[k+1] = pairs[i+k][2]
-        end
-        
-        setting = settingtype(id=current_id, individuals=members, contact_sampling_method=default_sampling)
-        push!(container_vec, setting)
-        
-        i = j # Move to the next unique ID
     end
+    return nothing
 end
 
 """
@@ -863,100 +1181,97 @@ function settings_from_population(population::Population, global_setting::Bool =
     end
 
     inds = individuals(population)
-    max_inds = length(inds)
 
-    # Buffers are allocated once and reused across every setting type
-    pairs_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
-    # Pre-allocate another buffer for Counting Sort
-    sorted_buffer = Vector{Tuple{Int32, Individual}}(undef, max_inds)
+    # chunks of individuals every type scans its entries in
+    chunks = _thread_chunks(eachindex(inds))
 
     for stngType in stngtypes
-        _settings_for_type!(settings, renaming, stngType, inds, pairs_buffer, sorted_buffer, default_sampling)
+        # everyone is in the one GlobalSetting, so it is built here rather than from plan entries
+        if stngType === GlobalSetting
+            _build_global_setting!(settings, inds, default_sampling)
+        else
+            _settings_for_type!(settings, renaming, stngType, population, inds, chunks, default_sampling)
+        end
     end
 
     return settings, renaming
 end
 
-"""
-    _settings_for_type!(settings, renaming, ::Type{T}, inds, pairs_buffer, sorted_buffer, default_sampling) where {T <: Setting}
+# The GlobalSetting holds every individual under the constant id; nobody carries a plan entry
+# for it. An empty population gets none, as when it was built from pairs.
+function _build_global_setting!(settings, inds::Vector{Individual}, default_sampling)
+    isempty(inds) && return nothing
+    add_type!(settings, GlobalSetting)
+    add!(settings, GlobalSetting(id = GLOBAL_SETTING_ID, individuals = copy(inds),
+        contact_sampling_method = default_sampling))
+    return nothing
+end
 
-Function barrier for the per-type body of [`settings_from_population`](@ref): with `T` static,
-`setting_id(ind, T)` resolves to an inlined `Int32` field load instead of a dynamic dispatch,
-keeping the per-individual loops allocation-free.
+
+# Collects the setting id of each type-`T` entry in `r` into `sids`, in individual and plan order;
+# returns the smallest and largest.
+function _collect_setting_ids!(sids::Vector{Int32}, plans::AbstractActivityPlanStore, inds::Vector{Individual},
+                               r::UnitRange{Int}, ::Type{T}) where {T <: Setting}
+    # most types hold at most one entry per individual
+    sizehint!(sids, length(r))
+    min_id = typemax(Int32)
+    max_id = typemin(Int32)
+    @inbounds for i in r, slot in plan_slots(plans, inds[i], T)
+        sid = setting_id(plans.entries[slot])
+        push!(sids, sid)
+        min_id = min(min_id, sid)
+        max_id = max(max_id, sid)
+    end
+    return min_id, max_id
+end
+
+"""
+    _settings_for_type!(settings, renaming, ::Type{T}, population, inds, chunks, default_sampling) where {T <: Setting}
+
+Function barrier for the per-type body of [`settings_from_population`](@ref), keeping the
+per-individual loops type-stable and allocation-free.
 """
 function _settings_for_type!(
     settings,
     renaming::Dict,
     ::Type{T},
+    population::Population,
     inds::Vector{Individual},
-    pairs_buffer::Vector{Tuple{Int32, Individual}},
-    sorted_buffer::Vector{Tuple{Int32, Individual}},
+    chunks::Vector{UnitRange{Int}},
     default_sampling
 ) where {T <: Setting}
 
-    max_inds = length(inds)
-    resize!(pairs_buffer, max_inds)
+    plans = activity_plans(population)
 
-    valid_count = 0
-    min_id = typemax(Int32)
-    max_id = typemin(Int32)
-
-    # Iterate over all individuals and add them to the buffer
-    for i in 1:max_inds
-        ind = inds[i]
-        id = setting_id(ind, T)
-        if id != DEFAULT_SETTING_ID
-            valid_count += 1
-
-            # Track ID bounds for Counting Sort
-            min_id = id < min_id ? id : min_id
-            max_id = id > max_id ? id : max_id
-
-            @inbounds pairs_buffer[valid_count] = (id, ind)
-        end
+    # chunks collect their entries' setting ids in parallel, one Int32 per entry
+    parts = [Int32[] for _ in chunks]
+    min_ids = fill(typemax(Int32), length(chunks))
+    max_ids = fill(typemin(Int32), length(chunks))
+    Threads.@threads for c in eachindex(chunks)
+        @inbounds min_ids[c], max_ids[c] = _collect_setting_ids!(parts[c], plans, inds, chunks[c], T)
     end
 
-    if valid_count == 0
-        return
-    end
-
-    resize!(pairs_buffer, valid_count)
-
+    valid_count = sum(length, parts)
+    valid_count == 0 && return
+    min_id = minimum(min_ids)
+    max_id = maximum(max_ids)
     id_range = Int64(max_id) - Int64(min_id) + 1
+    # every id from the smallest to the largest, or only those in use if they lie far apart
+    ids = id_range <= valid_count * 5 ? (min_id:max_id) : unique!(sort!(reduce(vcat, parts)))
 
-    # Counting Sort
-    if id_range <= valid_count * 5
-        counts = zeros(Int, id_range + 1)
-
-        # Count occurrences
-        @inbounds for i in 1:valid_count
-            counts[pairs_buffer[i][1] - min_id + 2] += 1
-        end
-
-        # Accumulate offsets
-        @inbounds for i in 2:length(counts)
-            counts[i] += counts[i-1]
-        end
-
-        # Place elements directly into their sorted positions
-        resize!(sorted_buffer, valid_count)
-        @inbounds for i in 1:valid_count
-            val = pairs_buffer[i]
-            idx = val[1] - min_id + 1
-            sorted_buffer[counts[idx] + 1] = val
-            counts[idx] += 1
-        end
-
-        # Transfer back to original buffer
-        copyto!(pairs_buffer, sorted_buffer)
-    else
-        sort!(pairs_buffer, by = first)
-    end
+    # settings no container holds share one pool, which the members are laid out in directly
+    flat = _new_flat_pool(T, valid_count)
+    members = flat === nothing ? Vector{Individual}(undef, valid_count) : flat.members
+    starts = zeros(Int32, length(ids) + 1)
+    _place_members!(members, starts, ids, parts, plans, inds, chunks, T)
 
     add_type!(settings, T)
-    setting_vec = get(settings, T)
+    # the container stores its vectors as `Vector`; asserting the concrete type keeps the call static
+    setting_vec = get(settings, T)::Vector{T}
 
-    construct_and_add_settings!(setting_vec, pairs_buffer, T, default_sampling)
+    construct_and_add_settings!(setting_vec, members, starts, ids, T, plans, flat, default_sampling)
+    # registered so `repack_dirty_pools!` can compact it
+    flat === nothing || (settings.flat_pools[T] = flat)
 
     # Sort the vector of settings by ID and check if the ids are continuous and start from 1
     if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
@@ -965,11 +1280,15 @@ function _settings_for_type!(
         type_renaming = Dict{Int32, Int32}()
         renaming[T] = type_renaming
 
+        # ascending old ids, and every new id is <= its old one, so a rename never collides
+        # with an id the individual still holds
         for (i, setting) in enumerate(setting_vec)
-            type_renaming[setting.id] = i
+            old_id = setting.id
+            type_renaming[old_id] = i
             setting.id = i
-            for individual in setting.individuals
-                setting_id!(individual, T, Int32(i))
+            for individual in individuals(setting)
+                slot = plan_slot(plans, individual, T, old_id)
+                slot != 0 && plan_set_setting_id!(plans, slot, Int32(i))
             end
         end
     end

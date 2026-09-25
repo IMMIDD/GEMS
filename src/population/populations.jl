@@ -8,6 +8,9 @@ export save, dataframe
 export size, count, each!, first
 export get_individual_by_id
 
+# supertype for the ActivityPlanStore, declared early so Population can type its field
+abstract type AbstractActivityPlanStore end
+
 """
     Population
 
@@ -18,6 +21,7 @@ A Type for a simple population. Acts as a container for a collection of individu
 - `maxage`: Age of the oldest individual
 - `minid`: smallest id of any individual
 - `maxid`: largest id of any individual
+- `activity_plans`: every individual's setting memberships, see `ActivityPlanStore`
 """
 mutable struct Population
     individuals::Vector{Individual}
@@ -26,7 +30,8 @@ mutable struct Population
     minid::Int32 # smallest id of any individual.
     maxid::Int32 # largest id of any individual.
     id_map::Vector{Int32} # Maps (id - minid + 1) to the individual's index in the `individuals` array. Needed for O(1) lookups.
-    
+    # concrete ActivityPlanStore is defined later; activity_plans(pop) narrows this back
+    activity_plans::AbstractActivityPlanStore
 
     @doc """
         make_id_map!(population::Population)
@@ -49,7 +54,7 @@ mutable struct Population
     """
     function Population(individuals::Vector{Individual})
         # Create the Population object
-        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, -1, Int32[])
+        pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, -1, Int32[], ActivityPlanStore())
         maxage(pop)
         pop.minid = isempty(individuals) ? -1 : minimum(x -> x.id, individuals)
         pop.maxid = isempty(individuals) ? -1 : maximum(x -> x.id, individuals)
@@ -63,9 +68,11 @@ mutable struct Population
 
     Creates a `Population` object from a `DataFrame` where each row corresponds to one individual.
     The dataframe column names must correspond to the fieldnames of the `Individual` struct.
-    `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional. 
+    `id` (Int32), `age` (Int8), and `sex` (Int8) are required columns. Everything else is optional.
+    Settings beyond each type's primary come from `memberships`, a table (see `memberships`) or
+    the path to a CSV file holding one.
     """
-    function Population(df::DataFrame; ind_extension = nothing)
+    function Population(df::DataFrame; ind_extension = nothing, memberships = nothing)
 
         # Intersect DataFrame columns with base Individual field names
         base_cols = Tuple(intersect(individual_base_fieldnames(), propertynames(df)))
@@ -100,28 +107,32 @@ mutable struct Population
         end
 
         pop = Population(inds)
+        build_plans!(pop, df, _membership_table(memberships))
         pop.params["populationfile"] = "Not available."
         return(pop)
     end
 
-
     @doc """
         Population(path::String)
 
-    Creates a `Population` object from a CSV- or JLD2 file (path).
+    Creates a `Population` object from a CSV- or JLD2 file (path). Settings beyond each type's
+    primary come from `memberships`, a table or the path to a CSV file holding one; a JLD2
+    file may instead carry the table under its `"memberships"` key.
     """
-    function Population(path::String; ind_extension = nothing)
+    function Population(path::String; ind_extension = nothing, memberships = nothing)
         file_ext = split(path, ".")[end]
 
         if file_ext == "csv"
             _printinfo("\u2514 Loading population data from $(basename(path))")
             # read dataframe from CSV and pass it to df constructor
-            pop = Population(CSV.File(path) |> DataFrame; ind_extension = ind_extension)
+            pop = Population(CSV.File(path) |> DataFrame; ind_extension = ind_extension, memberships = memberships)
 
         elseif file_ext == "jld2"
             _printinfo("\u2514 Loading population data from $(basename(path))")
+            # an explicit table wins over the one the file carries
+            table = memberships === nothing ? _jld2_memberships(path) : memberships
             # read dataframe from JLD2 object ("data"-field) and pass it to df constructor
-            pop = Population(load(path, "data"); ind_extension = ind_extension)
+            pop = Population(load(path, "data"); ind_extension = ind_extension, memberships = table)
 
         else
             error("File Extension .$file_ext is not supported")
@@ -159,7 +170,7 @@ mutable struct Population
 
         # if "empty" keyword is passed, generate an empty population object
         if empty
-            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, -1, Int32[])
+            return new(Individual[], Dict("populationfile" => "Not available."), -1, -1, -1, Int32[], ActivityPlanStore())
         end
 
         # exception handling
@@ -374,6 +385,22 @@ function _build_individuals_from_ext_df(base_data, pop_ids, ext_df, n)
     return(inds)
 end
 
+###
+### MEMBERSHIP TABLE HELPERS
+###
+
+# A constructor's `memberships` argument as a table: a path is read as CSV, like the population.
+_membership_table(::Nothing) = nothing
+_membership_table(table::DataFrame) = table
+function _membership_table(path::AbstractString)
+    _printinfo("└ Loading memberships from $(basename(path))")
+    return CSV.File(path) |> DataFrame
+end
+
+# The membership table a population JLD2 carries under its own key, or `nothing`.
+_jld2_memberships(path::AbstractString) =
+    jldopen(f -> haskey(f, "memberships") ? f["memberships"] : nothing, path, "r")
+
 """
     count(f, population::Population)
 
@@ -404,7 +431,6 @@ Returns the first individual of the internal vector.
 """
 Base.first(population::Population) = population |> individuals |> first
 
-
 ### INTERFACE
 """
     add!(population::Population, individual::Individual)
@@ -433,7 +459,6 @@ function individuals(population::Population)::Vector{Individual}
     population.individuals
 end
 
-
 """
     maxage(population::Population)
 
@@ -455,7 +480,6 @@ function maxage(population::Population)::Int8
     return(mx)
 end
 
-
 """
     populationfile(population::Population)
 
@@ -475,11 +499,11 @@ function params(population::Population)
 end
 
 """
-    num_of_infected(individuals::Vector{Individual})
+    num_of_infected(individuals::AbstractVector{Individual})
 
 Takes a vector of individuals and returns the number of infected individuals.
 """
-function num_of_infected(individuals::Vector{Individual})
+function num_of_infected(individuals::AbstractVector{Individual})
     return count(infected, individuals)
 end
 
@@ -493,12 +517,12 @@ function num_of_infected(population::Population)
 end
 
 """
-    num_of_infected(individuals::Vector{Individual}, pathogen_id::Int8)
+    num_of_infected(individuals::AbstractVector{Individual}, pathogen_id::Int8)
 
 Returns the number of individuals currently infected with the given `pathogen_id`.
 Uses the per-individual `active_pathogens_mask.
 """
-function num_of_infected(individuals::Vector{Individual}, pathogen_id::Int8)
+function num_of_infected(individuals::AbstractVector{Individual}, pathogen_id::Int8)
     mask = UInt32(1) << (pathogen_id - 1)
     return count(ind -> (ind.active_pathogens_mask & mask) != 0, individuals)
 end
@@ -529,7 +553,6 @@ function Base.issubset(individuals_a::Vector{Individual}, individuals_b::Vector{
     )
 end
 
-
 """
     size(population::Population)
 
@@ -538,7 +561,6 @@ Returns the number of individuals in a given population.
 function Base.size(population::Population)::Int64
     return length(population.individuals)
 end
-
 
 """
     dataframe(population::Population)
@@ -565,12 +587,16 @@ homogeneous).
 | `household`             | `Int32` | Individual associated household          |
 | `office`                | `Int32` | Individual associated office             |
 | `schoolclass`           | `Int32` | Individual associated school class       |
+| `municipality`          | `Int32` | Individual associated municipality       |
 | `<extension fields>`    | (varies)| Any fields stored in `Individual.extensions`, appended dynamically |
+
+The membership columns hold each individual's primary setting of that type, read from the
+activity plans; further settings of a type are not included.
 """
 function dataframe(population::Population)
 
     inds = individuals(population)
-    df = DataFrame(_population_columns(inds); copycols = false)
+    df = DataFrame(_population_columns(inds, activity_plans(population)); copycols = false)
 
     ext_idx = findfirst(ind -> ind.extensions !== nothing, inds)
     if ext_idx !== nothing
@@ -584,14 +610,14 @@ function dataframe(population::Population)
     return df
 end
 
-# The base columns of `dataframe(population)`, filled in one pass: each individual is a separate object,
+# The columns of `dataframe(population)`, filled in one pass: each individual is a separate object,
 # so a pass per column would fetch every one of them from memory again.
-function _population_columns(inds::Vector{Individual})
+function _population_columns(inds::Vector{Individual}, plans)
     n = length(inds)
     cols = (id = Vector{Int32}(undef, n), sex = Vector{Int8}(undef, n), age = Vector{Int8}(undef, n),
         education = Vector{Int8}(undef, n), occupation = Vector{Int16}(undef, n),
-        household = Vector{Int32}(undef, n), office = Vector{Int32}(undef, n), schoolclass = Vector{Int32}(undef, n))
-        
+        household = Vector{Int32}(undef, n), office = Vector{Int32}(undef, n),
+        schoolclass = Vector{Int32}(undef, n), municipality = Vector{Int32}(undef, n))
     Threads.@threads for k in eachindex(inds)
         ind = inds[k]
         cols.id[k] = id(ind)
@@ -599,22 +625,36 @@ function _population_columns(inds::Vector{Individual})
         cols.age[k] = age(ind)
         cols.education[k] = education(ind)
         cols.occupation[k] = occupation(ind)
-        cols.household[k] = household_id(ind)
-        cols.office[k] = office_id(ind)
-        cols.schoolclass[k] = class_id(ind)
+        cols.household[k] = setting_id(ind, Household, plans)
+        cols.office[k] = setting_id(ind, Office, plans)
+        cols.schoolclass[k] = setting_id(ind, SchoolClass, plans)
+        cols.municipality[k] = setting_id(ind, Municipality, plans)
     end
     return cols
 end
 
 """
-    save(population::Population, path::AbstractString)
+    save(population::Population, path::AbstractString; membershipsfile::Union{Nothing, AbstractString} = nothing)
 
-Saves the given population as a CSV-file at `path`.
+Saves the given population as a CSV-file at `path`, and its settings beyond each type's primary
+(see `memberships`) as a CSV-file at `membershipsfile`. Throws if the population holds such
+settings but no `membershipsfile` is given, rather than lose them.
 """
-function save(population::Population, path::AbstractString)
-    CSV.write(path, dataframe(population))
+function save(population::Population, path::AbstractString; membershipsfile::Union{Nothing, AbstractString} = nothing)
+    table = memberships(population)
+    # the loader carries the built-in membership types only, so refuse here rather than write
+    # a file that cannot be read back
+    allowed = Set(string.(nameof.(membership_setting_types(Individual))))
+    for t in table.setting_type
+        t in allowed || throw(ArgumentError(
+            "the population holds a $t membership, which the membership table does not carry yet"))
+    end
+    membershipsfile === nothing && nrow(table) > 0 && throw(ArgumentError(
+        "the population holds settings beyond each type's primary; pass `membershipsfile` to save them"))
+    result = CSV.write(path, dataframe(population))
+    membershipsfile === nothing || CSV.write(membershipsfile, table)
+    return result
 end
-
 
 """
     get_individual_by_id(population::Population, ind::Int32)
@@ -645,7 +685,6 @@ Returns the position of the individual with `id` in `individuals(population)`, o
     idx = id - population.minid + 1
     return 1 <= idx <= length(population.id_map) ? Int(@inbounds population.id_map[idx]) : 0
 end
-
 
 ###
 ### PRINTING

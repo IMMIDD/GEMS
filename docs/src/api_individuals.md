@@ -99,6 +99,7 @@ recovery!(::Individual, ::Int16)
 reset!(::Individual)
 setting_id!(::Individual, ::DataType, ::Int32)
 setting_id(::Individual, ::DataType)
+setting_ids
 settings(::Individual, ::Simulation)
 severe!(::Individual, ::Bool)
 severeness_offset(::Individual)

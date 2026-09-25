@@ -172,6 +172,13 @@ end
 transmission_factor(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
+"""
+    transmission_factor_bound(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Returns `1.0`, the factor of an infectee without interference.
+"""
+transmission_factor_bound(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 = 1.0
+
 
 ###
 ### ViralInterferenceTransmissionRate
@@ -271,3 +278,11 @@ end
 # Convenience wrapper without explicit RNG — uses the thread-local default
 transmission_probability(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+"""
+    transmission_bound(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Returns the `transmission_rate` times the modifier's `transmission_factor_bound`.
+"""
+transmission_bound(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+    transFunc.transmission_rate * transmission_factor_bound(transFunc.modifier, pathogen_id, infecter, setting, tick, sim)

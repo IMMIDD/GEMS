@@ -22,6 +22,34 @@ import GEMS: _infections_hash, _data_hash, _hashes,
             full_rd = ResultData(pp)
             @test isa(full_rd, ResultData)
         end
+        @testset "max_tasks" begin
+            @test ResultData(pp; max_tasks = 1) isa ResultData
+            @test_throws ArgumentError ResultData(pp; max_tasks = 0)
+
+            # result functions that record how many of them run at once; functions of the test
+            # module only run concurrently with POST_PROCESSING_PARALLELISM = :all
+            running = Threads.Atomic{Int}(0)
+            most = Threads.Atomic{Int}(0)
+            f = () -> begin
+                Threads.atomic_max!(most, Threads.atomic_add!(running, 1) + 1)
+                sleep(0.05)
+                Threads.atomic_sub!(running, 1)
+                return 1
+            end
+            funcs = Dict("fs" => Dict("f$i" => f for i in 1:8))
+            prev = GEMS.POST_PROCESSING_PARALLELISM
+            @eval GEMS POST_PROCESSING_PARALLELISM = :all
+            try
+                for k in (1, 2)
+                    most[] = 0
+                    data = Base.ScopedValues.with(() -> GEMS.process_funcs(funcs), GEMS._MAX_TASKS => k)
+                    @test length(data["fs"]) == 8
+                    @test most[] <= k
+                end
+            finally
+                @eval GEMS POST_PROCESSING_PARALLELISM = $(QuoteNode(prev))
+            end
+        end
         # Use style
         @testset "ResultDataStyle" begin
             # unknown style falls back to DefaultResultData with a warning
@@ -359,7 +387,7 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         expected_cols = [
             "test_id", "tick", "id", "test_result", "infected", "infection_id",
             "test_type", "reportable", "sex", "age",
-            "education", "occupation", "household", "office", "schoolclass",
+            "education", "occupation", "household", "office", "schoolclass", "municipality",
             "pathogen_id"
         ]
         @test all(col -> col in names(df), expected_cols)

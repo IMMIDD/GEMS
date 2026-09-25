@@ -1,4 +1,4 @@
-import GEMS: settings_from_jld2!, settings_from_population, remove_empty_settings!, new_setting_ids!, delete_dangling_ids!, get_open_contained!, get_containers!, contained, contained_type, contains_type, add_member!, remove_member!
+import GEMS: settings_from_jld2!, settings_from_population, remove_empty_settings!, new_setting_ids!, delete_dangling_ids!, get_open_contained!, get_containers!, contained, contained_type, contains_type
 
 @testset "Settings" begin
     rs = RandomSampling()
@@ -14,8 +14,10 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
             @test Set(individuals(gs)) == Set(indis)
 
-            add_member!(gs, i)
-            @test Set(individuals(gs)) == Set(push!(indis, i))
+            # the GlobalSetting is the whole population by definition, so it is not editable
+            pop = Population(vcat(indis, i))
+            @test_throws ArgumentError add_member!(gs, i, pop)
+            @test_throws ArgumentError remove_member!(gs, indis[1], pop)
         end
     end
 
@@ -107,8 +109,11 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
             add_types!(sc, [SchoolYear, SchoolClass, School])
 
-            inds = [Individual(id=i, age=1, sex=1, schoolclass=i + 1) for i in 1:4]
+            inds = [Individual(id=i, age=1, sex=1) for i in 1:4]
             pop = Population(inds)
+            for (k, ind) in enumerate(inds)
+                assign_settings!(pop, ind, SchoolClass => k + 1)
+            end
 
             sc, rnm = settings_from_population(pop)
 
@@ -179,23 +184,15 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
         @testset "Creation and Management" begin
             rs = RandomSampling()
-            indis = [Individual(id=j, age=18, sex=1, household=1) for j in range(0, 3)]
-            i = Individual(id=42, age=21, sex=0, household=1)
+            indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
+            i = Individual(id=42, age=21, sex=0)
 
             h = Household(id=1, individuals=indis, contact_sampling_method=rs)
 
             @test Set(individuals(h)) == Set(indis)
-            @test !isactive(h)
 
-            add_member!(h, i)
+            add_member!(h, i, Population(vcat(indis, i)))
             @test Set(individuals(h)) == Set(push!(indis, i))
-            @test !isactive(h)
-
-            activate!(h)
-            @test isactive(h)
-
-            deactivate!(h)
-            @test !isactive(h)
         end
 
         @testset "Settings from Population" begin
@@ -211,23 +208,17 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
                 not shuffeling the individual means, that the first ones should be together
                 in a household and a office 
             =#
+            hh_of = Dict{Individual, Int}()
             hh_partitions = Iterators.partition(indivs, size_household)
-            i = 1
-            for individuals in hh_partitions
-                for ind in individuals
-                    ind.household = i
-                end
-                i += 1
+            for (i, part) in enumerate(hh_partitions), ind in part
+                hh_of[ind] = i
             end
 
             # Distribute everyone to a office
+            off_of = Dict{Individual, Int}()
             wp_partitions = Iterators.partition(indivs, size_office)
-            i = 1
-            for individuals in wp_partitions
-                for ind in individuals
-                    ind.office = i
-                end
-                i += 1
+            for (i, part) in enumerate(wp_partitions), ind in part
+                off_of[ind] = i
             end
 
             #= 
@@ -243,6 +234,10 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             gems_shuffle!(test_rng, indivs)
 
             pop = Population(indivs)
+            for ind in indivs
+                assign_settings!(pop, ind,
+                                 Household => hh_of[ind], Office => off_of[ind])
+            end
             stngs, rnm = settings_from_population(pop)
 
             # test if ids of individuals and offices still match as well as assignment 
@@ -273,6 +268,31 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
                 for (idx, stng) in enumerate(get(stngs, type))
                     @test stng.id == idx
                 end
+            end
+        end
+
+        @testset "Settings from Population: Sparse IDs" begin
+            # ids this far apart are ranked among the distinct ids rather than offset from the smallest
+            df = DataFrame(id = Int32.(1:6), age = Int8.(fill(30, 6)), sex = Int8.(ones(6)),
+                           household = Int32[1_000_000, 1, 1000, 1, 1_000_000, 1_000_000],
+                           office = Int32[500_000, 500_000, 7, -1, 7, 500_000])
+            pop = Population(df)
+            stngs, rnm = settings_from_population(pop)
+            plans = GEMS.activity_plans(pop)
+
+            # ascending old ids, members in individual order, renamed to 1:n
+            @test id.(get(stngs, Household)) == [1, 2, 3]
+            @test [id.(individuals(h)) for h in get(stngs, Household)] == [[2, 4], [3], [1, 5, 6]]
+            @test rnm[Household] == Dict(1 => 1, 1000 => 2, 1_000_000 => 3)
+            @test [id.(individuals(o)) for o in get(stngs, Office)] == [[3, 5], [1, 2, 6]]
+            @test rnm[Office] == Dict(7 => 1, 500_000 => 2)
+
+            # every entry points at its setting and at its position there; read from the entry, since
+            # the plans count as indexed only once the settings are pooled
+            for T in (Household, Office), s in get(stngs, T), (k, ind) in enumerate(individuals(s))
+                entry = plans.entries[GEMS.plan_slot(plans, ind, T)]
+                @test GEMS.setting_id(entry) == id(s)
+                @test GEMS.member_index(entry) == k
             end
         end
 
@@ -477,6 +497,100 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @test contains_correctly_loaded
         @test contained_correctly_loaded
         @test ids_correct
+    end
+
+    @testset "Settingfile Layout 3.2" begin
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+
+        # writes one DataFrame per setting type in the layout of data version 3.2: vector columns
+        # stored flat as values with offsets
+        function save_flat(path, frames)
+            flat = Dict{Symbol, Any}()
+            for (T, df) in frames
+                vcols = [c for c in names(df) if eltype(df[!, c]) <: AbstractVector]
+                vectors = Dict{String, Any}()
+                for c in vcols
+                    offsets = Int32.(cumsum([1; length.(df[!, c])]))
+                    vectors[c] = (offsets = offsets, values = Int32.(reduce(vcat, df[!, c]; init = Int32[])))
+                end
+                flat[T] = (table = select(df, Not(vcols)), vectors = vectors)
+            end
+            JLD2.save(path, Dict("settings" => flat, "version" => "3.2"))
+        end
+
+        # every field of every setting, members compared by id and atomics by value; the flat pool
+        # a setting shares is new in every build, and its members are compared through `individuals`
+        unwrap(x) = x isa Threads.Atomic ? x[] : x
+        function same_settings(a, b)
+            keys(settings(a)) == keys(settings(b)) || return false
+            for (T, list) in settings(a)
+                other = get(b, T)
+                length(list) == length(other) || return false
+                for (s, t) in zip(list, other)
+                    T <: GEMS.IndividualSetting && id.(individuals(s)) != id.(individuals(t)) && return false
+                    for f in fieldnames(T)
+                        f in (:individuals, :contact_sampling_method, :flat_pool) && continue
+                        isequal(unwrap(getfield(s, f)), unwrap(getfield(t, f))) || return false
+                    end
+                end
+            end
+            return true
+        end
+
+        @testset "Unflatten" begin
+            @test GEMS._unflatten_settings(Int32[1], Int32[]) == Vector{Int32}[]
+            @test GEMS._unflatten_settings(Int32[1, 3, 3, 4], Int32[5, 6, 7]) == [Int32[5, 6], Int32[], Int32[7]]
+        end
+
+        @testset "Same settings as the old layout" begin
+            # renamed school class ids and an empty container
+            frames() = Dict(
+                :SchoolClass => DataFrame(id=[2, 3, 4, 5, 6, 7, 8, 9], contained=Int32.([1, 1, 2, 2, 3, 3, 3, 3])),
+                :SchoolYear => DataFrame(id=[1, 2], contains=[[2, 3], [4, 5]], contained=Int32.([2, 2])),
+                :School => DataFrame(id=[2, 3], contains=[[1, 2], []]))
+            old_path = tempname() * ".jld2"
+            new_path = tempname() * ".jld2"
+            JLD2.save(old_path, "data", frames())
+            save_flat(new_path, frames())
+
+            function build(path)
+                inds = [Individual(id=i, age=1, sex=1) for i in 1:4]
+                pop = Population(inds)
+                for (k, ind) in enumerate(inds)
+                    assign_settings!(pop, ind, SchoolClass => k + 1)
+                end
+                sc, rnm = settings_from_population(pop)
+                settings_from_jld2!(path, sc, rnm)
+                return sc
+            end
+            @test same_settings(build(old_path), build(new_path))
+
+            rm(old_path)
+            rm(new_path)
+        end
+
+        @testset "Real settingfile round trip" begin
+            muenster = BASE_FOLDER * "/test/testdata/settings_muenster.jld2"
+            flat_path = tempname() * ".jld2"
+            save_flat(flat_path, JLD2.load(muenster, "data"))
+
+            # the reader restores the old file's tables exactly
+            old = GEMS._read_settings_jld2(muenster)
+            new = GEMS._read_settings_jld2(flat_path)
+            @test keys(old) == keys(new)
+            @test all(T -> sort(names(old[T])) == sort(names(new[T])) &&
+                all(c -> isequal(old[T][!, c], new[T][!, c]), names(old[T])), keys(old))
+
+            function build(path)
+                pop = Population(BASE_FOLDER * "/test/testdata/people_muenster.jld2")
+                stngs, renaming = settings_from_population(pop)
+                settings_from_jld2!(path, stngs, renaming)
+                return stngs
+            end
+            @test same_settings(build(muenster), build(flat_path))
+
+            rm(flat_path)
+        end
     end
 
     @testset "Office, Schoolclass and Municipality" begin
@@ -686,8 +800,11 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
     @testset "getsetting" begin
         rs = RandomSampling()
 
-        inds = [Individual(id=i, sex=1, age=10, schoolclass=i, office=i) for i in 1:4]
+        inds = [Individual(id=i, sex=1, age=10) for i in 1:4]
         pop = Population(inds)
+        for (k, ind) in enumerate(inds)
+            assign_settings!(pop, ind, SchoolClass => k, Office => k)
+        end
 
         # Create school hierarchy
         scs = [SchoolClass(id=i, individuals=[inds[i]], contained=div(i - 1, 2) + 1, contact_sampling_method=rs) for i in 1:4]
@@ -745,11 +862,14 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         sim_gs = Simulation(pop_size=100, global_setting=true)
         ind_gs = individuals(sim_gs)[1]
         @test getsetting(ind_gs, sim_gs, GlobalSetting) === settings(sim_gs, GlobalSetting)[1]
+        # there is exactly one, and it holds everyone
+        @test length(settings(sim_gs, GlobalSetting)) == 1
+        @test individuals(settings(sim_gs, GlobalSetting)[1]) == individuals(sim_gs)
     end
 
     @testset "get_containers!" begin
         rs = RandomSampling()
-        inds = [Individual(id=i, sex=1, age=10, schoolclass=i) for i in 1:2]
+        inds = [Individual(id=i, sex=1, age=10) for i in 1:2]
         scs = [SchoolClass(id=i, individuals=[inds[i]], contained=1, contact_sampling_method=rs) for i in 1:2]
         sy = SchoolYear(id=1, contains=[1, 2], contained=1, contact_sampling_method=rs)
         s = School(id=1, contains=[1], contained=1, contact_sampling_method=rs)
@@ -776,32 +896,6 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         dct2 = Dict{DataType, Int32}()
         GEMS.get_containers!(hh, dct2, sim)
         @test isempty(dct2)
-    end
-
-    @testset "Recursive Activation" begin
-        sim = Simulation()
-        rs = RandomSampling()
-        
-        # Setup hierarchy: SchoolClass (1) -> SchoolYear (1) -> School (1)
-        sc1 = SchoolClass(id=1, contained=1, contact_sampling_method=rs, individuals=[Individual(id=i, sex=1, age=5) for i in 1:2])
-        sy1 = SchoolYear(id=1, contains=[1], contained=1, contact_sampling_method=rs)
-        s1 = School(id=1, contains=[1], contact_sampling_method=rs)
-        
-        stngs = SettingsContainer()
-        add_types!(stngs, [SchoolClass, SchoolYear, School])
-        add!(stngs, sc1); add!(stngs, sy1); add!(stngs, s1)
-        sim.settings = stngs
-
-        # Deactivate all
-        deactivate!(sc1); deactivate!(sy1); deactivate!(s1)
-        @test !isactive(sc1) && !isactive(sy1) && !isactive(s1)
-
-        # Trigger recursive activation from the bottom
-        activate!(sc1, sim)
-
-        @test isactive(sc1) == true
-        @test isactive(sy1) == true
-        @test isactive(s1) == true
     end
 
     @testset "SettingsContainer ID Management" begin
@@ -844,105 +938,842 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
 
     @testset "Membership mutation" begin
 
+        # a household, the population its members belong to, and that population.s plan store
         make_household(n) = begin
-            inds = [Individual(id = Int32(j), age = 20 + j, sex = 1, household = Int32(1)) for j in 1:n]
-            (Household(id = Int32(1), individuals = copy(inds)), inds)
+            inds = [Individual(id = Int32(j), age = 20 + j, sex = 1) for j in 1:n]
+            pop = Population(inds)
+            plans = GEMS.activity_plans(pop)
+            for (k, ind) in enumerate(inds)
+                assign_settings!(pop, ind, Household => 1)
+                GEMS.plan_set_member_index!(plans, Int(ind.plan_offset), k)
+            end
+            plans.indexed = true
+            (Household(id = Int32(1), individuals = copy(inds)), inds, pop, plans)
         end
 
         @testset "add! records membership on both sides" begin
-            h, _ = make_household(5)
+            h, _, pop, plans = make_household(5)
             newcomer = Individual(id = Int32(99), age = 5, sex = 0)
-            @test newcomer.household == GEMS.DEFAULT_SETTING_ID
+            @test household_id(newcomer, plans) == GEMS.DEFAULT_SETTING_ID
 
-            add_member!(h, newcomer)
+            add_member!(h, newcomer, pop)
             @test length(individuals(h)) == 6
             @test newcomer in individuals(h)
-            @test newcomer.household == id(h)
+            @test household_id(newcomer, plans) == id(h)
+            # the entry records where the newcomer actually landed
+            @test individuals(h)[GEMS.member_index(newcomer, Household, plans)] === newcomer
         end
 
         @testset "remove! clears membership on both sides" begin
-            h, inds = make_household(5)
-            remove_member!(h, inds[3])
+            h, inds, pop, plans = make_household(5)
+            remove_member!(h, inds[3], pop)
             @test length(individuals(h)) == 4
             @test !(inds[3] in individuals(h))
-            @test inds[3].household == GEMS.DEFAULT_SETTING_ID
+            @test household_id(inds[3], plans) == GEMS.DEFAULT_SETTING_ID
             # the others are untouched
-            @test all(i -> i.household == id(h), inds[[1, 2, 4, 5]])
+            @test all(i -> household_id(i, plans) == id(h), inds[[1, 2, 4, 5]])
+        end
+
+        @testset "remove! repoints the member swapped into the gap" begin
+            # swap-with-last moves the last member into the vacated slot, so its entry has to
+            # follow - this is the case a naive one-splice implementation gets wrong
+            h, inds, pop, plans = make_household(5)
+            remove_member!(h, inds[2], pop)
+            for ind in individuals(h)
+                @test individuals(h)[GEMS.member_index(ind, Household, plans)] === ind
+            end
         end
 
         @testset "remove! is a no-op for a non-member" begin
-            h, inds = make_household(3)
-            stranger = Individual(id = Int32(99), age = 40, sex = 1, household = Int32(7))
-            remove_member!(h, stranger)
+            h, _, pop, plans = make_household(3)
+            stranger = Individual(id = Int32(99), age = 40, sex = 1)
+            fake_membership!(pop, stranger, Household, 7)
+            remove_member!(h, stranger, pop)
             @test length(individuals(h)) == 3
             # a non-member's own membership must not be touched
-            @test stranger.household == Int32(7)
+            @test household_id(stranger, plans) == Int32(7)
         end
 
         @testset "remove! at every position, and the last member" begin
             for pos in 1:5
-                h, inds = make_household(5)
-                remove_member!(h, inds[pos])
+                h, inds, pop, plans = make_household(5)
+                remove_member!(h, inds[pos], pop)
                 @test length(individuals(h)) == 4
                 @test !(inds[pos] in individuals(h))
-                # every other member survives exactly once
+                # every other member survives exactly once, and its entry still points at it
                 for other in inds[setdiff(1:5, pos)]
                     @test count(i -> i === other, individuals(h)) == 1
+                    @test individuals(h)[GEMS.member_index(other, Household, plans)] === other
                 end
             end
 
-            h, inds = make_household(1)
-            remove_member!(h, inds[1])
+            h, inds, pop, plans = make_household(1)
+            remove_member!(h, inds[1], pop)
             @test isempty(individuals(h))
+            @test GEMS.plan_length(inds[1]) == 0
         end
 
         @testset "add! then remove! restores membership as a set" begin
-            h, inds = make_household(5)
+            h, _, pop, plans = make_household(5)
             before = Set(id.(individuals(h)))
             newcomer = Individual(id = Int32(99), age = 5, sex = 0)
-            add_member!(h, newcomer)
-            remove_member!(h, newcomer)
+            add_member!(h, newcomer, pop)
+            remove_member!(h, newcomer, pop)
             @test Set(id.(individuals(h))) == before
+        end
+
+        @testset "add! refuses an existing member" begin
+            h, inds, pop, plans = make_household(3)
+            @test_throws ArgumentError add_member!(h, inds[2], pop)
+            # the refusal comes before either side is touched
+            @test length(individuals(h)) == 3
+            @test GEMS.plan_length(inds[2]) == 1
         end
 
         @testset "membership_changed! drops a derived cache" begin
             m = hcat([[rand(Xoshiro(7 + i)) for i = 1:10] for i = 1:10]...)
             m = m .* hcat([vec(1 ./ sum(m, dims = 2)) for _ = 1:10]...)
             csm = AgeBasedContactSampling(1.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
-            inds = [Individual(id = Int32(j), age = 20 + j, sex = 1, household = Int32(1)) for j in 1:50]
+            inds = [Individual(id = Int32(j), age = 20 + j, sex = 1) for j in 1:50]
+            pop = Population(inds)
+            for ind in inds
+                assign_settings!(pop, ind, Household => 1)
+            end
             h = Household(id = Int32(1), individuals = copy(inds), contact_sampling_method = csm)
 
             # sampling fills the pyramid lazily from the setting's members
             sample_contacts(contact_sampling_method(h), h, 1, individuals(h), GEMS.DEFAULT_TICK, rng = Xoshiro(1))
             @test !isempty(contact_sampling_method(h).age_pyramid)
 
-            add_member!(h, Individual(id = Int32(99), age = 5, sex = 0))
+            add_member!(h, Individual(id = Int32(99), age = 5, sex = 0), pop)
             @test isempty(contact_sampling_method(h).age_pyramid)
 
             sample_contacts(contact_sampling_method(h), h, 1, individuals(h), GEMS.DEFAULT_TICK, rng = Xoshiro(1))
             @test !isempty(contact_sampling_method(h).age_pyramid)
 
-            remove_member!(h, inds[3])
+            remove_member!(h, inds[3], pop)
             @test isempty(contact_sampling_method(h).age_pyramid)
 
             # samplers that cache nothing use the no-op default
             h2 = Household(id = Int32(2), individuals = copy(inds),
                 contact_sampling_method = ContactparameterSampling(1.0))
-            add_member!(h2, Individual(id = Int32(98), age = 5, sex = 0))
+            add_member!(h2, Individual(id = Int32(98), age = 5, sex = 0), pop)
             @test length(individuals(h2)) == length(inds) + 1
         end
 
-        @testset "GlobalSetting has no id field to write" begin
-            # setting_id! is a no-op for GlobalSetting, so only the member list changes
+        @testset "GlobalSetting membership is not editable" begin
+            # it is the entire population by definition, so nobody holds an entry for it
             gs = GlobalSetting(id = Int32(1), individuals = Individual[],
                 contact_sampling_method = ContactparameterSampling(1.0))
-            i = Individual(id = Int32(1), age = 30, sex = 1, household = Int32(4))
-            add_member!(gs, i)
-            @test i in individuals(gs)
-            @test i.household == Int32(4)
-            remove_member!(gs, i)
+            i = Individual(id = Int32(1), age = 30, sex = 1)
+            pop = Population([i])
+            plans = GEMS.activity_plans(pop)
+            @test_throws ArgumentError add_member!(gs, i, pop)
+            @test_throws ArgumentError remove_member!(gs, i, pop)
             @test isempty(individuals(gs))
-            @test i.household == Int32(4)
+            # membership of it is answered from the constant, not from a plan entry
+            @test setting_id(i, GlobalSetting, plans) == GEMS.GLOBAL_SETTING_ID
+        end
+
+        @testset "mark_deceased! keeps the membership but leaves the frame" begin
+            h, inds, pop, plans = make_household(3)
+            mark_deceased!(h, inds[1], pop)
+            @test length(individuals(h)) == 3
+            @test household_id(inds[1], plans) == id(h)
+            @test !(inds[1] in GEMS.present_members(h, SettingsContainer()))
+            for ind in inds
+                @test individuals(h)[GEMS.member_index(ind, Household, plans)] === ind
+            end
+            # marking twice changes nothing
+            mark_deceased!(h, inds[1], pop)
+            @test h.deceased == 1
+        end
+
+        @testset "a death samples like the smaller household" begin
+            h, inds, pop, plans = make_household(3)
+            mark_deceased!(h, inds[1], pop)
+            h2, inds2, _, plans2 = make_household(2)
+            csm = ContactparameterSampling(2.0)
+            draw(s, host, p) = [sample_contacts(csm, s, Int(GEMS.member_index(host, Household, p)),
+                GEMS.present_members(s, SettingsContainer()), Int16(0); rng = Xoshiro(k)) for k in 1:200]
+            c3 = draw(h, inds[2], plans)
+            @test length.(c3) == length.(draw(h2, inds2[1], plans2))
+            @test all(c -> all(x -> x === inds[3], c), c3)
+        end
+
+        @testset "add! and remove! keep the deceased at the end" begin
+            for pos in 1:5
+                h, inds, pop, plans = make_household(5)
+                mark_deceased!(h, inds[4], pop)
+                mark_deceased!(h, inds[5], pop)
+                remove_member!(h, inds[pos], pop)
+                gone = setdiff(inds[4:5], [inds[pos]])
+                @test h.deceased == length(gone)
+                @test Set(individuals(h)[GEMS._alive(h)+1:end]) == Set(gone)
+                for ind in individuals(h)
+                    @test individuals(h)[GEMS.member_index(ind, Household, plans)] === ind
+                end
+            end
+
+            h, inds, pop, plans = make_household(3)
+            mark_deceased!(h, inds[1], pop)
+            newcomer = Individual(id = Int32(99), age = 5, sex = 0)
+            add_member!(h, newcomer, pop)
+            @test GEMS._alive(h) == 3
+            @test individuals(h)[end] === inds[1]
+            for ind in individuals(h)
+                @test individuals(h)[GEMS.member_index(ind, Household, plans)] === ind
+            end
+        end
+    end
+
+    @testset "Flat setting pools" begin
+
+        make_sim() = begin
+            sim = Simulation(pop_size = 200, seed = 1234, global_setting = true)
+            cntnr = GEMS.settingscontainer(sim)
+            (population(sim), cntnr, GEMS.settings(cntnr, Household))
+        end
+        # a household with several members whose range does not end the pool
+        inner_index(hs) = findfirst(h -> h.len >= 2, hs[1:(end - 1)])
+        snapshot(hs) = [copy(individuals(h)) for h in hs]
+
+        @testset "Built settings share one pool, tiled in id order" begin
+            pop, cntnr, hs = make_sim()
+            members = hs[1].flat_pool.members
+            @test all(h -> h.flat_pool.members === members, hs)
+            @test hs[1].offset == 1
+            @test all(k -> hs[k].offset == hs[k - 1].offset + hs[k - 1].len, 2:length(hs))
+            @test hs[end].offset + hs[end].len - 1 == length(members)
+            # built exact-fit, and registered so a repack can compact it
+            @test all(h -> h.cap == h.len, hs)
+            @test cntnr.flat_pools[Household] === hs[1].flat_pool
+            @test all(h -> individuals(h) isa GEMS.MemberSlice, hs)
+            @test individuals(GEMS.settings(cntnr, GlobalSetting)[1]) == individuals(pop)
+            # the reordered fields keep a household in the 64-byte size class
+            @test sizeof(Household) <= 56
+        end
+
+        @testset "Moving a member between households" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            h = hs[k]
+            # the household the members leave
+            j = findfirst(x -> x != k && hs[x].len >= 2, eachindex(hs))
+            members = h.flat_pool.members
+            n = length(members)
+            before = snapshot(hs)
+
+            mover = individuals(hs[j])[1]
+            remove_member!(hs[j], mover, pop)
+            add_member!(h, mover, pop; primary = true)
+            # h was full and did not end the pool, so it moved there with slack, stranding its slots
+            @test h.offset == n + 1
+            @test h.cap == length(before[k]) + max(1, ceil(Int, h.flat_pool.slack * length(before[k])))
+            @test length(members) == n + h.cap
+            @test h.flat_pool.dead == length(before[k])
+            @test individuals(h) == vcat(before[k], [mover])
+            @test Set(individuals(hs[j])) == Set(before[j][2:end])
+            @test all(x -> individuals(hs[x]) == before[x], setdiff(eachindex(hs), [j, k]))
+            @test household_id(mover, GEMS.activity_plans(pop)) == id(h)
+            @test GEMS.validate_plans(pop, cntnr)
+
+            # it ends the pool now, so the next member lands where it is, in its slack or by growing it
+            mover2 = individuals(hs[j])[1]
+            remove_member!(hs[j], mover2, pop)
+            add_member!(h, mover2, pop; primary = true)
+            @test h.offset == n + 1
+            @test length(members) == n + h.cap
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "A removal leaves room for the next member" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            h = hs[k]
+            members = h.flat_pool.members
+            n, offset, cap = length(members), h.offset, h.cap
+
+            leaver = individuals(h)[1]
+            remove_member!(h, leaver, pop)
+            @test h.cap == cap
+            add_member!(h, leaver, pop; primary = true)
+            # back into the freed slot: nothing moved and nothing stranded
+            @test (h.offset, h.cap, length(members), h.flat_pool.dead) == (offset, cap, n, 0)
+            @test Set(individuals(h)) == Set(snapshot(hs)[k])
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "The last setting grows in place" begin
+            pop, cntnr, hs = make_sim()
+            h = hs[end]
+            offset = h.offset
+            donor = hs[inner_index(hs)]
+            mover = individuals(donor)[1]
+            remove_member!(donor, mover, pop)
+            add_member!(h, mover, pop; primary = true)
+            @test h.offset == offset
+            @test h.flat_pool.dead == 0
+            @test h.offset + h.cap - 1 == length(h.flat_pool.members)
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "A repack leaves a pool less than a third stranded" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            pool = hs[k].flat_pool
+            members = pool.members
+            donor = hs[findfirst(x -> x != k && hs[x].len >= 2, eachindex(hs))]
+            mover = individuals(donor)[1]
+            remove_member!(donor, mover, pop)
+            add_member!(hs[k], mover, pop; primary = true)
+            # one household moved, so few slots are stranded
+            @test 0 < pool.dead * 3 <= length(members)
+            GEMS.repack_dirty_pools!(cntnr)
+            @test pool.members === members
+            @test pool.dead > 0
+        end
+
+        @testset "A repack compacts a pool past a third stranded" begin
+            pop, cntnr, hs = make_sim()
+            pool = hs[1].flat_pool
+            # each move fills a full household that does not end the pool, moving it to the end,
+            # so once all have moved nearly the whole original layout is stranded
+            for k in 1:(length(hs) - 1)
+                hs[k].len == 0 && continue
+                mover = individuals(hs[k])[1]
+                remove_member!(hs[k], mover, pop)
+                add_member!(hs[k + 1], mover, pop; primary = true)
+            end
+            @test pool.dead * 3 > length(pool.members)
+            @test GEMS.validate_plans(pop, cntnr)
+            before = snapshot(hs)
+            caps = [h.cap for h in hs]
+
+            GEMS.repack_dirty_pools!(cntnr)
+            @test pool.dead == 0
+            @test length(pool.members) == sum(caps)
+            # laid out in id order, each keeping its slots and its members in order
+            @test hs[1].offset == 1
+            @test all(k -> hs[k].offset == hs[k - 1].offset + hs[k - 1].cap, 2:length(hs))
+            @test [h.cap for h in hs] == caps
+            @test snapshot(hs) == before
+            @test GEMS.validate_plans(pop, cntnr)
+        end
+
+        @testset "Removing an empty setting strands its slots" begin
+            sim = Simulation(pop_size = 200, seed = 1234)
+            pop, cntnr = population(sim), GEMS.settingscontainer(sim)
+            hs = GEMS.settings(cntnr, Household)
+            pool = hs[1].flat_pool
+            emptied = hs[inner_index(hs)]
+            cap = Int(emptied.cap)
+            while emptied.len > 0
+                remove_member!(emptied, individuals(emptied)[1], pop)
+            end
+            remove_empty_settings!(sim)
+            @test !any(h -> h === emptied, GEMS.settings(cntnr, Household))
+            @test pool.dead == cap
+            # every slot of the pool is still either a setting's or stranded
+            @test GEMS._check_flat_ranges(GEMS.settings(cntnr, Household)) === nothing
+        end
+
+        @testset "Deaths and closures stay inside the range" begin
+            pop, cntnr, hs = make_sim()
+            k = inner_index(hs)
+            h = hs[k]
+            offset = h.offset
+            before = snapshot(hs)
+
+            victim = individuals(h)[1]
+            mark_deceased!(h, victim, pop)
+            @test h.offset == offset
+            @test !(victim in GEMS.present_members(h, cntnr))
+            @test length(GEMS.present_members(h, cntnr)) == h.len - 1
+            @test Set(individuals(h)) == Set(before[k])
+            @test all(x -> individuals(hs[x]) == before[x], setdiff(eachindex(hs), [k]))
+            @test GEMS.validate_plans(pop, cntnr)
+
+            close!(h)
+            @test isempty(GEMS.present_members(h, cntnr))
+        end
+
+        @testset "Callers accept the view" begin
+            pop, cntnr, hs = make_sim()
+            h = hs[inner_index(hs)]
+            @test num_of_infected(individuals(h)) == 0
+            @test length(GEMS.sample_individuals!(Individual[], individuals(h), 1, rng = Xoshiro(1))) == 1
+            @test sample_individuals(h, 1, rng = Xoshiro(1))[1] in individuals(h)
+        end
+
+        @testset "Constructor takes members or a pool range, not both" begin
+            @test_throws ArgumentError Household(id = 1, individuals = Individual[],
+                flat_pool = GEMS.FlatSettingPool(Individual[]))
+            # the default show would print the whole pool
+            @test sprint(show, Household(id = 3)) == "Household(id = 3, 0 individuals)"
+        end
+    end
+
+    @testset "Pooled hierarchy storage" begin
+
+        # three classes over two years over one school, wired by hand so the test does not
+        # depend on a population file
+        make_school(; slack = GEMS.DEFAULT_POOL_SLACK) = begin
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = inds[4:6], contained = Int32(1)),
+                  SchoolClass(id = Int32(3), individuals = inds[7:9], contained = Int32(2))]
+            ys = [SchoolYear(id = Int32(1), contains = Int32[1, 2], contained = Int32(1)),
+                  SchoolYear(id = Int32(2), contains = Int32[3], contained = Int32(1))]
+            sch = School(id = Int32(1), contains = Int32[1, 2])
+            for x in vcat(cs, ys, [sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc; slack = slack)
+            pop = Population(inds)
+            plans = GEMS.activity_plans(pop)
+            for (k, ind) in enumerate(inds)
+                assign_settings!(pop, ind, SchoolClass => div(k - 1, 3) + 1)
+                GEMS.plan_set_member_index!(plans, Int(ind.plan_offset), mod(k - 1, 3) + 1)
+            end
+            plans.indexed = true
+            (sc, cs, ys, sch, inds, pop, plans)
+        end
+        ids(f) = [id(x) for x in f]
+        # `present_members` returns one `MemberView`; an unbroken span carries no runs
+        contiguous(f) = isempty(f.starts)
+
+        @testset "Pool construction" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+            # the members are relocated once; the pool is longer than that only by the
+            # slack its one block carries
+            @test sum(Int(c.pool_length) for c in cs) == 9
+            @test length(pool.members) == GEMS._with_slack(9, pool.blocks.slack)
+            @test all(c -> c.individuals === nothing && individuals(c) isa GEMS.MemberSlice, cs)
+            @test all(c -> parent(individuals(c)) === pool.members, cs)
+
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3]
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            # nothing closed and no gaps, so every container is a contiguous view
+            @test contiguous(GEMS.present_members(sch, sc))
+        end
+
+        @testset "Adding a member" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            before1, before3 = ids(GEMS.present_members(cs[1], sc)), ids(GEMS.present_members(cs[3], sc))
+            newcomer = Individual(id = Int32(42), age = 10, sex = 1)
+
+            add_member!(cs[2], newcomer, pop)
+            # the edit detaches the leaf into a vector of its own until the repack
+            @test cs[2].individuals isa Vector{Individual}
+            @test ids(individuals(cs[2])) == [4, 5, 6, 42]
+            GEMS.repack_dirty_pools!(sc)
+            @test class_id(newcomer, plans) == id(cs[2])
+            @test cs[2].individuals === nothing
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 42]
+            # the untouched leaves must survive the pool being resized underneath them
+            @test ids(GEMS.present_members(cs[1], sc)) == before1
+            @test ids(GEMS.present_members(cs[3], sc)) == before3
+            # the pool is repacked, so the container still reports every member AND stays
+            # contiguous - an edit costs no lasting fast-path degradation
+            @test sort(ids(GEMS.present_members(sch, sc))) == sort(vcat(collect(1:9), 42))
+            @test contiguous(GEMS.present_members(sch, sc))
+        end
+
+        @testset "Rebuilding the pools" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            GEMS.build_pools!(sc)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test all(c -> c.individuals === nothing && parent(individuals(c)) === sc.pools[SchoolClass].members, cs)
+        end
+
+        @testset "Removing a member" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            victim = individuals(cs[1])[2]
+
+            remove_member!(cs[1], victim, pop)
+            GEMS.repack_dirty_pools!(sc)
+            @test length(GEMS.present_members(cs[1], sc)) == 2
+            @test !(victim in GEMS.present_members(cs[1], sc))
+            @test class_id(victim, plans) == GEMS.DEFAULT_SETTING_ID
+            @test sort(ids(GEMS.present_members(sch, sc))) == sort([1, 3, 4, 5, 6, 7, 8, 9])
+
+            # a non-member leaves everything alone
+            stranger = Individual(id = Int32(77), age = 10, sex = 1)
+            remove_member!(cs[1], stranger, pop)
+            GEMS.repack_dirty_pools!(sc)
+            @test length(GEMS.present_members(cs[1], sc)) == 2
+        end
+
+        @testset "Draining a leaf" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            while length(individuals(cs[3])) > 0
+                remove_member!(cs[3], individuals(cs[3])[1], pop)
+            end
+            GEMS.repack_dirty_pools!(sc)
+            @test isempty(GEMS.present_members(cs[3], sc))
+            @test sort(ids(GEMS.present_members(sch, sc))) == collect(1:6)
+
+            back = Individual(id = Int32(50), age = 10, sex = 1)
+            add_member!(cs[3], back, pop)
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(cs[3], sc)) == [50]
+            @test sort(ids(GEMS.present_members(sch, sc))) == vcat(collect(1:6), 50)
+        end
+
+        @testset "Empty leaves" begin
+            # a zero-length run would leave `prefix` non-increasing and make
+            # `searchsortedlast` return members from the wrong run, silently
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = Individual[], contained = Int32(1)),
+                  SchoolClass(id = Int32(3), individuals = inds[4:6], contained = Int32(1)),
+                  SchoolClass(id = Int32(4), individuals = inds[7:9], contained = Int32(1))]
+            y = SchoolYear(id = Int32(1), contains = Int32[1, 2, 3, 4], contained = Int32(1))
+            sch = School(id = Int32(1), contains = Int32[1])
+            for x in vcat(cs, [y, sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc)
+            pop = Population(inds)
+
+            @test isempty(GEMS.present_members(cs[2], sc))
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+
+            # closing the empty class takes nobody out, so the frame stays one span
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            @test contiguous(GEMS.present_members(sch, sc))
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            open!(cs[2])
+
+            # closing a middle class forces two runs with an empty leaf inside the first
+            close!(cs[3]); GEMS.repack_dirty_pools!(sc)
+            f = GEMS.present_members(sch, sc)
+            @test !contiguous(f)
+            @test ids(f) == [1, 2, 3, 7, 8, 9]
+            # every index, not just the ends: a bad prefix shows up in the middle
+            @test [id(f[i]) for i in eachindex(f)] == [1, 2, 3, 7, 8, 9]
+            open!(cs[3])
+
+            # a container whose leaves are all empty is empty, not malformed
+            for c in cs; while !isempty(individuals(c)); remove_member!(c, individuals(c)[1], pop); end; end
+            GEMS.repack_dirty_pools!(sc)
+            @test isempty(GEMS.present_members(sch, sc))
+            @test isempty(GEMS.present_members(y, sc))
+        end
+
+        @testset "Block partition" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+            bl = pool.blocks
+
+            # the school covers all three classes, so the hierarchy is one block
+            @test GEMS.nblocks(bl) == 1
+            @test GEMS.leaves_of(bl, 1) == 1:3
+            @test all(j -> bl.of_leaf[j] == 1, 1:3)
+            # every leaf knows its own index, which is how an edit finds its block
+            @test sort([Int(c.pool_leaf) for c in cs]) == [1, 2, 3]
+            @test Int(bl.capacity[1]) == Int(GEMS._with_slack(9, bl.slack))
+            @test bl.dead == 0
+            @test isempty(bl.dirty)
+        end
+
+        @testset "Uncontained leaves" begin
+            # the block partition has to cover leaves the containers do not reach, or an
+            # edit to one would have no block to dirty
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = inds[4:6], contained = Int32(1)),
+                  SchoolClass(id = Int32(3), individuals = inds[7:9])]
+            y = SchoolYear(id = Int32(1), contains = Int32[1, 2], contained = Int32(1))
+            sch = School(id = Int32(1), contains = Int32[1])
+            for x in vcat(cs, [y, sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc)
+            pop = Population(inds)
+
+            bl = sc.pools[SchoolClass].blocks
+            @test GEMS.nblocks(bl) == 2
+            @test sum(length(GEMS.leaves_of(bl, b)) for b in 1:2) == 3
+            @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9]
+
+            # the orphan is editable, and its edit does not disturb the year beside it
+            add_member!(cs[3], Individual(id = Int32(50), age = 10, sex = 1), pop)
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9, 50]
+            @test ids(GEMS.present_members(y, sc)) == collect(1:6)
+        end
+
+        @testset "Block dirtying" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+
+            add_member!(cs[1], Individual(id = Int32(43), age = 10, sex = 1), pop)
+            # one edit queues one block, however many edits land in it
+            add_member!(cs[2], Individual(id = Int32(44), age = 10, sex = 1), pop)
+            @test pool.blocks.dirty == Int32[1]
+
+            GEMS.repack_dirty_pools!(sc)
+            @test isempty(pool.blocks.dirty)
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 43]
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 44]
+            @test sort(ids(GEMS.present_members(sch, sc))) == sort(vcat(collect(1:9), 43, 44))
+            @test contiguous(GEMS.present_members(sch, sc))
+        end
+
+
+        # one block per school, so a single dirty block stays under the fraction at which
+        # `repack_dirty_pools!` gives up and repacks everything
+        make_schools(n; slack = GEMS.DEFAULT_POOL_SLACK) = begin
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:(3 * n)]
+            cs = [SchoolClass(id = Int32(k), individuals = inds[(3k - 2):(3k)],
+                              contained = Int32(k)) for k in 1:n]
+            ys = [SchoolYear(id = Int32(k), contains = Int32[k], contained = Int32(k)) for k in 1:n]
+            schs = [School(id = Int32(k), contains = Int32[k]) for k in 1:n]
+            for x in vcat(cs, ys, schs); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc; slack = slack)
+            (sc, cs, schs, Population(inds))
+        end
+
+        @testset "Block relocation" begin
+            sc, cs, schs, pop = make_schools(5; slack = 0.0)
+            pool = sc.pools[SchoolClass]
+            bl = pool.blocks
+            @test GEMS.nblocks(bl) == 5
+            @test length(pool.members) == 15         # no slack anywhere
+            @test Int(bl.offset[2]) == 4
+
+            add_member!(cs[2], Individual(id = Int32(43), age = 10, sex = 1), pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            @test bl.dead == 3                       # the space block 2 used to hold
+            @test Int(bl.offset[2]) == 16            # relaid past the old end of the pool
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6, 43]
+            @test ids(GEMS.present_members(schs[2], sc)) == [4, 5, 6, 43]
+            @test contiguous(GEMS.present_members(schs[2], sc))
+            # the blocks either side were never touched
+            @test Int(bl.offset[1]) == 1 && Int(bl.offset[3]) == 7
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3]
+            @test ids(GEMS.present_members(cs[3], sc)) == [7, 8, 9]
+        end
+
+        @testset "Compaction" begin
+            sc, cs, schs, pop = make_schools(5; slack = 0.0)
+            pool = sc.pools[SchoolClass]
+
+            # every add relocates, so the stranded space eventually outgrows the live data
+            # and the next repack compacts instead of walking blocks
+            for k in 1:6
+                add_member!(cs[2], Individual(id = Int32(100 + k), age = 10, sex = 1), pop)
+                GEMS.repack_dirty_pools!(sc)
+            end
+            @test pool.blocks.dead == 0
+            @test length(pool.members) == 21
+            @test Int(pool.blocks.offset[1]) == 1
+            @test ids(GEMS.present_members(cs[2], sc)) == vcat([4, 5, 6], collect(101:106))
+            @test ids(GEMS.present_members(cs[5], sc)) == [13, 14, 15]
+        end
+
+        @testset "Repeat gating" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            pool = sc.pools[SchoolClass]
+            @test pool.repeats == 0
+
+            # the same member in two classes of one school is what the scan exists to find
+            victim = individuals(cs[1])[1]
+            add_member!(cs[2], victim, pop)
+            @test pool.repeats == 1
+            GEMS.repack_dirty_pools!(sc)
+            @test count(m -> m === victim, GEMS.present_members(sch, sc)) == 1
+
+            # and it comes back down, so one repeat does not cost a scan for the rest of the run
+            remove_member!(cs[2], victim, pop)
+            @test pool.repeats == 0
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test contiguous(GEMS.present_members(sch, sc))
+        end
+
+        @testset "Repeat count at build" begin
+            # a member already in two classes when the pool is built has to be counted there,
+            # since nothing recounts afterwards
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear, School])
+            inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:9]
+            cs = [SchoolClass(id = Int32(1), individuals = inds[1:3], contained = Int32(1)),
+                  SchoolClass(id = Int32(2), individuals = inds[3:6], contained = Int32(1))]
+            y = SchoolYear(id = Int32(1), contains = Int32[1, 2], contained = Int32(1))
+            sch = School(id = Int32(1), contains = Int32[1])
+            for x in vcat(cs, [y, sch]); GEMS.add!(sc, x); end
+            GEMS.build_pools!(sc)
+
+            @test sc.pools[SchoolClass].repeats == 1
+            # and the frame it protects still holds inds[3] once, not twice
+            @test count(m -> m === inds[3], GEMS.present_members(sch, sc)) == 1
+            @test length(GEMS.present_members(sch, sc)) == 6
+        end
+
+        @testset "Stale reads" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            newcomer = Individual(id = Int32(43), age = 10, sex = 1)
+            add_member!(cs[1], newcomer, pop)
+
+            # every offset in the hierarchy is stale until the repack, so reading would
+            # silently return the wrong members
+            err = try; GEMS.present_members(sch, sc); nothing; catch e; e; end
+            @test err isa ErrorException
+            @test occursin("repack_dirty_pools!", sprint(showerror, err))
+            @test (try; GEMS.present_members(cs[1], sc); false; catch; true; end)
+
+            # the member vector itself is correct throughout, so anything reading it
+            # directly - `individuals`, and `present_individuals!` through it - still works
+            @test length(individuals(cs[1])) == 4
+            @test newcomer in individuals(cs[1])
+
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 43]
+        end
+
+        @testset "Sparse setting ids" begin
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolClass, SchoolYear])
+            GEMS.add!(sc, SchoolClass(id = Int32(1), individuals = Individual[], contained = Int32(1)))
+            GEMS.add!(sc, SchoolClass(id = Int32(7), individuals = Individual[], contained = Int32(1)))
+            GEMS.add!(sc, SchoolYear(id = Int32(1), contains = Int32[1]))
+            err = try; GEMS.build_pools!(sc); nothing; catch e; e; end
+            @test err isa ErrorException
+            @test occursin("must be 1..", sprint(showerror, err))
+            @test occursin("new_setting_ids!", sprint(showerror, err))
+        end
+
+        @testset "Closed descendants" begin
+            sc, cs, ys, sch, _, pop, plans = make_school()
+            close!(ys[2])
+            # a closure reshapes frames, so like a member edit it is unreadable until the repack
+            @test (try; GEMS.present_members(sch, sc); false; catch; true; end)
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:6)
+            @test isempty(GEMS.present_members(ys[2], sc))
+            open!(ys[2]); GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test contiguous(GEMS.present_members(sch, sc))
+
+            # a closed leaf in the middle leaves two runs, and must not leak its members
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            f = GEMS.present_members(sch, sc)
+            @test ids(f) == [1, 2, 3, 7, 8, 9]
+            @test !contiguous(f)
+        end
+
+        @testset "Repeated members" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            # inds[4] is already in cs[2]; both classes sit in ys[1]
+            add_member!(cs[1], inds[4], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            # the leaves keep both copies - the member really is in both classes
+            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 4]
+            @test ids(GEMS.present_members(cs[2], sc)) == [4, 5, 6]
+
+            f = GEMS.present_members(ys[1], sc)
+            @test ids(f) == [1, 2, 3, 4, 5, 6]
+            # the repeat sits inside the span, so the frame is two runs
+            @test !contiguous(f)
+            @test [id(f[i]) for i in eachindex(f)] == [1, 2, 3, 4, 5, 6]
+            # and every level above drops the same copy
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+            @test ids(GEMS.present_members(ys[2], sc)) == [7, 8, 9]
+        end
+
+        @testset "Repeat at a span edge" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[2], inds[1], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            f = GEMS.present_members(ys[1], sc)
+            @test ids(f) == [1, 2, 3, 4, 5, 6]
+            @test contiguous(f)
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+        end
+
+        @testset "Repeat across years" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[3], inds[1], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            # each year holds one copy, so neither year is affected
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+            @test ids(GEMS.present_members(ys[2], sc)) == [7, 8, 9, 1]
+            @test contiguous(GEMS.present_members(ys[1], sc))
+            @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
+        end
+
+        @testset "Promoting a repeat" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[1], inds[4], pop)
+            GEMS.repack_dirty_pools!(sc)
+
+            # dropping the class the kept copy sits in must not drop the member
+            close!(cs[1]); GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(ys[1], sc)) == [4, 5, 6]
+            @test ids(GEMS.present_members(sch, sc)) == [4, 5, 6, 7, 8, 9]
+            open!(cs[1])
+
+            # the other way round the kept copy is the one that survives
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4]
+            open!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+        end
+
+        @testset "Deceased members" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            mark_deceased!(cs[1], inds[2], pop)
+            @test (try; GEMS.present_members(sch, sc); false; catch; true; end)
+            GEMS.repack_dirty_pools!(sc)
+            @test length(individuals(cs[1])) == 3
+            @test sort(ids(GEMS.present_members(cs[1], sc))) == [1, 3]
+            @test sort(ids(GEMS.present_members(sch, sc))) == [1, 3, 4, 5, 6, 7, 8, 9]
+            @test !contiguous(GEMS.present_members(sch, sc))
+            @test GEMS.container_frame_index(sc, ys[1], cs[1],
+                GEMS.member_index(inds[2], SchoolClass, plans)) == GEMS.DEFAULT_MEMBER_INDEX
+
+            # one in the last leaf keeps the frame one span
+            mark_deceased!(cs[3], inds[9], pop); GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(ys[2], sc)) == [7, 8]
+            @test contiguous(GEMS.present_members(ys[2], sc))
+
+            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(sch, sc))) == [1, 3, 7, 8]
+            @test GEMS.validate_plans(pop, sc)
+        end
+
+        @testset "A repeated member dies" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            add_member!(cs[1], inds[4], pop); GEMS.repack_dirty_pools!(sc)
+            mark_deceased!(cs[2], inds[4], pop); GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(ys[1], sc))) == [1, 2, 3, 4, 5, 6]
+            mark_deceased!(cs[1], inds[4], pop); GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(ys[1], sc))) == [1, 2, 3, 5, 6]
+        end
+
+        @testset "Pooled add! and remove! across the deceased" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            mark_deceased!(cs[2], inds[4], pop)
+            newcomer = Individual(id = Int32(42), age = 10, sex = 1)
+            add_member!(cs[2], newcomer, pop)
+            remove_member!(cs[2], inds[5], pop)
+            GEMS.repack_dirty_pools!(sc)
+            @test sort(ids(GEMS.present_members(cs[2], sc))) == [6, 42]
+            @test individuals(cs[2])[end] === inds[4]
+            for ind in individuals(cs[2])
+                @test individuals(cs[2])[GEMS.member_index(ind, SchoolClass, plans)] === ind
+            end
         end
     end
 

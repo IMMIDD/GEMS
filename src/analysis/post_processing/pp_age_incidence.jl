@@ -36,40 +36,32 @@ per pathogen.
 function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::Int64)
 
     sim = simulation(postProcessor)
-    betweenage(a, x, y) = count(v -> x <= v <= y, a)
     popfactor = length(individuals(population(sim))) / basesize
-    final_tick = tick(sim)
+    final_tick = Int(tick(sim))
 
-    # age cohorts as (column, lower bound, upper bound); :total is counted separately via nrow
+    # age cohorts as (column, lower bound, upper bound); :total counts every infection
     age_cohorts = [(:a0_10, 0, 10), (:a11_20, 11, 20), (:a21_30, 21, 30), (:a31_40, 31, 40),
         (:a41_50, 41, 50), (:a51_60, 51, 60), (:a61_70, 61, 70), (:a71_80, 71, 80),
         (:a81_90, 81, 90), (:a91_100, 91, 100)]
-    # every numeric column that gets coalesced, converted and rolled
+    # every numeric column that gets counted and rolled
     value_cols = [:total; first.(age_cohorts)]
 
-    sim_infs = sim_infectionsDF(postProcessor)
+    infs = infectionsDF(postProcessor)
     results = DataFrame[]
 
     for p in pathogens(sim)
         pid = id(p)
-        p_infs = subset(sim_infs, :pathogen_id => ByRow(==(pid)), view=true)
+        counts = _age_incidence_counts(infs.tick, infs.id_a, infs.pathogen_id, infs.age_b, pid, final_tick, age_cohorts)
 
-        # one selection of :age_a for all cohorts; each selection copies the column in group order
-        cohort_counts = :age_a => (a -> NamedTuple(col => betweenage(a, lo, hi) for (col, lo, hi) in age_cohorts)) => AsTable
-        coalesce_zero = [col => ByRow(x -> coalesce(x, 0)) => col for col in value_cols]
-
-        incidence = groupby(p_infs, :tick) |>
-            x -> combine(x, nrow => :total, cohort_counts) |>
-            x -> rightjoin(x, DataFrame(tick = 1:final_tick), on = :tick) |>
-            x -> DataFrames.select(x, :tick, coalesce_zero...)
-
-        for col in value_cols
-            incidence[!, col] = convert.(Float64, incidence[!, col])
+        # one row per tick, in tick order
+        incidence = DataFrame(tick = 1:final_tick)
+        for (c, col) in enumerate(value_cols)
+            incidence[!, col] = convert(Vector{Float64}, counts[:, c])
         end
 
         # caculate incidences (start at max tick to not override values needed in another row)
         for i in reverse(1:nrow(incidence))
-            window = maximum([1, i - timespan]):i
+            window = max(1, i - timespan + 1):i
             for col in value_cols
                 incidence[i, col] = sum(incidence[window, col]) / popfactor
             end
@@ -83,3 +75,21 @@ function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::
 end
 
 age_incidence(postProcessor::PostProcessor; timespan::Int64 = 7, basesize::Int64 = 100_000) = age_incidence(postProcessor, timespan, basesize)
+
+# Infections of pathogen `pid` per tick in `1:final_tick`: all of them in the first column, then per age
+# cohort of the infectee. Seeds, which have no infecter (`id_a <= 0`), are left out.
+function _age_incidence_counts(ticks::AbstractVector, id_a::AbstractVector, pids::AbstractVector,
+        ages::AbstractVector, pid::Integer, final_tick::Int, cohorts::Vector)
+    counts = zeros(Int, final_tick, 1 + length(cohorts))
+    for r in eachindex(ticks)
+        (id_a[r] > 0 && pids[r] == pid) || continue
+        t = Int(ticks[r])
+        1 <= t <= final_tick || continue
+        counts[t, 1] += 1
+        a = ages[r]
+        for (c, (_, lo, hi)) in enumerate(cohorts)
+            lo <= a <= hi && (counts[t, c + 1] += 1)
+        end
+    end
+    return counts
+end

@@ -42,6 +42,7 @@ function log_stepinfo(simulation::Simulation)
     det_cnt = zeros(Int, Threads.maxthreadid())
 
     inds = simulation |> individuals
+    plans = activity_plans(simulation)
     active = simulation.active_individuals
     quarantined = simulation.quarantined_individuals
     s_classes = schoolclasses(simulation)
@@ -62,13 +63,13 @@ function log_stepinfo(simulation::Simulation)
 
             if isquarantined(i)
                 loc_tot_quar += 1
-                if is_student(i)
+                if is_student(i, plans)
                     loc_st_quar += 1
                     if is_infected(i)
                         loc_st_isol += 1
                     end
                 end
-                if is_working(i)
+                if is_working(i, plans)
                     loc_wo_quar += 1
                     if is_infected(i)
                         loc_wo_isol += 1
@@ -82,8 +83,8 @@ function log_stepinfo(simulation::Simulation)
 
             # members of closed settings are counted below, by setting size
             if is_severe(i) || is_hospitalized(i) || isquarantined(i)
-                loc_st_unab += _open_membership(s_classes, class_id(i))
-                loc_wo_unab += _open_membership(offs, office_id(i))
+                loc_st_unab += _open_memberships(plans, i, s_classes)
+                loc_wo_unab += _open_memberships(plans, i, offs)
             end
         end
 
@@ -168,12 +169,17 @@ function copy_last_log_state(simulation::Simulation)
 end
 
 """
-    _open_membership(stngs::Vector{T}, setting_id::Int32) where {T<:Setting}
+    _open_memberships(plans::ActivityPlanStore, indiv::Individual, stngs::Vector{T}) where {T<:Setting}
 
-Returns `1` if `setting_id` names an open setting in `stngs`, `0` otherwise.
+Counts the settings of type `T` in `indiv`'s activity plan that are open.
 """
-@inline _open_membership(stngs::Vector{T}, setting_id::Int32) where {T<:Setting} =
-    (setting_id != DEFAULT_SETTING_ID && @inbounds is_open(stngs[setting_id])) ? 1 : 0
+@inline function _open_memberships(plans::ActivityPlanStore, indiv::Individual, stngs::Vector{T}) where {T<:Setting}
+    n = 0
+    for slot in plan_slots(plans, indiv, T)
+        @inbounds is_open(stngs[setting_id(plans.entries[slot])]) && (n += 1)
+    end
+    return n
+end
 
 """
     fire_custom_loggers!(sim::Simulation)
@@ -316,7 +322,6 @@ function _seed_infection!(simulation::Simulation, spec::InfectionSeed, rng::Xosh
 
     for i in picked
         infect!(i, t, pthgn, sim = simulation, rng = rng)
-        activate_memberships!(i, simulation)
     end
     return nothing
 end
@@ -338,10 +343,14 @@ function step!(simulation::Simulation)
     # seed scheduled imports
     seed_scheduled!(simulation)
 
+    # repack stale pools
+    repack_dirty_pools!(settingscontainer(simulation))
+
     # update disease state
     if !dormant
         update_individuals!(simulation)
         flush_ended_infections!(simulation)
+        apply_deaths!(simulation)
     end
 
     # fire hospitalization_triggers
@@ -351,13 +360,7 @@ function step!(simulation::Simulation)
 
     # infect individuals in settings
     if !dormant
-        foreach_setting_vector(settingscontainer(simulation)) do stngs
-            Threads.@threads :static for stng in stngs
-                if isactive(stng)
-                    spread_infection!(stng, simulation)
-                end
-            end
-        end
+        spread_infections!(simulation)
 
         # push pending infections to InfectionRegistry
         flush_pending_infections!(simulation)
@@ -459,30 +462,97 @@ end
 """
     flush_pending_infections!(sim::Simulation)
  
-Drains every `_PendingInfection` staged in `sim.infection_buffers` into `sim.infection_registry`.
-Empties each buffer when done.
+Commits every `_PendingInfection` staged in `sim.infection_buffers`, keeping one winner per
+`(host, pathogen)` and dropping the rest. Empties each buffer when done.
+
+Two passes: the first records the smallest `_deduplication_key` per
+`(host, pathogen)`, the second commits the attempt carrying it.
+
+Each shard reserves its block of infection ids up front, so ids are reproducible. Losers leave
+gaps in a block.
 """
 function flush_pending_infections!(sim::Simulation)
     pop = population(sim)
+    logger = infectionlogger(sim)
     num_shards = Threads.maxthreadid()
- 
+
+    # serial: reserve one id block per shard, sized by what that shard is about to see
+    id_bases = Vector{Int32}(undef, num_shards)
+    @inbounds for shard_id in 1:num_shards
+        arrivals = 0
+        for producer_id in 1:num_shards
+            arrivals += length(sim.infection_buffers[producer_id, shard_id])
+        end
+        id_bases[shard_id] = reserve_infection_ids!(logger, arrivals)
+    end
+
     Threads.@threads :static for shard_id in 1:num_shards
         infections = sim.infection_registries[shard_id]
+        best = sim.deduplication_winners[shard_id]
+        next_id = id_bases[shard_id]
 
-        # drain all buffers destined for this shard
+        # pass 1: pick canonical winner of each contest, over the whole column
+        empty!(best)
+        @inbounds for producer_id in 1:num_shards
+            for p in sim.infection_buffers[producer_id, shard_id]
+                k = _deduplication_key(p)
+                hp = (p.host_id, p.pathogen_id)
+                cur = get(best, hp, nothing)
+                (cur === nothing || k < cur) && (best[hp] = k)
+            end
+        end
+
+        # pass 2: commit the winners. The mask guard skips the losers' host and settles exact ties.
         @inbounds for producer_id in 1:num_shards
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
+                _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = get_individual_by_id(pop, p.host_id)
-                state = push_infection!(infections, ind, p.pathogen_id, p.infection_id, p.dp, p.progression_id)
-                # contribute the new infection's care demand
-                compute_health!(ind, infections, health_progression(sim), sim.health_profiles,
-                    state, tick(sim), sim.rngs[shard_id], sim.health_schedules[shard_id])
-                _mark_active!(sim, ind)
+                infected(ind, p.pathogen_id) && continue
+                _commit_infection!(sim, ind, p, next_id, infections, logger, shard_id)
+                next_id += Int32(1)
             end
             empty!(buf)
         end
     end
+    return nothing
+end
+
+"""
+    _commit_infection!(sim, ind, p::_PendingInfection, infection_id, infections, logger, shard_id)
+
+Realizes one deduplicated infection: logs it under `infection_id`, stores the state, contributes
+its care demand and sets the host's flags.
+"""
+function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfection,
+        infection_id::Int32, infections::InfectionRegistry, logger::InfectionLogger, shard_id::Int)
+    log!(
+        logger,
+        infection_id,
+        p.infecter_id,
+        p.host_id,
+        p.pathogen_id,
+        p.progression_id,
+        p.tick,
+        infectiousness_onset(p.dp),
+        symptom_onset(p.dp),
+        severeness_onset(p.dp),
+        critical_onset(p.dp),
+        critical_offset(p.dp),
+        severeness_offset(p.dp),
+        recovery(p.dp),
+        p.setting_id,
+        p.setting_type,
+        p.lat,
+        p.lon,
+        p.ags,
+        p.source_infection_id
+    )
+    state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)
+    compute_health!(ind, infections, health_progression(sim), sim.health_profiles, state, tick(sim),
+        sim.rngs[shard_id], sim.health_schedules[shard_id])
+    _mark_infected!(ind, p.pathogen_id)
+    _mark_active!(sim, ind)
     return nothing
 end
 
@@ -696,6 +766,8 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
             _close_care_at_death!(indiv, healthlogger(sim), tick)
+            # leaves its settings in the serial `apply_deaths!`
+            push!(sim.newly_dead[Threads.threadid()], indiv)
         end
     end
 
@@ -709,18 +781,46 @@ end
 """
     update_individuals!(sim::Simulation)
 
-Updates every active individual.
+Updates every active individual and collects the infectious ones per thread for the transmission phase.
 """
 function update_individuals!(sim::Simulation)
     t = tick(sim)
     inds = individuals(population(sim))
     active = sim.active_individuals
+    foreach(empty!, sim.infectious_individuals)
     Threads.@threads :static for k in eachindex(inds)
         @inbounds active[k] || continue
         i = @inbounds inds[k]
         update_individual!(i, t, sim)
+        # the transmission phase goes through exactly these
+        infectious(i) && push!(sim.infectious_individuals[Threads.threadid()], i)
         @inbounds active[k] = _stays_active(i)
     end
+    return nothing
+end
+
+"""
+    mark_deceased!(individual::Individual, sim::Simulation)
+
+Marks a dead individual deceased in each of their settings.
+"""
+function mark_deceased!(individual::Individual, sim::Simulation)
+    for e in plan_entries(activity_plans(sim), individual)
+        _with_entry_setting(s -> mark_deceased!(s, individual, sim), sim, e)
+    end
+    return nothing
+end
+
+# Marks this tick's dead deceased. Serial, as marking one also moves the member it swaps with.
+function apply_deaths!(sim::Simulation)
+    any(!isempty, sim.newly_dead) || return nothing
+    # thread order is population order, so the result does not depend on who found a death
+    for buf in sim.newly_dead
+        foreach(i -> mark_deceased!(i, sim), buf)
+        empty!(buf)
+    end
+    # spreading reads the frames this tick
+    repack_dirty_pools!(settingscontainer(sim))
     return nothing
 end
 
@@ -777,10 +877,13 @@ function run!(simulation::Simulation; with_progressbar::Bool = true)
         # The unified step! handles both active and dormant states
         step!(simulation)
 
-        if !has_time_limit 
+        if !has_time_limit
             @info "\r  \u2514 Currently simulating $(tickunit(simulation)): $(tick(simulation))"
         end
     end
+
+    # the buffers are sized by the busiest tick
+    _release_tick_buffers!(simulation)
 
     println()
     return simulation

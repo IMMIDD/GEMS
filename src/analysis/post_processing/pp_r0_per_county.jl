@@ -26,24 +26,26 @@ function r0_per_county(postProcessor::PostProcessor; sample_fraction = R0_CALCUL
 
     # Precompute secondary cases
     infs = infectionsDF(postProcessor)
+    # ids are sparse, so this sits slightly above the infection count
     max_inf_id = isempty(infs) ? 0 : maximum(infs.infection_id)
 
     secondary_counts = _secondary_counts(infs.source_infection_id, max_inf_id)
 
-    sim_infs = sim_infectionsDF(postProcessor)
-    return _county_r0(sim_infs.infection_id, sim_infs.pathogen_id, county.(sim_infs.household_ags_a),
+    return _county_r0(infs.infection_id, infs.pathogen_id, infs.household_ags_a, infs.id_a,
         secondary_counts, sample_fraction)
 end
 
 # R per (county, pathogen): the secondary infections caused by each group's first `sample_fraction` of
 # infections (by id), per sampled infection. 
-function _county_r0(inf_ids::AbstractVector, pids::AbstractVector, counties::AbstractVector,
+function _county_r0(inf_ids::AbstractVector, pids::AbstractVector, infecter_ags::AbstractVector, id_a::AbstractVector,
         secondary_counts::Vector{Int}, sample_fraction)
-    # each infection's group by infection id, and each group's (county, pathogen) and size
+    # each infection's group by infection id, and each group's (county, pathogen) and size; seeds
+    # (`id_a <= 0`) have no infecter and belong to no group
     groups = OrderedCounter{Tuple{Int32, eltype(pids)}}()
     group_of_id = zeros(Int32, isempty(inf_ids) ? 0 : maximum(inf_ids))
     for r in eachindex(inf_ids)
-        group_of_id[inf_ids[r]] = count!(groups, (counties[r].id, pids[r]))
+        id_a[r] > 0 || continue
+        group_of_id[inf_ids[r]] = count!(groups, (county(infecter_ags[r]).id, pids[r]))
     end
 
     # ids are dense, so walking them in order visits every group's infections sorted by id

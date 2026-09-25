@@ -53,6 +53,42 @@
             @test vcat(GEMS.ChunkedVector{Int32}(), GEMS.ChunkedVector{Int32}()) == Int32[]
         end
 
+        @testset "Compaction" begin
+            vs = [GEMS.ChunkedVector{Int32}(chunk_size = 4) for _ in 1:3]
+            foreach(i -> push!(vs[1], i), 1:6)
+            foreach(i -> push!(vs[3], -i), 1:5)
+            expected = vcat(vs...)
+
+            head = GEMS._compact!(vs)
+            @test head === vs[1].head
+            @test head == expected
+            @test collect(vs[1]) == expected
+            @test all(isempty, vs[2:3]) && isempty(vs[1].chunks)
+            # idempotent, and appending after it continues behind the head
+            @test GEMS._compact!(vs) == expected
+            push!(vs[2], 99); push!(vs[1], 100)
+            @test vcat(vs...) == vcat(expected, [100, 99])
+            @test vs[1][end] == 100 && length(vs[1]) == length(expected) + 1
+        end
+
+        @testset "Compaction of Plain Columns" begin
+            vs = [Int16[1, 2], Int16[], Int16[3, 4, 5]]
+            first_vec = vs[1]
+            @test GEMS._compact!(vs) === first_vec
+            @test first_vec == [1, 2, 3, 4, 5]
+            @test all(isempty, vs[2:3])
+
+            # an event logger's shared dataframe is its own, merged storage
+            dl = DeathLogger()
+            push!(dl.id[1], 7); push!(dl.tick[1], 1); push!(dl.pathogen_id[1], 1)
+            push!(dl.id[end], 9); push!(dl.tick[end], 2); push!(dl.pathogen_id[end], 1)
+            copied = dataframe(dl)
+            shared = dataframe(dl; share = true)
+            @test isequal(copied, shared)
+            @test shared.id === dl.id[1]
+            @test copied.id !== dl.id[1]
+        end
+
         @testset "Logger Columns" begin
             il = InfectionLogger()
             @test il.id_a[1] isa GEMS.ChunkedVector{Int32}
@@ -67,7 +103,7 @@
             "id_a",
             "id_b",
             "pathogen_id",
-            "progression_category",
+            "progression_id",
             "infectiousness_onset",
             "symptom_onset",
             "severeness_onset",
@@ -97,10 +133,11 @@
 
             log!(
                 logger = il,
+                infection_id = Int32(1),
                 a = Int32(0),
                 b = Int32(0),
                 pathogen_id = Int8(0),
-                progression_category = Symbol(Asymptomatic),
+                progression_id = Int8(1),
                 tick = Int16(0),
                 infectiousness_onset = Int16(0),
                 symptom_onset = Int16(0),
@@ -156,13 +193,15 @@
 
             # infect one agent
             infect!(infecter, t, first_pathogen(sim), sim = sim, rng = rng(sim))
-            
+            # infections only reach the logger on flush
+            GEMS.flush_pending_infections!(sim)
+
             # flatten logger internal arrays to a dataframe to check values
             df1 = dataframe(il)
             @test df1.tick[end] == t
             @test df1.id_a[end] == -1
             @test df1.id_b[end] == id(infecter)
-            @test df1.progression_category[end] == Symbol(Asymptomatic)
+            @test df1.progression_id[end] == GEMS.progression_index(first_pathogen(sim), Asymptomatic)
             @test df1.infectiousness_onset[end] >= t+3
             @test df1.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df1.severeness_onset[end] == GEMS.DEFAULT_TICK
@@ -186,12 +225,13 @@
                 setting_id=id(h),
                 setting_type=settingchar(h),
                 source_infection_id = df1.infection_id[end])
+            GEMS.flush_pending_infections!(sim)
 
             df2 = dataframe(il)
             @test df2.tick[end] == t
             @test df2.id_a[end] == id(infecter)
             @test df2.id_b[end] == id(infectee)
-            @test df2.progression_category[end] == Symbol(Asymptomatic)
+            @test df2.progression_id[end] == GEMS.progression_index(first_pathogen(sim), Asymptomatic)
             @test df2.infectiousness_onset[end] >= t+3
             @test df2.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df2.severeness_onset[end] == GEMS.DEFAULT_TICK
@@ -212,7 +252,7 @@
 
             # minimal infection record; only a, b and tick matter for the index
             function log_infection!(il, a, b, t)
-                log!(il, Int32(a), Int32(b), Int8(1), :Asymptomatic, Int16(t),
+                log!(il, Int32(1), Int32(a), Int32(b), Int8(1), Int8(1), Int16(t),
                     Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
                     Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
             end

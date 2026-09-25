@@ -211,6 +211,18 @@ import GEMS: increment!, infected!
             @test label(sim) == "test_sim"
             sim = Simulation(pop_size = 100, label = 123)
             @test label(sim) == "123"
+
+            # TRANSMISSION PRE-THINNING
+            # passing
+            config(value) = Dict("Simulation" => Dict("transmission_prethinning" => value))
+            @test Simulation(pop_size = 100, transmission_prethinning = true).prethinning
+            @test !Simulation(pop_size = 100, transmission_prethinning = false).prethinning
+            @test GEMS.determine_transmission_prethinning(Dict(), nothing)
+            @test !GEMS.determine_transmission_prethinning(config(false), nothing)
+            @test GEMS.determine_transmission_prethinning(config(false), true)
+            # failing
+            @test_throws ArgumentError Simulation(pop_size = 100, transmission_prethinning = 1)
+            @test_throws ArgumentError GEMS.determine_transmission_prethinning(config("yes"), nothing)
         end
 
         @testset "Population & Settings" begin
@@ -611,7 +623,7 @@ import GEMS: increment!, infected!
 
             pop_path = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2")
             @test_throws ArgumentError Simulation(population=pop_path, settingsfile="notajld2file.csv")
-            # the settings file is read in a task; a missing one still throws the plain error
+            # a missing settings file throws the plain error
             @test_throws ErrorException Simulation(population=pop_path, settingsfile="/nonexistent/settings.jld2")
 
             @test_throws GEMS.ConfigfileError GEMS.determine_start_condition(Dict(), nothing, nothing)
@@ -1439,7 +1451,7 @@ import GEMS: increment!, infected!
     @testset "Multipathogen run!" begin
         # both pathogens are seeded at 30% so that ~9% of individuals start with both
         # simultaneously (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow
-        # block in _process_infections!
+        # iteration in _spread_with!
         p1 = Pathogen(id=1, name="PathA")
         p2 = Pathogen(id=2, name="PathB")
         mc = MultiStartCondition([
@@ -1454,6 +1466,31 @@ import GEMS: increment!, infected!
         inf_df = infections(sim_mp)
         @test Int8(1) in inf_df.pathogen_id
         @test Int8(2) in inf_df.pathogen_id
+    end
+
+    @testset "Transmission pre-thinning toggle" begin
+        # without usable bounds, spreading draws the same with the toggle on or off
+        struct UnboundedRate <: GEMS.TransmissionFunction end
+        GEMS.transmission_probability(::UnboundedRate, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+            setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.2
+        function runs(names)
+            return map((true, false)) do on
+                ps = Tuple(Pathogen(id = k, name = nm, transmission_function = UnboundedRate()) for (k, nm) in enumerate(names))
+                sim = Simulation(pathogens = ps, pop_size = 5000, infected_fraction = 0.01, seed = 7,
+                    stop_criterion = TimesUp(limit = 30), transmission_prethinning = on)
+                run!(sim)
+                return infections(sim)
+            end
+        end
+        single = runs(["A"])
+        @test nrow(single[1]) > 100 && isequal(single[1], single[2])
+        multi = runs(["A", "B"])
+        @test nrow(multi[1]) > 100 && isequal(multi[1], multi[2])
+
+        # the contact survey never thins
+        surveys = map(on -> GEMS.contact_samples(Simulation(pop_size = 1000, seed = 3, transmission_prethinning = on), Household, false),
+            (true, false))
+        @test isequal(surveys[1], surveys[2])
     end
 
     @testset "Closed Setting in Step" begin
@@ -1471,11 +1508,23 @@ import GEMS: increment!, infected!
         sim = Simulation()
         num_threads = Threads.maxthreadid()
         
-        @test length(present_buffers(sim)) == num_threads
         @test length(contact_buffers(sim)) == num_threads
         
         # Verify they are actual individual vectors
-        @test present_buffers(sim)[1] isa Vector{Individual}
+        @test contact_buffers(sim)[1] isa Vector{Individual}
+
+        # run! releases the capacity the buffers grew to, down to what they still hold
+        capacity(v) = length(v.ref.mem)
+        @test any(b -> capacity(b) > 0, sim.infection_buffers)  # reserved up front
+        run!(sim)
+        @test all(b -> capacity(b) == length(b), sim.infectious_individuals)
+        @test all(b -> capacity(b) == length(b), contact_buffers(sim))
+        @test all(b -> capacity(b) == length(b), sim.draw_buffers)
+        @test all(b -> capacity(b) == length(b), sim.newly_dead)
+        @test all(b -> capacity(b) == length(b), sim.infection_buffers)
+        @test all(b -> capacity(b) == length(b), sim.removal_buffers)
+        # reserved up front too; a Dict shrinks to the table its last tick's winners need
+        @test all(d -> length(d.slots) <= max(16, 4 * length(d)), sim.deduplication_winners)
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)
@@ -1490,5 +1539,30 @@ import GEMS: increment!, infected!
         simA = Simulation(pop_size=100, seed=999)
         simB = Simulation(pop_size=100, seed=999)
         @test rand(rngs(simA)[1]) == rand(rngs(simB)[1])
+    end
+
+    @testset "The dead leave their settings' contacts" begin
+        sim = Simulation(seed = 1)
+        run!(sim)
+        dead_inds = filter(dead, individuals(sim))
+        @test !isempty(dead_inds)
+        cntnr = settingscontainer(sim)
+        repack_dirty_pools!(cntnr)
+        plans = GEMS.activity_plans(sim)
+        for d in dead_inds, e in GEMS.plan_entries(plans, d)
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            # still a member, but never drawn
+            @test d in individuals(s)
+            @test !(d in GEMS.present_members(s, cntnr))
+        end
+        @test GEMS.validate_plans(population(sim), cntnr)
+
+        # a reset brings them back
+        reset!(sim)
+        for d in dead_inds, e in GEMS.plan_entries(plans, d)
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            @test d in GEMS.present_members(s, cntnr)
+        end
+        @test GEMS.validate_plans(population(sim), cntnr)
     end
 end
