@@ -1873,6 +1873,16 @@ function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
     return simulation.contact_buffers
 end
 
+# Frees the capacity the per-tick buffers grew to during a run
+function _release_tick_buffers!(simulation::Simulation)
+    release!(buf) = sizehint!(buf, length(buf))
+    foreach(release!, simulation.present_buffers)
+    foreach(release!, simulation.contact_buffers)
+    foreach(release!, simulation.infection_buffers)
+    foreach(release!, simulation.removal_buffers)
+    return nothing
+end
+
 """
     start_condition(simulation)
 
