@@ -55,8 +55,8 @@ function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::
         # the pathogen's infections without the seeds, which have no infecter
         p_infs = subset(infs, [:id_a, :pathogen_id] => ByRow((a, q) -> a > 0 && q == pid), view=true)
 
-        # one selection of :age_a for all cohorts; each selection copies the column in group order
-        cohort_counts = :age_a => (a -> NamedTuple(col => betweenage(a, lo, hi) for (col, lo, hi) in age_cohorts)) => AsTable
+        # one selection of :age_b for all cohorts; each selection copies the column in group order
+        cohort_counts = :age_b => (a -> NamedTuple(col => betweenage(a, lo, hi) for (col, lo, hi) in age_cohorts)) => AsTable
         coalesce_zero = [col => ByRow(x -> coalesce(x, 0)) => col for col in value_cols]
 
         incidence = groupby(p_infs, :tick) |>
