@@ -47,12 +47,13 @@ function age_incidence(postProcessor::PostProcessor, timespan::Int64, basesize::
     # every numeric column that gets coalesced, converted and rolled
     value_cols = [:total; first.(age_cohorts)]
 
-    sim_infs = sim_infectionsDF(postProcessor)
+    infs = infectionsDF(postProcessor)
     results = DataFrame[]
 
     for p in pathogens(sim)
         pid = id(p)
-        p_infs = subset(sim_infs, :pathogen_id => ByRow(==(pid)), view=true)
+        # the pathogen's infections without the seeds, which have no infecter
+        p_infs = subset(infs, [:id_a, :pathogen_id] => ByRow((a, q) -> a > 0 && q == pid), view=true)
 
         # one selection of :age_a for all cohorts; each selection copies the column in group order
         cohort_counts = :age_a => (a -> NamedTuple(col => betweenage(a, lo, hi) for (col, lo, hi) in age_cohorts)) => AsTable
