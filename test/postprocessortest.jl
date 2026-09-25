@@ -28,6 +28,23 @@ import GEMS: _mean_contacts_per_age_group,
         @test infections(pp) isa DataFrame
         @test infections(pp) === infectionsDF(pp)
 
+        # the logger columns are the logger's own storage, not copies, and hold the same data
+        il = infectionlogger(sim)
+        @test infectionsDF(pp).infection_id === il.infection_id[1].head
+        @test infectionsDF(pp).id_b === il.id_b[1].head
+        @test infectionsDF(pp).infection_id == dataframe(il).infection_id
+        # the logger's own dataframe is still a copy
+        @test dataframe(il).infection_id !== il.infection_id[1].head
+        # the other logger tables share too; the dead are joined with the population, so compare by id
+        @test deathsDF(pp).id === deathlogger(sim).id[1]
+
+        # without sharing, the same data in copies
+        pp_copy = PostProcessor(sim; share_logger_data = false)
+        @test infectionsDF(pp_copy).infection_id !== il.infection_id[1].head
+        @test isequal(infectionsDF(pp_copy), infectionsDF(pp))
+        @test deathsDF(pp_copy).id !== deathlogger(sim).id[1]
+        @test isequal(deathsDF(pp_copy), deathsDF(pp))
+
         # compartmentsDF returns the state-logger compartment data
         @test compartmentsDF(pp) isa DataFrame
         @test nrow(compartmentsDF(pp)) > 0

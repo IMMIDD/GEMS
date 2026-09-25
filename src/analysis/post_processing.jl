@@ -43,11 +43,15 @@ mutable struct PostProcessor
 
 @doc """
 
-        PostProcessor(simulation::Simulation)
+        PostProcessor(simulation::Simulation; share_logger_data::Bool = true)
 
     Create a `PostProcessor` object for an associated `Simulation`. Post Processing requires a simulation to be done.
+
+    With `share_logger_data` (the default), the columns the `PostProcessor`'s dataframes take from the
+    simulation's loggers are the loggers' own storage rather than copies, which saves their memory;
+    changing such a column in place changes the logger. Pass `false` to work on copies.
     """
-    function PostProcessor(simulation::Simulation)
+    function PostProcessor(simulation::Simulation; share_logger_data::Bool = true)
 
         # a run can end on settings opened or closed; repack their pools here, before result steps
         # that may run concurrently read them
@@ -55,15 +59,15 @@ mutable struct PostProcessor
 
         # convert population model to dataframe
         pop = dataframe(population(simulation))
-        
-        # import tests
-        tests = dataframe(testlogger(simulation))
-        
-        # import seroprevalence tests
-        serotests = dataframe(seroprevalencelogger(simulation))
 
-        # join all infections with additional info from population DF
-        infections = simulation |> infectionlogger |> dataframe
+        # import tests
+        tests = dataframe(testlogger(simulation); share = share_logger_data)
+
+        # import seroprevalence tests
+        serotests = dataframe(seroprevalencelogger(simulation); share = share_logger_data)
+
+        # the steps below only add or replace columns, so they leave shared logger columns intact
+        infections = dataframe(infectionlogger(simulation); share = share_logger_data)
 
         # the logger stores the progression index; resolve it here, where pathogens are known
         infections[!, :progression_id] = progression_names(pathogens(simulation),
@@ -96,7 +100,7 @@ mutable struct PostProcessor
         infections.household_ags_a = _ags_of_households(infections.household_a, household_ags)
         infections.household_ags_b = _ags_of_households(infections.household_b, household_ags)
 
-        deaths = dataframe(deathlogger(simulation))
+        deaths = dataframe(deathlogger(simulation); share = share_logger_data)
 
         # a host death ends every co-active infection: clear `:recovery` and record `:removed`
         death_rows = _matching_rows(infections.id_b, deaths.id)
@@ -113,13 +117,13 @@ mutable struct PostProcessor
         # join tests with population data
         leftjoin!(tests, pop, on = :id)
         
-        pooltests = dataframe(pooltestlogger(simulation))
+        pooltests = dataframe(pooltestlogger(simulation); share = share_logger_data)
 
         # add "Other" column to quarantines DF indicating all non-student and non-worker quarantines
-        quarantines = dataframe(quarantinelogger(simulation))
+        quarantines = dataframe(quarantinelogger(simulation); share = share_logger_data)
         transform!(quarantines, [:quarantined, :students, :workers] => ByRow((q, s, w) -> q - s - w) => :other)
 
-        compartments = dataframe(statelogger(simulation))
+        compartments = dataframe(statelogger(simulation); share = share_logger_data)
         rename!(compartments,
             :exposed => :exposed_cnt,
             :infectious => :infectious_cnt,
@@ -132,13 +136,13 @@ mutable struct PostProcessor
 
     @doc """
 
-        PostProcessor(simulations::Vector{Simulation})
+        PostProcessor(simulations::Vector{Simulation}; share_logger_data::Bool = true)
 
     Create a vector of `PostProcessor` objects for a vector of associated `Simulation` objects.
     Post Processing requires all simulations to be done.
     """
-    function PostProcessor(simulations::Vector{<:Simulation})
-        return map(PostProcessor, simulations)
+    function PostProcessor(simulations::Vector{<:Simulation}; share_logger_data::Bool = true)
+        return map(s -> PostProcessor(s; share_logger_data), simulations)
     end
 
 end

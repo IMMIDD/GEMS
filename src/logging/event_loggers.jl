@@ -33,11 +33,12 @@ function save_JLD2(vacclogger::VaccinationLogger, path::AbstractString)
     end
 end
 
-function dataframe(vacclogger::VaccinationLogger)
+function dataframe(vacclogger::VaccinationLogger; share::Bool = false)
+    col(c) = _logger_column(c, share)
     return DataFrame(
-        tick = vcat(vacclogger.tick...),
-        id = vcat(vacclogger.id...),
-        pathogen_id = vcat(vacclogger.pathogen_id...);
+        tick = col(vacclogger.tick),
+        id = col(vacclogger.id),
+        pathogen_id = col(vacclogger.pathogen_id);
         copycols = false
     )
 end
@@ -80,11 +81,12 @@ function save_JLD2(deathlogger::DeathLogger, path::AbstractString)
     end
 end
 
-function dataframe(deathlogger::DeathLogger)::DataFrame
+function dataframe(deathlogger::DeathLogger; share::Bool = false)::DataFrame
+    col(c) = _logger_column(c, share)
     return DataFrame(
-        tick = vcat(deathlogger.tick...),
-        id = vcat(deathlogger.id...),
-        pathogen_id = vcat(deathlogger.pathogen_id...);
+        tick = col(deathlogger.tick),
+        id = col(deathlogger.id),
+        pathogen_id = col(deathlogger.pathogen_id);
         copycols = false
     )
 end
@@ -136,11 +138,12 @@ function save_JLD2(healthlogger::HealthLogger, path::AbstractString)
     end
 end
 
-function dataframe(healthlogger::HealthLogger)::DataFrame
+function dataframe(healthlogger::HealthLogger; share::Bool = false)::DataFrame
+    col(c) = _logger_column(c, share)
     return DataFrame(
-        tick = vcat(healthlogger.tick...),
-        id = vcat(healthlogger.id...),
-        event = vcat(healthlogger.event...);
+        tick = col(healthlogger.tick),
+        id = col(healthlogger.id),
+        event = col(healthlogger.event);
         copycols = false
     )
 end
@@ -211,17 +214,18 @@ function save_JLD2(testlogger::TestLogger, path::AbstractString)
     end
 end
 
-function dataframe(testlogger::TestLogger)::DataFrame
+function dataframe(testlogger::TestLogger; share::Bool = false)::DataFrame
+    col(c) = _logger_column(c, share)
     return DataFrame(
-        test_id = vcat(testlogger.test_id...),
-        tick = vcat(testlogger.tick...),
-        id = vcat(testlogger.id...),
-        test_result = vcat(testlogger.test_result...),
-        infected = vcat(testlogger.infected...),
-        infection_id = vcat(testlogger.infection_id...),
-        pathogen_id = vcat(testlogger.pathogen_id...),
-        test_type = vcat(testlogger.test_type...),
-        reportable = vcat(testlogger.reportable...);
+        test_id = col(testlogger.test_id),
+        tick = col(testlogger.tick),
+        id = col(testlogger.id),
+        test_result = col(testlogger.test_result),
+        infected = col(testlogger.infected),
+        infection_id = col(testlogger.infection_id),
+        pathogen_id = col(testlogger.pathogen_id),
+        test_type = col(testlogger.test_type),
+        reportable = col(testlogger.reportable);
         copycols = false
     )
 end
@@ -285,16 +289,17 @@ function save_JLD2(poollogger::PoolTestLogger, path::AbstractString)
     end
 end
 
-function dataframe(poollogger::PoolTestLogger)::DataFrame
+function dataframe(poollogger::PoolTestLogger; share::Bool = false)::DataFrame
+    col(c) = _logger_column(c, share)
     return DataFrame(
-        tick = vcat(poollogger.tick...),
-        setting_id = vcat(poollogger.setting_id...),
-        setting_type = vcat(poollogger.setting_type...),
-        test_result = vcat(poollogger.test_result...),
-        no_of_individuals = vcat(poollogger.no_of_individuals...),
-        no_of_infected = vcat(poollogger.no_of_infected...),
-        pathogen_id = vcat(poollogger.pathogen_id...),
-        test_type = vcat(poollogger.test_type...);
+        tick = col(poollogger.tick),
+        setting_id = col(poollogger.setting_id),
+        setting_type = col(poollogger.setting_type),
+        test_result = col(poollogger.test_result),
+        no_of_individuals = col(poollogger.no_of_individuals),
+        no_of_infected = col(poollogger.no_of_infected),
+        pathogen_id = col(poollogger.pathogen_id),
+        test_type = col(poollogger.test_type);
         copycols = false
     )
 end
@@ -365,17 +370,18 @@ function save_JLD2(logger::SeroprevalenceLogger, path::AbstractString)
     end
 end
 
-function dataframe(logger::SeroprevalenceLogger)::DataFrame
+function dataframe(logger::SeroprevalenceLogger; share::Bool = false)::DataFrame
+    col(c) = _logger_column(c, share)
     return DataFrame(
-        test_id = vcat(logger.test_id...),
-        tick = vcat(logger.tick...),
-        id = vcat(logger.id...),
-        test_result = vcat(logger.test_result...),
-        infected = vcat(logger.infected...),
-        was_infected = vcat(logger.was_infected...),
-        infection_id = vcat(logger.infection_id...),
-        pathogen_id = vcat(logger.pathogen_id...),
-        test_type = vcat(logger.test_type...);
+        test_id = col(logger.test_id),
+        tick = col(logger.tick),
+        id = col(logger.id),
+        test_result = col(logger.test_result),
+        infected = col(logger.infected),
+        was_infected = col(logger.was_infected),
+        infection_id = col(logger.infection_id),
+        pathogen_id = col(logger.pathogen_id),
+        test_type = col(logger.test_type);
         copycols = false
     )
 end

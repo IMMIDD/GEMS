@@ -53,6 +53,42 @@
             @test vcat(GEMS.ChunkedVector{Int32}(), GEMS.ChunkedVector{Int32}()) == Int32[]
         end
 
+        @testset "Compaction" begin
+            vs = [GEMS.ChunkedVector{Int32}(chunk_size = 4) for _ in 1:3]
+            foreach(i -> push!(vs[1], i), 1:6)
+            foreach(i -> push!(vs[3], -i), 1:5)
+            expected = vcat(vs...)
+
+            head = GEMS._compact!(vs)
+            @test head === vs[1].head
+            @test head == expected
+            @test collect(vs[1]) == expected
+            @test all(isempty, vs[2:3]) && isempty(vs[1].chunks)
+            # idempotent, and appending after it continues behind the head
+            @test GEMS._compact!(vs) == expected
+            push!(vs[2], 99); push!(vs[1], 100)
+            @test vcat(vs...) == vcat(expected, [100, 99])
+            @test vs[1][end] == 100 && length(vs[1]) == length(expected) + 1
+        end
+
+        @testset "Compaction of Plain Columns" begin
+            vs = [Int16[1, 2], Int16[], Int16[3, 4, 5]]
+            first_vec = vs[1]
+            @test GEMS._compact!(vs) === first_vec
+            @test first_vec == [1, 2, 3, 4, 5]
+            @test all(isempty, vs[2:3])
+
+            # an event logger's shared dataframe is its own, merged storage
+            dl = DeathLogger()
+            push!(dl.id[1], 7); push!(dl.tick[1], 1); push!(dl.pathogen_id[1], 1)
+            push!(dl.id[end], 9); push!(dl.tick[end], 2); push!(dl.pathogen_id[end], 1)
+            copied = dataframe(dl)
+            shared = dataframe(dl; share = true)
+            @test isequal(copied, shared)
+            @test shared.id === dl.id[1]
+            @test copied.id !== dl.id[1]
+        end
+
         @testset "Logger Columns" begin
             il = InfectionLogger()
             @test il.id_a[1] isa GEMS.ChunkedVector{Int32}
