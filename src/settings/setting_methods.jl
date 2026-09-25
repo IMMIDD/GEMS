@@ -509,17 +509,13 @@ function min_max_avg_individuals(stngs::Vector{<:Setting}, simulation::Simulatio
         return (nothing, nothing, nothing)
     end
 
-    # own buffer: post processing steps may run concurrently
-    indivs = Individual[]
-
     min_val = typemax(Int)
     max_val = -1
     total = 0
 
     for s in stngs
-        empty!(indivs)
-        individuals!(indivs, s, simulation)
-        cnt = length(indivs)
+        # counts the members without copying them
+        cnt = size(s, simulation)
 
         total += cnt
 
