@@ -1517,10 +1517,14 @@ import GEMS: increment!, infected!
         capacity(v) = length(v.ref.mem)
         @test any(b -> capacity(b) > 0, sim.infection_buffers)  # reserved up front
         run!(sim)
-        @test all(b -> capacity(b) == length(b), present_buffers(sim))
+        @test all(b -> capacity(b) == length(b), sim.infectious_individuals)
         @test all(b -> capacity(b) == length(b), contact_buffers(sim))
+        @test all(b -> capacity(b) == length(b), sim.draw_buffers)
+        @test all(b -> capacity(b) == length(b), sim.newly_dead)
         @test all(b -> capacity(b) == length(b), sim.infection_buffers)
         @test all(b -> capacity(b) == length(b), sim.removal_buffers)
+        # reserved up front too; a Dict shrinks to the table its last tick's winners need
+        @test all(d -> length(d.slots) <= max(16, 4 * length(d)), sim.deduplication_winners)
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)
