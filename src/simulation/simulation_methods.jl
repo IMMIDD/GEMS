@@ -343,15 +343,8 @@ function step!(simulation::Simulation)
     # seed scheduled imports
     seed_scheduled!(simulation)
 
-    # repack stale pools
-    repack_dirty_pools!(settingscontainer(simulation))
-
-    # update disease state
-    if !dormant
-        update_individuals!(simulation)
-        flush_ended_infections!(simulation)
-        apply_deaths!(simulation)
-    end
+    # update disease state, apply deaths and repack the settings' frames
+    update_population!(simulation, dormant)
 
     # fire hospitalization_triggers
     fire_hospitalization_triggers!(simulation)
@@ -811,7 +804,8 @@ function mark_deceased!(individual::Individual, sim::Simulation)
     return nothing
 end
 
-# Marks this tick's dead deceased. Serial, as marking one also moves the member it swaps with.
+# Marks this tick's dead deceased, leaving their pools dirty for `update_population!` to repack.
+# Serial, as marking one also moves the member it swaps with.
 function apply_deaths!(sim::Simulation)
     any(!isempty, sim.newly_dead) || return nothing
     # thread order is population order, so the result does not depend on who found a death
@@ -819,7 +813,22 @@ function apply_deaths!(sim::Simulation)
         foreach(i -> mark_deceased!(i, sim), buf)
         empty!(buf)
     end
-    # spreading reads the frames this tick
+    return nothing
+end
+
+"""
+    update_population!(sim::Simulation, dormant::Bool)
+
+Advances every active individual and applies what changes the population, then repacks the
+settings' frames once, so everything after it in the tick reads them clean. On a dormant tick
+only the repack runs, for edits made by events.
+"""
+function update_population!(sim::Simulation, dormant::Bool)
+    if !dormant
+        update_individuals!(sim)
+        flush_ended_infections!(sim)
+        apply_deaths!(sim)
+    end
     repack_dirty_pools!(settingscontainer(sim))
     return nothing
 end
