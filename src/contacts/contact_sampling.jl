@@ -156,6 +156,9 @@ end
 
 Signals that `setting`'s members or frame changed, so a sampling method can drop state derived
 from them. Called on member edits and deaths, and when a container's frame is rebuilt. No-op by default.
+
+Frames are rebuilt in parallel, so this can run for several settings at once. A method with
+state must keep it per setting, as settings hold their own copy of a mutable method.
 """
 membership_changed!(csm::ContactSamplingMethod, setting::Setting) = nothing
 
@@ -310,14 +313,17 @@ function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::
     length(slots) == 1 && return Float32(_effective_scale(plans, first(slots)))
     leaves = settings(cntnr, L)
     below = _leaf_range(c)
-    closed = (_pool(c)::HierarchicalSettingPool).closed != 0
+    pool = _pool(c)::HierarchicalSettingPool
+    closed = pool.closed != 0
+    # a closed container frames none of its leaves
+    closed && !is_open(c) && return 0.0f0
     total = 0.0f0
     largest = 0.0f0
     for k in slots
         e = @inbounds plans.entries[k]
         leaf = leaves[setting_id(e)]
         Int(leaf.pool_leaf) in below || continue
-        (!closed || _open_below(cntnr, leaf, c)) || continue
+        (!closed || _open_up_to(pool, leaf, C)) || continue
         _is_deceased(leaf, member_index(e)) && continue
         s = Float32(_effective_scale(plans, k))
         total += s

@@ -609,7 +609,7 @@ end
 # leaves, and the store counts as indexed.
 function _finish_indexing!(plans::ActivityPlanStore, cntnr::SettingsContainer)
     for pool in values(cntnr.pools)
-        _refresh_levels!(pool, pool.leaves, AllOf(), pool.container_groups...)
+        _foreach_block!(_refresh_block!, pool, 1:nblocks(pool.blocks))
     end
     plans.indexed = true
     return plans

@@ -1775,6 +1775,41 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
                 @test individuals(cs[2])[GEMS.member_index(ind, SchoolClass, plans)] === ind
             end
         end
+
+        @testset "Parallel repack" begin
+            # enough deaths, closures and second memberships that many blocks are repacked at once
+            BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+            muenster(f) = joinpath(BASE_FOLDER, "test/testdata/$(f)_muenster.jld2")
+            sim = Simulation(population = muenster("people"), settingsfile = muenster("settings"),
+                             infected_fraction = 0.0, seed = 1)
+            pop, cntnr, rng = population(sim), settingscontainer(sim), Xoshiro(1)
+            for T in (SchoolClass, Office), _ in 1:200
+                s = rand(rng, settings(sim, T))
+                GEMS._alive(s) > 0 && mark_deceased!(s, individuals(s)[rand(rng, 1:GEMS._alive(s))], pop)
+            end
+            for T in (SchoolYear, School, Department, Workplace, SchoolClass, Office), _ in 1:30
+                s = rand(rng, settings(sim, T))
+                is_open(s) ? close!(s) : open!(s)
+            end
+            # second memberships grow classes past their slack, so blocks relocate and the duplicate scan runs
+            classes = settings(sim, SchoolClass)
+            for _ in 1:20
+                c, other = rand(rng, classes), rand(rng, classes)
+                for ind in collect(individuals(other))[1:min(end, 12)]
+                    ind in individuals(c) || add_member!(c, ind, pop)
+                end
+            end
+            @test sum(length(p.blocks.dirty) for p in values(cntnr.pools)) >= 100
+            repack_dirty_pools!(cntnr)
+
+            # every container holds what its leaves hold; `present_individuals` walks the leaves
+            # rather than reading the frames the repack wrote
+            for T in (SchoolYear, School, SchoolComplex, Department, Workplace, WorkplaceSite)
+                @test all(c -> sort(unique(ids(GEMS.present_members(c, cntnr)))) ==
+                               sort(unique(ids(present_individuals(c, sim)))), settings(sim, T))
+            end
+            @test GEMS.validate_plans(pop, cntnr)
+        end
     end
 
 end

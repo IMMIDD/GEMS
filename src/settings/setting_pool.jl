@@ -17,15 +17,16 @@ const MemberSlice = SubArray{Individual, 1, Vector{Individual}, Tuple{UnitRange{
     MemberRuns
 
 A container's frame when it is not one span: a member sits in two of its leaves at once, or
-something below it is closed or holds deceased members. The frame skips those positions, and
-`groups` records where the repeats were, so a closure keeps the first copy still present.
+something below it is closed or holds deceased members. The frame skips those positions.
 
 # Fields
 
-- `starts::Vector{Int32}`, `prefix::Vector{Int32}`: The runs, in the encoding `MemberView`
-    indexes with.
+- `starts::Vector{Int32}`, `prefix::Vector{Int32}`: Run `r` starts at pool position `starts[r]`
+    and has `prefix[r]` frame members before it; the last run ends at the frame's length. This
+    is the encoding `MemberView` indexes with.
 - `groups::Vector{Int32}`: The pool positions of each repeated member, one group after another,
-    ascending within a group.
+    ascending within a group. The same refresh reads them to keep the first copy still present
+    when a closure or death takes out another.
 - `bounds::Vector{Int32}`: Group `g` is `groups[bounds[g]:(bounds[g + 1] - 1)]`.
 """
 struct MemberRuns
@@ -77,7 +78,7 @@ end
 """
     DupTable
 
-Repack scratch for spotting a member that sits in two leaves of one container. Open addressing
+Repack buffer for spotting a member that sits in two leaves of one container. Open addressing
 keyed on object identity, which costs no load from the member.
 
 # Fields
@@ -85,7 +86,7 @@ keyed on object identity, which costs no load from the member.
 - `keys::Vector{UInt}`: The member identity in that slot, meaningful only while `gen` matches.
 - `pos::Vector{Int32}`: The first pool position that member was seen at.
 - `gen::Vector{Int32}`: The `epoch` that last claimed the slot; anything else means free.
-- `epoch::Int32`: Bumped per container scanned.
+- `epoch::Int32`: Bumped per scan, which frees every slot at once.
 """
 mutable struct DupTable
     keys::Vector{UInt}
@@ -96,16 +97,44 @@ end
 
 DupTable() = DupTable(UInt[], Int32[], Int32[], Int32(0))
 
+"""
+    RepackBuffer
+
+The buffers a repack works in. A repack on one task uses its pool's own; a repack on several
+tasks gives each one, so blocks repacked at the same time share nothing. Mutable so an unfilled
+slot of a task's vector reads as unassigned.
+
+# Fields
+
+- `block::Vector{Individual}`: Holds one block while it is relaid on itself.
+- `run_starts::Vector{Int32}`, `run_prefix::Vector{Int32}`: A container's frame, before it is
+    known to need runs.
+- `dup_table::DupTable`: Finds a member that sits in two leaves of one container. Grown to the
+    widest span it is asked to scan and reused from there.
+"""
+mutable struct RepackBuffer
+    block::Vector{Individual}
+    run_starts::Vector{Int32}
+    run_prefix::Vector{Int32}
+    dup_table::DupTable
+end
+
+RepackBuffer() = RepackBuffer(Individual[], Int32[], Int32[], DupTable())
+
 ###
 ### BLOCKS
 ###
+
+# A block's default headroom, as a fraction of its length: memory against relocations.
+const DEFAULT_POOL_SLACK = 0.25
 
 """
     PoolBlocks
 
 The pool's leaves cut into independently repackable blocks, so an edit repacks its own subtree
-rather than the hierarchy. A block is a maximal run of leaves no container range straddles, at
-any level. Leaves stay packed inside a block; the slack sits at its tail.
+rather than the hierarchy. A block is the smallest run of leaves that every container range,
+at any level, lies either inside or outside of. Leaves stay packed inside a block; the slack
+sits at its tail.
 
 # Fields
 
@@ -178,42 +207,31 @@ Keeping that layout means repacking after edits; settings no container holds use
     stranded by a relocation. Only the spans a leaf or container names are meaningful.
 - `closed::Int`: How many settings in this hierarchy are currently closed. Zero is the
     common case and lets a repack skip looking for leaves a closure removes.
-- `repeats::Int`: Memberships beyond an individual's first in this hierarchy. Only a repeated
-    member can sit in one container's frame twice, so zero skips the duplicate scan.
+- `deceased::Int`: Deceased members across its leaves. Zero lets a repack skip narrowing the
+    frames.
+- `repeats::Int`: Memberships beyond an individual's first within one block. Only a repeated
+    member can sit in one container's frame twice, and no container crosses a block, so zero
+    skips the duplicate scan.
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
     `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
-    typed vector of the pool's one leaf type, which `_repack!` reaches behind a barrier.
+    typed vector of the pool's one leaf type, which the repack functions reach behind a barrier.
 - `container_groups::Tuple`: One `ContainerLevel` per container type, so each level's vectors
     stay concretely typed and a splat over the tuple specialises per level.
 - `blocks::PoolBlocks`: The leaves cut into independently repackable blocks.
-- `dup_table::DupTable` *(internal)*: Repack scratch for finding a member that sits in two
-    leaves of one container. Grown to the widest span it is asked to scan and reused from there;
-    `_refresh_container!` sizes it per container, `_count_repeats` per block.
-- `scratch::Vector{Individual}` *(internal)*: Holds one block while it is relaid on itself.
-- `run_starts::Vector{Int32}`, `run_prefix::Vector{Int32}` *(internal)*: Repack scratch a
-    container's frame is built in.
+- `buffer::RepackBuffer` *(internal)*: What a repack on one task and `_count_repeats` work in.
+- `task_buffers::Vector{RepackBuffer}` *(internal)*: One per task of a repack on several tasks,
+    each created by its task. Empty until the first one.
 """
 mutable struct HierarchicalSettingPool
     members::Vector{Individual}
-    # how many settings in this hierarchy are currently closed
     closed::Int
-    # deceased members across its leaves; zero lets a repack skip narrowing the frames
     deceased::Int
-    # memberships beyond the first; zero lets a repack skip the duplicate scan
     repeats::Int
-    # everything a repack needs, so a member edit does not have to find the hierarchy again
-    leaves::Vector # widened: holds a Vector{SchoolClass} / Vector{Office}
-    # one ContainerLevel per container type, so each stays concretely typed
+    leaves::Vector
     container_groups::Tuple
-    # an edit repacks its own block, not the hierarchy
     blocks::PoolBlocks
-    # repack scratch for duplicate detection, reused by every container of every level
-    dup_table::DupTable
-    # repack scratch: a block is relaid on top of itself
-    scratch::Vector{Individual}
-    # repack scratch: a container's frame, before it is known to need runs
-    run_starts::Vector{Int32}
-    run_prefix::Vector{Int32}
+    buffer::RepackBuffer
+    task_buffers::Vector{RepackBuffer}
 end
 
 ###

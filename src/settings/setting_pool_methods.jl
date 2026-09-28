@@ -50,9 +50,9 @@ function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     return MemberView(pool.members, r.starts, r.prefix, s.pool_length)
 end
 
-# A member edit, or opening or closing a setting, leaves the hierarchy's offsets, lengths and
-# frames stale until the pool is repacked. Reading in that window would silently return the
-# wrong members, so refuse instead. `present_individuals` reads the member vectors directly and
+# A member edit, a death, a scale change, or opening or closing a setting leaves the hierarchy's
+# offsets, lengths and frames stale until the pool is repacked. Reading in that window would
+# silently return the wrong members, so refuse instead. `present_individuals` reads the member vectors directly and
 # stays usable.
 @inline function _check_clean(s::Setting, pool::HierarchicalSettingPool)
     isempty(pool.blocks.dirty) || error(
@@ -62,25 +62,23 @@ end
     return nothing
 end
 
-# `open!` and `close!` keep this in step; they only call it on a real state change.
-function _count_closed!(pool::HierarchicalSettingPool, delta::Int)
-    pool.closed += delta
-    return nothing
-end
-
 ###
 ### MEMBER RUNS
 ### Run arithmetic shared by the closed case and the repeated-member case, both of which turn
 ### a container's span into several runs.
 ###
 
+# How many members run `r` holds: up to the next run's prefix, or to the frame's `total` for the last.
+Base.@propagate_inbounds _run_length(prefix::Vector{Int32}, total::Int, r::Int) =
+    (r < length(prefix) ? Int(prefix[r + 1]) : total) - Int(prefix[r])
+
 # Where pool position `p` sits in a run-indexed frame, 0 when the runs do not cover it.
 @inline function _run_index(starts::Vector{Int32}, prefix::Vector{Int32}, total::Int, p::Int)
     r = searchsortedlast(starts, Int32(p))
     r == 0 && return 0
-    @inbounds run_len = (r < length(prefix) ? Int(prefix[r + 1]) : total) - Int(prefix[r])
     @inbounds off = p - Int(starts[r])
-    off < run_len || return 0
+    @inbounds len = _run_length(prefix, total, r)
+    off < len || return 0
     @inbounds return off + Int(prefix[r]) + 1
 end
 
@@ -92,7 +90,7 @@ function _drop_skips(starts::Vector{Int32}, prefix::Vector{Int32}, total::Int,
     k = 1
     @inbounds for r in eachindex(starts)
         lo = Int(starts[r])
-        stop = lo + (r < length(prefix) ? Int(prefix[r + 1]) : total) - Int(prefix[r])
+        stop = lo + _run_length(prefix, total, r)
         pos = lo
         while k <= length(skips) && Int(skips[k]) < lo
             k += 1
@@ -134,9 +132,6 @@ end
 ### POOL CONSTRUCTION
 ###
 
-# A block's default headroom, as a fraction of its length: memory against relocations.
-const DEFAULT_POOL_SLACK = 0.25
-
 """
     build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK)
 
@@ -165,7 +160,8 @@ end
 # range fails deep inside a lookup. Say so here instead.
 function _check_contiguous_ids(cntnr::SettingsContainer)
     for T in settingtypes_sorted(cntnr)
-        (is_pooled_leaf(T) || !isempty(container_chain(T))) || continue
+        # every container, roots included, and every pooled leaf is looked up by id
+        (T <: ContainerSetting || is_pooled_leaf(T)) || continue
         stngs = get(cntnr.settings, T, ())
         isempty(stngs) && continue
         for (i, s) in enumerate(stngs)
@@ -197,24 +193,33 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
         push!(groups, ContainerLevel(settings(cntnr, C), ranges[k], ptr, idx))
     end
 
-    pool = HierarchicalSettingPool(Individual[], 0, sum(_deceased, leaves; init = 0), 0, leaves, Tuple(groups), blocks,
-                                   DupTable(), Individual[], Int32[], Int32[])
+    closed = count(!is_open, leaves) + sum(g -> count(!is_open, g.containers), groups; init = 0)
+    deceased = sum(_deceased, leaves; init = 0)
+    pool = HierarchicalSettingPool(Individual[], closed, deceased, 0,
+                                   leaves, Tuple(groups), blocks, RepackBuffer(), RepackBuffer[])
+
     # detach first: a rebuilt leaf would otherwise read its old offsets from the new, empty pool
-    for (i, l) in enumerate(leaves); l.individuals = _detached(l); l.pool = pool; l.pool_leaf = Int32(i); end
-    for g in pool.container_groups, c in g.containers; c.pool = pool; end
+    for (i, l) in enumerate(leaves)
+        l.individuals = _detached(l)
+        l.pool = pool
+        l.pool_leaf = Int32(i)
+    end
+    # every frame starts empty; the repack fills those of the containers that have leaves, and one
+    # without leaves lies in no block, so nothing touches it again
+    for g in pool.container_groups, c in g.containers
+        c.pool = pool
+        c.pool_offset, c.pool_length, c.pool_runs = Int32(0), Int32(0), nothing
+        hasfield(typeof(c), :scale_bound) && (c.scale_bound = 1.0f0)
+    end
     # counted once here; the edits keep it exact
     pool.repeats = _count_repeats(pool, leaves)
-    # settings may already be closed when the population is loaded, and the repack reads this
-    pool.closed = count(!is_open, leaves)
-    for g in pool.container_groups
-        pool.closed += count(!is_open, g.containers)
-    end
-    _repack!(pool)
+    _repack_all!(pool)
     return pool
 end
 
-# The coarsest partition of `1:nleaves` no container range straddles. Every level, not just the
-# root, or a container with no parent gets cut in half. Uncontained leaves stand alone.
+# The finest partition of `1:nleaves` that no container range straddles: overlapping spans are
+# merged, and uncontained leaves stand alone. Spans of every level count, not just the roots':
+# a container orphaned partway down has no root span to cover it.
 function _build_blocks(nleaves::Int, ranges::Vector{Vector{UnitRange{Int}}}, slack::Float64)
     spans = UnitRange{Int}[]
     for rs in ranges, r in rs
@@ -284,8 +289,6 @@ function _block_containers(rs::Vector{UnitRange{Int}}, blocks::PoolBlocks, ::Typ
     return ptr, idx
 end
 
-# Lowest and highest layout position `s` covers, `(typemax(Int), 0)` for none. Min/max, not
-# first/last reached, so a leaf under two parents still spans both.
 # each container's leaf range; a barrier like `_take_leaves!`
 function _leaf_ranges(pos, cntnr::SettingsContainer, cs::Vector{C}) where {C<:ContainerSetting}
     rs = Vector{UnitRange{Int}}(undef, length(cs))
@@ -296,6 +299,8 @@ function _leaf_ranges(pos, cntnr::SettingsContainer, cs::Vector{C}) where {C<:Co
     return rs
 end
 
+# Lowest and highest layout position `s` covers, `(typemax(Int), 0)` for none. Min/max, not
+# first/last reached, so a leaf under two parents still spans both.
 function _leaf_span(pos, ::SettingsContainer, s::IndividualSetting)
     p = Int(pos[id(s)])
     return (p, p)
@@ -353,41 +358,10 @@ function _take_leaf!(order, taken, cntnr::SettingsContainer, s::ContainerSetting
 end
 
 ###
-### REPACKING
-### Several functions here take `leaves` alongside `pool`, always `pool.leaves`. The field is
-### widened to hold a `Vector{SchoolClass}` or `Vector{Office}`, so passing it as an argument
-### is what lets the callee specialise on the concrete vector. Do not "simplify" it away.
+### PENDING CHANGES
+### What the next repack has to catch up on: the blocks edits, deaths, closures and scale changes
+### left stale, and how many settings are closed.
 ###
-
-"""
-    repack_dirty_pools!(cntnr::SettingsContainer)
-
-Repack every pool left stale by a member edit, a death, a scale change, or a setting opened or closed,
-and compact every flat pool that moved settings have left a third stranded.
-Must run between such a change and the next read of `present_members`. `step!` calls it ahead
-of the transmission phase, which is the only reader inside a tick, so changes made anywhere in
-the previous tick are covered.
-Cheap when nothing changed.
-"""
-function repack_dirty_pools!(cntnr::SettingsContainer)
-    for (T, pool) in cntnr.flat_pools
-        # A third, not half as for a hierarchy pool: a move strands a whole setting and copies it
-        # with slack, so once every setting has moved, 1 slot in 2.25 is stranded, never half.
-        pool.dead * 3 > length(pool.members) && _compact!(pool, settings(cntnr, T))
-    end
-    for pool in values(cntnr.pools)
-        bl = pool.blocks
-        isempty(bl.dirty) && continue
-        # repack to compact
-        if bl.dead * 2 > length(pool.members)
-            _repack!(pool)
-        else
-            _repack_blocks!(pool, bl.dirty)
-            _clear_dirty!(bl)
-        end
-    end
-    return cntnr
-end
 
 # Queue a leaf's block. Idempotent, so k edits on one block cost one repack.
 _mark_dirty!(pool::HierarchicalSettingPool, s::IndividualSetting) =
@@ -417,39 +391,154 @@ function _clear_dirty!(bl::PoolBlocks)
     return nothing
 end
 
-"""
-    _repack!(pool::HierarchicalSettingPool)
-
-Lay every block out back to back, and every leaf inside its block, refreshing all offsets,
-lengths and views. The compaction path: reclaims every hole and re-slacks every block.
-
-Invalidates any previously handed-out member view, which is safe because member edits are
-forbidden inside the threaded transmission phase.
-"""
-function _repack!(pool::HierarchicalSettingPool)
-    pool.members = _repack_leaves!(pool.blocks, pool.leaves)
-    _refresh_levels!(pool, pool.leaves, AllOf(), pool.container_groups...)
-    _clear_dirty!(pool.blocks)
-    return nothing
-end
-
-# the barrier: both fields are abstractly typed, so pay the dispatch once per batch, not per block
-_repack_blocks!(pool::HierarchicalSettingPool, dirty) =
-    _repack_blocks!(pool, pool.leaves, dirty, pool.container_groups...)
-
-# `Vararg{Any, N}`: Julia does not specialise on varargs a method only passes on
-function _repack_blocks!(pool::HierarchicalSettingPool, leaves::Vector{T}, dirty,
-                         levels::Vararg{Any, N}) where {T<:IndividualSetting, N}
-    for b in dirty
-        _repack_block_leaves!(pool, leaves, Int(b))
-        _refresh_levels!(pool, leaves, InBlock(Int(b)), levels...)
-    end
+# `open!` and `close!` keep this in step; they only call it on a real state change.
+function _count_closed!(pool::HierarchicalSettingPool, delta::Int)
+    pool.closed += delta
     return nothing
 end
 
 ###
+### REPACKING
+### A repack relays a block's leaves, laying their members out in the pool again, and refreshes
+### the containers above them, reading their frames back from the leaves' new offsets. LEAF
+### LAYOUT and CONTAINER REFRESH below hold the two halves.
+###
+### Several functions here take `leaves` alongside `pool`, always `pool.leaves`. The field is
+### widened to hold a `Vector{SchoolClass}` or `Vector{Office}`, so passing it as an argument
+### is what lets the callee specialise on the concrete vector. Do not "simplify" it away.
+###
+
+"""
+    repack_dirty_pools!(cntnr::SettingsContainer)
+
+Repack every pool left stale by a member edit, a death, a scale change, or a setting opened or closed,
+and compact every flat pool that moved settings have left a third stranded.
+Must run between such a change and the next read of `present_members`. `update_population!`
+calls it once per tick, after the tick's deaths and ahead of everything that reads frames, so
+changes made anywhere in the previous tick are covered too.
+Cheap when nothing changed. The dirty blocks of a pool are repacked in parallel.
+
+Invalidates any member view handed out before, since members move and a pool may be replaced.
+That is safe because it runs outside the transmission phase, the only place views are held.
+"""
+function repack_dirty_pools!(cntnr::SettingsContainer)
+    for (T, pool) in cntnr.flat_pools
+        # A third, not half as for a hierarchy pool: a move strands a whole setting and copies it
+        # with slack, so once every setting has moved, 1 slot in 2.25 is stranded, never half.
+        pool.dead * 3 > length(pool.members) && _compact_flat!(pool, settings(cntnr, T))
+    end
+    for pool in values(cntnr.pools)
+        bl = pool.blocks
+        isempty(bl.dirty) && continue
+        # relocations have stranded half the pool: lay everything out afresh
+        if bl.dead * 2 > length(pool.members)
+            _repack_all!(pool)
+        else
+            _repack_dirty!(pool)
+        end
+    end
+    return cntnr
+end
+
+# Lays the pool's settings out again in the order they are stored, each keeping its slots, and
+# drops the stranded ones. Moves no member within its setting.
+function _compact_flat!(pool::FlatSettingPool, stngs::Vector{T}) where {T<:FlatSetting}
+    old = pool.members
+    n = 0
+    for s in stngs
+        s.flat_pool === pool && (n += Int(s.cap))
+    end
+    members = Vector{Individual}(undef, n)
+    at = 1
+    for s in stngs
+        s.flat_pool === pool || continue
+        copyto!(members, at, old, Int(s.offset), Int(s.len))
+        s.offset = at
+        at += Int(s.cap)
+    end
+    pool.members = members
+    pool.dead = 0
+    return nothing
+end
+
+"""
+    _repack_all!(pool::HierarchicalSettingPool)
+
+Lay every block out back to back in a new member vector, and every leaf inside its block,
+then refresh every container's frame. The compaction path: reclaims every hole and re-slacks
+every block.
+"""
+function _repack_all!(pool::HierarchicalSettingPool)
+    bl = pool.blocks
+    blocks = 1:nblocks(bl)
+    # a new vector rather than in place: the old one is read until every block has moved
+    members = Vector{Individual}(undef, _place_blocks!(bl, pool.leaves))
+    _foreach_block!((_, leaves, b, _...) -> _copy_block!(members, bl, leaves, b), pool, blocks)
+    pool.members = members
+    bl.dead = 0
+    # the frames are read back from the new vector, so only once it is in place
+    _foreach_block!(_refresh_block!, pool, blocks)
+    _clear_dirty!(bl)
+    return nothing
+end
+
+# Repacks the dirty blocks and empties the queue. A relocation grows `pool.members`, which the
+# other tasks read, so the outgrown blocks move first.
+function _repack_dirty!(pool::HierarchicalSettingPool)
+    dirty = pool.blocks.dirty
+    _relocate_outgrown!(pool, pool.leaves, dirty)
+    _foreach_block!(_repack_block!, pool, dirty)
+    _clear_dirty!(pool.blocks)
+    return nothing
+end
+
+# Relays block `b`'s leaves and refreshes the containers above them, working in `buf`.
+@inline function _repack_block!(pool::HierarchicalSettingPool, leaves::Vector{T}, b::Int,
+                                buf::RepackBuffer, levels::Vararg{Any, N}) where {T<:IndividualSetting, N}
+    _relay_block!(pool, leaves, b, buf)
+    _refresh_block!(pool, leaves, b, buf, levels...)
+    return nothing
+end
+
+# Runs `work(pool, leaves, b, buf, levels...)` for every block `b` in `blocks`. Blocks share no
+# leaf and no container, so tasks take them at once, each in a buffer of its own.
+function _foreach_block!(work::F, pool::HierarchicalSettingPool, blocks::AbstractVector{<:Integer}) where {F}
+    # blocks differ in size, so tasks claim them one at a time rather than in fixed chunks
+    next = Threads.Atomic{Int}(1)
+    # a task per block at most: one with nothing to claim only costs its start
+    nt = min(Threads.nthreads(), length(blocks))
+    if nt <= 1
+        # one task needs no threads, which keeps a single-threaded run off the scheduler
+        _claim_blocks!(work, pool, pool.leaves, blocks, next, pool.buffer, pool.container_groups...)
+    else
+        buffers = pool.task_buffers
+        length(buffers) < nt && resize!(buffers, nt)
+        # `t` rather than `threadid()` picks the buffer, as a task may change threads
+        Threads.@threads :dynamic for t in 1:nt
+            # made by the task that uses it, so no two tasks write to one cache line
+            isassigned(buffers, t) || (buffers[t] = RepackBuffer())
+            _claim_blocks!(work, pool, pool.leaves, blocks, next, buffers[t], pool.container_groups...)
+        end
+    end
+    return nothing
+end
+
+# What one task runs: claims blocks until none are left. Also the barrier that dispatches on the
+# pool's abstract fields once per task rather than once per block.
+function _claim_blocks!(work::F, pool::HierarchicalSettingPool, leaves::Vector{T}, blocks::AbstractVector{<:Integer},
+                        next::Threads.Atomic{Int}, buf::RepackBuffer,
+                        levels::Vararg{Any, N}) where {F, T<:IndividualSetting, N}
+    while true
+        k = Threads.atomic_add!(next, 1)
+        k > length(blocks) && return nothing
+        work(pool, leaves, Int(@inbounds blocks[k]), buf, levels...)
+    end
+end
+
+###
 ### LEAF LAYOUT
-### Where each leaf's members sit in the pool. A block is relaid on itself, the hierarchy is not.
+### Where each leaf's members sit in the pool. A dirty block is relaid in place; a full repack
+### copies every block into a new vector.
 ###
 
 # How many members block `b`'s leaves hold between them.
@@ -464,64 +553,61 @@ end
 # The slots a block of `n` members is given.
 _with_slack(n::Int, slack::Float64) = Int32(n + ceil(Int, slack * n))
 
-function _repack_leaves!(bl::PoolBlocks, leaves::Vector{T}) where {T<:IndividualSetting}
-    # place every block before copying: the leaves are pointed into the vector
+# Gives every block fresh slack, back to back from the start, and returns how long a member vector
+# holding them must be.
+function _place_blocks!(bl::PoolBlocks, leaves::Vector{T}) where {T<:IndividualSetting}
     total = 0
     @inbounds for b in 1:nblocks(bl)
-        n = _block_members(bl, leaves, b)
-        bl.capacity[b] = _with_slack(n, bl.slack)
+        bl.capacity[b] = _with_slack(_block_members(bl, leaves, b), bl.slack)
         bl.offset[b] = Int32(total + 1)
         total += Int(bl.capacity[b])
     end
-    # a repack cannot pack in place: a leaf that grew would overwrite the next leaf before
-    # it was copied
-    members = Vector{Individual}(undef, total)
-
-    @inbounds for b in 1:nblocks(bl)
-        off = Int(bl.offset[b])
-        for j in leaves_of(bl, b)
-            l = leaves[j]
-            v = individuals(l)
-            n = length(v)
-            copyto!(members, off, v, 1, n)
-            l.pool_offset = Int32(off)
-            l.pool_length = Int32(n)
-            off += n
-        end
-    end
-
-    # release detached members only after all copying, so no leaf is read after its storage was replaced
-    @inbounds for j in eachindex(leaves)
-        leaves[j].individuals = nothing
-    end
-    bl.dead = 0
-    return members
+    return total
 end
 
-# Relay one block's leaves, growing it first if they no longer fit. Behind a barrier because
-# `pool.leaves` is widened.
-function _repack_block_leaves!(pool::HierarchicalSettingPool, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
-    bl = pool.blocks
-    r = leaves_of(bl, b)
-    n = _block_members(bl, leaves, b)
-    n > Int(bl.capacity[b]) && _relocate_block!(pool, b, n)
-
-    # relaid on top of itself, so a moved leaf would land on one not yet read: via scratch
-    scratch = pool.scratch
-    length(scratch) < n && resize!(scratch, n)
-    at = 1
-    @inbounds for j in r
-        l = leaves[j]
-        v = individuals(l)
-        m = length(v)
-        copyto!(scratch, at, v, 1, m)
-        at += m
+# Copies block `b`'s leaves' members into `dest` from position `at`, one leaf after another.
+@inline function _gather_block!(dest::Vector{Individual}, at::Int, bl::PoolBlocks,
+                                leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
+    @inbounds for j in leaves_of(bl, b)
+        v = individuals(leaves[j])
+        copyto!(dest, at, v, 1, length(v))
+        at += length(v)
     end
+    return nothing
+end
 
-    members = pool.members
-    copyto!(members, Int(bl.offset[b]), scratch, 1, n)
+# Copies block `b` into the new vector `members` at the block's offset and points its leaves
+# there. The old vector stays readable for the blocks not copied yet.
+function _copy_block!(members::Vector{Individual}, bl::PoolBlocks, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
+    _gather_block!(members, Int(bl.offset[b]), bl, leaves, b)
+    _point_leaves!(bl, leaves, b)
+    return nothing
+end
+
+# Writes block `b`'s members back into the block's own slots and points its leaves there. The
+# block must fit: `_repack_dirty!` relocates outgrown blocks before any is relaid.
+function _relay_block!(pool::HierarchicalSettingPool, leaves::Vector{T}, b::Int,
+                       buf::RepackBuffer) where {T<:IndividualSetting}
+    bl = pool.blocks
+    n = _block_members(bl, leaves, b)
+    # past its capacity, the block would overwrite the next one
+    n <= Int(bl.capacity[b]) || error("block $b holds $n members but has room for $(bl.capacity[b]); " *
+                                      "relocate outgrown blocks before relaying")
+
+    # relaid on top of itself, so a moved leaf would land on one not yet read: via the buffer
+    temp = buf.block
+    length(temp) < n && resize!(temp, n)
+    _gather_block!(temp, 1, bl, leaves, b)
+    copyto!(pool.members, Int(bl.offset[b]), temp, 1, n)
+    _point_leaves!(bl, leaves, b)
+    return nothing
+end
+
+# Points block `b`'s leaves at consecutive ranges from the block's offset, each as long as it is
+# now, and reattaches a leaf an edit had detached. Reads each leaf's length before moving it.
+function _point_leaves!(bl::PoolBlocks, leaves::Vector{T}, b::Int) where {T<:IndividualSetting}
     off = Int(bl.offset[b])
-    @inbounds for j in r
+    @inbounds for j in leaves_of(bl, b)
         l = leaves[j]
         m = length(individuals(l))
         l.pool_offset = Int32(off)
@@ -545,60 +631,54 @@ function _relocate_block!(pool::HierarchicalSettingPool, b::Int, n::Int)
     return nothing
 end
 
+# Relocates every dirty block that outgrew its slack, in queue order, so where they land does not
+# depend on the tasks.
+function _relocate_outgrown!(pool::HierarchicalSettingPool, leaves::Vector{T}, dirty) where {T<:IndividualSetting}
+    bl = pool.blocks
+    for b in dirty
+        n = _block_members(bl, leaves, Int(b))
+        n > Int(bl.capacity[b]) && _relocate_block!(pool, Int(b), n)
+    end
+    return nothing
+end
+
 ###
 ### CONTAINER REFRESH
 ### A container stores no members, so its span is read back from its leaves' fresh offsets.
 ###
 
-# Which containers of a level a refresh visits. Both are plain values, so the choice resolves
-# at compile time and costs no closure and no view.
-struct AllOf end
-struct InBlock
-    b::Int
+# Refreshes the frames of the containers above block `b`'s leaves, working in `buf`. Recursive and
+# `Vararg{Any, N}` over the levels, so each call specialises on that level's concrete container vector.
+@inline _refresh_block!(pool, leaves, b, buf) = nothing
+@inline function _refresh_block!(pool, leaves, b, buf, level, rest::Vararg{Any, N}) where {N}
+    _refresh_level!(pool, leaves, b, buf, level)
+    _refresh_block!(pool, leaves, b, buf, rest...)
 end
 
-# recursive and `Vararg{Any, N}`, so each call specialises on that level's concrete container vector
-@inline _refresh_levels!(pool, leaves, sel) = nothing
-@inline function _refresh_levels!(pool, leaves, sel, level, rest::Vararg{Any, N}) where {N}
-    _refresh_level!(level, sel, pool, leaves)
-    _refresh_levels!(pool, leaves, sel, rest...)
-end
-
-function _refresh_level!(lv::ContainerLevel{C}, ::AllOf, pool::HierarchicalSettingPool,
-                         leaves::Vector{T}) where {C, T<:IndividualSetting}
-    @inbounds for i in eachindex(lv.containers)
-        _refresh_container!(lv.containers[i], lv.ranges[i], pool, leaves)
-    end
-    return nothing
-end
-
-function _refresh_level!(lv::ContainerLevel{C}, sel::InBlock, pool::HierarchicalSettingPool,
-                         leaves::Vector{T}) where {C, T<:IndividualSetting}
-    @inbounds for k in Int(lv.block_ptr[sel.b]):(Int(lv.block_ptr[sel.b + 1]) - 1)
+# The containers of one level that lie in block `b`.
+function _refresh_level!(pool::HierarchicalSettingPool, leaves::Vector{T}, b::Int, buf::RepackBuffer,
+                         lv::ContainerLevel{C}) where {C, T<:IndividualSetting}
+    @inbounds for k in Int(lv.block_ptr[b]):(Int(lv.block_ptr[b + 1]) - 1)
         i = Int(lv.block_idx[k])
-        _refresh_container!(lv.containers[i], lv.ranges[i], pool, leaves)
+        _refresh_container!(lv.containers[i], lv.ranges[i], pool, leaves, buf)
     end
     return nothing
 end
 
-# One container's span, from its leaves' freshly written offsets.
+# One container's span, from its leaves' freshly written offsets. `r` is never empty: a container
+# without leaves lies in no block.
 @inline function _refresh_container!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool,
-                                     leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
+                                     leaves::Vector{T}, buf::RepackBuffer) where {C<:ContainerSetting, T<:IndividualSetting}
     c.pool_runs = nothing
-    # state sampling methods derived from from frame as stale
+    # sampling methods drop what they derived from the old frame
     membership_changed!(contact_sampling_method(c), c)
     # a member's scale here never exceeds 1 or its largest leaf's, so the leaves bound it
     if hasfield(C, :scale_bound)
-        b = 1.0f0
+        bound = 1.0f0
         @inbounds for j in r
-            b = max(b, _scale_bound(leaves[j]))
+            bound = max(bound, _scale_bound(leaves[j]))
         end
-        c.scale_bound = b
-    end
-    if isempty(r)
-        c.pool_offset = Int32(0)
-        c.pool_length = Int32(0)
-        return nothing
+        c.scale_bound = bound
     end
     # no gaps inside a block, so the span runs from the first leaf's start to the last's end
     @inbounds lo = leaves[first(r)]
@@ -609,21 +689,21 @@ end
     len == 0 && return nothing
 
     # a member in two leaves below sits in the span twice, and only the first copy counts
-    pool.repeats == 0 ||
-        _dedup_container!(c, pool, Int(lo.pool_offset), Int(len))
+    dup = pool.repeats == 0 ? nothing : _dedup_container!(c, pool, Int(lo.pool_offset), Int(len), buf.dup_table)
     # a closure or death below takes members out of the frame
-    (pool.closed == 0 && pool.deceased == 0) || _drop_closed!(c, r, pool, leaves)
+    (pool.closed == 0 && pool.deceased == 0) || _drop_absent!(c, r, pool, leaves, buf, dup)
     return nothing
 end
 
-# Narrow a container's frame to the leaves still present below it. A closure elsewhere in the
-# hierarchy leaves the frame as it is.
-function _drop_closed!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool,
-                       leaves::Vector{T}) where {C<:ContainerSetting, T<:IndividualSetting}
+# Narrows a container's frame to the members still present below it: the living members of leaves
+# open all the way up to it. Its own closure, and any above it, `present_members` handles. `dup`
+# is the frame `_dedup_container!` just built, or `nothing` when no member repeats.
+function _drop_absent!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool, leaves::Vector{T},
+                       buf::RepackBuffer, dup::Union{Nothing, MemberRuns}) where {C<:ContainerSetting, T<:IndividualSetting}
     _all_present(pool, leaves, r, C) && return nothing
 
-    # built in the pool's scratch, so a frame that stays one run allocates nothing
-    starts = empty!(pool.run_starts); prefix = empty!(pool.run_prefix)
+    # built in the buffer, so a frame that stays one run allocates nothing
+    starts = empty!(buf.run_starts); prefix = empty!(buf.run_prefix)
     total = 0
     @inbounds for j in r
         l = leaves[j]
@@ -632,23 +712,22 @@ function _drop_closed!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool,
         (n > 0 && _open_up_to(pool, l, C)) || continue
         lo = Int(l.pool_offset)
         # merge with the previous run when the leaves are adjacent in the pool
-        if isempty(starts) || Int(starts[end]) + (total - Int(prefix[end])) != lo
+        if isempty(starts) || Int(starts[end]) + _run_length(prefix, total, length(prefix)) != lo
             push!(starts, Int32(lo))
             push!(prefix, Int32(total))
         end
         total += n
     end
 
-    runs = c.pool_runs
-    if runs !== nothing
+    if dup !== nothing
         # of a repeated member, the first copy still present is the one kept
-        skips = _repeat_skips(runs, starts, prefix, total)
+        skips = _repeat_skips(dup, starts, prefix, total)
         isempty(skips) || ((starts, prefix, total) = _drop_skips(starts, prefix, total, skips))
-        c.pool_runs = MemberRuns(copy(starts), copy(prefix), runs.groups, runs.bounds)
+        c.pool_runs = MemberRuns(copy(starts), copy(prefix), dup.groups, dup.bounds)
     elseif length(starts) > 1
+        # without repeats, one run or none is a plain span and stores no runs
         c.pool_runs = MemberRuns(copy(starts), copy(prefix), NO_RUNS, NO_RUNS)
     end
-    # without repeats, one run or none is a plain span and stores no runs
     c.pool_offset = isempty(starts) ? Int32(0) : starts[1]
     c.pool_length = Int32(total)
     return nothing
@@ -664,35 +743,23 @@ function _all_present(pool::HierarchicalSettingPool, leaves::Vector{T}, r::UnitR
     return true
 end
 
-# Whether `s` and every container between it and its ancestor of type `C` are open. Climbs
-# through the pool's own levels, so a repack needs no settings container.
-@inline _open_up_to(::HierarchicalSettingPool, ::C, ::Type{C}) where {C<:ContainerSetting} = true
-function _open_up_to(pool::HierarchicalSettingPool, s::S, ::Type{C}) where {S<:Setting, C<:ContainerSetting}
-    is_open(s) || return false
-    P = contained_type(S)
-    lv = pool.container_groups[_container_depth(P)]::ContainerLevel{P}
-    return _open_up_to(pool, @inbounds(lv.containers[s.contained]), C)
-end
-
 ###
 ### DUPLICATE DETECTION
 ### A member in two leaves of one container would sit in its frame twice. `pool.repeats`
 ### gates all of this: at zero, none of it runs.
 ###
 
-# Grown to the widest container span, never the pool. Must run before the span it sizes for:
-# a table smaller than that spins forever in `_first_seen!`.
-function _size_dup_table!(t::DupTable, n::Int)
+# Readies the table for a scan of `n` members: every slot free, and at least twice as many slots
+# as members, since a fuller table spins forever in `_first_seen!`. Grown to the widest span
+# scanned - a container, or a block in `_count_repeats` - and reused from there.
+function _start_scan!(t::DupTable, n::Int)
     want = n == 0 ? 0 : nextpow(2, 2n)
-    length(t.keys) >= want && return nothing
-    resize!(t.keys, want); resize!(t.pos, want); resize!(t.gen, want)
-    fill!(t.gen, Int32(0))
-    t.epoch = Int32(0)
-    return nothing
-end
-
-# Start a fresh container. Every slot the previous one claimed is free again by definition.
-@inline function _next_container!(t::DupTable)
+    if length(t.keys) < want
+        resize!(t.keys, want); resize!(t.pos, want); resize!(t.gen, want)
+        fill!(t.gen, Int32(0))
+        t.epoch = Int32(0)
+    end
+    # a new epoch frees every slot an earlier scan claimed
     if t.epoch == typemax(Int32)
         fill!(t.gen, Int32(0))
         t.epoch = Int32(1)
@@ -705,11 +772,13 @@ end
 # What `===` compares, and unlike `id` it needs no load from the object.
 @inline _identity(m::Individual) = UInt(pointer_from_objref(m))
 
-# The position `k` was first seen at in this container, or 0 after claiming a slot for `p`.
+# The position `k` was first seen at in this scan, or 0 after claiming a slot for `p`. Positions
+# start at 1, so 0 is free to mean "not seen".
 @inline function _first_seen!(t::DupTable, k::UInt, p::Int)
     mask = UInt(length(t.keys) - 1)
-    # identities are addresses, so the low bits are alignment: mix the high half down
-    h = ((k >> 4) * 0x9e3779b97f4a7c15 >> 32) & mask
+    # identities are addresses, so the low bits are alignment: drop them, multiply, and take the
+    # well-mixed upper half of the product
+    h = (((k >> 4) * 0x9e3779b97f4a7c15) >> 32) & mask
     e = t.epoch
     @inbounds while true
         if t.gen[h + 1] != e
@@ -724,22 +793,22 @@ end
     end
 end
 
-# Narrow a container's span to a frame holding each member once, when it holds one twice.
-function _dedup_container!(c::ContainerSetting, pool::HierarchicalSettingPool, off::Int, len::Int)
-    tbl = pool.dup_table
-    _size_dup_table!(tbl, len)
+# Narrows a container's span to a frame holding each member once, when it holds one twice, and
+# returns that frame, or `nothing` when no member repeats.
+function _dedup_container!(c::ContainerSetting, pool::HierarchicalSettingPool, off::Int, len::Int,
+                           tbl::DupTable)
     found = _dup_runs(pool.members, off, len, tbl)
     found === nothing && return nothing
     runs, kept = found
     c.pool_offset = runs.starts[1]
     c.pool_length = Int32(kept)
     c.pool_runs = runs
-    return nothing
+    return runs
 end
 
 # The frame for the span `off:(off + len - 1)`, or `nothing` when it holds no member twice.
 function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTable)
-    _next_container!(tbl)
+    _start_scan!(tbl, len)
     # (first position, repeat position) for every copy past the first
     reps = nothing
     @inbounds for p in off:(off + len - 1)
@@ -776,14 +845,13 @@ end
 # no container straddles one. Block-scoped also keeps the dup table at a single block's width.
 function _count_repeats(pool::HierarchicalSettingPool, leaves::Vector{T}) where {T<:IndividualSetting}
     bl = pool.blocks
-    tbl = pool.dup_table
+    tbl = pool.buffer.dup_table
     n = 0
     for b in 1:nblocks(bl)
         r = leaves_of(bl, b)
         total = _block_members(bl, leaves, b)
         total == 0 && continue
-        _size_dup_table!(tbl, total)
-        _next_container!(tbl)
+        _start_scan!(tbl, total)
         p = 0
         @inbounds for j in r, m in individuals(leaves[j])
             p += 1
@@ -798,46 +866,22 @@ end
 ### How `add_member!` / `remove_member!` in settings.jl store the change, per kind of storage.
 ###
 
-# Both primitives detach the leaf's members into a vector it owns and edit that, leaving the
-# pool stale. `repack_dirty_pools!` restores it, so a batch of edits costs one repack rather
-# than one each.
-
-# The leaf's members as a vector it owns. Already detached by an earlier edit in the same
-# batch, it is returned as is - copying again would make k edits on one leaf O(k^2).
+# The leaf's members as a vector it owns. A pooled leaf's edits go through it and leave the pool
+# stale until `repack_dirty_pools!`, so a batch of edits costs one repack rather than one each.
+# An unpooled leaf's vector, or one an earlier edit in the batch detached, is returned as is:
+# copying again would make k edits on one leaf O(k^2).
 _detached(s::IndividualSetting)::Vector{Individual} =
     s.individuals === nothing ? collect(individuals(s)) : s.individuals
 
-function _pool_add_member!(s::IndividualSetting, individual::Individual)
-    pool = _pool(s)::HierarchicalSettingPool
+# Stores a newcomer after the setting's last member.
+function _store_member!(s::IndividualSetting, individual::Individual, plans)
+    pool = _pool(s)
+    # already in the block, so this is a second membership
+    pool !== nothing && _in_block(pool, plans, s, individual) && (pool.repeats += 1)
     v = _detached(s)
     push!(v, individual)
     s.individuals = v
-    _mark_dirty!(pool, s)
-    return nothing
-end
-
-# Swap with last, as before: removal reorders a leaf, which is RNG-visible and unavoidable.
-# `idx` comes from the caller, which already located the member.
-function _pool_remove_member!(s::IndividualSetting, individual::Individual, idx::Int)
-    pool = _pool(s)::HierarchicalSettingPool
-    v = _detached(s)
-    @inbounds v[idx] = v[end]
-    pop!(v)
-    s.individuals = v
-    _mark_dirty!(pool, s)
-    return nothing
-end
-
-# Stores a newcomer after the setting's last member: in its own vector, or its hierarchy's pool.
-function _store_member!(s::IndividualSetting, individual::Individual, plans)
-    pool = _pool(s)
-    if pool === nothing
-        push!(s.individuals::Vector{Individual}, individual)
-    else
-        # already in the block, so this is a second membership
-        _in_block(pool, plans, s, individual) && (pool.repeats += 1)
-        _pool_add_member!(s, individual)
-    end
+    pool === nothing || _mark_dirty!(pool, s)
     return nothing
 end
 
@@ -865,18 +909,17 @@ function _store_member!(s::FlatSetting, individual::Individual, _)
     return nothing
 end
 
-# Drops the member at `idx`, swapping the last member into its place.
+# Drops the member at `idx`, which the caller has already located, swapping the last member into
+# its place. That reorders the leaf, which the random draws see, and cannot be avoided.
 function _unstore_member!(s::IndividualSetting, individual::Individual, idx::Int, plans)
     pool = _pool(s)
-    if pool === nothing
-        v = s.individuals::Vector{Individual}
-        @inbounds v[idx] = v[end]
-        pop!(v)
-    else
-        # in the block twice, so this removal leaves one behind
-        _repeated_in_block(pool, plans, s, individual) && (pool.repeats -= 1)
-        _pool_remove_member!(s, individual, idx)
-    end
+    # in the block twice, so this removal leaves one behind
+    pool !== nothing && _repeated_in_block(pool, plans, s, individual) && (pool.repeats -= 1)
+    v = _detached(s)
+    @inbounds v[idx] = v[end]
+    pop!(v)
+    s.individuals = v
+    pool === nothing || _mark_dirty!(pool, s)
     return nothing
 end
 
@@ -889,41 +932,22 @@ function _unstore_member!(s::FlatSetting, ::Individual, idx::Int, _)
     return nothing
 end
 
-# Lays the pool's settings out again in id order, each keeping its slots, and drops the stranded
-# ones. Moves no member within its setting.
-function _compact!(pool::FlatSettingPool, stngs::Vector{T}) where {T<:FlatSetting}
-    old = pool.members
-    n = 0
-    for s in stngs
-        s.flat_pool === pool && (n += Int(s.cap))
-    end
-    members = Vector{Individual}(undef, n)
-    at = 1
-    for s in stngs
-        s.flat_pool === pool || continue
-        copyto!(members, at, old, Int(s.offset), Int(s.len))
-        s.offset = at
-        at += Int(s.cap)
-    end
-    pool.members = members
-    pool.dead = 0
-    return nothing
-end
-
-# In more than `n` leaves of `s`'s block. The plan bounds that count, so it usually answers alone.
-@inline function _repeats_beyond(pool::HierarchicalSettingPool, plans, s::IndividualSetting,
-                                 individual::Individual, n::Int)
+# Whether `individual` sits in more than `n` leaves of `s`'s block. The plan bounds that count, so
+# it usually answers alone. Both the leaf and the plan must still show the state before the edit:
+# `add_member!` and `remove_member!` store the member before they change the plan.
+@inline function _in_more_leaves_than(pool::HierarchicalSettingPool, plans, s::IndividualSetting,
+                                      individual::Individual, n::Int)
     length(plan_slots(plans, individual, typeof(s))) <= n && return false
     return _occurrences(pool, pool.leaves, s, individual) > n
 end
 
 # Already a member of `s`'s block.
 @inline _in_block(pool::HierarchicalSettingPool, plans, s::IndividualSetting, individual::Individual) =
-    _repeats_beyond(pool, plans, s, individual, 0)
+    _in_more_leaves_than(pool, plans, s, individual, 0)
 
 # A member of `s`'s block more than once.
 @inline _repeated_in_block(pool::HierarchicalSettingPool, plans, s::IndividualSetting, individual::Individual) =
-    _repeats_beyond(pool, plans, s, individual, 1)
+    _in_more_leaves_than(pool, plans, s, individual, 1)
 
 # How many of `s`'s block's leaves hold `individual`
 function _occurrences(pool::HierarchicalSettingPool, leaves::Vector{T}, s::IndividualSetting,
@@ -941,11 +965,11 @@ end
 ### HIERARCHY TRAITS
 ###
 
-# Both traits below are derived from `contained_type`, which already encodes the hierarchy,
-# rather than restating it. A setting type joins a pooled hierarchy purely by defining that
-# trait, so adding a level - or a user-defined type - needs no change here. `contained_type`
-# is deliberately undefined for root containers, so `hasmethod` is the terminator.
-# Neither is used by `present_members`; both run at pool construction only.
+# Both traits are derived from `contained_type`, which already encodes the hierarchy, rather than
+# restating it. A setting type joins a pooled hierarchy purely by defining that trait, so adding a
+# level - or a user-defined type - needs no change here. `contained_type` is deliberately
+# undefined for root containers, so `hasmethod` is the terminator. Both run at pool construction
+# only.
 
 """
     is_pooled_leaf(::Type{T}) where {T<:Setting}
@@ -971,6 +995,11 @@ function container_chain(::Type{T}) where {T<:Setting}
     return chain
 end
 
+###
+### SETTING HELPERS
+### Small lookups on a setting and its pool, used on the per-tick path as well as at construction.
+###
+
 # The setting's pool, or `nothing` when unpooled. `hasfield` folds on a concrete type, so
 # this compiles to a field load or a constant.
 @inline _pool(s::T) where {T<:Setting} = hasfield(T, :pool) ? s.pool : nothing
@@ -994,9 +1023,12 @@ end
 _container_depth(::Type{T}) where {T<:IndividualSetting} = 0
 _container_depth(::Type{C}) where {C<:ContainerSetting} = 1 + _container_depth(contains_type(C))
 
-# whether `s` and every container between it and `c` are open
-function _open_below(cntnr::SettingsContainer, s::Setting, c::ContainerSetting)
+# Whether `s` and every container between it and its ancestor of type `C` are open, that ancestor
+# not included. Climbs through the pool's own levels, so it needs no settings container.
+@inline _open_up_to(::HierarchicalSettingPool, ::C, ::Type{C}) where {C<:ContainerSetting} = true
+function _open_up_to(pool::HierarchicalSettingPool, s::S, ::Type{C}) where {S<:Setting, C<:ContainerSetting}
     is_open(s) || return false
-    typeof(s) === typeof(c) && return true
-    return _open_below(cntnr, settings(cntnr, contained_type(typeof(s)))[s.contained], c)
+    P = contained_type(S)
+    lv = pool.container_groups[_container_depth(P)]::ContainerLevel{P}
+    return _open_up_to(pool, @inbounds(lv.containers[s.contained]), C)
 end
