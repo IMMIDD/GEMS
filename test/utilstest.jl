@@ -157,6 +157,16 @@ import GEMS: _isdate, _foldercount, _identical, _bad_unique,
         @test _concrete_subtypes(_EmptyAbstract) == DataType[]
     end
 
+    @testset "subtype cache" begin
+        # the first lookup caches the parent's subtypes; one defined afterwards is still found
+        abstract type _CachedParent end
+        struct _CachedA <: _CachedParent end
+        @test GEMS.get_subtype("_CachedA", _CachedParent) == _CachedA
+        struct _CachedB <: _CachedParent end
+        @test GEMS.get_subtype("_CachedB", _CachedParent) == _CachedB
+        @test Set(_concrete_subtypes(_CachedParent)) == Set([_CachedA, _CachedB])
+    end
+
     @testset "is_existing_subtype" begin
         @test _is_existing_subtype("Household", Setting) == true
         @test _is_existing_subtype("NonExistentType", Setting) == false

@@ -23,6 +23,7 @@ Population(;::Int64, ::Int6, ::Int64, ::Int64, ::Bool)
 ## Functions
 ```@docs
 add!(::Population, ::Individual)
+archive_population(::String)
 count(::Any, ::Population)
 dataframe(::Population)
 each!

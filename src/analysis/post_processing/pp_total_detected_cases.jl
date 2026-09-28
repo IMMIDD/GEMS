@@ -15,10 +15,22 @@ Returns a `DataFrame` with the total number of detected cases per pathogen.
 | `detected_cases` | `Int64` | Total number of detected cases           |
 """
 function total_detected_cases(postProcessor::PostProcessor)
-    return postProcessor.infectionsDF |>
-        df -> subset(df, :first_detected_tick => ByRow(!ismissing), view=true) |>
-        df -> groupby(df, :pathogen_id) |>
-        df -> combine(df, nrow => :detected_cases)
+    pathogen_ids = _sorted_pathogen_ids(postProcessor)
+    infs = infectionsDF(postProcessor)
+    counts = _detected_per_pathogen(infs.pathogen_id, infs.first_detected_tick, pathogen_ids)
+    detected = counts .> 0
+    return DataFrame(pathogen_id = pathogen_ids[detected], detected_cases = counts[detected])
+end
+
+# detected infections per pathogen, i.e. those with a detection tick
+function _detected_per_pathogen(pids::AbstractVector, detection_ticks::AbstractVector, pathogen_ids::Vector)
+    counts = zeros(Int, length(pathogen_ids))
+    for (p, t) in zip(pids, detection_ticks)
+        ismissing(t) && continue
+        i = findfirst(==(p), pathogen_ids)
+        i === nothing || (counts[i] += 1)
+    end
+    return counts
 end
 
 """
@@ -38,7 +50,10 @@ Returns a `DataFrame` with the fraction of detected cases per pathogen.
 function detection_rate(postProcessor::PostProcessor)
     infs = infectionsDF(postProcessor)
     detected = total_detected_cases(postProcessor)
-    total_per_pid = combine(groupby(infs, :pathogen_id), nrow => :total)
+    pathogen_ids = _sorted_pathogen_ids(postProcessor)
+    counts = _rows_per_pathogen(infs.pathogen_id, pathogen_ids)
+    infected = counts .> 0
+    total_per_pid = DataFrame(pathogen_id = pathogen_ids[infected], total = counts[infected])
     res = innerjoin(detected, total_per_pid, on = :pathogen_id)
     return transform!(res,
         [:detected_cases, :total] => ByRow((d, t) -> d / t) => :detection_rate) |>

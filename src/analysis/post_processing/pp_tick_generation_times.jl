@@ -20,12 +20,11 @@ Returns a `DataFrame` containing aggregated information on the generation time p
 | `mean_generation_time`     | `Float64` | Mean for generation times that tick                          |
 """
 function _tick_generation_times(postProcessor::PostProcessor)
-    df = infectionsDF(postProcessor) |>
-        x -> DataFrames.select(x, [:tick, :pathogen_id, :generation_time])
+    infs = infectionsDF(postProcessor)
     results = DataFrame[]
     for p in pathogens(simulation(postProcessor))
         pid = id(p)
-        sub = subset(df, :pathogen_id => ByRow(==(pid)), view=true) |>
+        sub = subset(infs, :pathogen_id => ByRow(==(pid)), view=true) |>
             x -> DataFrames.select(x, :tick, :generation_time)
         agg = aggregate_df(sub, :tick)
         agg.pathogen_id .= pid

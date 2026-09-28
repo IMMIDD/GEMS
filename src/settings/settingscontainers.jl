@@ -377,78 +377,105 @@ Loads the settings saved in `jld2file` and add them to the existing SettingsCont
 The renaming dictionary is used to
 find the correct updated values of the ids of the IndividualSettings and change the values in the containers accordingly.
 If the jld2file does not correspond to "" (corresponding to no settingfile) and does not exist, an error message is printed.
+
+Both file layouts are read. From data version 3.2 on, the file's `"settings"` entry holds, per
+setting type, a `table` of its scalar columns and its vector columns (`contains`) under `vectors`,
+each stored flat as `values` and `offsets`: setting `i` holds `values[offsets[i]:offsets[i+1]-1]`.
+Earlier files hold one DataFrame per setting type under `"data"`.
 """
 function settings_from_jld2!(jld2file::String, cntnr::SettingsContainer, d::Dict = Dict())
-    if jld2file == "" 
-        return
-    elseif isfile(jld2file)
-        settings::Dict = load(jld2file, "data")
+    jld2file == "" && return
+    return _add_jld2_settings!(_read_settings_jld2(jld2file), cntnr, d)
+end
 
-        # Default sampling method
-        default_sampling = RandomSampling()
+# The settings file's contents, one DataFrame per setting type, whichever layout the file has.
+function _read_settings_jld2(jld2file::String)::Dict
+    isfile(jld2file) || error("The file $jld2file does not exist.\n Please provide a valid file path pointing to the desired settingfile!")
+    return jldopen(jld2file, "r") do f
+        # before data version 3.2, vector columns were stored one vector per setting, which JLD2
+        # reads as one dataset each
+        haskey(f, "settings") || return f["data"]
+        return Dict(T => _settings_table(entry) for (T, entry) in f["settings"])
+    end
+end
 
-        # Get all setting types from the settings dictionary
-        prov_settingtypes = DataType[eval(x) for x in keys(settings)]
+# A setting type's table with its flat vector columns restored to one vector per setting.
+function _settings_table(entry)
+    df = entry.table
+    for (col, v) in entry.vectors
+        df[!, col] = _unflatten_settings(v.offsets, v.values)
+    end
+    return df
+end
 
-        # Add all setting types to the container
-        add_types!(cntnr, [s for s in prov_settingtypes if s <: Setting && isconcretetype(s)])
-        
-        # Iterate over all setting types in parallel and add the settings to the container
-        for (settingtypesym, df) in settings
-            settingtype::DataType = eval(settingtypesym)
-            if "ags" in names(df)
-                transform!(df, :ags => ByRow(AGS) => :ags)
+# Splits `values` into one vector per setting; setting `i` holds `values[offsets[i]:offsets[i+1]-1]`.
+_unflatten_settings(offsets::AbstractVector{<:Integer}, values::AbstractVector) =
+    [values[offsets[i]:offsets[i+1]-1] for i in 1:length(offsets)-1]
+
+# Adds what `_read_settings_jld2` read to `cntnr`, renaming ids through `d`.
+function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
+    # Default sampling method
+    default_sampling = RandomSampling()
+
+    # Get all setting types from the settings dictionary
+    prov_settingtypes = DataType[eval(x) for x in keys(settings)]
+
+    # Add all setting types to the container
+    add_types!(cntnr, [s for s in prov_settingtypes if s <: Setting && isconcretetype(s)])
+
+    # Iterate over all setting types in parallel and add the settings to the container
+    for (settingtypesym, df) in settings
+        settingtype::DataType = eval(settingtypesym)
+        if "ags" in names(df)
+            transform!(df, :ags => ByRow(AGS) => :ags)
+        end
+
+        # Handle individualsettings and containersettings differently
+        if :individuals in fieldnames(settingtype)
+            setting_vec = cntnr.settings[settingtype]
+            renaming_dict = haskey(d, settingtype) ? d[settingtype] : nothing
+            id_data = df[!, "id"]
+
+            # Add the correct additional values to the low level settings
+            valid_cols = Symbol[]
+            for col in names(df)
+                symcol = Symbol(col)
+                if symcol in fieldnames(settingtype) && symcol != :individuals && symcol != :id
+                    push!(valid_cols, symcol)
+                end
             end
 
-            # Handle individualsettings and containersettings differently
-            if :individuals in fieldnames(settingtype)
-                setting_vec = cntnr.settings[settingtype]
-                renaming_dict = haskey(d, settingtype) ? d[settingtype] : nothing
-                id_data = df[!, "id"]
+            for col in valid_cols
+                col_data = df[!, string(col)]
+                update_setting_column!(setting_vec, col_data, renaming_dict, id_data, settingtype, Val(col))
+            end
 
-                # Add the correct additional values to the low level settings
-                valid_cols = Symbol[]
-                for col in names(df)
-                    symcol = Symbol(col)
-                    if symcol in fieldnames(settingtype) && symcol != :individuals && symcol != :id
-                        push!(valid_cols, symcol)
-                    end
-                end
+        # Handle the container settings
+        else
+            setting_vec = cntnr.settings[settingtype]
 
-                for col in valid_cols
-                    col_data = df[!, string(col)]
-                    update_setting_column!(setting_vec, col_data, renaming_dict, id_data, settingtype, Val(col))
-                end
+            # Add the container settings from the dataframe
+            for nt in Tables.namedtupleiterator(df)
+                push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
+            end
 
-            # Handle the container settings
-            else
-                setting_vec = cntnr.settings[settingtype]
-                
-                # Add the container settings from the dataframe
-                for nt in Tables.namedtupleiterator(df)
-                    push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
-                end
+            # Sort the vector of settings by ID
+            sort!(setting_vec, by = x -> x.id)
 
-                # Sort the vector of settings by ID
-                sort!(setting_vec, by = x -> x.id)
-
-                # Check if the ids are continuous and start from 1
-                if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
-                    d[settingtype] = Dict()
-                    for (i, setting) in enumerate(setting_vec)
-                        d[settingtype][setting.id] = i
-                        setting.id = i
-                    end
+            # Check if the ids are continuous and start from 1
+            if !isempty(setting_vec) && (setting_vec[1].id != 1 || setting_vec[end].id != length(setting_vec))
+                d[settingtype] = Dict()
+                for (i, setting) in enumerate(setting_vec)
+                    d[settingtype][setting.id] = i
+                    setting.id = i
                 end
             end
         end
-
-        # Rename all the settings according to the new ids determined during the creation procedure
-        new_setting_ids!(cntnr, d)
-
-        # Delete all ids that are out of bounds and set them to the default setting id
-        delete_dangling_ids!(cntnr)
-    else 
-        error("The file $jld2file does not exist.\n Please provide a valid file path pointing to the desired settingfile!")
     end
+
+    # Rename all the settings according to the new ids determined during the creation procedure
+    new_setting_ids!(cntnr, d)
+
+    # Delete all ids that are out of bounds and set them to the default setting id
+    delete_dangling_ids!(cntnr)
 end

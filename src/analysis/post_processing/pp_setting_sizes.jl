@@ -28,7 +28,8 @@ of the setting sizes.
 function setting_sizes(postProcessor::PostProcessor)
     dic = Dict()
     sim = simulation(postProcessor)
-    indivs = sim.present_buffers[Threads.threadid()]
+    # own buffer: post processing steps may run concurrently
+    indivs = Individual[]
 
     for (type, stngs) in settings(sim)
         if !isempty(stngs)

@@ -20,13 +20,12 @@ Returns a `DataFrame` containing aggregated information on the serial interval p
 | `mean_SI`     | `Float64` | Mean for serial intervals that tick                          |
 """
 function _tick_serial_intervals(postProcessor::PostProcessor)
-    df = infectionsDF(postProcessor) |>
-        x -> DataFrames.select(x, :tick, :pathogen_id, :serial_interval => :SI)
+    infs = infectionsDF(postProcessor)
     results = DataFrame[]
     for p in pathogens(simulation(postProcessor))
         pid = id(p)
-        sub = subset(df, :pathogen_id => ByRow(==(pid)), view=true) |>
-            x -> DataFrames.select(x, :tick, :SI)
+        sub = subset(infs, :pathogen_id => ByRow(==(pid)), view=true) |>
+            x -> DataFrames.select(x, :tick, :serial_interval => :SI)
         agg = aggregate_df(sub, :tick)
         agg.pathogen_id .= pid
         push!(results, agg)

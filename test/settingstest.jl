@@ -479,6 +479,95 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @test ids_correct
     end
 
+    @testset "Settingfile Layout 3.2" begin
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+
+        # writes one DataFrame per setting type in the layout of data version 3.2: vector columns
+        # stored flat as values with offsets
+        function save_flat(path, frames)
+            flat = Dict{Symbol, Any}()
+            for (T, df) in frames
+                vcols = [c for c in names(df) if eltype(df[!, c]) <: AbstractVector]
+                vectors = Dict{String, Any}()
+                for c in vcols
+                    offsets = Int32.(cumsum([1; length.(df[!, c])]))
+                    vectors[c] = (offsets = offsets, values = Int32.(reduce(vcat, df[!, c]; init = Int32[])))
+                end
+                flat[T] = (table = select(df, Not(vcols)), vectors = vectors)
+            end
+            JLD2.save(path, Dict("settings" => flat, "version" => "3.2"))
+        end
+
+        # every field of every setting, members compared by id and atomics by value
+        unwrap(x) = x isa Threads.Atomic ? x[] : x
+        function same_settings(a, b)
+            keys(settings(a)) == keys(settings(b)) || return false
+            for (T, list) in settings(a)
+                other = get(b, T)
+                length(list) == length(other) || return false
+                for (s, t) in zip(list, other)
+                    T <: GEMS.IndividualSetting && id.(individuals(s)) != id.(individuals(t)) && return false
+                    for f in fieldnames(T)
+                        f in (:individuals, :contact_sampling_method) && continue
+                        isequal(unwrap(getfield(s, f)), unwrap(getfield(t, f))) || return false
+                    end
+                end
+            end
+            return true
+        end
+
+        @testset "Unflatten" begin
+            @test GEMS._unflatten_settings(Int32[1], Int32[]) == Vector{Int32}[]
+            @test GEMS._unflatten_settings(Int32[1, 3, 3, 4], Int32[5, 6, 7]) == [Int32[5, 6], Int32[], Int32[7]]
+        end
+
+        @testset "Same settings as the old layout" begin
+            # renamed school class ids and an empty container
+            frames() = Dict(
+                :SchoolClass => DataFrame(id=[2, 3, 4, 5, 6, 7, 8, 9], contained=Int32.([1, 1, 2, 2, 3, 3, 3, 3])),
+                :SchoolYear => DataFrame(id=[1, 2], contains=[[2, 3], [4, 5]], contained=Int32.([2, 2])),
+                :School => DataFrame(id=[2, 3], contains=[[1, 2], []]))
+            old_path = tempname() * ".jld2"
+            new_path = tempname() * ".jld2"
+            JLD2.save(old_path, "data", frames())
+            save_flat(new_path, frames())
+
+            function build(path)
+                pop = Population([Individual(id=i, age=1, sex=1, schoolclass=i + 1) for i in 1:4])
+                sc, rnm = settings_from_population(pop)
+                settings_from_jld2!(path, sc, rnm)
+                return sc
+            end
+            @test same_settings(build(old_path), build(new_path))
+
+            rm(old_path)
+            rm(new_path)
+        end
+
+        @testset "Real settingfile round trip" begin
+            muenster = BASE_FOLDER * "/test/testdata/settings_muenster.jld2"
+            flat_path = tempname() * ".jld2"
+            save_flat(flat_path, JLD2.load(muenster, "data"))
+
+            # the reader restores the old file's tables exactly
+            old = GEMS._read_settings_jld2(muenster)
+            new = GEMS._read_settings_jld2(flat_path)
+            @test keys(old) == keys(new)
+            @test all(T -> sort(names(old[T])) == sort(names(new[T])) &&
+                all(c -> isequal(old[T][!, c], new[T][!, c]), names(old[T])), keys(old))
+
+            function build(path)
+                pop = Population(BASE_FOLDER * "/test/testdata/people_muenster.jld2")
+                stngs, renaming = settings_from_population(pop)
+                settings_from_jld2!(path, stngs, renaming)
+                return stngs
+            end
+            @test same_settings(build(muenster), build(flat_path))
+
+            rm(flat_path)
+        end
+    end
+
     @testset "Office, Schoolclass and Municipality" begin
         my_pop = DataFrame(
             id=[1, 2, 3],

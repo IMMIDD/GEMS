@@ -8,21 +8,29 @@ state (latent, presymptomatic, symptomatic and asymptomatic) after the
 individual has been infected. Rows indicate the number of elapsed ticks since infections.
 """
 function calc_cum_dis_values(df)
-    return [[
-        # duration
-        t,
-        # latent
-        (t .< df.infectiousness_onset) |> sum,
-        # pre symptomatic
-        (df.infectiousness_onset .<= t .< df.symptom_onset) |> sum,
-        # symptomatic
-        (0 .<= df.symptom_onset .<= t .< df.removed) |> sum,
-        # asymptomatic
-        ((df.infectiousness_onset .<= t .< df.removed) .& (df.symptom_onset .< 0)) |> sum
-    ] for t in 0:maximum(df.removed)] |>
-    # convert array of arrays to a DataFrame
-    mat -> DataFrame(mapreduce(permutedims, vcat, mat), [:tick, :latent,:pre_symptomatic,:symptomatic,:asymptomatic])
+    return _progression_counts(df.infectiousness_onset, df.symptom_onset, df.removed)
+end
 
+# Every state is a tick interval per infection, so each is counted with a difference array instead of one pass
+# over all infections per tick.
+function _progression_counts(infectiousness_onset::AbstractVector, symptom_onset::AbstractVector, removed::AbstractVector)
+    last_tick = Int(maximum(removed))
+    # columns latent, pre-symptomatic, symptomatic, asymptomatic; one spare row for intervals ending after last_tick
+    counts = zeros(Int, last_tick + 2, 4)
+    function add!(state, from, to) # in `state` for ticks from <= t < to
+        from, to = max(Int(from), 0), min(Int(to), last_tick + 1)
+        from < to || return
+        counts[from + 1, state] += 1
+        counts[to + 1, state] -= 1
+    end
+    for (i, s, r) in zip(infectiousness_onset, symptom_onset, removed)
+        add!(1, 0, i)
+        add!(2, i, s)
+        s >= 0 ? add!(3, s, r) : add!(4, i, r)
+    end
+    cumsum!(counts, counts, dims = 1)
+    return DataFrame(tick = collect(0:last_tick), latent = counts[1:end-1, 1], pre_symptomatic = counts[1:end-1, 2],
+        symptomatic = counts[1:end-1, 3], asymptomatic = counts[1:end-1, 4])
 end
 
 """

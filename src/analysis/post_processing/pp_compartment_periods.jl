@@ -7,10 +7,10 @@ calc_rem(infs) = infs.removed
 # own onsets, and a phase it never reached lasts 0 ticks, not a negative number
 calc_exposed(infs, rem) = min.(infs.infectiousness_onset, rem) .- infs.tick
 calc_infectious(infs, rem) = rem .- min.(infs.infectiousness_onset, rem)
-# calculate asymptomatic, symptomatic and pre-symptomatic periods
-calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : 0).(infs.tick, infs.symptom_onset, rem)
-calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - min(so, r) : 0).(infs.symptom_onset, rem)
-calc_pre_symp(infs, rem) = ((so, t, r) -> so >= 0 ? min(so, r) - t : 0).(infs.symptom_onset, infs.tick, rem)
+# calculate asymptomatic, symptomatic and pre-symptomatic periods; `zero(r)`, not `0`, or the column widens to `Vector{Signed}`
+calc_asymp(infs, rem) = ((t, so, r) -> so < 0 ? r - t : zero(r)).(infs.tick, infs.symptom_onset, rem)
+calc_symp(infs, rem) = ((so, r) -> so >= 0 ? r - min(so, r) : zero(r)).(infs.symptom_onset, rem)
+calc_pre_symp(infs, rem) = ((so, t, r) -> so >= 0 ? min(so, r) - t : zero(r)).(infs.symptom_onset, infs.tick, rem)
 
 
 """
@@ -48,9 +48,10 @@ function compartment_periods(postProcessor::PostProcessor)
     res = infectionsDF(postProcessor) |>
         # tick each infection ended, recovery or death (as removed (rem))
         infs -> (infs, calc_rem(infs)) |>
+        # the periods are new vectors, so they are not copied again; the two id columns are
         splat((infs, rem) -> DataFrame(
-            infection_id = infs.infection_id,
-            pathogen_id = infs.pathogen_id,
+            infection_id = copy(infs.infection_id),
+            pathogen_id = copy(infs.pathogen_id),
             total = rem .- infs.tick,
             exposed = calc_exposed(infs, rem),
             infectious = calc_infectious(infs, rem),
@@ -58,7 +59,8 @@ function compartment_periods(postProcessor::PostProcessor)
             pre_symptomatic = calc_pre_symp(infs, rem),
             symptomatic = calc_symp(infs, rem),
             severe = infs.severeness_offset .- infs.severeness_onset,
-            critical = infs.critical_offset .- infs.critical_onset
+            critical = infs.critical_offset .- infs.critical_onset;
+            copycols = false
         ))
 
     # cache dataframe

@@ -37,7 +37,8 @@ function dataframe(vacclogger::VaccinationLogger)
     return DataFrame(
         tick = vcat(vacclogger.tick...),
         id = vcat(vacclogger.id...),
-        pathogen_id = vcat(vacclogger.pathogen_id...)
+        pathogen_id = vcat(vacclogger.pathogen_id...);
+        copycols = false
     )
 end
 
@@ -83,7 +84,8 @@ function dataframe(deathlogger::DeathLogger)::DataFrame
     return DataFrame(
         tick = vcat(deathlogger.tick...),
         id = vcat(deathlogger.id...),
-        pathogen_id = vcat(deathlogger.pathogen_id...)
+        pathogen_id = vcat(deathlogger.pathogen_id...);
+        copycols = false
     )
 end
 
@@ -138,7 +140,8 @@ function dataframe(healthlogger::HealthLogger)::DataFrame
     return DataFrame(
         tick = vcat(healthlogger.tick...),
         id = vcat(healthlogger.id...),
-        event = vcat(healthlogger.event...)
+        event = vcat(healthlogger.event...);
+        copycols = false
     )
 end
 
@@ -218,7 +221,8 @@ function dataframe(testlogger::TestLogger)::DataFrame
         infection_id = vcat(testlogger.infection_id...),
         pathogen_id = vcat(testlogger.pathogen_id...),
         test_type = vcat(testlogger.test_type...),
-        reportable = vcat(testlogger.reportable...)
+        reportable = vcat(testlogger.reportable...);
+        copycols = false
     )
 end
 
@@ -290,7 +294,8 @@ function dataframe(poollogger::PoolTestLogger)::DataFrame
         no_of_individuals = vcat(poollogger.no_of_individuals...),
         no_of_infected = vcat(poollogger.no_of_infected...),
         pathogen_id = vcat(poollogger.pathogen_id...),
-        test_type = vcat(poollogger.test_type...)
+        test_type = vcat(poollogger.test_type...);
+        copycols = false
     )
 end
 
@@ -370,7 +375,8 @@ function dataframe(logger::SeroprevalenceLogger)::DataFrame
         was_infected = vcat(logger.was_infected...),
         infection_id = vcat(logger.infection_id...),
         pathogen_id = vcat(logger.pathogen_id...),
-        test_type = vcat(logger.test_type...)
+        test_type = vcat(logger.test_type...);
+        copycols = false
     )
 end
 

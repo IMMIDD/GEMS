@@ -103,7 +103,7 @@ function main(configfile::String, population::String, outputdir::String;
     end
 
     # post-process
-    _printinfo("Post processing [parallel: $PARALLEL_POST_PROCESSING; caching: $POST_PROCESSOR_CACHING]")
+    _printinfo("Post processing [parallel: $POST_PROCESSING_PARALLELISM; caching: $POST_PROCESSOR_CACHING]")
     @timeit to "4 Post processing" rd = sim |> PostProcessor |>
         x -> ResultData(x, style = get(get(TOML.parsefile(configfile), "PostProcessing", Dict()), "style", ""))
 

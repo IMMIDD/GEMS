@@ -12,7 +12,7 @@ admission, anchored at the infection's `severeness_onset`.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Ward stay length.
 """
 struct SevereHealthProfile <: HealthProfile
-    hospital_probability::Real
+    hospital_probability::Float64
     severeness_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
 
@@ -73,18 +73,18 @@ first, the ward admission is moved to it.
 - `critical_onset_to_death::Union{Distribution, Real}`: Delay from critical onset to death.
 """
 struct CriticalHealthProfile <: HealthProfile
-    hospital_probability::Real
+    hospital_probability::Float64
     severeness_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
-    hospital_to_icu_probability::Real
+    hospital_to_icu_probability::Float64
     critical_onset_to_icu_admission::Union{Distribution, Real}
     icu_admission_to_icu_discharge::Union{Distribution, Real}
-    icu_to_ventilation_probability::Real
+    icu_to_ventilation_probability::Float64
     icu_admission_to_ventilation_admission::Union{Distribution, Real}
     ventilation_admission_to_ventilation_discharge::Union{Distribution, Real}
     ventilation_discharge_to_icu_discharge::Union{Distribution, Real}
     icu_discharge_to_hospital_discharge::Union{Distribution, Real}
-    death_probability::Real
+    death_probability::Float64
     critical_onset_to_death::Union{Distribution, Real}
 
     function CriticalHealthProfile(;

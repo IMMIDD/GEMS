@@ -14,26 +14,20 @@ function _group_by_age(df::DataFrame)::DataFrame
         throw(ArgumentError("$(df) has to contain a column 'age'!"))
     end
 
-    max_age_in_df = maximum(df[:, :age])
+    counts = _age_counts(df.age, Int(maximum(df.age)))
 
-    # Set up dataframe with one column: Age = [0,maxage]
-    #= join with sum of ages of the "df" to also get sums for ages that aren't represented in 
-    the population (these ages should have the sum "0") =#
-    sum_of_ages_df = DataFrame(age = 0:max_age_in_df) |>
-        #= join the "df" with the newly created DataFrame to get new rows with age = 0.0, when this age 
-        isn't represented in the population =#
-        x -> leftjoin(x,
-            # split df by age and combine each row to get the sum of individuals per age
-            df |>
-                y -> groupby(y, :age) |>
-                y -> combine(y, nrow => :sum),
-            on = :age) |>
-        # return DataFrame with columns "age" and "sum", while also changing missing values to "0.0"
-        x -> DataFrames.select(x, :age, :sum => ByRow(x -> coalesce(x, 0.0)) => :sum) |>
-            # sort Dataframe by age (ascending)
-            y -> sort!(y, [:age])
+    # ages nobody has count as 0.0, as the former join filled them; that makes the column `Real`
+    sums = all(>(0), counts) ? counts : Real[c > 0 ? c : 0.0 for c in counts]
+    return DataFrame(age = 0:(length(counts) - 1), sum = sums)
+end
 
-    return sum_of_ages_df
+# individuals per age, index 1 = age 0
+function _age_counts(ages::AbstractVector, max_age::Int)
+    counts = zeros(Int, max_age + 1)
+    for a in ages
+        counts[a + 1] += 1
+    end
+    return counts
 end
 
 

@@ -18,6 +18,20 @@ time(s) by the total number of individuals, stratified by pathogen.
 function attack_rate(postProcessor::PostProcessor)
     infs = infectionsDF(postProcessor)
     pop_size = nrow(postProcessor.populationDF)
-    return combine(groupby(infs, :pathogen_id),
-        :id_b => (ids -> length(unique(ids)) / pop_size) => :attack_rate)
+    # pathogens sorted by id; only those that infected anyone get a row
+    pathogen_ids = sort(collect(eltype(infs.pathogen_id), map(id, pathogens(simulation(postProcessor)))))
+    hosts = _distinct_hosts(infs.pathogen_id, infs.id_b, pathogen_ids)
+    infected = hosts .> 0
+    return DataFrame(pathogen_id = pathogen_ids[infected], attack_rate = hosts[infected] ./ pop_size)
+end
+
+# Distinct hosts per pathogen, marking hosts in one bit vector per pathogen over the id range
+function _distinct_hosts(pids::AbstractVector, ids::AbstractVector{<:Integer}, pathogen_ids::Vector)
+    lo, hi = isempty(ids) ? (1, 0) : Int.(extrema(ids))
+    seen = [falses(hi - lo + 1) for _ in pathogen_ids]
+    for (pid, id) in zip(pids, ids)
+        p = findfirst(==(pid), pathogen_ids)
+        p === nothing || (seen[p][id - lo + 1] = true)
+    end
+    return count.(seen)
 end

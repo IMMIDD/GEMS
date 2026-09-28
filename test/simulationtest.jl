@@ -77,6 +77,82 @@ import GEMS: increment!, infected!
             @test_throws ArgumentError Simulation(population = "ABC")
         end
 
+        @testset "Population Data Versions" begin
+            id = "VERSIONTEST"
+            root = GEMS.poplocal(id)
+            current = GEMS.POP_DATA_VERSION
+            files_in(dir) = (GEMS.peoplelocal(id, dir), GEMS.settingslocal(id, dir))
+
+            # minimal people and settings files; `nothing` leaves out the version key
+            function write_pop_files(dir, people_version, settings_version = people_version)
+                mkpath(dir)
+                for (f, v) in zip(files_in(dir), (people_version, settings_version))
+                    isnothing(v) ? jldsave(f; data = 1) : jldsave(f; data = 1, version = v)
+                end
+            end
+            function reset_pop_files(args...)
+                rm(root; recursive = true, force = true)
+                write_pop_files(root, args...)
+            end
+
+            try
+                @testset "Current Version" begin
+                    reset_pop_files(current)
+                    @test (@test_logs min_level = Logging.Warn GEMS.obtain_remote_files(id)) == files_in(root)
+                end
+
+                @testset "Other Versions Are Used With A Warning" begin
+                    # unversioned files get the note on the former occupation values
+                    reset_pop_files(nothing)
+                    paths = @test_logs (:warn, r"version unknown \(before 3\.1\).*archive_population\(\"VERSIONTEST\"\).*industry") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+                    @test paths == files_in(root)
+                    @test all(isfile, files_in(root))
+
+                    reset_pop_files("3.0")
+                    @test_logs (:warn, r"version 3\.0,.*industry") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+
+                    # newer files get no note
+                    reset_pop_files("99.0")
+                    @test_logs (:warn, r"^(?!.*industry).*version 99\.0,") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+
+                    # people and settings of different versions count as unversioned
+                    reset_pop_files(current, "3.0")
+                    @test_logs (:warn, r"version unknown") min_level = Logging.Warn GEMS.obtain_remote_files(id)
+                end
+
+                @testset "Own Version In Its Subfolder" begin
+                    reset_pop_files("99.0")
+                    sub = joinpath(root, "v$current")
+                    write_pop_files(sub, current)
+                    @test (@test_logs min_level = Logging.Warn GEMS.obtain_remote_files(id)) == files_in(sub)
+                end
+
+                @testset "archive_population" begin
+                    reset_pop_files("3.0")
+                    archive_population(id)
+                    @test !any(isfile, files_in(root))
+                    @test all(isfile, files_in(joinpath(root, "v3.0")))
+
+                    reset_pop_files(nothing)
+                    archive_population(id)
+                    @test all(isfile, files_in(joinpath(root, "unversioned")))
+
+                    # nothing left to archive
+                    @test_throws ArgumentError archive_population(id)
+                end
+
+                @testset "Forced Download Archives Other Versions" begin
+                    # VERSIONTEST is not on the release, so the download itself fails
+                    reset_pop_files("3.0")
+                    @test_throws String GEMS.obtain_remote_files(id; forcedownload = true)
+                    @test !any(isfile, files_in(root))
+                    @test all(isfile, files_in(joinpath(root, "v3.0")))
+                end
+            finally
+                rm(root; recursive = true, force = true)
+            end
+        end
+
         @testset "General Parameters" begin
             # SEED
             # passing
@@ -486,6 +562,17 @@ import GEMS: increment!, infected!
             # determine_setting_type_config!: section present but no contact_sampling_method -> warns
             @test_logs (:warn, r"contact_sampling_method") GEMS.determine_setting_type_config!(sc_w, Household, Dict("Settings" => Dict("Household" => Dict())))
 
+            # determine_setting_type_config!: a non-bits method is deepcopied per setting, so no cache is shared
+            m = fill(0.1, 10, 10)
+            abcs = AgeBasedContactSampling(1.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
+            GEMS.determine_setting_type_config!(sc_w, Household, Dict(); custom_par = abcs)
+            hh = get(sc_w, Household)
+            @test length(hh) > 1
+            @test all(h -> h.contact_sampling_method isa AgeBasedContactSampling, hh)
+            @test all(h -> h.contact_sampling_method !== abcs, hh)
+            @test hh[1].contact_sampling_method !== hh[2].contact_sampling_method
+            @test hh[1].contact_sampling_method.contact_matrix.data == m
+
             # determine_pathogen: transmission_function + transmission_rate -> warns, tf wins
             default_config = GEMS.load_configfile(GEMS.configfile_path(""))
             tf_ref2 = ConstantTransmissionRate(transmission_rate=0.3)
@@ -524,6 +611,8 @@ import GEMS: increment!, infected!
 
             pop_path = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2")
             @test_throws ArgumentError Simulation(population=pop_path, settingsfile="notajld2file.csv")
+            # a missing settings file throws the plain error
+            @test_throws ErrorException Simulation(population=pop_path, settingsfile="/nonexistent/settings.jld2")
 
             @test_throws GEMS.ConfigfileError GEMS.determine_start_condition(Dict(), nothing, nothing)
             @test_throws GEMS.ConfigfileError GEMS.determine_stop_criterion(Dict(), nothing)
@@ -1387,6 +1476,15 @@ import GEMS: increment!, infected!
         
         # Verify they are actual individual vectors
         @test present_buffers(sim)[1] isa Vector{Individual}
+
+        # run! releases the capacity the buffers grew to, down to what they still hold
+        capacity(v) = length(v.ref.mem)
+        @test any(b -> capacity(b) > 0, sim.infection_buffers)  # reserved up front
+        run!(sim)
+        @test all(b -> capacity(b) == length(b), present_buffers(sim))
+        @test all(b -> capacity(b) == length(b), contact_buffers(sim))
+        @test all(b -> capacity(b) == length(b), sim.infection_buffers)
+        @test all(b -> capacity(b) == length(b), sim.removal_buffers)
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)

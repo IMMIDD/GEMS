@@ -263,7 +263,9 @@ import GEMS: _mean_contacts_per_age_group,
         @test ep isa DataFrame
         @test names(ep) == ["host_id", "care_level", "admission_tick", "discharge_tick"]
         @test nrow(ep) > 0
-        @test all(ep.discharge_tick .>= ep.admission_tick)                    # valid intervals
+        # valid intervals; a stay still ongoing when the run ended has no discharge yet
+        ongoing = GEMS.DEFAULT_TICK
+        @test all(r -> r.discharge_tick == ongoing || r.discharge_tick >= r.admission_tick, eachrow(ep))
         @test issubset(Set(ep.care_level), Set([:hospital, :icu, :ventilation]))
 
         hosp_ep = subset(ep, :care_level => ByRow(==(:hospital)))
@@ -272,18 +274,22 @@ import GEMS: _mean_contacts_per_age_group,
         @test nrow(icu_ep) > 0                                                # LegacyCritical escalates to ICU
         @test !(:ventilation in ep.care_level)                               # legacy never ventilates
 
-        # one episode per discharge event reconciles with the per-tick occupancy report
+        # discharged episodes reconcile with the discharge events, ongoing ones with the final occupancy
         hdf = GEMS._hospital_df(hpp)
-        @test nrow(hosp_ep) == sum(hdf.hospital_discharges)
-        @test nrow(icu_ep) == sum(hdf.icu_discharges)
+        @test count(!=(ongoing), hosp_ep.discharge_tick) == sum(hdf.hospital_discharges)
+        @test count(!=(ongoing), icu_ep.discharge_tick) == sum(hdf.icu_discharges)
+        @test count(==(ongoing), hosp_ep.discharge_tick) == last(hdf.current_hospitalized)
+        @test count(==(ongoing), icu_ep.discharge_tick) == last(hdf.current_icu)
 
-        # ladder: each ICU episode sits inside a hospital episode of the same host
+        # ladder: each ICU episode sits inside a hospital episode of the same host. A hospital stay
+        # still ongoing encloses whatever began inside it; an ongoing ICU stay needs an ongoing one.
+        encloses(h_adm, h_dis, i_adm, i_dis) =
+            h_adm <= i_adm && (h_dis == ongoing || (i_dis != ongoing && h_dis >= i_dis))
         for g in groupby(ep, :host_id)
             h = subset(g, :care_level => ByRow(==(:hospital)), view = true)
             ic = subset(g, :care_level => ByRow(==(:icu)), view = true)
             for i in 1:nrow(ic)
-                @test any((h.admission_tick .<= ic.admission_tick[i]) .&
-                          (h.discharge_tick .>= ic.discharge_tick[i]))
+                @test any(encloses.(h.admission_tick, h.discharge_tick, ic.admission_tick[i], ic.discharge_tick[i]))
             end
         end
 
@@ -293,5 +299,41 @@ import GEMS: _mean_contacts_per_age_group,
         @test nrow(health_episodes(rd)) == nrow(ep)
         rd_light = ResultData(hpp, style = "LightRD")
         @test isempty(health_episodes(rd_light))
+    end
+
+    @testset "Health episodes still ongoing at the end" begin
+        # every delay fixed: infected at tick 0, infectious from 2 (onsets start the tick after
+        # infection), severe at 4, critical from 5 to 7. The ward stay starts at 4, the ICU stay runs
+        # from 5 to 7, and the ward discharge would fall at 27, after the run stops at 15
+        crit = Critical(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+            symptom_onset_to_severeness_onset = 1, severeness_onset_to_critical_onset = 1,
+            critical_onset_to_critical_offset = 2, critical_offset_to_severeness_offset = 20,
+            severeness_offset_to_recovery = 5,
+            health = CriticalHealthProfile(hospital_probability = 1.0, severeness_onset_to_hospital_admission = 0,
+                hospital_to_icu_probability = 1.0, critical_onset_to_icu_admission = 0,
+                icu_admission_to_icu_discharge = 2, icu_discharge_to_hospital_discharge = 20))
+        p = Pathogen(id = 1, name = "Covid19", progressions = [crit],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.0))
+        osim = Simulation(pop_size = 100, pathogens = p, infected_fraction = 0.0,
+            stop_criterion = TimesUp(limit = 15), seed = 1)
+        host = individuals(osim)[1]
+        infect!(host, osim)
+        GEMS.flush_pending_infections!(osim)
+        run!(osim, with_progressbar = false)
+
+        ep = health_episodes(PostProcessor(osim))
+        mine = subset(ep, :host_id => ByRow(==(id(host))))
+        h = subset(mine, :care_level => ByRow(==(:hospital)))
+        ic = subset(mine, :care_level => ByRow(==(:icu)))
+
+        # still in hospital when the run stopped: the stay is reported, with no discharge
+        @test nrow(h) == 1
+        @test only(h.admission_tick) == 4
+        @test only(h.discharge_tick) == GEMS.DEFAULT_TICK
+        @test host.hospital_demands > 0
+        # the ICU stay it contains had ended
+        @test nrow(ic) == 1
+        @test only(ic.admission_tick) == 5
+        @test only(ic.discharge_tick) == 7
     end
 end

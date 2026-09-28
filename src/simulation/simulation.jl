@@ -12,7 +12,7 @@ export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
 export health_progression, health_profiles
 export infection_registry, immunity_registry, test_registry, health_schedule
-export configfile, populationfile
+export configfile, populationfile, archive_population
 export evaluate
 export initialize!, reinitialize!
 export reset!
@@ -234,6 +234,12 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # PER-INDIVIDUAL FLAGS
+    # who the disease-update loop and state log must visit
+    active_individuals::Vector{Bool}
+    # who has a quarantine that has not ended yet
+    quarantined_individuals::Vector{Bool}
+
     # THREAD-LOCAL BUFFERS
     present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
@@ -309,12 +315,16 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # RNG
             seed,
             rngs,
+
+            # PER-INDIVIDUAL FLAGS
+            zeros(Bool, length(population.individuals)),
+            zeros(Bool, length(population.individuals)),
             
             # INITIALIZE BUFFERS
-            [Vector{Individual}() for _ in 1:num_shards], # present_buffers
-            [Vector{Individual}() for _ in 1:num_shards], # contact_buffers
-            [sizehint!(Vector{_PendingInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards], # infection buffers matrix
-            [sizehint!(Vector{_EndedInfection}(), matrix_size_hint) for _ in 1:num_shards, _ in 1:num_shards] # removal buffers matrix
+            _thread_local_vector(Vector{Individual}), # present_buffers
+            _thread_local_vector(Vector{Individual}), # contact_buffers
+            _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
+            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)) # removal buffers matrix
         )
 
         # increase simulation counter
@@ -411,115 +421,154 @@ function _BUILD_Simulation(;
 
         # individual extensions
         ind_extension = nothing
+)
+
+    # parse the config file (or default to default.toml)
+    configpath = configfile_path(configfile)
+    config = load_configfile(configpath)
+
+    # SEED
+    rng_seed = determine_seed(config, seed)
+    master_rng = Xoshiro(rng_seed)
+    rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+
+    # GLOBAL SETTING FLAG
+    gs = determine_global_setting(config, global_setting)
+
+    # POPULATION
+    pop, settings = determine_population_and_settings(
+        config,
+        population,
+        gs,
+        pop_size,
+        avg_household_size,
+        avg_office_size,
+        avg_school_size,
+        settingsfile,
+        rngs[1],
+        ind_extension
     )
 
-        # parse the config file (or default to default.toml)
-        configpath = configfile_path(configfile)
-        config = load_configfile(configpath)
+    # everything after this is just generating, not loading from disk
+    _printinfo("\u2514 Creating simulation object")
 
-        # SEED
-        rng_seed = determine_seed(config, seed)
-        master_rng = Xoshiro(rng_seed)
-        rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+    # START DATE
+    sd = determine_start_date(config, start_date)
 
-        # GLOBAL SETTING FLAG
-        gs = determine_global_setting(config, global_setting)
+    # END DATE
+    ed = determine_end_date(config, end_date)
 
-        # POPULATION
-        pop, settings = determine_population_and_settings(
-            config,
-            population,
-            gs,
-            pop_size,
-            avg_household_size,
-            avg_office_size,
-            avg_school_size,
-            settingsfile,
-            rngs[1],
-            ind_extension
-        )
+    ed < sd && throw(ArgumentError("End date must be after start date."))
 
-        # everything after this is just generating, not loading from disk
-        _printinfo("\u2514 Creating simulation object")
+    # TICK UNIT
+    tu = determine_tick_unit(config, tickunit)
 
-        # START DATE
-        sd = determine_start_date(config, start_date)
+    # SETTINGS & CONTACTS
+    determine_setting_config!(settings, config,
+        household_contacts = household_contacts,
+        office_contacts = office_contacts,
+        department_contacts = department_contacts,
+        workplace_contacts = workplace_contacts,
+        workplace_site_contacts = workplace_site_contacts,
+        school_class_contacts = school_class_contacts,
+        school_year_contacts = school_year_contacts,
+        school_contacts = school_contacts,
+        school_complex_contacts = school_complex_contacts,
+        municipality_contacts = municipality_contacts,
+        global_setting_contacts = global_setting_contacts)
 
-        # END DATE
-        ed = determine_end_date(config, end_date)
+    # STOP CRITERION
+    stop_criterion = determine_stop_criterion(
+        config,
+        stop_criterion)
 
-        ed < sd && throw(ArgumentError("End date must be after start date."))
+    # PATHOGENS
+    pathogen_tuple = determine_pathogens(
+        config,
+        pathogens,
+        transmission_function,
+        transmission_rate
+    )
 
-        # TICK UNIT
-        tu = determine_tick_unit(config, tickunit)
+    # HEALTH PROGRESSION
+    hp, hp_index = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
 
-        # SETTINGS & CONTACTS
-        determine_setting_config!(settings, config,
-            household_contacts = household_contacts,
-            office_contacts = office_contacts,
-            department_contacts = department_contacts,
-            workplace_contacts = workplace_contacts,
-            workplace_site_contacts = workplace_site_contacts,
-            school_class_contacts = school_class_contacts,
-            school_year_contacts = school_year_contacts,
-            school_contacts = school_contacts,
-            school_complex_contacts = school_complex_contacts,
-            municipality_contacts = municipality_contacts,
-            global_setting_contacts = global_setting_contacts)
-
-        # STOP CRITERION
-        stop_criterion = determine_stop_criterion(
-            config,
-            stop_criterion)
-
-        # PATHOGENS
-        pathogen_tuple = determine_pathogens(
-            config,
-            pathogens,
-            transmission_function,
-            transmission_rate
-        )
-
-        # HEALTH PROGRESSION
-        hp, hp_index = determine_health_progression(config, health_progression, pathogen_tuple, !isnothing(pathogens))
-
-        # START CONDITION
-        start_condition = determine_start_condition(
-            config,
-            start_condition,
-            infected_fraction,
-            pathogen_tuple)
+    # START CONDITION
+    start_condition = determine_start_condition(
+        config,
+        start_condition,
+        infected_fraction,
+        pathogen_tuple)
 
 
 
-        # CREATES SIMULATION OBJECT
-        sim = Simulation(
-            configpath,
-            tu,
-            sd,
-            ed,
-            start_condition,
-            stop_criterion,
-            pop,
-            settings,
-            pathogen_tuple,
-            hp,
-            hp_index,
-            stepmod,
-            rng_seed,
-            rngs
-        )
+    # CREATES SIMULATION OBJECT
+    sim = Simulation(
+        configpath,
+        tu,
+        sd,
+        ed,
+        start_condition,
+        stop_criterion,
+        pop,
+        settings,
+        pathogen_tuple,
+        hp,
+        hp_index,
+        stepmod,
+        rng_seed,
+        rngs
+    )
 
-        precompute_ags!(sim)
-        
-        # update label
-        sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
+    precompute_ags!(sim)
 
-        # initialize simulation
-        initialize!(sim)
+    # update label
+    sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
-        return sim
+    # initialize simulation
+    initialize!(sim)
+
+    return sim
+end
+
+"""
+    _thread_local_vector(T::Type, make = T)
+
+Returns a `Vector{T}` of `make()` results with one entry per thread id, each created on the thread that uses it.
+"""
+function _thread_local_vector(T::Type, make = T)
+    v = Vector{T}(undef, Threads.maxthreadid())
+    # objects allocated back to back share cache lines; each thread's own heap pages keep concurrent writes apart
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        v[Threads.threadid()] = make()
     end
+    # slots of threads outside the default pool
+    for i in eachindex(v)
+        isassigned(v, i) || (v[i] = make())
+    end
+    return v
+end
+
+"""
+    _thread_local_matrix(T::Type, make = T)
+
+Returns a producer × shard `Matrix{T}` of `make()` results, each row created on the producing thread.
+"""
+function _thread_local_matrix(T::Type, make = T)
+    n = Threads.maxthreadid()
+    m = Matrix{T}(undef, n, n)
+    # see `_thread_local_vector`
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        p = Threads.threadid()
+        for s in 1:n
+            m[p, s] = make()
+        end
+    end
+    for i in eachindex(m)
+        isassigned(m, i) || (m[i] = make())
+    end
+    return m
+end
 
 
 ### DETERMINATION FUNCTIONS
@@ -890,12 +939,14 @@ function determine_population(population::String, settingsfile, global_setting; 
         throw(ArgumentError("Provided population must be a valid population file path or a population model identifier (e.g., 'DE')!"))
     end
 
+    if !isnothing(settings_path)
+        !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
+    end
+
     pop = Population(pop_path; ind_extension = ind_extension)
     settings, renaming = settings_from_population(pop, global_setting)
 
-    # if settingsfile is provided, load the settings from the file
     if !isnothing(settings_path)
-        !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
         _printinfo("\u2514 Loading settings from $(basename(settings_path))")
         settings_from_jld2!(settings_path, settings, renaming)
     end
@@ -972,12 +1023,25 @@ Internal function barrier to set the contact sampling method on every setting in
 the loop ensures type-stable field access.
 
 Deepcopies `method` per setting so settings don't share a mutable sampling-method cache
-(e.g. `AgeBasedContactSampling.age_pyramid`) across concurrently-processed settings.
+(e.g. `AgeBasedContactSampling.age_pyramid`) across concurrently-processed settings. Bits methods
+have no state to share, so all settings hold the same one.
 """
 function _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
-    for s_abs in setting_list
-        s = s_abs::settingtype
-        s.contact_sampling_method = deepcopy(method)
+    isempty(setting_list) && return
+    if isbitstype(typeof(method))
+        # storing into the abstract field boxes; reuse the first setting's box instead of one per setting
+        first_setting = setting_list[1]::settingtype
+        first_setting.contact_sampling_method = method
+        boxed = first_setting.contact_sampling_method
+        for s_abs in setting_list
+            s = s_abs::settingtype
+            s.contact_sampling_method = boxed
+        end
+    else
+        for s_abs in setting_list
+            s = s_abs::settingtype
+            s.contact_sampling_method = deepcopy(method)
+        end
     end
 end
 """
@@ -1553,24 +1617,76 @@ function is_pop_file(filename::String)
 end
 
 
+# The data version of the population files in `dir`: `nothing` without files, "" if unversioned.
+function _local_pop_version(dir::String, identifier::String)
+    files = (peoplelocal(identifier, dir), settingslocal(identifier, dir))
+    all(isfile, files) || return nothing
+    versions = [jldopen(f -> haskey(f, "version") ? string(f["version"]) : "", path) for path in files]
+    # people and settings from different versions count as unversioned
+    return versions[1] == versions[2] ? versions[1] : ""
+end
+
+# Moves population files replaced by another data version into a subfolder named after their version.
+function _archive_pop_files(dir::String, identifier::String, version::String)
+    target = joinpath(dir, isempty(version) ? "unversioned" : "v$version")
+    mkpath(target)
+    for f in (peoplelocal(identifier, dir), settingslocal(identifier, dir))
+        mv(f, joinpath(target, basename(f)); force = true)
+    end
+    _printinfo("\u2514 Moved $(isempty(version) ? "unversioned" : "v$version") population data to $target")
+end
+
+"""
+    archive_population(identifier::String)
+
+Moves the local files of population `identifier` into a subfolder named after their data version
+(`unversioned` if they have none). The next use of `identifier` downloads version `POP_DATA_VERSION`.
+"""
+function archive_population(identifier::String)
+    dir = poplocal(identifier)
+    version = _local_pop_version(dir, identifier)
+    version === nothing && throw(ArgumentError("There are no local files of population \"$identifier\" in $dir."))
+    _archive_pop_files(dir, identifier, version)
+end
+
 """
     obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
-Interface to remotely access a setting and population file
+Returns the paths of the people and settings file of population `identifier`, downloading them
+if there are no local files. Local files of another data version than `POP_DATA_VERSION` are used
+with a warning, unless the subfolder `v<POP_DATA_VERSION>` holds this version.
+`forcedownload` moves other versions into a subfolder named after them and downloads this one.
 """
 function obtain_remote_files(identifier::String; forcedownload::Bool = false)
 
     _printinfo("\u2514 Looking for \"$identifier\" population model")
 
-    # if argument points to existing population and setting files and forcedownload is deactivated
-    if peoplelocal(identifier) |> isfile && settingslocal(identifier) |> isfile && !forcedownload
-        _printinfo("\u2514 Retrieving population and settings from $(poplocal(identifier))")
-        return (peoplelocal(identifier) , settingslocal(identifier))
+    dir = poplocal(identifier)
+    found = _local_pop_version(dir, identifier)
+
+    # another data version in the main folder; this one may be archived in its subfolder
+    if found !== nothing && found != POP_DATA_VERSION
+        sub = joinpath(dir, "v$POP_DATA_VERSION")
+        if _local_pop_version(sub, identifier) == POP_DATA_VERSION
+            dir, found = sub, POP_DATA_VERSION
+        end
     end
 
-    # if not, download files
-    _printinfo("Population and setting file not available locally. Downloading files...")
-    zipath = joinpath(poplocal(identifier), "data.zip")
+    if found !== nothing && !forcedownload
+        if found != POP_DATA_VERSION
+            # files from before 3.1 still use the former `occupation` coding
+            note = isempty(found) || VersionNumber(found) < v"3.1" ? " Note: from data version 3.1 on, `occupation` holds the main activity at work; the former values are in `industry` (load them with `ind_extension = [:industry]`)." : ""
+            @warn "The local files of population \"$identifier\" have data version $(isempty(found) ? "unknown (before 3.1)" : found), but this GEMS version uses $POP_DATA_VERSION. Using the local files. To switch, call `archive_population(\"$identifier\")` and load the population again.$note" maxlog = 1 _id = Symbol(:pop_version_, identifier)
+        end
+        _printinfo("\u2514 Retrieving population and settings from $dir")
+        return (peoplelocal(identifier, dir), settingslocal(identifier, dir))
+    end
+
+    # files of another version make way for this one
+    found !== nothing && found != POP_DATA_VERSION && _archive_pop_files(dir, identifier, found)
+
+    _printinfo("Downloading population data v$POP_DATA_VERSION...")
+    zipath = joinpath(dir, "data.zip")
     # make sure directory exists
     mkpath(dirname(zipath))
     # download stuff
@@ -1589,7 +1705,7 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
     z = ZipFile.Reader(zipath)
     for f in z.files
         # Determine the output file path
-        out_path = joinpath(poplocal(identifier), f.name)
+        out_path = joinpath(dir, f.name)
         
         # Ensure that the output directory exists
         mkpath(dirname(out_path))
@@ -1608,7 +1724,7 @@ function obtain_remote_files(identifier::String; forcedownload::Bool = false)
     rm(zipath, force = true)
 
     # return local data paths
-    return (peoplelocal(identifier) , settingslocal(identifier))       
+    return (peoplelocal(identifier, dir), settingslocal(identifier, dir))
 end
 
 ### INTERFACE FOR CONDITION AND CRITERIA ###
@@ -1755,6 +1871,16 @@ Returns the thread-local buffers for storing sampled contacts, used to eliminate
 """
 function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
     return simulation.contact_buffers
+end
+
+# Frees the capacity the per-tick buffers grew to during a run
+function _release_tick_buffers!(simulation::Simulation)
+    release!(buf) = sizehint!(buf, length(buf))
+    foreach(release!, simulation.present_buffers)
+    foreach(release!, simulation.contact_buffers)
+    foreach(release!, simulation.infection_buffers)
+    foreach(release!, simulation.removal_buffers)
+    return nothing
 end
 
 """
@@ -2262,6 +2388,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     for ind in individuals(simulation)
         reset!(ind, infection_registry(simulation, id(ind)), immunity_registry(simulation, id(ind)))
     end
+    fill!(simulation.active_individuals, false)
+    fill!(simulation.quarantined_individuals, false)
     reset_tick!(simulation)
 
     # Reset all loggers

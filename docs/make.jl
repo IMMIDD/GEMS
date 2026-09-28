@@ -25,7 +25,7 @@ makedocs(
             "Population" => "base-population.md",
             "Contacts" => "base-contacts.md",
             "Disease" => "base-disease.md",
-            "Interventions" => "TriSM.md",
+            "Interventions" => "base-interventions.md",
             "Default Parameters" => "base-config.md",
             "Tutorials" => "tut_Intro.md"
         ],

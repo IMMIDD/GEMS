@@ -57,12 +57,12 @@ mutable struct InfecterIndex
 end
 
 """
-    _infecter_id_range(id_a::Vector{Vector{Int32}})
+    _infecter_id_range(id_a::AbstractVector{<:AbstractVector{Int32}})
 
 Smallest and largest infecter id present in the sharded column, ignoring seed infections
 (`id < 1`). Returns an empty range when there are none.
 """
-function _infecter_id_range(id_a::Vector{Vector{Int32}})
+function _infecter_id_range(id_a::AbstractVector{<:AbstractVector{Int32}})
     lo = typemax(Int32)
     hi = Int32(0)
     for shard in id_a
@@ -82,8 +82,8 @@ Backfills an index from an `InfectionLogger`'s sharded columns. `minid`/`maxid` 
 `head` in one allocation; when unset (`maxid = 0`) they are taken from the infecter ids
 present in the data.
 """
-function InfecterIndex(id_a::Vector{Vector{Int32}}, id_b::Vector{Vector{Int32}},
-        ticks::Vector{Vector{Int16}}; minid::Int32 = Int32(1), maxid::Int32 = Int32(0))
+function InfecterIndex(id_a::AbstractVector{<:AbstractVector{Int32}}, id_b::AbstractVector{<:AbstractVector{Int32}},
+        ticks::AbstractVector{<:AbstractVector{Int16}}; minid::Int32 = Int32(1), maxid::Int32 = Int32(0))
 
     maxid < minid && ((minid, maxid) = _infecter_id_range(id_a))
     index = InfecterIndex(minid, maxid)
