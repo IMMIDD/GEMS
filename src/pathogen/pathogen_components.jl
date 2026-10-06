@@ -89,10 +89,20 @@ function assign(individual::Individual, pa_func::ProgressionAssignmentFunction, 
 end
 
 """
+    assign(individual::Individual, pa_func::ProgressionAssignmentFunction, sim::Union{Simulation, Nothing}, pathogen_id::Int8, tick::Int16, rng::Xoshiro)
+
+Entry point called by `infect!`. Read the infectee's immunity with `immunity_level(individual, sim,
+pathogen_id, tick)` or `each_immunity(individual, sim)`; `sim` is `nothing` without a simulation.
+Falls through to the registry form.
+"""
+assign(individual::Individual, pa_func::ProgressionAssignmentFunction, sim::Union{Simulation, Nothing}, pathogen_id::Int8, tick::Int16, rng::Xoshiro) =
+    assign(individual, pa_func, isnothing(sim) ? ImmunityRegistry() : immunity_registry(sim, individual), pathogen_id, rng)
+
+"""
     assign(individual::Individual, pa_func::ProgressionAssignmentFunction, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro)
 
-Entry point called by `infect!`, giving the assignment function access to the infectee's
-pre-exposure immunity. Falls through to the three-argument `assign`.
+Deprecated: override the form with `sim` and `tick`, which can read immunity levels. Still called for
+existing methods; falls through to the three-argument `assign`.
 """
 assign(individual::Individual, pa_func::ProgressionAssignmentFunction, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro) =
     assign(individual, pa_func, rng)
@@ -105,12 +115,20 @@ function calculate_progression(individual::Individual, tick::Int16, dp::Progress
 end
 
 """
+    calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, sim::Union{Simulation, Nothing}, pathogen_id::Int8, rng::Xoshiro)
+
+Entry point called by `infect!`. Read the infectee's immunity with `immunity_level(individual, sim,
+pathogen_id, tick)` or `each_immunity(individual, sim)`; `sim` is `nothing` without a simulation.
+Falls through to the registry form.
+"""
+calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, sim::Union{Simulation, Nothing}, pathogen_id::Int8, rng::Xoshiro) =
+    calculate_progression(individual, tick, dp, isnothing(sim) ? ImmunityRegistry() : immunity_registry(sim, individual), pathogen_id, rng)
+
+"""
     calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro)
 
-Entry point called by `infect!`, giving the progression category access to the infectee's
-pre-exposure immunity via `immunity_level(individual, immunities, pathogen_id)`, or to
-cross-pathogen immunity via `each_immunity(individual, immunities)`. Falls through to the
-four-argument `calculate_progression`.
+Deprecated: override the form with `sim`, which can read immunity levels. Still called for existing
+methods; falls through to the four-argument `calculate_progression`.
 """
 calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro) =
     calculate_progression(individual, tick, dp, rng)
@@ -159,10 +177,11 @@ override `susceptibility_factor` instead.
 function effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
     inf = infectiousness(infecter, sim, pathogen_id)
     inf == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
-    profile = immunity_profile(get_pathogen(sim, pathogen_id))
+    level = immunity_level(infectee, sim, pathogen_id, tick)
+    susceptibility = _with_pathogen(p -> susceptibility_factor(immunity_profile(p), level), sim.pathogens, pathogen_id)
     return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
            inf / 100.0 *
-           susceptibility_factor(profile, immunity_level(infectee, sim, pathogen_id))
+           susceptibility
 end
 
 """
@@ -185,7 +204,11 @@ end
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
-This fallback raises an error; any concrete subtype must provide its own method.
+Returns the immunity level (0-100) of `state` at `tick`. Concrete profiles must implement it.
+
+Called on every read, from any thread: must be cheap and deterministic, and must not yield, mutate
+shared state or read other levels. `rng` draws the same numbers on every read for this host and
+pathogen; re-key it per acquisition with `immunity_rng!`.
 """
 function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)).")
@@ -194,7 +217,8 @@ end
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
 
-Fallback for `ImmunityProfile` that doesn't need an RNG.
+For profiles that don't draw: passes the unkeyed `default_gems_rng()`, so draws differ from reads
+during a simulation.
 """
 @inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
     return calculate_immunity(profile, state, individual, tick, default_gems_rng())
@@ -203,10 +227,7 @@ end
 """
     immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool
 
-Returns `true` if the immunity level produced by `profile` for the given `state` at `tick`
-is guaranteed not to change in any future tick, allowing the per-individual immunity cache
-to skip recomputation. Falls back to `false` for any profile that does not provide a
-concrete method, which is always safe.
+Deprecated and unused: levels are computed on read. Kept so existing methods compile.
 """
 immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool = false
 

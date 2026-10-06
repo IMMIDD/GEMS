@@ -15,14 +15,10 @@ struct _OverflowNode; node::Int32; end # registry overflow linked-list node inde
 # read the state at a slot
 @inline _slot_state(ind, reg::InfectionRegistry, l::_CacheSlot) = @inbounds ind.infection_cache[l.i]
 @inline _slot_state(ind, reg::InfectionRegistry, l::_OverflowNode) = @inbounds reg.states[l.node]
-@inline _slot_state(ind, reg::ImmunityRegistry, l::_CacheSlot) = @inbounds ind.immunity_cache[l.i]
-@inline _slot_state(ind, reg::ImmunityRegistry, l::_OverflowNode) = @inbounds reg.states[l.node]
 
 # write a (possibly mutated) state back to a slot
 @inline _set_slot!(ind, reg::InfectionRegistry, l::_CacheSlot, s) = (ind.infection_cache = Base.setindex(ind.infection_cache, s, l.i); nothing)
 @inline _set_slot!(ind, reg::InfectionRegistry, l::_OverflowNode, s) = (@inbounds reg.states[l.node] = s; nothing)
-@inline _set_slot!(ind, reg::ImmunityRegistry, l::_CacheSlot, s) = (ind.immunity_cache = Base.setindex(ind.immunity_cache, s, l.i); nothing)
-@inline _set_slot!(ind, reg::ImmunityRegistry, l::_OverflowNode, s) = (@inbounds reg.states[l.node] = s; nothing)
 
 # clear an ended slot: cache slots are zeroed in place; overflow nodes are freed by the flush
 @inline _clear_slot!(ind, reg::InfectionRegistry, l::_CacheSlot) = _set_slot!(ind, reg, l, InfectionState())
@@ -269,10 +265,10 @@ function _push_immunity_overflow!(
         if existing.pathogen_id == pathogen_id
             @inbounds reg.states[node] = if source == IMMUNITY_SOURCE_NATURAL
                 ImmunityState(existing.next, acquired_tick, existing.vaccine_acquired_tick,
-                              existing.immunity_level, pathogen_id, existing.vaccine_id, existing.dose_number)
+                              pathogen_id, existing.vaccine_id, existing.dose_number)
             else
                 ImmunityState(existing.next, existing.natural_acquired_tick, acquired_tick,
-                              existing.immunity_level, pathogen_id, vaccine_id, existing.dose_number + Int8(1))
+                              pathogen_id, vaccine_id, existing.dose_number + Int8(1))
             end
             return nothing
         end
@@ -281,9 +277,9 @@ function _push_immunity_overflow!(
 
     # New overflow entry
     new_state = if source == IMMUNITY_SOURCE_NATURAL
-        ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, Int8(0), pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
+        ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
     else
-        ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, Int8(0), pathogen_id, vaccine_id, Int8(1))
+        ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, pathogen_id, vaccine_id, Int8(1))
     end
     _link_overflow!(reg, ind, new_state)
     return nothing
@@ -318,8 +314,8 @@ function push_immunity!(
         _is_active_immunity(s) && s.pathogen_id == pathogen_id || continue
         ind.immunity_cache = Base.setindex(ind.immunity_cache,
             source == IMMUNITY_SOURCE_NATURAL ?
-                ImmunityState(Int32(0), acquired_tick, s.vaccine_acquired_tick, s.immunity_level, pathogen_id, s.vaccine_id, s.dose_number) :
-                ImmunityState(Int32(0), s.natural_acquired_tick, acquired_tick, s.immunity_level, pathogen_id, vaccine_id, s.dose_number + Int8(1)),
+                ImmunityState(Int32(0), acquired_tick, s.vaccine_acquired_tick, pathogen_id, s.vaccine_id, s.dose_number) :
+                ImmunityState(Int32(0), s.natural_acquired_tick, acquired_tick, pathogen_id, vaccine_id, s.dose_number + Int8(1)),
             i)
         return nothing
     end
@@ -330,8 +326,8 @@ function push_immunity!(
         _is_active_immunity(s) && continue
         ind.immunity_cache = Base.setindex(ind.immunity_cache,
             source == IMMUNITY_SOURCE_NATURAL ?
-                ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, Int8(0), pathogen_id, DEFAULT_VACCINE_ID, Int8(0)) :
-                ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, Int8(0), pathogen_id, vaccine_id, Int8(1)),
+                ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, pathogen_id, DEFAULT_VACCINE_ID, Int8(0)) :
+                ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, pathogen_id, vaccine_id, Int8(1)),
             i)
         return nothing
     end

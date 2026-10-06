@@ -1,19 +1,15 @@
-import GEMS: _rand_val, get_progression, push_infection!, push_immunity!, update_immunity!
+import GEMS: _rand_val, get_progression, push_infection!, push_immunity!
 
 # immunity that is fully readable but does not act on transmission, and one that acts at half
 # strength. Defined here so their methods are visible to the testsets that call them directly.
 struct SeverityOnlyImmunity <: GEMS.ImmunityProfile end
 GEMS.calculate_immunity(::SeverityOnlyImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
     GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
-GEMS.immunity_is_stable(::SeverityOnlyImmunity, s::ImmunityState, i::Individual, t::Int16) =
-    GEMS.immunity_active(s, t)
 GEMS.susceptibility_factor(::SeverityOnlyImmunity, level::Int8) = 1.0
 
 struct HalfImmunity <: GEMS.ImmunityProfile end
 GEMS.calculate_immunity(::HalfImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
     GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
-GEMS.immunity_is_stable(::HalfImmunity, s::ImmunityState, i::Individual, t::Int16) =
-    GEMS.immunity_active(s, t)
 GEMS.susceptibility_factor(::HalfImmunity, level::Int8) = 1.0 - 0.5 * level / 100.0
 
 # an assignment function that reads immunity, recording what it saw so tests can assert on it
@@ -23,12 +19,12 @@ const SEEN_OTHER = Ref(Int8(-1))
 struct ImmunityAwareAssignment <: GEMS.ProgressionAssignmentFunction end
 
 function GEMS.assign(ind::Individual, paf::ImmunityAwareAssignment,
-        immunities::GEMS.ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro)
-    SEEN_OWN[] = immunity_level(ind, immunities, pathogen_id)
+        sim::Union{Simulation, Nothing}, pathogen_id::Int8, tick::Int16, rng::Xoshiro)
+    SEEN_OWN[] = immunity_level(ind, sim, pathogen_id, tick)
     other = Int8(0)
-    for s in GEMS.each_immunity(ind, immunities)
+    for s in GEMS.each_immunity(ind, sim)
         s.pathogen_id == pathogen_id && continue
-        other = max(other, s.immunity_level)
+        other = max(other, immunity_level(s, ind, sim, tick))
     end
     SEEN_OTHER[] = other
     return SEEN_OWN[] >= 50 || other >= 50 ? Asymptomatic : Mild
@@ -471,7 +467,8 @@ end
         @test_throws ErrorException GEMS.assign(individuals(sim)[1], UnimplementedPA(),
             ImmunityRegistry(), Int8(1), Xoshiro())
 
-        # a three-argument implementation is reached through the forwarding method
+        # a three-argument implementation is reached through the forwarding methods
+        @test GEMS.assign(individuals(sim)[2], eo_pa, sim, Int8(1), Int16(0), Xoshiro()) == Mild
         @test GEMS.assign(individuals(sim)[2], eo_pa, ImmunityRegistry(), Int8(1), Xoshiro()) == Mild
         @test GEMS.assign(individuals(sim)[3], eo_pa, ImmunityRegistry(), Int8(1), Xoshiro()) == Asymptomatic
     end
@@ -480,12 +477,8 @@ end
         mkpath_ia(pid, nm) = Pathogen(id = pid, name = nm, progressions = [pr_asymp, pr_mild],
             progression_assignment = ImmunityAwareAssignment(), transmission_function = ctf)
 
-        function immunize!(s, ind, pid, acquired, at)
-            push_immunity!(GEMS.immunity_registry(s, ind), ind, Int8(pid),
-                GEMS.IMMUNITY_SOURCE_NATURAL, Int16(acquired), GEMS.DEFAULT_VACCINE_ID)
-            ind.needs_immunity_update = true
-            update_immunity!(ind, GEMS.immunity_registry(s, ind), s.pathogens, Int16(at), Xoshiro())
-        end
+        immunize!(s, ind, pid, acquired) = push_immunity!(GEMS.immunity_registry(s, ind), ind, Int8(pid),
+            GEMS.IMMUNITY_SOURCE_NATURAL, Int16(acquired), GEMS.DEFAULT_VACCINE_ID)
 
         s = Simulation(pop_size = 500, pathogens = (mkpath_ia(1, "IA"),), infected_fraction = 0.0)
 
@@ -496,8 +489,8 @@ end
 
         # an immune host: assign sees the level held *before* this infection is recorded
         immune = individuals(s)[2]
-        immunize!(s, immune, 1, 0, 10)
-        pre = immunity_level(immune, s, Int8(1))
+        immunize!(s, immune, 1, 0)
+        pre = immunity_level(immune, s, Int8(1), Int16(10))
         SEEN_OWN[] = Int8(-1)
         infect!(immune, Int16(10), first_pathogen(s), sim = s, rng = Xoshiro(1))
         @test pre == Int8(100)
@@ -507,13 +500,13 @@ end
         s2 = Simulation(pop_size = 500, pathogens = (mkpath_ia(1, "PA"), mkpath_ia(2, "PB")),
             infected_fraction = 0.0)
         host = individuals(s2)[1]
-        immunize!(s2, host, 2, 0, 10)
+        immunize!(s2, host, 2, 0)
         SEEN_OWN[] = Int8(-1); SEEN_OTHER[] = Int8(-1)
         infect!(host, Int16(10), GEMS.get_pathogen(s2, Int8(1)), sim = s2, rng = Xoshiro(1))
         @test SEEN_OWN[] == Int8(0)
         @test SEEN_OTHER[] == Int8(100)
 
-        # without a Simulation an empty registry is passed rather than erroring
+        # without a Simulation the hook gets `nothing` and reads no immunity rather than erroring
         lone = Individual(id = 1, age = 30, sex = 1, household = 1)
         SEEN_OWN[] = Int8(-1)
         infect!(lone, Int16(0), mkpath_ia(1, "Lone"), rng = Xoshiro(1))
@@ -653,8 +646,6 @@ end
             # full self-immunity: effective probability becomes 0
             push_immunity!(immunity_registry(sim_ci, infectee_ci), infectee_ci, pid,
                 GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
-            update_immunity!(infectee_ci, immunity_registry(sim_ci, infectee_ci),
-                GEMS.pathogens(sim_ci), Int16(5), Xoshiro())
             prob_immune = effective_transmission_probability(tf_ci, pid, infecter_ci, infectee_ci,
                 households(sim_ci)[1], Int16(5), sim_ci)
             @test prob_immune ≈ 0.0
@@ -663,8 +654,6 @@ end
             infectee2_ci = individuals(sim_ci)[3]
             push_immunity!(immunity_registry(sim_ci, infectee2_ci), infectee2_ci, Int8(2),
                 GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
-            update_immunity!(infectee2_ci, immunity_registry(sim_ci, infectee2_ci),
-                GEMS.pathogens(sim_ci), Int16(1), Xoshiro())
             prob_listed = effective_transmission_probability(tf_ci, pid, infecter_ci, infectee2_ci,
                 households(sim_ci)[1], Int16(1), sim_ci)
             @test prob_listed ≈ 0.5 * (1.0 - 100/100.0 * 0.6) * (inf_level / 100.0)
@@ -676,8 +665,6 @@ end
             infectee3_ci = individuals(sim_ci)[4]
             push_immunity!(immunity_registry(sim_ci, infectee3_ci), infectee3_ci, Int8(2),
                 GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
-            update_immunity!(infectee3_ci, immunity_registry(sim_ci, infectee3_ci),
-                GEMS.pathogens(sim_ci), Int16(1), Xoshiro())
             prob_default = effective_transmission_probability(tf_ci_def, pid, infecter_ci, infectee3_ci,
                 households(sim_ci)[1], Int16(1), sim_ci)
             @test prob_default ≈ 0.5 * (1.0 - 100/100.0 * 0.3) * (inf_level / 100.0)
@@ -1022,22 +1009,20 @@ end
         pid = Int8(1)
 
         # helper: build an ImmunityState from tick values
-        nat_state(t) = ImmunityState(Int32(0), Int16(t), GEMS.DEFAULT_TICK, Int8(0), pid, GEMS.DEFAULT_VACCINE_ID, Int8(0))
-        vac_state(t) = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(t), Int8(0), pid, Int8(1), Int8(1))
-        both_state(nt, vt) = ImmunityState(Int32(0), Int16(nt), Int16(vt), Int8(0), pid, Int8(1), Int8(1))
+        nat_state(t) = ImmunityState(Int32(0), Int16(t), GEMS.DEFAULT_TICK, pid, GEMS.DEFAULT_VACCINE_ID, Int8(0))
+        vac_state(t) = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(t), pid, Int8(1), Int8(1))
+        both_state(nt, vt) = ImmunityState(Int32(0), Int16(nt), Int16(vt), pid, Int8(1), Int8(1))
         empty_state = ImmunityState()
 
         @testset "FullImmunity" begin
             p = FullImmunity()
 
-            # no acquisition: level 0, not stable
+            # no acquisition: level 0
             @test calculate_immunity(p, empty_state, ind, Int16(10), rng) == Int8(0)
-            @test !immunity_is_stable(p, empty_state, ind, Int16(10))
 
-            # natural acquired in the past: level 100, stable
+            # natural acquired in the past: level 100
             @test calculate_immunity(p, nat_state(5), ind, Int16(5), rng) == Int8(100)
             @test calculate_immunity(p, nat_state(5), ind, Int16(10), rng) == Int8(100)
-            @test immunity_is_stable(p, nat_state(5), ind, Int16(10))
 
             # vaccine acquired: level 100
             @test calculate_immunity(p, vac_state(3), ind, Int16(3), rng) == Int8(100)
@@ -1053,10 +1038,6 @@ end
             @test calculate_immunity(p, empty_state, ind, Int16(10), rng) == Int8(0)
             @test calculate_immunity(p, nat_state(5), ind, Int16(10), rng) == Int8(0)
             @test calculate_immunity(p, vac_state(3), ind, Int16(10), rng) == Int8(0)
-
-            # always stable
-            @test immunity_is_stable(p, empty_state, ind, Int16(10))
-            @test immunity_is_stable(p, nat_state(5), ind, Int16(10))
         end
 
         @testset "ExponentialWaning" begin
@@ -1082,16 +1063,11 @@ end
             p_buildup = ExponentialWaning(halflife=180.0, vaccine_buildup_duration=Int16(10))
             mid_buildup = calculate_immunity(p_buildup, vac_state(0), ind, Int16(5), rng)
             @test 0 < mid_buildup < 100
-            @test !immunity_is_stable(p_buildup, vac_state(0), ind, Int16(5))
 
             # combined natural + vaccine: higher than either alone (independent barriers)
             nat_only = calculate_immunity(p, nat_state(0), ind, Int16(180), rng)
             both = calculate_immunity(p, both_state(0, 0), ind, Int16(180), rng)
             @test both > nat_only
-
-            # stability: once waned to floor (level <= floor) the profile is stable
-            p_stable = ExponentialWaning(halflife=0.5, floor=Int8(0))
-            @test immunity_is_stable(p_stable, nat_state(0), ind, Int16(100))
         end
 
         @testset "SigmoidalWaning" begin
@@ -1122,25 +1098,18 @@ end
             p_sig_buildup = SigmoidalWaning(halflife=180.0, vaccine_buildup_duration=Int16(10))
             mid_buildup_sig = calculate_immunity(p_sig_buildup, vac_state(0), ind, Int16(5), rng)
             @test 0 < mid_buildup_sig < 100
-            @test !immunity_is_stable(p_sig_buildup, vac_state(0), ind, Int16(5))
-
-            # stability: once waned to floor the profile is stable
-            p_sig_stable = SigmoidalWaning(halflife=0.5, floor=Int8(0))
-            @test immunity_is_stable(p_sig_stable, nat_state(0), ind, Int16(100))
         end
 
         @testset "Abstract ImmunityProfile fallbacks" begin
             struct UnimplementedImmunityProfile <: GEMS.ImmunityProfile end
             p = UnimplementedImmunityProfile()
-            state = ImmunityState(Int32(0), Int16(0), GEMS.DEFAULT_TICK, Int8(0), Int8(1),
+            state = ImmunityState(Int32(0), Int16(0), GEMS.DEFAULT_TICK, Int8(1),
                                   GEMS.DEFAULT_VACCINE_ID, Int8(0))
 
             # calculate_immunity with rng throws
             @test_throws ErrorException calculate_immunity(p, state, ind, Int16(1), rng)
             # calculate_immunity without rng delegates through the wrapper, also throws
             @test_throws ErrorException calculate_immunity(p, state, ind, Int16(1))
-            # immunity_is_stable returns false as a safe default
-            @test !immunity_is_stable(p, state, ind, Int16(1))
         end
 
         @testset "Susceptibility Factor" begin
@@ -1171,9 +1140,7 @@ end
                 GEMS.update_individual!(infctr, Int16(1), s)
                 push_immunity!(GEMS.immunity_registry(s, trgt), trgt, Int8(1),
                     GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
-                trgt.needs_immunity_update = true
-                update_immunity!(trgt, GEMS.immunity_registry(s, trgt), s.pathogens, Int16(1), Xoshiro())
-                lvl = immunity_level(trgt, s, Int8(1))
+                lvl = immunity_level(trgt, s, Int8(1), Int16(1))
                 inf = infectiousness(infctr, s, Int8(1))
                 p_eff = effective_transmission_probability(tf, Int8(1), infctr, trgt,
                     households(s)[1], Int16(1), s, Xoshiro())

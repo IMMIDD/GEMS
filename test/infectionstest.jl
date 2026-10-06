@@ -1,5 +1,5 @@
 import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containers!, dead!,
-    push_infection!, push_immunity!, update_immunity!, _EndedInfection
+    push_infection!, push_immunity!, _EndedInfection
 
 @testset "Infections" begin
     test_rng = Xoshiro()
@@ -163,21 +163,18 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 @test !isempty(buf_d) # both cache and overflow nodes staged for removal
             end
 
-            @testset "update_immunity! Overflow" begin
+            @testset "Immunity Overflow" begin
                 # With IMMUNITY_CACHE_SIZE = 1, a second immunity state spills into the registry.
-                p1 = Pathogen(id=1, name="P1")
-                p2 = Pathogen(id=2, name="P2")
-                pths = (p1, p2)
-
-                ireg = ImmunityRegistry()
-                i_imm = Individual(id=20, sex=0, age=30)
+                s_imm = Simulation(pop_size = 100, infected_fraction = 0.0,
+                    pathogens = (Pathogen(id=1, name="P1"), Pathogen(id=2, name="P2")))
+                i_imm = individuals(s_imm)[1]
+                ireg = GEMS.immunity_registry(s_imm, i_imm)
                 push_immunity!(ireg, i_imm, Int8(1), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 push_immunity!(ireg, i_imm, Int8(2), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
 
-                # overflow node must be reachable; update_immunity! should not error
-                i_imm.needs_immunity_update = true
-                update_immunity!(i_imm, ireg, pths, Int16(10), test_rng)
-                @test !i_imm.needs_immunity_update # FullImmunity is stable → flag cleared
+                # the overflow record is reached and its level computed when read (FullImmunity)
+                @test immunity_level(i_imm, s_imm, Int8(1), Int16(10)) == Int8(100)
+                @test immunity_level(i_imm, s_imm, Int8(2), Int16(10)) == Int8(100)
             end
         end
 
@@ -293,14 +290,13 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             ind = individuals(s)[1]
             push_immunity!(GEMS.immunity_registry(s, ind), ind, Int8(1),
                 GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
-            ind.needs_immunity_update = true
 
             levels = Dict{Int,Int}()
             while GEMS.tick(s) <= Int16(60)
                 GEMS.tick(s) == Int16(40) && infect_now!(s, ind)
                 t = Int(GEMS.tick(s))
                 run_tick!(s, ind)
-                levels[t] = Int(immunity_level(ind, s, Int8(1)))
+                levels[t] = Int(immunity_level(ind, s, Int8(1), Int16(t)))
             end
 
             during = [levels[t] for t in 40:47]   # recovery lands at 48
@@ -312,11 +308,8 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             st = GEMS.get_immunity_state(ind, GEMS.immunity_registry(s, ind), Int8(1))
             @test st.natural_acquired_tick == Int16(48)
 
-            # the record still stabilises, so the individual stops being recomputed every tick
-            while GEMS.tick(s) <= Int16(600)
-                run_tick!(s, ind)
-            end
-            @test !ind.needs_immunity_update
+            # waning immunity alone does not keep the recovered host in the per-tick update
+            @test !GEMS._stays_active(ind)
         end
 
         @testset "first infection is unchanged" begin
@@ -329,7 +322,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 GEMS.tick(s) == Int16(1) && infect_now!(s, ind)
                 t = Int(GEMS.tick(s))
                 run_tick!(s, ind)
-                levels[t] = Int(immunity_level(ind, s, Int8(1)))
+                levels[t] = Int(immunity_level(ind, s, Int8(1), Int16(t)))
             end
 
             @test all(t -> levels[t] == 0, 0:8)   # nothing to carry, so 0 while infected
@@ -368,7 +361,6 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             host = individuals(s)[1]
             push_immunity!(GEMS.immunity_registry(s, host), host, Int8(1),
                 GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
-            host.needs_immunity_update = true
 
             factor() = GEMS.transmission_factor(pB.transmission_function.modifiers[1], Int8(2),
                 individuals(s)[2], host, households(s)[1], GEMS.tick(s), s, Xoshiro())

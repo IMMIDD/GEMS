@@ -2156,6 +2156,21 @@ enabling union-splitting at the callsite with no dynamic dispatch.
     end
 end
 
+"""
+    _with_pathogen(f, pathogens::P, pid::Int8) where {P<:Tuple}
+
+Calls `f` on the pathogen with id `pid`. Type-stable for any number of pathogen types, unlike
+`get_pathogen`, which stops inferring at 4.
+"""
+@generated function _with_pathogen(f::F, pathogens::P, pid::Int8) where {F, P<:Tuple}
+    N = fieldcount(P)
+    checks = [:(pathogens[$i].id == pid && return f(pathogens[$i])) for i in 1:N]
+    return quote
+        $(checks...)
+        throw(ArgumentError("No pathogen with id $pid found."))
+    end
+end
+
 
 """
     get_pathogen(sim::Simulation, pid::Int8)

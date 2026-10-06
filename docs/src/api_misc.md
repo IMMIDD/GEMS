@@ -64,6 +64,7 @@ gems_sample!
 gems_shuffle
 gems_shuffle!
 gems_randn
+immunity_rng!
 ```
 
 ## Exceptions

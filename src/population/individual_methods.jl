@@ -351,21 +351,40 @@ Convenience wrapper that safely routes to the correct `InfectionRegistry` shard 
 
 
 """
-    immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)::Int8
+    immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)
 
-Returns the current cached immunity level (0-100) against `pathogen_id`,
-or 0 if the individual has no immunity record for that pathogen.
+Removed, throws: levels are computed on read and need the simulation.
 """
-@inline immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)::Int8 =
-    get_immunity_state(individual, immunities, pathogen_id).immunity_level
+immunity_level(::Individual, ::ImmunityRegistry, ::Int8) =
+    throw(ArgumentError("immunity_level(individual, immunities, pathogen_id) was removed; use immunity_level(individual, sim, pathogen_id[, tick])."))
 
 """
-    immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8
+    immunity_level(individual::Individual, ::Nothing, pathogen_id::Int8, tick::Int16 = Int16(0))::Int8
 
-Convenience wrapper that safely routes to the correct `ImmunityRegistry` shard for the given individual.
+Returns 0: without a simulation there is no immunity.
 """
-@inline immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8 =
-    immunity_level(individual, immunity_registry(sim, individual), pathogen_id)
+immunity_level(::Individual, ::Nothing, ::Int8, ::Int16 = Int16(0))::Int8 = Int8(0)
+
+"""
+    immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16 = tick(sim))::Int8
+
+Returns the immunity level (0-100) against `pathogen_id` at `tick`, or 0 without a record.
+"""
+@inline immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16 = tick(sim))::Int8 =
+    immunity_level(get_immunity_state(individual, sim, pathogen_id), individual, sim, t)
+
+"""
+    immunity_level(state::ImmunityState, individual::Individual, sim::Simulation, tick::Int16 = tick(sim))::Int8
+
+Returns the level (0-100) of one immunity record at `tick`, e.g. from `each_immunity`.
+"""
+function immunity_level(state::ImmunityState, individual::Individual, sim::Simulation, t::Int16 = tick(sim))::Int8
+    (natural_immunity_recorded(state) || vaccine_immunity_recorded(state)) || return Int8(0)
+    return _with_pathogen(sim.pathogens, state.pathogen_id) do pathogen
+        rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
+        calculate_immunity(immunity_profile(pathogen), state, individual, t, rng)
+    end
+end
 
 """
     earliest_infectiousness_onset(ind::Individual, infections::InfectionRegistry)::Int16
@@ -809,30 +828,27 @@ end
 """
     vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
 
-Vaccinates an individual against a pathogen. Deprecated: during a simulation, the disease update only
-recomputes the immunity of individuals vaccinated through `vaccinate!(individual, sim, vaccine, tick)`.
+Vaccinates an individual against a pathogen. Deprecated: use `vaccinate!(individual, sim, vaccine, tick)`,
+which picks the individual's registry shard.
 """
 function vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
-    @warn "vaccinate!(individual, registry, vaccine, tick) is deprecated: the simulation's disease update does not see this individual. Use vaccinate!(individual, sim, vaccine, tick)." maxlog=1
+    @warn "vaccinate!(individual, registry, vaccine, tick) is deprecated; use vaccinate!(individual, sim, vaccine, tick), which picks the individual's registry shard." maxlog=1
     _vaccinate!(individual, registry, vaccine, tick)
 end
 
-# records the vaccination in `registry` only, without flagging the individual
+# records the vaccination in `registry`
 function _vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
     log!(logger(vaccine), id(individual), target_pathogen_id(vaccine), tick)
     push_immunity!(registry, individual, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
-    individual.needs_immunity_update = true
 end
 
 """
     vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
 
-Vaccinates an individual against the vaccine's target pathogen at `tick` and flags the individual
-for the disease update, which recomputes its immunity.
+Vaccinates an individual against the vaccine's target pathogen at `tick`.
 """
 function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
     _vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
-    _mark_active!(sim, individual)
 end
 
 """
@@ -903,73 +919,6 @@ Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
 """
 number_of_vaccinations(individual::Individual, sim::Simulation, pathogen_id::Int8) = number_of_vaccinations(individual, immunity_registry(sim, individual), pathogen_id)
 
-
-"""
-    _immunity_level_and_stable(pathogen, state, individual, tick, rng)
-
-Function barrier that extracts the `ImmunityProfile` from `pathogen` and calls `calculate_immunity` and `immunity_is_stable`.
-"""
-function _immunity_level_and_stable(pathogen, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Tuple{Int8, Bool}
-    profile = immunity_profile(pathogen)
-    level = calculate_immunity(profile, state, individual, tick, rng)
-    stable = immunity_is_stable(profile, state, individual, tick)
-    return level, stable
-end
-
-"""
-    _step_immunity!(ind, registry, pathogens, loc, tick, rng)
-
-Recomputes the immunity level for the single record at slot `loc` (a `_CacheSlot` or
-`_OverflowNode`) and writes it back only when it changed. Shared by both branches of
-`update_immunity!` so the recompute logic lives once; the storage details are handled by
-`_slot_state` / `_set_slot!` dispatch. Returns whether the record is stable.
-"""
-@inline function _step_immunity!(ind::Individual, registry::ImmunityRegistry, pathogens::P, loc, tick::Int16, rng::Xoshiro) where {P<:Tuple}
-    state = _slot_state(ind, registry, loc)
-    pat = get_pathogen(pathogens, state.pathogen_id)
-    new_level, stable = _immunity_level_and_stable(pat, state, ind, tick, rng)
-    new_level != state.immunity_level && _set_slot!(ind, registry, loc, _setstate(state, Val(:immunity_level), new_level))
-    return stable
-end
-
-"""
-    update_immunity!(individual::Individual, registry::ImmunityRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
-
-Refresh the per-individual immunity cache (`immune_pathogens`, `immunity_level`)
-from the `ImmunityRegistry`. For each pathogen with at least one immunity record,
-builds a combined `ImmunityState` (natural + vaccine) and calls `calculate_immunity`
-once. The result is written to the per-individual NTuple cache.
-"""
-function update_immunity!(
-    individual::Individual,
-    registry::ImmunityRegistry,
-    pathogens::P,
-    tick::Int16,
-    rng::Xoshiro,
-) where {P<:Tuple}
-    _all_stable = true
-
-    # Cache slots
-    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
-        _is_active_immunity(individual.immunity_cache[i]) || continue
-        _all_stable &= _step_immunity!(individual, registry, pathogens, _CacheSlot(Int32(i)), tick, rng)
-    end
-
-    # Overflow slots
-    if individual.immunity_head != 0
-        node = individual.immunity_head
-        while node != 0
-            @inbounds next_node = registry.states[node].next
-            _all_stable &= _step_immunity!(individual, registry, pathogens, _OverflowNode(node), tick, rng)
-            node = next_node
-        end
-    end
-
-    if _all_stable
-        individual.needs_immunity_update = false
-    end
-    return nothing
-end
 
 
 ### UPDATE DISEASE PROGRESSION IN AGENTS ###
@@ -1153,7 +1102,6 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
 
     individual.immunity_cache = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)
-    individual.needs_immunity_update = false
 
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
     individual.quarantine_tick = DEFAULT_TICK

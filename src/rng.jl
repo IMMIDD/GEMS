@@ -6,6 +6,7 @@ export gems_shuffle
 export gems_shuffle!
 export gems_randn
 export rand_round
+export immunity_rng!
 
 ### RANDOM NUMBER GENERATORS
 # Reproducibility-safe random number generation methods for GEMS simulations
@@ -178,4 +179,69 @@ function rand_round(val::Real, rng::Xoshiro)
     frac = val - lower
 
     return rand(rng) < frac ? Int(lower) + 1 : Int(lower)
+end
+
+
+###
+### KEYED IMMUNITY RNG
+### Immunity levels are computed on read; the rng a profile gets there is reset from the record first.
+###
+
+# a thread's scratch rng and the key it was last reset to
+mutable struct _ImmunityRNG
+    rng::Xoshiro
+    key::UInt64
+end
+
+# one per thread, created by that thread on first use; sized in __init__
+const _IMMUNITY_RNGS = Union{Nothing, _ImmunityRNG}[]
+
+# folds fields into a key with splitmix64, one at a time
+@inline _mix(key::UInt64) = key
+@inline function _mix(key::UInt64, field::Integer, rest::Integer...)
+    x = (key ⊻ (field % UInt64)) + 0x9e3779b97f4a7c15
+    x = (x ⊻ (x >> 30)) * 0xbf58476d1ce4e5b9
+    x = (x ⊻ (x >> 27)) * 0x94d049bb133111eb
+    return _mix(x ⊻ (x >> 31), rest...)
+end
+
+# sets the state from `key`, as `Random.initstate!` does from four words
+@inline function _rekey!(rng::Xoshiro, key::UInt64)
+    s = ntuple(i -> _mix(key, i), 4)
+    rng.s0, rng.s1, rng.s2, rng.s3 = s
+    @static if hasfield(Xoshiro, :s4)
+        rng.s4 = s[1] + 3s[2] + 5s[3] + 7s[4]
+    end
+    return rng
+end
+
+@inline function _immunity_rng()::_ImmunityRNG
+    tid = Threads.threadid()
+    r = @inbounds _IMMUNITY_RNGS[tid]
+    r === nothing || return r
+    return @inbounds _IMMUNITY_RNGS[tid] = _ImmunityRNG(Xoshiro(0), UInt64(0))
+end
+
+# this thread's scratch rng, reset to the stream of one host and pathogen
+@inline function _keyed_immunity_rng(seed::Int64, host_id::Int32, pathogen_id::Int8)::Xoshiro
+    r = _immunity_rng()
+    r.key = _mix(UInt64(0), seed, host_id, pathogen_id)
+    return _rekey!(r.rng, r.key)
+end
+
+"""
+    immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
+
+Re-keys the `rng` of `calculate_immunity` to draw anew per acquisition: `:natural` per infection,
+`:vaccine` per dose, `:host` back to the stream as passed. Components don't affect each other.
+"""
+function immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
+    r = _immunity_rng()
+    # an rng from elsewhere (e.g. a test) is re-keyed from its current state
+    base = rng === r.rng ? r.key : _mix(UInt64(0), rng.s0, rng.s1, rng.s2, rng.s3)
+    key = component === :host ? base :
+        component === :natural ? _mix(base, 1, state.natural_acquired_tick) :
+        component === :vaccine ? _mix(base, 2, state.vaccine_acquired_tick, state.dose_number) :
+        throw(ArgumentError("unknown immunity component :$component; use :natural, :vaccine or :host"))
+    return _rekey!(rng, key)
 end
