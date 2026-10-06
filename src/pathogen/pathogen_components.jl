@@ -195,7 +195,8 @@ effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id:
 """
     calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
-This fallback raises an error; any concrete subtype must provide its own method.
+Returns the infectiousness (0-100) of the infection `state` at `tick`; concrete profiles must implement it.
+`rng` draws the same numbers for the whole infection; re-key it per tick with `infectiousness_rng!`.
 """
 function calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     error("calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile)).")
@@ -204,11 +205,9 @@ end
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
-Returns the immunity level (0-100) of `state` at `tick`. Concrete profiles must implement it.
-
-Called on every read, from any thread: must be cheap and deterministic, and must not yield, mutate
-shared state or read other levels. `rng` draws the same numbers on every read for this host and
-pathogen; re-key it per acquisition with `immunity_rng!`.
+Returns the immunity level (0-100) of `state` at `tick`; called on every read from any thread, so it must be
+cheap and deterministic and must not yield or read other levels. `rng` draws the same numbers on every read for
+this host and pathogen; re-key it per acquisition with `immunity_rng!`.
 """
 function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)).")

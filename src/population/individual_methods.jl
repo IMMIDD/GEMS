@@ -1004,6 +1004,7 @@ branches of `progress_disease!`. Returns the record's `DiseaseFlags` contributio
     # update infectiousness while active
     end_tick = state.recovery
     if state.exposure <= tick < end_tick
+        _rekey_infection!(rng, state)
         level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, rng)
         if level != state.infectiousness
             state = _setstate(state, Val(:infectiousness), level)

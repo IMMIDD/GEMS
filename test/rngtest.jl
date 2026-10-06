@@ -3,6 +3,14 @@ struct NoisyImmunity <: GEMS.ImmunityProfile end
 GEMS.calculate_immunity(::NoisyImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
     GEMS.immunity_active(s, t) ? Int8(rand(r, 1:100)) : Int8(0)
 
+# draw their infectiousness from the rng they are given, once per infection or once per tick
+struct NoisyInfectiousness <: GEMS.InfectiousnessProfile end
+GEMS.calculate_infectiousness(::NoisyInfectiousness, s::InfectionState, i::Individual, t::Int16, r::Xoshiro) =
+    s.infectiousness_onset <= t < s.recovery ? Int8(rand(r, 1:100)) : Int8(0)
+struct DailyNoisyInfectiousness <: GEMS.InfectiousnessProfile end
+GEMS.calculate_infectiousness(::DailyNoisyInfectiousness, s::InfectionState, i::Individual, t::Int16, r::Xoshiro) =
+    s.infectiousness_onset <= t < s.recovery ? Int8(rand(GEMS.infectiousness_rng!(r, s, t), 1:100)) : Int8(0)
+
 @testset "RNG" begin
 
     @testset "set_global_seed" begin
@@ -181,5 +189,35 @@ GEMS.calculate_immunity(::NoisyImmunity, s::ImmunityState, i::Individual, t::Int
         @test rng(s) == before
         s2, ind2 = noisy_sim()
         @test immunity_level(ind2, s2, Int8(1), Int16(5)) == lvl
+    end
+
+    @testset "Keyed Infectiousness RNG" begin
+        # infectiousness of one host over ticks 1-6 of an infection from tick 0, and whether the sim's rng moved
+        function infectiousness_path(profile)
+            p = Pathogen(id = 1, name = "Noisy", infectiousness_profile = profile,
+                progressions = [Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 10)],
+                progression_assignment = RandomProgressionAssignment([Asymptomatic]))
+            s = Simulation(pop_size = 100, infected_fraction = 0.0, pathogens = (p,), seed = 7)
+            ind = individuals(s)[1]
+            infect!(ind, Int16(0), p, sim = s, rng = Xoshiro(1))
+            GEMS.flush_pending_infections!(s)
+            before = copy(rng(s))
+            path = map(Int16.(1:6)) do t
+                GEMS.update_individual!(ind, t, s)
+                infectiousness(ind, s, Int8(1))
+            end
+            return path, rng(s) == before
+        end
+
+        # drawn once per infection: the same every tick, reproducible, and the sim's rng is left alone
+        path, untouched = infectiousness_path(NoisyInfectiousness())
+        @test all(==(path[1]), path) && 1 <= path[1] <= 100
+        @test untouched
+        @test infectiousness_path(NoisyInfectiousness())[1] == path
+
+        # re-keyed per tick: varies over the infection, still reproducible
+        daily, _ = infectiousness_path(DailyNoisyInfectiousness())
+        @test length(unique(daily)) > 1
+        @test infectiousness_path(DailyNoisyInfectiousness())[1] == daily
     end
 end

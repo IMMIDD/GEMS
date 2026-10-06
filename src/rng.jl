@@ -7,6 +7,7 @@ export gems_shuffle!
 export gems_randn
 export rand_round
 export immunity_rng!
+export infectiousness_rng!
 
 ### RANDOM NUMBER GENERATORS
 # Reproducibility-safe random number generation methods for GEMS simulations
@@ -183,18 +184,19 @@ end
 
 
 ###
-### KEYED IMMUNITY RNG
-### Immunity levels are computed on read; the rng a profile gets there is reset from the record first.
+### KEYED PROFILE RNGS
+### The rng immunity and infectiousness profiles get is reset from the record first, so draws depend on
+### the record alone and the simulation's own streams are never touched.
 ###
 
-# a thread's scratch rng and the key it was last reset to
-mutable struct _ImmunityRNG
+# a thread's scratch rng and the base key of its current host
+mutable struct _ProfileRNG
     rng::Xoshiro
     key::UInt64
 end
 
 # one per thread, created by that thread on first use; sized in __init__
-const _IMMUNITY_RNGS = Union{Nothing, _ImmunityRNG}[]
+const _PROFILE_RNGS = Union{Nothing, _ProfileRNG}[]
 
 # folds fields into a key with splitmix64, one at a time
 @inline _mix(key::UInt64) = key
@@ -215,19 +217,44 @@ end
     return rng
 end
 
-@inline function _immunity_rng()::_ImmunityRNG
+@inline function _profile_rng()::_ProfileRNG
     tid = Threads.threadid()
-    r = @inbounds _IMMUNITY_RNGS[tid]
+    r = @inbounds _PROFILE_RNGS[tid]
     r === nothing || return r
-    return @inbounds _IMMUNITY_RNGS[tid] = _ImmunityRNG(Xoshiro(0), UInt64(0))
+    return @inbounds _PROFILE_RNGS[tid] = _ProfileRNG(Xoshiro(0), UInt64(0))
 end
 
-# this thread's scratch rng, reset to the stream of one host and pathogen
+# the base key to re-key `rng` from; an rng from elsewhere (e.g. a test) is re-keyed from its current state
+@inline function _base_key(rng::Xoshiro)::UInt64
+    r = _profile_rng()
+    return rng === r.rng ? r.key : _mix(UInt64(0), rng.s0, rng.s1, rng.s2, rng.s3)
+end
+
+# this thread's scratch rng, reset to the immunity stream of one host and pathogen
 @inline function _keyed_immunity_rng(seed::Int64, host_id::Int32, pathogen_id::Int8)::Xoshiro
-    r = _immunity_rng()
+    r = _profile_rng()
     r.key = _mix(UInt64(0), seed, host_id, pathogen_id)
     return _rekey!(r.rng, r.key)
 end
+
+# this thread's scratch rng with the infection base key of one host; `_rekey_infection!` resets it per infection
+@inline function _keyed_host_rng(seed::Int64, host_id::Int32)::Xoshiro
+    r = _profile_rng()
+    r.key = _mix(UInt64(1), seed, host_id)
+    return r.rng
+end
+
+# resets `rng` to the stream of one infection, identified by its pathogen and exposure tick
+@inline _rekey_infection!(rng::Xoshiro, state::InfectionState) =
+    _rekey!(rng, _mix(_base_key(rng), state.pathogen_id, state.exposure))
+
+"""
+    infectiousness_rng!(rng::Xoshiro, state::InfectionState, tick::Int16)::Xoshiro
+
+Re-keys the `rng` of `calculate_infectiousness` to draw anew each tick instead of once per infection.
+"""
+infectiousness_rng!(rng::Xoshiro, state::InfectionState, tick::Int16)::Xoshiro =
+    _rekey!(rng, _mix(_base_key(rng), state.pathogen_id, state.exposure, tick))
 
 """
     immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
@@ -236,9 +263,7 @@ Re-keys the `rng` of `calculate_immunity` to draw anew per acquisition: `:natura
 `:vaccine` per dose, `:host` back to the stream as passed. Components don't affect each other.
 """
 function immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
-    r = _immunity_rng()
-    # an rng from elsewhere (e.g. a test) is re-keyed from its current state
-    base = rng === r.rng ? r.key : _mix(UInt64(0), rng.s0, rng.s1, rng.s2, rng.s3)
+    base = _base_key(rng)
     key = component === :host ? base :
         component === :natural ? _mix(base, 1, state.natural_acquired_tick) :
         component === :vaccine ? _mix(base, 2, state.vaccine_acquired_tick, state.dose_number) :

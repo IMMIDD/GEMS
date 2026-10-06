@@ -129,8 +129,8 @@ module GEMS
     function __init__()
         # Initialize thread-local RNGs
         append!(_DEFAULT_GEMS_RNGS, [Random.Xoshiro() for _ in 1:Threads.maxthreadid()])
-        # scratch rngs for immunity reads, created per thread on first use
-        append!(_IMMUNITY_RNGS, fill(nothing, Threads.maxthreadid()))
+        # scratch rngs for immunity and infectiousness profiles, created per thread on first use
+        append!(_PROFILE_RNGS, fill(nothing, Threads.maxthreadid()))
 
         offending_lines = check_naked_rng_calls()
 
