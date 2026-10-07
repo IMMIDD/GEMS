@@ -370,6 +370,16 @@ function population_params(rd::ResultData)
 end
 
 """
+    setting_type_names(rd::ResultData)
+
+Returns each setting type's log char mapped to its name.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function setting_type_names(rd::ResultData)
+    return(get(rd |> meta_data, "setting_type_names", Dict{String, String}()))
+end
+
+"""
     timer_output(rd::ResultData)
 
 Returns the `TimerOutput` object used to supply debug report with execution time information

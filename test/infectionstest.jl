@@ -9,8 +9,6 @@ import GEMS: try_to_infect!, spread_infections!, update_individual!, get_contain
     ags::AGS = AGS()
     isopen::Bool = true
 end
-# registered at once: every simulation built from here on looks at each IndividualSetting subtype
-GEMS.register_setting_type!(SpreadTestSetting)
 
 @testset "Infections" begin
     test_rng = Xoshiro()
@@ -731,7 +729,8 @@ GEMS.register_setting_type!(SpreadTestSetting)
             end
             agrees(sim)
 
-            # a setting type GEMS does not ship is reached through the runtime lookup
+            # a setting type GEMS does not ship, never registered by hand, is reached through the
+            # runtime lookup
             df = DataFrame(id = Int32.(1:4), age = Int8.(fill(30, 4)), sex = Int8.(ones(4)),
                            household = Int32[1, 1, 2, 2])
             custom_pop = Population(df)

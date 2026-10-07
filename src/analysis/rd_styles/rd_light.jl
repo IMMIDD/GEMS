@@ -21,6 +21,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `config_file_val::Dict{String, Any}`: Deep copy of the supplied TOML config file
         - `population_file::String`: Path to the population file
         - `population_params::Dict{String, Any}`: Parameters used to generate population
+        - `setting_type_names::Dict{String, String}`: Each setting type's log char (as a string) mapped to its name
         
     - `sim_data::Dict{String, Any}`
         - `label::String`: Label of this simulation run (needed for plotting)
@@ -108,7 +109,8 @@ mutable struct LightRD <: ResultDataStyle
                     "config_file" => () -> pP |> simulation |> configfile,
                     "config_file_val" => () -> TOML.parsefile(pP |> simulation |> configfile),
                     "population_file" => () -> pP |> simulation |> populationfile,
-                    "population_params" => () -> pP |> simulation |> population |> params
+                    "population_params" => () -> pP |> simulation |> population |> params,
+                    "setting_type_names" => () -> setting_type_names()
                 ),
             "sim_data" =>
                 Dict(

@@ -1110,24 +1110,24 @@ function determine_setting_type_config!(stngs::SettingsContainer, type::DataType
             _set_contact_sampling_method!(setting_list, method, type)
             return stngs
         else
-            throw(ArgumentError("Provided parameter for `$(structname(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
+            throw(ArgumentError("Provided parameter for `$(setting_type_name(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
         end
     end
 
     # if no custom parameters are provided, check if config file has section for the setting type
-    if !_haspath(configfile_params, ["Settings", structname(type)])
-        @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+    if !_haspath(configfile_params, ["Settings", setting_type_name(type)])
+        @warn "`$(setting_type_name(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
 
     # check if the setting type has a config part for contact sampling method
-    if !_haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
-        @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+    if !_haspath(configfile_params, ["Settings", setting_type_name(type), "contact_sampling_method"])
+        @warn "`contact_sampling_method` for `$(setting_type_name(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
 
     # build contact sampling method
-    csm_params = configfile_params["Settings"][structname(type)]["contact_sampling_method"]
+    csm_params = configfile_params["Settings"][setting_type_name(type)]["contact_sampling_method"]
     sampling_method = create_contact_sampling_method(csm_params)
     
     # Apply the sampling method
@@ -2684,7 +2684,7 @@ function info(sim::Simulation)
 
     res *= "\u2514 Population ($(sim |> population |> size) individuals):\n"
     for st in settingtypes(settingscontainer(sim))
-        res *= "  \u2514 $(st)s: $(get(settingscontainer(sim), st) |> length)\n"
+        res *= "  \u2514 $(setting_type_name(st))s: $(get(settingscontainer(sim), st) |> length)\n"
     end
 
     res *= "\u2514 Start Condition: $(sim |> start_condition)\n"

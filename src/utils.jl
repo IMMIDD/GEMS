@@ -56,7 +56,7 @@ end
 function _concrete_subtypes(type::Type)::Vector{DataType}
     stypes = _cached_subtypes(type)
     if isempty(stypes)
-        if !isabstracttype(type)
+        if type isa DataType && !isabstracttype(type)
             return [type]
         end
         return []

@@ -10,7 +10,8 @@ struct PlanTestSettingB <: IndividualSetting end
 
 # a setting that counts how often a member's scale is read
 struct ScaleReadSetting <: IndividualSetting end
-register_setting_type!(ScaleReadSetting)
+# its own char: its default 'S' would clash with infectionstest's SpreadTestSetting
+register_setting_type!(ScaleReadSetting; char = 'Z')
 const SCALE_READS = Ref(0)
 GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::GEMS.SettingsContainer) = (SCALE_READS[] += 1; 1.0f0)
 
@@ -19,6 +20,28 @@ for k in 1:13
     @eval struct $(Symbol("MaskTestSetting", k)) <: IndividualSetting end
 end
 struct MaskTestContainer <: ContainerSetting end
+
+# setting types GEMS does not ship, for the name and char tests; none is registered by hand
+@with_kw mutable struct RoundTripSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+end
+@with_kw mutable struct NameFoundSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+end
+struct NeverUsedSetting <: IndividualSetting end
+# a second type of the same name, as another package could define it
+module PlanTestOther
+    using GEMS
+    struct RoundTripSetting <: GEMS.IndividualSetting end
+end
 
 @testset "Activity Plans" begin
 
@@ -42,7 +65,8 @@ struct MaskTestContainer <: ContainerSetting end
         @test setting_type_index(Household) == 0x01
 
         # user types are numbered past the built-ins, and registration is idempotent
-        a = register_setting_type!(PlanTestSettingA)
+        # its own char, so PlanTestSettingB keeps the default 'P'
+        a = register_setting_type!(PlanTestSettingA; char = 'A')
         @test a > maximum(idxs)
         @test register_setting_type!(PlanTestSettingA) == a
         @test setting_type_from_index(a) === PlanTestSettingA
@@ -110,7 +134,8 @@ struct MaskTestContainer <: ContainerSetting end
 
         # other test files register types for the whole session, so count from the slots taken
         types = [getfield(@__MODULE__, Symbol("MaskTestSetting", k)) for k in 1:13]
-        foreach(register_setting_type!, types)
+        # their names all start with 'M', so each needs its own char
+        foreach(k -> register_setting_type!(types[k]; char = Char(0x2460 + k)), eachindex(types))
         slots = [slot(T) for T in types]
         slotted = filter(!iszero, slots)
         @test issorted(slotted) && allunique(slotted)
@@ -135,6 +160,61 @@ struct MaskTestContainer <: ContainerSetting end
         @test plan_remove!(store, i, plan_slot(store, i, nomask))
         @test GEMS._mask_locates_entries(i)
         @test setting_id(store.entries[plan_slot(store, i, Office)]) == Int32(20)
+    end
+
+    @testset "Custom setting types by name and char" begin
+        df = DataFrame(id = Int32.(1:4), age = Int8.(fill(30, 4)), sex = Int8.(ones(4)),
+                       household = Int32[1, 1, 2, 2])
+        # a first entry registers the type, logged as the upper-case first letter of its name
+        pop = Population(df)
+        foreach(ind -> assign_settings!(pop, ind, RoundTripSetting => 1), individuals(pop)[1:3])
+        @test GEMS.setting_type_name(RoundTripSetting) == "RoundTripSetting"
+        @test settingchar(RoundTripSetting(id = 1)) == 'R'
+        @test settingstring('R') == "RoundTripSetting"
+        @test setting_type_names()["R"] == "RoundTripSetting"
+        @test setting_type_names()["h"] == "Household"
+
+        # taken or reserved chars, a second char and a taken name are refused
+        @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = 'R')
+        @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = 'h')
+        @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = '?')
+        @test_throws ArgumentError register_setting_type!(RoundTripSetting; char = 'Q')
+        @test_throws ArgumentError register_setting_type!(PlanTestOther.RoundTripSetting; char = 'Ω')
+
+        # saving and loading carry it by name and rebuild the same plans
+        mktempdir() do dir
+            path = joinpath(dir, "pop.csv")
+            mpath = joinpath(dir, "memberships.csv")
+            GEMS.save(pop, path; membershipsfile = mpath)
+            loaded = Population(path; memberships = mpath)
+            @test memberships(loaded) == memberships(pop)
+            sim = Simulation(population = loaded, infected_fraction = 0.0)
+            @test length(settings(sim, RoundTripSetting)) == 1
+            @test length(individuals(settings(sim, RoundTripSetting)[1])) == 3
+        end
+
+        # a type only a membership table names is found by name and registered
+        table = DataFrame(id = Int32[1, 2], setting_type = ["NameFoundSetting", "NameFoundSetting"],
+                          setting_id = Int32[1, 1])
+        found = Population(df; memberships = table)
+        @test settingchar(NameFoundSetting(id = 1)) == 'N'
+        @test length(memberships(found).id) == 2
+
+        # a subtype nobody uses neither registers nor stops a simulation from building
+        sim = Simulation(pop_size = 500, seed = 1)
+        @test !(NeverUsedSetting in settingtypes(settingscontainer(sim)))
+        @test_throws ErrorException setting_type_index(NeverUsedSetting)
+
+        # results carry the names, so an imported ResultData labels custom types by itself
+        sim = Simulation(population = Population(df), infected_fraction = 0.0)
+        run!(sim)
+        rd = ResultData(sim; style = "EssentialResultData")
+        mktempdir() do dir
+            exportJLD(rd, dir)
+            imported = import_resultdata(joinpath(dir, "resultdata.jld2"))
+            @test setting_type_names(imported)["R"] == "RoundTripSetting"
+            @test setting_type_names(imported)["N"] == "NameFoundSetting"
+        end
     end
 
     @testset "Repeated setting types" begin

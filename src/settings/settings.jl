@@ -6,7 +6,7 @@ export Setting, Geolocated, IndividualSetting, ContainerSetting
 export GlobalSetting, Household, Municipality, Setting
 export SchoolComplex, School, SchoolYear, SchoolClass
 export Department, Office, WorkplaceSite, Workplace
-export settingchar, settingstring
+export settingchar, settingstring, setting_type_names
 export ContactSamplingMethod, contact_sampling_method, contact_sampling_method!
 export add!, remove!
 export add_member!, remove_member!, mark_deceased!
@@ -228,7 +228,7 @@ function _flat_storage(individuals, flat_pool, offset, len, cap)
 end
 
 # The default would print the whole pool
-Base.show(io::IO, s::FlatSetting) = print(io, nameof(typeof(s)), "(id = ", id(s), ", ", s.len, " individuals)")
+Base.show(io::IO, s::FlatSetting) = print(io, setting_type_name(typeof(s)), "(id = ", id(s), ", ", s.len, " individuals)")
 
 ###
 ### SCHOOLCLASS
@@ -706,14 +706,18 @@ end
 ###
 ### SETTING UTILS
 ###
+# The log chars of the built-in types, and those `register_setting_type!` recorded for the others.
+const BUILTIN_SETTING_CHARS = ('h', 'm', 's', 'w', 'g', 'c', 'x', 'y', 'd', 'o', 'p')
+const SETTING_TYPE_CHARS = Dict{DataType, Char}()
+
 """
     settingchar(setting::Setting)
 
 Returns a character that represents the type of setting.
 """
 function settingchar(setting::Setting)::Char
-    # fallback for all unknown Settings
-    return '?'
+    # a registered custom type's char, '?' for an unregistered one
+    return get(SETTING_TYPE_CHARS, typeof(setting), '?')
 end
 function settingchar(household::Household)::Char
     return 'h'
@@ -778,9 +782,22 @@ function settingstring(c::Char)::String
     elseif c == 'g'
         return "GlobalSetting"
     else
+        # a custom type's char, as `register_setting_type!` recorded it
+        for (T, tc) in SETTING_TYPE_CHARS
+            tc == c && return setting_type_name(T)
+        end
         return "Unknown"
     end
-end 
+end
+
+"""
+    setting_type_names()
+
+Returns every registered setting type's log char, as a string, mapped to its name as `settingstring`
+gives it. String keys keep the map hashable and exportable with the results.
+"""
+setting_type_names() = Dict{String, String}(string(c) => settingstring(c)
+    for c in Iterators.flatten((BUILTIN_SETTING_CHARS, values(SETTING_TYPE_CHARS))))
 
 ###
 ### GENERAL SETTING INTERFACE
@@ -1174,27 +1191,33 @@ function settings_from_population(population::Population, global_setting::Bool =
     renaming = Dict()
     default_sampling = ContactparameterSampling(0)
 
-    # Get all concrete subtypes of IndividualSetting
-    stngtypes = _concrete_subtypes(IndividualSetting)
-    if !global_setting
-        stngtypes = filter(x -> x != GlobalSetting, stngtypes)
-    end
-
     inds = individuals(population)
 
     # chunks of individuals every type scans its entries in
     chunks = _thread_chunks(eachindex(inds))
 
-    for stngType in stngtypes
-        # everyone is in the one GlobalSetting, so it is built here rather than from plan entries
-        if stngType === GlobalSetting
-            _build_global_setting!(settings, inds, default_sampling)
-        else
-            _settings_for_type!(settings, renaming, stngType, population, inds, chunks, default_sampling)
-        end
+    # everyone is in the one GlobalSetting, so it is built here rather than from plan entries
+    global_setting && _build_global_setting!(settings, inds, default_sampling)
+    # only the types the plans name; container-type entries are ignored, as no leaf holds them
+    for tidx in _present_setting_types(activity_plans(population), inds, chunks)
+        T = setting_type_from_index(tidx)
+        _holds_entries(T) && _settings_for_type!(settings, renaming, T, population, inds, chunks, default_sampling)
     end
 
     return settings, renaming
+end
+
+# The type indices of the individuals' plan entries, ascending.
+function _present_setting_types(plans::AbstractActivityPlanStore, inds::Vector{Individual},
+                                chunks::Vector{UnitRange{Int}})
+    seen = [falses(typemax(UInt8)) for _ in chunks]
+    Threads.@threads for c in eachindex(chunks)
+        s = seen[c]
+        @inbounds for i in chunks[c], slot in plan_slots(plans, inds[i])
+            s[setting_type_of(plans.entries[slot])] = true
+        end
+    end
+    return UInt8.(findall(reduce(.|, seen; init = falses(typemax(UInt8)))))
 end
 
 # The GlobalSetting holds every individual under the constant id; nobody carries a plan entry

@@ -541,24 +541,52 @@ Returns the membership-mask slot of the setting type with index `tidx`, or `0` i
 """
 @inline _mask_slot(tidx::UInt8) = @inbounds MASK_SLOTS[tidx]
 
-"""
-    register_setting_type!(::Type{T}) where {T<:Setting}
+# guards the registry's writes; a type first used inside a threaded phase registers there
+const SETTING_TYPE_LOCK = ReentrantLock()
 
-Assigns `T` a dense setting-type index if it has none yet, and returns it. The extension point
-for setting types GEMS does not ship; `add_type!` calls it.
 """
-function register_setting_type!(::Type{T}) where {T<:Setting}
+    register_setting_type!(::Type{T}; char::Union{Nothing, Char} = nothing) where {T<:Setting}
+
+Assigns `T` a dense setting-type index and the char its infections are logged with, by default
+the upper-case first letter of its name, and returns the index. Types register on first use, so
+this is only needed to pick the char.
+"""
+function register_setting_type!(::Type{T}; char::Union{Nothing, Char} = nothing) where {T<:Setting}
     T in BUILTIN_SETTING_TYPES_SET && return setting_type_index(T)
-    idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
-    idx != 0 && return idx
-    length(EXTRA_SETTING_TYPES) < typemax(UInt8) - Int(_N_BUILTIN_SETTING_TYPES) ||
-        error("no dense setting-type index left for $T; at most $(typemax(UInt8)) setting types are supported")
-    next = maximum(MASK_SLOTS) + 1
-    push!(MASK_SLOTS, _holds_entries(T) && next <= MEMBERSHIP_MASK_BITS ? next : 0)
-    push!(EXTRA_SETTING_TYPES, T)
-    new_idx = _N_BUILTIN_SETTING_TYPES + UInt8(length(EXTRA_SETTING_TYPES))
-    EXTRA_SETTING_TYPE_INDEX[T] = new_idx
-    return new_idx
+    return lock(SETTING_TYPE_LOCK) do
+        idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
+        if idx != 0
+            (char === nothing || char == SETTING_TYPE_CHARS[T]) || throw(ArgumentError(
+                "$T is already registered with char '$(SETTING_TYPE_CHARS[T])'"))
+            return idx
+        end
+        name = setting_type_name(T)
+        other = _registered_setting_type(name)
+        other === nothing || throw(ArgumentError(
+            "cannot register $T: $other is already registered as setting type \"$name\""))
+        c = char === nothing ? uppercase(first(name)) : char
+        _check_setting_char(c, name)
+        length(EXTRA_SETTING_TYPES) < typemax(UInt8) - Int(_N_BUILTIN_SETTING_TYPES) ||
+            error("no dense setting-type index left for $T; at most $(typemax(UInt8)) setting types are supported")
+        next = maximum(MASK_SLOTS) + 1
+        push!(MASK_SLOTS, _holds_entries(T) && next <= MEMBERSHIP_MASK_BITS ? next : 0)
+        push!(EXTRA_SETTING_TYPES, T)
+        new_idx = _N_BUILTIN_SETTING_TYPES + UInt8(length(EXTRA_SETTING_TYPES))
+        EXTRA_SETTING_TYPE_INDEX[T] = new_idx
+        SETTING_TYPE_CHARS[T] = c
+        return new_idx
+    end
+end
+
+# Refuses a char another setting type is logged with, and '?', which marks seeds and
+# unregistered types.
+function _check_setting_char(c::Char, name::AbstractString)
+    c == '?' && throw(ArgumentError(
+        "'?' marks seeds and unregistered types; give setting type \"$name\" another `char`"))
+    holder = get(setting_type_names(), string(c), nothing)
+    holder === nothing || throw(ArgumentError(
+        "setting type \"$name\" would be logged as '$c', which $holder already is; give it another `char`"))
+    return nothing
 end
 
 function setting_type_index(::Type{T}) where {T<:Setting}
@@ -576,15 +604,35 @@ function setting_type_from_index(idx::Integer)
     return EXTRA_SETTING_TYPES[extra]
 end
 
-# The registered setting type called `name`, or `nothing`. Files name a type rather than store
-# its index, since a custom type's index depends on registration order.
-function _setting_type_by_name(name::AbstractString)
+"""
+    setting_type_name(::Type{T}) where {T<:Setting}
+
+Returns the name configs, membership files and results use for setting type `T`.
+"""
+setting_type_name(::Type{T}) where {T<:Setting} = string(nameof(T))
+
+# The registered setting type called `name`, or `nothing`.
+function _registered_setting_type(name::AbstractString)
     for T in BUILTIN_SETTING_TYPES
-        string(nameof(T)) == name && return T
+        setting_type_name(T) == name && return T
     end
     for T in EXTRA_SETTING_TYPES
-        string(nameof(T)) == name && return T
+        setting_type_name(T) == name && return T
     end
     return nothing
+end
+
+# The setting type called `name`, or `nothing`: a registered one, else the concrete
+# `IndividualSetting` subtype of that name, registered on the way. Files name a type rather than
+# store its index, since a custom type's index depends on registration order.
+function _resolve_setting_type(name::AbstractString)
+    T = _registered_setting_type(name)
+    T === nothing || return T
+    found = filter(S -> setting_type_name(S) == name, _concrete_subtypes(IndividualSetting))
+    isempty(found) && return nothing
+    length(found) == 1 || throw(ArgumentError(
+        "several setting types are called \"$name\" ($(join(found, ", "))); register the one to use"))
+    register_setting_type!(only(found))
+    return only(found)
 end
 

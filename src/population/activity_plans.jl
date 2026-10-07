@@ -31,10 +31,11 @@ end
 """
     PlanEntry(::Type{T}, setting_id, member_index, scale = 1.0f0)
 
-Builds an entry for a setting of type `T`, resolving the dense type index.
+Builds an entry for a setting of type `T`, resolving the dense type index and registering a
+custom type on first use.
 """
 PlanEntry(::Type{T}, setting_id::Integer, member_index::Integer, scale::Real = 1.0f0) where {T<:Setting} =
-    PlanEntry(Int32(setting_id), Int32(member_index), Float16(scale), setting_type_index(T))
+    PlanEntry(Int32(setting_id), Int32(member_index), Float16(scale), register_setting_type!(T))
 
 """
     setting_id(entry::PlanEntry)
@@ -486,7 +487,7 @@ function memberships(pop::Population)
             # which is exactly what the population row could not carry, and neither can it a scale
             if t == prev || !(t in wide) || entry_scale(e) != 1
                 push!(ids, id(ind))
-                push!(types, string(nameof(setting_type_from_index(t))))
+                push!(types, setting_type_name(setting_type_from_index(t)))
                 push!(sids, setting_id(e))
                 push!(scales, entry_scale(e))
             end
@@ -511,7 +512,6 @@ function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{U
     has_scale = :scale in propertynames(table)
     scale = has_scale ? Float64.(table.scale) : ones(n)
     restates = falses(n)
-    allowed = membership_setting_types(Individual)
     resolved = Dict{String, UInt8}()
     primaries = Set{Tuple{Int, UInt8}}()
     restated = Set{Tuple{Int, UInt8}}()
@@ -525,11 +525,11 @@ function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{U
 
         name = string(table.setting_type[r])
         tidx[r] = get!(resolved, name) do
-            T = _setting_type_by_name(name)
+            T = _resolve_setting_type(name)
             T === nothing && throw(ArgumentError(
-                "membership row $r names setting type \"$name\", which is not registered"))
-            T in allowed || throw(ArgumentError(
-                "membership row $r names $T; membership tables carry $(join(allowed, ", ")) for now"))
+                "membership row $r names setting type \"$name\", which does not exist"))
+            _holds_entries(T) || throw(ArgumentError(
+                "membership row $r names $T, whose settings hold no members directly"))
             setting_type_index(T)
         end
 

@@ -223,7 +223,7 @@ function markdown(stngs::SettingsContainer, sim::Simulation)
 
     for (type, sets) in settings(stngs)
 
-        name = string(type)
+        name = setting_type_name(type)
         cnt = length(sets)
         min = min_individuals(sets, sim)
         max = max_individuals(sets, sim)

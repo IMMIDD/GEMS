@@ -17,7 +17,8 @@ mutable struct OptimisedResultData <: ResultDataStyle
                     "config_file" => () -> pP |> simulation |> configfile,
                     "config_file_val" => () -> isfile(pP |> simulation |> configfile) ? TOML.parsefile(pP |> simulation |> configfile) : Dict(), #TODO potentially adapt for no config file
                     "population_file" => () -> pP |> simulation |> populationfile,
-                    "timer_output" => () -> TimerOutput()
+                    "timer_output" => () -> TimerOutput(),
+                    "setting_type_names" => () -> setting_type_names()
                 ),
             "sim_data" =>
                 Dict(

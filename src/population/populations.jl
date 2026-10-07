@@ -642,12 +642,11 @@ settings but no `membershipsfile` is given, rather than lose them.
 """
 function save(population::Population, path::AbstractString; membershipsfile::Union{Nothing, AbstractString} = nothing)
     table = memberships(population)
-    # the loader carries the built-in membership types only, so refuse here rather than write
-    # a file that cannot be read back
-    allowed = Set(string.(nameof.(membership_setting_types(Individual))))
-    for t in table.setting_type
-        t in allowed || throw(ArgumentError(
-            "the population holds a $t membership, which the membership table does not carry yet"))
+    # the loader refuses entries of types that hold no members directly, so refuse here rather
+    # than write a file that cannot be read back
+    for t in unique(table.setting_type)
+        _holds_entries(_resolve_setting_type(t)) || throw(ArgumentError(
+            "the population holds a $t membership, which a membership table cannot carry"))
     end
     membershipsfile === nothing && nrow(table) > 0 && throw(ArgumentError(
         "the population holds settings beyond each type's primary; pass `membershipsfile` to save them"))

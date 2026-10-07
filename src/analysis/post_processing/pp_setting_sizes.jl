@@ -24,7 +24,7 @@ function setting_sizes(postProcessor::PostProcessor)
 
     for (type, stngs) in settings(sim)
         if !isempty(stngs)
-            dic[string(type)] = _setting_size_counts(stngs, sim)
+            dic[setting_type_name(type)] = _setting_size_counts(stngs, sim)
         end
     end
     return dic
