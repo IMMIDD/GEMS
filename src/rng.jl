@@ -219,9 +219,9 @@ end
 
 @inline function _profile_rng()::_ProfileRNG
     tid = Threads.threadid()
-    r = @inbounds _PROFILE_RNGS[tid]
+    r = _PROFILE_RNGS[tid]
     r === nothing || return r
-    return @inbounds _PROFILE_RNGS[tid] = _ProfileRNG(Xoshiro(0), UInt64(0))
+    return _PROFILE_RNGS[tid] = _ProfileRNG(Xoshiro(0), UInt64(0))
 end
 
 # the base key to re-key `rng` from; an rng from elsewhere (e.g. a test) is re-keyed from its current state
