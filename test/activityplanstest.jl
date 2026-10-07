@@ -14,6 +14,12 @@ register_setting_type!(ScaleReadSetting)
 const SCALE_READS = Ref(0)
 GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::GEMS.SettingsContainer) = (SCALE_READS[] += 1; 1.0f0)
 
+# more setting types than the membership mask has slots, and a container type, which gets none
+for k in 1:13
+    @eval struct $(Symbol("MaskTestSetting", k)) <: IndividualSetting end
+end
+struct MaskTestContainer <: ContainerSetting end
+
 @testset "Activity Plans" begin
 
     @testset "PlanEntry" begin
@@ -77,8 +83,8 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
         plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
 
         @test i.membership_mask ==
-              (UInt16(1) << (setting_type_index(Household) - 1)) |
-              (UInt16(1) << (setting_type_index(Office) - 1))
+              GEMS._membership_bit(setting_type_index(Household)) |
+              GEMS._membership_bit(setting_type_index(Office))
 
         # every slot the mask claims resolves to an entry of that type
         for T in (Household, Office)
@@ -91,6 +97,44 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
         # the id-qualified form only matches the setting it names
         @test plan_slot(store, i, Household, Int32(10)) == plan_slot(store, i, Household)
         @test plan_slot(store, i, Household, Int32(99)) == 0
+    end
+
+    @testset "Mask slots" begin
+        slot(T) = GEMS._mask_slot(setting_type_index(T))
+        # only types that can hold entries get a slot, ascending with the type index
+        @test [slot(T) for T in (Household, SchoolClass, Office, Municipality)] == 1:4
+        @test all(T -> slot(T) == 0,
+            (SchoolYear, School, SchoolComplex, Department, Workplace, WorkplaceSite, GlobalSetting))
+        register_setting_type!(MaskTestContainer)
+        @test slot(MaskTestContainer) == 0
+
+        # other test files register types for the whole session, so count from the slots taken
+        types = [getfield(@__MODULE__, Symbol("MaskTestSetting", k)) for k in 1:13]
+        foreach(register_setting_type!, types)
+        slots = [slot(T) for T in types]
+        slotted = filter(!iszero, slots)
+        @test issorted(slotted) && allunique(slotted)
+        @test all(s -> s > 4 && s <= GEMS.MEMBERSHIP_MASK_BITS, slotted)
+        # at most 12 slots are left for custom types, so the 13th has none
+        @test slots[end] == 0
+
+        # a type without a slot falls back to the scan, and every lookup still agrees with it
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        nomask = types[end]
+        plan_add!(store, i, PlanEntry(Household, Int32(10), Int32(1)))
+        plan_add!(store, i, PlanEntry(nomask, Int32(7), Int32(1)))
+        plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1)))
+        @test count_ones(i.membership_mask) == 2
+        for (T, sid) in ((Household, Int32(10)), (Office, Int32(20)), (nomask, Int32(7)))
+            tidx = setting_type_index(T)
+            @test setting_id(store.entries[plan_slot(store, i, T)]) == sid
+            @test GEMS._plan_type_run(store, i, tidx) == GEMS._plan_type_run_scan(store, i, tidx)
+        end
+        # without it, the mask locates every entry again
+        @test plan_remove!(store, i, plan_slot(store, i, nomask))
+        @test GEMS._mask_locates_entries(i)
+        @test setting_id(store.entries[plan_slot(store, i, Office)]) == Int32(20)
     end
 
     @testset "Repeated setting types" begin
@@ -124,7 +168,7 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
         @test plan_remove!(store, i, plan_slot(store, i, Household))
         @test plan_slot(store, i, Household) != 0
         @test setting_id(store.entries[plan_slot(store, i, Household)]) == kept
-        @test i.membership_mask & (UInt16(1) << (setting_type_index(Household) - 1)) != 0
+        @test i.membership_mask & GEMS._membership_bit(setting_type_index(Household)) != 0
 
         # with the repeat gone the fast path comes back, and it is only correct over a
         # block the scan-path inserts left sorted
@@ -137,7 +181,7 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
         # the last entry of the type clears the bit
         @test plan_remove!(store, i, plan_slot(store, i, Household))
         @test plan_slot(store, i, Household) == 0
-        @test i.membership_mask & (UInt16(1) << (setting_type_index(Household) - 1)) == 0
+        @test i.membership_mask & GEMS._membership_bit(setting_type_index(Household)) == 0
     end
 
     @testset "Active flags survive a repeated type" begin
@@ -228,7 +272,7 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
         @test plan_remove!(store, i, plan_slot(store, i, Office))
         @test plan_length(i) == 3
         @test plan_slot(store, i, Office) == 0
-        @test i.membership_mask & (UInt16(1) << (setting_type_index(Office) - 1)) == 0
+        @test i.membership_mask & GEMS._membership_bit(setting_type_index(Office)) == 0
         # the survivors are untouched and still sorted
         @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
         for (T, sid) in ((Household, 10), (SchoolClass, 30), (Municipality, 40))
@@ -489,8 +533,8 @@ GEMS._membership_scale(::ActivityPlanStore, ::Individual, ::ScaleReadSetting, ::
             @test issorted([setting_type_of(e) for e in plan_entries(plans, ind)])
         end
         @test all(plans.active)
-        @test a.membership_mask == (UInt16(1) << (setting_type_index(Household) - 1)) |
-                                   (UInt16(1) << (setting_type_index(Office) - 1))
+        @test a.membership_mask == GEMS._membership_bit(setting_type_index(Household)) |
+                                   GEMS._membership_bit(setting_type_index(Office))
 
         # both tables together rebuild the same plans
         @test nrow(memberships(pop)) == 3

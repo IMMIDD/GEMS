@@ -103,7 +103,7 @@ A type to represent individuals that act as agents inside the simulation.
     - `plan_offset::Int32`: Start of this individual's block in the plan store's flat entry array
     - `plan_count::Int8`: How many settings the individual belongs to
     - `plan_scaled::Bool`: Whether any plan entry counts with a scale other than 1, including an inactive entry, which counts as 0
-    - `membership_mask::UInt16`: Bit per setting type present in the plan, for O(1) lookup
+    - `membership_mask::UInt16`: Bit per setting type present in the plan, for O(1) lookup; only types that can hold entries have a bit
 
 - Bookkeeping
     - `needs_immunity_update::Bool`: Flag for deferred immunity calculations

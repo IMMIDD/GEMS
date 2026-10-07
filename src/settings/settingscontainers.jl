@@ -523,6 +523,24 @@ const _N_BUILTIN_SETTING_TYPES = UInt8(length(BUILTIN_SETTING_TYPES))
 const EXTRA_SETTING_TYPE_INDEX = Dict{DataType, UInt8}()
 const EXTRA_SETTING_TYPES = DataType[]
 
+const MEMBERSHIP_MASK_BITS = 8 * sizeof(fieldtype(Individual, :membership_mask))
+
+# Whether a type's settings can sit in a plan; only those get a membership-mask bit.
+_holds_entries(::Type{T}) where {T<:Setting} = T <: IndividualSetting && T !== GlobalSetting
+
+# Each type's bit in the membership mask by type index, 0 for none. Slots ascend with the type
+# index, since a bit's rank is its entries' offset in the plan block.
+const MASK_SLOTS = let n = 0
+    UInt8[_holds_entries(T) ? (n += 1) : 0 for T in BUILTIN_SETTING_TYPES]
+end
+
+"""
+    _mask_slot(tidx::UInt8)
+
+Returns the membership-mask slot of the setting type with index `tidx`, or `0` if it has none.
+"""
+@inline _mask_slot(tidx::UInt8) = @inbounds MASK_SLOTS[tidx]
+
 """
     register_setting_type!(::Type{T}) where {T<:Setting}
 
@@ -535,6 +553,8 @@ function register_setting_type!(::Type{T}) where {T<:Setting}
     idx != 0 && return idx
     length(EXTRA_SETTING_TYPES) < typemax(UInt8) - Int(_N_BUILTIN_SETTING_TYPES) ||
         error("no dense setting-type index left for $T; at most $(typemax(UInt8)) setting types are supported")
+    next = maximum(MASK_SLOTS) + 1
+    push!(MASK_SLOTS, _holds_entries(T) && next <= MEMBERSHIP_MASK_BITS ? next : 0)
     push!(EXTRA_SETTING_TYPES, T)
     new_idx = _N_BUILTIN_SETTING_TYPES + UInt8(length(EXTRA_SETTING_TYPES))
     EXTRA_SETTING_TYPE_INDEX[T] = new_idx

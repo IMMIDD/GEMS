@@ -165,20 +165,19 @@ end
 
 ###
 ### MEMBERSHIP MASK
-### One bit per setting type the individual holds at least one entry for. Entries stay sorted by
-### type, so while every type appears once a type's rank among the bits is its block offset; a
-### repeated type breaks that and the lookups fall back to scanning the block.
+### One bit per setting type the individual holds at least one entry for, at the type's mask slot
+### (`_mask_slot`). Entries stay sorted by type, so while every type appears once a type's rank
+### among the bits is its block offset; a repeated type breaks that and the lookups fall back to
+### scanning the block.
 ###
 
-const MEMBERSHIP_MASK_BITS = 8 * sizeof(fieldtype(Individual, :membership_mask))
-
-@inline _membership_bit(tidx::UInt8) = UInt16(1) << (tidx - 0x01)
+@inline _membership_bit(tidx::UInt8) = UInt16(1) << (_mask_slot(tidx) - 0x01)
 
 """
     _mask_locates_entries(individual::Individual)
 
-Whether an entry's position can be counted off the mask. False when a type repeats or one sits
-beyond the mask, since the bit count then falls short of `plan_count`.
+Whether an entry's position can be counted off the mask. False when a type repeats or one has no
+mask slot, since the bit count then falls short of `plan_count`.
 
 Conservative: counting is still right for types below the repeat, but rejecting the whole block
 costs only a scan.
@@ -189,7 +188,7 @@ costs only a scan.
 # A type's entries form one contiguous run, returned block-relative as `(start, len)`. When
 # `len` is 0, `start` is where the run would begin, so inserts read it too.
 @inline function _plan_type_run(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
-    (tidx > MEMBERSHIP_MASK_BITS || !_mask_locates_entries(individual)) &&
+    (_mask_slot(tidx) == 0 || !_mask_locates_entries(individual)) &&
         return _plan_type_run_scan(store, individual, tidx)
     mask = individual.membership_mask
     bit = _membership_bit(tidx)
@@ -393,7 +392,7 @@ end
         t = source.tidx[k]
         store.entries[at] = PlanEntry(sid, DEFAULT_MEMBER_INDEX, Float16(1.0), t)
         at += 1
-        t <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(t))
+        _mask_slot(t) != 0 && (mask |= _membership_bit(t))
     end
     return at, mask
 end
@@ -446,7 +445,7 @@ function _fill_table_block!(store::ActivityPlanStore, ind::Individual, source, i
         end
         store.entries[at] = PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(rows.scale[r]), rows.tidx[r])
         at += 1
-        rows.tidx[r] <= MEMBERSHIP_MASK_BITS && (mask |= _membership_bit(rows.tidx[r]))
+        _mask_slot(rows.tidx[r]) != 0 && (mask |= _membership_bit(rows.tidx[r]))
         from_table = true
     end
 
@@ -707,7 +706,7 @@ function plan_add!(store::ActivityPlanStore, individual::Individual, entry::Plan
     _free_block!(store, old, n)
     individual.plan_offset = Int32(new)
     individual.plan_count = Int8(n + 1)
-    tidx <= MEMBERSHIP_MASK_BITS && (individual.membership_mask |= _membership_bit(tidx))
+    _mask_slot(tidx) != 0 && (individual.membership_mask |= _membership_bit(tidx))
     entry_scale(entry) != 1 && (individual.plan_scaled = true)
     return nothing
 end
@@ -747,7 +746,7 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
     individual.plan_count = Int8(n - 1)
     # the bit means "holds at least one of this type", so it only clears once the last one goes
     # the mask still describes the pre-removal block, so scan rather than trust it
-    if tidx <= MEMBERSHIP_MASK_BITS && _plan_type_run_scan(store, individual, tidx)[2] == 0
+    if _mask_slot(tidx) != 0 && _plan_type_run_scan(store, individual, tidx)[2] == 0
         individual.membership_mask &= ~_membership_bit(tidx)
     end
     scaled && _refresh_plan_scaled!(store, individual)
