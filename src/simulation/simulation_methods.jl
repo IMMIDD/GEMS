@@ -40,6 +40,7 @@ function log_stepinfo(simulation::Simulation)
     exp_cnt = zeros(Int, Threads.maxthreadid())
     inf_cnt = zeros(Int, Threads.maxthreadid())
     det_cnt = zeros(Int, Threads.maxthreadid())
+    hb_cnt = zeros(Int, Threads.maxthreadid())
 
     inds = simulation |> individuals
     active = simulation.active_individuals
@@ -54,7 +55,7 @@ function log_stepinfo(simulation::Simulation)
         
         loc_tot_quar = 0; loc_st_quar = 0; loc_st_isol = 0; 
         loc_wo_quar = 0; loc_wo_isol = 0; loc_exp = 0; 
-        loc_inf = 0; loc_det = 0; loc_st_unab = 0; loc_wo_unab = 0
+        loc_inf = 0; loc_det = 0; loc_st_unab = 0; loc_wo_unab = 0; loc_hb = 0
 
         for k in chunk
             @inbounds (active[k] || quarantined[k]) || continue
@@ -79,6 +80,8 @@ function log_stepinfo(simulation::Simulation)
             loc_exp += is_exposed(i) ? 1 : 0
             loc_inf += is_infectious(i) ? 1 : 0
             loc_det += is_detected(i) ? 1 : 0
+            # at home, so not counted again under hospital occupancy
+            loc_hb += is_homebound(i) && !is_hospitalized(i) ? 1 : 0
 
             # members of closed settings are counted below, by setting size
             if is_homebound(i) || is_hospitalized(i) || isquarantined(i)
@@ -98,6 +101,7 @@ function log_stepinfo(simulation::Simulation)
             det_cnt[tid] += loc_det
             st_unab_cnt[tid] += loc_st_unab
             wo_unab_cnt[tid] += loc_wo_unab
+            hb_cnt[tid] += loc_hb
         end
     end
 
@@ -128,7 +132,8 @@ function log_stepinfo(simulation::Simulation)
         unable_to_attend_students = sum(st_unab_cnt),
         quarantined_workers = sum(wo_quar_cnt),
         isolated_workers = sum(wo_isol_cnt),
-        unable_to_attend_workers = sum(wo_unab_cnt)
+        unable_to_attend_workers = sum(wo_unab_cnt),
+        homebound = sum(hb_cnt)
     )
 end
 
@@ -155,7 +160,8 @@ function copy_last_log_state(simulation::Simulation)
     last_quar_wo = isempty(sl.quarantined_workers) ? 0 : sl.quarantined_workers[end]
     last_isol_wo = isempty(sl.isolated_workers) ? 0 : sl.isolated_workers[end]
     last_unab_wo = isempty(sl.unable_to_attend_workers) ? 0 : sl.unable_to_attend_workers[end]
-    
+    last_homebound = isempty(sl.homebound) ? 0 : sl.homebound[end]
+
     current_tick = tick(simulation)
     
     # Log the copied state for the current tick
@@ -164,7 +170,7 @@ function copy_last_log_state(simulation::Simulation)
          detected=last_detected, quarantined=last_quar, quarantined_students=last_quar_st, 
          isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
          quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
-         unable_to_attend_workers=last_unab_wo)             
+         unable_to_attend_workers=last_unab_wo, homebound=last_homebound)             
 end
 
 """
