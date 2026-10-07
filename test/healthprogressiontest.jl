@@ -4,7 +4,8 @@ import GEMS: _rand_val, push_infection!, combine_outcome, HealthSchedule, _get_c
     determine_health_progression, each_infection, progression_index, get_infection_state,
     calculate_progression, _harvest_legacy_health_profiles, _has_legacy_category,
     _is_legacy_critical, _normalize_legacy_pathogen!, _harvest_health_profiles, create_health,
-    _health_profile, StandardOfCare
+    _health_profile, StandardOfCare, _homebound_probabilities, _homebound_window, _schedule_homebound!,
+    _close_care_at_death!
 
 # every transition filed for one host, as (tick, level, is_admission), in tick order
 _filed(sched, host_id) = sort!([(t, tr.level, tr.is_admission)
@@ -35,6 +36,14 @@ end
             severeness_onset_to_hospital_admission = Poisson(2),
             hospital_admission_to_hospital_discharge = Poisson(10))
         @test sc2.hospital_probability == 0.2
+
+        # homebound defaults: home while severe, not before
+        @test sc.symptomatic_homebound_probability == 0.0
+        @test sc.severe_homebound_probability == 1.0
+        @test_throws ArgumentError SevereHealthProfile(severe_homebound_probability = 1.1)
+        @test_throws ArgumentError SevereHealthProfile(symptomatic_homebound_probability = NaN)
+        # anyone homebound from symptom onset is homebound while severe
+        @test_throws ArgumentError SevereHealthProfile(symptomatic_homebound_probability = 0.6, severe_homebound_probability = 0.3)
     end
 
     @testset "CriticalHealthProfile" begin
@@ -50,6 +59,26 @@ end
         @test_throws ArgumentError CriticalHealthProfile(hospital_to_icu_probability = 1.1)
         @test_throws ArgumentError CriticalHealthProfile(icu_to_ventilation_probability = -0.1)
         @test_throws ArgumentError CriticalHealthProfile(death_probability = 1.1)
+
+        @test cc.symptomatic_homebound_probability == 0.0
+        @test cc.severe_homebound_probability == 1.0
+        @test_throws ArgumentError CriticalHealthProfile(symptomatic_homebound_probability = -0.1)
+        @test_throws ArgumentError CriticalHealthProfile(symptomatic_homebound_probability = 0.6, severe_homebound_probability = 0.3)
+    end
+
+    @testset "MildHealthProfile" begin
+        mc = MildHealthProfile()
+        @test mc.symptomatic_homebound_probability == 0.0
+        @test_throws ArgumentError MildHealthProfile(symptomatic_homebound_probability = 1.5)
+
+        # a mild-peak infection demands no care and carries no mortality
+        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(30))
+        dp = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            recovery = Int16(9))
+        care, outcome = calculate_health_profile(MildHealthProfile(symptomatic_homebound_probability = 1.0), ind,
+            InfectionState(Int8(1), Int32(-1), dp), Xoshiro(1))
+        @test care.hospital_admission == -1
+        @test outcome.death == -1
     end
 
     @testset "CareContribution" begin
@@ -159,6 +188,45 @@ end
         care3, _ = calculate_health_profile(cc2, ind, inf_crit, rng)
         @test care3.hospital_admission == -1
         @test care3.icu_admission == -1
+    end
+
+    @testset "homebound window" begin
+        dp_sev = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            severeness_onset = Int16(4), severeness_offset = Int16(8), recovery = Int16(12))
+        dp_mild = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            recovery = Int16(9))
+        dp_asym = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), recovery = Int16(9))
+        sev = InfectionState(Int8(1), Int32(-1), dp_sev)
+        mild = InfectionState(Int8(1), Int32(-1), dp_mild)
+        asym = InfectionState(Int8(1), Int32(-1), dp_asym)
+
+        # read by field name; a missing field, or no profile, gets the defaults
+        @test _homebound_probabilities(nothing) == (0.0, 1.0)
+        @test _homebound_probabilities(MildHealthProfile(symptomatic_homebound_probability = 0.3)) == (0.3, 1.0)
+        @test _homebound_probabilities(SevereHealthProfile(symptomatic_homebound_probability = 0.2,
+            severe_homebound_probability = 0.7)) == (0.2, 0.7)
+        @test _homebound_probabilities(GEMS.LegacyCriticalHealthProfile()) == (0.0, 1.0)
+
+        # the defaults keep a host home while severe, and at no other time
+        @test _homebound_window(0.0, 1.0, sev, Xoshiro(1)) == (4, 8)
+        @test _homebound_window(0.0, 1.0, mild, Xoshiro(1)) == (-1, -1)
+        @test _homebound_window(1.0, 1.0, sev, Xoshiro(1)) == (2, 12)
+        @test _homebound_window(1.0, 1.0, mild, Xoshiro(1)) == (2, 9)
+        @test _homebound_window(0.0, 0.0, sev, Xoshiro(1)) == (-1, -1)
+        @test _homebound_window(1.0, 1.0, asym, Xoshiro(1)) == (-1, -1)
+
+        # a certain outcome spends no draw, so the defaults leave the rng stream unchanged
+        draws(p_sym, p_sev, inf) = (rng = Xoshiro(5); before = copy(rng); _homebound_window(p_sym, p_sev, inf, rng); rng != before)
+        @test !draws(0.0, 1.0, sev)
+        @test !draws(0.0, 0.5, mild)    # a mild infection has no severe window to draw
+        @test draws(0.0, 0.5, sev)
+        @test draws(0.3, 1.0, mild)
+
+        # one draw: p_sym of hosts from symptom onset, the rest up to p_sev while severe
+        rng = Xoshiro(1)
+        windows = [_homebound_window(0.3, 0.6, sev, rng) for _ in 1:100_000]
+        @test isapprox(count(==((2, 12)), windows) / 100_000, 0.3, atol = 0.01)
+        @test isapprox(count(==((4, 8)), windows) / 100_000, 0.3, atol = 0.01)
     end
 
     @testset "combine_outcome" begin
@@ -448,9 +516,15 @@ end
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
         pB = Pathogen(id = 2, name = "B", progressions = [crit],
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.15))
+        homebound_mismatch = Ref(0)
         sim = Simulation(pop_size = 10_000, pathogens = (pA, pB),
-            infected_fraction = 0.005, seed = 42, tickunit = 'd')
+            infected_fraction = 0.005, seed = 42, tickunit = 'd',
+            stepmod = s -> (homebound_mismatch[] += count(i -> is_homebound(i) != is_severe(i), individuals(s))))
         run!(sim; with_progressbar = false)
+
+        # by default a host is homebound exactly while severe: the windows of both pathogens add up, and
+        # death ends them
+        @test homebound_mismatch[] == 0
 
         hdf = GEMS._hospital_df(PostProcessor(sim))
         @test sum(hdf.hospital_admissions) > 0            # the scenario actually exercises care
@@ -467,6 +541,7 @@ end
         # a care event scheduled at the current tick would land in an already drained bucket and never
         # fire, orphaning its discharge, so nothing may be left pending below a schedule's head
         @test all(s -> all(>=(s.head), keys(s.care_buckets)), sim.health_schedules)
+        @test all(s -> all(>=(s.head), keys(s.homebound_buckets)), sim.health_schedules)
 
         # a death is realized at the tick it was scheduled for (a death drawn into the past would be
         # logged late, on the next update), and care never outlives the host
@@ -519,7 +594,99 @@ end
         catch
         end
         @test isempty(sched.care_buckets)
+        @test isempty(sched.homebound_buckets)
         @test ind.death == -1
+        @test ind.homebound_demands == 0
+    end
+
+    @testset "compute_health! files the homebound window" begin
+        dp = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), symptom_onset = Int16(2),
+            severeness_onset = Int16(4), critical_onset = Int16(5), critical_offset = Int16(7),
+            severeness_offset = Int16(8), recovery = Int16(12))
+        function host(dp)
+            ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
+            reg = InfectionRegistry()
+            return ind, reg, push_infection!(reg, ind, Int8(1), Int32(-1), dp)
+        end
+        homebound_filed(sched) = sort!([(t, tr.is_start) for (t, b) in sched.homebound_buckets for tr in b])
+
+        # without a profile, the host is homebound while severe
+        ind, reg, s = host(dp)
+        sched = HealthSchedule()
+        compute_health!(ind, reg, DefaultHealthProgression(), HealthProfileIndex(), s, Int16(0), Xoshiro(1), sched)
+        @test homebound_filed(sched) == [(4, true), (8, false)]
+
+        # no policy can drop it, even one that contributes nothing
+        struct NoCare <: GEMS.HealthProgression end
+        GEMS.calculate_health_progression!(::Vector{CareContribution}, ::Individual, ::InfectionRegistry, ::NoCare,
+            ::InfectionState, ::HealthProfileIndex, ::Int16, ::Xoshiro) = HealthOutcome()
+        ind, reg, s = host(dp)
+        sched = HealthSchedule()
+        compute_health!(ind, reg, NoCare(), HealthProfileIndex(), s, Int16(0), Xoshiro(1), sched)
+        @test homebound_filed(sched) == [(4, true), (8, false)]
+
+        # the profile's probabilities decide the window
+        ind, reg, s = host(dp)
+        sched = HealthSchedule()
+        compute_health!(ind, reg, DefaultHealthProgression(), _idx((1, 0) => CriticalHealthProfile(
+            symptomatic_homebound_probability = 1.0)), s, Int16(0), Xoshiro(1), sched)
+        @test homebound_filed(sched) == [(2, true), (12, false)]
+
+        # the window ends at the host's death, so nothing is left to wake a dormant simulation
+        ind, reg, s = host(dp)
+        sched = HealthSchedule()
+        compute_health!(ind, reg, DefaultHealthProgression(), _idx((1, 0) => CriticalHealthProfile(
+            death_probability = 1.0, critical_onset_to_death = 1)), s, Int16(0), Xoshiro(1), sched)
+        @test ind.death == 6
+        @test homebound_filed(sched) == [(4, true), (6, false)]
+
+        # a window that has begun is applied at once, since its start tick is already drained
+        ind, reg, s = host(dp)
+        sched = HealthSchedule()
+        compute_health!(ind, reg, DefaultHealthProgression(), HealthProfileIndex(), s, Int16(5), Xoshiro(1), sched)
+        @test ind.homebound_demands == 1
+        @test homebound_filed(sched) == [(8, false)]
+
+        # a window that is over is not filed
+        ind, reg, s = host(dp)
+        sched = HealthSchedule()
+        compute_health!(ind, reg, DefaultHealthProgression(), HealthProfileIndex(), s, Int16(9), Xoshiro(1), sched)
+        @test ind.homebound_demands == 0
+        @test isempty(sched.homebound_buckets)
+    end
+
+    @testset "homebound windows drain onto the host" begin
+        sim = Simulation(pop_size = 100, infected_fraction = 0.0, seed = 1)
+        ind = individuals(sim)[1]
+        # two overlapping windows, as from two pathogens
+        _schedule_homebound!(sim.health_schedules[1], id(ind), Int16(2), Int16(4))
+        _schedule_homebound!(sim.health_schedules[1], id(ind), Int16(3), Int16(5))
+
+        demands = Int[]
+        dormant = Bool[]
+        for _ in 0:5
+            push!(dormant, GEMS.is_dormant(sim))
+            step!(sim)
+            push!(demands, ind.homebound_demands)
+        end
+        @test demands == [0, 0, 1, 2, 1, 0]
+        # a homebound start or end keeps an otherwise dormant simulation awake
+        @test dormant[2]
+        @test !dormant[3]
+
+        # death ends every window, unlogged
+        ind.homebound_demands = Int16(2)
+        n_logged = size(dataframe(healthlogger(sim)), 1)
+        _close_care_at_death!(ind, healthlogger(sim), tick(sim))
+        @test ind.homebound_demands == 0
+        @test size(dataframe(healthlogger(sim)), 1) == n_logged
+
+        # a reset clears both the counter and the pending windows
+        ind.homebound_demands = Int16(1)
+        _schedule_homebound!(sim.health_schedules[1], id(ind), Int16(10), Int16(12))
+        reset!(sim)
+        @test individuals(sim)[1].homebound_demands == 0
+        @test all(s -> isempty(s.homebound_buckets), sim.health_schedules)
     end
 
     @testset "Embedded care and the health profile index" begin
@@ -559,6 +726,16 @@ end
         @test sev.health isa SevereHealthProfile
         @test sev.health.hospital_probability == 0.3
         @test _health_profile_type(Severe) == SevereHealthProfile
+
+        # Mild embeds a MildHealthProfile, which carries only the symptomatic homebound probability
+        mkw = (exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_recovery = Poisson(5))
+        mild_hb = Mild(; mkw..., symptomatic_homebound_probability = 0.3)
+        @test mild_hb.health isa MildHealthProfile
+        @test mild_hb.health.symptomatic_homebound_probability == 0.3
+        @test _health_profile_type(Mild) == MildHealthProfile
+        @test isnothing(Mild(; mkw...).health)
+        @test_throws ArgumentError Mild(; mkw..., severe_homebound_probability = 0.5)
         @test_throws ArgumentError Severe(; skw..., health = SevereHealthProfile(), hospital_probability = 0.3)
         @test_throws ArgumentError Severe(; skw..., hospital_to_icu_probability = 0.5)  # ICU is critical-tier
 
@@ -824,6 +1001,19 @@ end
         dp_mild = calculate_progression(ind, Int16(0), Mild(; mkw...), Xoshiro(7))
         dp_symp = calculate_progression(ind, Int16(0), Symptomatic(; mkw...), Xoshiro(7))
         @test dp_symp == dp_mild
+
+        # Symptomatic takes no host health; homebound probabilities belong on Mild
+        @test_throws ArgumentError Symptomatic(; mkw..., symptomatic_homebound_probability = 0.3)
+
+        # the positional and copy constructors `@with_kw` generated for Mild up to v1.3.4
+        m = Mild(1, 2, 3)
+        @test (m.exposure_to_infectiousness_onset, m.infectiousness_onset_to_symptom_onset, m.symptom_onset_to_recovery) == (1, 2, 3)
+        @test isnothing(m.health)
+        @test Mild(m; symptom_onset_to_recovery = 9).symptom_onset_to_recovery == 9
+        @test Mild(m, Dict(:symptom_onset_to_recovery => 5)).symptom_onset_to_recovery == 5
+        @test Mild(m, (:symptom_onset_to_recovery, 6)).symptom_onset_to_recovery == 6
+        m_hb = Mild(; mkw..., symptomatic_homebound_probability = 0.3)
+        @test Mild(m_hb; symptom_onset_to_recovery = 4).health === m_hb.health
 
         # Hospitalized -> severe-shaped disease (no critical tier); constants make it deterministic
         hosp = Hospitalized(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
