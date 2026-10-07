@@ -81,7 +81,7 @@ function log_stepinfo(simulation::Simulation)
             loc_det += is_detected(i) ? 1 : 0
 
             # members of closed settings are counted below, by setting size
-            if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+            if is_homebound(i) || is_hospitalized(i) || isquarantined(i)
                 loc_st_unab += _open_membership(s_classes, class_id(i))
                 loc_wo_unab += _open_membership(offs, office_id(i))
             end
@@ -277,12 +277,12 @@ function seed_scheduled!(simulation::Simulation)
     return nothing
 end
 
-# An import can only land on a host that is alive, not in hospital, not self-isolating, and not
-# already carrying the pathogen. Seeding runs before the individual loop and before the tick's
+# An import can only land on a host that is alive, not in hospital, not homebound, not self-isolating,
+# and not already carrying the pathogen. Seeding runs before the individual loop and before the tick's
 # quarantine refresh, so death and quarantine are read off their ticks rather than their flags.
 @inline _can_be_seeded(individual::Individual, pathogen_id::Int8, t::Int16) =
     !dead(individual) && !(Int16(0) <= individual.death <= t) &&
-    !hospitalized(individual) && !is_quarantined(individual, t) &&
+    !hospitalized(individual) && !is_homebound(individual) && !is_quarantined(individual, t) &&
     !infected(individual, pathogen_id)
 
 """

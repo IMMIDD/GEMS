@@ -211,6 +211,15 @@ function _validate_health_plan(contributions::Vector{CareContribution}, outcome:
 end
 
 """
+    _homebound_window(profile::Union{Nothing, HealthProfile}, individual::Individual, infection::InfectionState, rng::Xoshiro)
+
+The `[start, stop)` window in which `infection` keeps its host homebound, negative for none. A profile
+without homebound parameters keeps the host homebound while severe.
+"""
+_homebound_window(profile::Union{Nothing, HealthProfile}, individual::Individual, infection::InfectionState, rng::Xoshiro) =
+    (infection.severeness_onset, infection.severeness_offset)
+
+"""
     AbstractHealthSchedule
 
 Supertype of the concrete `HealthSchedule`, which is defined after `CareContribution` and so cannot
@@ -224,7 +233,8 @@ abstract type AbstractHealthSchedule end
 Framework entry point, not overridable. Hands `calculate_health_progression!` the shard's buffer to
 contribute care into and the profile `index` to draw from, folds the death it proposes with the host's
 committed one, validates the whole result, and only then files the transitions and writes the death.
-Invoked whenever a new infection is added to a host.
+Also files the new infection's homebound window, which no policy can drop. Invoked whenever a new
+infection is added to a host.
 """
 function compute_health!(individual::Individual, infections::InfectionRegistry,
         hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState,
@@ -243,6 +253,19 @@ function compute_health!(individual::Individual, infections::InfectionRegistry,
     for care in contributions
         _schedule_care_contribution!(sched, host_id, care)
     end
+
+    # drawn after the policy so it never shifts the policy's draws; cut at death so no end outlives the host
+    start, stop = _homebound_window(_health_profile(index, new_infection), individual, new_infection, rng)
+    outcome.death >= 0 && (stop = min(stop, outcome.death))
+    if start >= 0 && start < stop && stop > tick
+        # the drain is already past `tick`, so a window that has begun is applied now
+        if start <= tick
+            _adjust_homebound_demand!(individual, Int16(1))
+            start = Int16(-1)
+        end
+        _schedule_homebound!(sched, host_id, start, stop)
+    end
+
     wake_at!(sched, outcome.death)
     individual.death = outcome.death
     individual.killing_pathogen_id = outcome.death >= 0 ? outcome.death_pathogen_id : DEFAULT_PATHOGEN_ID
