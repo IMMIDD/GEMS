@@ -545,11 +545,11 @@ Returns `true` if an admission edge fired, for the trigger phase.
 """
 @inline function _apply_transition!(indiv::Individual, hl::HealthLogger, tr::CareTransition, tick::Int16)
     if tr.is_admission
-        _adjust_demand!(indiv, tr.level, Int16(1)) == 1 || return false
+        _adjust_care_demand!(indiv, tr.level, Int16(1)) == 1 || return false
         log!(hl, id(indiv), _care_event(tr.level, true), tick)
         return true
     end
-    _adjust_demand!(indiv, tr.level, Int16(-1)) == 0 &&
+    _adjust_care_demand!(indiv, tr.level, Int16(-1)) == 0 &&
         log!(hl, id(indiv), _care_event(tr.level, false), tick)
     return false
 end
@@ -592,7 +592,7 @@ function drain_health_schedule!(sim::Simulation)
                 delete!(sched.homebound_buckets, bucket_tick)
             end
 
-            bucket = get(sched.buckets, bucket_tick, nothing)
+            bucket = get(sched.care_buckets, bucket_tick, nothing)
             bucket === nothing && continue
 
             for level in instances(CareLevel), tr in bucket
@@ -611,7 +611,7 @@ function drain_health_schedule!(sim::Simulation)
                 _apply_transition!(indiv, hl, tr, bucket_tick)
             end
 
-            delete!(sched.buckets, bucket_tick)
+            delete!(sched.care_buckets, bucket_tick)
         end
     end
     return nothing
@@ -647,8 +647,8 @@ stale queued discharge cannot drive one negative.
 """
 @inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
     for level in reverse(instances(CareLevel))
-        _get_demand(indiv, level) > 0 || continue
-        _set_demand!(indiv, level, Int16(0))
+        _get_care_demand(indiv, level) > 0 || continue
+        _set_care_demand!(indiv, level, Int16(0))
         log!(hl, id(indiv), _care_event(level, false), tick)
     end
     indiv.homebound_demands = 0

@@ -241,7 +241,7 @@ function compute_health!(individual::Individual, infections::InfectionRegistry,
 
     host_id = id(individual)
     for care in contributions
-        _emit_contribution!(sched, host_id, care)
+        _schedule_care_contribution!(sched, host_id, care)
     end
     wake_at!(sched, outcome.death)
     individual.death = outcome.death
