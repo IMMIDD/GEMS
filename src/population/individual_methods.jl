@@ -379,11 +379,17 @@ Returns the immunity level (0-100) against `pathogen_id` at `tick`, or 0 without
 Returns the level (0-100) of one immunity record at `tick`, e.g. from `each_immunity`.
 """
 function immunity_level(state::ImmunityState, individual::Individual, sim::Simulation, t::Int16 = tick(sim))::Int8
-    (natural_immunity_recorded(state) || vaccine_immunity_recorded(state)) || return Int8(0)
-    return _with_pathogen(sim.pathogens, state.pathogen_id) do pathogen
-        rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
-        calculate_immunity(immunity_profile(pathogen), state, individual, t, rng)
-    end
+    _immunity_recorded(state) || return Int8(0)
+    return _with_pathogen(p -> _immunity_level(p, state, individual, sim, t), sim.pathogens, state.pathogen_id)
+end
+
+# whether `state` holds natural or vaccine immunity
+@inline _immunity_recorded(state::ImmunityState) = natural_immunity_recorded(state) || vaccine_immunity_recorded(state)
+
+# level of a recorded `state` from the already looked-up `pathogen`
+@inline function _immunity_level(pathogen, state::ImmunityState, individual::Individual, sim::Simulation, t::Int16)::Int8
+    rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
+    return calculate_immunity(immunity_profile(pathogen), state, individual, t, rng)
 end
 
 """

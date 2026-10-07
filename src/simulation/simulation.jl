@@ -2125,42 +2125,25 @@ end
 
 
 """
-    get_pathogen(sim, pid)
- 
-Retrieves the pathogen with the given `Int8` id. Uses a `@generated` if/elseif
-chain so Julia resolves dispatch statically (union-splitting) for up to 8
-distinct pathogen types.
-"""
-@generated function get_pathogen(sim::Simulation{P}, pid::Int8) where P
-    N = fieldcount(P)
-    checks = [:(sim.pathogens[$i].id == pid && return sim.pathogens[$i]) for i in 1:N]
-    return quote
-        $(checks...)
-        throw(ArgumentError("No pathogen with id $pid found in simulation."))
-    end
-end
+    get_pathogen(sim::Simulation, pid::Int8)
 
+Retrieves the pathogen with the given `Int8` id from the simulation.
+"""
+get_pathogen(sim::Simulation, pid::Int8) = get_pathogen(sim.pathogens, pid)
+
+# _with_pathogen's generated if-chain; identity returns the pathogen itself
 """
     get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
 
-Retrieve a pathogen by id from a typed Tuple of pathogens. Emits a static
-`if/elseif` chain at compile time so each branch returns a concrete type,
-enabling union-splitting at the callsite with no dynamic dispatch.
+Retrieve a pathogen by id from a typed Tuple of pathogens; call sites union-split on the result.
 """
-@generated function get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
-    N = fieldcount(P)
-    checks = [:(pathogens[$i].id == pid && return pathogens[$i]) for i in 1:N]
-    return quote
-        $(checks...)
-        throw(ArgumentError("No pathogen with id $pid found."))
-    end
-end
+get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple} = _with_pathogen(identity, pathogens, pid)
 
 """
     _with_pathogen(f, pathogens::P, pid::Int8) where {P<:Tuple}
 
-Calls `f` on the pathogen with id `pid`. Type-stable for any number of pathogen types, unlike
-`get_pathogen`, which stops inferring at 4.
+Calls `f` on the pathogen with id `pid`. Type-stable for any number of pathogen types if `f` returns
+one type.
 """
 @generated function _with_pathogen(f::F, pathogens::P, pid::Int8) where {F, P<:Tuple}
     N = fieldcount(P)
@@ -2173,9 +2156,9 @@ end
 
 
 """
-    get_pathogen(sim::Simulation, pid::Int8)
+    get_pathogen(simulation::Simulation, pname::String)
 
-Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name.
+Retrieves a specific `Pathogen` object from the simulation using the pathogen's name.
 An empty `pname` returns the only pathogen and throws if the simulation has more than one.
 """
 function get_pathogen(simulation::Simulation, pname::String)

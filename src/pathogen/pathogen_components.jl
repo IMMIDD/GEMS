@@ -91,9 +91,8 @@ end
 """
     assign(individual::Individual, pa_func::ProgressionAssignmentFunction, sim::Union{Simulation, Nothing}, pathogen_id::Int8, tick::Int16, rng::Xoshiro)
 
-Entry point called by `infect!`. Read the infectee's immunity with `immunity_level(individual, sim,
-pathogen_id, tick)` or `each_immunity(individual, sim)`; `sim` is `nothing` without a simulation.
-Falls through to the registry form.
+Entry point called by `infect!`, with `sim` `nothing` outside a simulation; falls through to the registry form.
+Read the infectee's immunity with `immunity_level(individual, sim, pathogen_id, tick)` or `each_immunity(individual, sim)`.
 """
 assign(individual::Individual, pa_func::ProgressionAssignmentFunction, sim::Union{Simulation, Nothing}, pathogen_id::Int8, tick::Int16, rng::Xoshiro) =
     assign(individual, pa_func, isnothing(sim) ? ImmunityRegistry() : immunity_registry(sim, individual), pathogen_id, rng)
@@ -117,9 +116,8 @@ end
 """
     calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, sim::Union{Simulation, Nothing}, pathogen_id::Int8, rng::Xoshiro)
 
-Entry point called by `infect!`. Read the infectee's immunity with `immunity_level(individual, sim,
-pathogen_id, tick)` or `each_immunity(individual, sim)`; `sim` is `nothing` without a simulation.
-Falls through to the registry form.
+Entry point called by `infect!`, with `sim` `nothing` outside a simulation; falls through to the registry form.
+Read the infectee's immunity with `immunity_level(individual, sim, pathogen_id, tick)` or `each_immunity(individual, sim)`.
 """
 calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, sim::Union{Simulation, Nothing}, pathogen_id::Int8, rng::Xoshiro) =
     calculate_progression(individual, tick, dp, isnothing(sim) ? ImmunityRegistry() : immunity_registry(sim, individual), pathogen_id, rng)
@@ -177,8 +175,11 @@ override `susceptibility_factor` instead.
 function effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
     inf = infectiousness(infecter, sim, pathogen_id)
     inf == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
-    level = immunity_level(infectee, sim, pathogen_id, tick)
-    susceptibility = _with_pathogen(p -> susceptibility_factor(immunity_profile(p), level), sim.pathogens, pathogen_id)
+    state = get_immunity_state(infectee, sim, pathogen_id)
+    susceptibility = _with_pathogen(sim.pathogens, pathogen_id) do p
+        level = _immunity_recorded(state) ? _immunity_level(p, state, infectee, sim, tick) : Int8(0)
+        susceptibility_factor(immunity_profile(p), level)
+    end
     return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
            inf / 100.0 *
            susceptibility
