@@ -707,6 +707,17 @@ Throws on a negative result, which also catches overflow since `Int16` wraps.
     return _set_demand!(individual, level, n)
 end
 
+"""
+    _adjust_homebound_demand!(individual::Individual, delta::Int16)
+
+Adds `delta` to the host's homebound count and returns the new value. Throws on a negative result.
+"""
+@inline function _adjust_homebound_demand!(individual::Individual, delta::Int16)
+    n = individual.homebound_demands + delta
+    n < 0 && throw(ArgumentError("homebound count went negative on host $(individual.id): an end with no matching start. Only simulation-level reset! is safe."))
+    return (individual.homebound_demands = n)
+end
+
 
 ### TESTING STATUS ###
 
@@ -1140,6 +1151,7 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.hospital_demands = 0
     individual.icu_demands = 0
     individual.ventilation_demands = 0
+    individual.homebound_demands = 0
     individual.death = DEFAULT_TICK
 
     # Clean overflow before clearing flags

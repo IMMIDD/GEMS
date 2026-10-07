@@ -557,7 +557,7 @@ end
 """
     drain_health_schedule!(sim::Simulation)
 
-Realizes every care transition due at or before the current tick.
+Realizes every care transition and homebound start or end due at or before the current tick.
 
 Admissions first, then discharges, each in ladder order (reversed for discharges). That split is what
 lets one stay end exactly where another begins without logging a spurious discharge and re-admission,
@@ -579,6 +579,19 @@ function drain_health_schedule!(sim::Simulation)
         while sched.head <= Int(t)
             bucket_tick = Int16(sched.head)
             sched.head += 1
+
+            # homebound windows are not logged and never zero-length, so start/end order is irrelevant
+            homebound = get(sched.homebound_buckets, bucket_tick, nothing)
+            if homebound !== nothing
+                for tr in homebound
+                    indiv = get_individual_by_id(pop, tr.host_id)
+                    (Int16(0) <= indiv.death <= t) && continue
+                    n = _adjust_homebound_demand!(indiv, tr.is_start ? Int16(1) : Int16(-1))
+                    tr.is_start && n == 1 && _mark_active!(sim, indiv)
+                end
+                delete!(sched.homebound_buckets, bucket_tick)
+            end
+
             bucket = get(sched.buckets, bucket_tick, nothing)
             bucket === nothing && continue
 
@@ -629,8 +642,8 @@ end
     _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
 
 Closes every open care level when a host dies, logging one discharge per level in reverse ladder
-order. Counters are zeroed rather than decremented, so a stale queued discharge cannot drive one
-negative.
+order, and ends any homebound window unlogged. Counters are zeroed rather than decremented, so a
+stale queued discharge cannot drive one negative.
 """
 @inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
     for level in reverse(instances(CareLevel))
@@ -638,6 +651,7 @@ negative.
         _set_demand!(indiv, level, Int16(0))
         log!(hl, id(indiv), _care_event(level, false), tick)
     end
+    indiv.homebound_demands = 0
     return nothing
 end
 
@@ -669,7 +683,7 @@ end
 Whether `indiv` must keep its active flag after this tick's disease update.
 """
 @inline _stays_active(indiv::Individual) = infected(indiv) || indiv.needs_immunity_update ||
-    (Int16(0) <= indiv.death && !dead(indiv)) || hospitalized(indiv) || detected(indiv)
+    (Int16(0) <= indiv.death && !dead(indiv)) || hospitalized(indiv) || detected(indiv) || is_homebound(indiv)
 
 """
     update_individual!(indiv::Individual, tick::Int16, sim::Simulation)

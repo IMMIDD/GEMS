@@ -17,11 +17,22 @@ struct CareTransition
 end
 
 """
+    HomeboundTransition
+
+One host starting or ending a homebound window.
+"""
+struct HomeboundTransition
+    host_id::Int32
+    is_start::Bool
+end
+
+"""
     HealthSchedule <: AbstractHealthSchedule
 
 Per-shard store of pending care transitions and of ticks that must stay awake.
 
 - `buckets`: transitions due at each tick — work the drain performs.
+- `homebound_buckets`: homebound starts and ends due at each tick, drained alongside `buckets`.
 - `wake_ticks`: ticks with no work here that the simulation must still not fast-forward past. A
   scheduled death registers one, because it is realized by `progress_disease!` inside the individual
   loop, which a dormant tick skips.
@@ -31,6 +42,7 @@ Per-shard store of pending care transitions and of ticks that must stay awake.
 """
 mutable struct HealthSchedule <: AbstractHealthSchedule
     buckets::Dict{Int16, Vector{CareTransition}}
+    homebound_buckets::Dict{Int16, Vector{HomeboundTransition}}
     wake_ticks::Set{Int16}
     buffer::Vector{CareContribution}
     admitted::Vector{Int32}
@@ -44,6 +56,7 @@ Builds an empty `HealthSchedule`.
 """
 HealthSchedule() = HealthSchedule(
     Dict{Int16, Vector{CareTransition}}(),
+    Dict{Int16, Vector{HomeboundTransition}}(),
     Set{Int16}(),
     CareContribution[],
     Int32[],
@@ -53,14 +66,14 @@ HealthSchedule() = HealthSchedule(
 """
     due_now(schedule::HealthSchedule, tick::Int16)
 
-`true` if there is work in this tick's bucket, or a reason to be awake for it anyway.
+`true` if there is work in this tick's care or homebound bucket, or a reason to be awake for it anyway.
 
 Must stay a due-now test: an "anything outstanding" one would hold the simulation awake for every tick
 up to the last scheduled event. Because it only ever asks about the current tick, a `wake_ticks` entry
 left behind after its tick has passed is inert.
 """
 @inline due_now(schedule::HealthSchedule, tick::Int16) =
-    haskey(schedule.buckets, tick) || (tick in schedule.wake_ticks)
+    haskey(schedule.buckets, tick) || haskey(schedule.homebound_buckets, tick) || (tick in schedule.wake_ticks)
 
 """
     schedule!(schedule::HealthSchedule, host_id::Int32, level::CareLevel, is_admission::Bool, tick::Int16)
@@ -115,6 +128,20 @@ is nested.
 end
 
 """
+    _schedule_homebound!(schedule::HealthSchedule, host_id::Int32, start::Int16, stop::Int16)
+
+Files a homebound window's start and end. A negative `start` files only the end, for a window
+already applied.
+"""
+@inline function _schedule_homebound!(schedule::HealthSchedule, host_id::Int32, start::Int16, stop::Int16)
+    if start >= 0
+        push!(get!(() -> HomeboundTransition[], schedule.homebound_buckets, start), HomeboundTransition(host_id, true))
+    end
+    push!(get!(() -> HomeboundTransition[], schedule.homebound_buckets, stop), HomeboundTransition(host_id, false))
+    return nothing
+end
+
+"""
     reset_care!(schedule::HealthSchedule)
 
 Clears every pending transition and wake tick. Only safe alongside clearing the hosts' demand
@@ -122,6 +149,7 @@ counters; see `reset!(::Simulation)`.
 """
 function reset_care!(schedule::HealthSchedule)
     empty!(schedule.buckets)
+    empty!(schedule.homebound_buckets)
     empty!(schedule.wake_ticks)
     empty!(schedule.buffer)
     empty!(schedule.admitted)
