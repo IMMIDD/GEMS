@@ -211,13 +211,44 @@ function _validate_health_plan(contributions::Vector{CareContribution}, outcome:
 end
 
 """
-    _homebound_window(profile::Union{Nothing, HealthProfile}, individual::Individual, infection::InfectionState, rng::Xoshiro)
+    _homebound_probabilities(profile::Union{Nothing, HealthProfile})
 
-The `[start, stop)` window in which `infection` keeps its host homebound, negative for none. A profile
-without homebound parameters keeps the host homebound while severe.
+The `(symptomatic, severe)` homebound probabilities, read from the profile's fields of those names. A
+missing field, or no profile, gets the same default as a profile constructed without it.
 """
-_homebound_window(profile::Union{Nothing, HealthProfile}, individual::Individual, infection::InfectionState, rng::Xoshiro) =
-    (infection.severeness_onset, infection.severeness_offset)
+_homebound_probabilities(::Nothing) = (DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY, DEFAULT_SEVERE_HOMEBOUND_PROBABILITY)
+_homebound_probabilities(profile::T) where {T<:HealthProfile} = (
+    hasfield(T, :symptomatic_homebound_probability) ?
+        Float64(getfield(profile, :symptomatic_homebound_probability)) : DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY,
+    hasfield(T, :severe_homebound_probability) ?
+        Float64(getfield(profile, :severe_homebound_probability)) : DEFAULT_SEVERE_HOMEBOUND_PROBABILITY)::NTuple{2, Float64}
+
+"""
+    _homebound_window(p_symptomatic::Float64, p_severe::Float64, infection::InfectionState, rng::Xoshiro)
+
+The `[start, stop)` window in which `infection` keeps its host homebound, negative for none: from symptom
+onset to recovery with `p_symptomatic`, else while severe up to a total of `p_severe`.
+"""
+@inline function _homebound_window(p_symptomatic::Float64, p_severe::Float64, infection::InfectionState, rng::Xoshiro)
+    from_symptoms = (infection.symptom_onset, infection.recovery)
+    while_severe = (infection.severeness_onset, infection.severeness_offset)
+    none = (Int16(-1), Int16(-1))
+
+    # a window the infection doesn't have can't be drawn
+    p_sym = infection.symptom_onset >= 0 ? p_symptomatic : 0.0
+    p_sev = infection.severeness_onset >= 0 ? p_severe : p_sym
+
+    # certain outcomes spend no draw, so the defaults leave the rng stream unchanged
+    p_sym >= 1.0 && return from_symptoms
+    p_sev <= 0.0 && return none
+    p_sym <= 0.0 && p_sev >= 1.0 && return while_severe
+
+    # one draw decides both, since anyone homebound from symptom onset is homebound while severe
+    u = gems_rand(rng)
+    u < p_sym && return from_symptoms
+    u < p_sev && return while_severe
+    return none
+end
 
 """
     AbstractHealthSchedule
@@ -255,7 +286,8 @@ function compute_health!(individual::Individual, infections::InfectionRegistry,
     end
 
     # drawn after the policy so it never shifts the policy's draws; cut at death so no end outlives the host
-    start, stop = _homebound_window(_health_profile(index, new_infection), individual, new_infection, rng)
+    p_sym, p_sev = _with_profile(_homebound_probabilities, _health_profile(index, new_infection))::NTuple{2, Float64}
+    start, stop = _homebound_window(p_sym, p_sev, new_infection, rng)
     outcome.death >= 0 && (stop = min(stop, outcome.death))
     if start >= 0 && start < stop && stop > tick
         # the drain is already past `tick`, so a window that has begun is applied now

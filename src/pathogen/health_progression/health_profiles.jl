@@ -1,29 +1,69 @@
-export SevereHealthProfile, CriticalHealthProfile
+export MildHealthProfile, SevereHealthProfile, CriticalHealthProfile
+
+
+"""
+    MildHealthProfile
+
+Health profile for an infection whose peak tier is `mild`: no care or mortality, only whether the
+host stays home while symptomatic.
+
+# Parameters
+- `symptomatic_homebound_probability::Real`: Probability of being homebound from symptom onset to recovery (`0.0` by default).
+"""
+struct MildHealthProfile <: HealthProfile
+    symptomatic_homebound_probability::Float64
+
+    function MildHealthProfile(; symptomatic_homebound_probability = DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY)
+        0.0 <= symptomatic_homebound_probability <= 1.0 || throw(ArgumentError("symptomatic_homebound_probability must be between 0 and 1 (got $symptomatic_homebound_probability)."))
+        return new(symptomatic_homebound_probability)
+    end
+end
+
+"""
+    calculate_health_profile(mc::MildHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro)
+
+A `mild`-peak infection demands no care and carries no mortality risk.
+"""
+calculate_health_profile(mc::MildHealthProfile, individual::Individual, infection::InfectionState, rng::Xoshiro) =
+    (CareContribution(), HealthOutcome())
 
 """
     SevereHealthProfile
 
 Health profile for an infection whose peak tier is `severe`: a possible hospital (ward)
-admission, anchored at the infection's `severeness_onset`.
+admission, anchored at the infection's `severeness_onset`, and whether the host stays home.
 
 # Parameters
 - `hospital_probability::Real`: Hospital admission probability (`0.0` by default).
 - `severeness_onset_to_hospital_admission::Union{Distribution, Real}`: Admission delay after severeness onset.
 - `hospital_admission_to_hospital_discharge::Union{Distribution, Real}`: Ward stay length.
+- `symptomatic_homebound_probability::Real`: Probability of being homebound from symptom onset to recovery (`0.0` by default).
+- `severe_homebound_probability::Real`: Probability of being homebound while severe, at least `symptomatic_homebound_probability` (`1.0` by default).
 """
 struct SevereHealthProfile <: HealthProfile
     hospital_probability::Float64
     severeness_onset_to_hospital_admission::Union{Distribution, Real}
     hospital_admission_to_hospital_discharge::Union{Distribution, Real}
+    symptomatic_homebound_probability::Float64
+    severe_homebound_probability::Float64
 
     function SevereHealthProfile(;
         hospital_probability = 0.0,
         severeness_onset_to_hospital_admission = 0,
-        hospital_admission_to_hospital_discharge = 0)
+        hospital_admission_to_hospital_discharge = 0,
+        symptomatic_homebound_probability = DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY,
+        severe_homebound_probability = DEFAULT_SEVERE_HOMEBOUND_PROBABILITY)
 
-        0.0 <= hospital_probability <= 1.0 || throw(ArgumentError("hospital_probability must be between 0 and 1 (got $hospital_probability)."))
+        for (nm, p) in ((:hospital_probability, hospital_probability),
+            (:symptomatic_homebound_probability, symptomatic_homebound_probability),
+            (:severe_homebound_probability, severe_homebound_probability))
+            0.0 <= p <= 1.0 || throw(ArgumentError("$nm must be between 0 and 1 (got $p)."))
+        end
+        _check_homebound_order(symptomatic_homebound_probability, severe_homebound_probability)
+
         return new(hospital_probability, severeness_onset_to_hospital_admission,
-            hospital_admission_to_hospital_discharge)
+            hospital_admission_to_hospital_discharge, symptomatic_homebound_probability,
+            severe_homebound_probability)
     end
 end
 
@@ -71,6 +111,8 @@ first, the ward admission is moved to it.
 - `icu_discharge_to_hospital_discharge::Union{Distribution, Real}`: Hospital stay after ICU discharge.
 - `death_probability::Real`: Death probability (`0.0` by default).
 - `critical_onset_to_death::Union{Distribution, Real}`: Delay from critical onset to death.
+- `symptomatic_homebound_probability::Real`: Probability of being homebound from symptom onset to recovery (`0.0` by default).
+- `severe_homebound_probability::Real`: Probability of being homebound while severe, at least `symptomatic_homebound_probability` (`1.0` by default).
 """
 struct CriticalHealthProfile <: HealthProfile
     hospital_probability::Float64
@@ -86,6 +128,8 @@ struct CriticalHealthProfile <: HealthProfile
     icu_discharge_to_hospital_discharge::Union{Distribution, Real}
     death_probability::Float64
     critical_onset_to_death::Union{Distribution, Real}
+    symptomatic_homebound_probability::Float64
+    severe_homebound_probability::Float64
 
     function CriticalHealthProfile(;
         hospital_probability = 0.0,
@@ -100,21 +144,27 @@ struct CriticalHealthProfile <: HealthProfile
         ventilation_discharge_to_icu_discharge = 0,
         icu_discharge_to_hospital_discharge = 0,
         death_probability = 0.0,
-        critical_onset_to_death = 0)
+        critical_onset_to_death = 0,
+        symptomatic_homebound_probability = DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY,
+        severe_homebound_probability = DEFAULT_SEVERE_HOMEBOUND_PROBABILITY)
 
         for (nm, p) in ((:hospital_probability, hospital_probability),
             (:hospital_to_icu_probability, hospital_to_icu_probability),
             (:icu_to_ventilation_probability, icu_to_ventilation_probability),
-            (:death_probability, death_probability))
+            (:death_probability, death_probability),
+            (:symptomatic_homebound_probability, symptomatic_homebound_probability),
+            (:severe_homebound_probability, severe_homebound_probability))
             0.0 <= p <= 1.0 || throw(ArgumentError("$nm must be between 0 and 1 (got $p)."))
         end
+        _check_homebound_order(symptomatic_homebound_probability, severe_homebound_probability)
 
         return new(hospital_probability, severeness_onset_to_hospital_admission,
             hospital_admission_to_hospital_discharge, hospital_to_icu_probability,
             critical_onset_to_icu_admission, icu_admission_to_icu_discharge,
             icu_to_ventilation_probability, icu_admission_to_ventilation_admission,
             ventilation_admission_to_ventilation_discharge, ventilation_discharge_to_icu_discharge,
-            icu_discharge_to_hospital_discharge, death_probability, critical_onset_to_death)
+            icu_discharge_to_hospital_discharge, death_probability, critical_onset_to_death,
+            symptomatic_homebound_probability, severe_homebound_probability)
     end
 end
 
@@ -164,8 +214,20 @@ function calculate_health_profile(cc::CriticalHealthProfile, individual::Individ
     return care, outcome
 end
 
+# splits the built-in profiles so `f` dispatches statically on them; custom profiles dispatch dynamically
+@inline function _with_profile(f::F, profile::Union{Nothing, HealthProfile}) where {F}
+    profile === nothing && return f(nothing)
+    profile isa MildHealthProfile && return f(profile)
+    profile isa SevereHealthProfile && return f(profile)
+    profile isa CriticalHealthProfile && return f(profile)
+    return f(profile)
+end
 
 
+# anyone homebound from symptom onset is homebound while severe
+_check_homebound_order(symptomatic_homebound_probability, severe_homebound_probability) =
+    symptomatic_homebound_probability <= severe_homebound_probability || throw(ArgumentError(
+        "symptomatic_homebound_probability ($symptomatic_homebound_probability) cannot exceed severe_homebound_probability ($severe_homebound_probability)."))
 
 
 

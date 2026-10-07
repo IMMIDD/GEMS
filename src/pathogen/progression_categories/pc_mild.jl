@@ -4,7 +4,8 @@ export Mild
     Mild <: ProgressionCategory
 
 A disease progression category for individuals who develop mild symptoms.
-They do not require hospitalization and continue their daily activities but are aware of their illness.
+They do not require hospitalization and continue their daily activities but are aware of their illness,
+unless an embedded `MildHealthProfile` keeps them home while symptomatic.
 
 **IMPORTANT**: The infectiousness onset must be at least 1 tick after exposure to avoid issues with immediate transmission.
 Therefore, the calculation for infectiousness_onset includes a +1 offset.
@@ -29,12 +30,40 @@ dp = Mild(
     symptom_onset_to_recovery = Poisson(7)
 )
 ```
+
+Host health for this tier may be embedded directly, either as a `MildHealthProfile` object or as flat
+`MildHealthProfile` parameters:
+
+```julia
+dp = Mild(
+    exposure_to_infectiousness_onset = Poisson(3),
+    infectiousness_onset_to_symptom_onset = Poisson(1),
+    symptom_onset_to_recovery = Poisson(7),
+    symptomatic_homebound_probability = 0.3
+)
+```
 """
-@with_kw mutable struct Mild <: ProgressionCategory
+mutable struct Mild <: ProgressionCategory
     exposure_to_infectiousness_onset::Union{Distribution, Real}
     infectiousness_onset_to_symptom_onset::Union{Distribution, Real}
     symptom_onset_to_recovery::Union{Distribution, Real}
+    # embedded host health (build-time only; harvested into the HealthProfileIndex, ignored by
+    # calculate_progression). Pass `health=MildHealthProfile(...)` or the MildHealthProfile params directly.
+    health::Union{Nothing, HealthProfile}
+
+    function Mild(;
+        exposure_to_infectiousness_onset,
+        infectiousness_onset_to_symptom_onset,
+        symptom_onset_to_recovery,
+        health::Union{Nothing, HealthProfile} = nothing,
+        health_params...)
+
+        return new(exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset,
+            symptom_onset_to_recovery, _embed_health(Mild, health, nothing, health_params))
+    end
 end
+
+_health_profile_type(::Type{Mild}) = MildHealthProfile
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Mild, rng::Xoshiro)
 

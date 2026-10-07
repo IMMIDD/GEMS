@@ -33,7 +33,7 @@ function calculate_health_progression!(contributions::Vector{CareContribution}, 
 
     profile = _health_profile(index, new_infection)
     profile === nothing && return HealthOutcome()
-    care, outcome = calculate_health_profile(profile, individual, new_infection, rng)
+    care, outcome = _with_profile(p -> calculate_health_profile(p, individual, new_infection, rng), profile)::Tuple{CareContribution, HealthOutcome}
     care.hospital_admission >= 0 && push!(contributions, care)
     return outcome
 end

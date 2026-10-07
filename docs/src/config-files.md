@@ -71,6 +71,10 @@ If you want to set up a custom config file, you can copy this one into your own 
                     distribution = "Poisson"
                     parameters = [7]
 
+                # HOST HEALTH FOR THIS TIER [staying home only]
+                [Pathogens.Covid19.progressions.Mild.health]
+                    symptomatic_homebound_probability = 0.0
+
             # SEVERE PROGRESSION [TOTAL DURATION ~ 15 DAYS]
             [Pathogens.Covid19.progressions.Severe]
                 [Pathogens.Covid19.progressions.Severe.exposure_to_infectiousness_onset]
@@ -92,6 +96,8 @@ If you want to set up a custom config file, you can copy this one into your own 
                 # HOST HEALTH FOR THIS TIER [ward admission only]
                 [Pathogens.Covid19.progressions.Severe.health]
                     hospital_probability = 0.05
+                    symptomatic_homebound_probability = 0.0
+                    severe_homebound_probability = 1.0
                     [Pathogens.Covid19.progressions.Severe.health.severeness_onset_to_hospital_admission]
                         distribution = "Poisson"
                         parameters = [2]
@@ -129,6 +135,8 @@ If you want to set up a custom config file, you can copy this one into your own 
                     hospital_to_icu_probability = 0.5
                     icu_to_ventilation_probability = 0.0
                     death_probability = 0.3          # ungated by hospital/ICU
+                    symptomatic_homebound_probability = 0.0
+                    severe_homebound_probability = 1.0
                     icu_admission_to_ventilation_admission = 0
                     ventilation_admission_to_ventilation_discharge = 0
                     ventilation_discharge_to_icu_discharge = 0
