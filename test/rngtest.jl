@@ -166,6 +166,10 @@ GEMS.calculate_infectiousness(::DailyNoisyInfectiousness, s::InfectionState, i::
         @test rand(r, 4) == base
 
         @test_throws ArgumentError immunity_rng!(r, st, :other)
+        # only the rng passed to a profile can be re-keyed
+        @test_throws ArgumentError immunity_rng!(Xoshiro(1), st, :host)
+        inf_st = InfectionState(Int8(1), Int32(1), DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), recovery = Int16(5)))
+        @test_throws ArgumentError infectiousness_rng!(Xoshiro(1), inf_st, Int16(2))
 
         # resetting and re-keying allocate nothing
         rekey(state) = (immunity_rng!(keyed(1, 5, 1), state, :vaccine); nothing)

@@ -224,10 +224,11 @@ end
     return _PROFILE_RNGS[tid] = _ProfileRNG(Xoshiro(0), UInt64(0))
 end
 
-# the base key to re-key `rng` from; an rng from elsewhere (e.g. a test) is re-keyed from its current state
+# the base key to re-key `rng` from; only the scratch rng a simulation passes to a profile has one
 @inline function _base_key(rng::Xoshiro)::UInt64
     r = _profile_rng()
-    return rng === r.rng ? r.key : _mix(UInt64(0), rng.s0, rng.s1, rng.s2, rng.s3)
+    rng === r.rng || throw(ArgumentError("only the rng a simulation passes to a profile can be re-keyed"))
+    return r.key
 end
 
 # this thread's scratch rng, reset to the immunity stream of one host and pathogen
@@ -237,21 +238,18 @@ end
     return _rekey!(r.rng, r.key)
 end
 
-# this thread's scratch rng with the infection base key of one host; `_rekey_infection!` resets it per infection
-@inline function _keyed_host_rng(seed::Int64, host_id::Int32)::Xoshiro
+# this thread's scratch rng, reset to the stream of one infection of one host
+@inline function _keyed_infection_rng(seed::Int64, host_id::Int32, state::InfectionState)::Xoshiro
     r = _profile_rng()
     r.key = _mix(UInt64(1), seed, host_id)
-    return r.rng
+    return _rekey!(r.rng, _mix(r.key, state.pathogen_id, state.exposure))
 end
-
-# resets `rng` to the stream of one infection, identified by its pathogen and exposure tick
-@inline _rekey_infection!(rng::Xoshiro, state::InfectionState) =
-    _rekey!(rng, _mix(_base_key(rng), state.pathogen_id, state.exposure))
 
 """
     infectiousness_rng!(rng::Xoshiro, state::InfectionState, tick::Int16)::Xoshiro
 
 Re-keys the `rng` of `calculate_infectiousness` to draw anew each tick instead of once per infection.
+Throws for any rng other than the one a simulation passes.
 """
 infectiousness_rng!(rng::Xoshiro, state::InfectionState, tick::Int16)::Xoshiro =
     _rekey!(rng, _mix(_base_key(rng), state.pathogen_id, state.exposure, tick))
@@ -260,7 +258,8 @@ infectiousness_rng!(rng::Xoshiro, state::InfectionState, tick::Int16)::Xoshiro =
     immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
 
 Re-keys the `rng` of `calculate_immunity` to draw anew per acquisition: `:natural` per infection,
-`:vaccine` per dose, `:host` back to the stream as passed. Components don't affect each other.
+`:vaccine` per dose, `:host` back to the stream as passed. Components don't affect each other, and any
+rng other than the one a simulation passes throws.
 """
 function immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
     base = _base_key(rng)

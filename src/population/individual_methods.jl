@@ -988,14 +988,14 @@ Single source of truth for the per-tick disease-state predicates of one active i
 end
 
 """
-    _step_infection!(ind, infections, pathogens, removal_buf, loc, tick, rng)
+    _step_infection!(ind, infections, pathogens, removal_buf, loc, tick, seed)
 
 Processes the single infection at slot `loc` (a `_CacheSlot` or `_OverflowNode`) for `tick`:
 handles recovery and the per-tick infectiousness recompute, reading/writing/clearing
 the slot through `_slot_state` / `_set_slot!` / `_clear_slot!` dispatch. Shared by both
 branches of `progress_disease!`. Returns the record's `DiseaseFlags` contribution.
 """
-@inline function _step_infection!(ind::Individual, infections::InfectionRegistry, pathogens::P, removal_buf, loc, tick::Int16, rng::Xoshiro) where {P<:Tuple}
+@inline function _step_infection!(ind::Individual, infections::InfectionRegistry, pathogens::P, removal_buf, loc, tick::Int16, seed::Int64) where {P<:Tuple}
     state = _slot_state(ind, infections, loc)
 
     # check recovery
@@ -1010,7 +1010,7 @@ branches of `progress_disease!`. Returns the record's `DiseaseFlags` contributio
     # update infectiousness while active
     end_tick = state.recovery
     if state.exposure <= tick < end_tick
-        _rekey_infection!(rng, state)
+        rng = _keyed_infection_rng(seed, id(ind), state)
         level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, rng)
         if level != state.infectiousness
             state = _setstate(state, Val(:infectiousness), level)
@@ -1022,7 +1022,7 @@ branches of `progress_disease!`. Returns the record's `DiseaseFlags` contributio
 end
 
 """
-    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
+    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::P, removal_buf::Vector{_EndedInfection}, tick::Int16, seed::Int64) where {P<:Tuple}
 
 Updates the proxy disease progression status flags of the individual at the
 given tick by reading from the global `InfectionRegistry`. Also populates the
@@ -1039,8 +1039,8 @@ function progress_disease!(
     infections::InfectionRegistry, 
     pathogens::P, 
     removal_buf::Vector{_EndedInfection},
-    tick::Int16, 
-    rng::Xoshiro
+    tick::Int16,
+    seed::Int64
 ) where {P<:Tuple}
 
     dead(individual) && return nothing
@@ -1057,7 +1057,7 @@ function progress_disease!(
     # process cache slots
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         individual.infection_cache[i].active || continue
-        acc |= _step_infection!(individual, infections, pathogens, removal_buf, _CacheSlot(Int32(i)), tick, rng)
+        acc |= _step_infection!(individual, infections, pathogens, removal_buf, _CacheSlot(Int32(i)), tick, seed)
     end
 
     # process overflow nodes
@@ -1065,7 +1065,7 @@ function progress_disease!(
         node = individual.infection_head
         while node != 0
             next_node = (@inbounds infections.states[node].next)   # capture before any mutation
-            acc |= _step_infection!(individual, infections, pathogens, removal_buf, _OverflowNode(node), tick, rng)
+            acc |= _step_infection!(individual, infections, pathogens, removal_buf, _OverflowNode(node), tick, seed)
             node = next_node
         end
     end

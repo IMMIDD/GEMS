@@ -196,8 +196,9 @@ effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id:
 """
     calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
-Returns the infectiousness (0-100) of the infection `state` at `tick`; concrete profiles must implement it.
-`rng` draws the same numbers for the whole infection; re-key it per tick with `infectiousness_rng!`.
+Returns the infectiousness (0-100) of the infection `state` at `tick`; concrete profiles must implement it and
+must not read immunity levels. `rng` draws the same numbers for the whole infection; re-key it per tick
+with `infectiousness_rng!`.
 """
 function calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     error("calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile)).")

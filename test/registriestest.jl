@@ -138,7 +138,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             i_r = Individual(id=1, sex=0, age=30)
             push_infection!(reg_r, i_r, Int8(1), Int32(1), dp_r)
             buf_r = _EndedInfection[]
-            progress_disease!(i_r, reg_r, (Pathogen(id=1, name="P1"),), buf_r, Int16(10), Xoshiro())
+            progress_disease!(i_r, reg_r, (Pathogen(id=1, name="P1"),), buf_r, Int16(10), 1)
             @test length(buf_r) == 1
             @test buf_r[1].pathogen_id == Int8(1)
             @test buf_r[1].recovery == Int16(5)
