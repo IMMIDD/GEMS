@@ -78,15 +78,17 @@ for an individual and hands over a `follow_up` strategy for the respective setti
 
 # Returns
 
-- `Nothing`: Triggers the `follow_up` strategy for the detected setting.
+- `Nothing`: Triggers the `follow_up` strategy for the detected setting; does nothing for an
+    individual who holds no setting of the type.
 """
 function process_measure(sim::Simulation, ind::Individual, measure::FindSetting, sid::Int32 = PRIMARY_SETTING_ID)
 
     # setting type
     st = measure |> settingtype
 
-    # setting object
-    s = sid == PRIMARY_SETTING_ID ? getsetting(ind, sim, st) : settings(sim, st)[sid]
+    # setting object; someone without a setting of this type has none to find
+    s = sid == PRIMARY_SETTING_ID ? _primary_setting(ind, sim, st) : settings(sim, st)[sid]
+    isnothing(s) && return nothing
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$(s |> id)] at tick $(sim |> tick)"
 

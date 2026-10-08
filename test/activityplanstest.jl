@@ -226,7 +226,8 @@ end
         # one-person households, so infections can only happen at the gym
         n = 40
         df = DataFrame(id = Int32.(1:n), age = Int8.(fill(30, n)), sex = Int8.(ones(n)), household = Int32.(1:n))
-        table = DataFrame(id = Int32.(1:n), setting_type = fill("Gym", n), setting_id = Int32.(ones(n)))
+        # everyone but the last goes to the gym
+        table = DataFrame(id = Int32.(1:(n - 1)), setting_type = fill("Gym", n - 1), setting_id = Int32.(ones(n - 1)))
 
         mktempdir() do dir
             cfgpath = joinpath(dir, "config.toml")
@@ -236,11 +237,33 @@ end
             sim = Simulation(configfile = cfgpath, population = joinpath(dir, "pop.csv"),
                 membershipsfile = joinpath(dir, "memberships.csv"), seed = 1, infected_fraction = 0.1)
             gyms = settings(sim, DeclaredSetting{:Gym})
-            @test length(gyms) == 1 && length(individuals(gyms[1])) == n
+            @test length(gyms) == 1 && length(individuals(gyms[1])) == n - 1
             @test contact_sampling_method(gyms[1]).contactparameter == 5.0
             @test startswith(sprint(show, gyms[1]), "Gym(")
             # declared from its section alone, logged with the char it sets
             @test settingchar(DeclaredSetting{:Sauna}(id = 1)) == 'U'
+
+            # measures find a member's gym, and do nothing for someone without one
+            member, outsider = individuals(sim)[1], individuals(sim)[n]
+            @test getsetting(member, sim, DeclaredSetting{:Gym}) === gyms[1]
+            @test_throws ArgumentError getsetting(outsider, sim, DeclaredSetting{:Gym})
+            eq = GEMS.event_queue(sim)
+            empty!(eq)
+            fu = SStrategy("gym_followup", sim)
+            add_measure!(fu, CloseSetting())
+            @test process_measure(sim, outsider, FindSetting(DeclaredSetting{:Gym}, fu)) === nothing
+            @test process_measure(sim, outsider, FindSettingMembers(DeclaredSetting{:Gym}, IStrategy("gym_members", sim))) === nothing
+            # nobody here works, so finding an office does nothing either
+            @test process_measure(sim, member, FindSetting(Office, fu)) === nothing
+            @test isempty(eq)
+            process_measure(sim, member, FindSetting(DeclaredSetting{:Gym}, fu))
+            @test !isempty(eq)
+            empty!(eq)
+
+            # calibration addresses a declared type by its name
+            GEMS.assign_values_to_parameters!(sim; x = [2.5], arg = ["Gym"])
+            @test contact_sampling_method(gyms[1]).contactparameter == 2.5
+            GEMS.assign_values_to_parameters!(sim; x = [5.0], arg = ["Gym"])
 
             run!(sim)
             types = dataframe(infectionlogger(sim)).setting_type
@@ -248,11 +271,19 @@ end
             @test all(t -> t in ('G', '?'), types)
             @test "Gym" in GEMS._settingdata(GEMS.PostProcessor(sim)).setting_type
 
+            # results carry a contact matrix for it, which plots after import by name alone
+            rd = ResultData(sim)
+            @test aggregated_setting_age_contacts(rd, DeclaredSetting{:Gym}) isa ContactMatrix
+            exportJLD(rd, dir)
+            imported = import_resultdata(joinpath(dir, "resultdata.jld2"))
+            @test aggregated_setting_age_contacts(imported, "Gym") isa ContactMatrix
+            @test gemsplot(imported, type = :AggregatedSettingAgeContacts) isa Plots.Plot
+
             # saving and loading again rebuilds the gym
             GEMS.save(population(sim), joinpath(dir, "pop2.csv"); membershipsfile = joinpath(dir, "m2.csv"))
             again = Simulation(configfile = cfgpath, population = joinpath(dir, "pop2.csv"),
                 membershipsfile = joinpath(dir, "m2.csv"), seed = 1)
-            @test length(individuals(settings(again, DeclaredSetting{:Gym})[1])) == n
+            @test length(individuals(settings(again, DeclaredSetting{:Gym})[1])) == n - 1
         end
 
         # declaring is idempotent, and refuses a second char or a name another type has

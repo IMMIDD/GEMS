@@ -153,21 +153,7 @@ mutable struct LightRD <: ResultDataStyle
                     "git_commit" => () -> _read_git_commit()#,
                 ),
 
-            "aggregated_setting_age_contacts" =>
-                Dict(
-                    # TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
-                    # TODO: This list should be determined dynamically depending on what settings are present in the simulation
-                    "Household" => () -> _mean_contacts_per_age_group(pP, Household, 5),
-                    "SchoolClass" => () -> _mean_contacts_per_age_group(pP, SchoolClass, 2),
-                    "School" => () -> _mean_contacts_per_age_group(pP, School, 2),
-                    "SchoolComplex" => () -> _mean_contacts_per_age_group(pP, SchoolComplex, 2),
-                    "Office" => () -> _mean_contacts_per_age_group(pP, Office, 5), 
-                    "Department" => () -> _mean_contacts_per_age_group(pP, Department, 5), 
-                    "Workplace" => () -> _mean_contacts_per_age_group(pP, Workplace, 5), 
-                    "WorkplaceSite" => () -> _mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
-                    "Municipality" => () -> _mean_contacts_per_age_group(pP, Municipality, 5),
-                    "GlobalSetting" => () -> _mean_contacts_per_age_group(pP, GlobalSetting, 5)
-                ),
+            "aggregated_setting_age_contacts" => _present_setting_age_contacts(pP),
 
             "dataframes" =>
                 Dict(

@@ -280,6 +280,7 @@ function save_JLD2(poollogger::PoolTestLogger, path::AbstractString)
     jldopen(path,"w") do file
         file["setting_id"] = vcat(poollogger.setting_id...)
         file["setting_type"] = vcat(poollogger.setting_type...)
+        file["setting_type_names"] = setting_type_names()
         file["tick"] = vcat(poollogger.tick...)
         file["test_result"] = vcat(poollogger.test_result...)
         file["no_of_individuals"] = vcat(poollogger.no_of_individuals...)

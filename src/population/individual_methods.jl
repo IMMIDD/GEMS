@@ -245,16 +245,6 @@ function household(i::Individual, sim::Simulation)::Household
 end
 
 """
-    getsetting(i::Individual, sim::Simulation, ::Type{Household})::Household
-
-Return the `Household` setting to which the individual `i` belongs, based on
-their `household` ID.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Household})
-    return household(i, sim)
-end
-
-"""
     office(i::Individual, sim::Simulation)::Office
 
 Returns the `Office` instance referenced in an individual. 
@@ -263,50 +253,6 @@ function office(i::Individual, sim::Simulation)::Office
     oid = office_id(i, sim)
     oid == DEFAULT_SETTING_ID && throw(ArgumentError("Individual $(id(i)) is not assigned to an Office"))
     return settings(sim, Office)[oid]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{Office})::Office
-
-Return the `Office` setting to which the individual `i` belongs, based on
-their `office` ID.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Office})
-    return office(i, sim)
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{Department})::Department
-
-Return the `Department` that contains the individual's `Office`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Department})
-    return getsetting(i, sim, Office).contained |>
-        id -> settings(sim, Department)[id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{Workplace})::Workplace
-
-Return the `Workplace` that contains the individual's `Department`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Workplace})
-    return getsetting(i, sim, Department).contained |>
-        id -> settings(sim, Workplace)[id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{WorkplaceSite})::WorkplaceSite
-
-Return the `WorkplaceSite` that contains the individual's `Workplace`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{WorkplaceSite})
-    return getsetting(i, sim, Workplace).contained |>
-        id -> settings(sim, WorkplaceSite)[id]
 end
 
 
@@ -322,50 +268,6 @@ function schoolclass(i::Individual, sim::Simulation)::SchoolClass
 end
 
 """
-    getsetting(i::Individual, sim::Simulation, ::Type{SchoolClass})::SchoolClass
-
-Return the `SchoolClass` setting to which the individual `i` belongs, based on
-their `schoolclass` ID.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{SchoolClass})
-    return schoolclass(i, sim)
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{SchoolYear})::SchoolYear
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{SchoolYear})
-    class = getsetting(i, sim, SchoolClass)
-    year_id = class.contained
-    return settings(sim, SchoolYear)[year_id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{School})::School
-
-Return the `School` setting containing the individual's `SchoolYear`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{School})
-    year = getsetting(i, sim, SchoolYear)
-    school_id = year.contained
-    return settings(sim, School)[school_id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{SchoolComplex})::SchoolComplex
-
-Return the `SchoolComplex` setting containing the individual's `School`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{SchoolComplex})
-    school = getsetting(i, sim, School)
-    complex_id = school.contained
-    return settings(sim, SchoolComplex)[complex_id]
-end
-
-"""
     municipality(i::Individual, sim::Simulation)::Municipality
 
 Returns the `Municipality` instance referenced in an individual. 
@@ -374,13 +276,23 @@ function municipality(i::Individual, sim::Simulation)::Municipality
     return settings(sim, Municipality)[municipality_id(i, sim)]
 end
 
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
+# The individual's primary setting of type `T`, or `nothing` if they hold none. A container holds no
+# plan entries, so `setting_ids` finds it through the leaves below it.
+function _primary_setting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
+    ids = setting_ids(i, T, sim)
+    return isempty(ids) ? nothing : settings(sim, T)[ids[1]]
+end
 
-Return the global setting.
 """
-function getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
-    return settings(sim)[GlobalSetting][1]
+    getsetting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
+
+Returns the individual's primary setting of type `T`, a container through the settings below it;
+throws if they hold none.
+"""
+function getsetting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
+    s = _primary_setting(i, sim, T)
+    isnothing(s) && throw(ArgumentError("Individual $(id(i)) is not assigned to a $(setting_type_name(T))"))
+    return s
 end
 
 

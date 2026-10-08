@@ -223,6 +223,12 @@ end
         process_measure(sim4, a, fs)
         @test Set(id.(followup_focals(drain_events!(eq)))) == Set(Int32[1, 2])
 
+        # without a settings file the offices belong to no department: a clear error, and nothing to find
+        @test_throws ArgumentError getsetting(a, sim4, Department)
+        process_measure(sim4, a, FindSetting(Department, fu))
+        process_measure(sim4, a, FindSettingMembers(Department, i_fu))
+        @test isempty(eq)
+
         # a container is found above each setting and handed over once
         mktempdir() do dir
             path = joinpath(dir, "pop.csv")
@@ -245,6 +251,19 @@ end
             empty!(eq5)
             process_measure(sim5, a5, FindSettings(Department, dept_fu))
             @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
+
+            # FindSetting and FindSettingMembers reach the department through the offices below it
+            process_measure(sim5, a5, FindSetting(Department, dept_fu))
+            @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
+            i_fu5 = IStrategy("find_department_members_fu", sim5)
+            add_measure!(i_fu5, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
+            process_measure(sim5, a5, FindSettingMembers(Department, i_fu5))
+            @test Set(followup_focals(drain_events!(eq5))) == Set(individuals(sim5))
+            # the department belongs to no workplace: a clear error, and nothing to find
+            @test_throws ArgumentError getsetting(a5, sim5, Workplace)
+            process_measure(sim5, a5, FindSetting(Workplace, dept_fu))
+            process_measure(sim5, a5, FindSettingMembers(Workplace, i_fu5))
+            @test isempty(eq5)
         end
     end
 

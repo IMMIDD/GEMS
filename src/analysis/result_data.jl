@@ -773,7 +773,18 @@ Returns an age X age contact matrix for the specified `settingtype` (e.g. Househ
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
 function setting_age_contacts(rd::ResultData, settingtype::DataType)
-    return(get(rd |> setting_age_contacts, string(settingtype), Dict()))
+    return setting_age_contacts(rd, setting_type_name(settingtype))
+end
+
+"""
+    setting_age_contacts(rd::ResultData, name::AbstractString)
+
+Returns an age X age contact matrix for the setting type called `name` (e.g. "Household") based on
+sampled data. Works without the type being registered in the session, e.g. after import.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function setting_age_contacts(rd::ResultData, name::AbstractString)
+    return(get(rd |> setting_age_contacts, name, Dict()))
 end
 
 """
@@ -793,7 +804,18 @@ Returns an age group X age group contact matrix for the specified `settingtype` 
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
 function aggregated_setting_age_contacts(rd::ResultData, settingtype::DataType)
-    return(get(rd |> aggregated_setting_age_contacts, string(settingtype), Dict()))
+    return aggregated_setting_age_contacts(rd, setting_type_name(settingtype))
+end
+
+"""
+    aggregated_setting_age_contacts(rd::ResultData, name::AbstractString)
+
+Returns an age group X age group contact matrix for the setting type called `name` (e.g.
+"Household") based on sampled data. Works without the type being registered in the session, e.g.
+after import. Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function aggregated_setting_age_contacts(rd::ResultData, name::AbstractString)
+    return(get(rd |> aggregated_setting_age_contacts, name, Dict()))
 end
 
 ###

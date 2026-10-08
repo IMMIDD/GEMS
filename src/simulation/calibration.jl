@@ -24,21 +24,24 @@ function assign_values_to_parameters!(sim; x, arg)
         end
         param_key = Symbol(parts[end])
 
-        # if parameter involves settings names
+        # if parameter involves settings names: an accessor like `households`, or a setting type's
+        # name, as a declared type has no accessor
         if isdefined(@__MODULE__, param_key) && getfield(@__MODULE__, param_key) isa Function
             instances = getfield(@__MODULE__, param_key)(sim)
-            
-            if instances isa AbstractVector && eltype(instances) <: Setting
-                if !isempty(instances)
-                    csm_type = typeof(first(instances).contact_sampling_method)
-                    new_csm  = csm_type(value)
-                    # assign rate to all settings of specified type
-                    for s in instances
-                        contact_sampling_method!(s, new_csm)
-                    end
-                end      
-                continue 
+        else
+            T = _resolve_setting_type(parts[end])
+            instances = T === nothing ? nothing : settings(sim, T)
+        end
+        if instances isa AbstractVector && eltype(instances) <: Setting
+            if !isempty(instances)
+                csm_type = typeof(first(instances).contact_sampling_method)
+                new_csm  = csm_type(value)
+                # assign rate to all settings of specified type
+                for s in instances
+                    contact_sampling_method!(s, new_csm)
+                end
             end
+            continue
         end
 
         if length(parts) == 1
