@@ -53,6 +53,7 @@ Base.length(logger::QuarantineLogger) = length(logger.tick)
     quarantined_workers::Vector{Int64} = Vector{Int64}()
     isolated_workers::Vector{Int64} = Vector{Int64}()
     unable_to_attend_workers::Vector{Int64} = Vector{Int64}()
+    homebound::Vector{Int64} = Vector{Int64}()
 end
 
 function log!(
@@ -68,7 +69,8 @@ function log!(
     unable_to_attend_students::Int64,
     quarantined_workers::Int64,
     isolated_workers::Int64,
-    unable_to_attend_workers::Int64
+    unable_to_attend_workers::Int64,
+    homebound::Int64
 )
     push!(statelogger.tick, tick)
     push!(statelogger.exposed, exposed)
@@ -82,6 +84,7 @@ function log!(
     push!(statelogger.quarantined_workers, quarantined_workers)
     push!(statelogger.isolated_workers, isolated_workers)
     push!(statelogger.unable_to_attend_workers, unable_to_attend_workers)
+    push!(statelogger.homebound, homebound)
 
     Threads.atomic_xchg!(statelogger.last_modified_tick, tick)
 end
@@ -99,7 +102,8 @@ function dataframe(statelogger::StateLogger)::DataFrame
         unable_to_attend_students = statelogger.unable_to_attend_students,
         quarantined_workers = statelogger.quarantined_workers,
         isolated_workers = statelogger.isolated_workers,
-        unable_to_attend_workers = statelogger.unable_to_attend_workers
+        unable_to_attend_workers = statelogger.unable_to_attend_workers,
+        homebound = statelogger.homebound
     )
 end
 

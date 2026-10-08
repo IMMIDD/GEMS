@@ -211,6 +211,46 @@ function _validate_health_plan(contributions::Vector{CareContribution}, outcome:
 end
 
 """
+    _homebound_probabilities(profile::Union{Nothing, HealthProfile})
+
+The `(symptomatic, severe)` homebound probabilities, read from the profile's fields of those names. A
+missing field, or no profile, gets the same default as a profile constructed without it.
+"""
+_homebound_probabilities(::Nothing) = (DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY, DEFAULT_SEVERE_HOMEBOUND_PROBABILITY)
+_homebound_probabilities(profile::T) where {T<:HealthProfile} = (
+    hasfield(T, :symptomatic_homebound_probability) ?
+        Float64(getfield(profile, :symptomatic_homebound_probability)) : DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY,
+    hasfield(T, :severe_homebound_probability) ?
+        Float64(getfield(profile, :severe_homebound_probability)) : DEFAULT_SEVERE_HOMEBOUND_PROBABILITY)::NTuple{2, Float64}
+
+"""
+    _homebound_window(p_symptomatic::Float64, p_severe::Float64, infection::InfectionState, rng::Xoshiro)
+
+The `[start, stop)` window in which `infection` keeps its host homebound, negative for none: from symptom
+onset to recovery with `p_symptomatic`, else while severe up to a total of `p_severe`.
+"""
+@inline function _homebound_window(p_symptomatic::Float64, p_severe::Float64, infection::InfectionState, rng::Xoshiro)
+    from_symptoms = (infection.symptom_onset, infection.recovery)
+    while_severe = (infection.severeness_onset, infection.severeness_offset)
+    none = (Int16(-1), Int16(-1))
+
+    # a window the infection doesn't have can't be drawn
+    p_sym = infection.symptom_onset >= 0 ? p_symptomatic : 0.0
+    p_sev = infection.severeness_onset >= 0 ? p_severe : p_sym
+
+    # certain outcomes spend no draw, so the defaults leave the rng stream unchanged
+    p_sym >= 1.0 && return from_symptoms
+    p_sev <= 0.0 && return none
+    p_sym <= 0.0 && p_sev >= 1.0 && return while_severe
+
+    # one draw decides both, since anyone homebound from symptom onset is homebound while severe
+    u = gems_rand(rng)
+    u < p_sym && return from_symptoms
+    u < p_sev && return while_severe
+    return none
+end
+
+"""
     AbstractHealthSchedule
 
 Supertype of the concrete `HealthSchedule`, which is defined after `CareContribution` and so cannot
@@ -224,7 +264,8 @@ abstract type AbstractHealthSchedule end
 Framework entry point, not overridable. Hands `calculate_health_progression!` the shard's buffer to
 contribute care into and the profile `index` to draw from, folds the death it proposes with the host's
 committed one, validates the whole result, and only then files the transitions and writes the death.
-Invoked whenever a new infection is added to a host.
+Also files the new infection's homebound window, which no policy can drop. Invoked whenever a new
+infection is added to a host.
 """
 function compute_health!(individual::Individual, infections::InfectionRegistry,
         hp::HealthProgression, index::HealthProfileIndex, new_infection::InfectionState,
@@ -241,8 +282,22 @@ function compute_health!(individual::Individual, infections::InfectionRegistry,
 
     host_id = id(individual)
     for care in contributions
-        _emit_contribution!(sched, host_id, care)
+        _schedule_care_contribution!(sched, host_id, care)
     end
+
+    # drawn after the policy so it never shifts the policy's draws; cut at death so no end outlives the host
+    p_sym, p_sev = _with_profile(_homebound_probabilities, _health_profile(index, new_infection))::NTuple{2, Float64}
+    start, stop = _homebound_window(p_sym, p_sev, new_infection, rng)
+    outcome.death >= 0 && (stop = min(stop, outcome.death))
+    if start >= 0 && start < stop && stop > tick
+        # the drain is already past `tick`, so a window that has begun is applied now
+        if start <= tick
+            _adjust_homebound_demand!(individual, Int16(1))
+            start = Int16(-1)
+        end
+        _schedule_homebound!(sched, host_id, start, stop)
+    end
+
     wake_at!(sched, outcome.death)
     individual.death = outcome.death
     individual.killing_pathogen_id = outcome.death >= 0 ? outcome.death_pathogen_id : DEFAULT_PATHOGEN_ID

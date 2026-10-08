@@ -19,10 +19,11 @@ Returns a `DataFrame` containing the per-tick population state counts.
 | `quarantined`               | `Int64` | Total number of individuals in quarantine                                      |
 | `quarantined_students`      | `Int64` | Students in quarantine                                                         |
 | `isolated_students`         | `Int64` | Students in quarantine who are infected                                        |
-| `unable_to_attend_students` | `Int64` | Students unable to attend (closed class, severe, hospitalized, or quarantined) |
+| `unable_to_attend_students` | `Int64` | Students unable to attend (closed class, homebound, hospitalized, quarantined) |
 | `quarantined_workers`       | `Int64` | Workers in quarantine                                                          |
 | `isolated_workers`          | `Int64` | Workers in quarantine who are infected                                         |
-| `unable_to_attend_workers`  | `Int64` | Workers unable to attend (closed office, severe, hospitalized, or quarantined) |
+| `unable_to_attend_workers`  | `Int64` | Workers unable to attend (closed office, homebound, hospitalized, quarantined) |
+| `homebound`                 | `Int64` | Individuals homebound by illness and not in hospital                           |
 
 """
 function compartment_fill(postProcessor::PostProcessor)::DataFrame

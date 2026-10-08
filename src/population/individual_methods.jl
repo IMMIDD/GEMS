@@ -670,11 +670,11 @@ detected(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16) =
 ### CARE DEMAND ###
 
 """
-    _get_demand(individual::Individual, level::CareLevel)
+    _get_care_demand(individual::Individual, level::CareLevel)
 
 The host's current demand count for one care level.
 """
-@inline function _get_demand(individual::Individual, level::CareLevel)
+@inline function _get_care_demand(individual::Individual, level::CareLevel)
     level === CARE_HOSPITAL && return individual.hospital_demands
     level === CARE_ICU && return individual.icu_demands
     level === CARE_VENTILATION && return individual.ventilation_demands
@@ -682,11 +682,11 @@ The host's current demand count for one care level.
 end
 
 """
-    _set_demand!(individual::Individual, level::CareLevel, n::Int16)
+    _set_care_demand!(individual::Individual, level::CareLevel, n::Int16)
 
 Writes one care level's demand count and returns it.
 """
-@inline function _set_demand!(individual::Individual, level::CareLevel, n::Int16)
+@inline function _set_care_demand!(individual::Individual, level::CareLevel, n::Int16)
     level === CARE_HOSPITAL && return (individual.hospital_demands = n)
     level === CARE_ICU && return (individual.icu_demands = n)
     level === CARE_VENTILATION && return (individual.ventilation_demands = n)
@@ -694,17 +694,28 @@ Writes one care level's demand count and returns it.
 end
 
 """
-    _adjust_demand!(individual::Individual, level::CareLevel, delta::Int16)
+    _adjust_care_demand!(individual::Individual, level::CareLevel, delta::Int16)
 
 Adds `delta` to one care level's demand count and returns the new value, from which the caller
 detects the 0-1 and 1-0 edges.
 
 Throws on a negative result, which also catches overflow since `Int16` wraps.
 """
-@inline function _adjust_demand!(individual::Individual, level::CareLevel, delta::Int16)
-    n = _get_demand(individual, level) + delta
+@inline function _adjust_care_demand!(individual::Individual, level::CareLevel, delta::Int16)
+    n = _get_care_demand(individual, level) + delta
     n < 0 && throw(ArgumentError("care demand for $level went negative on host $(individual.id): a discharge with no matching admission. Only simulation-level reset! is safe."))
-    return _set_demand!(individual, level, n)
+    return _set_care_demand!(individual, level, n)
+end
+
+"""
+    _adjust_homebound_demand!(individual::Individual, delta::Int16)
+
+Adds `delta` to the host's homebound count and returns the new value. Throws on a negative result.
+"""
+@inline function _adjust_homebound_demand!(individual::Individual, delta::Int16)
+    n = individual.homebound_demands + delta
+    n < 0 && throw(ArgumentError("homebound count went negative on host $(individual.id): an end with no matching start. Only simulation-level reset! is safe."))
+    return (individual.homebound_demands = n)
 end
 
 
@@ -1140,6 +1151,7 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.hospital_demands = 0
     individual.icu_demands = 0
     individual.ventilation_demands = 0
+    individual.homebound_demands = 0
     individual.death = DEFAULT_TICK
 
     # Clean overflow before clearing flags

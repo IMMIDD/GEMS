@@ -4,7 +4,7 @@ export Severe
     Severe <: ProgressionCategory
 
 A disease progression category for individuals who develop severe symptoms.
-They will stay home during the severe stage of their illness but do not require hospitalization.
+They stay home during the severe stage of their illness (see `severe_homebound_probability`) but do not require hospitalization.
 
 **IMPORTANT**: The infectiousness onset must be at least 1 tick after exposure to avoid issues with immediate transmission.
 Therefore, the calculation for infectiousness_onset includes a +1 offset.

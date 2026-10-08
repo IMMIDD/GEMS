@@ -40,6 +40,7 @@ HealthProgression
 HealthProfile
 DefaultHealthProgression
 HealthProfileIndex
+MildHealthProfile
 SevereHealthProfile
 CriticalHealthProfile
 calculate_health_progression!
