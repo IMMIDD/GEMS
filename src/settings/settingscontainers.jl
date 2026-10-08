@@ -4,7 +4,7 @@
 export SettingsContainer
 export add!, get, setting, settings
 export settingtypes, foreach_setting_vector, add_type!, add_types!
-export setting_type_index, setting_type_from_index, register_setting_type!
+export setting_type_index, setting_type_from_index, register_setting_type!, declare_setting_type!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites 
 
 """
@@ -623,16 +623,35 @@ function _registered_setting_type(name::AbstractString)
 end
 
 # The setting type called `name`, or `nothing`: a registered one, else the concrete
-# `IndividualSetting` subtype of that name, registered on the way. Files name a type rather than
-# store its index, since a custom type's index depends on registration order.
-function _resolve_setting_type(name::AbstractString)
+# `IndividualSetting` subtype of that name, registered on the way with `char`. Files name a type
+# rather than store its index, since a custom type's index depends on registration order.
+function _resolve_setting_type(name::AbstractString; char::Union{Nothing, Char} = nothing)
     T = _registered_setting_type(name)
     T === nothing || return T
     found = filter(S -> setting_type_name(S) == name, _concrete_subtypes(IndividualSetting))
     isempty(found) && return nothing
     length(found) == 1 || throw(ArgumentError(
         "several setting types are called \"$name\" ($(join(found, ", "))); register the one to use"))
-    register_setting_type!(only(found))
+    register_setting_type!(only(found); char = char)
     return only(found)
+end
+
+"""
+    declare_setting_type!(name::AbstractString; char::Union{Nothing, Char} = nothing)
+
+Declares the setting type `DeclaredSetting{Symbol(name)}`, registered with `char` as
+`register_setting_type!` does, and returns it. Errors if another type already has that name.
+"""
+function declare_setting_type!(name::AbstractString; char::Union{Nothing, Char} = nothing)
+    T = DeclaredSetting{Symbol(name)}
+    other = _registered_setting_type(name)
+    if other === nothing
+        structs = filter(S -> setting_type_name(S) == name, _concrete_subtypes(IndividualSetting))
+        isempty(structs) || (other = first(structs))
+    end
+    (other === nothing || other === T) || throw(ArgumentError(
+        "cannot declare setting type \"$name\": $other already has that name"))
+    register_setting_type!(T; char = char)
+    return T
 end
 

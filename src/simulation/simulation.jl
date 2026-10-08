@@ -456,6 +456,9 @@ function _BUILD_Simulation(;
     configpath = configfile_path(configfile)
     config = load_configfile(configpath)
 
+    # SETTING TYPES, before the population files that may name them
+    determine_setting_types!(config)
+
     # SEED
     rng_seed = determine_seed(config, seed)
     master_rng = Xoshiro(rng_seed)
@@ -1078,6 +1081,42 @@ function _set_contact_sampling_method!(setting_list::Vector, method, settingtype
         end
     end
 end
+"""
+    determine_setting_types!(configfile_params::Dict)
+
+Registers the setting type each `[Settings.<Name>]` section names, with its optional `char`: a struct
+type of that name, or else a new `DeclaredSetting`. Runs before the population loads, whose files may
+name these types.
+"""
+function determine_setting_types!(configfile_params::Dict)
+    _haspath(configfile_params, ["Settings"]) || return nothing
+    sections = configfile_params["Settings"]
+    # sorted, so a config registers its types in the same order every time
+    for name in sort!(collect(keys(sections)))
+        section = sections[name]
+        section isa Dict || continue
+        char = _config_char(section, name)
+        T = _registered_setting_type(name)
+        if T !== nothing
+            # a type registered before keeps its char; a built-in's is fixed
+            (char === nothing || get(SETTING_TYPE_CHARS, T, nothing) == char) || throw(ArgumentError(
+                "[Settings.$name] sets char '$char', but $T is already registered with another char"))
+            continue
+        end
+        _resolve_setting_type(name; char = char) === nothing && declare_setting_type!(name; char = char)
+    end
+    return nothing
+end
+
+# A section's `char` key as a `Char`, or `nothing` without one.
+function _config_char(section::Dict, name::AbstractString)
+    haskey(section, "char") || return nothing
+    c = section["char"]
+    (c isa AbstractString && length(c) == 1) || throw(ArgumentError(
+        "[Settings.$name] char must be a single character, got $(repr(c))"))
+    return only(c)
+end
+
 """
     determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
 

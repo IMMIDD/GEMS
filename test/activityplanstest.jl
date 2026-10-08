@@ -217,6 +217,54 @@ end
         end
     end
 
+    @testset "Declared setting types" begin
+        # a config section declares a type no struct defines, with its own sampling method
+        cfg = TOML.parsefile(joinpath(pkgdir(GEMS), "data", "DefaultConf.toml"))
+        cfg["Settings"]["Gym"] = Dict("contact_sampling_method" =>
+            Dict("type" => "ContactparameterSampling", "parameters" => Dict("contactparameter" => 5.0)))
+        cfg["Settings"]["Sauna"] = Dict("char" => "U")
+        # one-person households, so infections can only happen at the gym
+        n = 40
+        df = DataFrame(id = Int32.(1:n), age = Int8.(fill(30, n)), sex = Int8.(ones(n)), household = Int32.(1:n))
+        table = DataFrame(id = Int32.(1:n), setting_type = fill("Gym", n), setting_id = Int32.(ones(n)))
+
+        mktempdir() do dir
+            cfgpath = joinpath(dir, "config.toml")
+            open(io -> TOML.print(io, cfg), cfgpath, "w")
+            CSV.write(joinpath(dir, "pop.csv"), df)
+            CSV.write(joinpath(dir, "memberships.csv"), table)
+            sim = Simulation(configfile = cfgpath, population = joinpath(dir, "pop.csv"),
+                membershipsfile = joinpath(dir, "memberships.csv"), seed = 1, infected_fraction = 0.1)
+            gyms = settings(sim, DeclaredSetting{:Gym})
+            @test length(gyms) == 1 && length(individuals(gyms[1])) == n
+            @test contact_sampling_method(gyms[1]).contactparameter == 5.0
+            @test startswith(sprint(show, gyms[1]), "Gym(")
+            # declared from its section alone, logged with the char it sets
+            @test settingchar(DeclaredSetting{:Sauna}(id = 1)) == 'U'
+
+            run!(sim)
+            types = dataframe(infectionlogger(sim)).setting_type
+            @test 'G' in types
+            @test all(t -> t in ('G', '?'), types)
+            @test "Gym" in GEMS._settingdata(GEMS.PostProcessor(sim)).setting_type
+
+            # saving and loading again rebuilds the gym
+            GEMS.save(population(sim), joinpath(dir, "pop2.csv"); membershipsfile = joinpath(dir, "m2.csv"))
+            again = Simulation(configfile = cfgpath, population = joinpath(dir, "pop2.csv"),
+                membershipsfile = joinpath(dir, "m2.csv"), seed = 1)
+            @test length(individuals(settings(again, DeclaredSetting{:Gym})[1])) == n
+        end
+
+        # declaring is idempotent, and refuses a second char or a name another type has
+        @test declare_setting_type!("Gym") === DeclaredSetting{:Gym}
+        @test_throws ArgumentError declare_setting_type!("Gym"; char = 'Y')
+        @test_throws ArgumentError declare_setting_type!("Household")
+        @test_throws ArgumentError declare_setting_type!("NeverUsedSetting")
+        # a char on a section of a built-in type, and a char that is not one character, are refused
+        @test_throws ArgumentError GEMS.determine_setting_types!(Dict("Settings" => Dict("Household" => Dict("char" => "Q"))))
+        @test_throws ArgumentError GEMS.determine_setting_types!(Dict("Settings" => Dict("Pool" => Dict("char" => "PL"))))
+    end
+
     @testset "Repeated setting types" begin
         store = ActivityPlanStore()
         i = Individual(id = 1, sex = 0, age = 30)

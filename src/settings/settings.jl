@@ -3,7 +3,7 @@
 ###
 import Base.contains
 export Setting, Geolocated, IndividualSetting, ContainerSetting
-export GlobalSetting, Household, Municipality, Setting
+export GlobalSetting, Household, Municipality, DeclaredSetting, Setting
 export SchoolComplex, School, SchoolYear, SchoolClass
 export Department, Office, WorkplaceSite, Workplace
 export settingchar, settingstring, setting_type_names
@@ -213,8 +213,44 @@ function Municipality(; id, individuals = nothing, flat_pool = nothing, offset =
     return Municipality(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen, scale_bound, deceased)
 end
 
+###
+### DECLAREDSETTING
+###
+"""
+    DeclaredSetting{S} <: IndividualSetting
+
+A setting type declared by name `S` rather than written as a struct, e.g. by a `[Settings.Gym]`
+config section or `declare_setting_type!("Gym")`.
+"""
+mutable struct DeclaredSetting{S} <: IndividualSetting
+    id::Int32
+    # this setting's slots of flat_pool.members, its members in the first len
+    offset::Int32
+    len::Int32
+    cap::Int32
+    flat_pool::FlatSettingPool
+    contact_sampling_method::ContactSamplingMethod
+    ags::AGS
+    # if closed, no contacts can happen here
+    isopen::Bool
+
+    # upper bound on its members' scales
+    scale_bound::Float32
+    # members at the end of `individuals` who have died
+    deceased::Int32
+end
+
+function DeclaredSetting{S}(; id, individuals = nothing, flat_pool = nothing, offset = 1, len = 0, cap = len,
+        contact_sampling_method::ContactSamplingMethod = ContactparameterSampling(0), ags = AGS(), isopen = true,
+        scale_bound = 1, deceased = 0) where {S}
+    flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
+    return DeclaredSetting{S}(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen, scale_bound, deceased)
+end
+
+setting_type_name(::Type{DeclaredSetting{S}}) where {S} = string(S)
+
 # The settings no container holds. Each keeps its members in slots of its type's FlatSettingPool.
-const FlatSetting = Union{GlobalSetting, Household, Municipality}
+const FlatSetting = Union{GlobalSetting, Household, Municipality, DeclaredSetting}
 
 # What a flat setting's keyword constructor stores: its own `individuals` in a pool of their own,
 # or slots of a shared pool.
