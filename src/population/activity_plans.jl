@@ -479,6 +479,7 @@ function memberships(pop::Population)
     types = String[]
     sids = Int32[]
     scales = Float32[]
+    names = Dict{UInt8, String}()
     for ind in individuals(pop)
         prev = 0x00
         for e in plan_entries(plans, ind)
@@ -487,7 +488,7 @@ function memberships(pop::Population)
             # which is exactly what the population row could not carry, and neither can it a scale
             if t == prev || !(t in wide) || entry_scale(e) != 1
                 push!(ids, id(ind))
-                push!(types, setting_type_name(setting_type_from_index(t)))
+                push!(types, get!(() -> setting_type_name(setting_type_from_index(t)), names, t))
                 push!(sids, setting_id(e))
                 push!(scales, entry_scale(e))
             end
