@@ -157,7 +157,7 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
                 for i in 1:size(contact_matrix_data, 1)
                     for j in 1:size(contact_matrix_data, 2)
                         # display each cell value rounded to 2 decimals in the center of each plot cell
-                        annotate!(y_coords[j], x_coords[i], Plots.text(string(round(contact_matrix_data[i, j]; digits = 2)), pointsize = pointsize, :white,  "Times Roman"))
+                        Plots.annotate!(y_coords[j], x_coords[i], Plots.text(string(round(contact_matrix_data[i, j]; digits = 2)), pointsize = pointsize, :white,  "Times Roman"))
                     end
                 end
             end
