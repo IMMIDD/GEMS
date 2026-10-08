@@ -14,7 +14,7 @@ transmission rate. Use inside a `CompositeTransmissionRate` together with a base
 function such as `ConstantTransmissionRate`.
 
 The effective susceptibility of the infectee is computed multiplicatively over all
-pathogens for which the individual has a cached immunity level: the current pathogen's
+pathogens for which the individual has an immunity record: the current pathogen's
 immunity is excluded (it is applied by the framework), while immunity from any other
 pathogen is scaled by a cross-immunity factor (0 ≤ factor ≤ 1). Each prior immunity
 independently reduces the remaining susceptibility, so the combined protection is
@@ -116,7 +116,7 @@ function transmission_factor(
         s.pathogen_id == pathogen_id && continue
         name = get_pathogen(sim, s.pathogen_id).name
         factor = get(modifier.cross_immunities, name, modifier.default_cross_factor)
-        remaining_susceptibility *= (1.0 - s.immunity_level / 100.0 * factor)
+        remaining_susceptibility *= (1.0 - immunity_level(s, infectee, sim, tick) / 100.0 * factor)
     end
 
     return remaining_susceptibility

@@ -1258,6 +1258,16 @@ import GEMS: increment!, infected!
         @test_throws ArgumentError get_pathogen(sim, Int8(-1))
         @test_throws ArgumentError get_pathogen(GEMS.pathogens(sim), Int8(-1))
         @test_throws ArgumentError get_pathogen(sim, "NonExistentPathogen")
+
+        # _with_pathogen stays type-stable past the 4 distinct pathogen types get_pathogen infers
+        ps5 = (Pathogen(id=1, name="P1", immunity_profile=FullImmunity()),
+            Pathogen(id=2, name="P2", immunity_profile=NoImmunity()),
+            Pathogen(id=3, name="P3", immunity_profile=ExponentialWaning()),
+            Pathogen(id=4, name="P4", immunity_profile=SigmoidalWaning()),
+            Pathogen(id=5, name="P5", infectiousness_profile=StagedInfectiousness()))
+        @test length(unique(typeof.(ps5))) == 5
+        @test (@inferred GEMS._with_pathogen(p -> susceptibility_factor(GEMS.immunity_profile(p), Int8(50)), ps5, Int8(4))) ≈ 0.5
+        @test_throws ArgumentError GEMS._with_pathogen(identity, ps5, Int8(9))
     end
 
     @testset "stepmod Getter" begin

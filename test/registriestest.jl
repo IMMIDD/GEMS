@@ -138,7 +138,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             i_r = Individual(id=1, sex=0, age=30)
             push_infection!(reg_r, i_r, Int8(1), Int32(1), dp_r)
             buf_r = _EndedInfection[]
-            progress_disease!(i_r, reg_r, (Pathogen(id=1, name="P1"),), buf_r, Int16(10), Xoshiro())
+            progress_disease!(i_r, reg_r, (Pathogen(id=1, name="P1"),), buf_r, Int16(10), 1)
             @test length(buf_r) == 1
             @test buf_r[1].pathogen_id == Int8(1)
             @test buf_r[1].recovery == Int16(5)
@@ -246,7 +246,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
 
         @testset "ImmunityState acquired-tick predicates" begin
             # natural-only, acquired at tick 10
-            nat = ImmunityState(Int32(0), Int16(10), GEMS.DEFAULT_TICK, Int8(0), Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0))
+            nat = ImmunityState(Int32(0), Int16(10), GEMS.DEFAULT_TICK, Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0))
             @test natural_immunity_recorded(nat)
             @test !vaccine_immunity_recorded(nat)
             @test natural_immunity_pending(nat, Int16(9))
@@ -258,7 +258,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             @test !immunity_active(nat, Int16(9))
 
             # vaccine-only, acquired at tick 5
-            vac = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(5), Int8(0), Int8(1), Int8(1), Int8(1))
+            vac = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(5), Int8(1), Int8(1), Int8(1))
             @test !natural_immunity_recorded(vac)
             @test vaccine_immunity_recorded(vac)
             @test vaccine_immunity_pending(vac, Int16(4))
@@ -267,8 +267,11 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             @test !natural_immunity_active(vac, Int16(100))  # no natural record
 
             # both sources
-            both = ImmunityState(Int32(0), Int16(10), Int16(5), Int8(0), Int8(1), Int8(1), Int8(1))
+            both = ImmunityState(Int32(0), Int16(10), Int16(5), Int8(1), Int8(1), Int8(1))
             @test natural_immunity_recorded(both) && vaccine_immunity_recorded(both)
+
+            # the deprecated form with an immunity level drops the level
+            @test ImmunityState(Int32(0), Int16(10), Int16(5), Int8(40), Int8(1), Int8(1), Int8(1)) == both
             @test immunity_active(both, Int16(5))            # vaccine active, natural pending
             @test natural_immunity_pending(both, Int16(5))
 

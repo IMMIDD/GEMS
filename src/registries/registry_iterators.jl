@@ -78,6 +78,8 @@ the shard is resolved lazily, so a cache-only individual never touches the regis
 @inline each_immunity(ind::Individual, reg::ImmunityRegistry) = ImmunityIterator(ind, reg)
 @inline each_immunity(ind::Individual, sim::Simulation) = ImmunityIterator(ind, sim.immunity_registries)
 @inline each_immunity(ind::Individual, registries::Vector{ImmunityRegistry}) = ImmunityIterator(ind, registries)
+# without a simulation (`infect!` with `sim = nothing`) there is no immunity
+@inline each_immunity(::Individual, ::Nothing) = ()
 
 # state = (next_index::Int32, in_cache::Bool)
 @inline function Base.iterate(iter::ImmunityIterator, state::Tuple{Int32,Bool} = (Int32(1), true))

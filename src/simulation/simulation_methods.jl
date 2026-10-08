@@ -509,10 +509,6 @@ function flush_ended_infections!(sim::Simulation)
                 r.pathogen_id == DEFAULT_PATHOGEN_ID && continue
                 ind = get_individual_by_id(pop, r.host_id)
                 push_immunity!(immunities, ind, r.pathogen_id, IMMUNITY_SOURCE_NATURAL, r.recovery, DEFAULT_VACCINE_ID)
-                ind.needs_immunity_update = true
-                _mark_active!(sim, ind)
-                # refresh now: this runs before the spread phase, so the level must be current
-                update_immunity!(ind, immunities, sim.pathogens, tick(sim), sim.rngs[shard_id])
             end
             # overflow unlinks before cache-slot promotions, so a just-ended overflow head
             # is unlinked before any promotion can pull it into cache
@@ -668,7 +664,7 @@ end
 
 Whether `indiv` must keep its active flag after this tick's disease update.
 """
-@inline _stays_active(indiv::Individual) = infected(indiv) || indiv.needs_immunity_update ||
+@inline _stays_active(indiv::Individual) = infected(indiv) ||
     (Int16(0) <= indiv.death && !dead(indiv)) || hospitalized(indiv) || detected(indiv)
 
 """
@@ -681,17 +677,12 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_dead = dead(indiv)
     was_symptomatic = symptomatic(indiv)
 
-    # update immunity levels
-    if indiv.needs_immunity_update
-        update_immunity!(indiv, immunity_registry(sim, id(indiv)), sim.pathogens, tick, rng(sim))
-    end
-
     # progress disease while infected, or while a scheduled death is still pending: a death can fall
     # after every infection has cleared, and the drain does not realize deaths
     if infected(indiv) || (Int16(0) <= indiv.death && !was_dead)
         shard_id = _owner_shard(id(indiv))
 
-        progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, rng(sim))
+        progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, sim.seed)
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
