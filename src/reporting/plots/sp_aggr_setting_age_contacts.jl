@@ -68,22 +68,23 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
 
     # check if a particular setting type was passed
     st = isnothing(settingtype) ? plt.settingtype : settingtype
+    name = isnothing(st) ? nothing : setting_type_name(st)
 
     # load setting data from RD object to veryfiy that there
     # are settings of the specified type
     if !isnothing(st)
         sdata = rd |> setting_data
         if isempty(sdata) ||
-            sdata[sdata.setting_type .== string(st), :].number_of_settings |> sum <= 0
-            ep = emptyplot("There's no $(string(st)) contact data available in this ResultData object.")
+            sdata[sdata.setting_type .== name, :].number_of_settings |> sum <= 0
+            ep = emptyplot("There's no $(name) contact data available in this ResultData object.")
             plot!(ep; plotargs...)
             return ep
         end
 
         # if a particular setting type was passed, adapt meta data
-        stypes = [string(st)]
-        title!(plt, "Realized Age Group Contact Structure for Setting *" * string(st) * "*")
-        filename!(plt, "realized_age_group_contact_structure_" * string(st) * ".png")
+        stypes = [name]
+        title!(plt, "Realized Age Group Contact Structure for Setting *" * name * "*")
+        filename!(plt, "realized_age_group_contact_structure_" * name * ".png")
     else
         stypes = (rd |> setting_data).setting_type
     end
@@ -92,7 +93,7 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
     contact_sampling_method = ""
 
     try
-        contact_sampling_method = meta_data(rd)["config_file_val"]["Settings"]["$st"]["contact_sampling_method"]["type"] 
+        contact_sampling_method = meta_data(rd)["config_file_val"]["Settings"]["$name"]["contact_sampling_method"]["type"] 
     catch e
         # if no "ContactSamplingMethod" is defined in the config file
         contact_sampling_method = "RandomSampling"
@@ -101,7 +102,7 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
 
     # add description
     desc  = "The contacts where drawn based on the Contact Sampling Method '$contact_sampling_method' for"
-    desc *= " the setting $st at tick $(format(rd |> final_tick, commas=true)). "
+    desc *= " the setting $name at tick $(format(rd |> final_tick, commas=true)). "
     desc *= "Each cell represents the mean number of contacts between individuals of the two age groups, "
     desc *= "relative to the total number of members in this age group. "
     
@@ -111,8 +112,8 @@ function generate(plt::AggregatedSettingAgeContacts, rd::ResultData;
     plts = []
     for st in stypes
 
-        contact_matrix_data = aggregated_setting_age_contacts(rd, eval(Symbol(st))).data
-        interval_steps = aggregated_setting_age_contacts(rd, eval(Symbol(st))).interval_steps
+        contact_matrix_data = aggregated_setting_age_contacts(rd, st).data
+        interval_steps = aggregated_setting_age_contacts(rd, st).interval_steps
     
         # create axis tick labels based on given age groups
         age_group_labels = ["[$(i * interval_steps):$((i + 1) * interval_steps))" for i in 0:length(contact_matrix_data[:,1]) - 2]

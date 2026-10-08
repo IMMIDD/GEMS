@@ -32,8 +32,11 @@ WorkplaceSite
 
 ## Functions
 ```@docs
-activate!
 add!(::SettingsContainer, ::Setting)
+add_member!(::IndividualSetting, ::Individual, ::Population)
+add_member!(::IndividualSetting, ::Individual, ::Simulation)
+remove_member!(::IndividualSetting, ::Individual, ::Population)
+remove_member!(::IndividualSetting, ::Individual, ::Simulation)
 add_type!
 add_types!
 ags(::ContainerSetting, ::Simulation)
@@ -46,7 +49,6 @@ contact_sampling_method
 contained(::Setting)
 contained_type(::Setting)
 contains_type(::ContainerSetting)
-deactivate!(::Setting)
 delete_dangling_ids!(::SettingsContainer)
 geolocation
 get_contained!
@@ -59,7 +61,6 @@ individuals(::IndividualSetting)
 individuals(::IndividualSetting, ::Simulation)
 individuals(::ContainerSetting, ::Simulation)
 is_open(::Setting)
-isactive(::Setting)
 lat(::Geolocated)
 lon(::Geolocated)
 max_individuals(::Vector{Setting}, ::Simulation)

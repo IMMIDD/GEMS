@@ -273,7 +273,8 @@ end
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
         run!(sim)
         
-        flattened_pc = vcat(infectionlogger(sim).progression_category...)
+        flattened_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
 
         # check if all infections used the custom progression category in simulation
         @test all(pc -> pc == :TestProgression, flattened_pc)
@@ -451,7 +452,8 @@ end
         run!(sim)
         
         flat_id_b = vcat(infectionlogger(sim).id_b...)
-        flat_pc = vcat(infectionlogger(sim).progression_category...)
+        flat_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
         
         # make sure that there were infections
         @test length(flat_id_b) > 0 
@@ -514,7 +516,7 @@ end
         @test SEEN_OTHER[] == Int8(100)
 
         # without a Simulation an empty registry is passed rather than erroring
-        lone = Individual(id = 1, age = 30, sex = 1, household = 1)
+        lone = Individual(id = 1, age = 30, sex = 1)
         SEEN_OWN[] = Int8(-1)
         infect!(lone, Int16(0), mkpath_ia(1, "Lone"), rng = Xoshiro(1))
         @test SEEN_OWN[] == Int8(0)
@@ -951,6 +953,115 @@ end
 
             # transmission_probability = base_rate × seasonal_factor
             @test transmission_probability(tf_ssm, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 0.4 * 1.5
+        end
+
+        @testset "Transmission Bounds" begin
+            # the infecter sheds pathogen 1; infectees cycle through immune to 1, immune to 2, infected with 2, naive
+            function bound_setup(tf; level = 100, profile = FullImmunity())
+                pa = Pathogen(id = 1, name = "BoundA",
+                    progressions = [Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 10)],
+                    transmission_function = tf, infectiousness_profile = ConstantInfectiousness(level = level),
+                    immunity_profile = profile)
+                pb = Pathogen(id = 2, name = "PathogenB",
+                    progressions = [Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 10)])
+                s = Simulation(pop_size = 200, pathogens = (pa, pb), infected_fraction = 0.0, start_date = Date(2024, 1, 1))
+                infecter = individuals(s)[1]
+                infect!(infecter, Int16(0), first_pathogen(s), rng = Xoshiro())
+                GEMS.update_individual!(infecter, Int16(1), s)
+                infectees = individuals(s)[2:end]
+                for (k, ind) in enumerate(infectees)
+                    if k % 4 == 1 || k % 4 == 2
+                        push_immunity!(immunity_registry(s, ind), ind, Int8(k % 4),
+                            GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+                        ind.needs_immunity_update = true
+                        update_immunity!(ind, immunity_registry(s, ind), s.pathogens, Int16(1), Xoshiro())
+                    elseif k % 4 == 3
+                        push_infection!(infection_registry(s, ind), ind, Int8(2), Int32(k),
+                            DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), recovery = Int16(400)))
+                    end
+                end
+                return s, infecter, infectees
+            end
+
+            ages = ["0-19", "20-59", "60-"]
+            tfs = (
+                ConstantTransmissionRate(transmission_rate = 0.3),
+                AgeDependentTransmissionRate(age_groups = ages, transmission_rates = [0.1, 0.5, 0.2]),
+                CrossImmunityTransmissionRate(transmission_rate = 0.4, cross_immunities = [("PathogenB", 0.6)], default_cross_factor = 0.3),
+                ViralInterferenceTransmissionRate(transmission_rate = 0.4, interferences = [("PathogenB", 0.4)], persistence = [("PathogenB", 10.0)]),
+                SinusoidalSeasonalTransmissionRate(transmission_rate = 0.4, amplitude = 0.5, peak_day = 30),
+                CompositeTransmissionRate(
+                    AgeDependentTransmissionRate(age_groups = ages, transmission_rates = [0.1, 0.5, 0.2]),
+                    CrossImmunityModifier(cross_immunities = [("PathogenB", 0.6)]),
+                    ViralInterferenceModifier(interferences = [("PathogenB", 0.4)], persistence = [("PathogenB", 10.0)]),
+                    SinusoidalSeasonalModifier(amplitude = 0.5, peak_day = 30)))
+
+            # the bound holds for every infectee, tick and infectiousness level
+            for tf in tfs, level in (40, 100)
+                s, infecter, infectees = bound_setup(tf; level = level)
+                hh = households(s)[1]
+                @test all(Int16.(0:15:360)) do t
+                    b = GEMS.effective_transmission_bound(tf, Int8(1), infecter, hh, t, s)
+                    all(i -> effective_transmission_probability(tf, Int8(1), infecter, i, hh, t, s) <= b + 1e-12, infectees)
+                end
+                @test @inferred(GEMS.effective_transmission_bound(tf, Int8(1), infecter, hh, Int16(1), s)) isa Float64
+            end
+
+            # a naive infectee reaches the bound
+            function reaches(tf, t, pick)
+                s, infecter, infectees = bound_setup(tf; level = 40)
+                naive = infectees[4:4:end][findfirst(pick, infectees[4:4:end])]
+                return GEMS.effective_transmission_bound(tf, Int8(1), infecter, households(s)[1], t, s) ≈
+                    effective_transmission_probability(tf, Int8(1), infecter, naive, households(s)[1], t, s)
+            end
+            @test reaches(tfs[1], Int16(1), _ -> true)
+            @test reaches(tfs[2], Int16(1), i -> 20 <= age(i) <= 59)
+            @test all(t -> reaches(tfs[5], t, _ -> true), Int16.(0:60:360))
+
+            # custom functions and modifiers fall back to no thinning
+            struct UnboundedTF <: GEMS.TransmissionFunction end
+            GEMS.transmission_probability(::UnboundedTF, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+                setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.5
+            struct DoublingModifier <: GEMS.TransmissionModifier end
+            GEMS.transmission_factor(::DoublingModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+                setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 2.0
+
+            s, infecter, _ = bound_setup(UnboundedTF(); level = 40)
+            hh = households(s)[1]
+            @test transmission_bound(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) == 1.0
+            @test GEMS.effective_transmission_bound(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) ≈ 0.4
+            doubled = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.4), DoublingModifier())
+            @test transmission_bound(doubled, Int8(1), infecter, hh, Int16(1), s) == Inf
+            s, infecter, _ = bound_setup(doubled)
+            @test GEMS.effective_transmission_bound(doubled, Int8(1), infecter, households(s)[1], Int16(1), s) == 1.0
+            # a zero rate stays zero under an unbounded modifier
+            silenced = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.0), DoublingModifier())
+            @test transmission_bound(silenced, Int8(1), infecter, households(s)[1], Int16(1), s) == 0.0
+
+            # pathogens whose bounds pre-thinning may rely on
+            struct OwnEffectiveTF <: GEMS.TransmissionFunction end
+            GEMS.effective_transmission_probability(::OwnEffectiveTF, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+                setting::Household, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 1.0
+            struct BoundedDoubleImmunity <: GEMS.ImmunityProfile end
+            GEMS.calculate_immunity(::BoundedDoubleImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+                GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+            GEMS.susceptibility_factor(::BoundedDoubleImmunity, level::Int8) = 2.0 - level / 100.0
+            GEMS.susceptibility_bound(::BoundedDoubleImmunity) = 2.0
+
+            prethinnable(tf, profile = FullImmunity()) =
+                GEMS._prethinnable(Pathogen(id = 1, name = "P", transmission_function = tf, immunity_profile = profile))
+            @test prethinnable(ConstantTransmissionRate())
+            @test prethinnable(UnboundedTF())
+            @test prethinnable(doubled)
+            @test all(prethinnable, tfs)
+            # an override for a narrower setting type counts
+            @test !prethinnable(OwnEffectiveTF())
+            @test !prethinnable(ConstantTransmissionRate(), HalfImmunity())
+            @test !prethinnable(ConstantTransmissionRate(), SeverityOnlyImmunity())
+            @test prethinnable(ConstantTransmissionRate(), BoundedDoubleImmunity())
+
+            s, infecter, _ = bound_setup(tfs[1]; level = 40, profile = BoundedDoubleImmunity())
+            @test GEMS.effective_transmission_bound(tfs[1], Int8(1), infecter, households(s)[1], Int16(1), s) ≈ 0.3 * 0.4 * 2.0
         end
 
     end

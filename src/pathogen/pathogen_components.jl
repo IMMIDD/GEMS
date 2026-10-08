@@ -9,6 +9,9 @@ export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
 export susceptibility_factor
+export transmission_bound
+export transmission_factor_bound
+export susceptibility_bound
 
 # the main defintion of pathogens is in src/pathogen/pathogens.jl
 
@@ -141,6 +144,22 @@ function transmission_probability(transFunc::TransmissionFunction, pathogen_id::
 end
 
 """
+    transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Upper bound on `transmission_probability` over every possible infectee. Defaults to `1.0`,
+which disables transmission pre-thinning for this function.
+"""
+transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 = 1.0
+
+"""
+    transmission_factor_bound(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Upper bound on `transmission_factor` over every possible infectee. Defaults to `Inf`, as a
+modifier may raise the probability.
+"""
+transmission_factor_bound(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 = Inf
+
+"""
     effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
 
 Framework entry point called by the simulation loop. Applies infectiousness and standard
@@ -172,6 +191,38 @@ Convenience wrapper without explicit RNG that delegates to the rng-accepting ove
 """
 effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
     effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+"""
+    effective_transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Upper bound on `effective_transmission_probability` over every possible infectee, at most `1.0`.
+"""
+function effective_transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    profile = immunity_profile(get_pathogen(sim, pathogen_id))
+    p = transmission_bound(transFunc, pathogen_id, infecter, setting, tick, sim) *
+        infectiousness(infecter, sim, pathogen_id) / 100.0 *
+        susceptibility_bound(profile)
+    # a zero factor zeroes the probability, whatever an unbounded one says
+    return isnan(p) ? 0.0 : min(1.0, p)
+end
+
+# whether transmission pre-thinning may rely on the pathogen's bounds
+function _prethinnable(pathogen::Pathogen)::Bool
+    TF = typeof(transmission_function(pathogen))
+    IM = typeof(immunity_profile(pathogen))
+    _overrides(effective_transmission_probability, TF, TransmissionFunction) && return false
+    return !_overrides(susceptibility_factor, IM, ImmunityProfile) || _overrides(susceptibility_bound, IM, ImmunityProfile)
+end
+
+# whether `f` has a method taking a `T` first, other than its fallback on `fallback`
+function _overrides(f, T::Type, fallback::Type)::Bool
+    for m in methods(f)
+        P = Base.unwrap_unionall(m.sig).parameters[2]
+        P === fallback && continue
+        T <: Base.rewrap_unionall(P, m.sig) && return true
+    end
+    return false
+end
 
 """
     calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
@@ -219,6 +270,14 @@ elsewhere than on transmission: `1.0` leaves the level readable by the rest of t
 (e.g. a progression assignment that attenuates severity) without affecting transmission.
 """
 susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64 = 1.0 - level / 100.0
+
+"""
+    susceptibility_bound(profile::ImmunityProfile)::Float64
+
+Upper bound on `susceptibility_factor` over every immunity level. Defaults to `1.0`; a profile
+that overrides `susceptibility_factor` without it is not pre-thinned.
+"""
+susceptibility_bound(profile::ImmunityProfile)::Float64 = 1.0
 
 
 """

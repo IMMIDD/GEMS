@@ -19,6 +19,10 @@ function _fetch_rethrow(t::Task)
     end
 end
 
+# Splits `r` into contiguous ranges for `Threads.@threads`, several per thread so an uneven range
+# still balances.
+_thread_chunks(r::AbstractUnitRange{Int}) = collect(Iterators.partition(r, cld(max(length(r), 1), 8 * Threads.nthreads())))
+
 """
     _duplicates(vec)
 
@@ -52,7 +56,7 @@ end
 function _concrete_subtypes(type::Type)::Vector{DataType}
     stypes = _cached_subtypes(type)
     if isempty(stypes)
-        if !isabstracttype(type)
+        if type isa DataType && !isabstracttype(type)
             return [type]
         end
         return []

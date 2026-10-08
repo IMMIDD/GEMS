@@ -17,6 +17,7 @@ and computationally intensive (memory & runtime) option.
         - `config_file_val::Dict{String, Any}`: Deep copy of the supplied TOML config file
         - `population_file::String`: Path to the population file
         - `population_params::Dict{String, Any}`: Parameters used to generate population
+        - `setting_type_names::Dict{String, String}`: Each setting type's log char (as a string) mapped to its name
         
     - `sim_data::Dict{String, Any}`
         - `label::String`: Label of this simulation run (needed for plotting)
@@ -119,7 +120,8 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "config_file" => () -> pP |> simulation |> configfile,
                     "config_file_val" => () -> isfile(pP |> simulation |> configfile) ? TOML.parsefile(pP |> simulation |> configfile) : Dict(), #TODO potentially adapt for no config file
                     "population_file" => () -> pP |> simulation |> populationfile,
-                    "population_params" => () -> pP |> simulation |> population |> params
+                    "population_params" => () -> pP |> simulation |> population |> params,
+                    "setting_type_names" => () -> setting_type_names()
                 ),
             "sim_data" =>
                 Dict(
@@ -168,22 +170,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     #"GlobalSetting" => () -> setting_age_contacts(pP, GlobalSetting),
                 ),
 
-            "aggregated_setting_age_contacts" =>
-                Dict(
-                    # TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
-                    # TODO: This list should be determined dynamically depending on what settings are present in the simulation
-                    "Household" => () -> _mean_contacts_per_age_group(pP, Household, 5),
-                    "SchoolClass" => () -> _mean_contacts_per_age_group(pP, SchoolClass, 2),
-                    "SchoolYear" => () -> _mean_contacts_per_age_group(pP, SchoolYear, 2),
-                    "School" => () -> _mean_contacts_per_age_group(pP, School, 2),
-                    "SchoolComplex" => () -> _mean_contacts_per_age_group(pP, SchoolComplex, 2),
-                    "Office" => () -> _mean_contacts_per_age_group(pP, Office, 5), 
-                    "Department" => () -> _mean_contacts_per_age_group(pP, Department, 5), 
-                    "Workplace" => () -> _mean_contacts_per_age_group(pP, Workplace, 5), 
-                    "WorkplaceSite" => () -> _mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
-                    "Municipality" => () -> _mean_contacts_per_age_group(pP, Municipality, 5),
-                    "GlobalSetting" => () -> _mean_contacts_per_age_group(pP, GlobalSetting, 5)
-                ),
+            "aggregated_setting_age_contacts" => _present_setting_age_contacts(pP),
 
             "dataframes" =>
                 Dict(
@@ -212,7 +199,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "observed_R" => () -> pP |> observed_R,
                     "time_to_detection" => () -> pP |> time_to_detection,
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
-                    "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
+                    "customlogger" => () -> pP |> customDF,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
                     "tick_hosptitalizations" => () -> pP |> _hospital_df,
                     "health_episodes" => () -> pP |> health_episodes,

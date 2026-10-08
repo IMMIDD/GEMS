@@ -116,6 +116,27 @@ id,age,sex,household
 
 The JLD2-variant needs to store a dictionary with one key called `data` that contains a dataframe such as presented above in the "Using Dataframes" section.
 
+### Several Settings of One Type
+
+A membership column such as `household` holds one setting per individual: their *primary* setting of that type.
+Further settings of a type (e.g., a second office) go into a separate membership table with one row per setting:
+
+```csv
+id,setting_type,setting_id
+1,Household,3
+4,Office,7
+```
+
+Pass this table alongside a CSV population file, the same way as a settings file:
+
+```julia
+sim = Simulation(population = "path/to/my/population_file.csv", membershipsfile = "path/to/my/memberships.csv")
+```
+
+A JLD2 population file can instead store the table under the key `memberships`, which GEMS reads automatically.
+An optional `primary` column (`true`/`false`) marks a row as the primary setting of an individual whose membership column is empty for that type.
+`memberships(population)` returns the table as a dataframe, and `save(population, path; membershipsfile = ...)` writes both files.
+
 To load such a file, simply pass the filepath as the `population` argument to the `Simulation()` function:
 
 ```julia

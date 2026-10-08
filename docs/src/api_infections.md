@@ -39,7 +39,7 @@ critical_offset(::DiseaseProgression)
 recovery(::DiseaseProgression)
 severeness_onset(::DiseaseProgression)
 severeness_offset(::DiseaseProgression)
-spread_infection!(::Setting, ::Simulation, ::Pathogen)
+spread_infections!(::Simulation)
 symptom_onset(::DiseaseProgression)
 try_to_infect!
 update_individual!(::Individual, ::Int16, ::Simulation)

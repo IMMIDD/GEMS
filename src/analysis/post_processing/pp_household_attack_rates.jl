@@ -13,7 +13,8 @@ the course of the simuation. As the attack rate calculation is very
 computationally intensive, it is not done for _all_ household but rather
 for a subset of households. You can change the desired subset size
 through the optional `hh_samples` argument. Its default can be found
-in `constants.jl`
+in `constants.jl`. If several infections introduce a pathogen into a household
+at the same first tick, the one with the lowest infection id counts.
 
 # Returns
 
@@ -57,12 +58,12 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
 
     infs.home_chain, infs.started_chain = _home_chains(infs.infection_id, infs.source_infection_id, infs.setting_type)
 
-    # generate dataframe of households
-    sim = simulation(postProcessor)
-    hh_sizes = _household_sizes(individuals(sim), households(sim))
+    # `household_b` is the infectee's primary household, so only the sampled households are looked up
+    hhs = households(simulation(postProcessor))
+    infs.hh_id = Int32.(infs.household_b)
+    infs.hh_size = Int16[size(hhs[h]) for h in infs.hh_id]
 
     return infs |>
-        x -> leftjoin(x, hh_sizes, on = [:id_b => :ind_id]) |>
         x -> DataFrames.select(x, :tick, :hh_id, :home_chain, :started_chain, :hh_size, :pathogen_id) |>
         x -> x[x.started_chain, :] |>
         x -> groupby(x, [:hh_id, :pathogen_id]) |>
@@ -73,20 +74,6 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         x -> transform(x, [:chain_size, :hh_size] => ByRow((c, h) -> (h == 0 ? 0 : c / (h - 1))) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>
         x -> DataFrames.select(x, :pathogen_id, :first_introduction, :hh_id, :hh_size, :chain_size, :hh_attack_rate)
-end
-
-# Each individual's id, household id and household size, looking each household up once.
-function _household_sizes(inds::Vector{Individual}, hhs::Vector{Household})
-    ind_id = Vector{Int32}(undef, length(inds))
-    hh_id = Vector{Int32}(undef, length(inds))
-    hh_size = Vector{Int16}(undef, length(inds))
-    for (k, ind) in enumerate(inds)
-        hh = hhs[household_id(ind)]
-        ind_id[k] = id(ind)
-        hh_id[k] = id(hh)
-        hh_size[k] = Int16(size(hh))
-    end
-    return DataFrame(ind_id = ind_id, hh_id = hh_id, hh_size = hh_size)
 end
 
 # Per infection, the size of the household chain it started, and whether it started one (was not infected

@@ -9,7 +9,7 @@
     end
 
     @testset "Vaccinate Individuals" begin
-        i = Individual(id = 1, sex = 0, age = 31, household=1)
+        i = Individual(id = 1, sex = 0, age = 31)
         reg = ImmunityRegistry()
         pid = target_pathogen_id(v)
 

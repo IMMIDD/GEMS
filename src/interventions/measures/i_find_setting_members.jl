@@ -81,7 +81,7 @@ end
 ###
 
 """
-    process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers)
+    process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers, sid::Int32 = PRIMARY_SETTING_ID)
 
 Finds all members of one of the settings an individual is associated with. the measure's 
 field `settingtype` specifies which kind of setting shall be queried, the `nonself` 
@@ -94,23 +94,23 @@ The `follow_up` strategy is handed over to all found members (and enqueued in th
 - `sim::Simulation`: Simulation object
 - `ind::Individual`: Individual that this measure will be applied to (focus individual)
 - `measure::FindSettingMembers`: Measure instance
+- `sid::Int32 = PRIMARY_SETTING_ID` *(optional)*: Id of the setting whose members are found;
+    the individual's primary setting of the type by default
 
 # Returns
 
 - `Nothing`: Triggers the `follow_up` strategy for each found member (skipping the focal
-    individual when `nonself` is set).
+    individual when `nonself` is set); does nothing for an individual who holds no setting of
+    the type.
 """
-function process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers)
+function process_measure(sim::Simulation, ind::Individual, measure::FindSettingMembers, sid::Int32 = PRIMARY_SETTING_ID)
 
     # setting type
     st = measure |> settingtype
 
-    # setting id
-    sid = setting_id(ind, st)
-
-    # setting object
-    s = sim |> settingscontainer |>
-        x -> setting(x, st, sid)
+    # setting object; someone without a setting of this type has no members to find
+    s = sid == PRIMARY_SETTING_ID ? _primary_setting(ind, sim, st) : settings(sim, st)[sid]
+    isnothing(s) && return nothing
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identiying $(settingchar(s)) contacts $(map(x -> GEMS.id(x), [i for i in individuals(s) if i != ind])) at tick $(sim |> tick)"
 

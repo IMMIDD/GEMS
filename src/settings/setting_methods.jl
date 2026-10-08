@@ -1,7 +1,6 @@
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, individuals_in_ags, ags
 export geolocation, lat, lon, present_individuals, is_open, open!, close!
 export sample_individuals
-export activate!
 
 
 ### Setting access functions
@@ -208,11 +207,11 @@ end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+    sample_individuals(individuals::AbstractVector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+function sample_individuals(individuals::AbstractVector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
     if n >= length(individuals)
         return individuals
     else
@@ -230,13 +229,13 @@ sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_
 
 
 """
-    sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+    sample_individuals!(buffer::Vector{Individual}, individuals::AbstractVector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
 
 In-place variant of `sample_individuals` that writes the subsample of size `n` into `buffer`
 (resized accordingly) instead of allocating a new vector. Copies all individuals if
 `n >= length(individuals)`. Returns `buffer`.
 """
-function sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+function sample_individuals!(buffer::Vector{Individual}, individuals::AbstractVector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
     if n >= length(individuals)
         resize!(buffer, length(individuals))
         copyto!(buffer, individuals)
@@ -261,7 +260,7 @@ Pushes the individuals present in a given IndividualSetting, i.e., only those in
 """
 function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
     if is_open(setting)
-        append!(indivs, setting |> individuals)
+        append!(indivs, view(individuals(setting), 1:_alive(setting)))
     end
 end
 
@@ -510,17 +509,13 @@ function min_max_avg_individuals(stngs::Vector{<:Setting}, simulation::Simulatio
         return (nothing, nothing, nothing)
     end
 
-    # own buffer: post processing steps may run concurrently
-    indivs = Individual[]
-
     min_val = typemax(Int)
     max_val = -1
     total = 0
 
     for s in stngs
-        empty!(indivs)
-        individuals!(indivs, s, simulation)
-        cnt = length(indivs)
+        # counts the members without copying them
+        cnt = size(s, simulation)
 
         total += cnt
 
@@ -543,7 +538,15 @@ end
 Opens the setting.
 """
 function open!(setting::Setting)
+    setting.isopen && return nothing
     setting.isopen = true
+    pool = _pool(setting)
+    if pool !== nothing
+        _count_closed!(pool, -1)
+        # the containers above now hold different members, so their block is repacked
+        _mark_dirty!(pool, setting)
+    end
+    return nothing
 end
 """
     open!(setting::Setting, simulation::Simulation)
@@ -551,7 +554,7 @@ end
 Sets the setting and all settings contained by it as open.
 """
 function open!(setting::Setting, simulation::Simulation)
-    setting.isopen = true
+    open!(setting)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
@@ -568,7 +571,15 @@ end
 Closes the setting.
 """
 function close!(setting::Setting)
+    setting.isopen || return nothing
     setting.isopen = false
+    pool = _pool(setting)
+    if pool !== nothing
+        _count_closed!(pool, +1)
+        # the containers above now hold different members, so their block is repacked
+        _mark_dirty!(pool, setting)
+    end
+    return nothing
 end
 
 """
@@ -577,7 +588,7 @@ end
 Sets the setting and all settings contained by it as closed (not open).
 """
 function close!(setting::Setting, simulation::Simulation)
-    setting.isopen = false
+    close!(setting)
     d::Dict{DataType, Vector{Int32}} = Dict()
     get_contained!(setting, d, simulation)
     for (k, v) in d
@@ -611,6 +622,8 @@ function remove_empty_settings!(sim::Simulation)
         for (i, s) in enumerate(settinglist)
             if length(individuals(s, sim)) == 0
                 push!(rem_dict[type], i)
+                # its slots in a flat pool are stranded, for the next compaction to reclaim
+                s isa FlatSetting && (s.flat_pool.dead += Int(s.cap))
             end
         end
     end
@@ -625,17 +638,90 @@ function remove_empty_settings!(sim::Simulation)
 end 
 
 
-"""
-    activate!(setting::Setting, sim::Simulation)
+###
+### SCALE BOUNDS
+### Each setting keeps an upper bound on its members' scales: a leaf the largest among its
+### members, a container the largest among its leaves, refreshed with its span.
+###
 
-Activates setting and recursively activates the the containing setting.
-"""
-function activate!(setting::Setting, sim::Simulation)
-    activate!(setting)
-    # Check if this setting is contained within a parent setting
-    if hasproperty(setting, :contained) && setting.contained != DEFAULT_SETTING_ID
-        # Recursively activate the parent
-        parent_setting = settings(sim, contained_type(typeof(setting)))[setting.contained]
-        activate!(parent_setting, sim)
+@inline _scale_bound(s::T) where {T<:Setting} = hasfield(T, :scale_bound) ? s.scale_bound : 1.0f0
+
+# recounts a leaf's bound from its members
+function _refresh_scale_bound!(plans::ActivityPlanStore, s::T) where {T<:IndividualSetting}
+    hasfield(T, :scale_bound) || return nothing
+    b = 1.0f0
+    # deceased members draw no contacts, so their scales do not count
+    for m in view(individuals(s), 1:_alive(s))
+        m.plan_scaled || continue
+        slot = plan_slot(plans, m, T, id(s))
+        slot == 0 || (b = max(b, Float32(entry_scale(@inbounds plans.entries[slot]))))
     end
+    return _set_scale_bound!(s, b)
 end
+
+# a pooled leaf's containers pick up its new bound when its block is repacked
+function _set_scale_bound!(s::T, b::Float32) where {T<:IndividualSetting}
+    (hasfield(T, :scale_bound) && s.scale_bound != b) || return nothing
+    s.scale_bound = b
+    pool = _pool(s)
+    pool === nothing || _mark_dirty!(pool, s)
+    return nothing
+end
+
+
+###
+### MEMBERSHIP MUTATION - SIMULATION CONVENIENCE
+### The primitives take a `Population`; these are here because `Simulation` does not exist
+### yet where they are defined.
+###
+
+"""
+    add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false, scale::Real = 1.0)
+
+Adds a member, taking the population from the simulation.
+"""
+add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation; primary::Bool = false, scale::Real = 1.0) =
+    add_member!(setting, individual, population(sim); primary = primary, scale = scale)
+
+"""
+    set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+
+Makes setting `sid` the individual's primary setting of type `T`, taking the population from
+the simulation.
+"""
+set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting} =
+    set_primary!(population(sim), individual, T, sid)
+
+"""
+    set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+
+Sets the scale of the individual's entry for setting `sid` of type `T`, and that setting's scale bound.
+"""
+function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+    plans = activity_plans(sim)
+    _set_entry_scale!(plans, individual, T, sid, scale)
+    s = settings(sim, T)[sid]
+    # raising a scale can only raise the bound; lowering one may free it, so recount
+    # the bound must use the scale as rounded into the entry's Float16
+    stored = Float32(Float16(scale))
+    # a deceased member's scale does not count
+    deceased = _is_deceased(s, member_index(plans.entries[plan_slot(plans, individual, T, sid)]))
+    !deceased && stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
+    return nothing
+end
+
+"""
+    remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Removes a member, taking the population from the simulation.
+"""
+remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    remove_member!(setting, individual, population(sim))
+
+"""
+    mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Marks a member deceased, taking the population from the simulation.
+"""
+mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    mark_deceased!(setting, individual, population(sim))

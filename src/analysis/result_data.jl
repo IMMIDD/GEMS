@@ -240,21 +240,23 @@ mutable struct ResultData <: AbstractResultData
 
     @doc """
 
-        ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
+        ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS, share_logger_data::Bool = true)
 
     Create a `ResultData` object using a `Simulation` and the name of a `ResultDataStyle`, that describes the level of detail
     for the fields to be calculated. This constructor instantiates a default `PostProcessor` for
     the passed simulation object. If you want to manually configure the `PostProcessor`,
     you need to instantiate it first and pass the `PostProcessor` to the `ResultData` constructor instead.
     Post Processing requires a simulation to be done.
-    At most `max_tasks` result functions run at the same time.
+    At most `max_tasks` result functions run at the same time. `share_logger_data` is passed to the
+    `PostProcessor`: with it, the result's logger columns share memory with the simulation's loggers.
     """
-    ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS) =
-        ResultData(PostProcessor(sim), style = style, max_tasks = max_tasks)
+    ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS,
+            share_logger_data::Bool = true) =
+        ResultData(PostProcessor(sim; share_logger_data), style = style, max_tasks = max_tasks)
 
     @doc """
 
-        ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false, max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
+        ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false, max_tasks::Integer = POST_PROCESSING_MAX_TASKS, share_logger_data::Bool = true)
 
     Create a vector `ResultData` objects using a vector of `Simulation` objects and the name of a `ResultDataStyle`, that describes the level of detail
     for the fields to be calculated. If you want to manually configure the `PostProcessor`,
@@ -262,11 +264,12 @@ mutable struct ResultData <: AbstractResultData
     Post Processing requires a simulation to be done.
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
-    At most `max_tasks` result functions run at the same time.
+    At most `max_tasks` result functions run at the same time. `share_logger_data` is passed to the
+    `PostProcessor`s.
     """
     ResultData(sim::Vector{<:Simulation}; style::String = "DefaultResultData", print_infos::Bool = false,
-            max_tasks::Integer = POST_PROCESSING_MAX_TASKS) =
-        ResultData(PostProcessor(sim), style = style, print_infos = print_infos, max_tasks = max_tasks)
+            max_tasks::Integer = POST_PROCESSING_MAX_TASKS, share_logger_data::Bool = true) =
+        ResultData(PostProcessor(sim; share_logger_data), style = style, print_infos = print_infos, max_tasks = max_tasks)
 
 end
 
@@ -364,6 +367,16 @@ Returns an empty dictionary if the data is not available in the input `ResultDat
 """
 function population_params(rd::ResultData)
     return(get(rd |> meta_data, "population_params", Dict()))
+end
+
+"""
+    setting_type_names(rd::ResultData)
+
+Returns each setting type's log char mapped to its name.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function setting_type_names(rd::ResultData)
+    return(get(rd |> meta_data, "setting_type_names", Dict{String, String}()))
 end
 
 """
@@ -760,7 +773,18 @@ Returns an age X age contact matrix for the specified `settingtype` (e.g. Househ
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
 function setting_age_contacts(rd::ResultData, settingtype::DataType)
-    return(get(rd |> setting_age_contacts, string(settingtype), Dict()))
+    return setting_age_contacts(rd, setting_type_name(settingtype))
+end
+
+"""
+    setting_age_contacts(rd::ResultData, name::AbstractString)
+
+Returns an age X age contact matrix for the setting type called `name` (e.g. "Household") based on
+sampled data. Works without the type being registered in the session, e.g. after import.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function setting_age_contacts(rd::ResultData, name::AbstractString)
+    return(get(rd |> setting_age_contacts, name, Dict()))
 end
 
 """
@@ -780,7 +804,18 @@ Returns an age group X age group contact matrix for the specified `settingtype` 
 Returns an empty dictionary if the data is not available in the input `ResultData` object.
 """
 function aggregated_setting_age_contacts(rd::ResultData, settingtype::DataType)
-    return(get(rd |> aggregated_setting_age_contacts, string(settingtype), Dict()))
+    return aggregated_setting_age_contacts(rd, setting_type_name(settingtype))
+end
+
+"""
+    aggregated_setting_age_contacts(rd::ResultData, name::AbstractString)
+
+Returns an age group X age group contact matrix for the setting type called `name` (e.g.
+"Household") based on sampled data. Works without the type being registered in the session, e.g.
+after import. Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function aggregated_setting_age_contacts(rd::ResultData, name::AbstractString)
+    return(get(rd |> aggregated_setting_age_contacts, name, Dict()))
 end
 
 ###

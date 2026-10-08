@@ -87,13 +87,26 @@ function transmission_factor(
         tick::Int16,
         sim::Simulation,
         rng::Xoshiro)::Float64
-    days = _seasonal_tick_to_days(tick, sim.tickunit)
-    doy = Dates.dayofyear(sim.startdate + Dates.Day(days))
-    return 1.0 + modifier.amplitude * cos(2π * (doy - modifier.peak_day) / 365.0)
+    return _seasonal_factor(modifier, tick, sim)
 end
 
 transmission_factor(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+"""
+    transmission_factor_bound(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Returns the seasonal factor at `tick`, which every infectee gets.
+"""
+transmission_factor_bound(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+    _seasonal_factor(modifier, tick, sim)
+
+# The seasonal factor on the calendar day of `tick`.
+function _seasonal_factor(modifier::SinusoidalSeasonalModifier, tick::Int16, sim::Simulation)::Float64
+    days = _seasonal_tick_to_days(tick, sim.tickunit)
+    doy = Dates.dayofyear(sim.startdate + Dates.Day(days))
+    return 1.0 + modifier.amplitude * cos(2π * (doy - modifier.peak_day) / 365.0)
+end
 
 # Converts the current tick to whole calendar days based on the simulation tick unit.
 function _seasonal_tick_to_days(tick::Int16, tickunit::Char)::Int
@@ -195,3 +208,11 @@ end
 # Convenience wrapper without explicit RNG — uses the thread-local default
 transmission_probability(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+
+"""
+    transmission_bound(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Returns the `transmission_rate` times the modifier's `transmission_factor_bound`.
+"""
+transmission_bound(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+    transFunc.transmission_rate * transmission_factor_bound(transFunc.modifier, pathogen_id, infecter, setting, tick, sim)
