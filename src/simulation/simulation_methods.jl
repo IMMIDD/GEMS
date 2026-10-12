@@ -799,7 +799,7 @@ Marks a dead individual deceased in each of their settings.
 """
 function mark_deceased!(individual::Individual, sim::Simulation)
     for e in plan_entries(activity_plans(sim), individual)
-        _with_entry_setting(s -> mark_deceased!(s, individual, sim), sim, e)
+        _with_entry_setting(s -> mark_deceased!(s, individual, sim), settingscontainer(sim), e)
     end
     return nothing
 end

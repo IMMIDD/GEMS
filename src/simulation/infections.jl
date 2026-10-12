@@ -403,7 +403,7 @@ function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation) whe
     cntnr = settingscontainer(sim)
     for e in plan_entries(plans, ind)
         leaf_index = member_index(e)
-        _with_entry_setting(sim, e) do setting
+        _with_entry_setting(cntnr, e) do setting
             # dead members are left out of `present_members`, so they spread nowhere
             _is_deceased(setting, leaf_index) && return nothing
             # the entry's own setting
@@ -422,20 +422,6 @@ function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation) whe
     frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, 1.0f0)
     return nothing
 end
-
-# Calls `use` with the entry's setting as its concrete type, found by unrolling over the
-# membership types so each comparison is against a constant index.
-@inline _with_entry_setting(use::U, sim::Simulation, e::PlanEntry) where {U} =
-    _unroll_entry_setting(use, sim, e, membership_setting_types(Individual)...)
-
-@inline function _unroll_entry_setting(use::U, sim::Simulation, e::PlanEntry, ::Type{T}, rest...) where {U, T<:IndividualSetting}
-    setting_type_of(e) == setting_type_index(T) || return _unroll_entry_setting(use, sim, e, rest...)
-    return use(settings(sim, T)[setting_id(e)])
-end
-
-# no membership type matched: a setting type GEMS does not ship, looked up at runtime
-@inline _unroll_entry_setting(use::U, sim::Simulation, e::PlanEntry) where {U} =
-    use(settings(sim, setting_type_from_index(setting_type_of(e)))[setting_id(e)])
 
 # Calls `f` with the sampling method as its concrete type for the built-in methods, so sampling
 # compiles per method.
