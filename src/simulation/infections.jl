@@ -387,8 +387,9 @@ setting of each plan entry, each container above it, and the GlobalSetting.
 function spread_infections!(sim::Simulation)
     Threads.@threads :static for _ in 1:Threads.nthreads()
         for ind in sim.infectious_individuals[Threads.threadid()]
-            spread_here = (setting, pos, scale) -> _spread_in!(setting, pos, scale, ind, sim)
-            _foreach_spread_setting(spread_here, ind, sim)
+            _foreach_spread_setting(ind, sim) do setting, frame_pos, scale
+                _spread_in!(setting, frame_pos, scale, ind, sim)
+            end
         end
     end
     return nothing
@@ -409,8 +410,10 @@ function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation) whe
             visit(setting, Int(leaf_index), _membership_scale(plans, ind, setting, cntnr))
             # each container above it that lists them, even for an inactive entry: someone in two
             # classes of one school is listed in the school once, maybe under this class
-            _foreach_container_above(setting, leaf_index, cntnr) do container, frame_pos
-                visit(container, frame_pos, _membership_scale(plans, ind, container, cntnr))
+            if _has_container(setting)
+                _foreach_container_above(setting, leaf_index, cntnr) do container, frame_pos
+                    visit(container, frame_pos, _membership_scale(plans, ind, container, cntnr))
+                end
             end
         end
     end
@@ -434,18 +437,28 @@ end
 @inline _unroll_entry_setting(use::U, sim::Simulation, e::PlanEntry) where {U} =
     use(settings(sim, setting_type_from_index(setting_type_of(e)))[setting_id(e)])
 
-# Calls `visit(container, frame_pos)` for each container above `leaf` whose `present_members` list its
-# member at `leaf_index`. Someone in two classes of one school is listed there once, so only one class reaches it.
+# Calls `f` with the sampling method as its concrete type for the built-in methods, so sampling
+# compiles per method.
+@inline function _with_sampling_method(f::F, csm::ContactSamplingMethod) where {F}
+    csm isa ContactparameterSampling && return f(csm)
+    csm isa RandomSampling && return f(csm)
+    csm isa AgeBasedContactSampling && return f(csm)
+    return f(csm)
+end
+
+# Calls `visit(container, frame_pos)` for each container above `leaf`, which must have one, whose
+# `present_members` list its member at `leaf_index`. Someone in two classes of one school is listed
+# there once, so only one class reaches it.
 @inline _foreach_container_above(visit::V, leaf::IndividualSetting, leaf_index::Int32, cntnr::SettingsContainer) where {V} =
     _foreach_container_above(visit, leaf, leaf, leaf_index, cntnr)
 
 function _foreach_container_above(visit::V, s::S, leaf::IndividualSetting, leaf_index::Int32,
                                   cntnr::SettingsContainer) where {V, S<:Setting}
-    (hasfield(S, :contained) && s.contained != DEFAULT_SETTING_ID) || return nothing
     c = settings(cntnr, contained_type(S))[s.contained]
     frame_pos = container_frame_index(cntnr, c, leaf, leaf_index)
     frame_pos == DEFAULT_MEMBER_INDEX || visit(c, Int(frame_pos))
-    return _foreach_container_above(visit, c, leaf, leaf_index, cntnr)
+    _has_container(c) && _foreach_container_above(visit, c, leaf, leaf_index, cntnr)
+    return nothing
 end
 
 # The individual's position in the GlobalSetting, which copied the population in its order when it
@@ -466,37 +479,28 @@ function _global_position(ind::Individual, sim::Simulation)::Int
 end
 
 # Spreads `ind`'s infections in one setting: samples their contacts there and tries each pathogen they shed on them.
-function _spread_in!(setting::Setting, pos::Int, s_host::Float32, ind::Individual, sim::Simulation)
+function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Individual, sim::Simulation)
     # at scale 0 the host meets nobody here
     s_host == 0 && return nothing
-    can_infect(ind, setting, tick(sim)) || return nothing
-    csm = setting.contact_sampling_method
-    # union splitting on csm
-    if csm isa ContactparameterSampling
-        _spread_with!(csm, setting, pos, s_host, ind, sim)
-    elseif csm isa RandomSampling
-        _spread_with!(csm, setting, pos, s_host, ind, sim)
-    elseif csm isa AgeBasedContactSampling
-        _spread_with!(csm, setting, pos, s_host, ind, sim)
-    else
-        _spread_with!(csm, setting, pos, s_host, ind, sim)
-    end
-    return nothing
-end
-
-function _spread_with!(csm, setting, pos::Int, s_host::Float32, ind::Individual, sim::Simulation)
-    cntnr = settingscontainer(sim)
-    c_buffer = sim.contact_buffers[Threads.threadid()]
     current_tick = tick(sim)
+    can_infect(ind, setting, current_tick) || return nothing
     bounds, thin = _transmission_bounds(ind, setting, current_tick, sim)
     # no shedding pathogen can infect anyone here
     thin == 0 && return nothing
-    sample_scaled_contacts!(c_buffer, sim.draw_buffers[Threads.threadid()], csm, setting, pos,
-        present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
-        s_host, _scale_bound(setting); thin = thin)
 
+    cntnr = settingscontainer(sim)
+    contacts = sim.contact_buffers[Threads.threadid()]
+    _with_sampling_method(setting.contact_sampling_method) do csm
+        sample_scaled_contacts!(contacts, sim.draw_buffers[Threads.threadid()], csm, setting, frame_pos,
+            present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
+            s_host, _scale_bound(setting); thin = thin)
+    end
+
+    # every contact passed `can_be_contacted` when it was sampled
     type_rank = setting_type_index(typeof(setting))
-    _spread_to_contacts!(ind, c_buffer, sim, setting, bounds, thin, Int32(pos), type_rank)
+    for c in contacts
+        _try_to_infect!(ind, c, sim, setting, bounds, thin, Int32(frame_pos), type_rank)
+    end
     return nothing
 end
 
@@ -512,12 +516,4 @@ end
     # rounded up: keeping slightly too many contacts is harmless, the extra ones transmit nothing
     thin = Float32(any_bound)
     return bounds, thin < any_bound ? nextfloat(thin) : thin
-end
-
-# every contact in the buffer passed `can_be_contacted` when it was sampled
-function _spread_to_contacts!(ind, c_buffer, sim, setting, bounds, thin::Float32,
-        infecter_position::Int32, type_rank::UInt8)
-    for c in c_buffer
-        _try_to_infect!(ind, c, sim, setting, bounds, thin, infecter_position, type_rank)
-    end
 end

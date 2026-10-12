@@ -1013,6 +1013,10 @@ end
 # whether the member at position `idx` is deceased
 @inline _is_deceased(s::IndividualSetting, idx::Integer) = _deceased(s) > 0 && idx > _alive(s)
 
+# Whether `s` sits under a container: its type has a parent level and its `contained` id is set.
+# `hasfield` folds on a concrete type, so a type without a parent compiles to `false`.
+@inline _has_container(s::S) where {S<:Setting} = hasfield(S, :contained) && s.contained != DEFAULT_SETTING_ID
+
 # c's leaves, as the range of its pool's leaves `_build_pool!` recorded for it
 @inline function _leaf_range(c::C) where {C<:ContainerSetting}
     level = (_pool(c)::HierarchicalSettingPool).container_groups[_container_depth(C)]::ContainerLevel{C}
