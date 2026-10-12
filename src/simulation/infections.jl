@@ -18,7 +18,9 @@ export infect!, sample_contacts
         lat::Float32,
         setting_type::Char,
         ags::Int32,
-        source_infection_id::Int32)
+        source_infection_id::Int32,
+        infecter_position::Int32,
+        type_rank::UInt8)
 
 Infect `infectee` with the specified `pathogen` and calculate time to infectiousness
 and time to recovery. Optional arguments `infecter_id`. `setting_id`, and `setting_type`
@@ -39,6 +41,9 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 - `setting_type::Char`: Setting type as char (e.g. "h" for `Household`)
 - `ags::Int32`*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
 - `source_infection_id::Int32`: Current infection ID of the infecting individual
+- `infecter_position::Int32`: Infecting individual's index in the setting's `present_members`
+- `type_rank::UInt8`: Dense index of the setting's type. With the setting id and
+  `infecter_position`, it picks which infection is kept when an individual is infected twice in one tick
 
 # Returns
 
@@ -81,22 +86,20 @@ function infect!(infectee::Individual,
         # without a persistent registry, an overflow would dangle, so require a free cache slot
         any(i -> !infectee.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
-        new_infection_id = DEFAULT_INFECTION_ID
-        state = push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
+        state = push_infection!(InfectionRegistry(), infectee, id(pathogen), DEFAULT_INFECTION_ID, dp, tag)
         # throwaway schedule: with no tick loop nothing would drain it, and with an
         # empty profile index no care is drawn anyway
         compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), HealthProfileIndex(), state, tick, rng, HealthSchedule())
         _mark_infected!(infectee, id(pathogen))
     else
         # stage for the serial flush, which dedups, logs and sets the host's flags
-        new_infection_id = DEFAULT_INFECTION_ID
         shard_id = _owner_shard(id(infectee))
         push!(sim.infection_buffers[Threads.threadid(), shard_id],
             _PendingInfection(id(infectee), infecter_id, source_infection_id, setting_id, ags,
                 infecter_position, lat, lon, setting_type, tick, id(pathogen), tag, type_rank, dp))
     end
 
-    return new_infection_id
+    return DEFAULT_INFECTION_ID
 end
 
 """
@@ -111,7 +114,9 @@ end
         lat::Float32 = NaN32,
         setting_type::Char = '?',
         ags::Int32 = Int32(-1),
-        source_infection_id::Int32 = DEFAULT_INFECTION_ID)
+        source_infection_id::Int32 = DEFAULT_INFECTION_ID,
+        infecter_position::Int32 = Int32(0),
+        type_rank::UInt8 = UInt8(0))
 
 Infect `infectee` with the pathogen of the simulation at the current tick of the simulation. Wrapper for optional keyword arguments
 
@@ -129,6 +134,9 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 - `setting_type::Char = '?'` *(optional)*: Setting type as char (e.g. "h" for `Household`)
 - `ags::Int32 = Int32(-1)` *(optional)*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
 - `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
+- `infecter_position::Int32 = Int32(0)` *(optional)*: Infecting individual's index in the setting's `present_members`
+- `type_rank::UInt8 = UInt8(0)` *(optional)*: Dense index of the setting's type. With the setting id and
+  `infecter_position`, it picks which infection is kept when an individual is infected twice in one tick
 
 # Returns
 
@@ -194,15 +202,15 @@ function try_to_infect!(infctr::Individual,
         infecter_position::Int32 = Int32(0),
         type_rank::UInt8 = UInt8(0))::Bool
 
-    # only `pathogen` is tried, on a contact that is kept
+    # bound 1 for `pathogen` and 0 for the rest, so only it is tried; thin 1 keeps the contact
     bounds = map(p -> id(p) == id(pathogen) ? 1.0 : 0.0, pathogens(sim))
     return _try_to_infect!(infctr, infctd, sim, setting, bounds, 1.0f0, infecter_position, type_rank)
 end
 
-# Tries to infect `infctd` with each pathogen whose entry of `bounds` is above 0, on a contact kept
-# with `thin`. A pathogen's probability must not exceed its bound.
-function _try_to_infect!(infctr::Individual,
-        infctd::Individual,
+# Tries each pathogen whose bound is above 0 on `infectee`, a contact kept with probability `thin`.
+# A pathogen's probability must not exceed its bound.
+function _try_to_infect!(infecter::Individual,
+        infectee::Individual,
         sim::Simulation,
         setting::Setting,
         bounds::NTuple{N, Float64},
@@ -211,53 +219,53 @@ function _try_to_infect!(infctr::Individual,
         type_rank::UInt8)::Bool where {N}
 
     # if one of both is dead
-    if dead(infctr) || dead(infctd)
+    if dead(infecter) || dead(infectee)
         return false
     end
 
     # if one of both is hospitalized
-    if hospitalized(infctr) || hospitalized(infctd)
+    if hospitalized(infecter) || hospitalized(infectee)
         return false
     end
 
     # calculate infection probabilities
-    infection_probabilities = map((pathogen, bound) -> _infection_probability(infctr, infctd, sim, pathogen, setting, bound),
+    infection_probabilities = map((pathogen, bound) -> _infection_probability(infecter, infectee, sim, pathogen, setting, bound),
         pathogens(sim), bounds)
 
     # try to infect
     transmits = _draw_transmissions(infection_probabilities, bounds, thin, rng(sim))
     any(transmits) || return false
-    hh = settings(sim, Household)[household_id(infctd, activity_plans(sim))]::Household
+    hh = settings(sim, Household)[household_id(infectee, activity_plans(sim))]::Household
     for (pathogen, transmitted) in zip(pathogens(sim), transmits)
         transmitted || continue
-        infect!(infctd,
+        infect!(infectee,
             tick(sim),
             pathogen,
             sim,
             rng(sim),
-            id(infctr),
+            id(infecter),
             id(setting),
             lon(hh),
             lat(hh),
             settingchar(setting),
             ags(setting) |> id,
-            infection_id(infctr, sim, id(pathogen)),
+            infection_id(infecter, sim, id(pathogen)),
             infecter_position,
             type_rank)
     end
     return true
 end
 
-# The probability that `infctr` infects `infctd` with `pathogen`, which must not exceed `bound`.
-# 0 if `pathogen` is not shed or `infctd` already has it.
-function _infection_probability(infctr::Individual, infctd::Individual, sim::Simulation,
+# The probability that `infecter` infects `infectee` with `pathogen`, which must not exceed `bound`.
+# 0 if `pathogen` is not shed or `infectee` already has it.
+function _infection_probability(infecter::Individual, infectee::Individual, sim::Simulation,
         pathogen::Pathogen, setting::Setting, bound::Float64)::Float64
-    (bound == 0 || infected(infctd, id(pathogen))) && return 0.0
+    (bound == 0 || infected(infectee, id(pathogen))) && return 0.0
 
     infection_probability = min(1.0, effective_transmission_probability(
         pathogen |> transmission_function,
         pathogen |> id,
-        infctr, infctd,
+        infecter, infectee,
         setting, sim |> tick,
         sim,
         rng(sim)
@@ -267,12 +275,12 @@ function _infection_probability(infctr::Individual, infctd::Individual, sim::Sim
     return infection_probability
 end
 
-# Draws which pathogens transmit on a contact kept with `thin`, each independently with its probability.
-# Picks the first pathogen whose draw is below its bound: it transmits with its probability over its
-# bound, later ones with their probability, earlier ones not.
+# Decides which pathogens transmit on a contact kept with probability `thin`. Each transmits with its
+# own probability, independently of the others, as if the contact had not been thinned.
 function _draw_transmissions(probabilities::NTuple{N, Float64}, bounds::NTuple{N, Float64}, thin::Float32,
         rng::Xoshiro)::NTuple{N, Bool} where {N}
-    # pathogen i is picked if none_below[i] < u <= none_below[i-1], none if u <= none_below[N]
+    # one draw picks the first pathogen to clear its bound (i if none_below[i] < u <= none_below[i-1]):
+    # it transmits with its probability over its bound, later ones with their probability, earlier ones not
     none_below = accumulate(*, map(b -> 1.0 - b, bounds))
     u = 1.0 - gems_rand(rng) * thin
     picked = something(findfirst(<(u), none_below), 0)
@@ -285,7 +293,7 @@ end
 
 
 """
-    can_infect(ind::Individual, setting::Setting)::Bool
+    can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
 
 Determines whether the individual can infect others in the given setting.
 Checks for infectiousness, setting openness, and quarantine status.
@@ -386,31 +394,29 @@ function spread_infections!(sim::Simulation)
     return nothing
 end
 
-# Spreading starts from each infectious individual and reaches every setting they spread in: the
-# setting of each plan entry, each container above it, and the GlobalSetting. For each one it
-# calls `visit(setting, position, scale)`, which decides what happens there, so a test can list
-# the visits without spreading. `position` is the individual's index among the setting's present
-# members, which the deduplication key orders infecters by.
+# Calls `visit(setting, frame_pos, scale)` for each setting `ind` spreads in: each plan entry's setting,
+# each container above it, and the GlobalSetting, with `frame_pos` their index in `present_members`.
+# Tests pass their own `visit` to list them.
 function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation) where {V}
     plans = activity_plans(sim)
     cntnr = settingscontainer(sim)
     for e in plan_entries(plans, ind)
-        idx = member_index(e)
+        leaf_index = member_index(e)
         _with_entry_setting(sim, e) do setting
-            # deceased, so absent from its frames
-            _is_deceased(setting, idx) && return nothing
+            # dead members are left out of `present_members`, so they spread nowhere
+            _is_deceased(setting, leaf_index) && return nothing
             # the entry's own setting
-            visit(setting, Int(idx), _membership_scale(plans, ind, setting, cntnr))
-            # each container above it that holds this individual's copy. An inactive entry climbs
-            # too: its setting may hold the copy a container kept
-            _foreach_container_above(setting, idx, cntnr) do container, pos
-                visit(container, pos, _membership_scale(plans, ind, container, cntnr))
+            visit(setting, Int(leaf_index), _membership_scale(plans, ind, setting, cntnr))
+            # each container above it that lists them, even for an inactive entry: someone in two
+            # classes of one school is listed in the school once, maybe under this class
+            _foreach_container_above(setting, leaf_index, cntnr) do container, frame_pos
+                visit(container, frame_pos, _membership_scale(plans, ind, container, cntnr))
             end
         end
     end
     # everyone is in the GlobalSetting
-    pos = _global_position(ind, sim)
-    pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), pos, 1.0f0)
+    frame_pos = _global_position(ind, sim)
+    frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, 1.0f0)
     return nothing
 end
 
@@ -428,19 +434,18 @@ end
 @inline _unroll_entry_setting(use::U, sim::Simulation, e::PlanEntry) where {U} =
     use(settings(sim, setting_type_from_index(setting_type_of(e)))[setting_id(e)])
 
-# Calls `visit(container, position)` for each container above `leaf` that holds the member at
-# `idx`. A member in two leaves below one container is among its members once, and the other copy
-# has no position there, so each container is reached once.
-@inline _foreach_container_above(visit::V, leaf::IndividualSetting, idx::Int32, cntnr::SettingsContainer) where {V} =
-    _foreach_container_above(visit, leaf, leaf, idx, cntnr)
+# Calls `visit(container, frame_pos)` for each container above `leaf` whose `present_members` list its
+# member at `leaf_index`. Someone in two classes of one school is listed there once, so only one class reaches it.
+@inline _foreach_container_above(visit::V, leaf::IndividualSetting, leaf_index::Int32, cntnr::SettingsContainer) where {V} =
+    _foreach_container_above(visit, leaf, leaf, leaf_index, cntnr)
 
-function _foreach_container_above(visit::V, s::S, leaf::IndividualSetting, idx::Int32,
+function _foreach_container_above(visit::V, s::S, leaf::IndividualSetting, leaf_index::Int32,
                                   cntnr::SettingsContainer) where {V, S<:Setting}
     (hasfield(S, :contained) && s.contained != DEFAULT_SETTING_ID) || return nothing
     c = settings(cntnr, contained_type(S))[s.contained]
-    pos = container_frame_index(cntnr, c, leaf, idx)
-    pos == DEFAULT_MEMBER_INDEX || visit(c, Int(pos))
-    return _foreach_container_above(visit, c, leaf, idx, cntnr)
+    frame_pos = container_frame_index(cntnr, c, leaf, leaf_index)
+    frame_pos == DEFAULT_MEMBER_INDEX || visit(c, Int(frame_pos))
+    return _foreach_container_above(visit, c, leaf, leaf_index, cntnr)
 end
 
 # The individual's position in the GlobalSetting, which copied the population in its order when it
@@ -460,7 +465,7 @@ function _global_position(ind::Individual, sim::Simulation)::Int
     return k
 end
 
-# One setting's part of a host's spreading: its contacts there, and each shedding pathogen tried on them.
+# Spreads `ind`'s infections in one setting: samples their contacts there and tries each pathogen they shed on them.
 function _spread_in!(setting::Setting, pos::Int, s_host::Float32, ind::Individual, sim::Simulation)
     # at scale 0 the host meets nobody here
     s_host == 0 && return nothing
@@ -495,8 +500,8 @@ function _spread_with!(csm, setting, pos::Int, s_host::Float32, ind::Individual,
     return nothing
 end
 
-# Each pathogen's bound on transmitting from `ind` to anyone in `setting`, 0 if it is not shed, and
-# the share of contacts to keep. Without pre-thinning a shed pathogen's bound is 1, so every contact is kept.
+# Each pathogen's bound, an upper limit on its chance to infect anyone in `setting` (0 if not shed),
+# and thin, the chance to keep a contact at all. Without pre-thinning a shed pathogen's bound is 1.
 @inline function _transmission_bounds(ind::Individual, setting::Setting, t::Int16, sim::Simulation)
     ps = pathogens(sim)
     # an unshed pathogen's bound is 0 either way
@@ -504,7 +509,7 @@ end
         map(p -> effective_transmission_bound(transmission_function(p), id(p), ind, setting, t, sim), ps) :
         map(p -> infectiousness(ind, sim, id(p)) == 0 ? 0.0 : 1.0, ps)
     any_bound = 1.0 - prod(b -> 1.0 - b, bounds)
-    # rounded up, so no contact is thinned harder than its acceptance makes up for
+    # rounded up: keeping slightly too many contacts is harmless, the extra ones transmit nothing
     thin = Float32(any_bound)
     return bounds, thin < any_bound ? nextfloat(thin) : thin
 end
