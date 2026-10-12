@@ -154,14 +154,6 @@ function saveplot(plot::Plots.Plot, path::AbstractString)
     png(plot, path)
 end
 
-"""
-    saveplot(plot::VegaLite.VLSpec, path::AbstractString)
-
-Stores a plot from the VegaLite package to the provided path.
-"""
-#function saveplot(plot::VegaLite.VLSpec, path::AbstractString)
-#    plot |> FileIO.save(path)
-#end
 
 """
     saveplot(plot::GMTWrapper, path::AbstractString)

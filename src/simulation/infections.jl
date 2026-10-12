@@ -161,7 +161,6 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
   already actively infected with `pathogen`.
 
 """
-
 function infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen;
@@ -286,7 +285,6 @@ Returns `true` if infection was successful. Wrapper for optional keyword argumen
 - `Bool`: True if infection was successful, false otherwise
 
 """
-
 function try_to_infect!(infctr::Individual,
         infctd::Individual,
         sim::Simulation,

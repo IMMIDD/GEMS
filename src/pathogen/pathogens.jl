@@ -169,7 +169,6 @@ Retrieves a progression by its DataType from a typed Tuple of progressions.
 Emits a static if/elseif chain at compile time, enabling union-splitting.
 
 """
-
 @generated function get_progression(progressions::PR, dp_type::DataType) where {PR<:Tuple}
     N = fieldcount(PR)
     exprs = Expr[]
@@ -192,7 +191,6 @@ Retrieves the 1-based index of a progression by its DataType, or `Int8(0)` if no
 Emits a static if/elseif chain at compile time, enabling union-splitting.
 
 """
-
 @generated function progression_index(progressions::PR, dp_type::DataType) where {PR<:Tuple}
     N = fieldcount(PR)
     exprs = Expr[]
