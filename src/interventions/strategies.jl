@@ -312,14 +312,14 @@ This example only lets individuals go into self-isolation who are 65 and above.
 All these optional arguments and predicate functions can be combined. The
 calculated `delay` is added to the `offset` (if specified).
 """
-# `where {S}` forces specialization on the strategy type so `str.sim` is concretely typed and the
-# closure captures `sim` concretely.
 function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
     return str
 end
+# `where {S}` forces specialization on the strategy type so `str.sim` is concretely typed and the
+# closure captures `sim` concretely.
 
 function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
