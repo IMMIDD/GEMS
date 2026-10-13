@@ -678,6 +678,21 @@ end
 
 
 """
+    _check_pathogen(c, pathogens::Tuple)
+
+Throws if `c` (anything with a `pathogen` field) names a pathogen the simulation does not have, or names none while there are several.
+"""
+function _check_pathogen(c, pathogens::Tuple)
+    (isempty(pathogens) || c.pathogen == ALL_PATHOGENS) && return nothing
+    if isempty(c.pathogen)
+        length(pathogens) > 1 && throw(ArgumentError("$(nameof(typeof(c))) does not name a pathogen, but the simulation has $(length(pathogens)) ($(join((p.name for p in pathogens), ", "))). Name one, or use pathogen = \"$ALL_PATHOGENS\" for all of them."))
+        return nothing
+    end
+    any(p -> p.name == c.pathogen, pathogens) || throw(ArgumentError("$(nameof(typeof(c))) names pathogen '$(c.pathogen)', which the simulation does not have ($(join((p.name for p in pathogens), ", ")))."))
+    return nothing
+end
+
+"""
     determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
 
 Determines the start condition for the simulation based on the provided parameters.

@@ -274,7 +274,7 @@ To seed pathogens differently from one another, use the `[[Simulation.StartCondi
 Optional natural immunity that part of the population acquired before the start of the simulation. It is applied before the start condition. The parameters are passed to the `PriorImmunity` constructor:
 
 - `fraction`: the immune fraction, one number without `age_groups`, else one per age group
-- `age_groups` (optional): non-overlapping age groups such as `"-17"`, `"18-64"`, `"65-"`. Ages outside every group get no immunity.
+- `age_groups` (optional): age groups such as `"-17"`, `"18-64"`, `"65-"`. Ages outside every group get no immunity.
 - `ags` (optional): restricts the immunity to a region
 - `ticks_ago`: how many ticks before the start the immunity was acquired, either a number between 1 and 16384 or a distribution drawn per individual. Values are rounded up, and draws outside the bounds are clamped.
 - `pathogen` (optional): a pathogen name from `[Pathogens]`, `"all"` for every pathogen (drawn separately for each), or `""` / omitted for the only pathogen (throws if there are several)

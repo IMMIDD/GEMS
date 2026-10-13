@@ -949,7 +949,6 @@ import GEMS: increment!, infected!
         @test_throws ArgumentError PriorImmunity(fraction = 1.1, ticks_ago = 10)
         @test_throws ArgumentError PriorImmunity(fraction = [0.1, 0.2], ticks_ago = 10)
         @test_throws ArgumentError PriorImmunity(fraction = [0.1], age_groups = ["-17", "18-"], ticks_ago = 10)
-        @test_throws ArgumentError PriorImmunity(fraction = [0.1, 0.2], age_groups = ["-20", "18-"], ticks_ago = 10)
         @test_throws ArgumentError PriorImmunity(fraction = 0.1, ticks_ago = 0)
         @test_throws ArgumentError PriorImmunity(fraction = 0.1, ticks_ago = 0.5)
         @test_throws ArgumentError PriorImmunity(fraction = 0.1, ticks_ago = GEMS.MAX_PRIOR_TICKS_AGO + 1)

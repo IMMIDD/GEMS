@@ -16,7 +16,7 @@ region `ags`) acquired `ticks_ago` ticks before the start, a number or a `Distri
 # Fields
 - `pathogen::String`: Pathogen the immunity is against; empty string = the only pathogen, `ALL_PATHOGENS` = every pathogen (each with its own draw)
 - `fraction::Vector{Float64}`: Fraction of each age group (or a single fraction for everyone) that is immune
-- `age_groups::Vector{AgeGroup}`: Non-overlapping age groups; empty = no grouping, ages outside all groups get no immunity
+- `age_groups::Vector{AgeGroup}`: Age groups; empty = no grouping, ages outside all groups get no immunity
 - `ags::Union{Int64, Nothing}`: Community identification number of the region; `nothing` = whole population
 - `ticks_ago::Union{Float64, Distribution}`: Ticks between acquisition and tick 0, between 1 and `MAX_PRIOR_TICKS_AGO` (16384).
   Values are rounded up; draws beyond the bounds are clamped.
@@ -48,9 +48,6 @@ struct PriorImmunity <: AbstractPriorImmunity
             length(frcs) != 1 && throw(ArgumentError("Without age groups, exactly one fraction must be provided (got $(length(frcs)))."))
         else
             length(frcs) != length(grps) && throw(ArgumentError("Number of age groups and fractions must be the same (got $(length(grps)) and $(length(frcs)))."))
-            for a in 0:120
-                count(g -> in_group(a, g), grps) > 1 && throw(ArgumentError("Age groups must not overlap! Age $a is in more than one group."))
-            end
         end
         isnothing(ags) || AGS(Int64(ags)) # throws if the community identification number is invalid
         isa(ticks_ago, Real) && !(1 <= ticks_ago <= MAX_PRIOR_TICKS_AGO) && throw(ArgumentError("ticks_ago must be between 1 and $MAX_PRIOR_TICKS_AGO (got $ticks_ago)."))
@@ -61,25 +58,6 @@ end
 
 Base.show(io::IO, p::PriorImmunity) = write(io,
     "PriorImmunity($(isempty(p.pathogen) ? "" : p.pathogen * ", ")$(join(round.(100 .* p.fraction, digits = 2), "/"))%, $(p.ticks_ago) ticks ago)")
-
-###
-### VALIDATION
-###
-
-"""
-    _check_pathogen(c::PriorImmunity, pathogens::Tuple)
-
-Throws if `c` names a pathogen the simulation does not have, or names none while there are several.
-"""
-function _check_pathogen(c::PriorImmunity, pathogens::Tuple)
-    (isempty(pathogens) || c.pathogen == ALL_PATHOGENS) && return nothing
-    if isempty(c.pathogen)
-        length(pathogens) > 1 && throw(ArgumentError("PriorImmunity does not name a pathogen, but the simulation has $(length(pathogens)) ($(join((p.name for p in pathogens), ", "))). Name one, or use pathogen = \"$ALL_PATHOGENS\" for all of them."))
-        return nothing
-    end
-    any(p -> p.name == c.pathogen, pathogens) || throw(ArgumentError("PriorImmunity names pathogen '$(c.pathogen)', which the simulation does not have ($(join((p.name for p in pathogens), ", ")))."))
-    return nothing
-end
 
 ###
 ### APPLICATION
