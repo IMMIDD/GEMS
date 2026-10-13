@@ -288,6 +288,8 @@ end
 
         # declaring is idempotent, and refuses a second char or a name another type has
         @test declare_setting_type!("Gym") === DeclaredSetting{:Gym}
+        # a SettingModifier resolves declared setting types by name
+        @test SettingModifier(factors = Dict("Gym" => 2.0), default_factor = 1.0).factors[DeclaredSetting{:Gym}] == 2.0
         @test_throws ArgumentError declare_setting_type!("Gym"; char = 'Y')
         @test_throws ArgumentError declare_setting_type!("Household")
         @test_throws ArgumentError declare_setting_type!("NeverUsedSetting")
