@@ -100,6 +100,7 @@ module GEMS
 
     # INITALIZATION
     include("simulation/initialization/startconditions.jl")
+    include("simulation/initialization/prior_immunity.jl")
 
     # TERMINATION
     include("simulation/termination/stopcriteria.jl")

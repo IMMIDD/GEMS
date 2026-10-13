@@ -107,6 +107,12 @@ initialize!
 seeds
 ```
 
+## Prior Immunity
+
+```@docs
+PriorImmunity
+```
+
 
 
 
