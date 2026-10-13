@@ -953,6 +953,44 @@ end
             @test transmission_probability(tf_ssm, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 0.4 * 1.5
         end
 
+        @testset "SettingModifier" begin
+            mod = SettingModifier(factors=Dict("Household" => 3, "SchoolClass" => 1.5), default_factor=0.5)
+            @test mod.factors[Household] === 3.0
+            @test mod.default_factor === 0.5
+            @test !isempty(@capture_out show(mod))
+
+            # constructor validation
+            @test_throws ArgumentError SettingModifier(factors=Dict("NoSuchSetting" => 1.0), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => -1.0), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => 1.0), default_factor=-0.1)
+            @test_throws UndefKeywordError SettingModifier(factors=Dict("Household" => 1.0))
+
+            p_sm = Pathogen(id=1, name="TestSM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), mod))
+            sim_sm = Simulation(pop_size=100, pathogens=(p_sm,), infected_fraction=0.0)
+            ind1 = individuals(sim_sm)[1]
+            ind2 = individuals(sim_sm)[2]
+            hh = households(sim_sm)[1]
+            office = Office(id=1)
+            pid = Int8(1)
+
+            # listed type uses its factor, unlisted type the default
+            @test transmission_factor(mod, pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 3.0
+            @test transmission_factor(mod, pid, ind1, ind2, office, Int16(0), sim_sm) ≈ 0.5
+            @test transmission_probability(transmission_function(p_sm), pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
+
+            # SettingTransmissionRate struct
+            tf_str = SettingTransmissionRate(transmission_rate=0.2, factors=Dict("Household" => 3.0), default_factor=0.5)
+            @test tf_str.transmission_rate == 0.2
+            @test !isempty(@capture_out show(tf_str))
+            @test_throws ArgumentError SettingTransmissionRate(transmission_rate=1.5, factors=Dict("Household" => 1.0), default_factor=1.0)
+
+            # transmission_probability = base_rate × setting_factor
+            @test transmission_probability(tf_str, pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
+            @test transmission_probability(tf_str, pid, ind1, ind2, office, Int16(0), sim_sm) ≈ 0.2 * 0.5
+        end
+
     end
 
     @testset "Custom Transmission Function" begin
