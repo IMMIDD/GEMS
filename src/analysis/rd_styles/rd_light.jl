@@ -94,6 +94,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `tick_hosptitalizations::DataFrame`: DataFrame containing the daily hospitalizations etc.
         - `time_to_detection::DataFrame`: Statistics on the time between exposure and first detection of an infection through a test
         - `household_attack_rates::DataFrame`: Statistics on the seconary infections in households
+        - `household_secondary_attack_rates::DataFrame`: Household secondary attack rate counts per household size, defined like a household study
         - `customlogger::DataFrame`: Dataframe obtained from any custom logger that might have been set
 """
 mutable struct LightRD <: ResultDataStyle
@@ -194,6 +195,7 @@ mutable struct LightRD <: ResultDataStyle
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
+                    "household_secondary_attack_rates" => () -> pP |> household_secondary_attack_rates,
                     "tick_hosptitalizations" => () -> pP |> _hospital_df,
                     "r0_per_county" => () -> pP |> r0_per_county
                 )

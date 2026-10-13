@@ -162,6 +162,7 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         @test rd |> cumulative_deaths |> nrow > 0
         @test rd |> age_incidence |> nrow > 0
         @test rd |> population_pyramid |> nrow > 0
+        @test rd |> household_secondary_attack_rates isa DataFrame
 
     end
 

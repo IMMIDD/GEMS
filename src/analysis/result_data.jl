@@ -12,7 +12,7 @@ export dataframes, population_size, setting_age_contacts, infections, vaccinatio
 export compartment_periods, aggregated_compartment_periods, cumulative_disease_progressions, tick_cases, tick_deaths, tick_vaccinations
 export cumulative_cases, compartment_fill, cumulative_deaths, cumulative_vaccinations, age_incidence
 export tests, tick_pooltests, detected_tick_cases, rolling_observed_SI, time_to_detection, detection_rate, cumulative_quarantines, tick_hosptitalizations, health_episodes, tick_serial_intervals
-export customlogger, household_attack_rates, weekly_county_incidence, r0_per_county
+export customlogger, household_attack_rates, household_secondary_attack_rates, weekly_county_incidence, r0_per_county
 export population_pyramid, timer_output, timer_output!, id
 export exportJLD, exportJSON
 export import_resultdata
@@ -1153,6 +1153,17 @@ Returns an empty dictionary if the data is not available in the input `ResultDat
 """
 function household_attack_rates(rd::ResultData)
     return(get(rd |> dataframes, "household_attack_rates", Dict()))
+end
+
+"""
+    household_secondary_attack_rates(rd::ResultData)
+
+Returns household\\_secondary\\_attack\\_rates DataFrame.
+Look up the `PostProcessor` docs to find the column definitions.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function household_secondary_attack_rates(rd::ResultData)
+    return(get(rd |> dataframes, "household_secondary_attack_rates", Dict()))
 end
 
 

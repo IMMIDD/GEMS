@@ -1,7 +1,8 @@
 import GEMS: _mean_contacts_per_age_group,
     _individuals_per_age_group,
     _weighted_error_sum,
-    _aggregate_populationDF_by_age
+    _aggregate_populationDF_by_age,
+    _household_sar_counts
 
 @testset "Post Processing" begin
     # setting up post processor structure
@@ -152,6 +153,68 @@ import GEMS: _mean_contacts_per_age_group,
         @test nrow(har) > 0
         @test all(>(1), har.hh_size)
         @test !any(isnan, har.hh_attack_rate)
+    end
+
+    @testset "Household SAR" begin
+        # household 1 has 5 members, member 5 died at 8. Index id 1 and co-primary id 2 at 10, secondaries id 3 at 11
+        # (home) and id 4 at 24, the window's last tick. Id 1 again at 25, while id 4 is still infected, is no index;
+        # id 2 again at 40 is the second index. Household 2 (size 3) has no cases, household 3 is a single.
+        sar_counts(; removed_4 = 30, death_tick = 8, pathogen_ids = Int8[1, 1, 1, 1, 1, 1], args...) =
+            _household_sar_counts(Int8[1, 2], pathogen_ids, Int32[1, 1, 1, 1, 1, 1], Int32[1, 2, 3, 4, 1, 2],
+                Int32[1, 2, 3, 4, 5, 6], Int16[10, 10, 11, 24, 25, 40], Int16[18, 18, 19, removed_4, 33, 48],
+                ['o', 'o', 'h', 'o', 'h', 'o'], Int16[5, 3, 1], Int32[1], Int32[5], Int16[death_tick];
+                (window = 14, coprimary_days = 0, last_tick = 60, index_ticks = nothing, exclude_prior = true)..., args...)
+        row(df, p, s) = only(eachrow(subset(df, :pathogen_id => ByRow(==(p)), :hh_size => ByRow(==(s)))))
+
+        # one row per pathogen and household size of 2 or more, also without episodes
+        df = sar_counts()
+        @test df.pathogen_id == [1, 1, 2, 2]
+        @test df.hh_size == [3, 5, 3, 5]
+        r = row(df, 1, 5)
+        @test (r.episodes, r.contacts, r.secondary, r.secondary_home, r.sar, r.sar_home) == (2, 2, 2, 1, 1.0, 0.5)
+        @test row(df, 1, 3).contacts == 0
+        @test isnan(row(df, 1, 3).sar)
+        @test isnan(row(df, 1, 3).sar_home)
+        @test row(df, 2, 5).episodes == 0
+
+        # without exclude_prior, the second index has everyone but the dead member as contacts
+        @test row(sar_counts(exclude_prior = false), 1, 5).contacts == 5
+        # once id 4 has recovered at 25, id 1 opens an episode of its own
+        @test row(sar_counts(removed_4 = 25), 1, 5).episodes == 3
+        # with co-primaries up to the next tick, id 3 is no secondary any more
+        r = row(sar_counts(coprimary_days = 1), 1, 5)
+        @test (r.contacts, r.secondary, r.secondary_home) == (1, 1, 0)
+        # one tick shorter, id 4 falls after the window and opens an episode
+        r = row(sar_counts(window = 13), 1, 5)
+        @test (r.episodes, r.contacts, r.secondary) == (3, 2, 1)
+        # a member dying after the index tick stays a contact
+        @test row(sar_counts(death_tick = 12), 1, 5).contacts == 3
+
+        # the second episode's window runs past the last tick
+        @test row(sar_counts(last_tick = 53), 1, 5).episodes == 1
+        r = row(sar_counts(index_ticks = 30:50, exclude_prior = false), 1, 5)
+        @test (r.episodes, r.contacts, r.secondary) == (1, 3, 0)
+
+        # pathogens are counted apart within a household
+        df = sar_counts(pathogen_ids = Int8[1, 1, 1, 2, 2, 2])
+        r = row(df, 1, 5)
+        @test (r.episodes, r.contacts, r.secondary) == (1, 2, 1)
+        r = row(df, 2, 5)
+        @test (r.episodes, r.contacts, r.secondary, r.secondary_home) == (2, 4, 1, 1)
+
+        sar = household_secondary_attack_rates(pp)
+        psim = simulation(pp)
+        sizes = unique(s for s in size.(households(psim)) if s > 1)
+        @test nrow(sar) == length(pathogens(psim)) * length(sizes)
+        @test sum(sar.episodes) > 0
+        @test all(sar.secondary_home .<= sar.secondary .<= sar.contacts)
+        # the same rows without any episode
+        @test household_secondary_attack_rates(pp, index_ticks = 1:0).hh_size == sar.hh_size
+        # `tick(psim)` is one past the last tick, so no index after `tick(psim) - 15` has a full window
+        @test sum(household_secondary_attack_rates(pp, index_ticks = (tick(psim) - 14):tick(psim)).episodes) == 0
+
+        @test_throws ArgumentError household_secondary_attack_rates(pp, window = 0)
+        @test_throws ArgumentError household_secondary_attack_rates(pp, coprimary_days = 14)
     end
 
     @testset "Co-Infection Death Accounting" begin
