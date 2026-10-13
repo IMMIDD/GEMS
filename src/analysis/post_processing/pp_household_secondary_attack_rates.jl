@@ -1,4 +1,4 @@
-export household_secondary_attack_rates
+export household_secondary_attack_rates, household_secondary_attack_rate
 
 """
     household_secondary_attack_rates(postProcessor::PostProcessor; window::Int = 14, coprimary_days::Int = 0,
@@ -47,6 +47,30 @@ function household_secondary_attack_rates(postProcessor::PostProcessor; window::
         coalesce.(deaths.household, Int32(0)), deaths.id, deaths.tick;
         window = window, coprimary_days = coprimary_days, last_tick = tick(sim) - 1, index_ticks = index_ticks,
         exclude_prior = exclude_prior)
+end
+
+"""
+    household_secondary_attack_rate(postProcessor::PostProcessor; kwargs...)
+
+Returns the household secondary attack rate per pathogen, pooled over household sizes (`sum(secondary) / sum(contacts)`
+of `household_secondary_attack_rates`, which takes the same keyword arguments).
+
+# Returns
+
+- `DataFrame` with the following columns:
+
+| Name                 | Type      | Description                                                    |
+| :------------------- | :-------- | :------------------------------------------------------------- |
+| `pathogen_id`        | `Int8`    | Pathogen identifier                                            |
+| `household_sar`      | `Float64` | Pooled secondary attack rate                                   |
+| `household_sar_home` | `Float64` | Pooled model-only `sar_home`                                   |
+"""
+function household_secondary_attack_rate(postProcessor::PostProcessor; kwargs...)
+    return household_secondary_attack_rates(postProcessor; kwargs...) |>
+        x -> groupby(x, :pathogen_id) |>
+        x -> combine(x,
+            [:secondary, :contacts] => ((s, c) -> sum(s) / sum(c)) => :household_sar,
+            [:secondary_home, :contacts] => ((s, c) -> sum(s) / sum(c)) => :household_sar_home)
 end
 
 # Episode counts per pathogen in `pathogens` and household size from the infection columns; `hh_sizes` is indexed by household id.

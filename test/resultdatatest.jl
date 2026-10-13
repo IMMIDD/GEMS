@@ -125,6 +125,7 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         @test rd |> final_tick == sim |> tick
         @test rd |> number_of_individuals == sim |> population |> size
         @test sum((rd |> total_infections).total_infections) > 0
+        @test isequal(rd |> household_secondary_attack_rate, household_secondary_attack_rate(pp))
         # check if settting type names match
         @test (rd|>setting_data)[!, "setting_type"] |> sort == string.(sim |> settingscontainer |> settingtypes |> collect) |> sort
         @test rd |> pathogens == collect(sim |> GEMS.pathogens)
@@ -493,6 +494,7 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         rd_print = ResultData(pp)
         @test !isempty(@capture_out info(rd_print))
         @test !isempty(@capture_out show(rd_print))
+        @test occursin("Household secondary attack rate", @capture_out show(rd_print))
     end
 
     @testset "Testing allempty and someempty with ResultData" begin

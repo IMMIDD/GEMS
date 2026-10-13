@@ -30,6 +30,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `initial_infections::DataFrame`: Per-pathogen seeding infection counts (`pathogen_id`, `initial_infections`)
         - `total_infections::DataFrame`: Per-pathogen total infection counts (`pathogen_id`, `total_infections`)
         - `attack_rate::DataFrame`: Per-pathogen attack rate (`pathogen_id`, `attack_rate`)
+        - `household_secondary_attack_rate::DataFrame`: Per-pathogen pooled household secondary attack rate (`pathogen_id`, `household_sar`, `household_sar_home`)
         - `setting_data::DataFrame`: DataFrame containing information on all setting types
         - `setting_sizes::Dict{Any, Any}`: Dictionary containing the setting sizes distributions for all included settingtypes
         - `region_info::Dataframe`: Municipality population size and area (if geolocalized model is used)
@@ -120,6 +121,7 @@ mutable struct LightRD <: ResultDataStyle
                     "initial_infections" => () -> pP |> initial_infections,
                     "total_infections" => () -> pP |> total_infections,
                     "attack_rate" => () -> pP |> attack_rate,
+                    "household_secondary_attack_rate" => () -> pP |> household_secondary_attack_rate,
                     "setting_data" => () -> pP |> _settingdata,
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "region_info" => () -> pP |> simulation |> region_info,

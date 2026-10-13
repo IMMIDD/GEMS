@@ -210,6 +210,14 @@ import GEMS: _mean_contacts_per_age_group,
         @test all(sar.secondary_home .<= sar.secondary .<= sar.contacts)
         # the same rows without any episode
         @test household_secondary_attack_rates(pp, index_ticks = 1:0).hh_size == sar.hh_size
+
+        # pooled over household sizes
+        pooled = household_secondary_attack_rate(pp)
+        @test pooled.pathogen_id == unique(sar.pathogen_id)
+        @test isequal(pooled.household_sar, [sum(g.secondary) / sum(g.contacts) for g in groupby(sar, :pathogen_id)])
+        @test isequal(pooled.household_sar_home, [sum(g.secondary_home) / sum(g.contacts) for g in groupby(sar, :pathogen_id)])
+        @test isequal(household_secondary_attack_rate(pp, window = 7).household_sar,
+            [sum(g.secondary) / sum(g.contacts) for g in groupby(household_secondary_attack_rates(pp, window = 7), :pathogen_id)])
         # `tick(psim)` is one past the last tick, so no index after `tick(psim) - 15` has a full window
         @test sum(household_secondary_attack_rates(pp, index_ticks = (tick(psim) - 14):tick(psim)).episodes) == 0
 

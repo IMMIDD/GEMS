@@ -3,7 +3,7 @@ export ResultData
 export ResultDataStyle
 
 export meta_data, execution_date, GEMS_version, config_file, population_file, final_tick
-export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, setting_data, pathogen_names
+export sim_data, number_of_individuals, initial_infections, total_infections, attack_rate, household_secondary_attack_rate, setting_data, pathogen_names
 export setting_sizes, pathogens, vaccine, vaccination_strategy, total_quarantines, total_tests
 export tick_unit, start_condition, stop_criterion, strategies, kernel, julia_version
 export system_data, word_size, threads, cpu_data, total_mem_size, free_mem_size, model_size
@@ -473,6 +473,16 @@ Returns an empty dictionary if the data is not available in the input `ResultDat
 """
 function attack_rate(rd::ResultData)
     return(get(rd |> sim_data, "attack_rate", Dict()))
+end
+
+"""
+    household_secondary_attack_rate(rd::ResultData)
+
+Returns the per-pathogen household secondary attack rate, pooled over household sizes.
+Returns an empty dictionary if the data is not available in the input `ResultData` object.
+"""
+function household_secondary_attack_rate(rd::ResultData)
+    return(get(rd |> sim_data, "household_secondary_attack_rate", Dict()))
 end
 
 """
@@ -1359,6 +1369,11 @@ function info(rd::ResultData)
     end
 end
 
+# "name: value" per pathogen row of `df`, comma-separated
+function _per_pathogen(df::DataFrame, col::Symbol, pname::Function; digits::Union{Nothing, Int} = nothing)
+    return join(["$(pname(row.pathogen_id)): $(isnothing(digits) ? row[col] : round(row[col], digits = digits))" for row in eachrow(df)], ", ")
+end
+
 function Base.show(io::IO, rd::ResultData)
     pid_names = try Dict(id(p) => name(p) for p in rd |> pathogens) catch; Dict{Int8,String}() end
     pname(pid) = get(pid_names, pid, "pid $pid")
@@ -1372,12 +1387,13 @@ function Base.show(io::IO, rd::ResultData)
         () -> "  \u2514 Individuals: $(rd |> number_of_individuals)"
         () -> "  \u2514 Settings: $((rd |> setting_data).setting_type)"
         () -> "\u2514 Simulation:"
-        () -> "  \u2514 Total infections: " * join(["$(pname(row.pathogen_id)): $(row.total_infections)" for row in eachrow(rd |> total_infections)], ", ")
-        () -> "  \u2514 Basic Reproduction Number (R0): " * join(["$(pname(row.pathogen_id)): $(round(row.r0, digits=2))" for row in eachrow(rd |> r0)], ", ")
-        () -> "  \u2514 Attack rate: " * join(["$(pname(row.pathogen_id)): $(round(row.attack_rate, digits=4))" for row in eachrow(rd |> attack_rate)], ", ")
+        () -> "  \u2514 Total infections: " * _per_pathogen(rd |> total_infections, :total_infections, pname)
+        () -> "  \u2514 Basic Reproduction Number (R0): " * _per_pathogen(rd |> r0, :r0, pname, digits = 2)
+        () -> "  \u2514 Attack rate: " * _per_pathogen(rd |> attack_rate, :attack_rate, pname, digits = 4)
+        () -> "  \u2514 Household secondary attack rate: " * _per_pathogen(rd |> household_secondary_attack_rate, :household_sar, pname, digits = 4)
         () -> "  \u2514 Total quarantine days: $(rd |> total_quarantines)"
         () -> "  \u2514 Total tests: " * (isempty(rd |> total_tests) ? "0" : join(["$(row.test_type)/$(pname(row.pathogen_id)): $(row.count)" for row in eachrow(rd |> total_tests)], ", "))
-        () -> "  \u2514 Test detection rate: " * (isempty(rd |> detection_rate) ? "-" : join(["$(pname(row.pathogen_id)): $(round(row.detection_rate, digits=4))" for row in eachrow(rd |> detection_rate)], ", "))
+        () -> "  \u2514 Test detection rate: " * (isempty(rd |> detection_rate) ? "-" : _per_pathogen(rd |> detection_rate, :detection_rate, pname, digits = 4))
     ]
 
     for l in lines
