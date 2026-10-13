@@ -69,7 +69,7 @@ Base.show(io::IO, p::PriorImmunity) = write(io,
 Applies every prior immunity entry of `simulation`.
 """
 function _apply_prior_immunity!(simulation::Simulation)
-    for (i, c) in enumerate(simulation.prior_immunity)
+    for (i, c) in enumerate(prior_immunity(simulation))
         # own stream per entry, so start-condition and run draws don't depend on prior immunity
         _apply_prior_immunity!(simulation, c, Xoshiro(_mix(UInt64(2), seed(simulation), i)))
     end

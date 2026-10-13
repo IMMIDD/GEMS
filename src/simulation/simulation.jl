@@ -6,7 +6,7 @@ export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
-export tick, label, start_condition, stop_criterion, settingscontainer, settings, population, stepmod, stepmod!
+export tick, label, start_condition, prior_immunity, stop_criterion, settingscontainer, settings, population, stepmod, stepmod!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
@@ -1960,6 +1960,15 @@ function start_condition(simulation::Simulation)
 end
 
 """
+    prior_immunity(simulation)
+
+Returns the prior immunity entries applied before the start condition.
+"""
+function prior_immunity(simulation::Simulation)
+    return simulation.prior_immunity
+end
+
+"""
     stop_criterion(simulation)
 
 Returns stop criterion associated with the simulation run.
@@ -2671,7 +2680,7 @@ function info(sim::Simulation)
     end
 
     res *= "\u2514 Start Condition: $(sim |> start_condition)\n"
-    isempty(sim.prior_immunity) || (res *= "\u2514 Prior Immunity: $(join(sim.prior_immunity, ", "))\n")
+    isempty(sim |> prior_immunity) || (res *= "\u2514 Prior Immunity: $(join(sim |> prior_immunity, ", "))\n")
     res *= "\u2514 Stop Criterion: $(sim |> stop_criterion |> typeof)\n"
     
     # pathogen (use the pathogen's show method for detailed info)

@@ -965,7 +965,7 @@ import GEMS: increment!, infected!
         @test count(i -> nat_tick(i, sim) == -100, individuals(sim)) == 30
         @test occursin("Prior Immunity", @capture_out info(sim))
         nosim = Simulation(pop_size = 100)
-        @test isempty(nosim.prior_immunity)
+        @test isempty(prior_immunity(nosim))
         @test !occursin("Prior Immunity", @capture_out info(nosim))
 
         # entries apply in order, so the last one wins
@@ -1079,7 +1079,7 @@ import GEMS: increment!, infected!
             path = joinpath(dir, "prior.toml")
             write(path, read(joinpath(BASE_FOLDER, "data/DefaultConf.toml"), String) * "\n[Simulation.PriorImmunity]\nfraction = 0.3\nticks_ago = 10\n")
             sim = Simulation(configfile = path, pop_size = 100)
-            @test length(sim.prior_immunity) == 1
+            @test length(prior_immunity(sim)) == 1
             @test count(i -> nat_tick(i, sim) == -10, individuals(sim)) == 30
         end
     end
