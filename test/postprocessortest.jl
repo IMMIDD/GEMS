@@ -147,6 +147,11 @@ import GEMS: _mean_contacts_per_age_group,
         @test pp |> compartment_periods |> nrow > 0
         @test pp |> tick_cases |> nrow > 0
         @test pp |> cumulative_cases |> nrow > 0
+
+        har = household_attack_rates(pp)
+        @test nrow(har) > 0
+        @test all(>(1), har.hh_size)
+        @test !any(isnan, har.hh_attack_rate)
     end
 
     @testset "Co-Infection Death Accounting" begin

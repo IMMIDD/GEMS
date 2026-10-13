@@ -1,4 +1,4 @@
-export household_attack_rate
+export household_attack_rates
 
 """
     household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
@@ -13,7 +13,7 @@ the course of the simuation. As the attack rate calculation is very
 computationally intensive, it is not done for _all_ household but rather
 for a subset of households. You can change the desired subset size
 through the optional `hh_samples` argument. Its default can be found
-in `constants.jl`
+in `constants.jl`. Single-person households are excluded, as they have no one to infect.
 
 # Returns
 
@@ -26,7 +26,7 @@ in `constants.jl`
 | `hh_id`              | `Int32`   | Household setting identifier                                          |
 | `hh_size`            | `Int16`   | Household size                                                        |
 | `chain_size`         | `Int32`   | Number of individuals that got infected within the household          |
-| `hh_attack_rate`     | `Float64` | Number of infected individuals divided by household size              |
+| `hh_attack_rate`     | `Float64` | Number of infected individuals divided by household size minus one    |
 """
 function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
     # exception handling
@@ -70,7 +70,8 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
             :tick => minimum => :first_introduction,
             [:tick, :home_chain] => ((tick, chain) -> isempty(chain) ? 0 : chain[argmin(tick)]) => :chain_size,
             [:tick, :hh_size] => ((tick, size) -> isempty(size) ? 0 : size[argmin(tick)]) => :hh_size) |>
-        x -> transform(x, [:chain_size, :hh_size] => ByRow((c, h) -> (h == 0 ? 0 : c / (h - 1))) => :hh_attack_rate) |>
+        x -> x[x.hh_size .> 1, :] |>
+        x -> transform(x, [:chain_size, :hh_size] => ByRow((c, h) -> c / (h - 1)) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>
         x -> DataFrames.select(x, :pathogen_id, :first_introduction, :hh_id, :hh_size, :chain_size, :hh_attack_rate)
 end
