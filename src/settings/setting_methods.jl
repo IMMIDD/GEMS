@@ -711,6 +711,17 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
 end
 
 """
+    contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
+
+Sets the setting's `ContactSamplingMethod` and raises the simulation's contact rate bound for its type to match.
+"""
+function contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
+    _assign_contact_sampling_method!(setting, csm)
+    _raise_rate_bound!(settingscontainer(sim), setting)
+    return setting.contact_sampling_method
+end
+
+"""
     remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
 
 Removes a member, taking the population from the simulation.

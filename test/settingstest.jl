@@ -316,6 +316,48 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @test get(stngs, GlobalSetting) == [gs]
     end
 
+    @testset "Contact rate bounds" begin
+        sim = Simulation(pop_size = 1000, infected_fraction = 0.0)
+        cntnr = GEMS.settingscontainer(sim)
+        t = setting_type_index(Household)
+        bound() = GEMS._rate_bound(cntnr, t)
+        # the build scans every method; the default config gives households contactparameter 1
+        @test bound() == 1.0
+        @test GEMS._rate_bound(cntnr, typemax(UInt8)) == Inf
+
+        # the simulation's setter raises the bound, the plain one leaves it to the next scan
+        h = households(sim)[1]
+        contact_sampling_method!(sim, h, ContactparameterSampling(4.0))
+        @test bound() == 4.0
+        contact_sampling_method!(households(sim)[2], ContactparameterSampling(6.0))
+        @test bound() == 4.0
+        GEMS._refresh_rate_bounds!(cntnr)
+        @test bound() == 6.0
+        # a method without contact_rate sends its type back to sampling each visit
+        contact_sampling_method!(sim, h, RandomSampling())
+        @test bound() == Inf
+
+        # a scan leaves a type without settings at Inf, and add! raises a scanned bound
+        stngs = SettingsContainer()
+        add_types!(stngs, [Household])
+        GEMS._refresh_rate_bounds!(stngs)
+        @test GEMS._rate_bound(stngs, t) == Inf
+        add!(stngs, Household(id = 1, individuals = Individual[], contact_sampling_method = ContactparameterSampling(2.0)))
+        GEMS._refresh_rate_bounds!(stngs)
+        @test GEMS._rate_bound(stngs, t) == 2.0
+        add!(stngs, Household(id = 2, individuals = Individual[], contact_sampling_method = ContactparameterSampling(3.0)))
+        @test GEMS._rate_bound(stngs, t) == 3.0
+
+        # a copied method starts without the member caches of the one it was copied from
+        abcs = AgeBasedContactSampling(1.0, 10, ContactMatrix{Float64}(fill(0.1, 10, 10), 10, 100), Float64[])
+        inds = [Individual(id = j, age = 10 * j, sex = 1) for j in 1:5]
+        contact_rate(abcs, h, 1, inds, GEMS.DEFAULT_TICK)
+        @test abcs.rate_cache !== nothing
+        contact_sampling_method!(sim, h, abcs)
+        @test h.contact_sampling_method.rate_cache === nothing
+        @test abcs.rate_cache !== nothing
+    end
+
     @testset "Open and Closing" begin
         rs = RandomSampling()
 

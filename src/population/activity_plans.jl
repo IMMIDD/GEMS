@@ -91,9 +91,11 @@ mutable struct ActivityPlanStore <: AbstractActivityPlanStore
     free::Vector{Vector{Int32}}
     # false until `assign_member_indices!` runs; member indices are meaningless before that
     indexed::Bool
+    # per setting type index, at least 1 and every scale an entry of that type holds
+    scale_bounds::Vector{Float32}
 end
 
-ActivityPlanStore() = ActivityPlanStore(PlanEntry[], BitVector(), Vector{Int32}[], false)
+ActivityPlanStore() = ActivityPlanStore(PlanEntry[], BitVector(), Vector{Int32}[], false, Float32[])
 
 Base.length(store::ActivityPlanStore) = length(store.entries)
 Base.isempty(store::ActivityPlanStore) = isempty(store.entries)
@@ -163,6 +165,19 @@ end
 # The entry's scale this tick: its own while it applies, 0 while it does not.
 @inline _effective_scale(store::ActivityPlanStore, slot::Int)::Float16 =
     entry_active(store, slot) ? entry_scale(@inbounds store.entries[slot]) : Float16(0)
+
+# Raises the scale bound of `entry`'s setting type to its scale; nothing lowers one.
+@inline function _raise_scale_bound!(store::ActivityPlanStore, entry::PlanEntry)
+    t = Int(setting_type_of(entry))
+    b = store.scale_bounds
+    length(b) < t && append!(b, fill(1.0f0, t - length(b)))
+    @inbounds b[t] = max(b[t], Float32(entry_scale(entry)))
+    return nothing
+end
+
+# The largest scale any entry of setting type index `t` holds, at least 1.
+@inline _type_scale_bound(store::ActivityPlanStore, t::UInt8)::Float32 =
+    Int(t) <= length(store.scale_bounds) ? @inbounds(store.scale_bounds[t]) : 1.0f0
 
 ###
 ### MEMBERSHIP MASK
@@ -473,6 +488,7 @@ function _fill_table_block!(store::ActivityPlanStore, ind::Individual, source, i
         sort!(block; alg = InsertionSort, by = setting_type_of)
         _check_repeated_entries(block, ind)
     end
+    foreach(e -> _raise_scale_bound!(store, e), view(store.entries, off:(off + n - 1)))
     # every entry starts active, so its own scale is the one that counts
     _set_plan!(ind, off, n, mask, any(e -> entry_scale(e) != 1, view(store.entries, off:(off + n - 1))))
     return nothing
@@ -712,6 +728,7 @@ function plan_add!(store::ActivityPlanStore, individual::Individual, entry::Plan
         store.active[new + k] = store.active[old + k]
     end
     @inbounds store.entries[new + pos] = entry
+    _raise_scale_bound!(store, entry)
     @inbounds store.active[new + pos] = true
     @inbounds for k in pos:(n - 1)
         store.entries[new + k + 1] = store.entries[old + k]
@@ -845,6 +862,7 @@ function _set_entry_scale!(store::ActivityPlanStore, individual::Individual, ::T
     slot = plan_slot(store, individual, T, Int32(sid))
     slot == 0 && throw(ArgumentError("individual $(id(individual)) holds no entry for $T $sid"))
     @inbounds store.entries[slot] = _with_scale(store.entries[slot], scale)
+    _raise_scale_bound!(store, @inbounds store.entries[slot])
     _refresh_plan_scaled!(store, individual)
     return nothing
 end

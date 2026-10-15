@@ -29,6 +29,8 @@ mutable struct SettingsContainer
     pools::Dict{DataType, HierarchicalSettingPool}
     # the pool the built settings of a type without containers share, keyed by that type
     flat_pools::Dict{DataType, FlatSettingPool}
+    # per setting type index, at least the `contact_rate_bound` of each setting's method; Inf until scanned
+    rate_bounds::Vector{Float64}
 end
 
 
@@ -43,7 +45,7 @@ Return a empty container object.
 """
 function SettingsContainer()
     return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
-        Dict{DataType, FlatSettingPool}())
+        Dict{DataType, FlatSettingPool}(), Float64[])
 end
 
 
@@ -54,7 +56,11 @@ Add a settingtype to the container if it is not yet included.
 Creates a new concretely-typed vector for the provided type in the settings dictionary.
 """
 function add_type!(container::SettingsContainer, settingtype::DataType)
-    settingtype <: Setting && register_setting_type!(settingtype)
+    if settingtype <: Setting
+        # an unscanned type falls back to sampling each visit
+        t = Int(register_setting_type!(settingtype))
+        length(container.rate_bounds) < t && append!(container.rate_bounds, fill(Inf, t - length(container.rate_bounds)))
+    end
     if !haskey(container.settings, settingtype)
         container.settings[settingtype] = Vector{settingtype}()
     end
@@ -142,7 +148,48 @@ Add a setting to the container.
 """
 function add!(container::SettingsContainer, setting::Setting)
     push!(container.settings[typeof(setting)], setting)
+    _raise_rate_bound!(container, setting)
 end
+
+# Raises the contact rate bound of `setting`'s type to cover its method; only a scan lowers one.
+function _raise_rate_bound!(container::SettingsContainer, setting::Setting)
+    t = Int(setting_type_index(typeof(setting)))
+    b = container.rate_bounds
+    length(b) < t && append!(b, fill(Inf, t - length(b)))
+    @inbounds b[t] = max(b[t], contact_rate_bound(contact_sampling_method(setting)))
+    return nothing
+end
+
+# Sets each type's contact rate bound to the largest `contact_rate_bound` among its settings' methods.
+# A type without settings stays Inf, so one added later without `add!` still falls back.
+function _refresh_rate_bounds!(container::SettingsContainer)
+    for T in settingtypes(container)
+        T <: Setting || continue
+        t = Int(setting_type_index(T))
+        b = container.rate_bounds
+        length(b) < t && append!(b, fill(Inf, t - length(b)))
+        @inbounds b[t] = _max_rate_bound(settings(container, T))
+    end
+    return container
+end
+
+function _max_rate_bound(stngs::Vector{T}) where {T<:Setting}
+    isempty(stngs) && return Inf
+    bound = 0.0
+    # settings of a type usually share one method object, so look each up once
+    last_csm = nothing
+    for s in stngs
+        csm = contact_sampling_method(s)
+        csm === last_csm && continue
+        last_csm = csm
+        bound = max(bound, contact_rate_bound(csm))
+    end
+    return bound
+end
+
+# The contact rate bound of setting type index `t`, Inf for a type the container does not know.
+@inline _rate_bound(container::SettingsContainer, t::UInt8) =
+    Int(t) <= length(container.rate_bounds) ? @inbounds(container.rate_bounds[t]) : Inf
 
 """
     get(container::SettingsContainer, type::DataType)

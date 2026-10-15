@@ -557,6 +557,7 @@ function _BUILD_Simulation(;
     build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
     determine_transmission_prethinning(config, transmission_prethinning) || (sim.prethinning = false)
     _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
+    _refresh_rate_bounds!(settingscontainer(sim))
 
     # update label
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
@@ -2532,6 +2533,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     end
     repack_dirty_pools!(settingscontainer(simulation))
     foreach(empty!, simulation.newly_dead)
+    # measures may have changed sampling methods since the last scan
+    _refresh_rate_bounds!(settingscontainer(simulation))
 
     # Reset all loggers
     pop = population(simulation)

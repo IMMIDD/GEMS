@@ -97,6 +97,28 @@ end
         @test setting_id(first(plan_entries(store, i))) == Int32(10)
     end
 
+    @testset "Scale bounds" begin
+        store = ActivityPlanStore()
+        i = Individual(id = 1, sex = 0, age = 30)
+        t = setting_type_index(Office)
+        @test GEMS._type_scale_bound(store, t) == 1.0f0
+        plan_add!(store, i, PlanEntry(Office, Int32(20), Int32(1), 2.5))
+        @test GEMS._type_scale_bound(store, t) == 2.5f0
+        # lowering a scale keeps the bound; raising one raises it, as rounded into the entry
+        GEMS._set_entry_scale!(store, i, Office, 20, 0.5)
+        @test GEMS._type_scale_bound(store, t) == 2.5f0
+        GEMS._set_entry_scale!(store, i, Office, 20, 3.0003)
+        @test GEMS._type_scale_bound(store, t) == Float32(Float16(3.0003))
+        @test GEMS._type_scale_bound(store, setting_type_index(Household)) == 1.0f0
+
+        # a membership table's scales count from the start
+        df = DataFrame(id = Int32.(1:2), age = Int8.(30:31), sex = Int8.(ones(2)),
+                       household = Int32[1, 2], office = Int32[5, 6])
+        table = DataFrame(id = Int32[1, 2], setting_type = ["Office", "Office"], setting_id = Int32[7, 8],
+                          primary = [false, false], scale = [2.0, 0.5])
+        @test GEMS._type_scale_bound(activity_plans(Population(df; memberships = table)), t) == 2.0f0
+    end
+
     @testset "Membership mask" begin
         store = ActivityPlanStore()
         i = Individual(id = 1, sex = 0, age = 30)

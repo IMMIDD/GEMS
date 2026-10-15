@@ -38,7 +38,7 @@ function assign_values_to_parameters!(sim; x, arg)
                 new_csm  = csm_type(value)
                 # assign rate to all settings of specified type
                 for s in instances
-                    contact_sampling_method!(s, new_csm)
+                    contact_sampling_method!(sim, s, new_csm)
                 end
             end
             continue

@@ -861,13 +861,24 @@ function contact_sampling_method(setting::Setting)
 end
 
 """
-    contact_sampling_method(setting::Setting, csm::ContactSamplingMethod)
+    contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
 
-Sets the `ContactSamplingMethod` of this setting to the provided method.
+Sets the `ContactSamplingMethod` of this setting to the provided method. During a simulation use
+`contact_sampling_method!(sim, setting, csm)`, which keeps the simulation's contact rate bound current.
 """
 function contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
+    contact_rate_bound(csm) > contact_rate_bound(setting.contact_sampling_method) &&
+        @warn "The new contact sampling method of a $(typeof(setting)) may draw more contacts than the old one. " *
+            "In a simulation, set it with `contact_sampling_method!(sim, setting, csm)`, or contacts may be missed." maxlog = 1
+    return _assign_contact_sampling_method!(setting, csm)
+end
+
+# Stores a copy of `csm` in `setting`, cleared of the copied method's member caches.
+function _assign_contact_sampling_method!(setting::Setting, csm::ContactSamplingMethod)
     # deepcopy: settings must not share a mutable sampling-method cache
     setting.contact_sampling_method = deepcopy(csm)
+    membership_changed!(setting.contact_sampling_method, setting)
+    return setting.contact_sampling_method
 end
 
 """
