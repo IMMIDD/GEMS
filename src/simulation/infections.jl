@@ -19,11 +19,26 @@ setting of each plan entry, each container above it, and the GlobalSetting.
 """
 function spread_infections!(sim::Simulation)
     Threads.@threads :static for _ in 1:Threads.nthreads()
-        for ind in sim.infectious_individuals[Threads.threadid()]
+        hosts = sim.infectious_individuals[Threads.threadid()]
+        for k in eachindex(hosts)
+            _prefetch_hosts_ahead(hosts, k, activity_plans(sim))
+            ind = hosts[k]
             _foreach_spread_setting(ind, sim, _contact_draw) do setting, frame_pos, scale, drawn
                 _spread_in!(setting, frame_pos, scale, ind, sim, drawn)
             end
         end
+    end
+    return nothing
+end
+
+# Starts loading the next hosts while `hosts[k]` spreads, as each is a cache miss otherwise: the
+# `Individual` two ahead, and the plan entries one ahead, read from the `Individual` loaded last time.
+@inline function _prefetch_hosts_ahead(hosts::Vector{Individual}, k::Int, plans::ActivityPlanStore)
+    k + 2 <= length(hosts) && _prefetch(pointer_from_objref(@inbounds hosts[k + 2]), sizeof(Individual))
+    if k + 1 <= length(hosts)
+        next = @inbounds hosts[k + 1]
+        n = plan_length(next)
+        n > 0 && _prefetch(pointer(plans.entries, Int(next.plan_offset)), n * sizeof(PlanEntry))
     end
     return nothing
 end

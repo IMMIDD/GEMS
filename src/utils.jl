@@ -32,6 +32,25 @@ function _duplicates(vec)
     return collect(keys(filter(x -> x[2] > 1, countmap(vec))))
 end
 
+# Asks the CPU to start loading the `nbytes` at `p` into cache, one prefetch per cache line.
+@inline function _prefetch(p::Ptr, nbytes::Int)
+    line = UInt(p) & ~UInt(63)
+    stop = UInt(p) + nbytes % UInt
+    while line < stop
+        Base.llvmcall(("""
+            declare void @llvm.prefetch.p0(ptr, i32, i32, i32)
+            define void @entry(i64 %0) #0 {
+                %p = inttoptr i64 %0 to ptr
+                call void @llvm.prefetch.p0(ptr %p, i32 0, i32 3, i32 1)
+                ret void
+            }
+            attributes #0 = { alwaysinline }
+            """, "entry"), Cvoid, Tuple{UInt}, line)
+        line += 64
+    end
+    return nothing
+end
+
 
 ###
 ### TYPING AND SUBTYPES
