@@ -884,7 +884,7 @@ end
         struct UnderboundRate <: GEMS.TransmissionFunction end
         GEMS.transmission_probability(::UnderboundRate, pathogen_id::Int8, infecter::Individual, infectee::Individual,
             setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.5
-        GEMS.transmission_bound(::UnderboundRate, pathogen_id::Int8, infecter::Individual, setting::Setting,
+        GEMS.max_transmission_probability(::UnderboundRate, pathogen_id::Int8, infecter::Individual, setting::Setting,
             tick::Int16, sim::GEMS.Simulation) = 0.1
         err = try
             caught((pathogen(1, "A", UnderboundRate()),); prethinning = true)

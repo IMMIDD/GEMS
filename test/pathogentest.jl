@@ -983,8 +983,8 @@ end
             @test transmission_probability(transmission_function(p_sm), pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
 
             # every infectee in a setting gets its factor, so the bound is exact
-            @test transmission_factor_bound(mod, pid, ind1, hh, Int16(0), sim_sm) ≈ 3.0
-            @test transmission_factor_bound(mod, pid, ind1, office, Int16(0), sim_sm) ≈ 0.5
+            @test max_transmission_factor(mod, pid, ind1, hh, Int16(0), sim_sm) ≈ 3.0
+            @test max_transmission_factor(mod, pid, ind1, office, Int16(0), sim_sm) ≈ 0.5
 
             # SettingTransmissionRate struct
             tf_str = SettingTransmissionRate(transmission_rate=0.2, factors=Dict("Household" => 3.0, "Office" => 0.0), default_factor=0.5)
@@ -995,9 +995,9 @@ end
             # transmission_probability = base_rate × setting_factor
             @test transmission_probability(tf_str, pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
             @test transmission_probability(tf_str, pid, ind1, ind2, office, Int16(0), sim_sm) == 0.0
-            @test transmission_bound(tf_str, pid, ind1, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
-            @test transmission_bound(tf_str, pid, ind1, office, Int16(0), sim_sm) == 0.0
-            @test transmission_bound(tf_str, pid, ind1, SchoolClass(id=1), Int16(0), sim_sm) ≈ 0.2 * 0.5
+            @test max_transmission_probability(tf_str, pid, ind1, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
+            @test max_transmission_probability(tf_str, pid, ind1, office, Int16(0), sim_sm) == 0.0
+            @test max_transmission_probability(tf_str, pid, ind1, SchoolClass(id=1), Int16(0), sim_sm) ≈ 0.2 * 0.5
         end
 
         @testset "Transmission Bounds" begin
@@ -1047,17 +1047,17 @@ end
                 s, infecter, infectees = bound_setup(tf; level = level)
                 hh = households(s)[1]
                 @test all(Int16.(0:15:360)) do t
-                    b = GEMS.effective_transmission_bound(tf, Int8(1), infecter, hh, t, s)
+                    b = GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, hh, t, s)
                     all(i -> effective_transmission_probability(tf, Int8(1), infecter, i, hh, t, s) <= b + 1e-12, infectees)
                 end
-                @test @inferred(GEMS.effective_transmission_bound(tf, Int8(1), infecter, hh, Int16(1), s)) isa Float64
+                @test @inferred(GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, hh, Int16(1), s)) isa Float64
             end
 
             # a naive infectee reaches the bound
             function reaches(tf, t, pick)
                 s, infecter, infectees = bound_setup(tf; level = 40)
                 naive = infectees[4:4:end][findfirst(pick, infectees[4:4:end])]
-                return GEMS.effective_transmission_bound(tf, Int8(1), infecter, households(s)[1], t, s) ≈
+                return GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, households(s)[1], t, s) ≈
                     effective_transmission_probability(tf, Int8(1), infecter, naive, households(s)[1], t, s)
             end
             @test reaches(tfs[1], Int16(1), _ -> true)
@@ -1075,15 +1075,34 @@ end
 
             s, infecter, _ = bound_setup(UnboundedTF(); level = 40)
             hh = households(s)[1]
-            @test transmission_bound(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) == 1.0
-            @test GEMS.effective_transmission_bound(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) ≈ 0.4
+            @test max_transmission_probability(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) == 1.0
+            @test GEMS.max_effective_transmission_probability(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) ≈ 0.4
             doubled = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.4), DoublingModifier())
-            @test transmission_bound(doubled, Int8(1), infecter, hh, Int16(1), s) == Inf
+            @test max_transmission_probability(doubled, Int8(1), infecter, hh, Int16(1), s) == Inf
             s, infecter, _ = bound_setup(doubled)
-            @test GEMS.effective_transmission_bound(doubled, Int8(1), infecter, households(s)[1], Int16(1), s) == 1.0
+            @test GEMS.max_effective_transmission_probability(doubled, Int8(1), infecter, households(s)[1], Int16(1), s) == 1.0
             # a zero rate stays zero under an unbounded modifier
             silenced = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.0), DoublingModifier())
-            @test transmission_bound(silenced, Int8(1), infecter, households(s)[1], Int16(1), s) == 0.0
+            @test max_transmission_probability(silenced, Int8(1), infecter, households(s)[1], Int16(1), s) == 0.0
+
+            # a built-in's type-level bound equals its bound in every setting of that type
+            for tf in tfs
+                s, infecter, _ = bound_setup(tf; level = 40)
+                @test all(GEMS.settingtypes(GEMS.settingscontainer(s))) do T
+                    stngs = GEMS.settings(s, T)
+                    isempty(stngs) || all(Int16.(0:60:360)) do t
+                        GEMS.max_effective_transmission_probability_in_type(tf, Int8(1), infecter, T, t, s) ==
+                            GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, first(stngs), t, s)
+                    end
+                end
+                @test @inferred(GEMS.max_effective_transmission_probability_in_type(tf, Int8(1), infecter, Household, Int16(1), s)) isa Float64
+            end
+            # without one, the effective type-level bound is 1, which no probability exceeds
+            s, infecter, _ = bound_setup(UnboundedTF(); level = 40)
+            @test GEMS.max_transmission_probability_in_type(UnboundedTF(), Int8(1), infecter, Household, Int16(1), s) == Inf
+            @test GEMS.max_effective_transmission_probability_in_type(UnboundedTF(), Int8(1), infecter, Household, Int16(1), s) == 1.0
+            @test GEMS.max_transmission_probability_in_type(doubled, Int8(1), infecter, Household, Int16(1), s) == Inf
+            @test GEMS.max_transmission_probability_in_type(silenced, Int8(1), infecter, Household, Int16(1), s) == 0.0
 
             # pathogens whose bounds pre-thinning may rely on
             struct OwnEffectiveTF <: GEMS.TransmissionFunction end
@@ -1108,7 +1127,7 @@ end
             @test prethinnable(ConstantTransmissionRate(), BoundedDoubleImmunity())
 
             s, infecter, _ = bound_setup(tfs[1]; level = 40, profile = BoundedDoubleImmunity())
-            @test GEMS.effective_transmission_bound(tfs[1], Int8(1), infecter, households(s)[1], Int16(1), s) ≈ 0.3 * 0.4 * 2.0
+            @test GEMS.max_effective_transmission_probability(tfs[1], Int8(1), infecter, households(s)[1], Int16(1), s) ≈ 0.3 * 0.4 * 2.0
         end
 
     end

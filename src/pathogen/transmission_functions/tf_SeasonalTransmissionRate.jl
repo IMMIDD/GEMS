@@ -94,11 +94,11 @@ transmission_factor(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, inf
     transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_factor_bound(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_factor_in_type(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns the seasonal factor at `tick`, which every infectee gets.
+Returns the seasonal factor at `tick`, as in every setting.
 """
-transmission_factor_bound(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+max_transmission_factor_in_type(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
     _seasonal_factor(modifier, tick, sim)
 
 # The seasonal factor on the calendar day of `tick`.
@@ -210,9 +210,9 @@ transmission_probability(transFunc::SinusoidalSeasonalTransmissionRate, pathogen
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_bound(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability_in_type(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns the `transmission_rate` times the modifier's `transmission_factor_bound`.
+Returns the `transmission_rate` times the modifier's `max_transmission_factor_in_type`.
 """
-transmission_bound(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
-    transFunc.transmission_rate * transmission_factor_bound(transFunc.modifier, pathogen_id, infecter, setting, tick, sim)
+max_transmission_probability_in_type(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    transFunc.transmission_rate * max_transmission_factor_in_type(transFunc.modifier, pathogen_id, infecter, S, tick, sim)

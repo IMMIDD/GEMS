@@ -97,9 +97,9 @@ transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::I
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_bound(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability_in_type(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns the largest age group transmission rate.
+Returns the largest age group transmission rate, as in every setting.
 """
-transmission_bound(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+max_transmission_probability_in_type(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
     maximum(transFunc.age_transmission_rates)

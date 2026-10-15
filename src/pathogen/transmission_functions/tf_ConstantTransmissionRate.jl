@@ -60,9 +60,9 @@ transmission_probability(transFunc::ConstantTransmissionRate, pathogen_id::Int8,
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_bound(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability_in_type(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns the `transmission_rate`, which every infectee gets.
+Returns the `transmission_rate`, as in every setting.
 """
-transmission_bound(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+max_transmission_probability_in_type(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
     transFunc.transmission_rate

@@ -173,11 +173,11 @@ transmission_factor(modifier::ViralInterferenceModifier, pathogen_id::Int8, infe
     transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_factor_bound(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_factor_in_type(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns `1.0`, the factor of an infectee without interference.
+Returns `1.0`, as in every setting.
 """
-transmission_factor_bound(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 = 1.0
+max_transmission_factor_in_type(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} = 1.0
 
 
 ###
@@ -280,9 +280,9 @@ transmission_probability(transFunc::ViralInterferenceTransmissionRate, pathogen_
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_bound(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability_in_type(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns the `transmission_rate` times the modifier's `transmission_factor_bound`.
+Returns the `transmission_rate` times the modifier's `max_transmission_factor_in_type`.
 """
-transmission_bound(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
-    transFunc.transmission_rate * transmission_factor_bound(transFunc.modifier, pathogen_id, infecter, setting, tick, sim)
+max_transmission_probability_in_type(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    transFunc.transmission_rate * max_transmission_factor_in_type(transFunc.modifier, pathogen_id, infecter, S, tick, sim)

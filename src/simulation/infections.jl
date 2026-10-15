@@ -114,7 +114,7 @@ end
     ps = pathogens(sim)
     # an unshed pathogen's bound is 0 either way
     bounds = sim.prethinning ?
-        map(p -> effective_transmission_bound(transmission_function(p), id(p), ind, setting, t, sim), ps) :
+        map(p -> max_effective_transmission_probability(transmission_function(p), id(p), ind, setting, t, sim), ps) :
         map(p -> infectiousness(ind, sim, id(p)) == 0 ? 0.0 : 1.0, ps)
     any_bound = 1.0 - prod(b -> 1.0 - b, bounds)
     # rounded up: keeping slightly too many contacts is harmless, the extra ones transmit nothing
@@ -145,6 +145,13 @@ Checks for infectiousness, setting openness, and quarantine status.
 - `Bool`: True if the individual can infect others in the setting, false otherwise
 """
 function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
+    # a closed setting spreads nothing
+    return _can_infect(ind, typeof(setting)) && is_open(setting)
+end
+
+# The part of `can_infect` that depends only on the setting's type, so it can be checked before
+# the setting is loaded.
+function _can_infect(ind::Individual, setting_type::Type{S})::Bool where {S<:Setting}
     # if individual is not infectious
     if !infectious(ind)
         return false
@@ -155,20 +162,15 @@ function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
         return false
     end
 
-    # if setting is closed
-    if !is_open(setting)
-        return false
-    end
-
     # severe symptoms prevent infecting others outside the household
-    if is_severe(ind) && (typeof(setting) != Household)
+    if is_severe(ind) && (setting_type !== Household)
         return false
     end
 
     # if individual is quarantined
     if isquarantined(ind)
         # if individual is in household quarantine and setting is not Household
-        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
+        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (setting_type !== Household)
             return false
         end
     end

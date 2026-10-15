@@ -54,11 +54,18 @@ Base.show(io::IO, tf::CompositeTransmissionRate) =
            _apply_modifiers(Base.tail(mods), pathogen_id, infecter, infectee, setting, tick, sim, rng)
 end
 
-@inline _modifier_bounds(::Tuple{}, pathogen_id, infecter, setting, tick, sim) = 1.0
+@inline _max_modifier_factors(::Tuple{}, pathogen_id, infecter, setting, tick, sim) = 1.0
 
-@inline function _modifier_bounds(mods::Tuple, pathogen_id, infecter, setting, tick, sim)
-    return transmission_factor_bound(mods[1], pathogen_id, infecter, setting, tick, sim) *
-           _modifier_bounds(Base.tail(mods), pathogen_id, infecter, setting, tick, sim)
+@inline function _max_modifier_factors(mods::Tuple, pathogen_id, infecter, setting, tick, sim)
+    return max_transmission_factor(mods[1], pathogen_id, infecter, setting, tick, sim) *
+           _max_modifier_factors(Base.tail(mods), pathogen_id, infecter, setting, tick, sim)
+end
+
+@inline _max_modifier_factors_in_type(::Tuple{}, pathogen_id, infecter, S, tick, sim) = 1.0
+
+@inline function _max_modifier_factors_in_type(mods::Tuple, pathogen_id, infecter, S, tick, sim)
+    return max_transmission_factor_in_type(mods[1], pathogen_id, infecter, S, tick, sim) *
+           _max_modifier_factors_in_type(Base.tail(mods), pathogen_id, infecter, S, tick, sim)
 end
 
 
@@ -101,13 +108,25 @@ transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_bound(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
 
-Returns the base function's `transmission_bound` times the `transmission_factor_bound` of each modifier.
+Returns the base function's `max_transmission_probability` times the `max_transmission_factor` of each modifier.
 """
-function transmission_bound(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
-    p = transmission_bound(transFunc.base, pathogen_id, infecter, setting, tick, sim) *
-        _modifier_bounds(transFunc.modifiers, pathogen_id, infecter, setting, tick, sim)
+function max_transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    p = max_transmission_probability(transFunc.base, pathogen_id, infecter, setting, tick, sim) *
+        _max_modifier_factors(transFunc.modifiers, pathogen_id, infecter, setting, tick, sim)
+    # a zero factor zeroes the probability, whatever an unbounded one says
+    return isnan(p) ? 0.0 : p
+end
+
+"""
+    max_transmission_probability_in_type(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Returns the base function's `max_transmission_probability_in_type` times the `max_transmission_factor_in_type` of each modifier.
+"""
+function max_transmission_probability_in_type(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation)::Float64 where {S<:Setting}
+    p = max_transmission_probability_in_type(transFunc.base, pathogen_id, infecter, S, tick, sim) *
+        _max_modifier_factors_in_type(transFunc.modifiers, pathogen_id, infecter, S, tick, sim)
     # a zero factor zeroes the probability, whatever an unbounded one says
     return isnan(p) ? 0.0 : p
 end

@@ -9,8 +9,8 @@ export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
 export susceptibility_factor
-export transmission_bound
-export transmission_factor_bound
+export max_transmission_probability, max_transmission_probability_in_type
+export max_transmission_factor, max_transmission_factor_in_type
 export susceptibility_bound
 
 # the main defintion of pathogens is in src/pathogen/pathogens.jl
@@ -144,20 +144,40 @@ function transmission_probability(transFunc::TransmissionFunction, pathogen_id::
 end
 
 """
-    transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
 
-Upper bound on `transmission_probability` over every possible infectee. Defaults to `1.0`,
-which disables transmission pre-thinning for this function.
+Upper bound on `transmission_probability` over every possible infectee in `setting`. Defaults to
+`max_transmission_probability_in_type`, or `1.0` without one, which disables transmission pre-thinning.
 """
-transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 = 1.0
+function max_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    p = max_transmission_probability_in_type(transFunc, pathogen_id, infecter, typeof(setting), tick, sim)
+    return isinf(p) ? 1.0 : p
+end
 
 """
-    transmission_factor_bound(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Upper bound on `transmission_factor` over every possible infectee. Defaults to `Inf`, as a
+Upper bound on `max_transmission_probability` over every setting of type `S`. Defaults to `Inf`,
+which the effective bound caps at `1.0`.
+"""
+max_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} = Inf
+
+"""
+    max_transmission_factor(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Upper bound on `transmission_factor` over every possible infectee in `setting`. Defaults to
+`max_transmission_factor_in_type`.
+"""
+max_transmission_factor(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+    max_transmission_factor_in_type(modifier, pathogen_id, infecter, typeof(setting), tick, sim)
+
+"""
+    max_transmission_factor_in_type(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Upper bound on `max_transmission_factor` over every setting of type `S`. Defaults to `Inf`, as a
 modifier may raise the probability.
 """
-transmission_factor_bound(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 = Inf
+max_transmission_factor_in_type(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} = Inf
 
 """
     effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
@@ -193,16 +213,30 @@ effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id:
     effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    effective_transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
 
-Upper bound on `effective_transmission_probability` over every possible infectee, at most `1.0`.
+Upper bound on `effective_transmission_probability` over every possible infectee in `setting`, at most `1.0`.
 """
-function effective_transmission_bound(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+function max_effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
     profile = immunity_profile(get_pathogen(sim, pathogen_id))
-    p = transmission_bound(transFunc, pathogen_id, infecter, setting, tick, sim) *
+    p = max_transmission_probability(transFunc, pathogen_id, infecter, setting, tick, sim) *
         infectiousness(infecter, sim, pathogen_id) / 100.0 *
         susceptibility_bound(profile)
     # a zero factor zeroes the probability, whatever an unbounded one says
+    return isnan(p) ? 0.0 : min(1.0, p)
+end
+
+"""
+    max_effective_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Upper bound on `max_effective_transmission_probability` over every setting of type `S`, at most `1.0`.
+"""
+function max_effective_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation)::Float64 where {S<:Setting}
+    profile = immunity_profile(get_pathogen(sim, pathogen_id))
+    p = max_transmission_probability_in_type(transFunc, pathogen_id, infecter, S, tick, sim) *
+        infectiousness(infecter, sim, pathogen_id) / 100.0 *
+        susceptibility_bound(profile)
+    # same expression as `max_effective_transmission_probability`, so equal bounds give equal values
     return isnan(p) ? 0.0 : min(1.0, p)
 end
 

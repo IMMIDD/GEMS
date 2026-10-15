@@ -66,23 +66,23 @@ function transmission_factor(
         tick::Int16,
         sim::Simulation,
         rng::Xoshiro)::Float64
-    return _setting_factor(modifier, setting)
+    return _setting_factor(modifier, typeof(setting))
 end
 
 transmission_factor(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_factor_bound(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_factor_in_type(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns the factor for the type of `setting`, which every infectee there gets.
+Returns the factor for type `S`, which every infectee in such a setting gets.
 """
-transmission_factor_bound(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
-    _setting_factor(modifier, setting)
+max_transmission_factor_in_type(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    _setting_factor(modifier, S)
 
-# The factor for the type of `setting`, or the default if the type has no entry.
-_setting_factor(modifier::SettingModifier, setting::Setting)::Float64 =
-    get(modifier.factors, typeof(setting), modifier.default_factor)
+# The factor for setting type `S`, or the default if the type has no entry.
+_setting_factor(modifier::SettingModifier, ::Type{S}) where {S<:Setting} =
+    get(modifier.factors, S, modifier.default_factor)::Float64
 
 
 ###
@@ -152,9 +152,9 @@ transmission_probability(transFunc::SettingTransmissionRate, pathogen_id::Int8, 
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
 
 """
-    transmission_bound(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    max_transmission_probability_in_type(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
 
-Returns the `transmission_rate` times the modifier's `transmission_factor_bound`.
+Returns the `transmission_rate` times the modifier's `max_transmission_factor_in_type`.
 """
-transmission_bound(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
-    transFunc.transmission_rate * transmission_factor_bound(transFunc.modifier, pathogen_id, infecter, setting, tick, sim)
+max_transmission_probability_in_type(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    transFunc.transmission_rate * max_transmission_factor_in_type(transFunc.modifier, pathogen_id, infecter, S, tick, sim)
