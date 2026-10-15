@@ -58,7 +58,15 @@ function sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_s
     if replace
         # a Poisson number of contacts, each kept with `p`, is a Poisson number with `p` times the mean
         number_of_contacts = gems_rand(rng, Poisson(contactparameter_sampling.contactparameter * p))
-        return _draw_others!(indivs, present_inds, individual_index, number_of_contacts, rng)
+        # each a uniform draw among everyone present but the individual
+        n0 = length(indivs)
+        resize!(indivs, n0 + number_of_contacts)
+        @inbounds for i in 1:number_of_contacts
+            offset = gems_rand(rng, 1:length(present_inds) - 1)
+            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+            indivs[n0 + i] = present_inds[contact_index]
+        end
+        return indivs
     end
 
     # get number of contacts
@@ -74,4 +82,36 @@ function sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_s
         end
     end
     return _keep_each!(indivs, p, rng)
+end
+
+"""
+    contact_rate(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+
+Returns `contactparameter`, or 0 when nobody else is present.
+"""
+contact_rate(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64 =
+    length(present_inds) > 1 ? contactparameter_sampling.contactparameter : 0.0
+
+"""
+    contact_rate_bound(contactparameter_sampling::ContactparameterSampling)::Float64
+
+Returns `contactparameter`.
+"""
+contact_rate_bound(contactparameter_sampling::ContactparameterSampling)::Float64 = contactparameter_sampling.contactparameter
+
+"""
+    sample_k_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+
+Appends `k` contacts, each a uniform draw among everyone present but the individual.
+"""
+function sample_k_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting,
+        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+    n0 = length(indivs)
+    resize!(indivs, n0 + k)
+    @inbounds for i in 1:k
+        offset = gems_rand(rng, 1:length(present_inds) - 1)
+        contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
+        indivs[n0 + i] = present_inds[contact_index]
+    end
+    return indivs
 end

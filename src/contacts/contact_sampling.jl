@@ -1,4 +1,5 @@
 export sample_contacts!, sample_contacts, sample_thinned_contacts!
+export contact_rate, contact_rate_bound, sample_k_contacts!
 export create_contact_sampling_method
 export membership_changed!
 
@@ -61,6 +62,51 @@ At `p = 1` it must return exactly what `sample_contacts!` returns.
 function sample_thinned_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
     sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
     return _keep_each!(indivs, p, rng)
+end
+
+"""
+    contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+
+The mean number of contacts `sample_contacts!` returns with `replace = true`. Defining it promises
+that number is Poisson and its contacts are independent of each other and of their number, which
+lets the simulation draw the number before it touches the setting.
+"""
+function contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+    error("$(typeof(csm)) defines no contact_rate. Was it set without `contact_sampling_method!(sim, setting, csm)`?")
+end
+
+"""
+    contact_rate_bound(csm::ContactSamplingMethod)::Float64
+
+An upper bound on `contact_rate` for any host, setting holding `csm` and tick. Defaults to `Inf`,
+meaning `csm` defines no `contact_rate`.
+"""
+contact_rate_bound(csm::ContactSamplingMethod)::Float64 = Inf
+
+"""
+    sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+
+Appends exactly `k` contacts to `indivs`, each drawn as one of `sample_contacts!`'s with `replace = true`.
+Defaults to keeping the first `k` of repeated `sample_contacts!` calls, which `contact_rate`'s promise makes
+exact; define it to skip the discarded draws.
+"""
+function sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting,
+        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+    k > 0 || return indivs
+    rate = contact_rate(csm, setting, individual_index, present_inds, tick)
+    rate > 0 || error("$(typeof(csm)) has contact_rate 0 here, so it cannot draw $k contacts")
+    # a method that keeps returning nobody has a wrong contact_rate
+    limit = ceil(Int, 100 * k / rate) + 100
+    draws = _contact_scratch()
+    calls = 0
+    while k > 0
+        (calls += 1) > limit && error("$(typeof(csm)) returns fewer contacts than its contact_rate")
+        sample_contacts!(empty!(draws), csm, setting, individual_index, present_inds, tick, true, rng)
+        n = min(k, length(draws))
+        append!(indivs, view(draws, 1:n))
+        k -= n
+    end
+    return indivs
 end
 
 """
@@ -363,17 +409,8 @@ function _user_method(f, argtypes::Type{<:Tuple}, csm_pos::Int)
     return sig.parameters[csm_pos + 1] !== ContactSamplingMethod
 end
 
-# Appends `n` members drawn with replacement from everyone present but the one at `individual_index`
-function _draw_others!(indivs::Vector{Individual}, present_inds::AbstractVector{Individual}, individual_index::Int, n::Int, rng::Xoshiro)
-    n0 = length(indivs)
-    resize!(indivs, n0 + n)
-    @inbounds for i in 1:n
-        offset = gems_rand(rng, 1:length(present_inds) - 1)
-        contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-        indivs[n0 + i] = present_inds[contact_index]
-    end
-    return indivs
-end
+# A buffer the generic `sample_k_contacts!` reuses within each task, so it allocates once per task
+_contact_scratch() = get!(() -> Individual[], task_local_storage(), :gems_contact_scratch)::Vector{Individual}
 
 # Keeps each of `indivs` independently with probability `p`, drawing nothing when `p >= 1`
 function _keep_each!(indivs::Vector{Individual}, p::Float32, rng::Xoshiro)

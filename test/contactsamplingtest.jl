@@ -358,4 +358,62 @@ end
         @test THINNED_P[] == 0.5f0 * 0.4f0
         @test contacts in ([], [inds[end]])
     end
+
+    @testset "Contact rates" begin
+        m = hcat([[rand(Xoshiro(5 + i)) for i = 1:10] for i = 1:10]...)
+        m = m .* hcat([vec(1 ./ sum(m, dims = 2)) for _ = 1:10]...)
+        # ages spread unevenly over the bins, so the host's own bin matters
+        inds = [Individual(id = j, age = (j % 7) * 13, sex = 1) for j in 1:40]
+        tick = GEMS.DEFAULT_TICK
+        household(csm) = Household(id = 1, individuals = copy(inds), contact_sampling_method = csm)
+        cps = ContactparameterSampling(2.5)
+        abcs = AgeBasedContactSampling(2.5, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
+        n = 40_000
+        rng = Xoshiro(17)
+
+        @test contact_rate_bound(KwMutatingSampler()) == Inf
+        @test_throws ErrorException contact_rate(KwMutatingSampler(), household(cps), 2, inds, tick)
+        @test contact_rate(cps, household(cps), 2, inds, tick) == 2.5
+        @test contact_rate(cps, household(cps), 1, inds[1:1], tick) == 0.0
+        @test contact_rate_bound(cps) == 2.5
+        @test contact_rate_bound(abcs) == 5.0
+
+        # an opted-in method's rate is the mean count of its own sampling, within its bound
+        for csm in (cps, abcs), idx in (2, 5, 33)
+            h = household(csm)
+            rate = contact_rate(csm, h, idx, inds, tick)
+            @test rate <= contact_rate_bound(csm)
+            counts = [length(sample_contacts(csm, h, idx, inds, tick, true, rng)) for _ in 1:n]
+            @test abs(mean(counts) - rate) < 5 * sqrt(rate / n)
+        end
+
+        # drawing k contacts picks who as sampling does, by a method's own draw and by the generic one
+        generic_draw = Tuple{Vector{Individual}, ContactSamplingMethod, Setting, Int, AbstractVector{Individual}, Int16, Int, Xoshiro}
+        for csm in (cps, abcs)
+            h = household(csm)
+            freq(v) = [count(c -> c === i, v) / length(v) for i in inds]
+            sampled = reduce(vcat, [sample_contacts(csm, h, 5, inds, tick, true, rng) for _ in 1:(n ÷ 4)])
+            own = sample_k_contacts!(Individual[], csm, h, 5, inds, tick, length(sampled), rng)
+            generic = invoke(sample_k_contacts!, generic_draw, Individual[], csm, h, 5, inds, tick, length(sampled), rng)
+            @test length(own) == length(generic) == length(sampled)
+            @test all(c -> c !== inds[5], own)
+            @test maximum(abs.(freq(own) .- freq(sampled))) < 0.01
+            @test maximum(abs.(freq(generic) .- freq(sampled))) < 0.01
+        end
+
+        # nobody else has weight in the host's row: no contacts, and no endless draw
+        alone = [Individual(id = 1, age = 5, sex = 1); [Individual(id = j, age = 50, sex = 1) for j in 2:5]]
+        eye = AgeBasedContactSampling(2.5, 10, ContactMatrix{Float64}(Float64[i == j for i in 1:10, j in 1:10], 10, 100), Float64[])
+        h = Household(id = 1, individuals = copy(alone), contact_sampling_method = eye)
+        @test contact_rate(eye, h, 1, alone, tick) == 0.0
+        @test isempty(sample_contacts(eye, h, 1, alone, tick, true, rng))
+        @test_throws ErrorException sample_k_contacts!(Individual[], eye, h, 1, alone, tick, 1, rng)
+
+        # a membership change drops the rate cache
+        @test eye.rate_cache !== nothing
+        membership_changed!(eye, h)
+        @test eye.rate_cache === nothing
+
+        @test_throws ArgumentError AgeBasedContactSampling(1.0, 10, ContactMatrix{Float64}(fill(-0.1, 10, 10), 10, 100), Float64[])
+    end
 end
