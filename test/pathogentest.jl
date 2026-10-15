@@ -200,12 +200,14 @@ end
             severeness_offset_to_recovery = poi1,
             critical_onset_to_death = poi7
         )
-        @test pr_ward.severeness_onset_to_severeness_offset === poi10
+        @test pr_ward.inner isa Severe && pr_ward.inner.severeness_onset_to_severeness_offset === poi10
         @test pr_ward.health isa WardHealthProfile
-        @test pr_icu.critical_onset_to_critical_offset === poi10
+        @test pr_icu.inner isa Critical && pr_icu.inner.critical_onset_to_critical_offset === poi10
         @test pr_icu.health isa ICUHealthProfile
-        @test pr_fatal.critical_onset_to_critical_offset === poi5
+        @test pr_fatal.inner isa Critical && pr_fatal.inner.critical_onset_to_critical_offset === poi5
         @test pr_fatal.health isa FatalHealthProfile
+        # the inner course carries no health of its own
+        @test isnothing(pr_ward.inner.health) && isnothing(pr_fatal.inner.health)
 
         # they sit alongside the general tiers in one pathogen and resolve by name
         p_tiers = Pathogen(

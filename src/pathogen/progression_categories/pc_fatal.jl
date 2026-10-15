@@ -42,13 +42,8 @@ dp = Fatal(
 ```
 """
 mutable struct Fatal <: ProgressionCategory
-    exposure_to_infectiousness_onset::Union{Distribution, Real}
-    infectiousness_onset_to_symptom_onset::Union{Distribution, Real}
-    symptom_onset_to_severeness_onset::Union{Distribution, Real}
-    severeness_onset_to_critical_onset::Union{Distribution, Real}
-    critical_onset_to_critical_offset::Union{Distribution, Real}
-    critical_offset_to_severeness_offset::Union{Distribution, Real}
-    severeness_offset_to_recovery::Union{Distribution, Real}
+    # the course, built once from this category's timings
+    inner::Critical
     # embedded host health (build-time only; harvested into the HealthProgression, ignored by calculate_progression)
     health::FatalHealthProfile
 
@@ -65,46 +60,14 @@ mutable struct Fatal <: ProgressionCategory
 
         profile = _embed_health(Fatal, health, nothing, health_params)
         isnothing(profile) && throw(ArgumentError("Fatal requires a health profile; pass `health = FatalHealthProfile(...)` or its parameters."))
-        return new(exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset,
+        inner = Critical(; exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset,
             symptom_onset_to_severeness_onset, severeness_onset_to_critical_onset,
-            critical_onset_to_critical_offset, critical_offset_to_severeness_offset,
-            severeness_offset_to_recovery, profile)
+            critical_onset_to_critical_offset, critical_offset_to_severeness_offset, severeness_offset_to_recovery)
+        return new(inner, profile)
     end
 end
 
 _health_profile_type(::Type{Fatal}) = FatalHealthProfile
 
-function calculate_progression(individual::Individual, tick::Int16, dp::Fatal, rng::Xoshiro)
-
-    # Calculate the time to infectiousness
-    infectiousness_onset::Int16 = rand_round(tick + 1 + _rand_val(dp.exposure_to_infectiousness_onset, rng), rng)
-
-    # Calculate the time to symptom onset
-    symptom_onset::Int16 = rand_round(infectiousness_onset + _rand_val(dp.infectiousness_onset_to_symptom_onset, rng), rng)
-
-    # Calculate the time to severeness onset
-    severeness_onset::Int16 = rand_round(symptom_onset + _rand_val(dp.symptom_onset_to_severeness_onset, rng), rng)
-
-    # Calculate the time to critical onset
-    critical_onset::Int16 = rand_round(severeness_onset + _rand_val(dp.severeness_onset_to_critical_onset, rng), rng)
-
-    # Calculate the time to critical offset
-    critical_offset::Int16 = rand_round(critical_onset + _rand_val(dp.critical_onset_to_critical_offset, rng), rng)
-
-    # Calculate the time to severeness offset
-    severeness_offset::Int16 = rand_round(critical_offset + _rand_val(dp.critical_offset_to_severeness_offset, rng), rng)
-
-    # Calculate the time to recovery
-    recovery::Int16 = rand_round(severeness_offset + _rand_val(dp.severeness_offset_to_recovery, rng), rng)
-
-    return DiseaseProgression(
-        exposure = tick,
-        infectiousness_onset = infectiousness_onset,
-        symptom_onset = symptom_onset,
-        severeness_onset = severeness_onset,
-        critical_onset = critical_onset,
-        critical_offset = critical_offset,
-        severeness_offset = severeness_offset,
-        recovery = recovery
-    )
-end
+calculate_progression(individual::Individual, tick::Int16, dp::Fatal, rng::Xoshiro) =
+    calculate_progression(individual, tick, dp.inner, rng)
