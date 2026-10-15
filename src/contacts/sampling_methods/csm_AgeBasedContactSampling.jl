@@ -71,16 +71,7 @@ end
 Sample random contacts based on a spread around `contactparameter_sampling.contactparameter` with weighted sampling based on age distance.
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro) =
-    sample_thinned_contacts!(indivs, contactparameter_sampling, setting, individual_index, present_inds, tick, replace, rng, 1.0f0)
-
-"""
-    sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
-
-With replacement, draws only the first-order contacts that are kept: their number is Poisson with `p` times the mean.
-Without replacement, samples as `sample_contacts!` does and then keeps each contact with probability `p`.
-"""
-function sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
     if isempty(present_inds)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
@@ -121,9 +112,8 @@ function sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_s
     m_max = maximum(contact_matrix[orig_bin, :])
     
     # first order sampling (i.e. uniform), qi is missing since we sample from population according to age distribution
-    # with replacement, only the contacts `p` keeps are drawn
     mean_contacts = expected_number_of_contacts * w * m_max
-    number_of_contacts = gems_rand(rng, Poisson(replace ? mean_contacts * p : mean_contacts))
+    number_of_contacts = gems_rand(rng, Poisson(mean_contacts))
     if number_of_contacts < 1
         return indivs
     end
@@ -169,10 +159,7 @@ function sample_thinned_contacts!(indivs::Vector{Individual}, contactparameter_s
     end
     
     # Shrink the indivs down to only the individuals that passed the probability check
-    resize!(indivs, keep_count)
-
-    # without replacement, the kept contacts are thinned after sampling
-    return replace ? indivs : _keep_each!(indivs, p, rng)
+    return resize!(indivs, keep_count)
 end
 
 """

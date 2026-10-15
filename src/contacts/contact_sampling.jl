@@ -1,4 +1,4 @@
-export sample_contacts!, sample_contacts, sample_thinned_contacts!
+export sample_contacts!, sample_contacts
 export contact_rate, contact_rate_bound, sample_k_contacts!
 export create_contact_sampling_method
 export membership_changed!
@@ -48,20 +48,6 @@ function sample_contacts!(
     else
         error("Currently, no specific implementation of this function is known. Please provide a method for type: $(typeof(csm))")
     end
-end
-
-"""
-    sample_thinned_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
-
-Like `sample_contacts!`, but keeps each sampled contact independently with the same probability `p`.
-Returns `indivs`, which is expected to be empty on entry.
-
-Implement it for a sampling method that can skip the dropped contacts before drawing them.
-At `p = 1` it must return exactly what `sample_contacts!` returns.
-"""
-function sample_thinned_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
-    return _keep_each!(indivs, p, rng)
 end
 
 """
@@ -213,15 +199,14 @@ membership_changed!(csm::ContactSamplingMethod, setting::Setting) = nothing
 ### SCALED SAMPLING
 ### Scales a setting's contacts by both parties' scales there. A host draws `s_host * bound` times
 ### its sampler's contacts and keeps each with the contact's scale over `bound`, so every pair
-### meets at `s_host * s_contact` times the unscaled rate. The part of the keep that is the same
-### for every contact goes to the sampler, see `sample_thinned_contacts!`.
+### meets at `s_host * s_contact` times the unscaled rate. A method with `contact_rate` folds the
+### part of the keep that is the same for every contact into its count; any other keeps each contact.
 ###
 
 # Samples the host's contacts in `setting` into `contacts`, drawing into `draws` when the sampler
 # has to be called more than once. Draws nothing extra while every scale involved is 1.
 # `oversample` only acts without replacement, see `_sample_unique_scaled!`.
 # `thin` keeps each contact with that probability on top of its scales.
-# The sampler applies `thin` and the host's draw fraction, skipping those draws where it can.
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
@@ -231,9 +216,21 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
     # a lone member could only meet itself
     (r == 0 || length(present) <= 1) && return contacts
 
+    if replace && _has_contact_rate(csm)
+        # one Poisson count with `r * thin` folded in, a product the method's own count used to take,
+        # then that many contacts, thinned by each contact's scale in place
+        k = gems_rand(rng, Poisson(contact_rate(csm, setting, idx, present, tick) * (r * thin)))
+        sample_k_contacts!(contacts, csm, setting, idx, present, tick, k, rng)
+        kept = 0
+        for c in contacts
+            _keep_contact(c, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
+        end
+        return resize!(contacts, kept)
+    end
+
     if r <= 1
-        # one draw, the sampler thinning by `r * thin`, then by each contact's scale in place
-        sample_thinned_contacts!(contacts, csm, setting, idx, present, tick, replace, rng, r * thin)
+        # one draw thinned by `r * thin`, then by each contact's scale in place
+        _sample_thinned!(contacts, csm, setting, idx, present, tick, replace, rng, r * thin)
         kept = 0
         for c in contacts
             _keep_contact(c, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
@@ -251,7 +248,7 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         # the last draw stands for the fraction beyond the whole ones
         f = call > calls ? frac : 1.0f0
         empty!(draws)
-        sample_thinned_contacts!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
+        _sample_thinned!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
         for c in draws
             _keep_contact(c, bound, plans, setting, cntnr, rng) && push!(contacts, c)
         end
@@ -385,7 +382,7 @@ end
 
 # The src/contacts/sampling_methods folder contains a dedicated file for each built-in
 # contact sampling method. Files starting with "csm_" define a `ContactSamplingMethod`
-# with its `sample_contacts!` and `sample_thinned_contacts!` methods.
+# with its `sample_contacts!` method, and with `contact_rate` and `sample_k_contacts!` if its count is Poisson.
 
 # include all Julia files from the "sampling_methods"-folder
 include.(
@@ -411,6 +408,16 @@ end
 
 # A buffer the generic `sample_k_contacts!` reuses within each task, so it allocates once per task
 _contact_scratch() = get!(() -> Individual[], task_local_storage(), :gems_contact_scratch)::Vector{Individual}
+
+# Whether `csm` defines `contact_rate`, which a finite `contact_rate_bound` says
+@inline _has_contact_rate(csm::ContactSamplingMethod) = isfinite(contact_rate_bound(csm))
+
+# Samples as `sample_contacts!` does, then keeps each contact with probability `p`
+function _sample_thinned!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int,
+        present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return _keep_each!(indivs, p, rng)
+end
 
 # Keeps each of `indivs` independently with probability `p`, drawing nothing when `p >= 1`
 function _keep_each!(indivs::Vector{Individual}, p::Float32, rng::Xoshiro)

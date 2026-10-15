@@ -47,8 +47,8 @@ Implement `sample_contacts!` for your subtype. Its `present_inds` argument is a 
 setting's real members, not a scratch buffer: writing to it edits membership. Read only, and
 write results into `indivs`.
 
-Simulations often keep only a share of the sampled contacts. Optionally implement
-`sample_thinned_contacts!` to skip the dropped ones before drawing them.
+If its number of contacts is Poisson, also implement `contact_rate` and `contact_rate_bound`, and
+optionally `sample_k_contacts!`, so a simulation can draw that number before it touches the setting.
 """
 abstract type ContactSamplingMethod end
 

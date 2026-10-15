@@ -33,21 +33,6 @@ end
 # defines neither shape
 struct NoMethodSampler <: ContactSamplingMethod end
 
-# thins its own single draw, recording the keep probability it was called with
-struct ThinningSampler <: ContactSamplingMethod end
-const THINNED_P = Ref(NaN32)
-
-GEMS.sample_contacts!(indivs::Vector{Individual}, csm::ThinningSampler, setting::Setting, individual_index::Int,
-    present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro) =
-    GEMS.sample_thinned_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng, 1.0f0)
-
-function GEMS.sample_thinned_contacts!(indivs::Vector{Individual}, csm::ThinningSampler, setting::Setting,
-        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
-    THINNED_P[] = p
-    (p >= 1 || rand(rng) < p) && push!(indivs, present_inds[end])
-    return indivs
-end
-
 @testset "Contact Sampling" begin
            
     # create testsets for each ContactSamplingMethod known in GEMS
@@ -309,54 +294,33 @@ end
         @test drew # the assertion above is only worth anything if something was sampled
     end
 
-    @testset "Thinned sampling" begin
+    @testset "Scaled sampling thins" begin
         m = hcat([[rand(Xoshiro(3 + i)) for i = 1:10] for i = 1:10]...)
         m = m .* hcat([vec(1 ./ sum(m, dims = 2)) for _ = 1:10]...)
         inds = [Individual(id = j, age = 10 * j, sex = 1) for j in 1:9]
         tick = GEMS.DEFAULT_TICK
-        samplers = [RandomSampling(), ContactparameterSampling(4.0),
-            AgeBasedContactSampling(4.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])]
         household(csm) = Household(id = 1, individuals = copy(inds), contact_sampling_method = csm)
+        plans, cntnr = ActivityPlanStore(), SettingsContainer()
+        scaled(csm, h, rng, s_host, thin) = GEMS.sample_scaled_contacts!(Individual[], Individual[], csm, h, 2, inds, tick, true, rng,
+            plans, cntnr, Float32(s_host), 1.0f0; thin = Float32(thin))
 
-        # at p = 1 each built-in sampler draws exactly what `sample_contacts!` draws
-        same = true
-        for csm in samplers, replace in (true, false), s in 1:20
-            r1 = Xoshiro(s); r2 = copy(r1)
-            a = Individual[]; b = Individual[]
-            sample_contacts!(a, csm, household(csm), 2, inds, tick, replace, r1)
-            sample_thinned_contacts!(b, csm, household(csm), 2, inds, tick, replace, r2, 1.0f0)
-            same &= a == b && r1 == r2
-        end
-        @test same
-
-        # at p = 0.3 the kept counts match sampling everything and keeping each contact with 0.3
+        # with or without `contact_rate`, a host keeps `s_host * thin` times a call's mean contacts
         n = 20_000
         rng = Xoshiro(9)
-        for csm in samplers, replace in (true, false)
+        samplers = [RandomSampling(), ContactparameterSampling(4.0),
+            AgeBasedContactSampling(4.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[]), KwMutatingSampler()]
+        for csm in samplers, s_host in (1, 2.5)
             h = household(csm)
-            thinned = [length(sample_thinned_contacts!(Individual[], csm, h, 2, inds, tick, replace, rng, 0.3f0)) for _ in 1:n]
-            ref = [count(_ -> rand(rng) < 0.3, sample_contacts(csm, h, 2, inds, tick, replace, rng)) for _ in 1:n]
-            @test abs(mean(thinned) - mean(ref)) < 5 * sqrt((var(thinned) + var(ref)) / n)
-            @test abs(mean(==(0), thinned) - mean(==(0), ref)) < 0.02
+            mu = mean(length(sample_contacts(csm, h, 2, inds, tick, true, rng)) for _ in 1:n)
+            counts = [length(scaled(csm, h, rng, s_host, 0.3)) for _ in 1:n]
+            @test abs(mean(counts) - mu * s_host * 0.3) < 5 * sqrt((var(counts) + mu * s_host * 0.3) / n)
         end
 
-        # a Poisson number of contacts thins to Poisson(λ p)
-        cps_counts = [length(sample_thinned_contacts!(Individual[], samplers[2], household(samplers[2]), 2, inds, tick, true, rng, 0.3f0)) for _ in 1:n]
-        @test isapprox(mean(cps_counts), 1.2; atol = 0.05)
-        @test isapprox(var(cps_counts), 1.2; atol = 0.08)
-        @test isapprox(mean(==(0), cps_counts), exp(-1.2); atol = 0.015)
-
-        # a keyword-only user sampler is thinned by the default
-        csm = KwMutatingSampler()
-        kept = count(_ -> !isempty(sample_thinned_contacts!(Individual[], csm, household(csm), 2, inds, tick, true, rng, 0.3f0)), 1:n)
-        @test isapprox(kept / n, 0.3; atol = 0.015)
-
-        # scaled sampling hands its keep probability to a sampler that thins itself
-        csm = ThinningSampler()
-        contacts = GEMS.sample_scaled_contacts!(Individual[], Individual[], csm, household(csm), 2, inds, tick, true, rng,
-            ActivityPlanStore(), SettingsContainer(), 0.5f0, 1.0f0; thin = 0.4f0)
-        @test THINNED_P[] == 0.5f0 * 0.4f0
-        @test contacts in ([], [inds[end]])
+        # a method with `contact_rate` draws one Poisson count at its rate times `s_host * thin`
+        counts = [length(scaled(samplers[2], household(samplers[2]), rng, 2.5, 0.3)) for _ in 1:n]
+        @test isapprox(mean(counts), 3.0; atol = 0.08)
+        @test isapprox(var(counts), 3.0; atol = 0.15)
+        @test isapprox(mean(==(0), counts), exp(-3.0); atol = 0.01)
     end
 
     @testset "Contact rates" begin
