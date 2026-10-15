@@ -488,12 +488,11 @@ function infect!(infectee::Individual,
 
     # calculate disease progression
     paf = progression_assignment(pathogen)
-    immunities = isnothing(sim) ? ImmunityRegistry() : immunity_registry(sim, infectee)
-    pc = assign(infectee, paf, immunities, id(pathogen), rng)
+    pc = assign(infectee, paf, sim, id(pathogen), tick, rng)
 
     prog = get_progression(pathogen.progressions, pc)
     tag = progression_index(pathogen.progressions, pc)
-    dp = calculate_progression(infectee, tick, prog, immunities, id(pathogen), rng)::DiseaseProgression
+    dp = calculate_progression(infectee, tick, prog, sim, id(pathogen), rng)::DiseaseProgression
 
     if isnothing(sim)
         # no simulation context — store InfectionState directly in the individual's cache.

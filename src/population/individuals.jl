@@ -106,7 +106,6 @@ A type to represent individuals that act as agents inside the simulation.
     - `membership_mask::UInt16`: Bit per setting type present in the plan, for O(1) lookup; only types that can hold entries have a bit
 
 - Bookkeeping
-    - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
     - `number_of_infections::Int8`: Lifetime infection count
     - `disease_flags::UInt8`: Bitpacked disease-state flags (`infected`/`infectious`/`symptomatic`/`severe`/`critical`/`dead`), accessed via the `is_*`/`*!` accessors
     - `killing_pathogen_id::Int8`: Pathogen credited for the host death (set when death is scheduled, read by the death logger)
@@ -156,10 +155,10 @@ A type to represent individuals that act as agents inside the simulation.
     plan_scaled::Bool = false                       # off 25,  1B,  line 0
 
     # BOOKKEEPING
-    needs_immunity_update::Bool = false             # off 26,  1B,  line 0
-    number_of_infections::Int8 = 0                  # off 27,  1B,  line 0
-    disease_flags::DiseaseFlags = DiseaseFlags()    # off 28,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 29,  1B,  line 0
+    number_of_infections::Int8 = 0                  # off 26,  1B,  line 0
+    disease_flags::DiseaseFlags = DiseaseFlags()    # off 27,  1B,  line 0
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 28,  1B,  line 0
+    #                                                 off 29,  1B free (alignment)
     membership_mask::UInt16 = 0                     # off 30,  2B,  line 0
 
     # INTERVENTIONS
