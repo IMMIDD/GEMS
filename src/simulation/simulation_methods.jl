@@ -762,7 +762,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
             _close_care_at_death!(indiv, healthlogger(sim), tick)
-            # leaves its settings in the serial `apply_deaths!`
+            # leaves its settings in `apply_deaths!`, after this threaded loop
             push!(sim.newly_dead[Threads.threadid()], indiv)
         end
     end
@@ -837,13 +837,32 @@ function mark_deceased!(individual::Individual, sim::Simulation)
 end
 
 # Marks this tick's dead deceased, leaving their pools dirty for `update_population!` to repack.
-# Serial, as marking one also moves the member it swaps with.
+# Marking one moves the member it swaps with, so each setting is marked by one thread, and the
+# settings of a pooled type, which share their pool, all by the same one.
 function apply_deaths!(sim::Simulation)
     any(!isempty, sim.newly_dead) || return nothing
-    # thread order is population order, so the result does not depend on who found a death
-    for buf in sim.newly_dead
-        foreach(i -> mark_deceased!(i, sim), buf)
-        empty!(buf)
+    cntnr = settingscontainer(sim)
+    # (type, part, parts): a flat type split by setting id, a pooled type whole
+    parts = Tuple{DataType, Int, Int}[]
+    for T in settingtypes(cntnr)
+        (T <: IndividualSetting && hasfield(T, :deceased)) || continue
+        n = hasfield(T, :pool) ? 1 : Threads.nthreads()
+        append!(parts, ((T, p, n) for p in 0:(n - 1)))
+    end
+    Threads.@threads :dynamic for (T, part, n) in parts
+        _apply_deaths!(sim, settings(cntnr, T), part, n)
+    end
+    foreach(empty!, sim.newly_dead)
+    return nothing
+end
+
+# Marks this tick's dead deceased in the settings of one type with `setting_id % n == part`, in the
+# order the disease update found them, which is population order whichever thread found a death.
+function _apply_deaths!(sim::Simulation, stngs::Vector{T}, part::Int, n::Int) where {T<:IndividualSetting}
+    plans = activity_plans(sim)
+    for buf in sim.newly_dead, ind in buf, slot in plan_slots(plans, ind, T)
+        sid = setting_id(@inbounds plans.entries[slot])
+        sid % n == part && mark_deceased!(stngs[sid], ind, sim)
     end
     return nothing
 end
