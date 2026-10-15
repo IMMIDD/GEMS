@@ -1042,6 +1042,6 @@ end
         @test all(h -> walk_bytes(h) == 0, infectious)
         h = first(infectious)
         @test @inferred(GEMS._level_draws(GEMS._contact_draw, SchoolClass, h, first(GEMS.plan_slots(plans, h)), sim)) isa
-            NTuple{4, @NamedTuple{n::Int, rate_bound::Float64}}
+            NTuple{4, GEMS._ContactDraw}
     end
 end
