@@ -127,7 +127,7 @@ function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Ind
     _with_sampling_method(setting.contact_sampling_method) do csm
         sample_scaled_contacts!(contacts, sim.draw_buffers[Threads.threadid()], csm, setting, frame_pos,
             present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
-            s_host, _scale_bound(setting); thin = thin, drawn = drawn.n, drawn_rate = drawn.rate_bound)
+            s_host, _scale_bound(setting); thin = thin, drawn = drawn)
     end
 
     # every contact passed `can_be_contacted` when it was sampled
@@ -144,6 +144,18 @@ end
 ### Contacts drawn per level before its setting is loaded, from bounds on its setting type
 ###
 
+# `n` contacts drawn for a level before its setting is loaded, at `rate_bound`, at least the visit's rate.
+# `rate_bound = Inf` draws none ahead, so the visit samples them instead.
+struct _ContactDraw
+    n::Int
+    rate_bound::Float64
+end
+
+const DEFAULT_CONTACT_DRAW = _ContactDraw(0, Inf)
+
+# whether contacts were drawn ahead, which the visit thins instead of sampling its own count
+@inline _drawn_ahead(drawn::_ContactDraw) = isfinite(drawn.rate_bound)
+
 # A Poisson count `n` at `rate_bound`, a bound on `ind`'s contact rate in any setting of type `S` it
 # reaches from its entry at `slot` (0 for the GlobalSetting), from the type's bound on each factor of that rate.
 function _contact_draw(::Type{S}, ind::Individual, slot::Int, sim::Simulation) where {S<:Setting}
@@ -151,20 +163,20 @@ function _contact_draw(::Type{S}, ind::Individual, slot::Int, sim::Simulation) w
     # a type with a sampling method that has no bound samples at the visit
     isinf(type_rate) && return DEFAULT_CONTACT_DRAW
     # the host cannot infect in this type: nobody drawn, at rate 0
-    _can_infect(ind, S) || return (n = 0, rate_bound = 0.0)
+    _can_infect(ind, S) || return _ContactDraw(0, 0.0)
     plans = activity_plans(sim)
     s_host = _membership_scale_bound(plans, ind, S, slot)
     scale_bound = _type_scale_bound(plans, setting_type_index(_leaf_type(S)))
     thin = _transmission_type_thin(ind, S, tick(sim), sim)
     rate_bound = _visit_rate(type_rate, s_host, scale_bound, thin)
-    return (n = gems_rand(rng(sim), Poisson(rate_bound)), rate_bound = rate_bound)
+    return _ContactDraw(gems_rand(rng(sim), Poisson(rate_bound)), rate_bound)
 end
 
 # A `draw` for `_foreach_spread_setting` that draws nothing ahead: every level samples at the visit
 @inline _draw_at_visit(::Type{S}, ::Individual, ::Int, ::Simulation) where {S<:Setting} = DEFAULT_CONTACT_DRAW
 
 # whether a level's setting has to be visited: it samples there, or drew someone
-@inline _needs_visit(drawn) = isinf(drawn.rate_bound) || drawn.n > 0
+@inline _needs_visit(drawn::_ContactDraw) = !_drawn_ahead(drawn) || drawn.n > 0
 
 
 ###

@@ -14,8 +14,6 @@ const GLOBAL_SETTING_ID = Int32(1)
 # where a setting id is expected, stands for the individual's primary setting of the type;
 # real ids start at 1
 const PRIMARY_SETTING_ID = Int32(0)
-# a level's contacts not drawn ahead of its visit, which samples them instead
-const DEFAULT_CONTACT_DRAW = (n = 0, rate_bound = Inf)
 
 # start condition pathogen name meaning "every pathogen in the simulation"
 const ALL_PATHOGENS = "all"

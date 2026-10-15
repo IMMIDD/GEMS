@@ -1005,7 +1005,7 @@ end
 
         # every visit's contact rate is within the bound its level drew at, not just on average
         t = tick(sim)
-        each_level = (S, h, slot, sim) -> (n = 1, rate_bound = GEMS._contact_draw(S, h, slot, sim).rate_bound)
+        each_level = (S, h, slot, sim) -> GEMS._ContactDraw(1, GEMS._contact_draw(S, h, slot, sim).rate_bound)
         checked = Ref(0)
         exceeded = Ref(0)
         for h in infectious

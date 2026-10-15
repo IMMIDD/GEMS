@@ -203,7 +203,7 @@ end
 
 """
     sample_scaled_contacts!(contacts, draws, csm, setting, idx, present, tick, replace, rng, plans, cntnr,
-        s_host, scale_bound; oversample = 1.0f0, thin = 1.0f0, drawn = 0, drawn_rate = Inf)
+        s_host, scale_bound; oversample = 1.0f0, thin = 1.0f0, drawn = DEFAULT_CONTACT_DRAW)
 
 Samples the host's contacts in `setting` into `contacts`, scaled by the host's and each contact's
 scale there. Draws nothing extra while every scale involved is 1.
@@ -226,15 +226,14 @@ scale there. Draws nothing extra while every scale involved is 1.
 - `oversample::Float32`: Without replacement, calls the sampler this many times more to shrink the
   bias above scale 1, see `_sample_unique_scaled!`
 - `thin::Float32`: Probability to keep each contact, on top of its scales
-- `drawn::Int`: Number of contacts drawn before the visit at rate `drawn_rate`, which are thinned to
-  the visit's rate. Needs a method with `contact_rate` and `replace`
-- `drawn_rate::Float64`: Rate `drawn` was drawn at, at least the visit's rate; `Inf` if nothing was drawn
+- `drawn::_ContactDraw`: Contacts drawn before the visit, which are thinned to the visit's rate.
+  Drawing any ahead needs a method with `contact_rate` and `replace`
 """
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
         s_host::Float32, scale_bound::Float32; oversample::Float32 = 1.0f0, thin::Float32 = 1.0f0,
-        drawn::Int = 0, drawn_rate::Float64 = Inf)
+        drawn::_ContactDraw = DEFAULT_CONTACT_DRAW)
     r = s_host * scale_bound
     empty!(contacts)
     # a lone member could only meet itself
@@ -244,13 +243,13 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
     if replace && _has_contact_rate(csm)
         # a Poisson count, or the contacts drawn before the visit thinned to it
         rate = _visit_rate(contact_rate(csm, setting, idx, present, tick), s_host, scale_bound, thin)
-        k = isinf(drawn_rate) ? gems_rand(rng, Poisson(rate)) : _thinned_count(drawn, rate / drawn_rate, rng)
+        k = _drawn_ahead(drawn) ? _thinned_count(drawn.n, rate / drawn.rate_bound, rng) : gems_rand(rng, Poisson(rate))
         sample_k_contacts!(contacts, csm, setting, idx, present, tick, k, rng)
         # each kept by its contact's scale
         return _thin_by_scale!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
     # any other method is called as often as the scales say, so nothing can have been drawn ahead
-    isinf(drawn_rate) || error("contacts were drawn before the visit for a $(typeof(csm)), which has no `contact_rate`; " *
+    _drawn_ahead(drawn) && error("contacts were drawn before the visit for a $(typeof(csm)), which has no `contact_rate`; " *
         "set sampling methods during a simulation with `contact_sampling_method!(sim, setting, csm)`")
 
     # scales up to 1: one call, thinned by `r * thin`, then by each contact's scale
