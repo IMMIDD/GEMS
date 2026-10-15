@@ -328,6 +328,74 @@ function container_frame_index(::SettingsContainer, container::ContainerSetting,
 end
 
 ###
+### MEMBERSHIP SCALE
+### An individual's scale in a setting, from its own plan entries. An entry that does not apply
+### this tick contributes 0. Also upper bounds on it per setting type, for draws before a setting is loaded.
+###
+
+# nobody holds an entry for the GlobalSetting
+@inline _membership_scale(::ActivityPlanStore, ::Individual, ::GlobalSetting, ::SettingsContainer) = 1.0f0
+
+@inline function _membership_scale(plans::ActivityPlanStore, individual::Individual, s::T,
+                                   ::SettingsContainer) where {T<:IndividualSetting}
+    individual.plan_scaled || return 1.0f0
+    # Float16 arithmetic is emulated in software
+    return Float32(_effective_scale(plans, plan_slot(plans, individual, T, id(s))))
+end
+
+# A container holds no entry: the scales of the individual's open leaves below it, summed but
+# capped at the larger of 1 and the largest, so presence there is normal unless its leaves say more.
+function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::C,
+                           cntnr::SettingsContainer) where {C<:ContainerSetting}
+    individual.plan_scaled || return 1.0f0
+    L = _leaf_type(C)
+    slots = plan_slots(plans, individual, L)
+    # in c's frame, so a lone leaf entry is the one that put it there
+    length(slots) == 1 && return Float32(_effective_scale(plans, first(slots)))
+    leaves = settings(cntnr, L)
+    below = _leaf_range(c)
+    pool = _pool(c)::HierarchicalSettingPool
+    closed = pool.closed != 0
+    # a closed container frames none of its leaves
+    closed && !is_open(c) && return 0.0f0
+    return _capped_scale_sum(plans, slots) do k
+        e = @inbounds plans.entries[k]
+        leaf = leaves[setting_id(e)]
+        Int(leaf.pool_leaf) in below && (!closed || _open_up_to(pool, leaf, C)) && !_is_deceased(leaf, member_index(e))
+    end
+end
+
+# At least `_membership_scale` in any setting of type `S` the individual reaches from its entry at `slot`:
+# the entry's own scale for a leaf, and for a container the capped sum over all its leaf entries, not just those below it.
+@inline _membership_scale_bound(::ActivityPlanStore, ::Individual, ::Type{GlobalSetting}, ::Int) = 1.0f0
+
+@inline function _membership_scale_bound(plans::ActivityPlanStore, individual::Individual, ::Type{T},
+                                         slot::Int) where {T<:IndividualSetting}
+    individual.plan_scaled || return 1.0f0
+    return Float32(_effective_scale(plans, slot))
+end
+
+function _membership_scale_bound(plans::ActivityPlanStore, individual::Individual, ::Type{C},
+                                 ::Int) where {C<:ContainerSetting}
+    individual.plan_scaled || return 1.0f0
+    # more slots only raise the sum and the cap
+    return _capped_scale_sum(_ -> true, plans, plan_slots(plans, individual, _leaf_type(C)))
+end
+
+# The scales of the slots `include` accepts, summed but capped at the larger of 1 and the largest
+@inline function _capped_scale_sum(include::F, plans::ActivityPlanStore, slots) where {F}
+    total = 0.0f0
+    largest = 0.0f0
+    for k in slots
+        include(k) || continue
+        s = Float32(_effective_scale(plans, k))
+        total += s
+        largest = max(largest, s)
+    end
+    return min(total, max(1.0f0, largest))
+end
+
+###
 ### CONSTRUCTION
 ###
 
