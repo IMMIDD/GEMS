@@ -170,6 +170,70 @@ end
         @test pr_crit.critical_offset_to_severeness_offset === poi3
         @test pr_crit.severeness_offset_to_recovery === poi4
         @test isnothing(pr_crit.health)
+
+        # ward, icu, fatal: severe / critical course with their own timings, outcome fixed by their profile
+        pr_ward = Ward(
+            exposure_to_infectiousness_onset = poi2,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi2,
+            severeness_onset_to_severeness_offset = poi10,
+            severeness_offset_to_recovery = poi4,
+            hospital_admission_to_hospital_discharge = poi10
+        )
+        pr_icu = ICU(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi1,
+            critical_onset_to_critical_offset = poi10,
+            critical_offset_to_severeness_offset = poi5,
+            severeness_offset_to_recovery = poi2,
+            icu_admission_to_icu_discharge = poi10
+        )
+        pr_fatal = Fatal(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi5,
+            critical_offset_to_severeness_offset = poi1,
+            severeness_offset_to_recovery = poi1,
+            critical_onset_to_death = poi7
+        )
+        @test pr_ward.inner isa Severe && pr_ward.inner.severeness_onset_to_severeness_offset === poi10
+        @test pr_ward.health isa WardHealthProfile
+        @test pr_icu.inner isa Critical && pr_icu.inner.critical_onset_to_critical_offset === poi10
+        @test pr_icu.health isa ICUHealthProfile
+        @test pr_fatal.inner isa Critical && pr_fatal.inner.critical_onset_to_critical_offset === poi5
+        @test pr_fatal.health isa FatalHealthProfile
+        # the inner course carries no health of its own
+        @test isnothing(pr_ward.inner.health) && isnothing(pr_fatal.inner.health)
+
+        # they sit alongside the general tiers in one pathogen and resolve by name
+        p_tiers = Pathogen(
+            name = "Tiers",
+            id = 6,
+            progressions = [pr_sev, pr_ward, pr_crit, pr_icu, pr_fatal],
+            progression_assignment = AgeBasedProgressionAssignment(
+                age_groups = ["-59", "60-"],
+                progression_categories = ["Severe", "Ward", "Critical", "ICU", "Fatal"],
+                stratification_matrix = [[0.2, 0.2, 0.2, 0.2, 0.2], [0.0, 0.0, 0.0, 0.0, 1.0]]),
+            transmission_function = ctf
+        )
+        @test get_progression(p_tiers, Ward) === pr_ward
+        @test get_progression(p_tiers, ICU) === pr_icu
+        @test get_progression(p_tiers, Fatal) === pr_fatal
+        ind_old = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
+        @test GEMS.assign(ind_old, progression_assignment(p_tiers), Xoshiro(1)) == Fatal
+
+        # courses have the shape of the category they copy
+        dp_ward = GEMS.calculate_progression(ind_old, Int16(0), pr_ward, Xoshiro(1))
+        @test 0 <= dp_ward.severeness_onset <= dp_ward.severeness_offset <= dp_ward.recovery
+        @test dp_ward.critical_onset == -1
+        for pr in (pr_icu, pr_fatal)
+            dp = GEMS.calculate_progression(ind_old, Int16(0), pr, Xoshiro(1))
+            @test 0 <= dp.severeness_onset <= dp.critical_onset <= dp.critical_offset <= dp.severeness_offset <= dp.recovery
+        end
     end
 
     @testset "Embedded Health Profile" begin

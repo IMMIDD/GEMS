@@ -710,6 +710,122 @@ end
         @test _profile(health_profiles(sim_manual), 3, 1).death_probability == 0.9
     end
 
+    @testset "Ward, ICU and Fatal fix their outcome" begin
+        skw = (exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_severeness_onset = Poisson(1), severeness_onset_to_severeness_offset = Poisson(7),
+            severeness_offset_to_recovery = Poisson(4))
+        dkw = (exposure_to_infectiousness_onset = Poisson(1), infectiousness_onset_to_symptom_onset = Poisson(1),
+            symptom_onset_to_severeness_onset = Poisson(1), severeness_onset_to_critical_onset = Poisson(2),
+            critical_onset_to_critical_offset = Poisson(7), critical_offset_to_severeness_offset = Poisson(3),
+            severeness_offset_to_recovery = Poisson(4))
+        cfg = Dict(String(k) => Dict("distribution" => "Poisson", "parameters" => [v.λ]) for (k, v) in pairs(dkw))
+
+        # the fixed probabilities are not parameters; the free ones are range-checked
+        @test !hasfield(WardHealthProfile, :hospital_probability)
+        @test !hasfield(ICUHealthProfile, :hospital_probability)
+        @test !hasfield(ICUHealthProfile, :hospital_to_icu_probability)
+        @test !hasfield(ICUHealthProfile, :hospital_admission_to_hospital_discharge)
+        @test !hasfield(FatalHealthProfile, :death_probability)
+        @test_throws ArgumentError ICUHealthProfile(death_probability = 1.1)
+        @test_throws ArgumentError FatalHealthProfile(hospital_probability = -0.1)
+
+        # built from flat parameters, a profile object, or a config `health` table
+        @test Ward(; skw..., hospital_admission_to_hospital_discharge = 8).health isa WardHealthProfile
+        @test ICU(; dkw..., health = ICUHealthProfile(death_probability = 0.2)).health.death_probability == 0.2
+        fatal_cfg = create_progression(merge(cfg, Dict("health" => Dict("hospital_probability" => 0.7,
+            "critical_onset_to_death" => Dict("distribution" => "Poisson", "parameters" => [3])))), "Fatal")
+        @test fatal_cfg.health isa FatalHealthProfile
+        @test fatal_cfg.health.hospital_probability == 0.7
+        @test fatal_cfg.health.critical_onset_to_death == Poisson(3)
+
+        # a fixed or unreachable key is rejected on every path
+        @test_throws ArgumentError Ward(; skw..., hospital_probability = 0.5)
+        @test_throws ArgumentError ICU(; dkw..., hospital_to_icu_probability = 0.5)
+        @test_throws ArgumentError ICU(; dkw..., hospital_admission_to_hospital_discharge = 5)
+        @test_throws ArgumentError Fatal(; dkw..., death_probability = 0.5)
+        @test_throws MethodError FatalHealthProfile(death_probability = 0.5)
+        @test_throws ErrorException create_progression(merge(cfg, Dict("health" => Dict("death_probability" => 0.5))), "Fatal")
+
+        # the profile is required and must be the tier's own
+        @test_throws ArgumentError Ward(; skw...)
+        @test_throws ArgumentError ICU(; dkw...)
+        @test_throws ArgumentError Fatal(; dkw...)
+        @test_throws TypeError Ward(; skw..., health = SevereHealthProfile(hospital_probability = 0.5))
+        @test_throws TypeError Fatal(; dkw..., health = CriticalHealthProfile(death_probability = 0.5))
+
+        rng = Xoshiro(1)
+        ind = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
+        dp_sev = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1),
+            symptom_onset = Int16(2), severeness_onset = Int16(5), severeness_offset = Int16(15),
+            recovery = Int16(20))
+        dp_crit = DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1),
+            symptom_onset = Int16(2), severeness_onset = Int16(5), critical_onset = Int16(8),
+            critical_offset = Int16(15), severeness_offset = Int16(16), recovery = Int16(20))
+        inf_sev = InfectionState(Int8(1), Int32(-1), dp_sev)
+        inf_crit = InfectionState(Int8(1), Int32(-1), dp_crit)
+
+        # ward: always admitted, never ICU, never dies
+        care_w, outcome_w = calculate_health_profile(WardHealthProfile(
+            severeness_onset_to_hospital_admission = 2, hospital_admission_to_hospital_discharge = 10), ind, inf_sev, rng)
+        @test (care_w.hospital_admission, care_w.hospital_discharge) == (7, 17)
+        @test care_w.icu_admission == -1
+        @test outcome_w.death == -1
+
+        # icu: always admitted to the ward and the ICU
+        care_i, outcome_i = calculate_health_profile(ICUHealthProfile(critical_onset_to_icu_admission = 1,
+            icu_admission_to_icu_discharge = 5, icu_discharge_to_hospital_discharge = 3), ind, inf_crit, rng)
+        @test (care_i.hospital_admission, care_i.icu_admission) == (5, 9)
+        @test (care_i.icu_discharge, care_i.hospital_discharge) == (14, 17)
+        @test care_i.ventilation_admission == -1
+        @test outcome_i.death == -1
+
+        # ... and the ward admission moves to the ICU admission when that comes first
+        care_i2, _ = calculate_health_profile(ICUHealthProfile(severeness_onset_to_hospital_admission = 10,
+            critical_onset_to_icu_admission = 1), ind, inf_crit, rng)
+        @test care_i2.hospital_admission == care_i2.icu_admission == 9
+
+        # ... with ventilation nested inside the ICU, and an optional death
+        care_iv, outcome_iv = calculate_health_profile(ICUHealthProfile(icu_to_ventilation_probability = 1.0,
+            icu_admission_to_ventilation_admission = 1, ventilation_admission_to_ventilation_discharge = 4,
+            ventilation_discharge_to_icu_discharge = 2, icu_discharge_to_hospital_discharge = 3,
+            death_probability = 1.0, critical_onset_to_death = 20), ind, inf_crit, rng)
+        @test (care_iv.hospital_admission, care_iv.icu_admission) == (5, 8)
+        @test (care_iv.ventilation_admission, care_iv.ventilation_discharge) == (9, 13)
+        @test (care_iv.icu_discharge, care_iv.hospital_discharge) == (15, 18)
+        @test outcome_iv.death == 28
+
+        # fatal: always dies, even without any care
+        care_f, outcome_f = calculate_health_profile(FatalHealthProfile(critical_onset_to_death = 6), ind, inf_crit, rng)
+        @test care_f.hospital_admission == -1
+        @test outcome_f.death == 14
+        @test outcome_f.death_pathogen_id == 1
+
+        # ... on the ward only
+        care_fw, outcome_fw = calculate_health_profile(FatalHealthProfile(hospital_probability = 1.0,
+            severeness_onset_to_hospital_admission = 1, hospital_admission_to_hospital_discharge = 10,
+            critical_onset_to_death = 6), ind, inf_crit, rng)
+        @test (care_fw.hospital_admission, care_fw.hospital_discharge) == (6, 16)
+        @test care_fw.icu_admission == -1
+        @test outcome_fw.death == 14
+
+        # ... in the ICU without ventilation
+        care_fi, outcome_fi = calculate_health_profile(FatalHealthProfile(hospital_probability = 1.0,
+            hospital_to_icu_probability = 1.0, icu_admission_to_icu_discharge = 5,
+            critical_onset_to_death = 6), ind, inf_crit, rng)
+        @test (care_fi.hospital_admission, care_fi.icu_admission, care_fi.icu_discharge) == (5, 8, 13)
+        @test care_fi.ventilation_admission == -1
+        @test outcome_fi.death == 14
+
+        # ... and through the full ladder
+        care_fv, outcome_fv = calculate_health_profile(FatalHealthProfile(hospital_probability = 1.0,
+            hospital_to_icu_probability = 1.0, icu_to_ventilation_probability = 1.0,
+            ventilation_admission_to_ventilation_discharge = 4, ventilation_discharge_to_icu_discharge = 2,
+            icu_discharge_to_hospital_discharge = 3, critical_onset_to_death = 6), ind, inf_crit, rng)
+        @test (care_fv.ventilation_admission, care_fv.ventilation_discharge) == (8, 12)
+        @test (care_fv.icu_discharge, care_fv.hospital_discharge) == (14, 17)
+        @test outcome_fv.death == 14
+    end
+
     @testset "[HealthProgression] config round-trip" begin
         params = Dict(
             "severe" => Dict(
