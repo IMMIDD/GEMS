@@ -784,11 +784,46 @@ end
             critical_onset_to_icu_admission = 1), ind, inf_crit, rng)
         @test care_i2.hospital_admission == care_i2.icu_admission == 9
 
+        # ... with ventilation nested inside the ICU, and an optional death
+        care_iv, outcome_iv = calculate_health_profile(ICUHealthProfile(icu_to_ventilation_probability = 1.0,
+            icu_admission_to_ventilation_admission = 1, ventilation_admission_to_ventilation_discharge = 4,
+            ventilation_discharge_to_icu_discharge = 2, icu_discharge_to_hospital_discharge = 3,
+            death_probability = 1.0, critical_onset_to_death = 20), ind, inf_crit, rng)
+        @test (care_iv.hospital_admission, care_iv.icu_admission) == (5, 8)
+        @test (care_iv.ventilation_admission, care_iv.ventilation_discharge) == (9, 13)
+        @test (care_iv.icu_discharge, care_iv.hospital_discharge) == (15, 18)
+        @test outcome_iv.death == 28
+
         # fatal: always dies, even without any care
         care_f, outcome_f = calculate_health_profile(FatalHealthProfile(critical_onset_to_death = 6), ind, inf_crit, rng)
         @test care_f.hospital_admission == -1
         @test outcome_f.death == 14
         @test outcome_f.death_pathogen_id == 1
+
+        # ... on the ward only
+        care_fw, outcome_fw = calculate_health_profile(FatalHealthProfile(hospital_probability = 1.0,
+            severeness_onset_to_hospital_admission = 1, hospital_admission_to_hospital_discharge = 10,
+            critical_onset_to_death = 6), ind, inf_crit, rng)
+        @test (care_fw.hospital_admission, care_fw.hospital_discharge) == (6, 16)
+        @test care_fw.icu_admission == -1
+        @test outcome_fw.death == 14
+
+        # ... in the ICU without ventilation
+        care_fi, outcome_fi = calculate_health_profile(FatalHealthProfile(hospital_probability = 1.0,
+            hospital_to_icu_probability = 1.0, icu_admission_to_icu_discharge = 5,
+            critical_onset_to_death = 6), ind, inf_crit, rng)
+        @test (care_fi.hospital_admission, care_fi.icu_admission, care_fi.icu_discharge) == (5, 8, 13)
+        @test care_fi.ventilation_admission == -1
+        @test outcome_fi.death == 14
+
+        # ... and through the full ladder
+        care_fv, outcome_fv = calculate_health_profile(FatalHealthProfile(hospital_probability = 1.0,
+            hospital_to_icu_probability = 1.0, icu_to_ventilation_probability = 1.0,
+            ventilation_admission_to_ventilation_discharge = 4, ventilation_discharge_to_icu_discharge = 2,
+            icu_discharge_to_hospital_discharge = 3, critical_onset_to_death = 6), ind, inf_crit, rng)
+        @test (care_fv.ventilation_admission, care_fv.ventilation_discharge) == (8, 12)
+        @test (care_fv.icu_discharge, care_fv.hospital_discharge) == (14, 17)
+        @test outcome_fv.death == 14
     end
 
     @testset "[HealthProgression] config round-trip" begin
