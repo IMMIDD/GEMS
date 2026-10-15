@@ -247,7 +247,7 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
         k = isinf(drawn_rate) ? gems_rand(rng, Poisson(rate)) : _thinned_count(drawn, rate / drawn_rate, rng)
         sample_k_contacts!(contacts, csm, setting, idx, present, tick, k, rng)
         # each kept by its contact's scale
-        return _keep_contacts!(contacts, scale_bound, plans, setting, cntnr, rng)
+        return _thin_by_scale!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
     # any other method is called as often as the scales say, so nothing can have been drawn ahead
     isinf(drawn_rate) || error("contacts were drawn before the visit for a $(typeof(csm)), which has no `contact_rate`; " *
@@ -256,24 +256,15 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
     # scales up to 1: one call, thinned by `r * thin`, then by each contact's scale
     if r <= 1
         _sample_thinned!(contacts, csm, setting, idx, present, tick, replace, rng, r * thin)
-        return _keep_contacts!(contacts, scale_bound, plans, setting, cntnr, rng)
+        return _thin_by_scale!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
 
     # above 1 without replacement: calls merged so a contact is met once, see `_sample_unique_scaled!`
     replace ||
         return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, scale_bound, thin)
 
-    # above 1 with replacement: `r` calls, the last for the fraction beyond the whole ones
-    calls = floor(Int, r)
-    frac = r - calls
-    # samplers fill their buffer from the start, so each call draws into `draws`
-    for call in 1:(calls + (frac > 0))
-        f = call > calls ? frac : 1.0f0
-        empty!(draws)
-        _sample_thinned!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
-        append!(contacts, _keep_contacts!(draws, scale_bound, plans, setting, cntnr, rng))
-    end
-    return contacts
+    # above 1 with replacement: `r` calls, see `_sample_repeated_scaled!`
+    return _sample_repeated_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, scale_bound, thin)
 end
 
 # A visit's contact rate, see the section header. Monotone in each factor, also after rounding, so
@@ -346,6 +337,40 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
     return contacts
 end
 
+# With replacement: `r` calls, the last for the fraction beyond the whole ones, each thinned on its own
+function _sample_repeated_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
+        r::Float32, scale_bound::Float32, thin::Float32)
+    calls = floor(Int, r)
+    frac = r - calls
+    # samplers fill their buffer from the start, so each call draws into `draws`
+    for call in 1:(calls + (frac > 0))
+        f = call > calls ? frac : 1.0f0
+        empty!(draws)
+        _sample_thinned!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
+        append!(contacts, _thin_by_scale!(draws, scale_bound, plans, setting, cntnr, rng))
+    end
+    return contacts
+end
+
+# Samples as `sample_contacts!` does, then keeps each contact with probability `p`
+function _sample_thinned!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int,
+        present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return _thin_uniformly!(indivs, p, rng)
+end
+
+# Keeps each of `indivs` independently with probability `p`, drawing nothing when `p >= 1`
+function _thin_uniformly!(indivs::Vector{Individual}, p::Float32, rng::Xoshiro)
+    p >= 1 && return indivs
+    kept = 0
+    for c in indivs
+        gems_rand(rng) < p && (indivs[kept += 1] = c)
+    end
+    return resize!(indivs, kept)
+end
+
 # Keeps a drawn contact with its scale over `scale_bound`, if it can be contacted here
 @inline function _keep_contact(c::Individual, scale_bound::Float32,
         plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
@@ -355,7 +380,7 @@ end
 end
 
 # Keeps each of `contacts` with `_keep_contact`, compacting them in place
-@inline function _keep_contacts!(contacts::Vector{Individual}, scale_bound::Float32,
+@inline function _thin_by_scale!(contacts::Vector{Individual}, scale_bound::Float32,
         plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
     kept = 0
     for c in contacts
@@ -460,23 +485,6 @@ _contact_scratch() = get!(() -> Individual[], task_local_storage(), :gems_contac
 # Whether `csm` defines `contact_rate`, which a finite `contact_rate_bound` says
 @inline _has_contact_rate(csm::ContactSamplingMethod) = isfinite(contact_rate_bound(csm))
 
-# Samples as `sample_contacts!` does, then keeps each contact with probability `p`
-function _sample_thinned!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int,
-        present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
-    return _keep_each!(indivs, p, rng)
-end
-
-# Keeps each of `indivs` independently with probability `p`, drawing nothing when `p >= 1`
-function _keep_each!(indivs::Vector{Individual}, p::Float32, rng::Xoshiro)
-    p >= 1 && return indivs
-    kept = 0
-    for c in indivs
-        gems_rand(rng) < p && (indivs[kept += 1] = c)
-    end
-    return resize!(indivs, kept)
-end
-
 
 ###
 ### INCLUDE SAMPLING METHODS
@@ -493,3 +501,12 @@ include.(
         readdir(_basefolder() * "/src/contacts/sampling_methods"; join=true)
     )
 )
+
+# Calls `f` with the sampling method as its concrete type for the built-in methods, so sampling
+# compiles per method.
+@inline function _with_sampling_method(f::F, csm::ContactSamplingMethod) where {F}
+    csm isa ContactparameterSampling && return f(csm)
+    csm isa RandomSampling && return f(csm)
+    csm isa AgeBasedContactSampling && return f(csm)
+    return f(csm)
+end

@@ -6,6 +6,11 @@ is contained here.
 export infect!
 
 
+###
+### SPREADING
+### Walks each infectious individual's settings and spreads their infections in each
+###
+
 """
     spread_infections!(sim::Simulation)
 
@@ -26,8 +31,8 @@ end
 # Calls `visit(setting, frame_pos, scale, drawn)` for each setting `ind` spreads in: each plan entry's setting,
 # each container above it, and the GlobalSetting, with `frame_pos` their index in `present_members`.
 # Each level's `drawn = draw(S, ind, slot, sim)` comes before any of the entry's settings is loaded,
-# and a level that drew nobody is not visited.
-function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, draw::D = _draw_at_visit) where {V, D}
+# and a level that drew nobody is not visited. `_draw_at_visit` visits every level.
+function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, draw::D) where {V, D}
     plans = activity_plans(sim)
     cntnr = settingscontainer(sim)
     for slot in plan_slots(plans, ind)
@@ -54,11 +59,7 @@ function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, dra
             end
         end
     end
-    # everyone is in the GlobalSetting, which no entry names: slot 0
-    drawn = draw(GlobalSetting, ind, 0, sim)
-    _needs_visit(drawn) || return nothing
-    frame_pos = _global_position(ind, sim)
-    frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, 1.0f0, drawn)
+    _visit_global(visit, ind, sim, draw)
     return nothing
 end
 
@@ -81,6 +82,15 @@ function _foreach_container_above(visit::V, s::S, leaf::IndividualSetting, leaf_
     frame_pos = container_frame_index(cntnr, c, leaf, leaf_index)
     frame_pos == DEFAULT_MEMBER_INDEX || visit(c, Int(frame_pos), level)
     _has_container(c) && _foreach_container_above(visit, c, leaf, leaf_index, cntnr, level + 1, top)
+    return nothing
+end
+
+# Calls `visit` for the GlobalSetting, which everyone is in but no entry names: slot 0
+function _visit_global(visit::V, ind::Individual, sim::Simulation, draw::D) where {V, D}
+    drawn = draw(GlobalSetting, ind, 0, sim)
+    _needs_visit(drawn) || return nothing
+    frame_pos = _global_position(ind, sim)
+    frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, 1.0f0, drawn)
     return nothing
 end
 
@@ -128,6 +138,12 @@ function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Ind
     return nothing
 end
 
+
+###
+### CONTACT DRAWS
+### Contacts drawn per level before its setting is loaded, from bounds on its setting type
+###
+
 # A Poisson count `n` at `rate_bound`, a bound on `ind`'s contact rate in any setting of type `S` it
 # reaches from its entry at `slot` (0 for the GlobalSetting), from the type's bound on each factor of that rate.
 function _contact_draw(::Type{S}, ind::Individual, slot::Int, sim::Simulation) where {S<:Setting}
@@ -144,11 +160,17 @@ function _contact_draw(::Type{S}, ind::Individual, slot::Int, sim::Simulation) w
     return (n = gems_rand(rng(sim), Poisson(rate_bound)), rate_bound = rate_bound)
 end
 
-# `_foreach_spread_setting`'s default `draw`: every level samples at the visit
+# A `draw` for `_foreach_spread_setting` that draws nothing ahead: every level samples at the visit
 @inline _draw_at_visit(::Type{S}, ::Individual, ::Int, ::Simulation) where {S<:Setting} = DEFAULT_CONTACT_DRAW
 
 # whether a level's setting has to be visited: it samples there, or drew someone
 @inline _needs_visit(drawn) = isinf(drawn.rate_bound) || drawn.n > 0
+
+
+###
+### TRANSMISSION BOUNDS
+### Upper limits on each pathogen's transmission probability, and the chance to keep a contact they imply
+###
 
 # Each pathogen's bound, an upper limit on its chance to infect anyone in `setting` (0 if not shed),
 # and thin, the chance to keep a contact at all. Without pre-thinning a shed pathogen's bound is 1.
@@ -178,14 +200,10 @@ end
     return thin < any_bound ? nextfloat(thin) : thin
 end
 
-# Calls `f` with the sampling method as its concrete type for the built-in methods, so sampling
-# compiles per method.
-@inline function _with_sampling_method(f::F, csm::ContactSamplingMethod) where {F}
-    csm isa ContactparameterSampling && return f(csm)
-    csm isa RandomSampling && return f(csm)
-    csm isa AgeBasedContactSampling && return f(csm)
-    return f(csm)
-end
+
+###
+### ELIGIBILITY
+###
 
 """
     can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
@@ -268,6 +286,12 @@ function can_be_contacted(ind::Individual, setting::Setting)::Bool
 
     return true
 end
+
+
+###
+### TRANSMISSION
+### Decides which pathogens transmit on one contact
+###
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting;
@@ -383,6 +407,11 @@ function _draw_transmissions(probabilities::NTuple{N, Float64}, bounds::NTuple{N
         return gems_rand(rng) < probabilities[i] / (i == picked ? bounds[i] : 1.0)
     end
 end
+
+
+###
+### INFECTION
+###
 
 """
     infect!(infectee::Individual,

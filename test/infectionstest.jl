@@ -667,7 +667,7 @@ end
                 misplaced = Ref(0)
                 for ind in individuals(sim)
                     GEMS.infectious(ind) || continue
-                    GEMS._foreach_spread_setting(ind, sim) do s, pos, scale, drawn
+                    GEMS._foreach_spread_setting(ind, sim, GEMS._draw_at_visit) do s, pos, scale, drawn
                         (scale > 0 && GEMS.can_infect(ind, s, t)) || return
                         GEMS.present_members(s, cntnr)[pos] === ind || (misplaced[] += 1)
                         push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), pos, scale))
