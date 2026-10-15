@@ -37,29 +37,23 @@ function log_stepinfo(simulation::Simulation)
     wo_quar_cnt = zeros(Int, Threads.maxthreadid())
     wo_isol_cnt = zeros(Int, Threads.maxthreadid())
     wo_unab_cnt = zeros(Int, Threads.maxthreadid())
-    exp_cnt = zeros(Int, Threads.maxthreadid())
-    inf_cnt = zeros(Int, Threads.maxthreadid())
-    det_cnt = zeros(Int, Threads.maxthreadid())
 
     inds = simulation |> individuals
     plans = activity_plans(simulation)
-    active = simulation.active_individuals
     quarantined = simulation.quarantined_individuals
     s_classes = schoolclasses(simulation)
     offs = offices(simulation)
     chunk_size = max(1, length(inds) ÷ Threads.nthreads())
-    
-    # only flagged individuals can be quarantined, exposed, infectious, detected or unable to attend
+
+    # only flagged individuals can be quarantined
     Threads.@threads :static for chunk in collect(Iterators.partition(eachindex(inds), chunk_size))
         tid = Threads.threadid()
-        
-        loc_tot_quar = 0; loc_st_quar = 0; loc_st_isol = 0; 
-        loc_wo_quar = 0; loc_wo_isol = 0; loc_exp = 0; 
-        loc_inf = 0; loc_det = 0; loc_st_unab = 0; loc_wo_unab = 0
+
+        loc_tot_quar = 0; loc_st_quar = 0; loc_st_isol = 0;
+        loc_wo_quar = 0; loc_wo_isol = 0; loc_st_unab = 0; loc_wo_unab = 0
 
         for k in chunk
-            _prefetch_flagged_ahead(j -> @inbounds(active[j] || quarantined[j]), inds, k)
-            @inbounds (active[k] || quarantined[k]) || continue
+            @inbounds quarantined[k] || continue
             i = @inbounds inds[k]
 
             if isquarantined(i)
@@ -76,14 +70,7 @@ function log_stepinfo(simulation::Simulation)
                         loc_wo_isol += 1
                     end
                 end
-            end
-
-            loc_exp += is_exposed(i) ? 1 : 0
-            loc_inf += is_infectious(i) ? 1 : 0
-            loc_det += is_detected(i) ? 1 : 0
-
-            # members of closed settings are counted below, by setting size
-            if is_severe(i) || is_hospitalized(i) || isquarantined(i)
+                # members of closed settings are counted below, by setting size
                 loc_st_unab += _open_memberships(plans, i, s_classes)
                 loc_wo_unab += _open_memberships(plans, i, offs)
             end
@@ -95,12 +82,23 @@ function log_stepinfo(simulation::Simulation)
             st_isol_cnt[tid] += loc_st_isol
             wo_quar_cnt[tid] += loc_wo_quar
             wo_isol_cnt[tid] += loc_wo_isol
-            exp_cnt[tid] += loc_exp
-            inf_cnt[tid] += loc_inf
-            det_cnt[tid] += loc_det
             st_unab_cnt[tid] += loc_st_unab
             wo_unab_cnt[tid] += loc_wo_unab
         end
+    end
+
+    # the severe and hospitalized the disease update found, unless the scan above counted them as quarantined
+    log_counts = simulation.state_log_counts
+    Threads.@threads :static for counts in log_counts
+        tid = Threads.threadid()
+        loc_st_unab = 0; loc_wo_unab = 0
+        for i in counts.in_care
+            isquarantined(i) && continue
+            loc_st_unab += _open_memberships(plans, i, s_classes)
+            loc_wo_unab += _open_memberships(plans, i, offs)
+        end
+        @inbounds st_unab_cnt[tid] += loc_st_unab
+        @inbounds wo_unab_cnt[tid] += loc_wo_unab
     end
 
     for s in s_classes
@@ -120,10 +118,10 @@ function log_stepinfo(simulation::Simulation)
 
     log!(simulation |> statelogger;
         tick = simulation |> tick,
-        exposed = sum(exp_cnt),
-        infectious = sum(inf_cnt),
+        exposed = sum(t -> t.exposed, log_counts),
+        infectious = sum(length, simulation.infectious_individuals),
         dead = length(deathlogger(simulation)),
-        detected = sum(det_cnt),
+        detected = sum(t -> t.detected, log_counts),
         quarantined = sum(tot_quar_cnt),
         quarantined_students = sum(st_quar_cnt),
         isolated_students = sum(st_isol_cnt),
@@ -497,6 +495,7 @@ function flush_pending_infections!(sim::Simulation)
         end
 
         # pass 2: commit the winners. The mask guard skips the losers' host and settles exact ties.
+        counts = sim.state_log_counts[Threads.threadid()]
         @inbounds for producer_id in 1:num_shards
             buf = sim.infection_buffers[producer_id, shard_id]
             for j in eachindex(buf)
@@ -506,6 +505,8 @@ function flush_pending_infections!(sim::Simulation)
                 _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = p.host
                 infected(ind, p.pathogen_id) && continue
+                # a first infection makes the host exposed, which the state log counts
+                infected(ind) || (counts.exposed += 1)
                 _commit_infection!(sim, ind, p, next_id, infections, logger, shard_id)
                 next_id += Int32(1)
             end
@@ -809,6 +810,7 @@ function update_individuals!(sim::Simulation)
     inds = individuals(population(sim))
     active = sim.active_individuals
     foreach(empty!, sim.infectious_individuals)
+    foreach(_reset!, sim.state_log_counts)
     Threads.@threads :static for k in eachindex(inds)
         _prefetch_flagged_ahead(j -> @inbounds(active[j]), inds, k)
         @inbounds active[k] || continue
@@ -816,6 +818,7 @@ function update_individuals!(sim::Simulation)
         update_individual!(i, t, sim)
         # the transmission phase goes through exactly these
         infectious(i) && push!(sim.infectious_individuals[Threads.threadid()], i)
+        _count_for_state_log!(sim.state_log_counts[Threads.threadid()], i)
         @inbounds active[k] = _stays_active(i)
     end
     return nothing

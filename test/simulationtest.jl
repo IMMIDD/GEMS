@@ -1520,6 +1520,75 @@ import GEMS: increment!, infected!
         @test tick(sim_cl) == 3
     end
 
+    @testset "State log counts match a full scan" begin
+        # The state log counts where the disease update, the infection flush and tests already
+        # read the individuals. Each tick it must equal a scan of everyone active or quarantined.
+        sim = Simulation(pop_size = 20_000, seed = 7)
+        pcr = TestType("PCR", id(first_pathogen(sim)), sim, sensitivity = 0.9, specificity = 0.9)
+        close_class = SStrategy("close class", sim)
+        add_measure!(close_class, CloseSetting())
+        isolate = IStrategy("isolate", sim)
+        add_measure!(isolate, SelfIsolation(7))
+        add_measure!(isolate, FindSetting(SchoolClass, close_class))
+        # household members are tested whether infected or not, so some positives are false
+        test_household = SStrategy("test household", sim)
+        add_measure!(test_household, TestAll("household", pcr, nothing, nothing))
+        on_symptoms = IStrategy("on symptoms", sim)
+        add_measure!(on_symptoms, GEMS.Test("symptoms", pcr, positive_followup = isolate))
+        add_measure!(on_symptoms, FindSetting(Household, test_household))
+        add_symptom_trigger!(sim, SymptomTrigger(on_symptoms))
+
+        function scanned(sim)
+            plans = GEMS.activity_plans(sim)
+            classes, offs = schoolclasses(sim), offices(sim)
+            c = Dict(k => 0 for k in (:exposed, :infectious, :detected, :quarantined, :quarantined_students,
+                :isolated_students, :unable_to_attend_students, :quarantined_workers, :isolated_workers,
+                :unable_to_attend_workers))
+            for (k, i) in enumerate(individuals(sim))
+                (sim.active_individuals[k] || sim.quarantined_individuals[k]) || continue
+                if GEMS.isquarantined(i)
+                    c[:quarantined] += 1
+                    GEMS.is_student(i, plans) && (c[:quarantined_students] += 1; GEMS.infected(i) && (c[:isolated_students] += 1))
+                    GEMS.is_working(i, plans) && (c[:quarantined_workers] += 1; GEMS.infected(i) && (c[:isolated_workers] += 1))
+                end
+                c[:exposed] += GEMS.is_exposed(i)
+                c[:infectious] += GEMS.infectious(i)
+                c[:detected] += GEMS.is_detected(i)
+                if GEMS.is_severe(i) || GEMS.is_hospitalized(i) || GEMS.isquarantined(i)
+                    c[:unable_to_attend_students] += GEMS._open_memberships(plans, i, classes)
+                    c[:unable_to_attend_workers] += GEMS._open_memberships(plans, i, offs)
+                end
+            end
+            c[:unable_to_attend_students] += sum(s -> GEMS.is_open(s) ? 0 : size(s), classes; init = 0)
+            c[:unable_to_attend_workers] += sum(o -> GEMS.is_open(o) ? 0 : size(o), offs; init = 0)
+            return c
+        end
+
+        sl = statelogger(sim)
+        mismatches = 0
+        seen = Dict(k => 0 for k in (:detected, :quarantined, :unable_to_attend_students, :hospitalized))
+        false_positive = false
+        while !GEMS.evaluate(sim, GEMS.stop_criterion(sim))
+            logged = length(sl.tick)
+            step!(sim)
+            # a dormant tick copies the last row instead of counting
+            length(sl.tick) > logged && sl.tick[end] == tick(sim) - 1 || continue
+            c = scanned(sim)
+            for (k, v) in c
+                getfield(sl, k)[end] == v || (mismatches += 1)
+            end
+            seen[:detected] = max(seen[:detected], c[:detected])
+            seen[:quarantined] = max(seen[:quarantined], c[:quarantined])
+            seen[:unable_to_attend_students] = max(seen[:unable_to_attend_students], c[:unable_to_attend_students])
+            seen[:hospitalized] = max(seen[:hospitalized], count(GEMS.is_hospitalized, individuals(sim)))
+            false_positive |= any(i -> GEMS.is_detected(i) && !GEMS.infected(i), individuals(sim))
+        end
+        @test mismatches == 0
+        # the scenario reached every count it is meant to check
+        @test all(>(0), values(seen))
+        @test false_positive
+    end
+
     @testset "Simulation Buffers" begin
         sim = Simulation()
         num_threads = Threads.maxthreadid()
@@ -1537,6 +1606,7 @@ import GEMS: increment!, infected!
         @test all(b -> capacity(b) == length(b), contact_buffers(sim))
         @test all(b -> capacity(b) == length(b), sim.draw_buffers)
         @test all(b -> capacity(b) == length(b), sim.newly_dead)
+        @test all(t -> capacity(t.in_care) == length(t.in_care), sim.state_log_counts)
         @test all(b -> capacity(b) == length(b), sim.infection_buffers)
         @test all(b -> capacity(b) == length(b), sim.removal_buffers)
         # reserved up front too; a Dict shrinks to the table its last tick's winners need

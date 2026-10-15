@@ -816,7 +816,8 @@ was_reported(individual::Individual, sim::Simulation, pathogen_id::Int8) = get_t
     record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
 
 Records a test outcome into the `TestRegistry` for `(ind, pathogen_id)` and
-updates `ind.detected_mask` if the test is a positive reportable result.
+updates `ind.detected_mask` if the test is a positive reportable result. During a simulation use
+`record_test!(ind, sim, ...)`, or the state log counts the detection a tick late.
 """
 @inline function record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
     detected = test_result && reportable
@@ -828,10 +829,17 @@ end
 """
     record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
 
-Convenience wrapper that routes to the correct `TestRegistry` shard.
+Records a test outcome in the correct `TestRegistry` shard, and counts a first detection for the state log.
 """
 function record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
+    was_detected = is_detected(individual)
     record_test!(individual, test_registry(sim, individual), pathogen_id, tick, test_result, reportable)
+    if !was_detected && is_detected(individual)
+        # tests come after the disease update's count; it counts them from the next tick on
+        sim.state_log_counts[Threads.threadid()].detected += 1
+        _mark_active!(sim, individual)
+    end
+    return nothing
 end
 
 
