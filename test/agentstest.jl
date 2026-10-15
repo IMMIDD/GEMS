@@ -235,14 +235,15 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
                 push_immunity!(ireg, i, pid1, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 push_immunity!(ireg, i, pid2, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2
-                @test immunity_level(i, ireg, pid2) == Int8(0)
+                # levels are computed when read, which needs the simulation
+                @test_throws ArgumentError immunity_level(i, ireg, pid2)
 
                 # multi-node immunity overflow: traverse past head to find second node
                 push_immunity!(ireg, i, pid3, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
                 # head points to pid3 which points to pid2
                 @test get_immunity_state(i, ireg, pid2).pathogen_id == pid2  # traverses past pid3
-                @test immunity_level(i, ireg, pid2) == Int8(0)
-                @test immunity_level(i, ireg, Int8(4)) == Int8(0)  # not found returns 0
+                @test natural_immunity_recorded(get_immunity_state(i, ireg, pid2))
+                @test !natural_immunity_recorded(get_immunity_state(i, ireg, Int8(4)))  # not found returns an empty record
             end
 
             @testset "Sim Wrappers" begin
@@ -258,7 +259,8 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
                 @test earliest_infectiousness_onset(i_sw, sim_sw) == Int16(3)
 
                 push_immunity!(immunity_registry(sim_sw, i_sw), i_sw, pid_sw, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
-                @test immunity_level(i_sw, sim_sw, pid_sw) == Int8(0)
+                # computed when read: FullImmunity, acquired at tick 0
+                @test immunity_level(i_sw, sim_sw, pid_sw) == Int8(100)
             end
 
         end

@@ -100,6 +100,7 @@ module GEMS
 
     # INITALIZATION
     include("simulation/initialization/startconditions.jl")
+    include("simulation/initialization/prior_immunity.jl")
 
     # TERMINATION
     include("simulation/termination/stopcriteria.jl")
@@ -129,6 +130,8 @@ module GEMS
     function __init__()
         # Initialize thread-local RNGs
         append!(_DEFAULT_GEMS_RNGS, [Random.Xoshiro() for _ in 1:Threads.maxthreadid()])
+        # scratch rngs for immunity and infectiousness profiles, created per thread on first use
+        append!(_PROFILE_RNGS, fill(nothing, Threads.maxthreadid()))
 
         offending_lines = check_naked_rng_calls()
 

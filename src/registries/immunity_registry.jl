@@ -14,20 +14,30 @@ and as the on-individual cache (`immunity_cache`) and the public snapshot passed
 
 One entry per `(individual, pathogen)` — combines natural and vaccine immunity.
 `next::Int32` chains overflow nodes; always 0 for cache states.
-`immunity_level::Int8` is the computed immunity level (0–100), updated each tick
-by `update_immunity!` and read by transmission functions directly from the
-individual without touching the registry.
+Holds no level; levels are computed on read, see `immunity_level`.
 
 An entry is considered inactive when `pathogen_id == DEFAULT_PATHOGEN_ID`.
 """
 struct ImmunityState
     next::Int32
-    natural_acquired_tick::Int16  # DEFAULT_TICK if no natural immunity
-    vaccine_acquired_tick::Int16  # DEFAULT_TICK if not vaccinated
-    immunity_level::Int8          # computed each tick; 0 until update_immunity! runs
+    natural_acquired_tick::Int16  # NO_IMMUNITY_TICK if no natural immunity
+    vaccine_acquired_tick::Int16  # NO_IMMUNITY_TICK if not vaccinated
     pathogen_id::Int8             # DEFAULT_PATHOGEN_ID signals an empty slot
     vaccine_id::Int8              # DEFAULT_VACCINE_ID if not vaccinated
     dose_number::Int8             # 0 if not vaccinated
+end
+
+"""
+    ImmunityState(next, natural_acquired_tick, vaccine_acquired_tick, immunity_level, pathogen_id, vaccine_id, dose_number)
+
+Deprecated; `immunity_level` is ignored and `DEFAULT_TICK` ticks are read as `NO_IMMUNITY_TICK`.
+"""
+function ImmunityState(next::Integer, natural_acquired_tick::Integer, vaccine_acquired_tick::Integer, ::Integer,
+        pathogen_id::Integer, vaccine_id::Integer, dose_number::Integer)
+    Base.depwarn("ImmunityState no longer stores a level; drop the fourth argument.", :ImmunityState)
+    # old callers marked a missing source with DEFAULT_TICK
+    _no_record(t) = t == DEFAULT_TICK ? NO_IMMUNITY_TICK : t
+    return ImmunityState(next, _no_record(natural_acquired_tick), _no_record(vaccine_acquired_tick), pathogen_id, vaccine_id, dose_number)
 end
 
 """
@@ -37,7 +47,7 @@ Constructs an empty/inactive `ImmunityState` sentinel.
 Used for initializing caches and representing unassigned immunity slots.
 """
 function ImmunityState()::ImmunityState
-    return ImmunityState(Int32(0), DEFAULT_TICK, DEFAULT_TICK, Int8(0), DEFAULT_PATHOGEN_ID, DEFAULT_VACCINE_ID, Int8(0))
+    return ImmunityState(Int32(0), NO_IMMUNITY_TICK, NO_IMMUNITY_TICK, DEFAULT_PATHOGEN_ID, DEFAULT_VACCINE_ID, Int8(0))
 end
 
 """
@@ -47,7 +57,7 @@ Constructs an empty `ImmunityState` reserved for a specific pathogen.
 Used as a safe return value when querying immunity for a pathogen the individual has no record of.
 """
 function ImmunityState(pathogen_id::Int8)::ImmunityState
-    return ImmunityState(Int32(0), DEFAULT_TICK, DEFAULT_TICK, Int8(0), pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
+    return ImmunityState(Int32(0), NO_IMMUNITY_TICK, NO_IMMUNITY_TICK, pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
 end
 
 
@@ -58,7 +68,7 @@ end
 `true` if a natural (post-recovery) immunity record exists, regardless of whether its
 acquired tick has been reached yet.
 """
-@inline natural_immunity_recorded(s::ImmunityState)::Bool = s.natural_acquired_tick != DEFAULT_TICK
+@inline natural_immunity_recorded(s::ImmunityState)::Bool = s.natural_acquired_tick != NO_IMMUNITY_TICK
 
 """
     vaccine_immunity_recorded(s::ImmunityState)::Bool
@@ -66,7 +76,7 @@ acquired tick has been reached yet.
 `true` if a vaccine immunity record exists, regardless of whether its acquired tick has
 been reached yet.
 """
-@inline vaccine_immunity_recorded(s::ImmunityState)::Bool = s.vaccine_acquired_tick != DEFAULT_TICK
+@inline vaccine_immunity_recorded(s::ImmunityState)::Bool = s.vaccine_acquired_tick != NO_IMMUNITY_TICK
 
 """
     natural_immunity_active(s::ImmunityState, tick::Int16)::Bool
@@ -75,7 +85,7 @@ been reached yet.
 `tick`, i.e. the individual has recovered from a natural infection by `tick`.
 """
 @inline natural_immunity_active(s::ImmunityState, tick::Int16)::Bool =
-    s.natural_acquired_tick != DEFAULT_TICK && tick >= s.natural_acquired_tick
+    s.natural_acquired_tick != NO_IMMUNITY_TICK && tick >= s.natural_acquired_tick
 
 """
     vaccine_immunity_active(s::ImmunityState, tick::Int16)::Bool
@@ -83,7 +93,7 @@ been reached yet.
 `true` if vaccine immunity is recorded and its acquired tick is at or before `tick`.
 """
 @inline vaccine_immunity_active(s::ImmunityState, tick::Int16)::Bool =
-    s.vaccine_acquired_tick != DEFAULT_TICK && tick >= s.vaccine_acquired_tick
+    s.vaccine_acquired_tick != NO_IMMUNITY_TICK && tick >= s.vaccine_acquired_tick
 
 """
     natural_immunity_pending(s::ImmunityState, tick::Int16)::Bool
@@ -91,7 +101,7 @@ been reached yet.
 `true` if natural immunity is recorded but its acquired tick lies strictly after `tick`.
 """
 @inline natural_immunity_pending(s::ImmunityState, tick::Int16)::Bool =
-    s.natural_acquired_tick != DEFAULT_TICK && tick < s.natural_acquired_tick
+    s.natural_acquired_tick != NO_IMMUNITY_TICK && tick < s.natural_acquired_tick
 
 """
     vaccine_immunity_pending(s::ImmunityState, tick::Int16)::Bool
@@ -99,7 +109,7 @@ been reached yet.
 `true` if vaccine immunity is recorded but its acquired tick lies strictly after `tick`.
 """
 @inline vaccine_immunity_pending(s::ImmunityState, tick::Int16)::Bool =
-    s.vaccine_acquired_tick != DEFAULT_TICK && tick < s.vaccine_acquired_tick
+    s.vaccine_acquired_tick != NO_IMMUNITY_TICK && tick < s.vaccine_acquired_tick
 
 """
     immunity_active(s::ImmunityState, tick::Int16)::Bool

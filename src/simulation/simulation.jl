@@ -6,7 +6,7 @@ export InfectedFraction, PatientZero, PatientZeros
 export TimesUp
 export Simulation
 
-export tick, label, start_condition, stop_criterion, settingscontainer, settings, population, stepmod, stepmod!
+export tick, label, start_condition, prior_immunity, stop_criterion, settingscontainer, settings, population, stepmod, stepmod!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites, individuals
 export region_info
 export pathogens, get_pathogen, first_pathogen, pathogen
@@ -34,6 +34,9 @@ abstract type StartCondition end
 
 "supertype for all stop criteria"
 abstract type StopCriterion end
+
+"supertype for all immunity granted before the start"
+abstract type AbstractPriorImmunity end
 
 """
     InfectionSeed
@@ -98,6 +101,7 @@ Here's a list of all available parameters:
 | `global_setting_contacts` | `ContactSamplingMethod` or `Float`     | Method for sampling global setting contacts or a fixed value that will be regarded as the expected value of a Poisson distribution. Requires `global_setting` to be true.         |
 | `start_condition`         | `StartCondition`                       | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
 | `infected_fraction`       | `Float`                                | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
+| `prior_immunity`          | `PriorImmunity` or `Vector`            | Natural immunity some individuals acquired before the start of the simulation. Applied before the start condition.                                                                |
 | `stop_criterion`          | `StopCriterion`                        | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
 | `pathogens`               | `Tuple`                                | A Tuple of `Pathogen`s to be simulated.                                                                                                                                           |
 | `transmission_function`   | `TransmissionFunction`                 | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
@@ -151,6 +155,7 @@ sim = Simulation(params)
     - `startdate::Date`: Start date of the simulation
     - `enddate::Date`: End date of the simulation
     - `start_condition::StartCondition`: Starting condition that sets the initial situation
+    - `prior_immunity::Vector{AbstractPriorImmunity}`: Immunity acquired before the start, applied before the start condition
     - `stop_criterion::StopCriterion`: Criterion that terminates a simulation run
     - `label::String`: Label for plot visualizations
 - Model
@@ -190,6 +195,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     startdate::Date
     enddate::Date
     start_condition::StartCondition
+    prior_immunity::Vector{AbstractPriorImmunity}
     stop_criterion::StopCriterion
     label::String
 
@@ -273,6 +279,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             startdate,
             enddate,
             start_condition,
+            AbstractPriorImmunity[],
             stop_criterion,
             "Simulation " * string(GEMS.SIMS_INSTANTIATED + 1), # label
 
@@ -402,6 +409,9 @@ function _BUILD_Simulation(;
         start_condition = nothing,
         infected_fraction = nothing,
 
+        # prior immunity
+        prior_immunity = nothing,
+
         # stop criterion
         stop_criterion = nothing,
 
@@ -500,7 +510,8 @@ function _BUILD_Simulation(;
         infected_fraction,
         pathogen_tuple)
 
-
+    # PRIOR IMMUNITY
+    prior = determine_prior_immunity(config, prior_immunity, pathogen_tuple)
 
     # CREATES SIMULATION OBJECT
     sim = Simulation(
@@ -524,6 +535,8 @@ function _BUILD_Simulation(;
 
     # update label
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
+
+    sim.prior_immunity = prior
 
     # initialize simulation
     initialize!(sim)
@@ -665,6 +678,21 @@ end
 
 
 """
+    _check_pathogen(c, pathogens::Tuple)
+
+Throws if `c` (anything with a `pathogen` field) names a pathogen the simulation does not have, or names none while there are several.
+"""
+function _check_pathogen(c, pathogens::Tuple)
+    (isempty(pathogens) || c.pathogen == ALL_PATHOGENS) && return nothing
+    if isempty(c.pathogen)
+        length(pathogens) > 1 && throw(ArgumentError("$(nameof(typeof(c))) does not name a pathogen, but the simulation has $(length(pathogens)) ($(join((p.name for p in pathogens), ", "))). Name one, or use pathogen = \"$ALL_PATHOGENS\" for all of them."))
+        return nothing
+    end
+    any(p -> p.name == c.pathogen, pathogens) || throw(ArgumentError("$(nameof(typeof(c))) names pathogen '$(c.pathogen)', which the simulation does not have ($(join((p.name for p in pathogens), ", ")))."))
+    return nothing
+end
+
+"""
     determine_start_condition(configfile_params::Dict, start_condition, infected_fraction, pathogens_tuple = ())
 
 Determines the start condition for the simulation based on the provided parameters.
@@ -716,6 +744,31 @@ function determine_start_condition(configfile_params::Dict, start_condition, inf
             pathogen = ALL_PATHOGENS
         ),
         pathogens_tuple)
+end
+
+"""
+    determine_prior_immunity(configfile_params::Dict, prior_immunity, pathogens_tuple = ())
+
+Returns the provided `PriorImmunity` entries, else those of the config file's `[Simulation.PriorImmunity]` table(s),
+as a vector (empty if none), with each entry's pathogen checked against `pathogens_tuple`.
+"""
+function determine_prior_immunity(configfile_params::Dict, prior_immunity, pathogens_tuple = ())
+    entries = if isnothing(prior_immunity)
+        params = _haspath(configfile_params, ["Simulation", "PriorImmunity"]) ? configfile_params["Simulation"]["PriorImmunity"] : Dict[]
+        try
+            AbstractPriorImmunity[create_prior_immunity(p) for p in (isa(params, Dict) ? [params] : params)]
+        catch e
+            throw(ConfigfileError("'[Simulation.PriorImmunity]' could not be read from config file.", e))
+        end
+    elseif isa(prior_immunity, AbstractPriorImmunity)
+        AbstractPriorImmunity[prior_immunity]
+    elseif isa(prior_immunity, AbstractVector{<:AbstractPriorImmunity})
+        Vector{AbstractPriorImmunity}(prior_immunity)
+    else
+        throw(ArgumentError("Provided prior_immunity must be a PriorImmunity or a vector of them (got $(typeof(prior_immunity)))."))
+    end
+    foreach(e -> _check_pathogen(e, pathogens_tuple), entries)
+    return entries
 end
 
 """
@@ -1544,6 +1597,20 @@ function create_start_condition(params::Dict)
 end
 
 """
+    create_prior_immunity(params::Dict)
+
+Creates a `PriorImmunity` from a config table whose keys are its keyword arguments; distribution sub-tables are converted via `_config_value`.
+"""
+function create_prior_immunity(params::Dict)
+    kw_args = Dict(Symbol(k) => _config_value(v) for (k, v) in params)
+    return try
+        PriorImmunity(; kw_args...)
+    catch e
+        throw(ErrorException("PriorImmunity could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
     create_stop_criterion(params::Dict)
 
 Creates a stop criterion based on the provided parameters.
@@ -1893,6 +1960,15 @@ function start_condition(simulation::Simulation)
 end
 
 """
+    prior_immunity(simulation)
+
+Returns the prior immunity entries applied before the start condition.
+"""
+function prior_immunity(simulation::Simulation)
+    return simulation.prior_immunity
+end
+
+"""
     stop_criterion(simulation)
 
 Returns stop criterion associated with the simulation run.
@@ -2125,31 +2201,29 @@ end
 
 
 """
-    get_pathogen(sim, pid)
- 
-Retrieves the pathogen with the given `Int8` id. Uses a `@generated` if/elseif
-chain so Julia resolves dispatch statically (union-splitting) for up to 8
-distinct pathogen types.
-"""
-@generated function get_pathogen(sim::Simulation{P}, pid::Int8) where P
-    N = fieldcount(P)
-    checks = [:(sim.pathogens[$i].id == pid && return sim.pathogens[$i]) for i in 1:N]
-    return quote
-        $(checks...)
-        throw(ArgumentError("No pathogen with id $pid found in simulation."))
-    end
-end
+    get_pathogen(sim::Simulation, pid::Int8)
 
+Retrieves the pathogen with the given `Int8` id from the simulation.
+"""
+get_pathogen(sim::Simulation, pid::Int8) = get_pathogen(sim.pathogens, pid)
+
+# _with_pathogen's generated if-chain; identity returns the pathogen itself
 """
     get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
 
-Retrieve a pathogen by id from a typed Tuple of pathogens. Emits a static
-`if/elseif` chain at compile time so each branch returns a concrete type,
-enabling union-splitting at the callsite with no dynamic dispatch.
+Retrieve a pathogen by id from a typed Tuple of pathogens; call sites union-split on the result.
 """
-@generated function get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
+get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple} = _with_pathogen(identity, pathogens, pid)
+
+"""
+    _with_pathogen(f, pathogens::P, pid::Int8) where {P<:Tuple}
+
+Calls `f` on the pathogen with id `pid`. Type-stable for any number of pathogen types if `f` returns
+one type.
+"""
+@generated function _with_pathogen(f::F, pathogens::P, pid::Int8) where {F, P<:Tuple}
     N = fieldcount(P)
-    checks = [:(pathogens[$i].id == pid && return pathogens[$i]) for i in 1:N]
+    checks = [:(pathogens[$i].id == pid && return f(pathogens[$i])) for i in 1:N]
     return quote
         $(checks...)
         throw(ArgumentError("No pathogen with id $pid found."))
@@ -2158,9 +2232,9 @@ end
 
 
 """
-    get_pathogen(sim::Simulation, pid::Int8)
+    get_pathogen(simulation::Simulation, pname::String)
 
-Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name.
+Retrieves a specific `Pathogen` object from the simulation using the pathogen's name.
 An empty `pname` returns the only pathogen and throws if the simulation has more than one.
 """
 function get_pathogen(simulation::Simulation, pname::String)
@@ -2368,9 +2442,10 @@ end
 """
     initialize!(simulation)
 
-Initializes the simulation model with a provided start condition.
+Initializes the simulation model with its prior immunity and its start condition.
 """
 function initialize!(simulation::Simulation)
+    _apply_prior_immunity!(simulation)
     initialize!(simulation, start_condition(simulation))
 end
 
@@ -2605,6 +2680,7 @@ function info(sim::Simulation)
     end
 
     res *= "\u2514 Start Condition: $(sim |> start_condition)\n"
+    isempty(sim |> prior_immunity) || (res *= "\u2514 Prior Immunity: $(join(sim |> prior_immunity, ", "))\n")
     res *= "\u2514 Stop Criterion: $(sim |> stop_criterion |> typeof)\n"
     
     # pathogen (use the pathogen's show method for detailed info)
