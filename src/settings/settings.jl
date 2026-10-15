@@ -1072,6 +1072,9 @@ contained_type(setting::Setting) = contained_type(typeof(setting))
 _leaf_type(::Type{T}) where {T<:IndividualSetting} = T
 _leaf_type(::Type{T}) where {T<:ContainerSetting} = _leaf_type(contains_type(T))
 
+# The type of the level above `T`, or `Nothing` at the top. `hasfield` folds, so this is static.
+@inline _parent_type(::Type{T}) where {T<:Setting} = hasfield(T, :contained) ? contained_type(T) : Nothing
+
 """
     individuals(setting::IndividualSetting)
 

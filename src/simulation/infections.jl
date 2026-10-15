@@ -15,53 +15,72 @@ setting of each plan entry, each container above it, and the GlobalSetting.
 function spread_infections!(sim::Simulation)
     Threads.@threads :static for _ in 1:Threads.nthreads()
         for ind in sim.infectious_individuals[Threads.threadid()]
-            _foreach_spread_setting(ind, sim) do setting, frame_pos, scale
-                _spread_in!(setting, frame_pos, scale, ind, sim)
+            _foreach_spread_setting(ind, sim, _contact_draw) do setting, frame_pos, scale, drawn
+                _spread_in!(setting, frame_pos, scale, ind, sim, drawn)
             end
         end
     end
     return nothing
 end
 
-# Calls `visit(setting, frame_pos, scale)` for each setting `ind` spreads in: each plan entry's setting,
+# Calls `visit(setting, frame_pos, scale, drawn)` for each setting `ind` spreads in: each plan entry's setting,
 # each container above it, and the GlobalSetting, with `frame_pos` their index in `present_members`.
-function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation) where {V}
+# Each level's `drawn = draw(S, ind, slot, sim)` comes before any of the entry's settings is loaded,
+# and a level that drew nobody is not visited.
+function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, draw::D = _draw_at_visit) where {V, D}
     plans = activity_plans(sim)
     cntnr = settingscontainer(sim)
-    for e in plan_entries(plans, ind)
+    for slot in plan_slots(plans, ind)
+        e = @inbounds plans.entries[slot]
         leaf_index = member_index(e)
-        _with_entry_setting(cntnr, e) do setting
+        _with_entry_settings(cntnr, e) do leaves
+            # one per level, the entry's own setting first
+            draws = _level_draws(draw, eltype(leaves), ind, slot, sim)
+            # the highest level to visit; nothing above it is loaded
+            top = findlast(_needs_visit, draws)
+            top === nothing && return nothing
+            setting = leaves[setting_id(e)]
             # dead members are left out of `present_members`, so they spread nowhere
             _is_deceased(setting, leaf_index) && return nothing
             # the entry's own setting
-            visit(setting, Int(leaf_index), _membership_scale(plans, ind, setting, cntnr))
+            _needs_visit(draws[1]) && visit(setting, Int(leaf_index), _membership_scale(plans, ind, setting, cntnr), draws[1])
             # each container above it that lists them, even for an inactive entry: someone in two
             # classes of one school is listed in the school once, maybe under this class
             if _has_container(setting)
-                _foreach_container_above(setting, leaf_index, cntnr) do container, frame_pos
-                    visit(container, frame_pos, _membership_scale(plans, ind, container, cntnr))
+                _foreach_container_above(setting, leaf_index, cntnr, top) do container, frame_pos, level
+                    _needs_visit(draws[level]) &&
+                        visit(container, frame_pos, _membership_scale(plans, ind, container, cntnr), draws[level])
                 end
             end
         end
     end
-    # everyone is in the GlobalSetting
+    # everyone is in the GlobalSetting, which no entry names: slot 0
+    drawn = draw(GlobalSetting, ind, 0, sim)
+    _needs_visit(drawn) || return nothing
     frame_pos = _global_position(ind, sim)
-    frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, 1.0f0)
+    frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, 1.0f0, drawn)
     return nothing
 end
 
-# Calls `visit(container, frame_pos)` for each container above `leaf`, which must have one, whose
-# `present_members` list its member at `leaf_index`. Someone in two classes of one school is listed
-# there once, so only one class reaches it.
-@inline _foreach_container_above(visit::V, leaf::IndividualSetting, leaf_index::Int32, cntnr::SettingsContainer) where {V} =
-    _foreach_container_above(visit, leaf, leaf, leaf_index, cntnr)
+# One `draw` per level, from the entry's type `S` up through each type above it.
+@inline _level_draws(draw::D, ::Type{Nothing}, ind::Individual, slot::Int, sim::Simulation) where {D} = ()
+@inline _level_draws(draw::D, ::Type{S}, ind::Individual, slot::Int, sim::Simulation) where {D, S<:Setting} =
+    (draw(S, ind, slot, sim), _level_draws(draw, _parent_type(S), ind, slot, sim)...)
+
+# Calls `visit(container, frame_pos, level)` for each container above `leaf`, which must have one, whose
+# `present_members` list its member at `leaf_index`, up to level `top` with `leaf` as level 1. Someone
+# in two classes of one school is listed there once, so only one class reaches it.
+@inline _foreach_container_above(visit::V, leaf::IndividualSetting, leaf_index::Int32, cntnr::SettingsContainer,
+                                 top::Int) where {V} =
+    _foreach_container_above(visit, leaf, leaf, leaf_index, cntnr, 2, top)
 
 function _foreach_container_above(visit::V, s::S, leaf::IndividualSetting, leaf_index::Int32,
-                                  cntnr::SettingsContainer) where {V, S<:Setting}
+                                  cntnr::SettingsContainer, level::Int, top::Int) where {V, S<:Setting}
+    level > top && return nothing
     c = settings(cntnr, contained_type(S))[s.contained]
     frame_pos = container_frame_index(cntnr, c, leaf, leaf_index)
-    frame_pos == DEFAULT_MEMBER_INDEX || visit(c, Int(frame_pos))
-    _has_container(c) && _foreach_container_above(visit, c, leaf, leaf_index, cntnr)
+    frame_pos == DEFAULT_MEMBER_INDEX || visit(c, Int(frame_pos), level)
+    _has_container(c) && _foreach_container_above(visit, c, leaf, leaf_index, cntnr, level + 1, top)
     return nothing
 end
 
@@ -83,7 +102,8 @@ function _global_position(ind::Individual, sim::Simulation)::Int
 end
 
 # Spreads `ind`'s infections in one setting: samples their contacts there and tries each pathogen they shed on them.
-function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Individual, sim::Simulation)
+# `drawn` holds the contacts drawn for it before it was loaded, see `_contact_draw`.
+function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Individual, sim::Simulation, drawn)
     # at scale 0 the host meets nobody here
     s_host == 0 && return nothing
     current_tick = tick(sim)
@@ -97,7 +117,7 @@ function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Ind
     _with_sampling_method(setting.contact_sampling_method) do csm
         sample_scaled_contacts!(contacts, sim.draw_buffers[Threads.threadid()], csm, setting, frame_pos,
             present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
-            s_host, _scale_bound(setting); thin = thin)
+            s_host, _scale_bound(setting); thin = thin, drawn = drawn.n, drawn_rate = drawn.rate_bound)
     end
 
     # every contact passed `can_be_contacted` when it was sampled
@@ -108,18 +128,54 @@ function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Ind
     return nothing
 end
 
+# A Poisson count `n` at `rate_bound`, a bound on `ind`'s contact rate in any setting of type `S` it
+# reaches from its entry at `slot` (0 for the GlobalSetting), from the type's bound on each factor of that rate.
+function _contact_draw(::Type{S}, ind::Individual, slot::Int, sim::Simulation) where {S<:Setting}
+    type_rate = _rate_bound(settingscontainer(sim), setting_type_index(S))
+    # a type with a sampling method that has no bound samples at the visit
+    isinf(type_rate) && return DEFAULT_CONTACT_DRAW
+    # the host cannot infect in this type: nobody drawn, at rate 0
+    _can_infect(ind, S) || return (n = 0, rate_bound = 0.0)
+    plans = activity_plans(sim)
+    s_host = _membership_scale_bound(plans, ind, S, slot)
+    scale_bound = _type_scale_bound(plans, setting_type_index(_leaf_type(S)))
+    thin = _transmission_type_thin(ind, S, tick(sim), sim)
+    rate_bound = _visit_rate(type_rate, s_host, scale_bound, thin)
+    return (n = gems_rand(rng(sim), Poisson(rate_bound)), rate_bound = rate_bound)
+end
+
+# `_foreach_spread_setting`'s default `draw`: every level samples at the visit
+@inline _draw_at_visit(::Type{S}, ::Individual, ::Int, ::Simulation) where {S<:Setting} = DEFAULT_CONTACT_DRAW
+
+# whether a level's setting has to be visited: it samples there, or drew someone
+@inline _needs_visit(drawn) = isinf(drawn.rate_bound) || drawn.n > 0
+
 # Each pathogen's bound, an upper limit on its chance to infect anyone in `setting` (0 if not shed),
 # and thin, the chance to keep a contact at all. Without pre-thinning a shed pathogen's bound is 1.
 @inline function _transmission_bounds(ind::Individual, setting::Setting, t::Int16, sim::Simulation)
+    bounds = _pathogen_bounds((tf, pid) -> max_effective_transmission_probability(tf, pid, ind, setting, t, sim), ind, sim)
+    return bounds, _thin(bounds)
+end
+
+# `_transmission_bounds`' thin from bounds that hold in every setting of type `S`, so at least that thin.
+@inline _transmission_type_thin(ind::Individual, ::Type{S}, t::Int16, sim::Simulation) where {S<:Setting} =
+    _thin(_pathogen_bounds((tf, pid) -> max_effective_transmission_probability_in_type(tf, pid, ind, S, t, sim), ind, sim))
+
+# Each pathogen's `max_probability(transmission_function, pathogen_id)`, or without pre-thinning 1 if shed
+@inline function _pathogen_bounds(max_probability::F, ind::Individual, sim::Simulation) where {F}
     ps = pathogens(sim)
     # an unshed pathogen's bound is 0 either way
-    bounds = sim.prethinning ?
-        map(p -> max_effective_transmission_probability(transmission_function(p), id(p), ind, setting, t, sim), ps) :
+    return sim.prethinning ?
+        map(p -> max_probability(transmission_function(p), id(p)), ps) :
         map(p -> infectiousness(ind, sim, id(p)) == 0 ? 0.0 : 1.0, ps)
+end
+
+# The chance to keep a contact at all, given each pathogen's bound
+@inline function _thin(bounds)::Float32
     any_bound = 1.0 - prod(b -> 1.0 - b, bounds)
     # rounded up: keeping slightly too many contacts is harmless, the extra ones transmit nothing
     thin = Float32(any_bound)
-    return bounds, thin < any_bound ? nextfloat(thin) : thin
+    return thin < any_bound ? nextfloat(thin) : thin
 end
 
 # Calls `f` with the sampling method as its concrete type for the built-in methods, so sampling

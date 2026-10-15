@@ -280,19 +280,23 @@ Returns every slot in `store.entries` holding one of the individual's entries, e
     return off:(off + plan_length(individual) - 1)
 end
 
-# Calls `use` with the entry's setting as its concrete type, found by unrolling over the
-# membership types so each comparison is against a constant index.
+# Calls `use` with the entry's setting as its concrete type.
 @inline _with_entry_setting(use::U, cntnr::SettingsContainer, e::PlanEntry) where {U} =
-    _unroll_entry_setting(use, cntnr, e, membership_setting_types(Individual)...)
+    _with_entry_settings(v -> use(v[setting_id(e)]), cntnr, e)
 
-@inline function _unroll_entry_setting(use::U, cntnr::SettingsContainer, e::PlanEntry, ::Type{T}, rest...) where {U, T<:IndividualSetting}
-    setting_type_of(e) == setting_type_index(T) || return _unroll_entry_setting(use, cntnr, e, rest...)
-    return use(settings(cntnr, T)[setting_id(e)])
+# Calls `use` with the settings of the entry's type as a concretely typed vector, found by unrolling
+# over the membership types so each comparison is against a constant index.
+@inline _with_entry_settings(use::U, cntnr::SettingsContainer, e::PlanEntry) where {U} =
+    _unroll_entry_settings(use, cntnr, e, membership_setting_types(Individual)...)
+
+@inline function _unroll_entry_settings(use::U, cntnr::SettingsContainer, e::PlanEntry, ::Type{T}, rest...) where {U, T<:IndividualSetting}
+    setting_type_of(e) == setting_type_index(T) || return _unroll_entry_settings(use, cntnr, e, rest...)
+    return use(settings(cntnr, T))
 end
 
 # no membership type matched: a setting type GEMS does not ship, looked up at runtime
-@inline _unroll_entry_setting(use::U, cntnr::SettingsContainer, e::PlanEntry) where {U} =
-    use(settings(cntnr, setting_type_from_index(setting_type_of(e)))[setting_id(e)])
+@inline _unroll_entry_settings(use::U, cntnr::SettingsContainer, e::PlanEntry) where {U} =
+    use(settings(cntnr, setting_type_from_index(setting_type_of(e))))
 
 ###
 ### CONTAINER FRAME INDEX

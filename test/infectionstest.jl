@@ -667,7 +667,7 @@ end
                 misplaced = Ref(0)
                 for ind in individuals(sim)
                     GEMS.infectious(ind) || continue
-                    GEMS._foreach_spread_setting(ind, sim) do s, pos, scale
+                    GEMS._foreach_spread_setting(ind, sim) do s, pos, scale, drawn
                         (scale > 0 && GEMS.can_infect(ind, s, t)) || return
                         GEMS.present_members(s, cntnr)[pos] === ind || (misplaced[] += 1)
                         push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), pos, scale))
@@ -893,5 +893,155 @@ end
             e
         end
         @test err !== nothing && occursin("UnderboundRate", sprint(showerror, err))
+    end
+
+    @testset "Pre-drawn contacts" begin
+        # Drawing each visit's contact count from its type's bound before loading the setting must
+        # leave the law of the spread phase unchanged. Both walks run it many times on one frozen
+        # tick, and the infections they stage are compared per infecter, setting type and pathogen.
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+        asymp = Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 30)
+        factors = Dict("Household" => 2.0, "SchoolClass" => 1.5, "Office" => 0.5)
+        pa = Pathogen(id = 1, name = "DrawnA", progressions = [asymp],
+            transmission_function = SettingTransmissionRate(transmission_rate = 0.05, factors = factors, default_factor = 1.0))
+        pb = Pathogen(id = 2, name = "DrawnB", progressions = [asymp],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.03))
+        sim = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+            settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+            pathogens = (pa, pb), infected_fraction = 0.0, global_setting = true, seed = 11)
+        cntnr = GEMS.settingscontainer(sim)
+        plans = GEMS.activity_plans(sim)
+        setup = Xoshiro(5)
+
+        # about 2000 hosts, shedding A, B or both, infectious after two ticks
+        hosts = randsubseq(setup, individuals(sim), 2000 / length(individuals(sim)))
+        for (k, h) in enumerate(hosts)
+            k % 3 != 2 && infect!(h, tick(sim), pa; sim = sim, rng = rng(sim))
+            k % 3 != 1 && infect!(h, tick(sim), pb; sim = sim, rng = rng(sim))
+        end
+        GEMS.flush_pending_infections!(sim)
+        step!(sim)
+        step!(sim)
+        infectious = reduce(vcat, sim.infectious_individuals)
+        @test length(infectious) > 1500
+
+        # scaled entries, hosts in a second class of their year, busier households, age-based
+        # municipalities and closed classes
+        for (k, h) in enumerate(infectious)
+            k % 5 == 0 && set_scale!(sim, h, Household, household_id(h, plans), (0.0, 0.5, 2.0, 3.0)[k % 4 + 1])
+        end
+        classes, years = settings(sim, SchoolClass), settings(sim, SchoolYear)
+        for h in infectious
+            cid = class_id(h, plans)
+            cid == GEMS.DEFAULT_SETTING_ID && continue
+            y = years[classes[cid].contained]
+            other = findfirst(c -> c != cid, y.contains)
+            other === nothing && continue
+            c2 = classes[y.contains[other]]
+            any(x -> x === h, individuals(c2)) || add_member!(c2, h, sim; scale = 0.5)
+        end
+        for hh in randsubseq(setup, households(sim), 0.05)
+            contact_sampling_method!(sim, hh, ContactparameterSampling(3.0))
+        end
+        abcs = AgeBasedContactSampling(contactparameter = 1.5, interval = 5,
+            contact_matrix_file = joinpath(BASE_FOLDER, "test/testdata/contact_matrix.txt"))
+        foreach(m -> contact_sampling_method!(sim, m, abcs), settings(sim, Municipality))
+        foreach(close!, randsubseq(setup, classes, 0.1))
+        GEMS.repack_dirty_pools!(cntnr)
+        @test count(isfinite, cntnr.rate_bounds) >= 10
+
+        # summed counts and squares per (infecter, setting type, pathogen), and per (type, pathogen)
+        function staged(sim, reps)
+            cells = Dict{Tuple{Int32, Char, Int8}, Vector{Float64}}()
+            totals = Dict{Tuple{Char, Int8}, Vector{Float64}}()
+            for _ in 1:reps
+                GEMS.spread_infections!(sim)
+                rep = Dict{Tuple{Int32, Char, Int8}, Int}()
+                for buf in sim.infection_buffers, p in buf
+                    key = (p.infecter_id, p.setting_type, p.pathogen_id)
+                    rep[key] = get(rep, key, 0) + 1
+                end
+                foreach(empty!, sim.infection_buffers)
+                per_type = Dict{Tuple{Char, Int8}, Int}()
+                for (key, v) in rep
+                    acc = get!(() -> [0.0, 0.0], cells, key)
+                    acc .+= (v, v^2)
+                    per_type[(key[2], key[3])] = get(per_type, (key[2], key[3]), 0) + v
+                end
+                for (key, v) in per_type
+                    acc = get!(() -> [0.0, 0.0], totals, key)
+                    acc .+= (v, v^2)
+                end
+            end
+            return cells, totals
+        end
+        reps = 200
+        new_cells, new_totals = staged(sim, reps)
+        drawn_bounds = copy(cntnr.rate_bounds)
+        fill!(cntnr.rate_bounds, Inf)
+        old_cells, old_totals = staged(sim, reps)
+        copyto!(cntnr.rate_bounds, drawn_bounds)
+
+        moments(acc) = (m = acc[1] / reps; (m, max(acc[2] / reps - m^2, 0.0)))
+        z(a, b) = ((ma, va) = moments(a); (mb, vb) = moments(b); (ma - mb) / sqrt(max((va + vb) / reps, 1e-12)))
+        nothing_yet = [0.0, 0.0]
+
+        # every type that spreads in both walks, and each one's total agrees
+        @test length(new_totals) >= 10
+        @test keys(new_totals) == keys(old_totals)
+        @test all(k -> abs(z(new_totals[k], old_totals[k])) < 4, keys(old_totals))
+
+        # each infecter's counts per type agree too, as a whole
+        stat = 0.0
+        df = 0
+        for k in union(keys(new_cells), keys(old_cells))
+            a, b = get(new_cells, k, nothing_yet), get(old_cells, k, nothing_yet)
+            a[1] + b[1] >= 20 || continue
+            stat += z(a, b)^2
+            df += 1
+        end
+        @test df > 500
+        @test (stat - df) / sqrt(2df) < 4
+
+        # every visit's contact rate is within the bound its level drew at, not just on average
+        t = tick(sim)
+        each_level = (S, h, slot, sim) -> (n = 1, rate_bound = GEMS._contact_draw(S, h, slot, sim).rate_bound)
+        checked = Ref(0)
+        exceeded = Ref(0)
+        for h in infectious
+            GEMS._foreach_spread_setting(h, sim, each_level) do s, pos, scale, drawn
+                isinf(drawn.rate_bound) && return
+                present = GEMS.present_members(s, cntnr)
+                (scale > 0 && GEMS.can_infect(h, s, t) && length(present) > 1) || return
+                _, thin = GEMS._transmission_bounds(h, s, t, sim)
+                rate = GEMS._visit_rate(GEMS.contact_rate(s.contact_sampling_method, s, pos, present, t),
+                    scale, GEMS._scale_bound(s), thin)
+                checked[] += 1
+                rate <= drawn.rate_bound || (exceeded[] += 1)
+            end
+        end
+        @test checked[] > 1000
+        @test exceeded[] == 0
+
+        # a type bound below a setting's rate is an error, not a bias
+        hh = GEMS.setting_type_index(Household)
+        cntnr.rate_bounds[hh] = 0.1
+        err = try
+            GEMS.spread_infections!(sim)
+            nothing
+        catch e
+            e
+        end
+        cntnr.rate_bounds[hh] = drawn_bounds[hh]
+        foreach(empty!, sim.infection_buffers)
+        @test err !== nothing && occursin("exceeds the bound", sprint(showerror, err))
+
+        # once compiled, walking with draws allocates nothing, and each level's draw is concretely typed
+        walk_bytes(h) = @allocated GEMS._foreach_spread_setting((s, pos, scale, drawn) -> nothing, h, sim, GEMS._contact_draw)
+        foreach(walk_bytes, infectious)
+        @test all(h -> walk_bytes(h) == 0, infectious)
+        h = first(infectious)
+        @test @inferred(GEMS._level_draws(GEMS._contact_draw, SchoolClass, h, first(GEMS.plan_slots(plans, h)), sim)) isa
+            NTuple{4, @NamedTuple{n::Int, rate_bound::Float64}}
     end
 end

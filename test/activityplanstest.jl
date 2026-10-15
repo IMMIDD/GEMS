@@ -625,7 +625,7 @@ end
 
         # spreading from a reaches every office the plan names, the second one included
         reached = Int32[]
-        GEMS._foreach_spread_setting(a, sim) do setting, pos, scale
+        GEMS._foreach_spread_setting(a, sim) do setting, pos, scale, drawn
             setting isa Office && push!(reached, id(setting))
         end
         @test reached == Int32[1, 2]
@@ -1301,7 +1301,7 @@ end
         GEMS.repack_dirty_pools!(GEMS.settingscontainer(sim))
         within = true
         for ind in individuals(sim)
-            GEMS._foreach_spread_setting((s, pos, sc) -> (within &= sc <= GEMS._scale_bound(s)), ind, sim)
+            GEMS._foreach_spread_setting((s, pos, sc, drawn) -> (within &= sc <= GEMS._scale_bound(s)), ind, sim)
         end
         @test within
     end

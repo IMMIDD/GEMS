@@ -197,63 +197,101 @@ membership_changed!(csm::ContactSamplingMethod, setting::Setting) = nothing
 
 ###
 ### SCALED SAMPLING
-### Scales a setting's contacts by both parties' scales there. A host draws `s_host * bound` times
-### its sampler's contacts and keeps each with the contact's scale over `bound`, so every pair
-### meets at `s_host * s_contact` times the unscaled rate. A method with `contact_rate` folds the
-### part of the keep that is the same for every contact into its count; any other keeps each contact.
+### Scales a setting's contacts by both parties' scales there, so every pair meets at `s_host * s_contact`
+### times the unscaled rate. With `scale_bound` the largest scale there and `thin` the chance to keep a
+### contact at all, a host:
+### - draws contacts at `rate * s_host * scale_bound * thin`, with `rate` its sampler's (`_visit_rate`)
+### - keeps each with the contact's scale over `scale_bound` (`_keep_contact`)
+### A method with `contact_rate` draws that count at once, or thins one drawn before the setting was
+### loaded at bounds on each factor. Any other is called `s_host * scale_bound` times, each thinned.
 ###
 
-# Samples the host's contacts in `setting` into `contacts`, drawing into `draws` when the sampler
-# has to be called more than once. Draws nothing extra while every scale involved is 1.
-# `oversample` only acts without replacement, see `_sample_unique_scaled!`.
-# `thin` keeps each contact with that probability on top of its scales.
+"""
+    sample_scaled_contacts!(contacts, draws, csm, setting, idx, present, tick, replace, rng, plans, cntnr,
+        s_host, scale_bound; oversample = 1.0f0, thin = 1.0f0, drawn = 0, drawn_rate = Inf)
+
+Samples the host's contacts in `setting` into `contacts`, scaled by the host's and each contact's
+scale there. Draws nothing extra while every scale involved is 1.
+
+# Parameters
+
+- `contacts::Vector{Individual}`: Buffer the sampled contacts are written to, emptied first
+- `draws::Vector{Individual}`: Scratch buffer for when the sampler has to be called more than once
+- `csm::ContactSamplingMethod`: The setting's sampling method
+- `setting::Setting`: Setting the host meets its contacts in
+- `idx::Int`: The host's position in `present`
+- `present::AbstractVector{Individual}`: Everyone present in `setting`, the host included
+- `tick::Int16`: Current tick
+- `replace::Bool`: Whether contacts are drawn with replacement
+- `rng::Xoshiro`: Random number generator
+- `plans::ActivityPlanStore`: Activity plans the contacts' scales are read from
+- `cntnr::SettingsContainer`: Settings container, for scales in container settings
+- `s_host::Float32`: The host's scale in `setting`
+- `scale_bound::Float32`: Upper bound on any member's scale in `setting`, see `_scale_bound`
+- `oversample::Float32`: Without replacement, calls the sampler this many times more to shrink the
+  bias above scale 1, see `_sample_unique_scaled!`
+- `thin::Float32`: Probability to keep each contact, on top of its scales
+- `drawn::Int`: Number of contacts drawn before the visit at rate `drawn_rate`, which are thinned to
+  the visit's rate. Needs a method with `contact_rate` and `replace`
+- `drawn_rate::Float64`: Rate `drawn` was drawn at, at least the visit's rate; `Inf` if nothing was drawn
+"""
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
-        s_host::Float32, bound::Float32; oversample::Float32 = 1.0f0, thin::Float32 = 1.0f0)
-    r = s_host * bound
+        s_host::Float32, scale_bound::Float32; oversample::Float32 = 1.0f0, thin::Float32 = 1.0f0,
+        drawn::Int = 0, drawn_rate::Float64 = Inf)
+    r = s_host * scale_bound
     empty!(contacts)
     # a lone member could only meet itself
     (r == 0 || length(present) <= 1) && return contacts
 
+    # a method with a contact rate: one count for the whole visit, at the visit's rate
     if replace && _has_contact_rate(csm)
-        # one Poisson count with `r * thin` folded in, a product the method's own count used to take,
-        # then that many contacts, thinned by each contact's scale in place
-        k = gems_rand(rng, Poisson(contact_rate(csm, setting, idx, present, tick) * (r * thin)))
+        # a Poisson count, or the contacts drawn before the visit thinned to it
+        rate = _visit_rate(contact_rate(csm, setting, idx, present, tick), s_host, scale_bound, thin)
+        k = isinf(drawn_rate) ? gems_rand(rng, Poisson(rate)) : _thinned_count(drawn, rate / drawn_rate, rng)
         sample_k_contacts!(contacts, csm, setting, idx, present, tick, k, rng)
-        kept = 0
-        for c in contacts
-            _keep_contact(c, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
-        end
-        return resize!(contacts, kept)
+        # each kept by its contact's scale
+        return _keep_contacts!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
+    # any other method is called as often as the scales say, so nothing can have been drawn ahead
+    isinf(drawn_rate) || error("contacts were drawn before the visit for a $(typeof(csm)), which has no `contact_rate`; " *
+        "set sampling methods during a simulation with `contact_sampling_method!(sim, setting, csm)`")
 
+    # scales up to 1: one call, thinned by `r * thin`, then by each contact's scale
     if r <= 1
-        # one draw thinned by `r * thin`, then by each contact's scale in place
         _sample_thinned!(contacts, csm, setting, idx, present, tick, replace, rng, r * thin)
-        kept = 0
-        for c in contacts
-            _keep_contact(c, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
-        end
-        return resize!(contacts, kept)
+        return _keep_contacts!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
 
+    # above 1 without replacement: calls merged so a contact is met once, see `_sample_unique_scaled!`
     replace ||
-        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, bound, thin)
+        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, scale_bound, thin)
 
+    # above 1 with replacement: `r` calls, the last for the fraction beyond the whole ones
     calls = floor(Int, r)
     frac = r - calls
     # samplers fill their buffer from the start, so each call draws into `draws`
     for call in 1:(calls + (frac > 0))
-        # the last draw stands for the fraction beyond the whole ones
         f = call > calls ? frac : 1.0f0
         empty!(draws)
         _sample_thinned!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
-        for c in draws
-            _keep_contact(c, bound, plans, setting, cntnr, rng) && push!(contacts, c)
-        end
+        append!(contacts, _keep_contacts!(draws, scale_bound, plans, setting, cntnr, rng))
     end
     return contacts
+end
+
+# A visit's contact rate, see the section header. Monotone in each factor, also after rounding, so
+# bounds on the factors give a bound on the rate.
+@inline _visit_rate(rate::Float64, s_host::Float32, scale_bound::Float32, thin::Float32) = rate * ((s_host * scale_bound) * thin)
+
+# How many of `n` contacts are kept, each with probability `p`: the visit's rate over the one they were drawn at.
+@inline function _thinned_count(n::Int, p::Float64, rng::Xoshiro)::Int
+    p <= 1 || error("a visit's contact rate exceeds the bound its contacts were drawn at; change sampling methods " *
+        "and scales during a simulation with `contact_sampling_method!(sim, ...)` and `set_scale!(sim, ...)`")
+    # equal rates are common and need no draw
+    p == 1 && return n
+    return gems_rand(rng, Binomial(n, p))
 end
 
 # Without replacement a contact drawn by several calls is kept once, with the weights of the calls
@@ -264,7 +302,7 @@ end
 function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
-        r::Float32, oversample::Float32, bound::Float32, thin::Float32)
+        r::Float32, oversample::Float32, scale_bound::Float32, thin::Float32)
     total = r * oversample
     calls = floor(Int, total)
     frac = total - calls
@@ -300,7 +338,7 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
             w += frac * unit
             j += 1
         end
-        _keep_unique_contact(c, w, thin, bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
+        _keep_unique_contact(c, w, thin, scale_bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
         i += 1
     end
     resize!(contacts, kept)
@@ -308,23 +346,33 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
         draws[unmatched += 1] = draws[k]
     end
     for k in 1:unmatched
-        _keep_unique_contact(draws[k], frac * unit, thin, bound, plans, setting, cntnr, rng) && push!(contacts, draws[k])
+        _keep_unique_contact(draws[k], frac * unit, thin, scale_bound, plans, setting, cntnr, rng) && push!(contacts, draws[k])
     end
     return contacts
 end
 
-# Keeps a drawn contact with its scale over `bound`, if it can be contacted here
-@inline function _keep_contact(c::Individual, bound::Float32,
+# Keeps a drawn contact with its scale over `scale_bound`, if it can be contacted here
+@inline function _keep_contact(c::Individual, scale_bound::Float32,
         plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
-    p = _membership_scale(plans, c, setting, cntnr) / bound
+    p = _membership_scale(plans, c, setting, cntnr) / scale_bound
     kept = p >= 1 || gems_rand(rng) < p
     return kept && can_be_contacted(c, setting)
 end
 
-# Keeps a contact drawn without replacement with `thin` times its capped keep probability
-@inline function _keep_unique_contact(c::Individual, w::Float32, thin::Float32, bound::Float32,
+# Keeps each of `contacts` with `_keep_contact`, compacting them in place
+@inline function _keep_contacts!(contacts::Vector{Individual}, scale_bound::Float32,
         plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
-    p = w * _membership_scale(plans, c, setting, cntnr) / bound
+    kept = 0
+    for c in contacts
+        _keep_contact(c, scale_bound, plans, setting, cntnr, rng) && (contacts[kept += 1] = c)
+    end
+    return resize!(contacts, kept)
+end
+
+# Keeps a contact drawn without replacement with `thin` times its capped keep probability
+@inline function _keep_unique_contact(c::Individual, w::Float32, thin::Float32, scale_bound::Float32,
+        plans::ActivityPlanStore, setting::Setting, cntnr::SettingsContainer, rng::Xoshiro)
+    p = w * _membership_scale(plans, c, setting, cntnr) / scale_bound
     kept = p >= 1 ? (thin >= 1 || gems_rand(rng) < thin) : gems_rand(rng) < p * thin
     return kept && can_be_contacted(c, setting)
 end
@@ -332,7 +380,7 @@ end
 ###
 ### MEMBERSHIP SCALE
 ### An individual's scale in a setting, from its own plan entries. An entry that does not apply
-### this tick contributes 0.
+### this tick contributes 0. Also upper bounds on it per setting type, for draws before a setting is loaded.
 ###
 
 # nobody holds an entry for the GlobalSetting
@@ -360,14 +408,36 @@ function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::
     closed = pool.closed != 0
     # a closed container frames none of its leaves
     closed && !is_open(c) && return 0.0f0
+    return _capped_scale_sum(plans, slots) do k
+        e = @inbounds plans.entries[k]
+        leaf = leaves[setting_id(e)]
+        Int(leaf.pool_leaf) in below && (!closed || _open_up_to(pool, leaf, C)) && !_is_deceased(leaf, member_index(e))
+    end
+end
+
+# At least `_membership_scale` in any setting of type `S` the individual reaches from its entry at `slot`:
+# the entry's own scale for a leaf, and for a container the capped sum over all its leaf entries, not just those below it.
+@inline _membership_scale_bound(::ActivityPlanStore, ::Individual, ::Type{GlobalSetting}, ::Int) = 1.0f0
+
+@inline function _membership_scale_bound(plans::ActivityPlanStore, individual::Individual, ::Type{T},
+                                         slot::Int) where {T<:IndividualSetting}
+    individual.plan_scaled || return 1.0f0
+    return Float32(_effective_scale(plans, slot))
+end
+
+function _membership_scale_bound(plans::ActivityPlanStore, individual::Individual, ::Type{C},
+                                 ::Int) where {C<:ContainerSetting}
+    individual.plan_scaled || return 1.0f0
+    # more slots only raise the sum and the cap
+    return _capped_scale_sum(_ -> true, plans, plan_slots(plans, individual, _leaf_type(C)))
+end
+
+# The scales of the slots `include` accepts, summed but capped at the larger of 1 and the largest
+@inline function _capped_scale_sum(include::F, plans::ActivityPlanStore, slots) where {F}
     total = 0.0f0
     largest = 0.0f0
     for k in slots
-        e = @inbounds plans.entries[k]
-        leaf = leaves[setting_id(e)]
-        Int(leaf.pool_leaf) in below || continue
-        (!closed || _open_up_to(pool, leaf, C)) || continue
-        _is_deceased(leaf, member_index(e)) && continue
+        include(k) || continue
         s = Float32(_effective_scale(plans, k))
         total += s
         largest = max(largest, s)
