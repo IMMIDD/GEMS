@@ -30,9 +30,9 @@ struct _OverflowNode; node::Int32; end # registry overflow linked-list node inde
 
 # Stage an ended infection; the defaults grant no immunity (death path).
 @inline _stage_ended_infection!(buf, ind, l::_CacheSlot, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
-    push!(buf, _EndedInfection(ind.id, l.i, recovery, pathogen_id, false))
+    push!(buf, _EndedInfection(ind, l.i, recovery, pathogen_id, false))
 @inline _stage_ended_infection!(buf, ind, l::_OverflowNode, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
-    push!(buf, _EndedInfection(ind.id, l.node, recovery, pathogen_id, true))
+    push!(buf, _EndedInfection(ind, l.node, recovery, pathogen_id, true))
 
 
 

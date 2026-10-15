@@ -616,8 +616,8 @@ end
                 recovery = t + Int16(10))
 
             stage(rank, char, sid) = GEMS._PendingInfection(
-                id(host), Int32(7), GEMS.DEFAULT_INFECTION_ID, Int32(sid), Int32(-1),
-                Int32(1), NaN32, NaN32, char, t, pid, Int8(1), rank, dp)
+                host, id(host), Int32(7), GEMS.DEFAULT_INFECTION_ID, Int32(sid),
+                Int32(1), char, t, pid, Int8(1), rank, dp)
 
             office = GEMS.setting_type_index(Office)
             household = GEMS.setting_type_index(Household)

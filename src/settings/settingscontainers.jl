@@ -175,8 +175,9 @@ Type-stable accessor: returns `Vector{T}` for the given concrete setting type `T
 Returns an empty `Vector{T}` when the type is not present in the container.
 """
 function settings(container::SettingsContainer, ::Type{T}) where {T<:Setting}
-    haskey(container.settings, T) || return T[]
-    return container.settings[T]::Vector{T}
+    v = get(container.settings, T, nothing)
+    v === nothing && return T[]
+    return v::Vector{T}
 end
 
 """

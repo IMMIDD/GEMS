@@ -114,9 +114,7 @@
             "tick",
             "setting_id",
             "setting_type",
-            "lat",
-            "lon",
-            "ags",
+            "household_id",
             "source_infection_id",
         ]
 
@@ -148,9 +146,7 @@
                 recovery = Int16(0),
                 setting_id = Int32(0),
                 setting_type = 'h',
-                lat = Float32(0),
-                lon = Float32(0),
-                ags = Int32(0),
+                household_id = Int32(0),
                 source_infection_id = Int32(0)
             )
 
@@ -211,9 +207,7 @@
             @test df1.recovery[end] >= t+10
             @test df1.setting_id[end] == GEMS.DEFAULT_SETTING_ID
             @test df1.setting_type[end] == '?'
-            @test df1.lat[end] === NaN32
-            @test df1.lon[end] === NaN32
-            @test df1.ags[end] == Int32(-1)
+            @test df1.household_id[end] == GEMS.DEFAULT_SETTING_ID
             @test df1.source_infection_id[end] == GEMS.DEFAULT_INFECTION_ID
 
             # infect another agent in a household setting
@@ -241,9 +235,7 @@
             @test df2.recovery[end] >= t+10
             @test df2.setting_id[end] == id(h)
             @test df2.setting_type[end] == 'h'
-            @test df2.lat[end] === NaN32
-            @test df2.lon[end] === NaN32
-            @test df2.ags[end] == Int32(-1)
+            @test df2.household_id[end] == id(h)
             @test df2.source_infection_id[end] == df1.infection_id[end]
 
         end
@@ -254,7 +246,7 @@
             function log_infection!(il, a, b, t)
                 log!(il, Int32(1), Int32(a), Int32(b), Int8(1), Int8(1), Int16(t),
                     Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
-                    Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
+                    Int32(0), 'h', Int32(0), Int32(0))
             end
 
             query(il, a, t0, t1) = get_infections_between(il, Int32(a), Int16(t0), Int16(t1))

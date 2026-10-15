@@ -73,6 +73,12 @@ mutable struct PostProcessor
         # the steps below only add or replace columns, so they leave shared logger columns intact
         infections = dataframe(infectionlogger(simulation); share = share_logger_data)
 
+        # the logger keeps the infectee's household; locate the infection there, with its setting's AGS
+        lats, lons = _household_coordinates(infections.household_id, households(simulation))
+        infection_ags = _setting_ags(infections.setting_type, infections.setting_id, settingscontainer(simulation))
+        insertcols!(infections, :household_id, :lat => lats, :lon => lons, :ags => infection_ags; after = true)
+        DataFrames.select!(infections, Not(:household_id))
+
         # the logger stores the progression index; resolve it here, where pathogens are known
         infections[!, :progression_id] = progression_names(pathogens(simulation),
             infections.pathogen_id, infections.progression_id)
@@ -300,6 +306,39 @@ function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vect
     end
     return out
 end
+
+# Each row's household coordinates, NaN for a seed, which logs no household
+function _household_coordinates(household_ids::AbstractVector, households::Vector{Household})
+    lat_of, lon_of = map(lat, households), map(lon, households)
+    lats, lons = similar(lat_of, length(household_ids)), similar(lon_of, length(household_ids))
+    Threads.@threads for k in eachindex(household_ids)
+        h = household_ids[k]
+        lats[k], lons[k] = h == DEFAULT_SETTING_ID ? (NaN32, NaN32) : (lat_of[h], lon_of[h])
+    end
+    return lats, lons
+end
+
+# Each row's AGS id, that of the setting it happened in; -1 for a seed, which has no setting
+function _setting_ags(setting_types::AbstractVector{Char}, setting_ids::AbstractVector, cntnr::SettingsContainer)
+    # every setting's AGS id by setting id, per setting type; an ASCII char indexes a dense table
+    ascii_ids = fill(Int32[], 128)
+    other_ids = Dict{Char, Vector{Int32}}()
+    for T in settingtypes(cntnr)
+        stngs = settings(cntnr, T)
+        isempty(stngs) && continue
+        c = settingchar(first(stngs))
+        isascii(c) ? (ascii_ids[codepoint(c) + 1] = _ags_ids(stngs)) : (other_ids[c] = _ags_ids(stngs))
+    end
+    out = Vector{Int32}(undef, length(setting_ids))
+    Threads.@threads for k in eachindex(setting_ids)
+        sid, c = setting_ids[k], setting_types[k]
+        out[k] = sid == DEFAULT_SETTING_ID ? Int32(-1) : (isascii(c) ? ascii_ids[codepoint(c) + 1] : other_ids[c])[sid]
+    end
+    return out
+end
+
+# the AGS id of each setting, by setting id
+_ags_ids(stngs::Vector{T}) where {T<:Setting} = Int32[id(ags(s)) for s in stngs]
 
 # `recovery` cleared to -1 where the host died before it, and the tick each infection ended
 function _recovery_and_removal(recovery::AbstractVector, death_ticks::AbstractVector, death_rows::Vector{Int32})

@@ -274,7 +274,6 @@ function _try_to_infect!(infecter::Individual,
     # try to infect
     transmits = _draw_transmissions(infection_probabilities, bounds, thin, rng(sim))
     any(transmits) || return false
-    hh = settings(sim, Household)[household_id(infectee, activity_plans(sim))]::Household
     for (pathogen, transmitted) in zip(pathogens(sim), transmits)
         transmitted || continue
         infect!(infectee,
@@ -284,10 +283,7 @@ function _try_to_infect!(infecter::Individual,
             rng(sim),
             id(infecter),
             id(setting),
-            lon(hh),
-            lat(hh),
             settingchar(setting),
-            ags(setting) |> id,
             infection_id(infecter, sim, id(pathogen)),
             infecter_position,
             type_rank)
@@ -338,10 +334,7 @@ end
         rng::Xoshiro,
         infecter_id::Int32,
         setting_id::Int32 ,
-        lon::Float32,
-        lat::Float32,
         setting_type::Char,
-        ags::Int32,
         source_infection_id::Int32,
         infecter_position::Int32,
         type_rank::UInt8)
@@ -360,10 +353,7 @@ can only be logged, if `Simulation` object is passed (as this object holds the l
 - `rng::Xoshiro`: RNG to use for stochastic parts
 - `infecter_id::Int32`: Infecting individual
 - `setting_id::Int32`: ID of setting this infection happens in
-- `lon::Float32`: Longitude of the infection infection location (setting)
-- `lat::Float32`: Latitude of the infection infection location (setting)
 - `setting_type::Char`: Setting type as char (e.g. "h" for `Household`)
-- `ags::Int32`*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
 - `source_infection_id::Int32`: Current infection ID of the infecting individual
 - `infecter_position::Int32`: Infecting individual's index in the setting's `present_members`
 - `type_rank::UInt8`: Dense index of the setting's type. With the setting id and
@@ -382,10 +372,7 @@ function infect!(infectee::Individual,
         rng::Xoshiro,
         infecter_id::Int32,
         setting_id::Int32,
-        lon::Float32,
-        lat::Float32,
         setting_type::Char,
-        ags::Int32 ,
         source_infection_id::Int32,
         infecter_position::Int32,
         type_rank::UInt8)
@@ -419,8 +406,8 @@ function infect!(infectee::Individual,
         # stage for the serial flush, which dedups, logs and sets the host's flags
         shard_id = _owner_shard(id(infectee))
         push!(sim.infection_buffers[Threads.threadid(), shard_id],
-            _PendingInfection(id(infectee), infecter_id, source_infection_id, setting_id, ags,
-                infecter_position, lat, lon, setting_type, tick, id(pathogen), tag, type_rank, dp))
+            _PendingInfection(infectee, id(infectee), infecter_id, source_infection_id, setting_id,
+                infecter_position, setting_type, tick, id(pathogen), tag, type_rank, dp))
     end
 
     return DEFAULT_INFECTION_ID
@@ -434,10 +421,7 @@ end
         rng::Xoshiro = default_gems_rng(),
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
-        lon::Float32 = NaN32,
-        lat::Float32 = NaN32,
         setting_type::Char = '?',
-        ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID,
         infecter_position::Int32 = Int32(0),
         type_rank::UInt8 = UInt8(0))
@@ -453,10 +437,7 @@ Infect `infectee` with the pathogen of the simulation at the current tick of the
 - `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG to use for stochastic parts
 - `infecter_id::Int32 = Int32(-1)` *(optional)*: Infecting individual
 - `setting_id::Int32 = Int32(-1)` *(optional)*: ID of setting this infection happens in
-- `lon::Float32 = NaN32` *(optional)*: Longitude of the infection infection location (setting)
-- `lat::Float32 = NaN32` *(optional)*: Latitude of the infection infection location (setting)
 - `setting_type::Char = '?'` *(optional)*: Setting type as char (e.g. "h" for `Household`)
-- `ags::Int32 = Int32(-1)` *(optional)*: Amtlicher Gemeindeschlüssel (community identification number) of the region this infection happened in as Integer value
 - `source_infection_id::Int32 = DEFAULT_INFECTION_ID` *(optional)*: Current infection ID of the infecting individual
 - `infecter_position::Int32 = Int32(0)` *(optional)*: Infecting individual's index in the setting's `present_members`
 - `type_rank::UInt8 = UInt8(0)` *(optional)*: Dense index of the setting's type. With the setting id and
@@ -476,15 +457,12 @@ function infect!(infectee::Individual,
         rng::Xoshiro = default_gems_rng(),
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
-        lon::Float32 = NaN32,
-        lat::Float32 = NaN32,
         setting_type::Char = '?',
-        ags::Int32 = Int32(-1),
         source_infection_id::Int32 = DEFAULT_INFECTION_ID,
         infecter_position::Int32 = Int32(0),
         type_rank::UInt8 = UInt8(0))
 
-        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, lon, lat, setting_type, ags,
+        infect!(infectee, tick, pathogen, sim, rng, infecter_id, setting_id, setting_type,
             source_infection_id, infecter_position, type_rank)
 end
 """

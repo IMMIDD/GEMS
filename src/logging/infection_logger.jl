@@ -36,9 +36,7 @@ and stored in `ChunkedVector`s, which grow without reallocating.
     tick::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
     setting_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
     setting_type::Vector{ChunkedVector{Char}} = [ChunkedVector{Char}() for _ in 1:Threads.maxthreadid()]
-    lat::Vector{ChunkedVector{Float32}} = [ChunkedVector{Float32}() for _ in 1:Threads.maxthreadid()]
-    lon::Vector{ChunkedVector{Float32}} = [ChunkedVector{Float32}() for _ in 1:Threads.maxthreadid()]
-    ags::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    household_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
     source_infection_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
 
     # Individual id range of the logged population
@@ -68,9 +66,7 @@ function log!(
         recovery::Int16,
         setting_id::Int32,
         setting_type::Char,
-        lat::Float32,
-        lon::Float32,
-        ags::Int32,
+        household_id::Int32,
         source_infection_id::Int32
     )
 
@@ -92,9 +88,7 @@ function log!(
     push!(logger.recovery[tid], recovery)
     push!(logger.setting_id[tid], setting_id)
     push!(logger.setting_type[tid], setting_type)
-    push!(logger.lat[tid], lat)
-    push!(logger.lon[tid], lon)
-    push!(logger.ags[tid], ags)
+    push!(logger.household_id[tid], household_id)
     push!(logger.source_infection_id[tid], source_infection_id)
 
     # keep the infecter index up to date once it exists (see get_infections_between)
@@ -123,9 +117,7 @@ function log!(;
         recovery::Int16,
         setting_id::Int32,
         setting_type::Char,
-        lat::Float32,
-        lon::Float32,
-        ags::Int32,
+        household_id::Int32,
         source_infection_id::Int32
     )
 
@@ -133,7 +125,7 @@ function log!(;
         logger, infection_id, a, b, pathogen_id, progression_id, tick,
         infectiousness_onset, symptom_onset, severeness_onset,
         critical_onset, critical_offset, severeness_offset,
-        recovery, setting_id, setting_type, lat, lon, ags, source_infection_id
+        recovery, setting_id, setting_type, household_id, source_infection_id
     )
 end
 
@@ -220,9 +212,7 @@ function dataframe(logger::InfectionLogger; share::Bool = false)
         recovery = col(logger.recovery),
         setting_id = col(logger.setting_id),
         setting_type = col(logger.setting_type),
-        lat = col(logger.lat),
-        lon = col(logger.lon),
-        ags = col(logger.ags),
+        household_id = col(logger.household_id),
         source_infection_id = col(logger.source_infection_id);
         copycols = false
     )
@@ -246,9 +236,7 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["setting_id"] = vcat(logger.setting_id...)
         file["setting_type"] = vcat(logger.setting_type...)
         file["setting_type_names"] = setting_type_names()
-        file["lat"] = vcat(logger.lat...)
-        file["lon"] = vcat(logger.lon...)
-        file["ags"] = vcat(logger.ags...)
+        file["household_id"] = vcat(logger.household_id...)
         file["source_infection_id"] = vcat(logger.source_infection_id...)
     end
 end

@@ -65,6 +65,7 @@ module GEMS
     include("settings/ags.jl")
     include("contacts/contact_matrix.jl")
     include("population/individuals.jl")
+    include("registries/staged_infections.jl")
     include("pathogen/health_progression/health_progression.jl")
     include("pathogen/health_progression/health_profile_index.jl")
     include("pathogen/health_progression/host_health.jl")

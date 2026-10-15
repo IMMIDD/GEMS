@@ -465,7 +465,6 @@ Each shard reserves its block of infection ids up front, so ids are reproducible
 gaps in a block.
 """
 function flush_pending_infections!(sim::Simulation)
-    pop = population(sim)
     logger = infectionlogger(sim)
     num_shards = Threads.maxthreadid()
 
@@ -500,7 +499,7 @@ function flush_pending_infections!(sim::Simulation)
             buf = sim.infection_buffers[producer_id, shard_id]
             for p in buf
                 _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
-                ind = get_individual_by_id(pop, p.host_id)
+                ind = p.host
                 infected(ind, p.pathogen_id) && continue
                 _commit_infection!(sim, ind, p, next_id, infections, logger, shard_id)
                 next_id += Int32(1)
@@ -536,9 +535,8 @@ function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfecti
         recovery(p.dp),
         p.setting_id,
         p.setting_type,
-        p.lat,
-        p.lon,
-        p.ags,
+        # an infection in a setting is located at the host's household; a seed has no location
+        p.setting_id == DEFAULT_SETTING_ID ? DEFAULT_SETTING_ID : household_id(ind, activity_plans(sim)),
         p.source_infection_id
     )
     state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)
@@ -559,7 +557,6 @@ ended infection leaves behind, clears `slot_to_row` entries for infections that 
 this tick, and returns their indices to the free list so they can be reused.
 """
 function flush_ended_infections!(sim::Simulation)
-    pop = population(sim)
     num_shards = Threads.maxthreadid()
 
     Threads.@threads :static for shard_id in 1:num_shards
@@ -570,7 +567,7 @@ function flush_ended_infections!(sim::Simulation)
             buf = sim.removal_buffers[producer_id, shard_id]
             for r in buf
                 r.pathogen_id == DEFAULT_PATHOGEN_ID && continue
-                ind = get_individual_by_id(pop, r.host_id)
+                ind = r.host
                 push_immunity!(immunities, ind, r.pathogen_id, IMMUNITY_SOURCE_NATURAL, r.recovery, DEFAULT_VACCINE_ID)
                 ind.needs_immunity_update = true
                 _mark_active!(sim, ind)
@@ -581,11 +578,11 @@ function flush_ended_infections!(sim::Simulation)
             # is unlinked before any promotion can pull it into cache
             for r in buf
                 r.is_overflow || continue
-                remove_infection!(reg, get_individual_by_id(pop, r.host_id), r)
+                remove_infection!(reg, r.host, r)
             end
             for r in buf
                 r.is_overflow && continue
-                remove_infection!(reg, get_individual_by_id(pop, r.host_id), r)
+                remove_infection!(reg, r.host, r)
             end
             empty!(buf)
         end
