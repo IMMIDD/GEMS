@@ -10,8 +10,7 @@ export membership_changed!
 """
     sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
-    Fallback: determine which keyword-based method  a user defined (mutating or non-mutating) and routes the internal positional call accordingly.
-
+Fallback: determines which keyword-based method a user defined (mutating or non-mutating) and routes the internal positional call accordingly.
 A sampler written against `Vector{Individual}` still works, via a deprecated path that copies.
 """
 function sample_contacts!(
@@ -48,6 +47,58 @@ function sample_contacts!(
     else
         error("Currently, no specific implementation of this function is known. Please provide a method for type: $(typeof(csm))")
     end
+end
+
+"""
+    sample_contacts(
+        csm::ContactSamplingMethod,
+        setting::Setting,
+        individual_index::Int,
+        present_inds::AbstractVector{Individual},
+        tick::Int16,
+        replace::Bool,
+        rng::Xoshiro
+    )
+
+Wrapper for non-mutating function
+"""
+function sample_contacts(
+    csm::ContactSamplingMethod,
+    setting::Setting,
+    individual_index::Int,
+    present_inds::AbstractVector{Individual},
+    tick::Int16,
+    replace::Bool,
+    rng::Xoshiro
+)
+    indivs = Vector{Individual}()
+    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    return indivs
+end
+
+"""
+    sample_contacts(
+        csm::ContactSamplingMethod,
+        setting::Setting,
+        individual_index::Int,
+        present_inds::AbstractVector{Individual},
+        tick::Int16;
+        replace::Bool = true,
+        rng::Xoshiro = default_gems_rng()
+    )
+
+Wrapper for non-mutating function and keyword arguments
+"""
+function sample_contacts(
+    csm::ContactSamplingMethod,
+    setting::Setting,
+    individual_index::Int,
+    present_inds::AbstractVector{Individual},
+    tick::Int16;
+    replace::Bool = true,
+    rng::Xoshiro = default_gems_rng()
+)
+    return sample_contacts(csm, setting, individual_index, present_inds, tick, replace, rng)
 end
 
 """
@@ -96,94 +147,6 @@ function sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMeth
 end
 
 """
-    create_contact_sampling_method(config::Dict)
-
-Creates a ContactSamplingMethod (CSM) struct using the details specified in the provided dictionary. 
-The dictionary must contain the keys "type" where type corresponds to the 
-name of the `ContactSamplingMethod` struct to be used.
-Optionaly the Dict can have the key "parameters". These will be used, to construct the CSM defined by "type". When "type" doesn't have attributes, "parameters" can be ommited.
-"""
-function create_contact_sampling_method(config::Dict)       
-
-    type_string = get(config, "type", "")
-    gems_string = string(nameof(@__MODULE__))
-    # we need to check the TF-name with and without the "GEMS.xxx" namespace
-    # qualifier as the module name will be present if GEMS is imported as
-    # a depenedncy into another module
-    id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", string.(_cached_subtypes(ContactSamplingMethod)))
-    if isnothing(id)
-        error("The provided type is not a valid subtype of $ContactSamplingMethod use '$(join(string.(_cached_subtypes(ContactSamplingMethod)), "', '", "' or '"))'!")
-    end
-    CSM_constructor = _cached_subtypes(ContactSamplingMethod)[id]
-
-    # Convert the parameter keys to symbols for the use as keyword arguments
-    # if no parameters are given, this evals to an empty Dict
-    parameters = Dict(Symbol(k) => v for (k, v) in get(config, "parameters", Dict()))
-
-    # when no parameters are given, the default constructor will be called
-    return CSM_constructor(;parameters...)
-
-end
-
-
-
-
-"""
-    sample_contacts(
-        csm::ContactSamplingMethod, 
-        setting::Setting, 
-        individual_index::Int, 
-        present_inds::AbstractVector{Individual}, 
-        tick::Int16,
-        replace::Bool, 
-        rng::Xoshiro
-    )
-
-Wrapper for non-mutating function
-"""
-function sample_contacts(
-    csm::ContactSamplingMethod, 
-    setting::Setting, 
-    individual_index::Int, 
-    present_inds::AbstractVector{Individual}, 
-    tick::Int16,
-    replace::Bool, 
-    rng::Xoshiro
-)
-    indivs = Vector{Individual}()
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
-    return indivs
-end
-
-
-"""
-    sample_contacts(
-        csm::ContactSamplingMethod, 
-        setting::Setting, 
-        individual_index::Int, 
-        present_inds::AbstractVector{Individual}, 
-        tick::Int16; 
-        replace::Bool = true, 
-        rng::Xoshiro = default_gems_rng()
-    )
-
-Wrapper for non-mutating function and keyword arguments
-"""
-function sample_contacts(
-    csm::ContactSamplingMethod, 
-    setting::Setting, 
-    individual_index::Int, 
-    present_inds::AbstractVector{Individual}, 
-    tick::Int16; 
-    replace::Bool = true, 
-    rng::Xoshiro = default_gems_rng()
-)
-    indivs = Vector{Individual}()
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
-    return indivs
-end
-
-"""
     membership_changed!(csm::ContactSamplingMethod, setting::Setting)
 
 Signals that `setting`'s members or frame changed, so a sampling method can drop state derived
@@ -193,6 +156,38 @@ Frames are rebuilt in parallel, so this can run for several settings at once. A 
 state must keep it per setting, as settings hold their own copy of a mutable method.
 """
 membership_changed!(csm::ContactSamplingMethod, setting::Setting) = nothing
+
+"""
+    create_contact_sampling_method(config::Dict)
+
+Creates a ContactSamplingMethod (CSM) struct using the details specified in the provided dictionary.
+The dictionary must contain the keys "type" where type corresponds to the
+name of the `ContactSamplingMethod` struct to be used.
+Optionally the Dict can have the key "parameters". These will be used to construct the CSM defined by "type". When "type" doesn't have attributes, "parameters" can be omitted.
+"""
+function create_contact_sampling_method(config::Dict)
+
+    type_string = get(config, "type", "")
+    gems_string = string(nameof(@__MODULE__))
+    csm_types = _cached_subtypes(ContactSamplingMethod)
+    type_names = string.(csm_types)
+    # we need to check the type name with and without the "GEMS.xxx" namespace
+    # qualifier as the module name will be present if GEMS is imported as
+    # a dependency into another module
+    id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", type_names)
+    if isnothing(id)
+        error("The provided type is not a valid subtype of $ContactSamplingMethod use '$(join(type_names, "', '", "' or '"))'!")
+    end
+    CSM_constructor = csm_types[id]
+
+    # Convert the parameter keys to symbols for the use as keyword arguments
+    # if no parameters are given, this evals to an empty Dict
+    parameters = Dict(Symbol(k) => v for (k, v) in get(config, "parameters", Dict()))
+
+    # when no parameters are given, the default constructor will be called
+    return CSM_constructor(;parameters...)
+
+end
 
 
 ###
@@ -447,23 +442,6 @@ end
 
 
 ###
-### INCLUDE SAMPLING METHODS
-###
-
-# The src/contacts/sampling_methods folder contains a dedicated file for each built-in
-# contact sampling method. Files starting with "csm_" define a `ContactSamplingMethod`
-# with its `sample_contacts!` method, and with `contact_rate` and `sample_k_contacts!` if its count is Poisson.
-
-# include all Julia files from the "sampling_methods"-folder
-include.(
-    filter(
-        contains(r".jl$"),
-        readdir(_basefolder() * "/src/contacts/sampling_methods"; join=true)
-    )
-)
-
-
-###
 ### INTERNALS
 ###
 
@@ -498,3 +476,20 @@ function _keep_each!(indivs::Vector{Individual}, p::Float32, rng::Xoshiro)
     end
     return resize!(indivs, kept)
 end
+
+
+###
+### INCLUDE SAMPLING METHODS
+###
+
+# The src/contacts/sampling_methods folder contains a dedicated file for each built-in
+# contact sampling method. Files starting with "csm_" define a `ContactSamplingMethod`
+# with its `sample_contacts!` method, and with `contact_rate` and `sample_k_contacts!` if its count is Poisson.
+
+# include all Julia files from the "sampling_methods"-folder
+include.(
+    filter(
+        contains(r".jl$"),
+        readdir(_basefolder() * "/src/contacts/sampling_methods"; join=true)
+    )
+)
