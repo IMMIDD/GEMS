@@ -462,7 +462,7 @@ function _BUILD_Simulation(;
     # SEED
     rng_seed = determine_seed(config, seed)
     master_rng = Xoshiro(rng_seed)
-    rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+    rngs = _thread_local_rngs(master_rng)
 
     # GLOBAL SETTING FLAG
     gs = determine_global_setting(config, global_setting)
@@ -604,6 +604,25 @@ function _thread_local_matrix(T::Type, make = T)
         isassigned(m, i) || (m[i] = make())
     end
     return m
+end
+
+"""
+    _thread_local_rngs(master::Xoshiro)
+
+Returns one `Xoshiro` per thread id, seeded from `master` in thread-id order, each created on the thread that uses it.
+"""
+function _thread_local_rngs(master::Xoshiro)
+    seeds = [gems_rand(master, UInt) for _ in 1:Threads.maxthreadid()]
+    v = Vector{Xoshiro}(undef, length(seeds))
+    # every draw writes the generator, so neighbours on one cache line would contend (see `_thread_local_vector`)
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        t = Threads.threadid()
+        v[t] = Xoshiro(seeds[t])
+    end
+    for i in eachindex(v)
+        isassigned(v, i) || (v[i] = Xoshiro(seeds[i]))
+    end
+    return v
 end
 
 
@@ -2547,7 +2566,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # Re-initialize RNGs
     if !isnothing(simulation.seed)
         master_rng = Xoshiro(simulation.seed)
-        simulation.rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+        simulation.rngs = _thread_local_rngs(master_rng)
     end
 
     # Initialize the simulation's start condition
