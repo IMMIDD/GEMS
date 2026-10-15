@@ -58,6 +58,7 @@ function log_stepinfo(simulation::Simulation)
         loc_inf = 0; loc_det = 0; loc_st_unab = 0; loc_wo_unab = 0
 
         for k in chunk
+            _prefetch_flagged_ahead(j -> @inbounds(active[j] || quarantined[j]), inds, k)
             @inbounds (active[k] || quarantined[k]) || continue
             i = @inbounds inds[k]
 
@@ -466,6 +467,7 @@ gaps in a block.
 """
 function flush_pending_infections!(sim::Simulation)
     logger = infectionlogger(sim)
+    plans = activity_plans(sim)
     num_shards = Threads.maxthreadid()
 
     # serial: reserve one id block per shard, sized by what that shard is about to see
@@ -497,7 +499,10 @@ function flush_pending_infections!(sim::Simulation)
         # pass 2: commit the winners. The mask guard skips the losers' host and settles exact ties.
         @inbounds for producer_id in 1:num_shards
             buf = sim.infection_buffers[producer_id, shard_id]
-            for p in buf
+            for j in eachindex(buf)
+                # hosts and their plan entries, read for the log's household, are cache misses unless fetched ahead
+                _prefetch_listed_ahead(i -> buf[i].host, length(buf), j, plans)
+                p = buf[j]
                 _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = p.host
                 infected(ind, p.pathogen_id) && continue
@@ -768,6 +773,32 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     end
 end
 
+# Prefetching for the loops over individuals: each one is a cache miss unless fetched ahead.
+
+# Starts loading the individuals a loop over a list reaches next while it works on the one at `k`
+# of `n`: the `Individual` at `k + 2`, and the plan entries of the one at `k + 1`, read from its
+# `Individual` loaded by the previous call.
+@inline function _prefetch_listed_ahead(individual_at::F, n::Int, k::Int, plans::ActivityPlanStore) where {F}
+    k + 2 <= n && _prefetch(pointer_from_objref(individual_at(k + 2)), sizeof(Individual))
+    if k + 1 <= n
+        next = individual_at(k + 1)
+        len = plan_length(next)
+        len > 0 && _prefetch(pointer(plans.entries, Int(next.plan_offset)), len * sizeof(PlanEntry))
+    end
+    return nothing
+end
+
+# How many indices ahead `_prefetch_flagged_ahead` fetches
+const FLAGGED_PREFETCH_DISTANCE = 64
+
+# Starts loading `inds[k + FLAGGED_PREFETCH_DISTANCE]` if `flagged` at that index. A loop over a
+# sparse set of individuals in index order leaves gaps too large for the CPU to stream them itself.
+@inline function _prefetch_flagged_ahead(flagged::F, inds::Vector{Individual}, k::Int) where {F}
+    j = k + FLAGGED_PREFETCH_DISTANCE
+    j <= length(inds) && flagged(j) && _prefetch(pointer_from_objref(@inbounds inds[j]), sizeof(Individual))
+    return nothing
+end
+
 """
     update_individuals!(sim::Simulation)
 
@@ -779,6 +810,7 @@ function update_individuals!(sim::Simulation)
     active = sim.active_individuals
     foreach(empty!, sim.infectious_individuals)
     Threads.@threads :static for k in eachindex(inds)
+        _prefetch_flagged_ahead(j -> @inbounds(active[j]), inds, k)
         @inbounds active[k] || continue
         i = @inbounds inds[k]
         update_individual!(i, t, sim)
