@@ -6,6 +6,7 @@ export progression_categories
 export progression_assignments
 export health_progressions
 export calculate_infectiousness
+export next_infectiousness_change, next_tick_after
 export calculate_immunity
 export immunity_is_stable
 export susceptibility_factor
@@ -291,6 +292,35 @@ end
 
 # whether `calculate_infectiousness` may draw from its rng; one that never does gets it unkeyed
 _draws_from_rng(::InfectiousnessProfile) = true
+
+"""
+    next_infectiousness_change(profile::InfectiousnessProfile, state::InfectionState, tick::Int16)::Int16
+
+Returns the first tick after `tick` at which `calculate_infectiousness` may return a different level, so the
+disease update can skip the ticks before it. Optional: the default, `tick + 1`, is always correct, while a
+tick past the next change makes the update miss it.
+
+# Example
+A profile whose level only changes at infectiousness onset and recovery:
+```julia
+GEMS.next_infectiousness_change(p::MyProfile, state::InfectionState, tick::Int16) =
+    next_tick_after(tick, state.infectiousness_onset, state.recovery)
+```
+"""
+@inline next_infectiousness_change(profile::InfectiousnessProfile, state::InfectionState, tick::Int16) = tick + Int16(1)
+
+"""
+    next_tick_after(tick::Int16, ticks::Int16...)::Int16
+
+Returns the first of `ticks` after `tick`, or `typemax(Int16)` if there is none. Unset ticks (`-1`) are never after `tick`.
+"""
+@inline function next_tick_after(tick::Int16, ticks::Int16...)
+    next = typemax(Int16)
+    for t in ticks
+        tick < t < next && (next = t)
+    end
+    return next
+end
 
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8

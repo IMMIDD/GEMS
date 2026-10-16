@@ -1599,6 +1599,52 @@ import GEMS: increment!, infected!
         @test false_positive
     end
 
+    @testset "Skipped disease updates change nothing" begin
+        # An update is skipped while nothing is due. Making everyone due before every tick, as
+        # before the skip, must give the same run.
+        function intervened()
+            sim = Simulation(pop_size = 20_000, seed = 7)
+            pcr = TestType("PCR", id(first_pathogen(sim)), sim, sensitivity = 0.9, specificity = 0.9)
+            isolate = IStrategy("isolate", sim)
+            add_measure!(isolate, SelfIsolation(7))
+            on_symptoms = IStrategy("on symptoms", sim)
+            add_measure!(on_symptoms, GEMS.Test("symptoms", pcr, positive_followup = isolate))
+            add_symptom_trigger!(sim, SymptomTrigger(on_symptoms))
+            return sim
+        end
+        beta() = Pathogen(id = 2, name = "B", infectiousness_profile = BetaInfectiousness(),
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.2))
+        constant() = Pathogen(id = 1, name = "A",
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.2))
+        scenarios = [
+            "default" => () -> Simulation(pop_size = 20_000, seed = 3),
+            "beta" => () -> Simulation(pop_size = 20_000, pathogens = (beta(),), infected_fraction = 0.005, seed = 3),
+            "two pathogens" => () -> Simulation(pop_size = 20_000, pathogens = (constant(), beta()), infected_fraction = 0.005, seed = 3),
+            "interventions" => intervened]
+
+        # infection ids are left out: threads hand them out in no fixed order
+        logs(sim) = (sort(select(dataframe(infectionlogger(sim)), Not([:infection_id, :source_infection_id]))),
+            sort(dataframe(deathlogger(sim))), dataframe(statelogger(sim)))
+
+        for (name, make) in scenarios
+            skipping, forced = make(), make()
+            skipped = 0
+            while !GEMS.evaluate(skipping, GEMS.stop_criterion(skipping))
+                fill!(forced.update_states, GEMS._UpdateState())
+                step!(skipping)
+                step!(forced)
+                skipped += count(k -> skipping.active_individuals[k] && skipping.update_states[k].next_update > tick(skipping),
+                    eachindex(skipping.update_states))
+            end
+            @testset "$name" begin
+                @test isequal(logs(skipping), logs(forced))
+                @test nrow(dataframe(infectionlogger(skipping))) > 100
+                # Beta is due every tick while infectious, but not while exposed
+                @test skipped > 0
+            end
+        end
+    end
+
     @testset "Simulation Buffers" begin
         sim = Simulation()
         num_threads = Threads.maxthreadid()

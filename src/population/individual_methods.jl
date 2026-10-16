@@ -1044,6 +1044,35 @@ Single source of truth for the per-tick disease-state predicates of one active i
 end
 
 """
+    _next_update(ind::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16) where {P<:Tuple}
+
+The first tick after `tick` at which `progress_disease!` can change anything for `ind`, or `typemax(Int16)`.
+"""
+@inline function _next_update(ind::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16) where {P<:Tuple}
+    dead(ind) && return typemax(Int16)
+    next = next_tick_after(tick, ind.death)
+    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
+        s = ind.infection_cache[i]
+        s.active && (next = min(next, _next_change(s, pathogens, tick)))
+    end
+    node = ind.infection_head
+    while node != 0
+        s = @inbounds infections.states[node]
+        next = min(next, _next_change(s, pathogens, tick))
+        node = s.next
+    end
+    return next
+end
+
+# the first tick after `tick` at which infection `s` changes its host's flags or its infectiousness
+@inline function _next_change(s::InfectionState, pathogens::P, tick::Int16) where {P<:Tuple}
+    flags = next_tick_after(tick, s.exposure, s.infectiousness_onset, s.symptom_onset,
+        s.severeness_onset, s.severeness_offset, s.critical_onset, s.critical_offset, s.recovery)
+    level = _with_pathogen(p -> next_infectiousness_change(infectiousness_profile(p), s, tick), pathogens, s.pathogen_id)
+    return min(flags, level)
+end
+
+"""
     _step_infection!(ind, infections, pathogens, removal_buf, loc, tick, seed)
 
 Processes the single infection at slot `loc` (a `_CacheSlot` or `_OverflowNode`) for `tick`:

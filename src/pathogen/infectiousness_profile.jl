@@ -23,6 +23,9 @@ end
 
 _draws_from_rng(::ConstantInfectiousness) = false
 
+@inline next_infectiousness_change(profile::ConstantInfectiousness, state::InfectionState, tick::Int16) =
+    next_tick_after(tick, state.infectiousness_onset, state.recovery)
+
 
 """
     StagedInfectiousness
@@ -78,6 +81,10 @@ Otherwise picks the profile field that matches the highest active disease stage 
 end
 
 _draws_from_rng(::StagedInfectiousness) = false
+
+@inline next_infectiousness_change(profile::StagedInfectiousness, state::InfectionState, tick::Int16) =
+    next_tick_after(tick, state.infectiousness_onset, state.symptom_onset, state.severeness_onset,
+        state.severeness_offset, state.critical_onset, state.critical_offset, state.recovery)
 
 """
     _stage_value(state::InfectionState, tick::Int16, asym, presym, sym, sev, crit)
@@ -172,6 +179,12 @@ end
 end
 
 _draws_from_rng(::BetaInfectiousness) = false
+
+# changes every tick while infectious
+@inline function next_infectiousness_change(profile::BetaInfectiousness, state::InfectionState, tick::Int16)
+    Int16(0) <= state.infectiousness_onset <= tick < state.recovery && return tick + Int16(1)
+    return next_tick_after(tick, state.infectiousness_onset, state.recovery)
+end
 
 
 """

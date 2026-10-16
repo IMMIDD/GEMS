@@ -658,6 +658,8 @@ function drain_health_schedule!(sim::Simulation)
                 indiv = get_individual_by_id(pop, tr.host_id)
                 (Int16(0) <= indiv.death <= t) && continue
                 _apply_transition!(indiv, hl, tr, bucket_tick)
+                # the update finds whether the host is still in care
+                _mark_active!(sim, indiv)
             end
 
             delete!(sched.buckets, bucket_tick)
@@ -706,11 +708,14 @@ end
 """
     _mark_active!(sim::Simulation, indiv::Individual)
 
-Flags `indiv` for the disease-update loop and state log. No-op if it is not part of the population.
+Flags `indiv` for the disease-update loop and state log, due at the next update. No-op if it is not part of the population.
 """
 @inline function _mark_active!(sim::Simulation, indiv::Individual)
     k = _individual_index(population(sim), id(indiv))
-    k > 0 && (@inbounds sim.active_individuals[k] = true)
+    if k > 0
+        @inbounds sim.active_individuals[k] = true
+        @inbounds sim.update_states[k] = _UpdateState()
+    end
     return nothing
 end
 
@@ -737,7 +742,7 @@ Whether `indiv` must keep its active flag after this tick's disease update.
     update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
 
 Update the individual disease progression, handle its recovery and log its possible death.
-If the individual is not infected, this function will just return.
+Returns the `_UpdateState` the update found, with the tick of its next one.
 """
 function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     was_dead = dead(indiv)
@@ -763,6 +768,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
             trigger(st, indiv, sim, staged = true)
         end
     end
+    return _UpdateState(_next_update(indiv, infection_registry(sim, id(indiv)), sim.pathogens, tick), indiv)
 end
 
 # Prefetching for the loops over individuals: each one is a cache miss unless fetched ahead.
@@ -798,23 +804,29 @@ end
 """
     update_individuals!(sim::Simulation)
 
-Updates every active individual and collects the infectious ones per thread for the transmission phase.
+Updates every active individual that has an update due and collects the infectious ones per thread for the transmission phase.
 """
 function update_individuals!(sim::Simulation)
     t = tick(sim)
     inds = individuals(population(sim))
     active = sim.active_individuals
+    states = sim.update_states
     foreach(empty!, sim.infectious_individuals)
     foreach(_reset!, sim.state_log_counts)
+    due(j) = @inbounds(active[j] && states[j].next_update <= t)
     Threads.@threads :static for k in eachindex(inds)
-        _prefetch_flagged_ahead(j -> @inbounds(active[j]), inds, k)
+        _prefetch_flagged_ahead(due, inds, k)
         @inbounds active[k] || continue
+        # only the pointer; an individual with nothing due is not read
         i = @inbounds inds[k]
-        update_individual!(i, t, sim)
+        if due(k)
+            @inbounds states[k] = update_individual!(i, t, sim)
+            @inbounds active[k] = _stays_active(i)
+        end
+        s = @inbounds states[k]
         # the transmission phase goes through exactly these
-        infectious(i) && push!(sim.infectious_individuals[Threads.threadid()], i)
-        _count_for_state_log!(sim.state_log_counts[Threads.threadid()], i)
-        @inbounds active[k] = _stays_active(i)
+        s.infectious && push!(sim.infectious_individuals[Threads.threadid()], i)
+        _count_for_state_log!(sim.state_log_counts[Threads.threadid()], i, s)
     end
     return nothing
 end

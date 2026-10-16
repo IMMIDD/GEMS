@@ -21,10 +21,10 @@ function _reset!(counts::_StateLogCounts)
     return counts
 end
 
-# Counts an individual just updated by the disease update; everyone it counts stays active.
-@inline function _count_for_state_log!(counts::_StateLogCounts, indiv::Individual)
-    is_exposed(indiv) && (counts.exposed += 1)
-    is_detected(indiv) && (counts.detected += 1)
-    (is_severe(indiv) || is_hospitalized(indiv)) && push!(counts.in_care, indiv)
+# Counts an individual from what its last disease update found; everyone it counts stays active.
+@inline function _count_for_state_log!(counts::_StateLogCounts, indiv::Individual, s::_UpdateState)
+    s.exposed && (counts.exposed += 1)
+    s.detected && (counts.detected += 1)
+    s.in_care && push!(counts.in_care, indiv)
     return nothing
 end

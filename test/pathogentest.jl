@@ -1483,6 +1483,36 @@ end
             end
         end
 
+        @testset "next_infectiousness_change" begin
+            st = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), symptom_onset=Int16(5),
+                severeness_onset=Int16(8), severeness_offset=Int16(20),
+                critical_onset=Int16(10), critical_offset=Int16(15), recovery=Int16(25)))
+            staged = StagedInfectiousness(asymptomatic=Int8(10), presymptomatic=Int8(30),
+                symptomatic=Int8(70), severe=Int8(90), critical=Int8(100))
+
+            # the level holds from `tick` up to the tick returned
+            for p in (ConstantInfectiousness(), staged, BetaInfectiousness()), t in Int16(0):Int16(30)
+                next = GEMS.next_infectiousness_change(p, st, t)
+                @test next > t
+                level = calculate_infectiousness(p, st, ind, t, rng)
+                @test all(u -> calculate_infectiousness(p, st, ind, Int16(u), rng) == level, t:min(next - 1, 40))
+            end
+
+            # Constant and Staged wait for a threshold, Beta changes every tick while infectious
+            @test GEMS.next_infectiousness_change(ConstantInfectiousness(), st, Int16(4)) == 25
+            @test GEMS.next_infectiousness_change(staged, st, Int16(5)) == 8
+            @test GEMS.next_infectiousness_change(BetaInfectiousness(), st, Int16(4)) == 5
+            @test GEMS.next_infectiousness_change(BetaInfectiousness(), st, Int16(1)) == 3
+            @test GEMS.next_infectiousness_change(ConstantInfectiousness(), st, Int16(25)) == typemax(Int16)
+            # a profile without the method is due every tick
+            @test GEMS.next_infectiousness_change(UnimplementedInfectiousnessProfile(), st, Int16(4)) == 5
+
+            # the first of the ticks after `tick`; unset ticks never are
+            @test next_tick_after(Int16(4), Int16(-1), Int16(9), Int16(6), Int16(4)) == 6
+            @test next_tick_after(Int16(4), Int16(-1), Int16(2)) == typemax(Int16)
+        end
+
     end
 
 end

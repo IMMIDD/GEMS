@@ -248,6 +248,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     active_individuals::Vector{Bool}
     # who has a quarantine that has not ended yet
     quarantined_individuals::Vector{Bool}
+    # when each individual's next disease update is due, and what its last one found
+    update_states::Vector{_UpdateState}
 
     # THREAD-LOCAL BUFFERS
     contact_buffers::Vector{Vector{Individual}}
@@ -255,7 +257,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     draw_buffers::Vector{Vector{Individual}}
     # who each thread's part of the disease-update sweep found dead this tick
     newly_dead::Vector{Vector{Individual}}
-    # what each thread counted for this tick's state log
+    # what each thread counted for the state log
     state_log_counts::Vector{_StateLogCounts}
     infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{_EndedInfection}}
@@ -341,6 +343,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # PER-INDIVIDUAL FLAGS
             zeros(Bool, length(population.individuals)),
             zeros(Bool, length(population.individuals)),
+            fill(_UpdateState(), length(population.individuals)),
 
             # INITIALIZE BUFFERS
             _thread_local_vector(Vector{Individual}), # contact_buffers
@@ -2524,6 +2527,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     end
     fill!(simulation.active_individuals, false)
     fill!(simulation.quarantined_individuals, false)
+    fill!(simulation.update_states, _UpdateState())
     reset_tick!(simulation)
 
     # the dead are alive again, so they return to their settings' frames
