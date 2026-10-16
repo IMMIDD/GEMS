@@ -1021,3 +1021,8 @@ function _open_up_to(pool::HierarchicalSettingPool, s::S, ::Type{C}) where {S<:S
     lv = pool.container_groups[_container_depth(P)]::ContainerLevel{P}
     return _open_up_to(pool, @inbounds(lv.containers[s.contained]), C)
 end
+
+# Whether the member at `idx` of `leaf` is in `c`'s frame: alive, in a leaf below `c` and open up to it.
+# `c`'s own closure is not checked.
+@inline _in_container_frame(c::C, pool::HierarchicalSettingPool, leaf::IndividualSetting, idx::Integer) where {C<:ContainerSetting} =
+    Int(leaf.pool_leaf) in _leaf_range(c) && (pool.closed == 0 || _open_up_to(pool, leaf, C)) && !_is_deceased(leaf, idx)
