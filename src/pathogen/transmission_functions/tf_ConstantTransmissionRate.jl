@@ -10,7 +10,7 @@ mutable struct ConstantTransmissionRate <: TransmissionFunction
     transmission_rate::Float64
 
     function ConstantTransmissionRate(;transmission_rate::Float64 = .5)
-        transmission_rate < 0 && throw(ArgumentError("Transmission rate must be non-negative."))
+        !(transmission_rate >= 0) && throw(ArgumentError("Transmission rate must be non-negative."))
         transmission_rate > 1 && throw(ArgumentError("Transmission rate must be at most 1."))
        
         return new(transmission_rate)

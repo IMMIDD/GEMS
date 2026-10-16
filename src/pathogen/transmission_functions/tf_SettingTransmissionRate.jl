@@ -28,10 +28,10 @@ struct SettingModifier <: TransmissionModifier
     default_factor::Float64
 
     function SettingModifier(; factors::AbstractDict, default_factor::Real)
-        any(v -> v < 0, values(factors)) &&
-            throw(ArgumentError("All setting factors must be non-negative."))
-        default_factor < 0 &&
-            throw(ArgumentError("default_factor must be non-negative."))
+        any(v -> !(isfinite(v) && v >= 0), values(factors)) &&
+            throw(ArgumentError("All setting factors must be finite and non-negative."))
+        !(isfinite(default_factor) && default_factor >= 0) &&
+            throw(ArgumentError("default_factor must be finite and non-negative."))
         return new(
             Dict{DataType, Float64}(_find_subtype(string(k), Setting) => Float64(v) for (k, v) in factors),
             Float64(default_factor))
@@ -40,7 +40,7 @@ end
 
 Base.show(io::IO, m::SettingModifier) = print(io,
     "SettingModifier(" *
-    join(["$(structname(k))=$v" for (k, v) in m.factors], ", ") *
+    join(sort!(["$(structname(k))=$v" for (k, v) in m.factors]), ", ") *
     (isempty(m.factors) ? "" : ", ") *
     "default=$(m.default_factor))")
 
@@ -74,7 +74,7 @@ transmission_factor(modifier::SettingModifier, pathogen_id::Int8, infecter::Indi
     SettingTransmissionRate <: TransmissionFunction
 
 Convenience wrapper combining a constant base transmission rate with a `SettingModifier`.
-Accepts the keyword arguments of `SettingModifier` plus `transmission_rate`; the product may exceed 1.
+Accepts the keyword arguments of `SettingModifier` plus `transmission_rate`; `effective_transmission_probability` caps the product at 1.
 
 # Fields
 - `transmission_rate::Float64`: Base per-contact transmission probability (0–1).
@@ -99,7 +99,7 @@ mutable struct SettingTransmissionRate <: TransmissionFunction
             factors::AbstractDict,
             default_factor::Real)
 
-        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
+        !(0.0 <= transmission_rate <= 1.0) &&
             throw(ArgumentError("transmission_rate must be between 0 and 1."))
 
         return new(transmission_rate, SettingModifier(factors = factors, default_factor = default_factor))

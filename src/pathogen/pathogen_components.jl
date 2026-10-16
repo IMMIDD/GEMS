@@ -145,7 +145,7 @@ end
 
 Framework entry point called by the simulation loop. Applies infectiousness and standard
 immunity exactly once around the base rate from `transmission_probability`:
-`base_rate × infectiousness/100 × susceptibility_factor(immunity_profile, immunity_level)`.
+`min(base_rate, 1) × infectiousness/100 × susceptibility_factor(immunity_profile, immunity_level)`.
 
 How much the infectee's immunity reduces the probability is decided by the pathogen's
 `ImmunityProfile` via `susceptibility_factor`, which defaults to `1 − immunity/100`.
@@ -160,7 +160,7 @@ function effective_transmission_probability(transFunc::TransmissionFunction, pat
     inf = infectiousness(infecter, sim, pathogen_id)
     inf == 0 && throw(ArgumentError("Infecting individual must have nonzero infectiousness to calculate transmission probability."))
     profile = immunity_profile(get_pathogen(sim, pathogen_id))
-    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
+    return min(1.0, transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng)) *
            inf / 100.0 *
            susceptibility_factor(profile, immunity_level(infectee, sim, pathogen_id))
 end

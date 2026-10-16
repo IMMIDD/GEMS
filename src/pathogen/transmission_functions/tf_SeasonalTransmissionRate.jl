@@ -22,8 +22,8 @@ simulation `startdate`, and the `tickunit`. The mean factor is exactly 1.0, so
 the base transmission rate in the `CompositeTransmissionRate` is interpretable
 as the annual-average per-contact transmission probability.
 
-Note: the factor exceeds 1.0 in peak season (up to `1 + amplitude`). Ensure that
-`base_rate × (1 + amplitude) ≤ 1.0` to keep the effective probability valid.
+Note: the factor exceeds 1.0 in peak season (up to `1 + amplitude`).
+`effective_transmission_probability` caps `base_rate × factor` at 1.0.
 
 # Fields
 - `amplitude::Float64`: Seasonal forcing strength ∈ [0, 1]. 0.0 = no seasonality
@@ -43,7 +43,7 @@ struct SinusoidalSeasonalModifier <: TransmissionModifier
     peak_day::Int
 
     function SinusoidalSeasonalModifier(; amplitude::Float64, peak_day::Int)
-        (amplitude < 0.0 || amplitude > 1.0) &&
+        !(0.0 <= amplitude <= 1.0) &&
             throw(ArgumentError("amplitude must be between 0 and 1."))
         (peak_day < 1 || peak_day > 365) &&
             throw(ArgumentError("peak_day must be between 1 and 365."))
@@ -139,7 +139,7 @@ mutable struct SinusoidalSeasonalTransmissionRate <: TransmissionFunction
             amplitude::Float64,
             peak_day::Int)
 
-        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
+        !(0.0 <= transmission_rate <= 1.0) &&
             throw(ArgumentError("transmission_rate must be between 0 and 1."))
 
         modifier = SinusoidalSeasonalModifier(
