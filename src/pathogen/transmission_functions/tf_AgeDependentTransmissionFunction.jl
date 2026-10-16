@@ -28,7 +28,7 @@ mutable struct AgeDependentTransmissionRate <: TransmissionFunction
         length(age_groups) != length(transmission_rates) &&
             throw(ArgumentError("Number of age groups and age transmission rates must be the same (input vector lengths: $(length(age_groups)) and $(length(transmission_rates)))."))
         # check that all transmission rates are between 0 and 1
-        any(x -> x < 0.0 || x > 1.0, transmission_rates) &&
+        any(x -> !(0.0 <= x <= 1.0), transmission_rates) &&
             throw(ArgumentError("All transmission rates must be between 0 and 1."))
         
         # convert age group strings to AgeGroup structs

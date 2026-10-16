@@ -547,6 +547,7 @@ end
 
             @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = -0.1)
             @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = 1.5)
+            @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = NaN)
 
             # effective_transmission_probability throws when infecter has zero infectiousness
             @test_throws ArgumentError effective_transmission_probability(test_ctr, id(first_pathogen(sim)), suscpt_ind, individuals(sim)[3], households(sim)[1], Int16(1), sim)
@@ -605,6 +606,9 @@ end
             @test_throws ArgumentError AgeDependentTransmissionRate(
                 age_groups = ["0-19", "20-39", "40-59", "60-"],
                 transmission_rates = [0.1, 1.2, 0.3, 0.4])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "20-39", "40-59", "60-"],
+                transmission_rates = [0.1, NaN, 0.3, 0.4])
 
             @test !isempty(@capture_out show(abtr))
         end
@@ -625,6 +629,8 @@ end
             @test_throws ArgumentError CrossImmunityTransmissionRate(transmission_rate = 1.5)
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = -0.1)
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = 1.5)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = NaN)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(cross_immunities = [("A", NaN)])
             @test_throws ArgumentError CrossImmunityTransmissionRate(
                 cross_immunities = [("A", 1.5)])
             @test_throws ArgumentError CrossImmunityTransmissionRate(
@@ -710,6 +716,11 @@ end
                 interferences = [("A", 0.5), ("A", 0.3)])   # duplicate name
             @test_throws ArgumentError ViralInterferenceTransmissionRate(default_persistence = -1.0)
             @test_throws ArgumentError ViralInterferenceTransmissionRate(persistence = [("A", -1.0)])
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = NaN)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_persistence = NaN)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(persistence = [("A", NaN)])
+            # Inf persistence means interference never wears off
+            @test ViralInterferenceTransmissionRate(persistence = [("A", Inf)]).modifier.persistence["A"] == Inf
             @test_throws ArgumentError ViralInterferenceTransmissionRate(
                 persistence = [("A", 5.0), ("A", 3.0)])     # duplicate persistence name
 
@@ -914,6 +925,7 @@ end
             # constructor validation
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=-0.1, peak_day=1)
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=1.5, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=NaN, peak_day=1)
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=0)
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=366)
 
@@ -948,9 +960,63 @@ end
             # constructor validation
             @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=-0.1, amplitude=0.3, peak_day=1)
             @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=1.5, amplitude=0.3, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=NaN, amplitude=0.3, peak_day=1)
 
             # transmission_probability = base_rate × seasonal_factor
             @test transmission_probability(tf_ssm, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 0.4 * 1.5
+        end
+
+        @testset "SettingModifier" begin
+            mod = SettingModifier(factors=Dict("Household" => 3, "SchoolClass" => 1.5), default_factor=0.5)
+            @test mod.factors[Household] === 3.0
+            @test mod.default_factor === 0.5
+            @test !isempty(@capture_out show(mod))
+            # entries print sorted, independent of Dict order
+            @test sprint(show, mod) == "SettingModifier(Household=3.0, SchoolClass=1.5, default=0.5)"
+
+            # constructor validation
+            @test_throws ArgumentError SettingModifier(factors=Dict("NoSuchSetting" => 1.0), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => -1.0), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => 1.0), default_factor=-0.1)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => Inf), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => NaN), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => 1.0), default_factor=Inf)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => 1.0), default_factor=NaN)
+            @test_throws UndefKeywordError SettingModifier(factors=Dict("Household" => 1.0))
+
+            p_sm = Pathogen(id=1, name="TestSM",
+                progressions=[Asymptomatic(exposure_to_infectiousness_onset=0, infectiousness_onset_to_recovery=10)],
+                transmission_function=CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate=0.2), mod))
+            sim_sm = Simulation(pop_size=100, pathogens=(p_sm,), infected_fraction=0.0)
+            ind1 = individuals(sim_sm)[1]
+            ind2 = individuals(sim_sm)[2]
+            hh = households(sim_sm)[1]
+            office = Office(id=1)
+            pid = Int8(1)
+
+            # listed type uses its factor, unlisted type the default
+            @test transmission_factor(mod, pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 3.0
+            @test transmission_factor(mod, pid, ind1, ind2, office, Int16(0), sim_sm) ≈ 0.5
+            @test transmission_probability(transmission_function(p_sm), pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
+
+            # SettingTransmissionRate struct
+            tf_str = SettingTransmissionRate(transmission_rate=0.2, factors=Dict("Household" => 3.0), default_factor=0.5)
+            @test tf_str.transmission_rate == 0.2
+            @test !isempty(@capture_out show(tf_str))
+            @test_throws ArgumentError SettingTransmissionRate(transmission_rate=1.5, factors=Dict("Household" => 1.0), default_factor=1.0)
+
+            # transmission_probability = base_rate × setting_factor
+            @test transmission_probability(tf_str, pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
+            @test transmission_probability(tf_str, pid, ind1, ind2, office, Int16(0), sim_sm) ≈ 0.2 * 0.5
+
+            # base rate above 1 is capped before infectiousness and immunity are applied
+            tf_cap = SettingTransmissionRate(transmission_rate=0.5, factors=Dict("Household" => 3.0), default_factor=1.0)
+            infect!(ind1, Int16(0), first_pathogen(sim_sm), rng=Xoshiro())
+            GEMS.update_individual!(ind1, Int16(1), sim_sm)
+            inf_sm = infectiousness(ind1, sim_sm, pid)
+            imm_sm = immunity_level(ind2, sim_sm, pid)
+            @test transmission_probability(tf_cap, pid, ind1, ind2, hh, Int16(1), sim_sm) ≈ 1.5
+            @test effective_transmission_probability(tf_cap, pid, ind1, ind2, hh, Int16(1), sim_sm) ≈ 1.0 * (inf_sm / 100.0) * (1.0 - imm_sm / 100.0)
         end
 
     end
