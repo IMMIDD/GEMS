@@ -192,8 +192,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
 
     closed = count(!is_open, leaves) + sum(g -> count(!is_open, g.containers), groups; init = 0)
     deceased = sum(_deceased, leaves; init = 0)
-    pool = HierarchicalSettingPool(Individual[], closed, deceased, 0,
-                                   leaves, Tuple(groups), blocks, RepackBuffer(), RepackBuffer[])
+    pool = HierarchicalSettingPool(leaves, Tuple(groups), blocks, closed, deceased)
 
     # detach first, or a rebuilt leaf reads its old offsets from the new, empty pool
     for (i, l) in enumerate(leaves)
@@ -216,36 +215,12 @@ end
 # Splits `1:nleaves` into the smallest blocks that no container range straddles. Spans of every level
 # count, since a container orphaned partway down has no root above it.
 function _build_blocks(nleaves::Int, ranges::Vector{Vector{UnitRange{Int}}}, slack::Float64)
-    spans = UnitRange{Int}[]
+    # a leaf starts a block unless a span covers it past the span's first leaf
+    starts_block = trues(nleaves)
     for rs in ranges, r in rs
-        isempty(r) || push!(spans, r)
+        isempty(r) || (starts_block[(first(r) + 1):last(r)] .= false)
     end
-    sort!(spans; by = first)
-
-    merged = UnitRange{Int}[]
-    for r in spans
-        if !isempty(merged) && first(r) <= last(merged[end])
-            merged[end] = first(merged[end]):max(last(merged[end]), last(r))
-        else
-            push!(merged, r)
-        end
-    end
-
-    first_leaf = Int32[]
-    j = 1
-    for r in merged
-        while j < first(r)
-            push!(first_leaf, Int32(j))
-            j += 1
-        end
-        push!(first_leaf, Int32(first(r)))
-        j = last(r) + 1
-    end
-    while j <= nleaves
-        push!(first_leaf, Int32(j))
-        j += 1
-    end
-    push!(first_leaf, Int32(nleaves + 1))
+    first_leaf = Int32[findall(starts_block); nleaves + 1]
 
     of_leaf = Vector{Int32}(undef, nleaves)
     blocks = PoolBlocks(first_leaf, of_leaf, slack)
@@ -336,7 +311,7 @@ function _take_leaves!(order, taken, cntnr::SettingsContainer, cs::Vector{C}) wh
     return nothing
 end
 
-_take_leaf!(order, taken, ::SettingsContainer, s::IndividualSetting) = begin
+function _take_leaf!(order, taken, ::SettingsContainer, s::IndividualSetting)
     taken[s.id] && return nothing
     taken[s.id] = true
     push!(order, s)
@@ -662,7 +637,6 @@ end
 # without leaves lies in no block.
 @inline function _refresh_container!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool,
                                      leaves::Vector{T}, buf::RepackBuffer) where {C<:ContainerSetting, T<:IndividualSetting}
-    c.pool_runs = nothing
     # sampling methods drop what they derived from the old frame
     membership_changed!(contact_sampling_method(c), c)
     # a member's scale here never exceeds 1 or its largest leaf's, so the leaves bound it
@@ -677,38 +651,45 @@ end
     @inbounds lo = leaves[first(r)]
     @inbounds hi = leaves[last(r)]
     len = hi.pool_offset + hi.pool_length - lo.pool_offset
-    c.pool_offset = len == 0 ? Int32(0) : lo.pool_offset # 0 means "no members here"
-    c.pool_length = len
-    len == 0 && return nothing
+    if len == 0
+        # 0 means "no members here"
+        c.pool_offset, c.pool_length, c.pool_runs = Int32(0), Int32(0), nothing
+        return nothing
+    end
 
     # a member in two leaves below sits in the span twice, and only the first copy counts
-    dup = pool.repeats == 0 ? nothing : _dedup_container!(c, pool, Int(lo.pool_offset), Int(len), buf.dup_table)
-    # a closure or death below takes members out of the frame
-    (pool.closed == 0 && pool.deceased == 0) || _drop_absent!(c, r, pool, leaves, buf, dup)
+    runs, kept = pool.repeats == 0 ? (nothing, Int(len)) :
+        _dup_runs(pool.members, Int(lo.pool_offset), Int(len), buf.dup_table)
+    if (pool.closed != 0 || pool.deceased != 0) && !_all_present(pool, leaves, r, C)
+        # a closure or death below takes members out of the frame
+        _set_present_frame!(c, r, pool, leaves, buf, runs)
+    else
+        c.pool_offset, c.pool_length, c.pool_runs = lo.pool_offset, Int32(kept), runs
+    end
     return nothing
 end
 
-# Narrows a container's frame to the living members of leaves open up to it; `present_members` handles
-# closures at and above it. `dup` is `_dedup_container!`'s frame, or `nothing` without repeats.
-function _drop_absent!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool, leaves::Vector{T},
-                       buf::RepackBuffer, dup::Union{Nothing, MemberRuns}) where {C<:ContainerSetting, T<:IndividualSetting}
-    _all_present(pool, leaves, r, C) && return nothing
-
+# Sets a container's frame to the living members of leaves open up to it; `present_members` handles
+# closures at and above it. `dup` is `_dup_runs`' frame, or `nothing` without repeats.
+function _set_present_frame!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool, leaves::Vector{T},
+                             buf::RepackBuffer, dup::Union{Nothing, MemberRuns}) where {C<:ContainerSetting, T<:IndividualSetting}
     # built in the buffer, so a frame that stays one run allocates nothing
     starts = empty!(buf.run_starts); prefix = empty!(buf.run_prefix)
     total = 0
+    run_end = -1
     @inbounds for j in r
         l = leaves[j]
         # deceased members sit at the end of the leaf, past its living ones
         n = Int(l.pool_length) - _deceased(l)
         (n > 0 && _open_up_to(pool, l, C)) || continue
         lo = Int(l.pool_offset)
-        # merge with the previous run when the leaves are adjacent in the pool
-        if isempty(starts) || Int(starts[end]) + _run_length(prefix, total, length(prefix)) != lo
+        # a leaf that starts where the previous run ends extends it
+        if lo != run_end
             push!(starts, Int32(lo))
             push!(prefix, Int32(total))
         end
         total += n
+        run_end = lo + n
     end
 
     if dup !== nothing
@@ -717,8 +698,10 @@ function _drop_absent!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool, l
         isempty(skips) || ((starts, prefix, total) = _drop_skips(starts, prefix, total, skips))
         c.pool_runs = MemberRuns(copy(starts), copy(prefix), dup.groups, dup.bounds)
     elseif length(starts) > 1
-        # without repeats, one run or none is a plain span and stores no runs
         c.pool_runs = MemberRuns(copy(starts), copy(prefix), NO_RUNS, NO_RUNS)
+    else
+        # without repeats, one run or none is a plain span and stores no runs
+        c.pool_runs = nothing
     end
     c.pool_offset = isempty(starts) ? Int32(0) : starts[1]
     c.pool_length = Int32(total)
@@ -784,20 +767,8 @@ end
     end
 end
 
-# Narrows a container's span to a frame holding each member once and returns it, or `nothing` when
-# no member repeats.
-function _dedup_container!(c::ContainerSetting, pool::HierarchicalSettingPool, off::Int, len::Int,
-                           tbl::DupTable)
-    found = _dup_runs(pool.members, off, len, tbl)
-    found === nothing && return nothing
-    runs, kept = found
-    c.pool_offset = runs.starts[1]
-    c.pool_length = Int32(kept)
-    c.pool_runs = runs
-    return runs
-end
-
-# The frame for the span `off:(off + len - 1)`, or `nothing` when it holds no member twice.
+# The frame for the span `off:(off + len - 1)` holding each member once, as (runs, members kept). The
+# runs are `nothing` when no member repeats. The first run starts at `off`, as a first copy is never dropped.
 function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTable)
     _start_scan!(tbl, len)
     # (first position, repeat position) for every copy past the first
@@ -809,7 +780,7 @@ function _dup_runs(members::Vector{Individual}, off::Int, len::Int, tbl::DupTabl
             push!(reps, (Int32(f), Int32(p)))
         end
     end
-    reps === nothing && return nothing
+    reps === nothing && return (nothing, len)
 
     # by first position, so groups come out in layout order and a repack is reproducible
     sort!(reps)

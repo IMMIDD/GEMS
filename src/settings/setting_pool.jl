@@ -234,6 +234,10 @@ mutable struct HierarchicalSettingPool
     task_buffers::Vector{RepackBuffer}
 end
 
+# An empty pool over `leaves`, filled by the first repack.
+HierarchicalSettingPool(leaves::Vector, groups::Tuple, blocks::PoolBlocks, closed::Int, deceased::Int) =
+    HierarchicalSettingPool(Individual[], closed, deceased, 0, leaves, groups, blocks, RepackBuffer(), RepackBuffer[])
+
 ###
 ### THE FLAT POOL
 ###
