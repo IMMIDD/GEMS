@@ -41,6 +41,8 @@ detection_ticks(::DataFrame)
 effectiveR(::PostProcessor)
 hospital_df(::PostProcessor)
 household_attack_rates(::PostProcessor; ::Int64)
+household_secondary_attack_rate(::PostProcessor)
+household_secondary_attack_rates(::PostProcessor)
 in_cache(::PostProcessor, ::String)
 individuals_per_age_group
 infections(::PostProcessor)

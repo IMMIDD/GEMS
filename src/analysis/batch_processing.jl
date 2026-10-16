@@ -1,6 +1,6 @@
 # DATA PROCESSING FOR BATCHRUNS
 export median_run, tick_unit, seed, pathogen_names
-export total_infections, total_tests, attack_rate, r0
+export total_infections, total_tests, attack_rate, r0, household_secondary_attack_rate
 export tick_cases, effectiveR, tests, cumulative_quarantines, cumulative_disease_progressions
 export total_quarantines, dark_figure, cumulative_cases, generation_times
 export hospitalizations, observed_R, pool_tests, sero_tests, total_detected_cases, detection_rate
@@ -33,6 +33,7 @@ mutable struct BatchProcessor
     total_infections::_WelfordState
     attack_rate::Dict{Int8, _WelfordState}
     r0::Dict{Int8, _WelfordState}
+    household_secondary_attack_rate::Dict{Int8, Dict{String, _WelfordState}}
     total_quarantines::_WelfordState
     total_tests::Dict{String, _WelfordState}
     total_detected_cases::_WelfordState
@@ -79,7 +80,8 @@ mutable struct BatchProcessor
             Dict{Int8, Dict{Int, _WelfordState}}(),                 # generation_times
             Dict{String, Dict{Int, _WelfordState}}(),               # hospitalizations
             Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # observed_R
-            _WelfordState(), Dict{Int8, _WelfordState}(), Dict{Int8, _WelfordState}(), _WelfordState(),
+            _WelfordState(), Dict{Int8, _WelfordState}(), Dict{Int8, _WelfordState}(),
+            Dict{Int8, Dict{String, _WelfordState}}(), _WelfordState(),
             Dict{String, _WelfordState}(),
             _WelfordState(), _WelfordState(),
             Dict{Int8, String}(),
@@ -221,6 +223,12 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     for row in eachrow(r0(pp))
         _welford_update!(get!(bp.r0, row.pathogen_id, _WelfordState()), row.r0)
     end
+    # a run without household contacts has no rate (NaN) and is left out
+    for row in eachrow(household_secondary_attack_rate(pp)), col in ("household_sar", "household_sar_home")
+        isnan(row[col]) && continue
+        rates = get!(bp.household_secondary_attack_rate, row.pathogen_id, Dict{String, _WelfordState}())
+        _welford_update!(get!(rates, col, _WelfordState()), row[col])
+    end
     _welford_update!(bp.total_quarantines, total_quarantines(pp))
     for row in eachrow(total_tests(pp))
         _welford_update!(get!(bp.total_tests, row.test_type, _WelfordState()), row.count)
@@ -326,6 +334,17 @@ Returns a `Dict{Int8, Dict{String, Real}}` keyed by pathogen id.
 """
 function r0(bp::BatchProcessor)
     return Dict(pid => _welford_to_aggregate(ws) for (pid, ws) in bp.r0)
+end
+
+"""
+    household_secondary_attack_rate(bp::BatchProcessor)
+
+Returns per-pathogen aggregated statistics for the pooled household secondary attack rates across all runs.
+Returns a `Dict{Int8, Dict{String, Dict{String, Real}}}` keyed by pathogen id, then `"household_sar"` or `"household_sar_home"`.
+"""
+function household_secondary_attack_rate(bp::BatchProcessor)
+    return Dict(pid => Dict(col => _welford_to_aggregate(ws) for (col, ws) in rates)
+        for (pid, rates) in bp.household_secondary_attack_rate)
 end
 
 """

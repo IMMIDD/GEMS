@@ -57,6 +57,8 @@ git_repo(::ResultData)
 hashes(::ResultData)
 tick_hosptitalizations(::ResultData)
 household_attack_rates(::ResultData)
+household_secondary_attack_rate(::ResultData)
+household_secondary_attack_rates(::ResultData)
 id(::ResultData)
 import_resultdata
 infections(::ResultData)
