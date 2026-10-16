@@ -11,6 +11,7 @@
 | Exposed | The individual is infected, but is not yet infectious. |
 | Exposure | Exposure to a pathogen is regarded as an infection event and marks the inception of a disease progression. |
 | Generation Time | The time interval between the infections of the infector and infectee, two immediate successors in an infection chain. |
+| Homebound | An individual too sick to leave its household. Like isolation, it limits contacts to the household, but for health reasons: it is decided by the health profile of an infection, not by an intervention. |
 | Hospitalization Status | States if an individual is hospitalized and if additional measures have to be applied (ventilation, ICU). |
 | Hospitalization Rate | The probability of an individual with severe symptoms to need hospitalization. |
 | ICU | Short for Intensive Care Unit. An hospitalization state. Individuals are in the hospital and in the ICU. |
@@ -33,7 +34,7 @@
 | Presymptomatic | A state in the natural disease progression. The individual is infected but does not experience symptoms yet. |
 | Removed | The state of an individual being recovered or dead |
 | Setting | Some sort of context in which contacts can happen. Those can be Households or Offices or more abstract settings like social networks. |
-| Severe (State) | A state in the natural disease progression. The individual has severe symptoms with the potential need to be hospitalized. |
+| Severe (State) | A state in the natural disease progression. The individual has severe symptoms with the potential need to be hospitalized, and is homebound unless `severe_homebound_probability` says otherwise. |
 | Severe (Symptom Category) | A symptom category. An individual will develop severe symptoms and has possibly the need to be hospitalized. Its terminal state is "Severe". |
 | Severe Death Rate | The probability of individuals with severe symptoms to die at the end of the natural disease progression. |
 | Symptom Category | Categorization of the disease progression regarding the occurring symptoms. |

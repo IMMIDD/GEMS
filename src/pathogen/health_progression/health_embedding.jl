@@ -73,7 +73,7 @@ end
 
 Assembles the `HealthProfileIndex` keyed by `(pathogen_id, 1-based slot)` from the health embedded on
 every category defining `_health_profile_type`. A category embedding none falls back to `baseline`
-(a `StandardOfCare`), and is warned about when there is none.
+(a `StandardOfCare`), and is warned about when there is none, unless its tier carries no care anyway.
 """
 function _harvest_health_profiles(pathogens, baseline = nothing)
     profiles = HealthProfileIndex()
@@ -85,8 +85,8 @@ function _harvest_health_profiles(pathogens, baseline = nothing)
             profile = _embedded_health_profile(c)
             if isnothing(profile)
                 profile = _baseline_profile(baseline, profile_type)
-                isnothing(profile) && @warn "Pathogen $(name(p)) ($(id(p))): $(typeof(c)) carries no " *
-                    "health; its infections will demand no hospitalization and cause no deaths."
+                isnothing(profile) && profile_type !== MildHealthProfile && @warn "Pathogen $(name(p)) ($(id(p))): $(typeof(c)) carries no " *
+                    "health; its infections will demand no hospitalization and cause no deaths (severe cases still stay home)."
                 isnothing(profile) && continue
             end
             profiles[(pid, Int8(k))] = profile

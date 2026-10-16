@@ -538,7 +538,51 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             df -> df[df.severeness_onset .<= df.tick .< df.severeness_offset, :] |>
             nrow == 0
 
-        
+
+        end
+
+        @testset "Homebound Individuals Stay In The Household" begin
+            sim = Simulation(pop_size = 1000, infected_fraction = 0.0, seed = 1)
+            ind = individuals(sim)[1]
+            hh = households(sim)[household_id(ind)]
+            office = offices(sim)[1]
+            t = tick(sim)
+
+            GEMS.infectious!(ind, true)
+            @test GEMS.can_infect(ind, office, t)
+            @test GEMS.can_be_contacted(ind, office, t)
+
+            # too sick to leave the house: neither infects nor is infected outside of it
+            ind.homebound_demands = Int16(1)
+            @test !GEMS.can_infect(ind, office, t)
+            @test !GEMS.can_be_contacted(ind, office, t)
+            @test GEMS.can_infect(ind, hh, t)
+            @test GEMS.can_be_contacted(ind, hh, t)
+        end
+
+        @testset "No Out-Household Infections While Homebound From Symptom Onset" begin
+            p = Pathogen(
+                name = "TestPathogen",
+                progressions = [Mild(
+                    exposure_to_infectiousness_onset = Poisson(1),
+                    infectiousness_onset_to_symptom_onset = Poisson(1),
+                    symptom_onset_to_recovery = Poisson(7),
+                    symptomatic_homebound_probability = 1.0)],
+                transmission_function = ConstantTransmissionRate(transmission_rate = 0.2))
+            sim = Simulation(pop_size = 5000, pathogen = p, infected_fraction = 0.01, seed = 3)
+            run!(sim)
+            infs = infections(ResultData(sim))
+
+            # presymptomatic hosts still infect outside the household ...
+            @test any((infs.setting_type .!= 'h') .& (infs.tick .> 0))
+            # ... but no host does from symptom onset to recovery
+            @test innerjoin(
+                select(infs, :infection_id, :symptom_onset, :recovery),
+                select(infs[infs.setting_type .!= 'h', :], :source_infection_id, :tick),
+                on = (:infection_id => :source_infection_id)
+            ) |>
+            df -> df[df.symptom_onset .<= df.tick .< df.recovery, :] |>
+            nrow == 0
         end
         @testset "No Hospital Infections" begin
             # all infections should immediately lead to hospitalization

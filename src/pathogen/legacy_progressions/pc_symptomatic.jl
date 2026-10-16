@@ -15,9 +15,25 @@ configs and code keep working. Prefer `Mild` in new code.
 mutable struct Symptomatic <: ProgressionCategory
     inner::Mild
 
-    Symptomatic(; kwargs...) = new(Mild(; kwargs...))
+    function Symptomatic(; kwargs...)
+        inner = Mild(; kwargs...)
+        isnothing(inner.health) || throw(ArgumentError("Symptomatic takes no host health; use `Mild` instead."))
+        return new(inner)
+    end
 end
 
 # delegate to Mild
 calculate_progression(individual::Individual, tick::Int16, dp::Symptomatic, rng::Xoshiro) =
     calculate_progression(individual, tick, dp.inner, rng)
+
+# the positional and copy constructors `@with_kw` generated for `Mild` up to v1.3.4
+Mild(exposure_to_infectiousness_onset, infectiousness_onset_to_symptom_onset, symptom_onset_to_recovery) =
+    Mild(exposure_to_infectiousness_onset = exposure_to_infectiousness_onset,
+        infectiousness_onset_to_symptom_onset = infectiousness_onset_to_symptom_onset,
+        symptom_onset_to_recovery = symptom_onset_to_recovery)
+
+Mild(m::Mild; kws...) = Mild(; merge((exposure_to_infectiousness_onset = m.exposure_to_infectiousness_onset,
+    infectiousness_onset_to_symptom_onset = m.infectiousness_onset_to_symptom_onset,
+    symptom_onset_to_recovery = m.symptom_onset_to_recovery, health = m.health), kws)...)
+Mild(m::Mild, d::AbstractDict) = Mild(m; d...)
+Mild(m::Mild, kv::Tuple{Symbol, Any}...) = Mild(m; kv...)

@@ -71,6 +71,10 @@ If you want to set up a custom config file, you can copy this one into your own 
                     distribution = "Poisson"
                     parameters = [7]
 
+                # HOST HEALTH FOR THIS TIER [staying home only]
+                [Pathogens.Covid19.progressions.Mild.health]
+                    symptomatic_homebound_probability = 0.0
+
             # SEVERE PROGRESSION [TOTAL DURATION ~ 15 DAYS]
             [Pathogens.Covid19.progressions.Severe]
                 [Pathogens.Covid19.progressions.Severe.exposure_to_infectiousness_onset]
@@ -92,6 +96,8 @@ If you want to set up a custom config file, you can copy this one into your own 
                 # HOST HEALTH FOR THIS TIER [ward admission only]
                 [Pathogens.Covid19.progressions.Severe.health]
                     hospital_probability = 0.05
+                    symptomatic_homebound_probability = 0.0
+                    severe_homebound_probability = 1.0
                     [Pathogens.Covid19.progressions.Severe.health.severeness_onset_to_hospital_admission]
                         distribution = "Poisson"
                         parameters = [2]
@@ -129,6 +135,8 @@ If you want to set up a custom config file, you can copy this one into your own 
                     hospital_to_icu_probability = 0.5
                     icu_to_ventilation_probability = 0.0
                     death_probability = 0.3          # ungated by hospital/ICU
+                    symptomatic_homebound_probability = 0.0
+                    severe_homebound_probability = 1.0
                     icu_admission_to_ventilation_admission = 0
                     ventilation_admission_to_ventilation_discharge = 0
                     ventilation_discharge_to_icu_discharge = 0
@@ -356,7 +364,7 @@ The `type` argument specifies the `TransmissionFunction` that conditions the dis
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `TransmissionFunction` struct upon initialization.
 
 #### `progressions`
-Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Mild`, `Severe`, and `Critical`. `Severe` and `Critical` may also carry host-health parameters (see [`HealthProgression`](#healthprogression) below), either as a `health` sub-table or inline, giving that pathogen its own care and mortality rates.
+Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Mild`, `Severe`, and `Critical`. `Mild`, `Severe` and `Critical` may also carry host-health parameters (see [`HealthProgression`](#healthprogression) below), either as a `health` sub-table or inline, giving that pathogen its own care and mortality rates and deciding who stays home.
 
 Within each category, you must define the intervals between state transitions (e.g., `exposure_to_infectiousness_onset`, `symptom_onset_to_recovery`). Every interval requires two arguments to initialize the underlying random distribution:
 * **`distribution`**: A string representing the statistical distribution (e.g., `"Poisson"`, `"Binomial"`).
@@ -425,7 +433,7 @@ profiles that take no arguments (such as `FullImmunity` and `NoImmunity`).
 
 ### HealthProgression
 
-Host-level care and mortality (hospitalization, ICU, ventilation, death) are decided independently
+Host-level health (staying home, hospitalization, ICU, ventilation, death) is decided independently
 of the disease progression. Each disease tier carries its own `HealthProfile`, written as a `health`
 sub-table of that progression:
 
@@ -441,13 +449,21 @@ sub-table of that progression:
             parameters = [7]
 ```
 
-`Severe` takes a `SevereHealthProfile` and `Critical` a `CriticalHealthProfile`; see the pathogen API
-reference for their full parameter lists. The same parameters may be written flat among the timings
-instead; the two forms are mutually exclusive. Because the profile belongs to the pathogen's own
-progression, two pathogens can differ in mortality while sharing a severity stratification.
+`Mild` takes a `MildHealthProfile`, `Severe` a `SevereHealthProfile` and `Critical` a
+`CriticalHealthProfile`; see the pathogen API reference for their full parameter lists. The same
+parameters may be written flat among the timings instead; the two forms are mutually exclusive.
+Because the profile belongs to the pathogen's own progression, two pathogens can differ in mortality
+while sharing a severity stratification.
 
-A category with no `health` of its own demands no hospitalization and causes no deaths; GEMS warns
-when that happens.
+Two parameters decide who is too sick to leave the house. `symptomatic_homebound_probability` is the
+share of infections that keep their host home from symptom onset to recovery, and
+`severe_homebound_probability` the share that keep it home while severe, at least the former (`1.0` by
+default). A homebound host neither infects nor is infected outside its household. Unlike isolation,
+this is a health state, not an intervention: there is no compliance, and the host does not count as
+quarantined. The draw is made per infection.
+
+A category with no `health` of its own demands no hospitalization and causes no deaths, though its
+severe cases still stay home; GEMS warns when that happens.
 
 #### HealthProgression
 
@@ -463,7 +479,8 @@ which infections do not interact, so the section is only needed for a custom pol
 !!! warning "Deprecated"
     `severe` and `critical` sub-tables here are the old per-tier form. They still work, with a
     warning, and fill in the categories of that tier carrying no `health`. Write a `health` block
-    into the progressions instead. Pathogens passed to `Simulation` directly ignore them.
+    into the progressions instead. Pathogens passed to `Simulation` directly ignore them as soon as
+    any of them embeds health, even if only a `Mild` one. There is no `mild` sub-table.
 
 ### Settings
 

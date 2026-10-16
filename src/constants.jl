@@ -11,6 +11,10 @@ const DEFAULT_INFECTION_ID = Int32(-1)
 const DEFAULT_AGS = Int32(-1)
 const GLOBAL_SETTING_ID = Int32(1)
 
+# homebound probabilities of a health profile that sets none
+const DEFAULT_SYMPTOMATIC_HOMEBOUND_PROBABILITY = 0.0
+const DEFAULT_SEVERE_HOMEBOUND_PROBABILITY = 1.0
+
 # start condition pathogen name meaning "every pathogen in the simulation"
 const ALL_PATHOGENS = "all"
 

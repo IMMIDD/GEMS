@@ -17,11 +17,22 @@ struct CareTransition
 end
 
 """
+    HomeboundTransition
+
+One host starting or ending a homebound window.
+"""
+struct HomeboundTransition
+    host_id::Int32
+    is_start::Bool
+end
+
+"""
     HealthSchedule <: AbstractHealthSchedule
 
 Per-shard store of pending care transitions and of ticks that must stay awake.
 
-- `buckets`: transitions due at each tick — work the drain performs.
+- `care_buckets`: transitions due at each tick — work the drain performs.
+- `homebound_buckets`: homebound starts and ends due at each tick, drained alongside `care_buckets`.
 - `wake_ticks`: ticks with no work here that the simulation must still not fast-forward past. A
   scheduled death registers one, because it is realized by `progress_disease!` inside the individual
   loop, which a dormant tick skips.
@@ -30,7 +41,8 @@ Per-shard store of pending care transitions and of ticks that must stay awake.
 - `head`: lowest tick not yet drained.
 """
 mutable struct HealthSchedule <: AbstractHealthSchedule
-    buckets::Dict{Int16, Vector{CareTransition}}
+    care_buckets::Dict{Int16, Vector{CareTransition}}
+    homebound_buckets::Dict{Int16, Vector{HomeboundTransition}}
     wake_ticks::Set{Int16}
     buffer::Vector{CareContribution}
     admitted::Vector{Int32}
@@ -44,6 +56,7 @@ Builds an empty `HealthSchedule`.
 """
 HealthSchedule() = HealthSchedule(
     Dict{Int16, Vector{CareTransition}}(),
+    Dict{Int16, Vector{HomeboundTransition}}(),
     Set{Int16}(),
     CareContribution[],
     Int32[],
@@ -53,23 +66,23 @@ HealthSchedule() = HealthSchedule(
 """
     due_now(schedule::HealthSchedule, tick::Int16)
 
-`true` if there is work in this tick's bucket, or a reason to be awake for it anyway.
+`true` if there is work in this tick's care or homebound bucket, or a reason to be awake for it anyway.
 
 Must stay a due-now test: an "anything outstanding" one would hold the simulation awake for every tick
 up to the last scheduled event. Because it only ever asks about the current tick, a `wake_ticks` entry
 left behind after its tick has passed is inert.
 """
 @inline due_now(schedule::HealthSchedule, tick::Int16) =
-    haskey(schedule.buckets, tick) || (tick in schedule.wake_ticks)
+    haskey(schedule.care_buckets, tick) || haskey(schedule.homebound_buckets, tick) || (tick in schedule.wake_ticks)
 
 """
-    schedule!(schedule::HealthSchedule, host_id::Int32, level::CareLevel, is_admission::Bool, tick::Int16)
+    _schedule_care_transition!(schedule::HealthSchedule, host_id::Int32, level::CareLevel, is_admission::Bool, tick::Int16)
 
 Files one care transition for `tick`.
 """
-@inline function schedule!(schedule::HealthSchedule, host_id::Int32, level::CareLevel,
+@inline function _schedule_care_transition!(schedule::HealthSchedule, host_id::Int32, level::CareLevel,
         is_admission::Bool, tick::Int16)
-    bucket = get!(() -> CareTransition[], schedule.buckets, tick)
+    bucket = get!(() -> CareTransition[], schedule.care_buckets, tick)
     push!(bucket, CareTransition(host_id, level, is_admission))
     return nothing
 end
@@ -87,30 +100,44 @@ An index over `individual.death`, which stays authoritative; `compute_health!` i
 end
 
 """
-    _emit_level!(schedule::HealthSchedule, host_id::Int32, level::CareLevel, admission::Int16, discharge::Int16)
+    _schedule_care_level!(schedule::HealthSchedule, host_id::Int32, level::CareLevel, admission::Int16, discharge::Int16)
 
 Files one care level's admission/discharge pair, or nothing if the level is unset.
 """
-@inline function _emit_level!(schedule::HealthSchedule, host_id::Int32, level::CareLevel,
+@inline function _schedule_care_level!(schedule::HealthSchedule, host_id::Int32, level::CareLevel,
         admission::Int16, discharge::Int16)
     admission < 0 && return nothing
-    schedule!(schedule, host_id, level, true, admission)
-    schedule!(schedule, host_id, level, false, discharge)
+    _schedule_care_transition!(schedule, host_id, level, true, admission)
+    _schedule_care_transition!(schedule, host_id, level, false, discharge)
     return nothing
 end
 
 """
-    _emit_contribution!(schedule::HealthSchedule, host_id::Int32, care::CareContribution)
+    _schedule_care_contribution!(schedule::HealthSchedule, host_id::Int32, care::CareContribution)
 
 Expands one contribution into up to six transitions.
 
 The care ladder needs no cross-level check: each contribution nests, and a union of nested intervals
 is nested.
 """
-@inline function _emit_contribution!(schedule::HealthSchedule, host_id::Int32, care::CareContribution)
-    _emit_level!(schedule, host_id, CARE_HOSPITAL, care.hospital_admission, care.hospital_discharge)
-    _emit_level!(schedule, host_id, CARE_ICU, care.icu_admission, care.icu_discharge)
-    _emit_level!(schedule, host_id, CARE_VENTILATION, care.ventilation_admission, care.ventilation_discharge)
+@inline function _schedule_care_contribution!(schedule::HealthSchedule, host_id::Int32, care::CareContribution)
+    _schedule_care_level!(schedule, host_id, CARE_HOSPITAL, care.hospital_admission, care.hospital_discharge)
+    _schedule_care_level!(schedule, host_id, CARE_ICU, care.icu_admission, care.icu_discharge)
+    _schedule_care_level!(schedule, host_id, CARE_VENTILATION, care.ventilation_admission, care.ventilation_discharge)
+    return nothing
+end
+
+"""
+    _schedule_homebound!(schedule::HealthSchedule, host_id::Int32, start::Int16, stop::Int16)
+
+Files a homebound window's start and end. A negative `start` files only the end, for a window
+already applied.
+"""
+@inline function _schedule_homebound!(schedule::HealthSchedule, host_id::Int32, start::Int16, stop::Int16)
+    if start >= 0
+        push!(get!(() -> HomeboundTransition[], schedule.homebound_buckets, start), HomeboundTransition(host_id, true))
+    end
+    push!(get!(() -> HomeboundTransition[], schedule.homebound_buckets, stop), HomeboundTransition(host_id, false))
     return nothing
 end
 
@@ -121,7 +148,8 @@ Clears every pending transition and wake tick. Only safe alongside clearing the 
 counters; see `reset!(::Simulation)`.
 """
 function reset_care!(schedule::HealthSchedule)
-    empty!(schedule.buckets)
+    empty!(schedule.care_buckets)
+    empty!(schedule.homebound_buckets)
     empty!(schedule.wake_ticks)
     empty!(schedule.buffer)
     empty!(schedule.admitted)
