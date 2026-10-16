@@ -767,13 +767,17 @@ end
 
 # Prefetching for the loops over individuals: each one is a cache miss unless fetched ahead.
 
+# How many list positions ahead `_prefetch_listed_ahead` fetches individuals and their plan entries
+const LISTED_PREFETCH_DISTANCE = 8
+const LISTED_PLAN_PREFETCH_DISTANCE = 4
+
 # Starts loading the individuals a loop over a list reaches next while it works on the one at `k`
-# of `n`: the `Individual` at `k + 2`, and the plan entries of the one at `k + 1`, read from its
-# `Individual` loaded by the previous call.
+# of `n`: the `Individual` at `k + LISTED_PREFETCH_DISTANCE`, and the plan entries of the one at
+# `k + LISTED_PLAN_PREFETCH_DISTANCE`, read from its `Individual` fetched by an earlier call.
 @inline function _prefetch_listed_ahead(individual_at::F, n::Int, k::Int, plans::ActivityPlanStore) where {F}
-    k + 2 <= n && _prefetch(pointer_from_objref(individual_at(k + 2)), sizeof(Individual))
-    if k + 1 <= n
-        next = individual_at(k + 1)
+    k + LISTED_PREFETCH_DISTANCE <= n && _prefetch(pointer_from_objref(individual_at(k + LISTED_PREFETCH_DISTANCE)), sizeof(Individual))
+    if k + LISTED_PLAN_PREFETCH_DISTANCE <= n
+        next = individual_at(k + LISTED_PLAN_PREFETCH_DISTANCE)
         len = plan_length(next)
         len > 0 && _prefetch(pointer(plans.entries, Int(next.plan_offset)), len * sizeof(PlanEntry))
     end
@@ -781,7 +785,7 @@ end
 end
 
 # How many indices ahead `_prefetch_flagged_ahead` fetches
-const FLAGGED_PREFETCH_DISTANCE = 64
+const FLAGGED_PREFETCH_DISTANCE = 256
 
 # Starts loading `inds[k + FLAGGED_PREFETCH_DISTANCE]` if `flagged` at that index. A loop over a
 # sparse set of individuals in index order leaves gaps too large for the CPU to stream them itself.
