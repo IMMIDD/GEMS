@@ -21,6 +21,8 @@ end
     return (state.infectiousness_onset >= 0 && state.infectiousness_onset <= tick < end_t) ? profile.level : Int8(0)
 end
 
+_draws_from_rng(::ConstantInfectiousness) = false
+
 
 """
     StagedInfectiousness
@@ -74,6 +76,8 @@ Otherwise picks the profile field that matches the highest active disease stage 
     return _stage_value(state, tick, profile.asymptomatic, profile.presymptomatic,
         profile.symptomatic, profile.severe, profile.critical)
 end
+
+_draws_from_rng(::StagedInfectiousness) = false
 
 """
     _stage_value(state::InfectionState, tick::Int16, asym, presym, sym, sev, crit)
@@ -166,6 +170,8 @@ end
 
     return Int8(clamp(round(Int, profile.level * shape * factor), 0, 100))
 end
+
+_draws_from_rng(::BetaInfectiousness) = false
 
 
 """

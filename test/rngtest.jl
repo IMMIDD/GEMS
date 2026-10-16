@@ -223,5 +223,18 @@ GEMS.calculate_infectiousness(::DailyNoisyInfectiousness, s::InfectionState, i::
         daily, _ = infectiousness_path(DailyNoisyInfectiousness())
         @test length(unique(daily)) > 1
         @test infectiousness_path(DailyNoisyInfectiousness())[1] == daily
+
+        # a profile declared not to draw gets its rng unkeyed, so it must read the same from any rng state
+        @test GEMS._draws_from_rng(NoisyInfectiousness())
+        ind = Individual(id = 1, sex = 0, age = 30)
+        st = InfectionState(Int8(1), Int32(1), DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1),
+            symptom_onset = Int16(3), recovery = Int16(9)))
+        for profile in (ConstantInfectiousness(), StagedInfectiousness(), BetaInfectiousness())
+            @test !GEMS._draws_from_rng(profile)
+            @test all(Int16.(0:10)) do t
+                calculate_infectiousness(profile, st, ind, t, GEMS._keyed_infection_rng(1, Int32(1), st)) ==
+                    calculate_infectiousness(profile, st, ind, t, GEMS._keyed_infection_rng(2, Int32(5), st))
+            end
+        end
     end
 end

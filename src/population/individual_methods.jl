@@ -984,12 +984,14 @@ number_of_vaccinations(individual::Individual, sim::Simulation, pathogen_id::Int
 ### UPDATE DISEASE PROGRESSION IN AGENTS ###
 
 """
-    _infectiousness_level(pathogen, state, individual, tick, rng)
+    _infectiousness_level(pathogen, state, individual, tick, seed)
 
-Function barrier that extracts the `InfectiousnessProfile` from `pathogen` and calls `calculate_infectiousness`.
+Function barrier that extracts the `InfectiousnessProfile` from `pathogen` and calls `calculate_infectiousness`
+with the infection's keyed rng, left unkeyed for a profile that never draws.
 """
-function _infectiousness_level(pathogen, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+function _infectiousness_level(pathogen, state::InfectionState, individual::Individual, tick::Int16, seed::Int64)::Int8
     profile = infectiousness_profile(pathogen)
+    rng = _draws_from_rng(profile) ? _keyed_infection_rng(seed, id(individual), state) : _profile_rng().rng
     return calculate_infectiousness(profile, state, individual, tick, rng)
 end
 
@@ -1064,8 +1066,7 @@ branches of `progress_disease!`. Returns the record's `DiseaseFlags` contributio
     # update infectiousness while active
     end_tick = state.recovery
     if state.exposure <= tick < end_tick
-        rng = _keyed_infection_rng(seed, id(ind), state)
-        level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, rng)
+        level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, seed)
         if level != state.infectiousness
             state = _setstate(state, Val(:infectiousness), level)
             _set_slot!(ind, infections, loc, state)

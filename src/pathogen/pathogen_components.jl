@@ -289,6 +289,9 @@ function calculate_infectiousness(profile::InfectiousnessProfile, state::Infecti
     error("calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile)).")
 end
 
+# whether `calculate_infectiousness` may draw from its rng; one that never does gets it unkeyed
+_draws_from_rng(::InfectiousnessProfile) = true
+
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
