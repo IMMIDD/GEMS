@@ -657,7 +657,8 @@ end
                 misplaced = Ref(0)
                 for ind in individuals(sim)
                     GEMS.infectious(ind) || continue
-                    GEMS._foreach_spread_setting(ind, sim, GEMS._draw_at_visit) do s, pos, scale, drawn
+                    GEMS._foreach_spread_setting(ind, sim, GEMS._draw_at_visit) do s, pos, drawn
+                        scale = GEMS._membership_scale(GEMS.activity_plans(sim), ind, s, cntnr)
                         (scale > 0 && GEMS.can_infect(ind, s, t)) || return
                         GEMS.present_members(s, cntnr)[pos] === ind || (misplaced[] += 1)
                         push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), pos, scale))
@@ -997,7 +998,8 @@ end
         checked = Ref(0)
         exceeded = Ref(0)
         for h in infectious
-            GEMS._foreach_spread_setting(h, sim, each_level) do s, pos, scale, drawn
+            GEMS._foreach_spread_setting(h, sim, each_level) do s, pos, drawn
+                scale = GEMS._membership_scale(plans, h, s, cntnr)
                 isinf(drawn.rate_bound) && return
                 present = GEMS.present_members(s, cntnr)
                 (scale > 0 && GEMS.can_infect(h, s, t) && length(present) > 1) || return
@@ -1025,7 +1027,7 @@ end
         @test err !== nothing && occursin("exceeds the bound", sprint(showerror, err))
 
         # once compiled, walking with draws allocates nothing, and each level's draw is concretely typed
-        walk_bytes(h) = @allocated GEMS._foreach_spread_setting((s, pos, scale, drawn) -> nothing, h, sim, GEMS._contact_draw)
+        walk_bytes(h) = @allocated GEMS._foreach_spread_setting((s, pos, drawn) -> nothing, h, sim, GEMS._contact_draw)
         foreach(walk_bytes, infectious)
         @test all(h -> walk_bytes(h) == 0, infectious)
         h = first(infectious)

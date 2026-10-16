@@ -24,46 +24,39 @@ function spread_infections!(sim::Simulation)
             # the next hosts are far apart in memory, so each is a cache miss unless fetched ahead
             _prefetch_listed_ahead(j -> @inbounds(hosts[j]), length(hosts), k, activity_plans(sim))
             ind = hosts[k]
-            _foreach_spread_setting(ind, sim, _contact_draw) do setting, frame_pos, scale, drawn
-                _spread_in!(setting, frame_pos, scale, ind, sim, drawn)
+            _foreach_spread_setting(ind, sim, _contact_draw) do setting, frame_pos, drawn
+                _spread_in!(setting, frame_pos, ind, sim, drawn)
             end
         end
     end
     return nothing
 end
 
-# Calls `visit(setting, frame_pos, scale, drawn)` for each setting `ind` spreads in: each plan entry's setting,
+# Calls `visit(setting, frame_pos, drawn)` for each setting `ind` spreads in: each plan entry's setting,
 # each container above it, and the GlobalSetting, with `frame_pos` their index in `present_members`.
 # Each level's `drawn = draw(S, ind, slot, sim)` comes before any of the entry's settings is loaded,
 # and a level that drew nobody is not visited. `_draw_at_visit` visits every level.
 function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, draw::D) where {V, D}
     plans = activity_plans(sim)
-    cntnr = settingscontainer(sim)
     for slot in plan_slots(plans, ind)
         e = @inbounds plans.entries[slot]
-        leaf_index = member_index(e)
-        _with_entry_settings(cntnr, e) do leaves
-            # one per level, the entry's own setting first
-            draws = _level_draws(draw, eltype(leaves), ind, slot, sim)
-            # the highest level to visit; nothing above it is loaded
-            top = findlast(_needs_visit, draws)
-            top === nothing && return nothing
-            setting = leaves[setting_id(e)]
-            # dead members are left out of `present_members`, so they spread nowhere
-            _is_deceased(setting, leaf_index) && return nothing
-            # the entry's own setting
-            _needs_visit(draws[1]) && visit(setting, Int(leaf_index), _membership_scale(plans, ind, setting, cntnr), draws[1])
-            # each container above it that lists them, even for an inactive entry: someone in two
-            # classes of one school is listed in the school once, maybe under this class
-            if _has_container(setting)
-                _foreach_container_above(setting, leaf_index, cntnr, top) do container, frame_pos, level
-                    _needs_visit(draws[level]) &&
-                        visit(container, frame_pos, _membership_scale(plans, ind, container, cntnr), draws[level])
-                end
-            end
-        end
+        _with_entry_settings(leaves -> _visit_entry(visit, leaves, e, slot, ind, sim, draw), settingscontainer(sim), e)
     end
     _visit_global(visit, ind, sim, draw)
+    return nothing
+end
+
+# Draws each level of the entry at `slot` before loading its setting, then visits the levels that need it.
+function _visit_entry(visit::V, leaves::AbstractVector{S}, e::PlanEntry, slot::Int, ind::Individual, sim::Simulation,
+                      draw::D) where {V, S<:IndividualSetting, D}
+    # one per level, the entry's own setting first
+    draws = _level_draws(draw, S, ind, slot, sim)
+    any(_needs_visit, draws) || return nothing
+    leaf = leaves[setting_id(e)]
+    leaf_index = member_index(e)
+    # dead members are left out of `present_members`, so they spread nowhere
+    _is_deceased(leaf, leaf_index) && return nothing
+    _visit_up(visit, leaf, leaf_index, leaf, leaf_index, draws, settingscontainer(sim))
     return nothing
 end
 
@@ -72,20 +65,18 @@ end
 @inline _level_draws(draw::D, ::Type{S}, ind::Individual, slot::Int, sim::Simulation) where {D, S<:Setting} =
     (draw(S, ind, slot, sim), _level_draws(draw, _parent_type(S), ind, slot, sim)...)
 
-# Calls `visit(container, frame_pos, level)` for each container above `leaf`, which must have one, whose
-# `present_members` list its member at `leaf_index`, up to level `top` with `leaf` as level 1. Someone
-# in two classes of one school is listed there once, so only one class reaches it.
-@inline _foreach_container_above(visit::V, leaf::IndividualSetting, leaf_index::Int32, cntnr::SettingsContainer,
-                                 top::Int) where {V} =
-    _foreach_container_above(visit, leaf, leaf, leaf_index, cntnr, 2, top)
-
-function _foreach_container_above(visit::V, s::S, leaf::IndividualSetting, leaf_index::Int32,
-                                  cntnr::SettingsContainer, level::Int, top::Int) where {V, S<:Setting}
-    level > top && return nothing
+# Visits `s` with the first of `draws`, then the container above it with the next, and so on. Containers
+# are reached even from an inactive entry: someone in two classes of one school is listed in the
+# school once, maybe under this class, so `frame_pos` is `DEFAULT_MEMBER_INDEX` for the other.
+function _visit_up(visit::V, s::S, frame_pos::Int32, leaf::IndividualSetting, leaf_index::Int32, draws::Tuple,
+                   cntnr::SettingsContainer) where {V, S<:Setting}
+    drawn = first(draws)
+    _needs_visit(drawn) && frame_pos != DEFAULT_MEMBER_INDEX && visit(s, Int(frame_pos), drawn)
+    above = Base.tail(draws)
+    # nothing above is loaded once no level there needs a visit
+    (_has_container(s) && any(_needs_visit, above)) || return nothing
     c = settings(cntnr, contained_type(S))[s.contained]
-    frame_pos = container_frame_index(cntnr, c, leaf, leaf_index)
-    frame_pos == DEFAULT_MEMBER_INDEX || visit(c, Int(frame_pos), level)
-    _has_container(c) && _foreach_container_above(visit, c, leaf, leaf_index, cntnr, level + 1, top)
+    _visit_up(visit, c, container_frame_index(cntnr, c, leaf, leaf_index), leaf, leaf_index, above, cntnr)
     return nothing
 end
 
@@ -94,43 +85,38 @@ function _visit_global(visit::V, ind::Individual, sim::Simulation, draw::D) wher
     drawn = draw(GlobalSetting, ind, 0, sim)
     _needs_visit(drawn) || return nothing
     frame_pos = _global_position(ind, sim)
-    frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, 1.0f0, drawn)
+    frame_pos == 0 || visit(@inbounds(settings(sim, GlobalSetting)[1]), frame_pos, drawn)
     return nothing
 end
 
-# The individual's position in the GlobalSetting, which copied the population in its order when it
-# was built. 0 when there is no GlobalSetting, or the individual joined the population later.
+# The individual's position in the GlobalSetting, which holds the population in its order, see
+# `_check_global_positions`. 0 when there is no GlobalSetting, or the individual joined the population later.
 function _global_position(ind::Individual, sim::Simulation)::Int
     # not `settings(sim, GlobalSetting)`, which builds an empty vector per call when there is none
     gs = get(settingscontainer(sim).settings, GlobalSetting, nothing)
     (gs === nothing || isempty(gs)) && return 0
-    members = individuals(@inbounds (gs::Vector{GlobalSetting})[1])
-    pop = population(sim)
-    i = id(ind) - pop.minid + 1
-    k = 1 <= i <= length(pop.id_map) ? Int(pop.id_map[i]) : 0
-    1 <= k <= length(members) || return 0
-    @inbounds members[k] === ind || error(
-        "the GlobalSetting no longer holds the population in its order: individual $(id(ind)) " *
-        "is not at position $k")
-    return k
+    k = _individual_index(population(sim), id(ind))
+    return k <= length(individuals(@inbounds (gs::Vector{GlobalSetting})[1])) ? k : 0
 end
 
 # Spreads `ind`'s infections in one setting: samples their contacts there and tries each pathogen they shed on them.
 # `drawn` holds the contacts drawn for it before it was loaded, see `_contact_draw`.
-function _spread_in!(setting::Setting, frame_pos::Int, s_host::Float32, ind::Individual, sim::Simulation, drawn)
-    # at scale 0 the host meets nobody here
-    s_host == 0 && return nothing
+function _spread_in!(setting::Setting, frame_pos::Int, ind::Individual, sim::Simulation, drawn)
     current_tick = tick(sim)
     can_infect(ind, setting, current_tick) || return nothing
+    cntnr = settingscontainer(sim)
+    plans = activity_plans(sim)
+    s_host = _membership_scale(plans, ind, setting, cntnr)
+    # at scale 0 the host meets nobody here
+    s_host == 0 && return nothing
     bounds, thin = _transmission_bounds(ind, setting, current_tick, sim)
     # no shedding pathogen can infect anyone here
     thin == 0 && return nothing
 
-    cntnr = settingscontainer(sim)
     contacts = sim.contact_buffers[Threads.threadid()]
     _with_sampling_method(setting.contact_sampling_method) do csm
         sample_scaled_contacts!(contacts, sim.draw_buffers[Threads.threadid()], csm, setting, frame_pos,
-            present_members(setting, cntnr), current_tick, true, rng(sim), activity_plans(sim), cntnr,
+            present_members(setting, cntnr), current_tick, true, rng(sim), plans, cntnr,
             s_host, _scale_bound(setting); thin = thin, drawn = drawn)
     end
 

@@ -1280,6 +1280,18 @@ function _build_global_setting!(settings, inds::Vector{Individual}, default_samp
     return nothing
 end
 
+# Errors unless the GlobalSetting holds each member at its position in the population, which
+# `_global_position` relies on. Its members never move, so the Simulation constructor checks once.
+function _check_global_positions(pop::Population, cntnr)
+    gs = get(cntnr.settings, GlobalSetting, nothing)
+    (gs === nothing || isempty(gs)) && return nothing
+    for (k, ind) in enumerate(individuals((gs::Vector{GlobalSetting})[1]))
+        _individual_index(pop, id(ind)) == k || error(
+            "the GlobalSetting does not hold the population in its order: individual $(id(ind)) is at position $k")
+    end
+    return nothing
+end
+
 
 # Collects the setting id of each type-`T` entry in `r` into `sids`, in individual and plan order;
 # returns the smallest and largest.

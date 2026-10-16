@@ -563,6 +563,7 @@ function _BUILD_Simulation(;
     build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
     determine_transmission_prethinning(config, transmission_prethinning) || (sim.prethinning = false)
     _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
+    _check_global_positions(sim.population, settingscontainer(sim))
     _refresh_rate_bounds!(settingscontainer(sim))
 
     # update label
