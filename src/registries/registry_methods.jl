@@ -4,10 +4,8 @@
 ### SLOT ADDRESSING
 ###
 
-# A single record lives either in an individual's inline cache NTuple or in an overflow node of the
-# registry linked list; these markers name which, so the disease-update loops can
-# read/write/clear a slot through one dispatched interface instead of duplicating the cache-
-# and overflow-specific code.
+# A record lives in the individual's inline cache or in an overflow node of the registry; these markers
+# name which, so the disease-update loops read, write and clear both through one interface.
 
 struct _CacheSlot; i::Int32; end # inline cache slot index
 struct _OverflowNode; node::Int32; end # registry overflow linked-list node index

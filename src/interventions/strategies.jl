@@ -3,20 +3,15 @@ export offset, measure, delay, condition
 export IStrategy, SStrategy
 export name, condition, measures, add_measure!
 
-# Concrete function-wrapper types for the per-strategy callbacks. Wrapping the user closures in
-# these keeps the callback fields (and the measure vector) concretely typed, so calling them on
-# the intervention hot path is type-stable instead of a dynamic dispatch. The focal object is an
-# Individual for IStrategies/IMeasures and a Setting for SStrategies/SMeasures.
+# Concrete wrappers for the per-strategy callbacks, so their fields are concretely typed and calls are
+# static. The focal object is an Individual for IStrategies/IMeasures, a Setting for SStrategies/SMeasures.
 const IPredicate = FunctionWrapper{Bool, Tuple{Individual}}
 const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
 const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
 
-# Per-measure process callbacks. Built once at `add_measure!` time, where the concrete measure
-# type and the `Simulation` are statically known, so the wrapped closure captures both and resolves
-# `process_measure` statically. The wrapper takes only the focal object; `Simulation` is kept out of
-# the argument tuple because it is a parametric (abstract) type and an abstract argument type would
-# make the call a dynamic dispatch.
+# Per-measure process callbacks, built in `add_measure!` with the measure and `sim` captured. They take
+# only the focal object, as the abstract `Simulation` type as an argument would make the call dynamic.
 const IProcessFn = FunctionWrapper{Any, Tuple{Individual}}
 const SProcessFn = FunctionWrapper{Any, Tuple{Setting}}
 

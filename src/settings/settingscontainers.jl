@@ -671,8 +671,7 @@ function _registered_setting_type(name::AbstractString)
 end
 
 # The setting type called `name`, or `nothing`: a registered one, else the concrete
-# `IndividualSetting` subtype of that name, registered on the way with `char`. Files name a type
-# rather than store its index, since a custom type's index depends on registration order.
+# `IndividualSetting` subtype of that name, registered on the way with `char`.
 function _resolve_setting_type(name::AbstractString; char::Union{Nothing, Char} = nothing)
     T = _registered_setting_type(name)
     T === nothing || return T

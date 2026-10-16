@@ -211,7 +211,7 @@ mutable struct Population
         # number of households
         n_households = Int64(ceil(n / avg_household_size))
 
-        # preallocate RAW ARRAYS to guarantee type stability in loops
+        # typed column vectors, so the loops below are type-stable
         id_col = Int32.(1:n)
         sex_col = Int8.(gems_rand(rng, 1:2, n))
         
@@ -285,7 +285,7 @@ mutable struct Population
         off_col .= getindex.(Ref(off_dict), off_col)
         sch_col .= getindex.(Ref(sch_dict), sch_col)
 
-        # construct the dataframe once all data operations are perfectly complete
+        # build the DataFrame from the finished columns
         df = DataFrame(
             id = id_col,
             age = age_col,
@@ -610,8 +610,7 @@ function dataframe(population::Population)
     return df
 end
 
-# The columns of `dataframe(population)`, filled in one pass: each individual is a separate object,
-# so a pass per column would fetch every one of them from memory again.
+# The columns of `dataframe(population)`, filled in one pass so each individual is loaded once.
 function _population_columns(inds::Vector{Individual}, plans)
     n = length(inds)
     cols = (id = Vector{Int32}(undef, n), sex = Vector{Int8}(undef, n), age = Vector{Int8}(undef, n),
@@ -642,8 +641,7 @@ settings but no `membershipsfile` is given, rather than lose them.
 """
 function save(population::Population, path::AbstractString; membershipsfile::Union{Nothing, AbstractString} = nothing)
     table = memberships(population)
-    # the loader refuses entries of types that hold no members directly, so refuse here rather
-    # than write a file that cannot be read back
+    # the loader refuses entries of types that hold no members directly, so don't write them
     for t in unique(table.setting_type)
         _holds_entries(_resolve_setting_type(t)) || throw(ArgumentError(
             "the population holds a $t membership, which a membership table cannot carry"))

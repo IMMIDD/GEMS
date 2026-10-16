@@ -104,7 +104,7 @@ mutable struct PostProcessor
 
         sim_households = households(simulation)
 
-        # each household's AGS once, so the rows read one compact vector rather than every household object
+        # each household's AGS once, as one compact vector
         household_ags = ags.(sim_households)
         infections.household_ags_a = _ags_of_households(_gather(pop.household, rows_a), household_ags)
         infections.household_ags_b = _ags_of_households(infections.household_b, household_ags)
@@ -290,8 +290,7 @@ end
 # the pathogens of a simulation, sorted by id
 _sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
 
-# The AGS of each row's household, `missing` without one; typed like the `ByRow` it replaces, so a column
-# without `missing` values is a plain `Vector{AGS}`.
+# The AGS of each row's household, `missing` without one. A column without `missing` values is a plain `Vector{AGS}`.
 function _ags_of_households(households::AbstractVector, household_ags::Vector{AGS})
     n = length(households)
     out = (n == 0 || any(ismissing, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)

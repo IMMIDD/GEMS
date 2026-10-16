@@ -996,8 +996,8 @@ function _add_deceased!(s::IndividualSetting, n::Int)
     return nothing
 end
 
-# The GlobalSetting is the whole population by definition, so its membership is not editable -
-# and an individual holds no plan entry for it, since `setting_id` answers from the constant.
+# The GlobalSetting always holds the whole population, so its membership is not editable and nobody
+# holds a plan entry for it.
 add_member!(::GlobalSetting, ::Individual, ::Population; primary::Bool = false, scale::Real = 1.0) =
     throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
 remove_member!(::GlobalSetting, ::Individual, ::Population) =
@@ -1082,7 +1082,7 @@ Returns the individuals associated with the given setting, as a view of wherever
 """
 function individuals(setting::IndividualSetting)
     v = setting.individuals
-    # a view in both cases: a union return would box the view it builds
+    # a view in both cases, so the return type is concrete
     v === nothing || return view(v, 1:length(v))
     # a pooled leaf holds no members itself unless an edit detached them
     lo = Int(setting.pool_offset)
@@ -1134,7 +1134,7 @@ function construct_and_add_settings!(
         end
         @inbounds nsettings[c + 1] = m
     end
-    # read through an abstract slot, so every setting stores this one box instead of boxing its own
+    # stored in an abstract field, so every setting shares this one box
     sampling = Ref{ContactSamplingMethod}(default_sampling)
     nsettings[1] = length(container_vec) + 1
     cumsum!(nsettings, nsettings)
@@ -1188,11 +1188,9 @@ _make_setting(::Type{T}, sid::Int32, members::Vector{Individual}, lo::Int, hi::I
         ::Nothing, csm::ContactSamplingMethod) where {T <: Setting} =
     T(id = sid, individuals = members[lo:hi], contact_sampling_method = csm)
 
-# Lays out the individuals' type-`T` entries by setting, a counting sort that places the individuals
-# directly: the setting with id `ids[k]` gets `members[starts[k]:(starts[k + 1] - 1)]`, in individual
-# and plan order. `ids` is sorted, so a setting's position `k` is `searchsortedfirst(ids, sid)`.
-# `parts[c]` holds the setting ids of chunk `c`'s entries and is overwritten on the way. Only the
-# passes that fix the order run serially, over these ids rather than the individuals.
+# Counting sort of the individuals' type-`T` entries by setting: setting `ids[k]` gets
+# `members[starts[k]:(starts[k + 1] - 1)]` in individual and plan order, with `k = searchsortedfirst(ids, sid)`.
+# `parts[c]` holds chunk `c`'s setting ids and is overwritten. Only the passes that fix the order run serially.
 function _place_members!(members::Vector{Individual}, starts::Vector{Int32}, ids::AbstractVector{Int32},
         parts::Vector{Vector{Int32}}, plans::AbstractActivityPlanStore, inds::Vector{Individual},
         chunks::Vector{UnitRange{Int}}, ::Type{T}) where {T <: Setting}
@@ -1246,7 +1244,7 @@ function settings_from_population(population::Population, global_setting::Bool =
     # chunks of individuals every type scans its entries in
     chunks = _thread_chunks(eachindex(inds))
 
-    # everyone is in the one GlobalSetting, so it is built here rather than from plan entries
+    # the GlobalSetting has no plan entries, so it is built here
     global_setting && _build_global_setting!(settings, inds, default_sampling)
     # only the types the plans name; container-type entries are ignored, as no leaf holds them
     for tidx in _present_setting_types(activity_plans(population), inds, chunks)

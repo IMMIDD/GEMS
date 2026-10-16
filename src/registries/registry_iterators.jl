@@ -1,9 +1,8 @@
 export each_infection, each_immunity
 
 
-# Resolves the shard registry only when overflow is actually reached, so a cache-only
-# individual never touches the registry. Dispatches on the concrete source type, so it stays
-# type-stable; the registries-vector form is what a Simulation passes.
+# The individual's shard registry, looked up only on reaching overflow, so a cache-only individual
+# never touches it. A Simulation passes the vector of registries.
 @inline _shard_registry(src::Union{InfectionRegistry,ImmunityRegistry}, ind::Individual) = src
 @inline _shard_registry(src::Union{Vector{InfectionRegistry},Vector{ImmunityRegistry}}, ind::Individual) = @inbounds src[_owner_shard(id(ind))]
 

@@ -23,7 +23,7 @@ function sample_contacts!(
     replace::Bool,
     rng::Xoshiro
 )
-    # probe with what the setting supplied, not a hardcoded Vector
+    # probe with the type the setting actually supplied
     P = typeof(present_inds)
 
     # mutating keyword method
@@ -171,9 +171,7 @@ function create_contact_sampling_method(config::Dict)
     gems_string = string(nameof(@__MODULE__))
     csm_types = _cached_subtypes(ContactSamplingMethod)
     type_names = string.(csm_types)
-    # we need to check the type name with and without the "GEMS.xxx" namespace
-    # qualifier as the module name will be present if GEMS is imported as
-    # a dependency into another module
+    # match with and without the "GEMS." prefix, which appears when GEMS is a dependency of another module
     id = findfirst(x -> x == type_string || x == "$gems_string.$type_string", type_names)
     if isnothing(id)
         error("The provided type is not a valid subtype of $ContactSamplingMethod use '$(join(type_names, "', '", "' or '"))'!")
@@ -279,11 +277,10 @@ end
     return gems_rand(rng, Binomial(n, p))
 end
 
-# Without replacement a contact drawn by several calls is kept once, with the weights of the calls
-# that drew it summed. Exact while `s_host * s_contact <= 1`; above that the keep probability caps
-# at 1, so a contact drawn often is met too rarely. `oversample` times the calls, each weighted down
-# by it, shrink that bias at `oversample` times the sampler calls.
-# The whole calls collect in `contacts`, the fractional last call stays in `draws`.
+# Without replacement a contact drawn by several calls is kept once, with their weights summed. Exact
+# while `s_host * s_contact <= 1`; above that the keep probability caps at 1 and frequent contacts are
+# met too rarely, a bias that `oversample` times the calls shrinks. Whole calls collect in `contacts`,
+# the fractional last one in `draws`.
 function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
         csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
         tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
@@ -401,9 +398,8 @@ end
 ### INTERNALS
 ###
 
-# Does `f` have a method for `argtypes` defined against a *concrete* sampler type?
-# `hasmethod` alone also matches our own generic wrapper, which would recurse back here.
-# Used by the `sample_contacts!` fallback to tell a user-supplied method from one of ours.
+# Whether `f` has a method for `argtypes` on a concrete sampler type: a user's own, not GEMS' generic
+# wrapper, which `hasmethod` alone also matches.
 function _user_method(f, argtypes::Type{<:Tuple}, csm_pos::Int)
     hasmethod(f, argtypes) || return false
     sig = Base.unwrap_unionall(which(f, argtypes).sig)

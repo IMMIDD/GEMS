@@ -66,8 +66,7 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
     contacts = Individual[]
     draws = Individual[]
 
-    # batches are sorted, so consecutive samples usually hit the same setting; keep its member
-    # view rather than re-deriving it per sample.
+    # batches are sorted, so consecutive samples usually hit the same setting; reuse its member view
     last_s = nothing
     present_inds = present_members(@inbounds(stngs[1]), cntnr)
 

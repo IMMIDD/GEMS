@@ -900,7 +900,7 @@ function determine_health_progression(configfile_params::Dict, health_progressio
     policy = !isnothing(health_progression) ? health_progression :
         !isnothing(section) ? section : DefaultHealthProgression()
 
-    # a section from a config the caller did not write loses to health they embedded themselves
+    # health embedded on explicitly passed pathogens overrides the config's deprecated care section
     if !isnothing(baseline) && pathogens_explicit && embedded
         @warn "Embedded health parameters were found on explicitly-passed pathogens, therefore the config's deprecated care parameters will be ignored."
         baseline = nothing
@@ -912,12 +912,12 @@ function determine_health_progression(configfile_params::Dict, health_progressio
             "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category health, drop the legacy " *
             "categories and embed a `HealthProfile` on each progression instead."))
         has_section && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
-        # the tier profiles only reach the modern categories mixed in alongside legacy ones
+        # the default tier profiles only apply to modern categories mixed in with the legacy ones
         return policy, _harvest_legacy_health_profiles(pathogens,
             StandardOfCare(severe = SevereHealthProfile(), critical = CriticalHealthProfile()))
     end
 
-    # warn once here rather than once per uncovered category; only the default policy needs the index
+    # one warning for all uncovered categories; only the default policy needs the index
     if !embedded && isnothing(baseline)
         policy isa DefaultHealthProgression && @warn "No health parameters were embedded on any progression; no hospitalization, ICU admission, or health-related death will occur."
         return policy, HealthProfileIndex()
@@ -1093,7 +1093,7 @@ have no state to share, so all settings hold the same one.
 function _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
     isempty(setting_list) && return
     if isbitstype(typeof(method))
-        # storing into the abstract field boxes; reuse the first setting's box instead of one per setting
+        # storing into the abstract field boxes, so all settings share the first setting's box
         first_setting = setting_list[1]::settingtype
         first_setting.contact_sampling_method = method
         boxed = first_setting.contact_sampling_method

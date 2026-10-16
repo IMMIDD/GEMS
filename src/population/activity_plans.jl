@@ -110,7 +110,7 @@ function activity_plans(pop::Population)
     return pop.activity_plans::ActivityPlanStore
 end
 
-# member indices are meaningless before the settings exist, so refuse rather than return a sentinel
+# member indices are meaningless before the settings exist
 @inline function _check_indexed(store::ActivityPlanStore)
     store.indexed || error(
         "activity plans carry no member indices yet. Call `assign_member_indices!` after the " *
@@ -343,14 +343,14 @@ end
     return Float32(_effective_scale(plans, plan_slot(plans, individual, T, id(s))))
 end
 
-# A container holds no entry: the scales of the individual's open leaves below it, summed but
-# capped at the larger of 1 and the largest, so presence there is normal unless its leaves say more.
+# A container has no entry: the scales of the individual's open leaves below it, summed and capped at
+# the larger of 1 and the largest.
 function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::C,
                            cntnr::SettingsContainer) where {C<:ContainerSetting}
     individual.plan_scaled || return 1.0f0
     L = _leaf_type(C)
     slots = plan_slots(plans, individual, L)
-    # in c's frame, so a lone leaf entry is the one that put it there
+    # a single leaf entry is the one that put the individual in c's frame
     length(slots) == 1 && return Float32(_effective_scale(plans, first(slots)))
     leaves = settings(cntnr, L)
     below = _leaf_range(c)
@@ -365,8 +365,8 @@ function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::
     end
 end
 
-# At least `_membership_scale` in any setting of type `S` the individual reaches from its entry at `slot`:
-# the entry's own scale for a leaf, and for a container the capped sum over all its leaf entries, not just those below it.
+# An upper bound on `_membership_scale` in any type-`S` setting reached from the entry at `slot`: the
+# entry's scale for a leaf, the capped sum over all the individual's leaf entries for a container.
 @inline _membership_scale_bound(::ActivityPlanStore, ::Individual, ::Type{GlobalSetting}, ::Int) = 1.0f0
 
 @inline function _membership_scale_bound(plans::ActivityPlanStore, individual::Individual, ::Type{T},
@@ -586,8 +586,7 @@ function memberships(pop::Population)
         prev = 0x00
         for e in plan_entries(plans, ind)
             t = setting_type_of(e)
-            # entries are sorted by type, so `t == prev` means "not the first of its type",
-            # which is exactly what the population row could not carry, and neither can it a scale
+            # the population row holds only the first entry of each of its types, at scale 1; the rest go in the table
             if t == prev || !(t in wide) || entry_scale(e) != 1
                 push!(ids, id(ind))
                 push!(types, get!(() -> setting_type_name(setting_type_from_index(t)), names, t))
@@ -600,9 +599,8 @@ function memberships(pop::Population)
     return DataFrame(id = ids, setting_type = types, setting_id = sids, scale = scales)
 end
 
-# Resolves the membership table to per-row (individual index, type index, setting id, primary,
-# scale, whether the row only scales the population row's entry), erroring on the first row that
-# names an unknown individual or type, has an invalid scale, or breaks the primary rule.
+# Resolves the membership table to per-row (individual index, type index, setting id, primary, scale,
+# whether the row only scales the population row's entry). Errors on the first invalid row.
 function _membership_rows(pop::Population, table::DataFrame, wide_tidx::Vector{UInt8}, wide::Vector{Vector{Int32}})
     for c in (:id, :setting_type, :setting_id)
         c in propertynames(table) || throw(ArgumentError("the membership table has no `$c` column"))
@@ -849,7 +847,7 @@ function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::In
 
     individual.plan_count = Int8(n - 1)
     # the bit means "holds at least one of this type", so it only clears once the last one goes
-    # the mask still describes the pre-removal block, so scan rather than trust it
+    # the mask is not updated yet, so scan the block
     if _mask_slot(tidx) != 0 && _plan_type_run_scan(store, individual, tidx)[2] == 0
         individual.membership_mask &= ~_membership_bit(tidx)
     end

@@ -163,8 +163,7 @@ end
     # an infection that ends before the peak is capped at m = 1
     m = min((profile.time_to_peak + 0.5) / duration, 1.0)
 
-    # solve the beta shape parameters for a mode at `m`, holding `α + β` fixed so that the curve
-    # spans the whole window rather than keeping a fixed width in ticks
+    # beta shape parameters for a mode at `m`, with `α + β` fixed so the curve spans the whole window
     spread = profile.concentration - 2.0
     a = m * spread + 1.0
     b = (1.0 - m) * spread + 1.0

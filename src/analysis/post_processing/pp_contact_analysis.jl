@@ -16,7 +16,7 @@ function _group_by_age(df::DataFrame)::DataFrame
 
     counts = _age_counts(df.age, Int(maximum(df.age)))
 
-    # ages nobody has count as 0.0, as the former join filled them; that makes the column `Real`
+    # ages nobody has count as 0.0, which makes the column `Real`
     sums = all(>(0), counts) ? counts : Real[c > 0 ? c : 0.0 for c in counts]
     return DataFrame(age = 0:(length(counts) - 1), sum = sums)
 end

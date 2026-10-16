@@ -282,9 +282,8 @@ function seed_scheduled!(simulation::Simulation)
     return nothing
 end
 
-# An import can only land on a host that is alive, not in hospital, not self-isolating, and not
-# already carrying the pathogen. Seeding runs before the individual loop and before the tick's
-# quarantine refresh, so death and quarantine are read off their ticks rather than their flags.
+# An import lands only on a host that is alive, not in hospital or isolating, and without the pathogen.
+# Seeding runs before this tick's flags are updated, so death and quarantine are read from their ticks.
 @inline _can_be_seeded(individual::Individual, pathogen_id::Int8, t::Int16) =
     !dead(individual) && !(Int16(0) <= individual.death <= t) &&
     !hospitalized(individual) && !is_quarantined(individual, t) &&
@@ -414,8 +413,7 @@ function is_dormant(simulation::Simulation)
         return false
     end
     
-    # wake up if a care transition or a death is due today. Deliberately not an "anything outstanding"
-    # test, which would hold the simulation awake up to the last scheduled event
+    # wake up if a care transition or a death is due today; later ones don't keep the simulation awake
     if any(s -> due_now(s, current_t), simulation.health_schedules)
         return false
     end
@@ -777,9 +775,8 @@ end
 const LISTED_PREFETCH_DISTANCE = 8
 const LISTED_PLAN_PREFETCH_DISTANCE = 4
 
-# Starts loading the individuals a loop over a list reaches next while it works on the one at `k`
-# of `n`: the `Individual` at `k + LISTED_PREFETCH_DISTANCE`, and the plan entries of the one at
-# `k + LISTED_PLAN_PREFETCH_DISTANCE`, read from its `Individual` fetched by an earlier call.
+# While a loop works on item `k` of `n`, prefetches the `Individual` `LISTED_PREFETCH_DISTANCE` ahead and
+# the plan entries of the one `LISTED_PLAN_PREFETCH_DISTANCE` ahead, whose `Individual` an earlier call fetched.
 @inline function _prefetch_listed_ahead(individual_at::F, n::Int, k::Int, plans::ActivityPlanStore) where {F}
     k + LISTED_PREFETCH_DISTANCE <= n && _prefetch(pointer_from_objref(individual_at(k + LISTED_PREFETCH_DISTANCE)), sizeof(Individual))
     if k + LISTED_PLAN_PREFETCH_DISTANCE <= n
@@ -843,9 +840,8 @@ function mark_deceased!(individual::Individual, sim::Simulation)
     return nothing
 end
 
-# Marks this tick's dead deceased, leaving their pools dirty for `update_population!` to repack.
-# Marking one moves the member it swaps with, so each setting is marked by one thread, and the
-# settings of a pooled type, which share their pool, all by the same one.
+# Marks this tick's dead deceased; `update_population!` repacks the pools. A mark swaps two members, so
+# each setting, and all settings of a pooled type, are marked by a single thread.
 function apply_deaths!(sim::Simulation)
     any(!isempty, sim.newly_dead) || return nothing
     cntnr = settingscontainer(sim)
