@@ -1404,6 +1404,22 @@ import GEMS: increment!, infected!
             @test GEMS.is_dormant(sim_gated) == true
         end
 
+        @testset "is_dormant wakes for infections staged by the stepmod" begin
+            sim = Simulation(pop_size = 100)
+            step!(sim)
+            @test GEMS.is_dormant(sim) == true
+
+            # a dormant tick's stepmod stages an infection, which only an awake tick flushes
+            ind = first(individuals(sim))
+            stepmod!(sim, s -> tick(s) == 1 && infect!(ind, s))
+            step!(sim)
+            @test GEMS.is_dormant(sim) == false
+
+            step!(sim)
+            @test GEMS.infected(ind)
+            @test statelogger(sim).exposed[end] + statelogger(sim).infectious[end] == 1
+        end
+
         @testset "copy_last_log_state" begin
             sim = Simulation(pop_size = 100)
             @test tick(sim) == 0

@@ -425,6 +425,11 @@ function is_dormant(simulation::Simulation)
         return false
     end
 
+    # wake up if infections were staged outside the spreading phase
+    if any(!isempty, simulation.infection_buffers)
+        return false
+    end
+
     # wake up if disease or quarantines are active
     sl = statelogger(simulation)
     
