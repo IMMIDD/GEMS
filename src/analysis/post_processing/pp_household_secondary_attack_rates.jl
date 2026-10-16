@@ -127,6 +127,7 @@ function _household_sar_counts(pathogens::Vector{Int8}, pathogen_ids::AbstractVe
                 if t0 + window <= last_tick && (isnothing(index_ticks) || t0 in index_ticks)
                     empty!(excluded)
                     exclude_prior && append!(excluded, prior)
+                    # members dead by the index tick stay in the household but are no contacts
                     for d in dead
                         dt[d] <= t0 && !(did[d] in excluded) && push!(excluded, did[d])
                     end

@@ -2,7 +2,8 @@ import GEMS: _mean_contacts_per_age_group,
     _individuals_per_age_group,
     _weighted_error_sum,
     _aggregate_populationDF_by_age,
-    _household_sar_counts
+    _household_sar_counts,
+    _dead_before_introduction
 
 @testset "Post Processing" begin
     # setting up post processor structure
@@ -153,6 +154,12 @@ import GEMS: _mean_contacts_per_age_group,
         @test nrow(har) > 0
         @test all(>(1), har.hh_size)
         @test !any(isnan, har.hh_attack_rate)
+
+        # household 1: id 5 died at 8, id 6 at 12, introducer id 1 at 10. Household 2: introducer id 7 died at its
+        # introduction tick, id 8 before it. Household 3 has no deaths.
+        dead = _dead_before_introduction(Int32[1, 2, 3], Int16[10, 9, 4], Int32[1, 7, 9],
+            Int32[2, 1, 1, 2, 0], Int32[7, 5, 6, 8, 11], Int16[9, 8, 12, 3, 1])
+        @test dead == [1, 1, 0]
     end
 
     @testset "Household SAR" begin
