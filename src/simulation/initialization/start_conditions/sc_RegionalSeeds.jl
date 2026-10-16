@@ -92,7 +92,7 @@ function initialize!(simulation::Simulation, condition::RegionalSeeds; seed_samp
         if is_state(parent_ags)
             return (a -> in_state(a, parent_ags)).(ags_vector)
         elseif is_county(parent_ags)
-            return (a -> in_state(a, parent_ags)).(ags_vector)
+            return (a -> in_county(a, parent_ags)).(ags_vector)
         else
             return parent_ags .== ags_vector
         end
