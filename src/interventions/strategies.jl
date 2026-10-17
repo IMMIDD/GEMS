@@ -148,6 +148,7 @@ struct IStrategy{S<:Simulation} <: Strategy
 
     """
     function IStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        _check_condition(condition, Individual, "IStrategy '$name'")
         str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
@@ -230,6 +231,7 @@ struct SStrategy{S<:Simulation} <: Strategy
 
     """
     function SStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        _check_condition(condition, Setting, "SStrategy '$name'")
         str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
@@ -310,6 +312,7 @@ calculated `delay` is added to the `offset` (if specified).
 function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
+    _check_condition(condition, Individual, "a measure of IStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
     return str
 end
@@ -319,8 +322,23 @@ end
 function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
     fn = SProcessFn(s -> process_measure(sim, s, measure))
+    _check_condition(condition, Setting, "a measure of SStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
     return str
+end
+
+"""
+    _check_condition(condition::Function, argtype::Type, owner::AbstractString)
+
+Throws an `ArgumentError` if the inferred return type of `condition` for an `argtype` argument is not a `Bool`;
+a condition inference cannot see through (`Any`) passes and fails at the call if it is wrong.
+"""
+function _check_condition(condition::Function, argtype::Type, owner::AbstractString)
+    for R in Base.return_types(condition, (argtype,))
+        R === Any || R <: Bool ||
+            throw(ArgumentError("The condition that you passed to $owner does not return a boolean value."))
+    end
+    return nothing
 end
 
 

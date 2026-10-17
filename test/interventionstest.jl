@@ -878,23 +878,11 @@ end
         step!(sim)
         @test all(h -> (length(individuals(h)) <= 5 || h.isopen), sim_settings)
 
+        # a condition that cannot return a Bool is rejected when the strategy or measure is built
         sim = Simulation()
-        i = Individual(id=1, age=10, sex=1)
-        i_measure_function = (i, sim) -> i.mandate_compliance = 0.4
-        custom_i_measure = CustomIMeasure(i_measure_function)
-        custom_i_strategy = IStrategy("custom i strategy", sim, condition=(_) -> nothing)
-        add_measure!(custom_i_strategy, custom_i_measure)
-        symptom_trigger = SymptomTrigger(custom_i_strategy)
-        add_symptom_trigger!(sim, symptom_trigger)
-        @test_throws ErrorException GEMS.trigger(symptom_trigger, i, sim)
-
-        s_measure_function = (s, simobj) -> (size(s) > 5 ? close!(s) : nothing)
-        custom_s_measure = CustomSMeasure(s_measure_function)
-        custom_s_strategy = SStrategy("custom s strategy", sim, condition=(_) -> nothing)
-        add_measure!(custom_s_strategy, custom_s_measure)
-        s_tick_trigger = STickTrigger(Office, custom_s_strategy)
-        add_tick_trigger!(sim, s_tick_trigger)
-        @test_throws ErrorException GEMS.trigger(s_tick_trigger, sim)
+        @test_throws ArgumentError IStrategy("custom i strategy", sim, condition=(_) -> nothing)
+        @test_throws ArgumentError SStrategy("custom s strategy", sim, condition=(_) -> nothing)
+        @test_throws ArgumentError add_measure!(IStrategy("measure condition", sim), SelfIsolation(14), condition=(_) -> nothing)
 
         #test should_fire function
         @testset "Testing should_fire" begin
@@ -940,9 +928,8 @@ end
             future_trigger = ITickTrigger(strategy, switch_tick = Int16(10), condition = s -> true)
             @test should_fire(future_trigger, sim) == false
 
-            # a non-boolean-returning condition raises a clear error, same as strategy conditions
-            bad_trigger = ITickTrigger(strategy, condition = s -> nothing)
-            @test_throws ErrorException should_fire(bad_trigger, sim)
+            # a non-boolean-returning condition is rejected when the trigger is built, same as strategy conditions
+            @test_throws ArgumentError ITickTrigger(strategy, condition = s -> nothing)
 
             # STickTrigger supports the same trigger-level condition
             s_strategy = SStrategy("s_strategy", sim)

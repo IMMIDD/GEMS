@@ -69,6 +69,7 @@ strategy will be fired in each tick. If only the `interval` is given, the strate
 will be fired from tick 1 onwards in the specified interval.
 An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
 simulation-wide state), regardless of `switch_tick`/`interval`.
+For large populations, the strategy's condition and delays are evaluated on several threads.
 
 # Parameters
 
@@ -117,6 +118,7 @@ struct ITickTrigger <: TickTrigger
             throw(ArgumentError("The interval must either be a positive integer or -1"))
         end
 
+        _check_condition(condition, Simulation, "a tick trigger")
         new(strategy, switch_tick, interval, SimPredicate(condition))
     end
 end
@@ -132,6 +134,7 @@ strategy will be fired in each tick. If only the `interval` is given, the strate
 will be fired from tick 1 onwards in the specified interval.
 An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
 simulation-wide state), regardless of `switch_tick`/`interval`.
+For many settings, the strategy's condition and delays are evaluated on several threads.
 
 # Parameters
 
@@ -178,6 +181,7 @@ struct STickTrigger <: TickTrigger
             throw(ArgumentError("The interval must either be a positive integer or -1"))
         end
 
+        _check_condition(condition, Simulation, "a tick trigger")
         new(settingtype, strategy, switch_tick, interval, SimPredicate(condition))
     end
 end
@@ -281,13 +285,7 @@ trigger-level `condition`.
 function should_fire(trigger::TickTrigger, sim::Simulation)
     should_fire(trigger, tick(sim)) || return(false)
 
-    cond = try
-        condition(trigger)(sim)
-    catch
-        throw(ErrorException("The condition that you passed to a tick trigger does not return a boolean value."))
-    end
-
-    return(cond)
+    return(condition(trigger)(sim))
 end
 
 
@@ -333,23 +331,7 @@ end
 Triggers the execution of the `IStrategy` associated with an `ITickTrigger` for all individuals in the model.
 """
 function trigger(itt::ITickTrigger, sim::Simulation)
-    _trigger_individuals!(itt |> strategy, sim |> population |> individuals, sim)
-end
-
-"""
-    _trigger_individuals!(str::IStrategy, indivs, sim::Simulation)
-
-Function barrier for `trigger(::ITickTrigger, ::Simulation)`.
-
-`strategy(itt)` returns an abstractly-typed `IStrategy` (the trigger stores it in an abstract
-field). Passing it through this function causes Julia to dispatch on its runtime type once and
-compile a specialization in which `str` is concretely typed, so the `trigger_strategy` call inside
-the loop is statically resolved instead of dispatching per individual.
-"""
-function _trigger_individuals!(str::IStrategy, indivs, sim::Simulation)
-    for i in indivs
-        trigger_strategy(str, i, sim)
-    end
+    _trigger_all!(itt |> strategy, sim |> population |> individuals, sim)
 end
 
 """
@@ -359,25 +341,47 @@ Triggers the execution of the `SStrategy` for all settings of the specified `set
 associated with an `STickTrigger`.
 """
 function trigger(stt::STickTrigger, sim::Simulation)
-    _trigger_settings!(stt |> strategy, get(settingscontainer(sim), stt |> settingtype), sim)
+    _trigger_all!(stt |> strategy, get(settingscontainer(sim), stt |> settingtype), sim)
 end
 
 """
-    _trigger_settings!(str::SStrategy, stngs::Vector, sim::Simulation)
+    _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
 
-Function barrier for `trigger(::STickTrigger, ::Simulation)`.
-
-`get(settingscontainer(sim), type)` returns `Vector` (abstract element type) because the
-`SettingsContainer` dict has value type `Vector`
-
-Passing the vector to this function causes Julia to dispatch on its runtime type
-(e.g. `Vector{Office}`) and compile a specialization in which `s` is concretely typed,
-so the `trigger_strategy` call inside the loop is statically resolved.
+Triggers `str` for every object in `objs`, in order; a function barrier, so the loop is static for the
+strategy's and the vector's concrete types. From `TICK_TRIGGER_THREADING_MIN` objects on, the loop runs on
+all threads and stages its events, which `flush_staging!` then merges in the serial order.
 """
-function _trigger_settings!(str::SStrategy, stngs::Vector, sim::Simulation)
-    for s in stngs
-        trigger_strategy(str, s, sim)
+function _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
+    n = length(objs)
+    if n < TICK_TRIGGER_THREADING_MIN
+        for o in objs
+            trigger_strategy(str, o, sim)
+        end
+        return nothing
     end
+    per_thread = cld(n, Threads.nthreads())
+    try
+        # contiguous chunks in thread order, so the staging buffers merge in the serial order
+        Threads.@threads :static for c in 1:Threads.nthreads()
+            _trigger_range!(str, objs, ((c - 1) * per_thread + 1):min(c * per_thread, n), sim)
+        end
+    catch e
+        throw(_thread_exception(e))
+    end
+    flush_staging!(event_queue(sim))
+    return nothing
+end
+
+"""
+    _trigger_range!(str::Strategy, objs::AbstractVector, r::UnitRange{Int}, sim::Simulation)
+
+Triggers `str` for `objs[r]`, in order, staging the events.
+"""
+function _trigger_range!(str::Strategy, objs::AbstractVector, r::UnitRange{Int}, sim::Simulation)
+    for k in r
+        trigger_strategy(str, @inbounds(objs[k]), sim, staged = true)
+    end
+    return nothing
 end
 
 """
@@ -395,12 +399,7 @@ of the provided `IStrategy` and the specified `Individual`.
 """
 function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation; staged::Bool = false)
     # if condition is not met, return without executing measures
-    cond = try
-        str.condition(i)
-    catch
-        # throw error if user provided a function that doesn't return a boolean value
-        throw(ErrorException("The condition that you passed to IStrategy '$(str.name)' does not return a boolean value."))
-    end
+    cond = str.condition(i)
 
     if !cond
         return
@@ -417,7 +416,7 @@ function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation; staged
 end
 
 """
-    trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
+    trigger_strategy(str::SStrategy, s::Setting, sim::Simulation; staged::Bool = false)
 
 Enqueues an `SMeasureEvent` in the `Simulation` event queue for all `SMeasures` 
 of the provided `SStrategy` and the specified `Setting`.
@@ -427,28 +426,23 @@ of the provided `SStrategy` and the specified `Setting`.
 - `str::SStrategy`: Strategy that is being triggered
 - `s::Setting`: Setting that the tiggered strategy is applied to
 - `sim::Simulation`: Simulation object
+- `staged::Bool = false`: stage events lock-free (via `stage!`) instead of `enqueue!`; set when triggered from a parallel loop
 """
-function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
+function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation; staged::Bool = false)
     # if condition is not met, return without executing measures
-    cond = try
-        str.condition(s)
-    catch
-        # throw error if user provided a function that doesn't return a boolean value
-        throw(ErrorException("The condition that you passed to SStrategy '$(str.name)' does not return a boolean value."))
-    end
+    cond = str.condition(s)
 
     if !cond
         return
     end
     
+    eq = event_queue(sim)
     # generate one MeasureEvent for each associated measure and push it to the Simulation's event queue
     for me in str |> measures
-        # enqueue measure events with the current tick and the added delay
-        sim |> event_queue |>
-            x -> enqueue!(x,
-                SMeasureEvent(s, measure(me)::SMeasure, condition(me), process_fn(me)),
-                Int16(tick(sim) + offset(me) + delay(me)(s))
-            )
+        ev = SMeasureEvent(s, measure(me)::SMeasure, condition(me), process_fn(me))
+        # schedule for the current tick plus the measure's offset and added delay
+        t = Int16(tick(sim) + offset(me) + delay(me)(s))
+        staged ? stage!(eq, ev, t) : enqueue!(eq, ev, t)
     end
 end
 
