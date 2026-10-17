@@ -26,8 +26,7 @@ function setting_age_contacts(postProcessor::PostProcessor, settingtype::Type{T}
 
     for x in 1:nrow(df)
         if a_id_col[x] != b_id_col[x]
-            # (Optional minor optimization) adding Int32(1) instead of standard Int64 1 
-            # prevents the compiler from having to promote and then demote the integer
+            # Int32(1) avoids promoting to Int64 and back
             co_age[a_age_col[x]+1, b_age_col[x]+1] += Int32(1)
         end
     end

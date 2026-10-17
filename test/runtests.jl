@@ -30,6 +30,7 @@ include("testutils.jl")
         "diseaseprogressiontest.jl",
         "healthprogressiontest.jl",
         "settingstest.jl",
+        "activityplanstest.jl",
         "simulationtest.jl",
         "infectionstest.jl",
         "registriestest.jl",

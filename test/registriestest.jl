@@ -47,7 +47,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(2), Int32(2), dp2)  # overflow node 1
 
             # remove cache slot 1; should promote overflow node into cache
-            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, false))
+            remove_infection!(reg, i, _EndedInfection(i, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, false))
             @test i.infection_cache[1].pathogen_id == Int8(2)
             @test i.infection_head == Int32(0)
             @test length(reg.free_slots) == 1  # freed overflow slot returned to pool
@@ -63,7 +63,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(2), Int32(2), dp2)
 
             # remove the overflow node (index 1 in reg.states)
-            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))
+            remove_infection!(reg, i, _EndedInfection(i, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))
             @test i.infection_head == Int32(0)
             @test !isempty(reg.free_slots)  # slot returned to pool
         end
@@ -79,7 +79,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             push_infection!(reg, i, Int8(2), Int32(2), dp)  # overflow node 1
             push_infection!(reg, i, Int8(3), Int32(3), dp)  # overflow node 2 (new head)
 
-            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))  # remove non-head node (pid2)
+            remove_infection!(reg, i, _EndedInfection(i, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))  # remove non-head node (pid2)
             @test i.infection_head == Int32(2)   # head still points to pid3's node
             @test length(reg.free_slots) == 1
         end
@@ -91,7 +91,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
 
             push_infection!(reg, i, Int8(1), Int32(1), dp)
             push_infection!(reg, i, Int8(2), Int32(2), dp)
-            remove_infection!(reg, i, _EndedInfection(i.id, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))  # free overflow slot 1
+            remove_infection!(reg, i, _EndedInfection(i, Int32(1), GEMS.DEFAULT_TICK, GEMS.DEFAULT_PATHOGEN_ID, true))  # free overflow slot 1
             push_infection!(reg, i, Int8(3), Int32(3), dp)  # should reuse slot 1
 
             @test length(reg.states) == 1  # no new allocation, reused existing slot
@@ -138,7 +138,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             i_r = Individual(id=1, sex=0, age=30)
             push_infection!(reg_r, i_r, Int8(1), Int32(1), dp_r)
             buf_r = _EndedInfection[]
-            progress_disease!(i_r, reg_r, (Pathogen(id=1, name="P1"),), buf_r, Int16(10), Xoshiro())
+            progress_disease!(i_r, reg_r, (Pathogen(id=1, name="P1"),), buf_r, Int16(10), 1)
             @test length(buf_r) == 1
             @test buf_r[1].pathogen_id == Int8(1)
             @test buf_r[1].recovery == Int16(5)
@@ -246,7 +246,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
 
         @testset "ImmunityState acquired-tick predicates" begin
             # natural-only, acquired at tick 10
-            nat = ImmunityState(Int32(0), Int16(10), GEMS.DEFAULT_TICK, Int8(0), Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0))
+            nat = ImmunityState(Int32(0), Int16(10), GEMS.DEFAULT_TICK, Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0))
             @test natural_immunity_recorded(nat)
             @test !vaccine_immunity_recorded(nat)
             @test natural_immunity_pending(nat, Int16(9))
@@ -258,7 +258,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             @test !immunity_active(nat, Int16(9))
 
             # vaccine-only, acquired at tick 5
-            vac = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(5), Int8(0), Int8(1), Int8(1), Int8(1))
+            vac = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(5), Int8(1), Int8(1), Int8(1))
             @test !natural_immunity_recorded(vac)
             @test vaccine_immunity_recorded(vac)
             @test vaccine_immunity_pending(vac, Int16(4))
@@ -267,8 +267,11 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             @test !natural_immunity_active(vac, Int16(100))  # no natural record
 
             # both sources
-            both = ImmunityState(Int32(0), Int16(10), Int16(5), Int8(0), Int8(1), Int8(1), Int8(1))
+            both = ImmunityState(Int32(0), Int16(10), Int16(5), Int8(1), Int8(1), Int8(1))
             @test natural_immunity_recorded(both) && vaccine_immunity_recorded(both)
+
+            # the deprecated form with an immunity level drops the level
+            @test ImmunityState(Int32(0), Int16(10), Int16(5), Int8(40), Int8(1), Int8(1), Int8(1)) == both
             @test immunity_active(both, Int16(5))            # vaccine active, natural pending
             @test natural_immunity_pending(both, Int16(5))
 

@@ -25,7 +25,7 @@ export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export InfectionSeed, seeding_schedule
 export rng, rngs, seed
-export present_buffers, contact_buffers
+export contact_buffers
 
 export info
 
@@ -84,6 +84,7 @@ Here's a list of all available parameters:
 | `avg_office_size`         | `Float`                                | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
 | `avg_school_size`         | `Float`                                | Average school size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
 | `global_setting`          | `Bool`                                 | Flag indicating whether to use the global setting.                                                                                                                                |
+| `membershipsfile`         | `String`                               | Path to a CSV file holding settings beyond each type's primary (see `memberships`).                                                                                               |
 | `settingsfile`            | `String`                               | Path to a settings file.                                                                                                                                                          |
 | `household_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
 | `office_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
@@ -234,17 +235,34 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # TRANSMISSION PRE-THINNING
+    prethinning::Bool
+
+    # INFECTIOUS INDIVIDUALS
+    # who each thread's part of the disease-update sweep found infectious this tick; the
+    # transmission phase goes through exactly these
+    infectious_individuals::Vector{Vector{Individual}}
+
     # PER-INDIVIDUAL FLAGS
-    # who the disease-update loop and state log must visit
+    # who the disease-update loop must visit
     active_individuals::Vector{Bool}
     # who has a quarantine that has not ended yet
     quarantined_individuals::Vector{Bool}
+    # when each individual's next disease update is due, and what its last one found
+    update_states::Vector{_UpdateState}
 
     # THREAD-LOCAL BUFFERS
-    present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
+    # one sampler call's draws, for scaled hosts that call a sampler more than once
+    draw_buffers::Vector{Vector{Individual}}
+    # who each thread's part of the disease-update sweep found dead this tick
+    newly_dead::Vector{Vector{Individual}}
+    # what each thread counted for the state log
+    state_log_counts::Vector{_StateLogCounts}
     infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{_EndedInfection}}
+    # per shard, the attempt that wins each contested (host, pathogen) this tick
+    deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
 
     # inner default constructor
     function Simulation(
@@ -316,15 +334,25 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             seed,
             rngs,
 
+            # TRANSMISSION PRE-THINNING
+            all(_prethinnable, pathogens),
+            
+            # INFECTIOUS INDIVIDUALS
+            _thread_local_vector(Vector{Individual}),
+
             # PER-INDIVIDUAL FLAGS
             zeros(Bool, length(population.individuals)),
             zeros(Bool, length(population.individuals)),
-            
+            fill(_UpdateState(), length(population.individuals)),
+
             # INITIALIZE BUFFERS
-            _thread_local_vector(Vector{Individual}), # present_buffers
             _thread_local_vector(Vector{Individual}), # contact_buffers
+            _thread_local_vector(Vector{Individual}), # draw_buffers
+            _thread_local_vector(Vector{Individual}), # newly_dead
+            _thread_local_vector(_StateLogCounts), # state_log_counts
             _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
-            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)) # removal buffers matrix
+            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)), # removal buffers matrix
+            _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards)) # deduplication winners
         )
 
         # increase simulation counter
@@ -383,6 +411,7 @@ function _BUILD_Simulation(;
         # settings
         global_setting = nothing,
         settingsfile = nothing,
+        membershipsfile = nothing,
 
         # contacts
         household_contacts = nothing,
@@ -419,6 +448,12 @@ function _BUILD_Simulation(;
         # seed
         seed = nothing,
 
+        # setting pool
+        pool_slack = nothing,
+
+        # transmission pre-thinning
+        transmission_prethinning = nothing,
+
         # individual extensions
         ind_extension = nothing
 )
@@ -427,10 +462,13 @@ function _BUILD_Simulation(;
     configpath = configfile_path(configfile)
     config = load_configfile(configpath)
 
+    # SETTING TYPES, before the population files that may name them
+    determine_setting_types!(config)
+
     # SEED
     rng_seed = determine_seed(config, seed)
     master_rng = Xoshiro(rng_seed)
-    rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+    rngs = _thread_local_rngs(master_rng)
 
     # GLOBAL SETTING FLAG
     gs = determine_global_setting(config, global_setting)
@@ -446,7 +484,8 @@ function _BUILD_Simulation(;
         avg_school_size,
         settingsfile,
         rngs[1],
-        ind_extension
+        ind_extension;
+        membershipsfile = membershipsfile
     )
 
     # everything after this is just generating, not loading from disk
@@ -521,6 +560,11 @@ function _BUILD_Simulation(;
     )
 
     precompute_ags!(sim)
+    build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
+    determine_transmission_prethinning(config, transmission_prethinning) || (sim.prethinning = false)
+    _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
+    _check_global_positions(sim.population, settingscontainer(sim))
+    _refresh_rate_bounds!(settingscontainer(sim))
 
     # update label
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
@@ -568,6 +612,25 @@ function _thread_local_matrix(T::Type, make = T)
         isassigned(m, i) || (m[i] = make())
     end
     return m
+end
+
+"""
+    _thread_local_rngs(master::Xoshiro)
+
+Returns one `Xoshiro` per thread id, seeded from `master` in thread-id order, each created on the thread that uses it.
+"""
+function _thread_local_rngs(master::Xoshiro)
+    seeds = [gems_rand(master, UInt) for _ in 1:Threads.maxthreadid()]
+    v = Vector{Xoshiro}(undef, length(seeds))
+    # every draw writes the generator, so neighbours on one cache line would contend (see `_thread_local_vector`)
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        t = Threads.threadid()
+        v[t] = Xoshiro(seeds[t])
+    end
+    for i in eachindex(v)
+        isassigned(v, i) || (v[i] = Xoshiro(seeds[i]))
+    end
+    return v
 end
 
 
@@ -837,7 +900,7 @@ function determine_health_progression(configfile_params::Dict, health_progressio
     policy = !isnothing(health_progression) ? health_progression :
         !isnothing(section) ? section : DefaultHealthProgression()
 
-    # a section from a config the caller did not write loses to health they embedded themselves
+    # health embedded on explicitly passed pathogens overrides the config's deprecated care section
     if !isnothing(baseline) && pathogens_explicit && embedded
         @warn "Embedded health parameters were found on explicitly-passed pathogens, therefore the config's deprecated care parameters will be ignored."
         baseline = nothing
@@ -849,12 +912,12 @@ function determine_health_progression(configfile_params::Dict, health_progressio
             "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category health, drop the legacy " *
             "categories and embed a `HealthProfile` on each progression instead."))
         has_section && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
-        # the tier profiles only reach the modern categories mixed in alongside legacy ones
+        # the default tier profiles only apply to modern categories mixed in with the legacy ones
         return policy, _harvest_legacy_health_profiles(pathogens,
             StandardOfCare(severe = SevereHealthProfile(), critical = CriticalHealthProfile()))
     end
 
-    # warn once here rather than once per uncovered category; only the default policy needs the index
+    # one warning for all uncovered categories; only the default policy needs the index
     if !embedded && isnothing(baseline)
         policy isa DefaultHealthProgression && @warn "No health parameters were embedded on any progression; no hospitalization, ICU admission, or health-related death will occur."
         return policy, HealthProfileIndex()
@@ -929,9 +992,10 @@ end
 Determines the population and settings for the simulation based on the provided parameters.
 If a `population` string is provided, it will be used to load the population from a file or obtain remote files.
 If a `settingsfile` is provided, it will be used to load the settings from a file.
+If a `membershipsfile` is provided, the settings beyond each type's primary are read from it.
 If neither is provided, an error will be thrown.
 """
-function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing)
+function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing, membershipsfile = nothing)
     # if a path was provided, load the population from the file, otherwise assume it's a population identifier
     (pop_path, settings_path) = try
         is_pop_file(population) ? (population, settingsfile) : obtain_remote_files(population)
@@ -943,7 +1007,7 @@ function determine_population(population::String, settingsfile, global_setting; 
         !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
     end
 
-    pop = Population(pop_path; ind_extension = ind_extension)
+    pop = Population(pop_path; ind_extension = ind_extension, memberships = membershipsfile)
     settings, renaming = settings_from_population(pop, global_setting)
 
     if !isnothing(settings_path)
@@ -961,20 +1025,20 @@ Determines the population and settings for the simulation based on the provided 
 If a `population` is provided, it will be used to load the population from a file or obtain remote files.
 If not, it will create a new population based on the provided parameters or config file parameters.
 """
-function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension)
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension; membershipsfile = nothing)
     # if population is provided, use it
     if !isnothing(population)
         # if a Population object is provided, use it
         if isa(population, Population)
             # throw warning if any other parameters were provided
-            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, and settingsfile will be ignored."
+            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, membershipsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, and membershipsfile will be ignored."
             if ind_extension isa AbstractVector{Symbol}
                 @warn """ind_extension as Vector{Symbol} requires the original DataFrame, which is not retained in a pre-built Population. Either:
                         - pass the DataFrame directly:  Simulation(population = df, ind_extension = ...)
                         - or apply it at construction:  Population(df; ind_extension = ...)"""
             elseif !isnothing(ind_extension)
                 # apply ind_extension to the population if provided
-                population = Population(dataframe(population); ind_extension = ind_extension) 
+                population = Population(dataframe(population); ind_extension = ind_extension, memberships = memberships(population)) 
             end
             settings, renaming = settings_from_population(population, global_setting)
             return population, settings
@@ -983,7 +1047,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         # if a DataFrame is provided, build the population from it directly
         if isa(population, DataFrame)
             !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A DataFrame was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
-            pop = Population(population; ind_extension = ind_extension)
+            pop = Population(population; ind_extension = ind_extension, memberships = membershipsfile)
             settings, renaming = settings_from_population(pop, global_setting)
             return pop, settings
         end
@@ -994,7 +1058,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
 
         # if a population file path is provided, load the population from the file
-        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension)
+        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension, membershipsfile = membershipsfile)
     end
 
     # if no population is provided, use the provided parameters
@@ -1029,7 +1093,7 @@ have no state to share, so all settings hold the same one.
 function _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
     isempty(setting_list) && return
     if isbitstype(typeof(method))
-        # storing into the abstract field boxes; reuse the first setting's box instead of one per setting
+        # storing into the abstract field boxes, so all settings share the first setting's box
         first_setting = setting_list[1]::settingtype
         first_setting.contact_sampling_method = method
         boxed = first_setting.contact_sampling_method
@@ -1044,6 +1108,42 @@ function _set_contact_sampling_method!(setting_list::Vector, method, settingtype
         end
     end
 end
+"""
+    determine_setting_types!(configfile_params::Dict)
+
+Registers the setting type each `[Settings.<Name>]` section names, with its optional `char`: a struct
+type of that name, or else a new `DeclaredSetting`. Runs before the population loads, whose files may
+name these types.
+"""
+function determine_setting_types!(configfile_params::Dict)
+    _haspath(configfile_params, ["Settings"]) || return nothing
+    sections = configfile_params["Settings"]
+    # sorted, so a config registers its types in the same order every time
+    for name in sort!(collect(keys(sections)))
+        section = sections[name]
+        section isa Dict || continue
+        char = _config_char(section, name)
+        T = _registered_setting_type(name)
+        if T !== nothing
+            # a type registered before keeps its char; a built-in's is fixed
+            (char === nothing || get(SETTING_TYPE_CHARS, T, nothing) == char) || throw(ArgumentError(
+                "[Settings.$name] sets char '$char', but $T is already registered with another char"))
+            continue
+        end
+        _resolve_setting_type(name; char = char) === nothing && declare_setting_type!(name; char = char)
+    end
+    return nothing
+end
+
+# A section's `char` key as a `Char`, or `nothing` without one.
+function _config_char(section::Dict, name::AbstractString)
+    haskey(section, "char") || return nothing
+    c = section["char"]
+    (c isa AbstractString && length(c) == 1) || throw(ArgumentError(
+        "[Settings.$name] char must be a single character, got $(repr(c))"))
+    return only(c)
+end
+
 """
     determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
 
@@ -1076,24 +1176,24 @@ function determine_setting_type_config!(stngs::SettingsContainer, type::DataType
             _set_contact_sampling_method!(setting_list, method, type)
             return stngs
         else
-            throw(ArgumentError("Provided parameter for `$(structname(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
+            throw(ArgumentError("Provided parameter for `$(setting_type_name(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
         end
     end
 
     # if no custom parameters are provided, check if config file has section for the setting type
-    if !_haspath(configfile_params, ["Settings", structname(type)])
-        @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+    if !_haspath(configfile_params, ["Settings", setting_type_name(type)])
+        @warn "`$(setting_type_name(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
 
     # check if the setting type has a config part for contact sampling method
-    if !_haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
-        @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+    if !_haspath(configfile_params, ["Settings", setting_type_name(type), "contact_sampling_method"])
+        @warn "`contact_sampling_method` for `$(setting_type_name(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
 
     # build contact sampling method
-    csm_params = configfile_params["Settings"][structname(type)]["contact_sampling_method"]
+    csm_params = configfile_params["Settings"][setting_type_name(type)]["contact_sampling_method"]
     sampling_method = create_contact_sampling_method(csm_params)
     
     # Apply the sampling method
@@ -1208,6 +1308,43 @@ function determine_seed(configfile_params::Dict, seed)
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
     _printinfo("\u2514 Initializing RNG with seed $sd")
     return sd
+end
+
+"""
+    determine_pool_slack(configfile_params::Dict, pool_slack)
+
+Determines the headroom each setting pool block carries, as a fraction of its length.
+If a `pool_slack` is provided, it will be used.
+If not, it will look for `Simulation.pool_slack` in the config file.
+If neither is found, it defaults to `DEFAULT_POOL_SLACK`.
+"""
+function determine_pool_slack(configfile_params::Dict, pool_slack)
+    ps = pool_slack
+    if isnothing(ps)
+        _haspath(configfile_params, ["Simulation", "pool_slack"]) || return DEFAULT_POOL_SLACK
+        ps = configfile_params["Simulation"]["pool_slack"]
+    end
+    !isa(ps, Real) && throw(ArgumentError("Provided pool slack must be a non-negative number."))
+    ps < 0 && throw(ArgumentError("Provided pool slack must not be negative, got $ps."))
+    return Float64(ps)
+end
+
+"""
+    determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+
+Determines whether spreading thins contacts by the pathogens' transmission bounds.
+If a `transmission_prethinning` flag is provided, it will be used.
+If not, it will look for `Simulation.transmission_prethinning` in the config file.
+If neither is found, it defaults to `true`.
+"""
+function determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+    tp = transmission_prethinning
+    if isnothing(tp)
+        _haspath(configfile_params, ["Simulation", "transmission_prethinning"]) || return true
+        tp = configfile_params["Simulation"]["transmission_prethinning"]
+    end
+    !isa(tp, Bool) && throw(ArgumentError("transmission_prethinning flag must be a boolean value!"))
+    return tp
 end
 
 
@@ -1855,14 +1992,6 @@ function seed(simulation::Simulation)
     return simulation.seed
 end
 
-"""
-    present_buffers(simulation::Simulation)
-
-Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
-"""
-function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
-    return simulation.present_buffers
-end
 
 """
     contact_buffers(simulation::Simulation)
@@ -1876,10 +2005,14 @@ end
 # Frees the capacity the per-tick buffers grew to during a run
 function _release_tick_buffers!(simulation::Simulation)
     release!(buf) = sizehint!(buf, length(buf))
-    foreach(release!, simulation.present_buffers)
+    foreach(release!, simulation.infectious_individuals)
     foreach(release!, simulation.contact_buffers)
+    foreach(release!, simulation.draw_buffers)
+    foreach(release!, simulation.newly_dead)
+    foreach(t -> release!(t.in_care), simulation.state_log_counts)
     foreach(release!, simulation.infection_buffers)
     foreach(release!, simulation.removal_buffers)
+    foreach(release!, simulation.deduplication_winners)
     return nothing
 end
 
@@ -1910,6 +2043,13 @@ Returns the population associated with the simulation run.
 function population(simulation::Simulation)
     return simulation.population
 end
+
+"""
+    activity_plans(simulation::Simulation)
+
+Returns the `ActivityPlanStore` holding every individual's setting memberships.
+"""
+@inline activity_plans(simulation::Simulation)::ActivityPlanStore = activity_plans(simulation.population)
 
 """
     populationDF(simulation::Simulation)
@@ -2125,31 +2265,29 @@ end
 
 
 """
-    get_pathogen(sim, pid)
- 
-Retrieves the pathogen with the given `Int8` id. Uses a `@generated` if/elseif
-chain so Julia resolves dispatch statically (union-splitting) for up to 8
-distinct pathogen types.
-"""
-@generated function get_pathogen(sim::Simulation{P}, pid::Int8) where P
-    N = fieldcount(P)
-    checks = [:(sim.pathogens[$i].id == pid && return sim.pathogens[$i]) for i in 1:N]
-    return quote
-        $(checks...)
-        throw(ArgumentError("No pathogen with id $pid found in simulation."))
-    end
-end
+    get_pathogen(sim::Simulation, pid::Int8)
 
+Retrieves the pathogen with the given `Int8` id from the simulation.
+"""
+get_pathogen(sim::Simulation, pid::Int8) = get_pathogen(sim.pathogens, pid)
+
+# _with_pathogen's generated if-chain; identity returns the pathogen itself
 """
     get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
 
-Retrieve a pathogen by id from a typed Tuple of pathogens. Emits a static
-`if/elseif` chain at compile time so each branch returns a concrete type,
-enabling union-splitting at the callsite with no dynamic dispatch.
+Retrieve a pathogen by id from a typed Tuple of pathogens; call sites union-split on the result.
 """
-@generated function get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple}
+get_pathogen(pathogens::P, pid::Int8) where {P<:Tuple} = _with_pathogen(identity, pathogens, pid)
+
+"""
+    _with_pathogen(f, pathogens::P, pid::Int8) where {P<:Tuple}
+
+Calls `f` on the pathogen with id `pid`. Type-stable for any number of pathogen types if `f` returns
+one type.
+"""
+@generated function _with_pathogen(f::F, pathogens::P, pid::Int8) where {F, P<:Tuple}
     N = fieldcount(P)
-    checks = [:(pathogens[$i].id == pid && return pathogens[$i]) for i in 1:N]
+    checks = [:(pathogens[$i].id == pid && return f(pathogens[$i])) for i in 1:N]
     return quote
         $(checks...)
         throw(ArgumentError("No pathogen with id $pid found."))
@@ -2158,9 +2296,9 @@ end
 
 
 """
-    get_pathogen(sim::Simulation, pid::Int8)
+    get_pathogen(simulation::Simulation, pname::String)
 
-Retrieves a specific `Pathogen` object from the simulation's dict using the pathogen's name.
+Retrieves a specific `Pathogen` object from the simulation using the pathogen's name.
 An empty `pname` returns the only pathogen and throws if the simulation has more than one.
 """
 function get_pathogen(simulation::Simulation, pname::String)
@@ -2390,7 +2528,21 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     end
     fill!(simulation.active_individuals, false)
     fill!(simulation.quarantined_individuals, false)
+    fill!(simulation.update_states, _UpdateState())
     reset_tick!(simulation)
+
+    # the dead are alive again, so they return to their settings' frames
+    plans = activity_plans(simulation)
+    foreach_setting_vector(settingscontainer(simulation)) do vec
+        for s in vec
+            s isa IndividualSetting && _clear_deceased!(s, plans)
+        end
+    end
+    repack_dirty_pools!(settingscontainer(simulation))
+    foreach(empty!, simulation.newly_dead)
+    foreach(_reset!, simulation.state_log_counts)
+    # measures may have changed sampling methods since the last scan
+    _refresh_rate_bounds!(settingscontainer(simulation))
 
     # Reset all loggers
     pop = population(simulation)
@@ -2425,7 +2577,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # Re-initialize RNGs
     if !isnothing(simulation.seed)
         master_rng = Xoshiro(simulation.seed)
-        simulation.rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+        simulation.rngs = _thread_local_rngs(master_rng)
     end
 
     # Initialize the simulation's start condition
@@ -2601,7 +2753,7 @@ function info(sim::Simulation)
 
     res *= "\u2514 Population ($(sim |> population |> size) individuals):\n"
     for st in settingtypes(settingscontainer(sim))
-        res *= "  \u2514 $(st)s: $(get(settingscontainer(sim), st) |> length)\n"
+        res *= "  \u2514 $(setting_type_name(st))s: $(get(settingscontainer(sim), st) |> length)\n"
     end
 
     res *= "\u2514 Start Condition: $(sim |> start_condition)\n"

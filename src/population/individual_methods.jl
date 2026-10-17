@@ -7,6 +7,7 @@
 # EXPORTS
 # setting membership and lookup
 export household, office, schoolclass, getsetting, settings_tuple
+export membership_setting_types
 # registry-based getters
 export get_infection_state, get_immunity_state
 export infection_id
@@ -36,59 +37,200 @@ export progress_disease!
 """
     membership_setting_types(::Type{Individual})
 
-The `IndividualSetting` types an `Individual` can be a member of via a dedicated `Int32` field.
+The `IndividualSetting` types an `Individual` may hold a plan entry for. `GlobalSetting` is
+excluded; it holds everyone, and `setting_id` answers for it from the constant.
 """
 membership_setting_types(::Type{Individual}) = (Household, Office, SchoolClass, Municipality)
 
 """
-    setting_id(individual::Individual, ::Type{T}) where {T<:Setting}
+    setting_id(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
 
-Returns the id of the setting of type `T` associated with the individual. Dispatched per
-type (the type → field map); falls back to `DEFAULT_SETTING_ID` when the individual is not
-part of a setting of that type.
+Returns the id of the individual's primary setting of type `T` (the first entry of that type),
+or `DEFAULT_SETTING_ID`.
 """
-@inline setting_id(individual::Individual, ::Type{Household}) = individual.household
-@inline setting_id(individual::Individual, ::Type{Office}) = individual.office
-@inline setting_id(individual::Individual, ::Type{SchoolClass}) = individual.schoolclass
-@inline setting_id(individual::Individual, ::Type{Municipality}) = individual.municipality
-@inline setting_id(individual::Individual, ::Type{GlobalSetting}) = GLOBAL_SETTING_ID # there is only one GlobalSetting
-@inline setting_id(individual::Individual, ::Type{<:Setting}) = DEFAULT_SETTING_ID
-
-"""
-    setting_id!(individual::Individual, ::Type{T}, id::Int32) where {T<:Setting}
-
-Changes the assigned setting id of the individual for the given type of setting to `id`.
-Types without a dedicated field (e.g. `GlobalSetting`) are a no-op.
-"""
-@inline setting_id!(individual::Individual, ::Type{Household}, id::Int32) = (individual.household = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{Office}, id::Int32) = (individual.office = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{SchoolClass}, id::Int32) = (individual.schoolclass = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{Municipality}, id::Int32) = (individual.municipality = id; nothing)
-@inline setting_id!(individual::Individual, ::Type{<:Setting}, id::Int32) = nothing
-
-"""
-    settings_tuple(individual::Individual)
-
-Returns all individual's associated setting IDs as a Tuple of `(type, id)` pairs.
-Derived from `membership_setting_types(Individual)`.
-"""
-settings_tuple(individual::Individual) = map(T -> (T, setting_id(individual, T)), membership_setting_types(Individual))
-
-"""
-    activate_memberships!(c::Individual, sim::Simulation)
-
-Activates every setting the individual `c` belongs to (and, recursively, their containers).
-Unrolls over `membership_setting_types(Individual)` so each access is type-stable.
-"""
-@inline activate_memberships!(c::Individual, sim::Simulation) = _activate_memberships!(c, sim, membership_setting_types(Individual)...)
-@inline _activate_memberships!(c::Individual, sim::Simulation) = nothing
-@inline function _activate_memberships!(c::Individual, sim::Simulation, ::Type{T}, rest...) where {T<:IndividualSetting}
-    sid = setting_id(c, T)
-    if sid != DEFAULT_SETTING_ID
-        activate!(settings(sim, T)[sid], sim)
-    end
-    _activate_memberships!(c, sim, rest...)
+@inline function setting_id(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Int32 where {T<:Setting}
+    slot = plan_slot(plans, individual, T)
+    slot == 0 && return DEFAULT_SETTING_ID
+    return @inbounds setting_id(plans.entries[slot])
 end
+
+# there is only one GlobalSetting and everyone is in it, so it needs no entry
+@inline setting_id(individual::Individual, ::Type{GlobalSetting}, plans::ActivityPlanStore)::Int32 = GLOBAL_SETTING_ID
+
+"""
+    setting_id(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting}
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+@inline setting_id(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting} =
+    setting_id(individual, T, activity_plans(sim))
+
+"""
+    setting_ids(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
+
+Returns the ids of every setting of type `T` the individual belongs to, primary first.
+"""
+function setting_ids(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Vector{Int32} where {T<:Setting}
+    return Int32[@inbounds(setting_id(plans.entries[s])) for s in plan_slots(plans, individual, T)]
+end
+
+# there is only one GlobalSetting and everyone is in it, so it needs no entry
+setting_ids(individual::Individual, ::Type{GlobalSetting}, plans::ActivityPlanStore)::Vector{Int32} = [GLOBAL_SETTING_ID]
+
+"""
+    setting_ids(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting}
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+setting_ids(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting} =
+    setting_ids(individual, T, activity_plans(sim))
+
+"""
+    setting_ids(individual::Individual, ::Type{T}, sim::Simulation) where {T<:ContainerSetting}
+
+Returns the ids of every container of type `T` above the individual's settings, primary first and each once
+"""
+function setting_ids(individual::Individual, ::Type{T}, sim::Simulation)::Vector{Int32} where {T<:ContainerSetting}
+    L = _leaf_type(T)
+    plans = activity_plans(sim)
+    leaves = settings(sim, L)
+    ids = Int32[]
+    for slot in plan_slots(plans, individual, L)
+        cid = _ancestor_id(leaves[@inbounds(setting_id(plans.entries[slot]))], T, sim)
+        cid == DEFAULT_SETTING_ID || cid in ids || push!(ids, cid)
+    end
+    return ids
+end
+
+"""
+    member_index(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
+
+Returns the individual's position in the member frame of their primary setting of type `T`.
+"""
+@inline function member_index(individual::Individual, ::Type{T}, plans::ActivityPlanStore)::Int32 where {T<:Setting}
+    _check_indexed(plans)
+    slot = plan_slot(plans, individual, T)
+    slot == 0 && return DEFAULT_MEMBER_INDEX
+    return @inbounds member_index(plans.entries[slot])
+end
+
+"""
+    settings_tuple(individual::Individual, plans::ActivityPlanStore)
+
+Returns all of the individual's memberships as `(type, id)` pairs, in plan order.
+"""
+function settings_tuple(individual::Individual, plans::ActivityPlanStore)
+    return [(setting_type_from_index(setting_type_of(e)), setting_id(e))
+            for e in plan_entries(plans, individual)]
+end
+
+"""
+    settings_tuple(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+settings_tuple(individual::Individual, sim::Simulation) = settings_tuple(individual, activity_plans(sim))
+
+### SETTING ACCESSORS ###
+# These resolve through the plan store, taken directly or via a `Simulation`.
+
+"""
+    household_id(individual::Individual, plans::ActivityPlanStore)
+
+Returns the id of an individual's primary household.
+"""
+@inline household_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Household, plans)
+
+"""
+    household_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+@inline household_id(individual::Individual, sim::Simulation)::Int32 = household_id(individual, activity_plans(sim))
+
+"""
+    office_id(individual::Individual, plans::ActivityPlanStore)
+
+Returns the id of an individual's primary office.
+"""
+@inline office_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Office, plans)
+
+"""
+    office_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+@inline office_id(individual::Individual, sim::Simulation)::Int32 = office_id(individual, activity_plans(sim))
+
+"""
+    class_id(individual::Individual, plans::ActivityPlanStore)
+
+Returns the id of an individual's primary school class.
+"""
+@inline class_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, SchoolClass, plans)
+
+"""
+    class_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+@inline class_id(individual::Individual, sim::Simulation)::Int32 = class_id(individual, activity_plans(sim))
+
+"""
+    municipality_id(individual::Individual, plans::ActivityPlanStore)
+
+Returns the id of an individual's primary municipality.
+"""
+@inline municipality_id(individual::Individual, plans::ActivityPlanStore)::Int32 = setting_id(individual, Municipality, plans)
+
+"""
+    municipality_id(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+@inline municipality_id(individual::Individual, sim::Simulation)::Int32 = municipality_id(individual, activity_plans(sim))
+
+"""
+    is_working(individual::Individual, plans::ActivityPlanStore)
+
+Returns `true` if individual is assigned to an instance of type `Office`.
+"""
+is_working(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, Office) != 0
+
+"""
+    is_working(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+is_working(individual::Individual, sim::Simulation) = is_working(individual, activity_plans(sim))
+
+"""
+    is_student(individual::Individual, plans::ActivityPlanStore)
+
+Returns `true` if individual is assigned to an instance of type `SchoolClass`.
+"""
+is_student(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, SchoolClass) != 0
+
+"""
+    is_student(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+is_student(individual::Individual, sim::Simulation) = is_student(individual, activity_plans(sim))
+
+"""
+    has_municipality(individual::Individual, plans::ActivityPlanStore)
+
+Returns `true` if individual is assigned to an instance of type `Municipality`.
+"""
+has_municipality(individual::Individual, plans::ActivityPlanStore) = plan_slot(plans, individual, Municipality) != 0
+
+"""
+    has_municipality(individual::Individual, sim::Simulation)
+
+Convenience for callers holding a `Simulation` rather than the store.
+"""
+has_municipality(individual::Individual, sim::Simulation) = has_municipality(individual, activity_plans(sim))
 
 
 ### setting extraction from individuals
@@ -98,19 +240,7 @@ end
 Returns the `Household` instance referenced in an individual. 
 """
 function household(i::Individual, sim::Simulation)::Household
-    return sim |> settings |>
-        x -> x[Household] |>
-        x -> x[household_id(i)]
-end
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{Household})::Household
-
-Return the `Household` setting to which the individual `i` belongs, based on
-their `household` ID.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Household})
-    return household(i, sim)
+    return settings(sim, Household)[household_id(i, sim)]
 end
 
 """
@@ -119,55 +249,9 @@ end
 Returns the `Office` instance referenced in an individual. 
 """
 function office(i::Individual, sim::Simulation)::Office
-    !is_working(i) ? throw(ArgumentError("Individual $(id(i)) is not assigned to an Office")) :
-
-    return sim |> settings |>
-        x -> x[Office] |>
-        x -> x[office_id(i)]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{Office})::Office
-
-Return the `Office` setting to which the individual `i` belongs, based on
-their `office` ID.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Office})
-    return office(i, sim)
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{Department})::Department
-
-Return the `Department` that contains the individual's `Office`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Department})
-    return getsetting(i, sim, Office).contained |>
-        id -> settings(sim, Department)[id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{Workplace})::Workplace
-
-Return the `Workplace` that contains the individual's `Department`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{Workplace})
-    return getsetting(i, sim, Department).contained |>
-        id -> settings(sim, Workplace)[id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{WorkplaceSite})::WorkplaceSite
-
-Return the `WorkplaceSite` that contains the individual's `Workplace`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{WorkplaceSite})
-    return getsetting(i, sim, Workplace).contained |>
-        id -> settings(sim, WorkplaceSite)[id]
+    oid = office_id(i, sim)
+    oid == DEFAULT_SETTING_ID && throw(ArgumentError("Individual $(id(i)) is not assigned to an Office"))
+    return settings(sim, Office)[oid]
 end
 
 
@@ -177,55 +261,9 @@ end
 Returns the `SchoolClass` instance referenced in an individual. 
 """
 function schoolclass(i::Individual, sim::Simulation)::SchoolClass
-    !is_student(i) ? throw(ArgumentError("Individual $(id(i)) is not assigned to a School Class")) :
-
-    return sim |> settings |>
-        x -> x[SchoolClass] |>
-        x -> x[class_id(i)]
-end
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{SchoolClass})::SchoolClass
-
-Return the `SchoolClass` setting to which the individual `i` belongs, based on
-their `schoolclass` ID.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{SchoolClass})
-    return schoolclass(i, sim)
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{SchoolYear})::SchoolYear
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{SchoolYear})
-    class = getsetting(i, sim, SchoolClass)
-    year_id = class.contained
-    return settings(sim, SchoolYear)[year_id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{School})::School
-
-Return the `School` setting containing the individual's `SchoolYear`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{School})
-    year = getsetting(i, sim, SchoolYear)
-    school_id = year.contained
-    return settings(sim, School)[school_id]
-end
-
-
-"""
-    getsetting(i::Individual, sim::Simulation, ::Type{SchoolComplex})::SchoolComplex
-
-Return the `SchoolComplex` setting containing the individual's `School`.
-"""
-function getsetting(i::Individual, sim::Simulation, ::Type{SchoolComplex})
-    school = getsetting(i, sim, School)
-    complex_id = school.contained
-    return settings(sim, SchoolComplex)[complex_id]
+    cid = class_id(i, sim)
+    cid == DEFAULT_SETTING_ID && throw(ArgumentError("Individual $(id(i)) is not assigned to a School Class"))
+    return settings(sim, SchoolClass)[cid]
 end
 
 """
@@ -234,20 +272,27 @@ end
 Returns the `Municipality` instance referenced in an individual. 
 """
 function municipality(i::Individual, sim::Simulation)::Municipality
-    return sim |> settings |>
-        x -> x[Municipality] |>
-        x -> x[municipality_id(i)]
+    return settings(sim, Municipality)[municipality_id(i, sim)]
+end
+
+# The individual's primary setting of type `T`, or `nothing` if they hold none. A container holds no
+# plan entries, so `setting_ids` finds it through the leaves below it.
+function _primary_setting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
+    ids = setting_ids(i, T, sim)
+    return isempty(ids) ? nothing : settings(sim, T)[ids[1]]
 end
 
 """
-    getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
+    getsetting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
 
-Return the global setting.
+Returns the individual's primary setting of type `T`, a container through the settings below it;
+throws if they hold none.
 """
-function getsetting(i::Individual, sim::Simulation, ::Type{GlobalSetting})
-    return settings(sim)[GlobalSetting][1]
+function getsetting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
+    s = _primary_setting(i, sim, T)
+    isnothing(s) && throw(ArgumentError("Individual $(id(i)) is not assigned to a $(setting_type_name(T))"))
+    return s
 end
-
 
 
 ### Registry GETTERS ###
@@ -351,21 +396,46 @@ Convenience wrapper that safely routes to the correct `InfectionRegistry` shard 
 
 
 """
-    immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)::Int8
+    immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)
 
-Returns the current cached immunity level (0-100) against `pathogen_id`,
-or 0 if the individual has no immunity record for that pathogen.
+Removed, throws: levels are computed on read and need the simulation.
 """
-@inline immunity_level(individual::Individual, immunities::ImmunityRegistry, pathogen_id::Int8)::Int8 =
-    get_immunity_state(individual, immunities, pathogen_id).immunity_level
+immunity_level(::Individual, ::ImmunityRegistry, ::Int8) =
+    throw(ArgumentError("immunity_level(individual, immunities, pathogen_id) was removed; use immunity_level(individual, sim, pathogen_id[, tick])."))
 
 """
-    immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8
+    immunity_level(individual::Individual, ::Nothing, pathogen_id::Int8, tick::Int16 = Int16(0))::Int8
 
-Convenience wrapper that safely routes to the correct `ImmunityRegistry` shard for the given individual.
+Returns 0: without a simulation there is no immunity.
 """
-@inline immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8)::Int8 =
-    immunity_level(individual, immunity_registry(sim, individual), pathogen_id)
+immunity_level(::Individual, ::Nothing, ::Int8, ::Int16 = Int16(0))::Int8 = Int8(0)
+
+"""
+    immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16 = tick(sim))::Int8
+
+Returns the immunity level (0-100) against `pathogen_id` at `tick`, or 0 without a record.
+"""
+@inline immunity_level(individual::Individual, sim::Simulation, pathogen_id::Int8, t::Int16 = tick(sim))::Int8 =
+    immunity_level(get_immunity_state(individual, sim, pathogen_id), individual, sim, t)
+
+"""
+    immunity_level(state::ImmunityState, individual::Individual, sim::Simulation, tick::Int16 = tick(sim))::Int8
+
+Returns the level (0-100) of one immunity record at `tick`, e.g. from `each_immunity`.
+"""
+function immunity_level(state::ImmunityState, individual::Individual, sim::Simulation, t::Int16 = tick(sim))::Int8
+    _immunity_recorded(state) || return Int8(0)
+    return _with_pathogen(p -> _immunity_level(p, state, individual, sim, t), sim.pathogens, state.pathogen_id)
+end
+
+# whether `state` holds natural or vaccine immunity
+@inline _immunity_recorded(state::ImmunityState) = natural_immunity_recorded(state) || vaccine_immunity_recorded(state)
+
+# level of a recorded `state` from the already looked-up `pathogen`
+@inline function _immunity_level(pathogen, state::ImmunityState, individual::Individual, sim::Simulation, t::Int16)::Int8
+    rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
+    return calculate_immunity(immunity_profile(pathogen), state, individual, t, rng)
+end
 
 """
     earliest_infectiousness_onset(ind::Individual, infections::InfectionRegistry)::Int16
@@ -770,7 +840,8 @@ was_reported(individual::Individual, sim::Simulation, pathogen_id::Int8) = get_t
     record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
 
 Records a test outcome into the `TestRegistry` for `(ind, pathogen_id)` and
-updates `ind.detected_mask` if the test is a positive reportable result.
+updates `ind.detected_mask` if the test is a positive reportable result. During a simulation use
+`record_test!(ind, sim, ...)`, or the state log counts the detection a tick late.
 """
 @inline function record_test!(ind::Individual, tests::TestRegistry, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
     detected = test_result && reportable
@@ -782,10 +853,17 @@ end
 """
     record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
 
-Convenience wrapper that routes to the correct `TestRegistry` shard.
+Records a test outcome in the correct `TestRegistry` shard, and counts a first detection for the state log.
 """
 function record_test!(individual::Individual, sim::Simulation, pathogen_id::Int8, tick::Int16, test_result::Bool, reportable::Bool)
+    was_detected = is_detected(individual)
     record_test!(individual, test_registry(sim, individual), pathogen_id, tick, test_result, reportable)
+    if !was_detected && is_detected(individual)
+        # tests come after the disease update's count; it counts them from the next tick on
+        sim.state_log_counts[Threads.threadid()].detected += 1
+        _mark_active!(sim, individual)
+    end
+    return nothing
 end
 
 
@@ -809,30 +887,27 @@ end
 """
     vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
 
-Vaccinates an individual against a pathogen. Deprecated: during a simulation, the disease update only
-recomputes the immunity of individuals vaccinated through `vaccinate!(individual, sim, vaccine, tick)`.
+Vaccinates an individual against a pathogen. Deprecated: use `vaccinate!(individual, sim, vaccine, tick)`,
+which picks the individual's registry shard.
 """
 function vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
-    @warn "vaccinate!(individual, registry, vaccine, tick) is deprecated: the simulation's disease update does not see this individual. Use vaccinate!(individual, sim, vaccine, tick)." maxlog=1
+    @warn "vaccinate!(individual, registry, vaccine, tick) is deprecated; use vaccinate!(individual, sim, vaccine, tick), which picks the individual's registry shard." maxlog=1
     _vaccinate!(individual, registry, vaccine, tick)
 end
 
-# records the vaccination in `registry` only, without flagging the individual
+# records the vaccination in `registry`
 function _vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
     log!(logger(vaccine), id(individual), target_pathogen_id(vaccine), tick)
     push_immunity!(registry, individual, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
-    individual.needs_immunity_update = true
 end
 
 """
     vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
 
-Vaccinates an individual against the vaccine's target pathogen at `tick` and flags the individual
-for the disease update, which recomputes its immunity.
+Vaccinates an individual against the vaccine's target pathogen at `tick`.
 """
 function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
     _vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
-    _mark_active!(sim, individual)
 end
 
 """
@@ -904,83 +979,18 @@ Convenience wrapper that routes to the correct `ImmunityRegistry` shard.
 number_of_vaccinations(individual::Individual, sim::Simulation, pathogen_id::Int8) = number_of_vaccinations(individual, immunity_registry(sim, individual), pathogen_id)
 
 
-"""
-    _immunity_level_and_stable(pathogen, state, individual, tick, rng)
-
-Function barrier that extracts the `ImmunityProfile` from `pathogen` and calls `calculate_immunity` and `immunity_is_stable`.
-"""
-function _immunity_level_and_stable(pathogen, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Tuple{Int8, Bool}
-    profile = immunity_profile(pathogen)
-    level = calculate_immunity(profile, state, individual, tick, rng)
-    stable = immunity_is_stable(profile, state, individual, tick)
-    return level, stable
-end
-
-"""
-    _step_immunity!(ind, registry, pathogens, loc, tick, rng)
-
-Recomputes the immunity level for the single record at slot `loc` (a `_CacheSlot` or
-`_OverflowNode`) and writes it back only when it changed. Shared by both branches of
-`update_immunity!` so the recompute logic lives once; the storage details are handled by
-`_slot_state` / `_set_slot!` dispatch. Returns whether the record is stable.
-"""
-@inline function _step_immunity!(ind::Individual, registry::ImmunityRegistry, pathogens::P, loc, tick::Int16, rng::Xoshiro) where {P<:Tuple}
-    state = _slot_state(ind, registry, loc)
-    pat = get_pathogen(pathogens, state.pathogen_id)
-    new_level, stable = _immunity_level_and_stable(pat, state, ind, tick, rng)
-    new_level != state.immunity_level && _set_slot!(ind, registry, loc, _setstate(state, Val(:immunity_level), new_level))
-    return stable
-end
-
-"""
-    update_immunity!(individual::Individual, registry::ImmunityRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
-
-Refresh the per-individual immunity cache (`immune_pathogens`, `immunity_level`)
-from the `ImmunityRegistry`. For each pathogen with at least one immunity record,
-builds a combined `ImmunityState` (natural + vaccine) and calls `calculate_immunity`
-once. The result is written to the per-individual NTuple cache.
-"""
-function update_immunity!(
-    individual::Individual,
-    registry::ImmunityRegistry,
-    pathogens::P,
-    tick::Int16,
-    rng::Xoshiro,
-) where {P<:Tuple}
-    _all_stable = true
-
-    # Cache slots
-    @inbounds for i in 1:IMMUNITY_CACHE_SIZE
-        _is_active_immunity(individual.immunity_cache[i]) || continue
-        _all_stable &= _step_immunity!(individual, registry, pathogens, _CacheSlot(Int32(i)), tick, rng)
-    end
-
-    # Overflow slots
-    if individual.immunity_head != 0
-        node = individual.immunity_head
-        while node != 0
-            @inbounds next_node = registry.states[node].next
-            _all_stable &= _step_immunity!(individual, registry, pathogens, _OverflowNode(node), tick, rng)
-            node = next_node
-        end
-    end
-
-    if _all_stable
-        individual.needs_immunity_update = false
-    end
-    return nothing
-end
-
 
 ### UPDATE DISEASE PROGRESSION IN AGENTS ###
 
 """
-    _infectiousness_level(pathogen, state, individual, tick, rng)
+    _infectiousness_level(pathogen, state, individual, tick, seed)
 
-Function barrier that extracts the `InfectiousnessProfile` from `pathogen` and calls `calculate_infectiousness`.
+Function barrier that extracts the `InfectiousnessProfile` from `pathogen` and calls `calculate_infectiousness`
+with the infection's keyed rng, left unkeyed for a profile that never draws.
 """
-function _infectiousness_level(pathogen, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+function _infectiousness_level(pathogen, state::InfectionState, individual::Individual, tick::Int16, seed::Int64)::Int8
     profile = infectiousness_profile(pathogen)
+    rng = _draws_from_rng(profile) ? _keyed_infection_rng(seed, id(individual), state) : _profile_rng().rng
     return calculate_infectiousness(profile, state, individual, tick, rng)
 end
 
@@ -1033,14 +1043,43 @@ Single source of truth for the per-tick disease-state predicates of one active i
 end
 
 """
-    _step_infection!(ind, infections, pathogens, removal_buf, loc, tick, rng)
+    _next_update(ind::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16) where {P<:Tuple}
+
+The first tick after `tick` at which `progress_disease!` can change anything for `ind`, or `typemax(Int16)`.
+"""
+@inline function _next_update(ind::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16) where {P<:Tuple}
+    dead(ind) && return typemax(Int16)
+    next = next_tick_after(tick, ind.death)
+    @inbounds for i in 1:INFECTIONS_CACHE_SIZE
+        s = ind.infection_cache[i]
+        s.active && (next = min(next, _next_change(s, pathogens, tick)))
+    end
+    node = ind.infection_head
+    while node != 0
+        s = @inbounds infections.states[node]
+        next = min(next, _next_change(s, pathogens, tick))
+        node = s.next
+    end
+    return next
+end
+
+# the first tick after `tick` at which infection `s` changes its host's flags or its infectiousness
+@inline function _next_change(s::InfectionState, pathogens::P, tick::Int16) where {P<:Tuple}
+    flags = next_tick_after(tick, s.exposure, s.infectiousness_onset, s.symptom_onset,
+        s.severeness_onset, s.severeness_offset, s.critical_onset, s.critical_offset, s.recovery)
+    level = _with_pathogen(p -> next_infectiousness_change(infectiousness_profile(p), s, tick), pathogens, s.pathogen_id)
+    return min(flags, level)
+end
+
+"""
+    _step_infection!(ind, infections, pathogens, removal_buf, loc, tick, seed)
 
 Processes the single infection at slot `loc` (a `_CacheSlot` or `_OverflowNode`) for `tick`:
 handles recovery and the per-tick infectiousness recompute, reading/writing/clearing
 the slot through `_slot_state` / `_set_slot!` / `_clear_slot!` dispatch. Shared by both
 branches of `progress_disease!`. Returns the record's `DiseaseFlags` contribution.
 """
-@inline function _step_infection!(ind::Individual, infections::InfectionRegistry, pathogens::P, removal_buf, loc, tick::Int16, rng::Xoshiro) where {P<:Tuple}
+@inline function _step_infection!(ind::Individual, infections::InfectionRegistry, pathogens::P, removal_buf, loc, tick::Int16, seed::Int64) where {P<:Tuple}
     state = _slot_state(ind, infections, loc)
 
     # check recovery
@@ -1055,7 +1094,7 @@ branches of `progress_disease!`. Returns the record's `DiseaseFlags` contributio
     # update infectiousness while active
     end_tick = state.recovery
     if state.exposure <= tick < end_tick
-        level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, rng)
+        level = _infectiousness_level(get_pathogen(pathogens, state.pathogen_id), state, ind, tick, seed)
         if level != state.infectiousness
             state = _setstate(state, Val(:infectiousness), level)
             _set_slot!(ind, infections, loc, state)
@@ -1066,7 +1105,7 @@ branches of `progress_disease!`. Returns the record's `DiseaseFlags` contributio
 end
 
 """
-    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::P, tick::Int16, rng::Xoshiro) where {P<:Tuple}
+    progress_disease!(individual::Individual, infections::InfectionRegistry, pathogens::P, removal_buf::Vector{_EndedInfection}, tick::Int16, seed::Int64) where {P<:Tuple}
 
 Updates the proxy disease progression status flags of the individual at the
 given tick by reading from the global `InfectionRegistry`. Also populates the
@@ -1083,8 +1122,8 @@ function progress_disease!(
     infections::InfectionRegistry, 
     pathogens::P, 
     removal_buf::Vector{_EndedInfection},
-    tick::Int16, 
-    rng::Xoshiro
+    tick::Int16,
+    seed::Int64
 ) where {P<:Tuple}
 
     dead(individual) && return nothing
@@ -1101,7 +1140,7 @@ function progress_disease!(
     # process cache slots
     @inbounds for i in 1:INFECTIONS_CACHE_SIZE
         individual.infection_cache[i].active || continue
-        acc |= _step_infection!(individual, infections, pathogens, removal_buf, _CacheSlot(Int32(i)), tick, rng)
+        acc |= _step_infection!(individual, infections, pathogens, removal_buf, _CacheSlot(Int32(i)), tick, seed)
     end
 
     # process overflow nodes
@@ -1109,7 +1148,7 @@ function progress_disease!(
         node = individual.infection_head
         while node != 0
             next_node = (@inbounds infections.states[node].next)   # capture before any mutation
-            acc |= _step_infection!(individual, infections, pathogens, removal_buf, _OverflowNode(node), tick, rng)
+            acc |= _step_infection!(individual, infections, pathogens, removal_buf, _OverflowNode(node), tick, seed)
             node = next_node
         end
     end
@@ -1153,7 +1192,6 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
 
     individual.immunity_cache = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)
-    individual.needs_immunity_update = false
 
     individual.quarantine_status = QUARANTINE_STATE_NO_QUARANTINE
     individual.quarantine_tick = DEFAULT_TICK

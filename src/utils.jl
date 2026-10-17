@@ -19,6 +19,17 @@ function _fetch_rethrow(t::Task)
     end
 end
 
+# The original error of a failed `Threads.@threads` loop, without its `CompositeException` and `TaskFailedException`
+function _thread_exception(e)
+    e isa CompositeException && (e = first(e.exceptions))
+    e isa TaskFailedException && (e = e.task.exception)
+    return e
+end
+
+# Splits `r` into contiguous ranges for `Threads.@threads`, several per thread so an uneven range
+# still balances.
+_thread_chunks(r::AbstractUnitRange{Int}) = collect(Iterators.partition(r, cld(max(length(r), 1), 8 * Threads.nthreads())))
+
 """
     _duplicates(vec)
 
@@ -26,6 +37,25 @@ Returns values that are duplicates in a provided array.
 """
 function _duplicates(vec)
     return collect(keys(filter(x -> x[2] > 1, countmap(vec))))
+end
+
+# Asks the CPU to start loading the `nbytes` at `p` into cache, one prefetch per cache line.
+@inline function _prefetch(p::Ptr, nbytes::Int)
+    line = UInt(p) & ~UInt(63)
+    stop = UInt(p) + nbytes % UInt
+    while line < stop
+        Base.llvmcall(("""
+            declare void @llvm.prefetch.p0(ptr, i32, i32, i32)
+            define void @entry(i64 %0) #0 {
+                %p = inttoptr i64 %0 to ptr
+                call void @llvm.prefetch.p0(ptr %p, i32 0, i32 3, i32 1)
+                ret void
+            }
+            attributes #0 = { alwaysinline }
+            """, "entry"), Cvoid, Tuple{UInt}, line)
+        line += 64
+    end
+    return nothing
 end
 
 
@@ -52,7 +82,7 @@ end
 function _concrete_subtypes(type::Type)::Vector{DataType}
     stypes = _cached_subtypes(type)
     if isempty(stypes)
-        if !isabstracttype(type)
+        if type isa DataType && !isabstracttype(type)
             return [type]
         end
         return []

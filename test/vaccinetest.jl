@@ -9,7 +9,7 @@
     end
 
     @testset "Vaccinate Individuals" begin
-        i = Individual(id = 1, sex = 0, age = 31, household=1)
+        i = Individual(id = 1, sex = 0, age = 31)
         reg = ImmunityRegistry()
         pid = target_pathogen_id(v)
 
@@ -34,11 +34,12 @@
         @test vaccination_tick(i_v, sim_v, pid) == Int16(10)
         @test number_of_vaccinations(i_v, sim_v, pid) == 1
 
-        # a vaccinated member of the population is flagged for the disease update
+        # vaccination does not flag for the disease update; the level is computed on read
         k = findfirst(!, sim_v.active_individuals)
         member = individuals(sim_v)[k]
         vaccinate!(member, sim_v, v, Int16(10))
-        @test sim_v.active_individuals[k]
+        @test !sim_v.active_individuals[k]
+        @test immunity_level(member, sim_v, pid, Int16(10)) == Int8(100)
     end
 
 end
