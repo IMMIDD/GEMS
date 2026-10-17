@@ -469,6 +469,8 @@ function flush_pending_infections!(sim::Simulation)
             for j in eachindex(buf)
                 # hosts and their plan entries, read for the log's household, are cache misses unless fetched ahead
                 _prefetch_listed_ahead(i -> buf[i].host, length(buf), j, plans)
+                # and the hosts' `id_map` entries, read by `_mark_active!`
+                _prefetch_id_map_ahead(i -> buf[i].host_id, length(buf), j, population(sim))
                 p = buf[j]
                 _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = p.host
@@ -744,6 +746,8 @@ end
 # How many list positions ahead `_prefetch_listed_ahead` fetches individuals and their plan entries
 const LISTED_PREFETCH_DISTANCE = 8
 const LISTED_PLAN_PREFETCH_DISTANCE = 4
+# How many list positions ahead `_prefetch_id_map_ahead` fetches `id_map` entries
+const ID_MAP_PREFETCH_DISTANCE = 16
 
 # While a loop works on item `k` of `n`, prefetches the `Individual` `LISTED_PREFETCH_DISTANCE` ahead and
 # the plan entries of the one `LISTED_PLAN_PREFETCH_DISTANCE` ahead, whose `Individual` an earlier call fetched.
@@ -753,6 +757,15 @@ const LISTED_PLAN_PREFETCH_DISTANCE = 4
         next = individual_at(k + LISTED_PLAN_PREFETCH_DISTANCE)
         len = plan_length(next)
         len > 0 && _prefetch(pointer(plans.entries, Int(next.plan_offset)), len * sizeof(PlanEntry))
+    end
+    return nothing
+end
+
+# While a loop works on item `k` of `n`, prefetches the `id_map` entry of the id `ID_MAP_PREFETCH_DISTANCE` ahead.
+@inline function _prefetch_id_map_ahead(id_at::F, n::Int, k::Int, population::Population) where {F}
+    if k + ID_MAP_PREFETCH_DISTANCE <= n
+        idx = id_at(k + ID_MAP_PREFETCH_DISTANCE) - population.minid + 1
+        1 <= idx <= length(population.id_map) && _prefetch(pointer(population.id_map, Int(idx)), sizeof(Int32))
     end
     return nothing
 end

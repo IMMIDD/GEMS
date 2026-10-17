@@ -95,7 +95,8 @@ function log!(
     idx = logger.infecter_index
     idx === nothing || register!(idx, a, b, tick)
 
-    Threads.atomic_xchg!(logger.last_modified_tick, tick)
+    # written only on change
+    logger.last_modified_tick[] == tick || Threads.atomic_xchg!(logger.last_modified_tick, tick)
 
     return infection_id
 end
