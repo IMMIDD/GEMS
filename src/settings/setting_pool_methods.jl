@@ -366,6 +366,12 @@ function _count_closed!(pool::HierarchicalSettingPool, delta::Int)
     return nothing
 end
 
+# Whether every setting of the hierarchy with leaf type `L` is open. `false` if `L` has no pool
+function _all_open(cntnr::SettingsContainer, ::Type{L}) where {L<:Setting}
+    pool = get(cntnr.pools, L, nothing)
+    return pool !== nothing && pool.closed == 0
+end
+
 ###
 ### REPACKING
 ### A repack relays a block's leaves, laying their members out in the pool again, and refreshes

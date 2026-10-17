@@ -30,90 +30,51 @@ to the simulation's `QuarantineLogger`.
 
 """
 function log_stepinfo(simulation::Simulation)
-    tot_quar_cnt = zeros(Int, Threads.maxthreadid())
-    st_quar_cnt = zeros(Int, Threads.maxthreadid())
-    st_isol_cnt = zeros(Int, Threads.maxthreadid())
     st_unab_cnt = zeros(Int, Threads.maxthreadid())
-    wo_quar_cnt = zeros(Int, Threads.maxthreadid())
-    wo_isol_cnt = zeros(Int, Threads.maxthreadid())
     wo_unab_cnt = zeros(Int, Threads.maxthreadid())
 
-    inds = simulation |> individuals
     plans = activity_plans(simulation)
-    quarantined = simulation.quarantined_individuals
     s_classes = schoolclasses(simulation)
     offs = offices(simulation)
-    chunk_size = max(1, length(inds) ÷ Threads.nthreads())
+    # true if no class (office) is closed
+    classes_open = _all_open(settingscontainer(simulation), SchoolClass)
+    offices_open = _all_open(settingscontainer(simulation), Office)
 
-    # only flagged individuals can be quarantined
-    Threads.@threads :static for chunk in collect(Iterators.partition(eachindex(inds), chunk_size))
-        tid = Threads.threadid()
-
-        loc_tot_quar = 0; loc_st_quar = 0; loc_st_isol = 0;
-        loc_wo_quar = 0; loc_wo_isol = 0; loc_st_unab = 0; loc_wo_unab = 0
-
-        for k in chunk
-            @inbounds quarantined[k] || continue
-            i = @inbounds inds[k]
-
-            if isquarantined(i)
-                loc_tot_quar += 1
-                if is_student(i, plans)
-                    loc_st_quar += 1
-                    if is_infected(i)
-                        loc_st_isol += 1
-                    end
-                end
-                if is_working(i, plans)
-                    loc_wo_quar += 1
-                    if is_infected(i)
-                        loc_wo_isol += 1
-                    end
-                end
-                # members of closed settings are counted below, by setting size
-                loc_st_unab += _open_memberships(plans, i, s_classes)
-                loc_wo_unab += _open_memberships(plans, i, offs)
-            end
-        end
-
-        @inbounds begin
-            tot_quar_cnt[tid] += loc_tot_quar
-            st_quar_cnt[tid] += loc_st_quar
-            st_isol_cnt[tid] += loc_st_isol
-            wo_quar_cnt[tid] += loc_wo_quar
-            wo_isol_cnt[tid] += loc_wo_isol
-            st_unab_cnt[tid] += loc_st_unab
-            wo_unab_cnt[tid] += loc_wo_unab
-        end
-    end
-
-    # the severe and hospitalized the disease update found, unless the scan above counted them as quarantined
+    # the severe and hospitalized the disease update found, unless `update_quarantines!` counted them as quarantined
     log_counts = simulation.state_log_counts
     Threads.@threads :static for counts in log_counts
         tid = Threads.threadid()
         loc_st_unab = 0; loc_wo_unab = 0
         for i in counts.in_care
             isquarantined(i) && continue
-            loc_st_unab += _open_memberships(plans, i, s_classes)
-            loc_wo_unab += _open_memberships(plans, i, offs)
+            loc_st_unab += _open_memberships(plans, i, s_classes, classes_open)
+            loc_wo_unab += _open_memberships(plans, i, offs, offices_open)
         end
         @inbounds st_unab_cnt[tid] += loc_st_unab
         @inbounds wo_unab_cnt[tid] += loc_wo_unab
     end
 
-    for s in s_classes
-        is_open(s) || (st_unab_cnt[1] += size(s))
+    if !classes_open
+        for s in s_classes
+            is_open(s) || (st_unab_cnt[1] += size(s))
+        end
     end
-    for o in offs
-        is_open(o) || (wo_unab_cnt[1] += size(o))
+    if !offices_open
+        for o in offs
+            is_open(o) || (wo_unab_cnt[1] += size(o))
+        end
     end
+
+    quarantined = sum(t -> t.quarantined, log_counts)
+    quarantined_students = sum(t -> t.quarantined_students, log_counts)
+    quarantined_workers = sum(t -> t.quarantined_workers, log_counts)
 
     log!(
         simulation |> quarantinelogger,
         simulation |> tick,
-        sum(tot_quar_cnt),
-        sum(st_quar_cnt),
-        sum(wo_quar_cnt)
+        quarantined,
+        quarantined_students,
+        quarantined_workers
     )
 
     log!(simulation |> statelogger;
@@ -122,13 +83,13 @@ function log_stepinfo(simulation::Simulation)
         infectious = sum(length, simulation.infectious_individuals),
         dead = length(deathlogger(simulation)),
         detected = sum(t -> t.detected, log_counts),
-        quarantined = sum(tot_quar_cnt),
-        quarantined_students = sum(st_quar_cnt),
-        isolated_students = sum(st_isol_cnt),
-        unable_to_attend_students = sum(st_unab_cnt),
-        quarantined_workers = sum(wo_quar_cnt),
-        isolated_workers = sum(wo_isol_cnt),
-        unable_to_attend_workers = sum(wo_unab_cnt)
+        quarantined = quarantined,
+        quarantined_students = quarantined_students,
+        isolated_students = sum(t -> t.isolated_students, log_counts),
+        unable_to_attend_students = sum(st_unab_cnt) + sum(t -> t.missed_classes, log_counts),
+        quarantined_workers = quarantined_workers,
+        isolated_workers = sum(t -> t.isolated_workers, log_counts),
+        unable_to_attend_workers = sum(wo_unab_cnt) + sum(t -> t.missed_offices, log_counts)
     )
 end
 
@@ -179,6 +140,15 @@ Counts the settings of type `T` in `indiv`'s activity plan that are open.
     end
     return n
 end
+
+"""
+    _open_memberships(plans::ActivityPlanStore, indiv::Individual, stngs::Vector{T}, all_open::Bool) where {T<:Setting}
+
+Counts the open settings of type `T` in `indiv`'s activity plan. Pass `all_open = true` when none of them
+is closed; the settings are then not looked up.
+"""
+@inline _open_memberships(plans::ActivityPlanStore, indiv::Individual, stngs::Vector{T}, all_open::Bool) where {T<:Setting} =
+    all_open ? length(plan_slots(plans, indiv, T)) : _open_memberships(plans, indiv, stngs)
 
 """
     fire_custom_loggers!(sim::Simulation)
@@ -890,17 +860,26 @@ end
 """
     update_quarantines!(sim::Simulation)
 
-Sets the quarantine status of every individual with a quarantine that has not ended yet.
+Sets the quarantine status of every individual with a quarantine that has not ended yet, and counts the
+quarantined individuals for the state log.
 """
 function update_quarantines!(sim::Simulation)
     t = tick(sim)
     inds = individuals(population(sim))
+    plans = activity_plans(sim)
     quarantined = sim.quarantined_individuals
+    s_classes = schoolclasses(sim)
+    offs = offices(sim)
+    # true if no class (office) is closed
+    classes_open = _all_open(settingscontainer(sim), SchoolClass)
+    offices_open = _all_open(settingscontainer(sim), Office)
     Threads.@threads :static for k in eachindex(inds)
         @inbounds quarantined[k] || continue
         i = @inbounds inds[k]
         quarantined!(i, is_quarantined(i, t))
         @inbounds quarantined[k] = t < quarantine_release_tick(i)
+        isquarantined(i) && _count_quarantined!(sim.state_log_counts[Threads.threadid()], i, plans,
+            s_classes, offs, classes_open, offices_open)
     end
     return nothing
 end
