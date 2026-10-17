@@ -330,8 +330,8 @@ end
 """
     _check_condition(condition::Function, argtype::Type, owner::AbstractString)
 
-Throws an `ArgumentError` if the inferred return type of `condition` for an `argtype` argument is not a `Bool`;
-a condition inference cannot see through (`Any`) passes and fails at the call if it is wrong.
+Throws an `ArgumentError` if `condition` can return something other than a `Bool` for an `argtype` argument.
+A condition whose return type Julia cannot infer is accepted.
 """
 function _check_condition(condition::Function, argtype::Type, owner::AbstractString)
     for R in Base.return_types(condition, (argtype,))

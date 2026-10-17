@@ -149,7 +149,7 @@ end
 """
     _filter_members!(buf::Vector{Individual}, members, keep::IPredicate)
 
-Appends the `members` that `keep` accepts to `buf`, in order, and returns `buf`; a function barrier, so the loop is static for any member collection.
+Appends the `members` that `keep` accepts to `buf` and returns `buf`.
 """
 function _filter_members!(buf::Vector{Individual}, members, keep::IPredicate)
     for i in members

@@ -112,7 +112,7 @@ end
 """
     _apply_tests!(members, tt::TestType, sim::Simulation, reportable::Bool)
 
-Applies `apply_test!` to every member in order and returns the number of positive results; a function barrier, so the loop is static for any member collection.
+Tests every member with `tt` and returns the number of positive results.
 """
 function _apply_tests!(members, tt::TestType, sim::Simulation, reportable::Bool)
     n = 0

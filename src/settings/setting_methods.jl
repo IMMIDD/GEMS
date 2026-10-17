@@ -14,7 +14,7 @@ function is_open(setting::Setting)::Bool
     return(setting.isopen)
 end
 
-# Calls `f` on every setting below `stng`, each followed by the settings below it.
+# Calls `f` on every setting `stng` contains, at every level below it.
 function _foreach_contained(f::F, stng::ContainerSetting, sim::Simulation) where {F}
     stngs = settings(sim, contains_type(typeof(stng)))
     for s in stng.contains
@@ -96,7 +96,7 @@ function get_containers!(stng::Setting, dct::Dict{DataType, Int32}, sim::Simulat
     end
 end
 
-# Id of the ancestor of type `T` of `stng`, or `DEFAULT_SETTING_ID` if there is none.
+# Id of the setting of type `T` that contains `stng`, or `DEFAULT_SETTING_ID` if none does.
 function _ancestor_id(stng::Setting, ::Type{T}, sim::Simulation)::Int32 where {T<:ContainerSetting}
     P = _parent_type(typeof(stng))
     (P === Nothing || stng.contained == DEFAULT_SETTING_ID) && return DEFAULT_SETTING_ID

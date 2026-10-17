@@ -347,9 +347,8 @@ end
 """
     _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
 
-Triggers `str` for every object in `objs`, in order; a function barrier, so the loop is static for the
-strategy's and the vector's concrete types. From `TICK_TRIGGER_THREADING_MIN` objects on, the loop runs on
-all threads and stages its events, which `flush_staging!` then merges in the serial order.
+Triggers `str` for every object in `objs`. From `TICK_TRIGGER_THREADING_MIN` objects on it uses all threads;
+the events are queued in the same order either way.
 """
 function _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
     n = length(objs)
@@ -361,7 +360,7 @@ function _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
     end
     per_thread = cld(n, Threads.nthreads())
     try
-        # contiguous chunks in thread order, so the staging buffers merge in the serial order
+        # one contiguous chunk per thread, so merging the staged events keeps the serial order
         Threads.@threads :static for c in 1:Threads.nthreads()
             _trigger_range!(str, objs, ((c - 1) * per_thread + 1):min(c * per_thread, n), sim)
         end
@@ -375,7 +374,7 @@ end
 """
     _trigger_range!(str::Strategy, objs::AbstractVector, r::UnitRange{Int}, sim::Simulation)
 
-Triggers `str` for `objs[r]`, in order, staging the events.
+Triggers `str` for `objs[r]` and stages the events, for use inside a parallel loop.
 """
 function _trigger_range!(str::Strategy, objs::AbstractVector, r::UnitRange{Int}, sim::Simulation)
     for k in r

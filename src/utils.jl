@@ -19,7 +19,7 @@ function _fetch_rethrow(t::Task)
     end
 end
 
-# The error a task of `Threads.@threads` threw, unwrapped from its `CompositeException` and `TaskFailedException`
+# The original error of a failed `Threads.@threads` loop, without its `CompositeException` and `TaskFailedException`
 function _thread_exception(e)
     e isa CompositeException && (e = first(e.exceptions))
     e isa TaskFailedException && (e = e.task.exception)
