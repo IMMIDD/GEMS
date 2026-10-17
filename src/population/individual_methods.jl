@@ -92,12 +92,11 @@ Returns the ids of every container of type `T` above the individual's settings, 
 """
 function setting_ids(individual::Individual, ::Type{T}, sim::Simulation)::Vector{Int32} where {T<:ContainerSetting}
     L = _leaf_type(T)
+    plans = activity_plans(sim)
+    leaves = settings(sim, L)
     ids = Int32[]
-    containers = Dict{DataType, Int32}()
-    for leaf in setting_ids(individual, L, sim)
-        empty!(containers)
-        get_containers!(settings(sim, L)[leaf], containers, sim)
-        cid = get(containers, T, DEFAULT_SETTING_ID)
+    for slot in plan_slots(plans, individual, L)
+        cid = _ancestor_id(leaves[@inbounds(setting_id(plans.entries[slot]))], T, sim)
         cid == DEFAULT_SETTING_ID || cid in ids || push!(ids, cid)
     end
     return ids

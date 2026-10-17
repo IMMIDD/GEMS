@@ -14,45 +14,15 @@ function is_open(setting::Setting)::Bool
     return(setting.isopen)
 end
 
-"""
-    get_contained!(stng::Setting, dct::Dict{DataType, Vector{Int32}}, sim::Simulation)
-
-Recursively gets the contained settings of the setting `stng` and adds them to the dictionary `dct`.
-
-# Parameters
-
-- `stng::ContainerSetting`: Setting that may contain more settings on lower levels
-- `dct::Dict{DataType, Vector{Int32}}`: Dictionary that will be filed with the found settings
-- `sim::Simulation`: Simulation object
-"""
-function get_contained!(stng::ContainerSetting, dct::Dict{DataType, Vector{Int32}}, sim::Simulation)
-    if stng.contains != DEFAULT_SETTING_ID
-        C = contains_type(typeof(stng))
-        if haskey(dct, C)
-            push!(dct[C], (stng |> contains)...)
-        else
-            dct[C] = stng |> contains |> deepcopy
-        end
-        stngs = settings(sim, C)
-        for s in stng.contains
-            get_contained!(stngs[s], dct, sim)
-        end
+# Calls `f` on every setting below `stng`, each followed by the settings below it.
+function _foreach_contained(f::F, stng::ContainerSetting, sim::Simulation) where {F}
+    stngs = settings(sim, contains_type(typeof(stng)))
+    for s in stng.contains
+        c = stngs[s]
+        f(c)
+        c isa ContainerSetting && _foreach_contained(f, c, sim)
     end
-end
-
-"""
-    get_contained!(stng::IndividualSetting, dct::Dict, sim::Simulation)
-
-Gets the contained settings of an IndividualSetting, i.e., none.
-
-# Parameters
-
-- `stng::IndividualSetting`: Lowest-level setting
-- `dct::Dict{DataType, Vector{Int32}}`: Dictionary that will be filed with the found settings
-- `sim::Simulation`: Simulation object
-"""
-function get_contained!(stng::IndividualSetting, dct::Dict{DataType, Vector{Int32}}, sim::Simulation)
-    return
+    return nothing
 end
 
 """
@@ -124,6 +94,14 @@ function get_containers!(stng::Setting, dct::Dict{DataType, Int32}, sim::Simulat
             get_containers!(settings(sim, P)[stng.contained], dct, sim)
         end
     end
+end
+
+# Id of the ancestor of type `T` of `stng`, or `DEFAULT_SETTING_ID` if there is none.
+function _ancestor_id(stng::Setting, ::Type{T}, sim::Simulation)::Int32 where {T<:ContainerSetting}
+    P = _parent_type(typeof(stng))
+    (P === Nothing || stng.contained == DEFAULT_SETTING_ID) && return DEFAULT_SETTING_ID
+    P === T && return stng.contained
+    return _ancestor_id(settings(sim, P)[stng.contained], T, sim)
 end
 
 ### Getting the individuals of a setting
@@ -549,21 +527,21 @@ function open!(setting::Setting)
     return nothing
 end
 """
-    open!(setting::Setting, simulation::Simulation)
+    open!(setting::ContainerSetting, simulation::Simulation)
 
 Sets the setting and all settings contained by it as open.
 """
-function open!(setting::Setting, simulation::Simulation)
+function open!(setting::ContainerSetting, simulation::Simulation)
     open!(setting)
-    d::Dict{DataType, Vector{Int32}} = Dict()
-    get_contained!(setting, d, simulation)
-    for (k, v) in d
-        stngs = get(settingscontainer(simulation), k)
-        for idx in v
-            open!(stngs[idx]::Setting)
-        end
-    end
+    _foreach_contained(open!, setting, simulation)
 end
+
+"""
+    open!(setting::IndividualSetting, simulation::Simulation)
+
+Opens the setting.
+"""
+open!(setting::IndividualSetting, simulation::Simulation) = open!(setting)
 
 """
     close!(setting::Setting)
@@ -583,21 +561,21 @@ function close!(setting::Setting)
 end
 
 """
-    close!(setting::Setting, simulation::Simulation)
+    close!(setting::ContainerSetting, simulation::Simulation)
 
 Sets the setting and all settings contained by it as closed (not open).
 """
-function close!(setting::Setting, simulation::Simulation)
+function close!(setting::ContainerSetting, simulation::Simulation)
     close!(setting)
-    d::Dict{DataType, Vector{Int32}} = Dict()
-    get_contained!(setting, d, simulation)
-    for (k, v) in d
-        stngs = get(settingscontainer(simulation), k)
-        for idx in v
-            close!(stngs[idx]::Setting)
-        end
-    end
+    _foreach_contained(close!, setting, simulation)
 end
+
+"""
+    close!(setting::IndividualSetting, simulation::Simulation)
+
+Closes the setting.
+"""
+close!(setting::IndividualSetting, simulation::Simulation) = close!(setting)
 
 
 ### Setting modification functions
