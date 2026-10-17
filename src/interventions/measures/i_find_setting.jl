@@ -34,18 +34,19 @@ that detects the individual's office setting and calls the previously defined
 of strategy once an individual experiences symptoms. The example will
 close the office an individual is associated with if it experiences symptoms.
 """
-struct FindSetting <: IMeasure
-    settingtype::DataType
-    follow_up::SStrategy
+struct FindSetting{ST<:Setting, FU<:SStrategy} <: IMeasure
+    follow_up::FU
+
+    FindSetting(::Type{ST}, follow_up::FU) where {ST<:Setting, FU<:SStrategy} = new{ST, FU}(follow_up)
 end
 
 """
     settingtype(fs::FindSetting)
 
-Returns the `settingtype` attribute from a `FindSetting` struct. 
+Returns the `settingtype` attribute from a `FindSetting` struct.
 """
-function settingtype(fs::FindSetting)
-    return(fs.settingtype)
+function settingtype(::FindSetting{ST}) where {ST}
+    return(ST)
 end
 
 """

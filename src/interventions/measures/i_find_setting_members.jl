@@ -38,24 +38,23 @@ members *including* the index individual. It will trigger the follow-up strategy
 'my\\_other\\_strategy' for everyone in that office.
 
 """
-struct FindSettingMembers <: IMeasure
-    settingtype::DataType
-    follow_up::IStrategy
+struct FindSettingMembers{ST<:Setting, FU<:IStrategy} <: IMeasure
+    follow_up::FU
     nonself::Bool # flag whether measure should returning focal individual or only everyone else
 
-    function FindSettingMembers(settingtype::DataType, follow_up::IStrategy;
-        nonself::Bool = false)
-        return(new(settingtype, follow_up, nonself))
+    function FindSettingMembers(::Type{ST}, follow_up::FU;
+        nonself::Bool = false) where {ST<:Setting, FU<:IStrategy}
+        return(new{ST, FU}(follow_up, nonself))
     end
 end
 
 """
     settingtype(fsm::FindSettingMembers)
 
-Returns the `settingtype` attribute from a `FindSettingMembers` struct. 
+Returns the `settingtype` attribute from a `FindSettingMembers` struct.
 """
-function settingtype(fsm::FindSettingMembers)
-    return(fsm.settingtype)
+function settingtype(::FindSettingMembers{ST}) where {ST}
+    return(ST)
 end
 
 """
@@ -115,11 +114,6 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSettingM
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identiying $(settingchar(s)) contacts $(map(x -> GEMS.id(x), [i for i in individuals(s) if i != ind])) at tick $(sim |> tick)"
 
     # trigger the follow-up for all members, skipping the focal individual if the nonself flag is set
-    fu = measure |> follow_up
-    skip_self = nonself(measure)
-    for member in individuals(s, sim)
-        skip_self && member === ind && continue
-        trigger_strategy(fu, member, sim)
-    end
+    apply_followup!(sim, individuals(s, sim), measure |> follow_up, skip = nonself(measure) ? ind : nothing)
     return nothing
 end

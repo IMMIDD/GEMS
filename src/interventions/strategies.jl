@@ -331,7 +331,7 @@ end
 function Base.show(io::IO, s::Strategy)
     res = "$(typeof(s)): $(name(s))"
     for me in measures(s)
-        res *= "\n\u2514 $(offset(me)): $(typeof(measure(me)))"
+        res *= "\n\u2514 $(offset(me)): $(nameof(typeof(measure(me))))"
     end
     write(io, res)
 end

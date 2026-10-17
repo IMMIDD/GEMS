@@ -480,13 +480,13 @@ end
             "CancelSelfIsolation",
             "FindSetting",
             "FindSettingMembers",
-            "GEMS.Test",
+            "Test",
             "TraceInfectiousContacts",
-            "GEMS.Test"
+            "Test"
         ]
 
         # the configured follow-up strategy (i_strategy) carries the expected measures
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
+        strategy_names = map(x -> string(nameof(typeof(measure(x)))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 
@@ -495,7 +495,7 @@ end
         @test process_measure(sim, gs, find_members3) === nothing
         @test isempty(drain_events!(eq))
 
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
+        strategy_names = map(x -> string(nameof(typeof(measure(x)))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 

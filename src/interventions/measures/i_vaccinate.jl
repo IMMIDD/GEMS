@@ -47,11 +47,11 @@ vacc_strategy = IStrategy("vaccinate", sim, condition = ind -> !isvaccinated(ind
 add_measure!(vacc_strategy, Vaccinate(my_vaccine))
 ```
 """
-struct Vaccinate <: IMeasure
+struct Vaccinate{FU<:Union{IStrategy, Nothing}} <: IMeasure
     vaccine::Vaccine
-    follow_up::Union{IStrategy, Nothing}
+    follow_up::FU
 
-    Vaccinate(vaccine::Vaccine; follow_up::Union{IStrategy, Nothing} = nothing) = new(vaccine, follow_up)
+    Vaccinate(vaccine::Vaccine; follow_up::Union{IStrategy, Nothing} = nothing) = new{typeof(follow_up)}(vaccine, follow_up)
 end
 
 """

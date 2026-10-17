@@ -24,9 +24,10 @@ add_measure!(my_str, FindSettings(Office, close_str))
 
 The above example closes every office the individual works in.
 """
-struct FindSettings <: IMeasure
-    settingtype::DataType
-    follow_up::SStrategy
+struct FindSettings{ST<:Setting, FU<:SStrategy} <: IMeasure
+    follow_up::FU
+
+    FindSettings(::Type{ST}, follow_up::FU) where {ST<:Setting, FU<:SStrategy} = new{ST, FU}(follow_up)
 end
 
 """
@@ -34,8 +35,8 @@ end
 
 Returns the `settingtype` attribute from a `FindSettings` struct.
 """
-function settingtype(fs::FindSettings)
-    return(fs.settingtype)
+function settingtype(::FindSettings{ST}) where {ST}
+    return(ST)
 end
 
 """

@@ -1,4 +1,4 @@
-export Handover, process_measure
+export Handover, process_measure, apply_followup!
 
 ###
 ### HANDOVER STRUCT
@@ -87,17 +87,18 @@ Returns the follow-up strategy  associated with a `Handover` struct.
 follow_up(h::Handover) = h.follow_up
 
 """
-    apply_followup!(sim::Simulation, focal, fu)
+    apply_followup!(sim::Simulation, focal, fu; skip = nothing, keep = nothing)
 
 Triggers the follow-up strategy `fu` for `focal` (a single `Individual`/`Setting` or a
-vector of them). No-op if `fu` is `nothing`.
+vector of them), leaving out the object `skip` and any object the predicate `keep` rejects. No-op if `fu` is `nothing`.
 """
 apply_followup!(sim::Simulation, ::Union{Individual, Setting}, ::Nothing) = nothing
-apply_followup!(sim::Simulation, ::AbstractVector, ::Nothing) = nothing
+apply_followup!(sim::Simulation, ::AbstractVector, ::Nothing; skip = nothing, keep = nothing) = nothing
 apply_followup!(sim::Simulation, i::Individual, fu::IStrategy) = trigger_strategy(fu, i, sim)
 apply_followup!(sim::Simulation, s::Setting, fu::SStrategy) = trigger_strategy(fu, s, sim)
-function apply_followup!(sim::Simulation, objs::AbstractVector, fu::Strategy)
+function apply_followup!(sim::Simulation, objs::AbstractVector, fu::Strategy; skip = nothing, keep = nothing)
     for o in objs
+        (o === skip || (keep !== nothing && !keep(o))) && continue
         trigger_strategy(fu, o, sim)
     end
 end
