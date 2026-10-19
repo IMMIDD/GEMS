@@ -37,6 +37,8 @@ mutable struct AgeBasedContactSampling <: ContactSamplingMethod
     row_max::Vector{Float64}
     # filled by the first `contact_rate`, and emptied with the age pyramid
     rate_cache::Union{Nothing, _AgeRateCache}
+    # present members per age bin, counted once and then kept current by `membership_changed!`
+    bin_counts::Vector{Int}
 
     function AgeBasedContactSampling(; contactparameter::Float64, contact_matrix_file::String, interval::Int64)
         if contactparameter < 0
@@ -61,7 +63,7 @@ mutable struct AgeBasedContactSampling <: ContactSamplingMethod
         # a contact's acceptance m / m_max must be a probability
         any(<(0), contact_matrix.data) && throw(ArgumentError("'contact_matrix' has negative entries, but contact weights have to be non-negative!"))
         row_max = vec(maximum(contact_matrix.data, dims = 2))
-        return new(contactparameter, interval, contact_matrix, age_pyramid, row_max, nothing)
+        return new(contactparameter, interval, contact_matrix, age_pyramid, row_max, nothing, Int[])
     end
 end
 
@@ -96,12 +98,8 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     
     # if age_pyramid is not ready compute it
     if size(age_pyramid)[1] == 0
-        age_pyramid = zeros(size(contact_matrix)[1])
-        for ind in present_inds
-            interval_id = min(ind.age, max_age) ÷ interval + 1
-            age_pyramid[interval_id] += 1
-        end
-        age_pyramid = age_pyramid ./ sum(age_pyramid)
+        counts = _bin_counts!(contactparameter_sampling, present_inds)
+        age_pyramid = counts ./ sum(counts)
         contactparameter_sampling.age_pyramid = age_pyramid
     end
     
@@ -195,16 +193,25 @@ function _age_rate_cache!(csm::AgeBasedContactSampling, present_inds::AbstractVe
     cache = csm.rate_cache
     cache === nothing || return cache
     m = csm.contact_matrix.data
-    counts = zeros(Int, size(m, 1))
-    for ind in present_inds
-        counts[_age_bin(csm, ind)] += 1
-    end
+    counts = _bin_counts!(csm, present_inds)
     weight_with_host = [sum(counts[b] * m[a, b] for b in eachindex(counts)) for a in eachindex(counts)]
     # summed per term, so a host alone in its row's support gives exactly 0
     weight_without_host = [sum((counts[b] - (a == b)) * m[a, b] for b in eachindex(counts)) for a in eachindex(counts)]
     cache = _AgeRateCache(weight_with_host, weight_without_host)
     csm.rate_cache = cache
     return cache
+end
+
+# The present members per age bin, counted on first use.
+function _bin_counts!(csm::AgeBasedContactSampling, present_inds::AbstractVector{Individual})
+    counts = csm.bin_counts
+    isempty(counts) || return counts
+    counts = zeros(Int, size(csm.contact_matrix.data, 1))
+    for ind in present_inds
+        counts[_age_bin(csm, ind)] += 1
+    end
+    csm.bin_counts = counts
+    return counts
 end
 
 """
@@ -241,9 +248,24 @@ end
 """
     membership_changed!(csm::AgeBasedContactSampling, setting::Setting)
 
-Drops the cached age pyramid and rate cache; both refill lazily.
+Drops the cached bin counts, age pyramid and rate cache; all refill lazily.
 """
 function membership_changed!(csm::AgeBasedContactSampling, setting::Setting)
+    empty!(csm.bin_counts)
+    empty!(csm.age_pyramid)
+    csm.rate_cache = nothing
+    return nothing
+end
+
+"""
+    membership_changed!(csm::AgeBasedContactSampling, setting::Setting, individual::Individual, delta::Int)
+
+Moves the count of `individual`'s age bin by `delta`, and drops the age pyramid and rate cache, which
+refill from the counts.
+"""
+function membership_changed!(csm::AgeBasedContactSampling, setting::Setting, individual::Individual, delta::Int)
+    counts = csm.bin_counts
+    isempty(counts) || (counts[_age_bin(csm, individual)] += delta)
     empty!(csm.age_pyramid)
     csm.rate_cache = nothing
     return nothing

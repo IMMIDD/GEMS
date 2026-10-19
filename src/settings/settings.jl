@@ -901,7 +901,7 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
     # the bound must use the scale as rounded into the entry's Float16
     stored = Float32(Float16(scale))
     stored > _scale_bound(setting) && _set_scale_bound!(setting, stored)
-    membership_changed!(contact_sampling_method(setting), setting)
+    membership_changed!(contact_sampling_method(setting), setting, individual, 1)
     return nothing
 end
 
@@ -916,7 +916,8 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
     members = individuals(setting)
     idx = findfirst(i -> i === individual, members)
     isnothing(idx) && return nothing
-    if _is_deceased(setting, idx)
+    was_alive = !_is_deceased(setting, idx)
+    if !was_alive
         _add_deceased!(setting, -1)
     elseif _deceased(setting) > 0
         # swap-with-last would pull a deceased member forward, so move to the last living slot first
@@ -937,7 +938,12 @@ function remove_member!(setting::IndividualSetting, individual::Individual, pop:
     end
     # the removed member may have held the bound
     _scale_bound(setting) > 1 && _refresh_scale_bound!(plans, setting)
-    membership_changed!(contact_sampling_method(setting), setting)
+    # a deceased member had already left the living members, but the member list still changed
+    if was_alive
+        membership_changed!(contact_sampling_method(setting), setting, individual, -1)
+    else
+        membership_changed!(contact_sampling_method(setting), setting)
+    end
     return nothing
 end
 
@@ -959,7 +965,7 @@ function mark_deceased!(setting::T, individual::Individual, pop::Population) whe
     _add_deceased!(setting, 1)
     # the deceased member may have held the bound
     _scale_bound(setting) > 1 && _refresh_scale_bound!(plans, setting)
-    membership_changed!(contact_sampling_method(setting), setting)
+    membership_changed!(contact_sampling_method(setting), setting, individual, -1)
     return nothing
 end
 

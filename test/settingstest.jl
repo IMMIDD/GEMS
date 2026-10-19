@@ -1103,6 +1103,42 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test length(individuals(h2)) == length(inds) + 1
         end
 
+        @testset "member edits and deaths keep the age bin counts exact" begin
+            m = hcat([[rand(Xoshiro(11 + i)) for i = 1:10] for i = 1:10]...)
+            m = m .* hcat([vec(1 ./ sum(m, dims = 2)) for _ = 1:10]...)
+            abcs() = AgeBasedContactSampling(1.0, 10, ContactMatrix{Float64}(m, 10, 100), Float64[])
+            rng = Xoshiro(3)
+            inds = [Individual(id = Int32(j), age = rand(rng, 0:99), sex = 1) for j in 1:40]
+            pop = Population(inds)
+            plans = GEMS.activity_plans(pop)
+            for (k, ind) in enumerate(inds[1:10])
+                assign_settings!(pop, ind, Household => 1)
+                GEMS.plan_set_member_index!(plans, Int(ind.plan_offset), k)
+            end
+            plans.indexed = true
+            h = Household(id = Int32(1), individuals = inds[1:10])
+            csm = GEMS._assign_contact_sampling_method!(h, abcs())
+            present() = GEMS.present_members(h, SettingsContainer())
+
+            for _ in 1:80
+                GEMS._age_rate_cache!(csm, present())
+                r = rand(rng)
+                outside = setdiff(inds, individuals(h))
+                if r < 0.4 && !isempty(outside)
+                    add_member!(h, rand(rng, outside), pop)
+                elseif r < 0.7 && length(present()) > 2
+                    mark_deceased!(h, rand(rng, present()), pop)
+                elseif length(present()) > 2
+                    remove_member!(h, rand(rng, individuals(h)), pop)
+                end
+                # the kept counts must give the cache a full recount gives
+                cache = GEMS._age_rate_cache!(csm, present())
+                recount = GEMS._age_rate_cache!(abcs(), present())
+                @test cache.weight_with_host == recount.weight_with_host
+                @test cache.weight_without_host == recount.weight_without_host
+            end
+        end
+
         @testset "GlobalSetting membership is not editable" begin
             # it is the entire population by definition, so nobody holds an entry for it
             gs = GlobalSetting(id = Int32(1), individuals = Individual[],

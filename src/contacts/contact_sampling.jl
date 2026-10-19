@@ -150,12 +150,22 @@ end
     membership_changed!(csm::ContactSamplingMethod, setting::Setting)
 
 Signals that `setting`'s members or frame changed, so a sampling method can drop state derived
-from them. Called on member edits and deaths, and when a container's frame is rebuilt. No-op by default.
+from them. Called when a container's frame is rebuilt, and by default for member edits and deaths. No-op by default.
 
 Frames are rebuilt in parallel, so this can run for several settings at once. A method with
 state must keep it per setting, as settings hold their own copy of a mutable method.
 """
 membership_changed!(csm::ContactSamplingMethod, setting::Setting) = nothing
+
+"""
+    membership_changed!(csm::ContactSamplingMethod, setting::Setting, individual::Individual, delta::Int)
+
+Signals that `individual` joined (`delta = 1`) or left (`delta = -1`) `setting`'s living members,
+so a sampling method can update its state instead of dropping it. Defaults to `membership_changed!(csm, setting)`,
+which a method with state must define anyway, as resets and frame rebuilds only signal that.
+"""
+membership_changed!(csm::ContactSamplingMethod, setting::Setting, individual::Individual, delta::Int) =
+    membership_changed!(csm, setting)
 
 """
     create_contact_sampling_method(config::Dict)
