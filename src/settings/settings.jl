@@ -1101,13 +1101,12 @@ Base.size(setting::IndividualSetting) = setting |> individuals |> length
 ### CREATION OF SETTINGS
 
 """
-    construct_and_add_settings!(container_vec::Vector, members::Vector{Individual}, starts::Vector{Int32}, ids::AbstractVector{Int32}, settingtype::Type{T}, plans, flat, default_sampling) where {T <: Setting}
+    construct_and_add_settings!(container_vec::Vector, members::Vector{Individual}, starts::Vector{Int32}, ids::AbstractVector{Int32}, settingtype::Type{T}, member_scales, flat, default_sampling) where {T <: Setting}
 
 Helper function to construct the settings `_place_members!` laid out, in ascending id order and
 without dynamic dispatch: the setting with id `ids[k]` holds `members[starts[k]:(starts[k + 1] - 1)]`,
 in the flat pool `flat` or in a vector of its own, and ids without members get no setting. Sets
-each entry's `member_index` and each setting's scale bound on the way, since pooling keeps a
-leaf's member order.
+each setting's scale bound from `member_scales`, the members' scales by position, or to 1 without them.
 """
 function construct_and_add_settings!(
     container_vec::Vector,
@@ -1115,7 +1114,7 @@ function construct_and_add_settings!(
     starts::Vector{Int32},
     ids::AbstractVector{Int32},
     settingtype::Type{T},
-    plans::AbstractActivityPlanStore,
+    member_scales::Union{Nothing, Vector{Float16}},
     flat::Union{Nothing, FlatSettingPool},
     default_sampling
 ) where {T <: Setting}
@@ -1141,18 +1140,17 @@ function construct_and_add_settings!(
     resize!(container_vec, nsettings[end] - 1)
 
     Threads.@threads for c in 1:nchunks
-        @inbounds _construct_settings_chunk!(container_vec, members, starts, ids, settingtype, plans, sampling, flat,
+        @inbounds _construct_settings_chunk!(container_vec, members, starts, ids, settingtype, member_scales, sampling, flat,
             ((c - 1) * step + 1):min(c * step, n), nsettings[c])
     end
     return nothing
 end
 
-# Builds the settings of `ids[ks]` from `container_vec[at]`, setting member indices and scale bounds.
+# Builds the settings of `ids[ks]` from `container_vec[at]`, setting their scale bounds.
 function _construct_settings_chunk!(container_vec::Vector, members::Vector{Individual}, starts::Vector{Int32},
-        ids::AbstractVector{Int32}, settingtype::Type{T}, plans::AbstractActivityPlanStore,
+        ids::AbstractVector{Int32}, settingtype::Type{T}, member_scales::Union{Nothing, Vector{Float16}},
         sampling::Base.RefValue{ContactSamplingMethod}, flat::Union{Nothing, FlatSettingPool}, ks::UnitRange{Int},
         at::Int) where {T <: Setting}
-    tidx = setting_type_index(T)
     @inbounds for k in ks
         lo = Int(starts[k])
         hi = Int(starts[k + 1]) - 1
@@ -1160,11 +1158,10 @@ function _construct_settings_chunk!(container_vec::Vector, members::Vector{Indiv
         sid = ids[k]
 
         bound = 1.0f0
-        for pos in lo:hi
-            # an individual holds one entry per setting, so the setting id finds it
-            slot = _entry_slot(plans, members[pos], tidx, sid)
-            plan_set_member_index!(plans, slot, pos - lo + 1)
-            bound = max(bound, Float32(entry_scale(plans.entries[slot])))
+        if member_scales !== nothing
+            for pos in lo:hi
+                bound = max(bound, Float32(member_scales[pos]))
+            end
         end
 
         setting = _make_setting(settingtype, sid, members, lo, hi, flat, sampling[])
@@ -1188,12 +1185,14 @@ _make_setting(::Type{T}, sid::Int32, members::Vector{Individual}, lo::Int, hi::I
         ::Nothing, csm::ContactSamplingMethod) where {T <: Setting} =
     T(id = sid, individuals = members[lo:hi], contact_sampling_method = csm)
 
-# Counting sort of the individuals' type-`T` entries by setting: setting `ids[k]` gets
+# Counting sort of one type's entries by setting: setting `ids[k]` gets
 # `members[starts[k]:(starts[k + 1] - 1)]` in individual and plan order, with `k = searchsortedfirst(ids, sid)`.
-# `parts[c]` holds chunk `c`'s setting ids and is overwritten. Only the passes that fix the order run serially.
+# `parts[c]` holds chunk `c`'s setting ids and is overwritten; `owners[c]` and `slots[c]` hold each entry's
+# index in `inds` and plan slot. Also sets member indices, and `member_scales` by position if given.
+# Only the passes that fix the order run serially.
 function _place_members!(members::Vector{Individual}, starts::Vector{Int32}, ids::AbstractVector{Int32},
-        parts::Vector{Vector{Int32}}, plans::AbstractActivityPlanStore, inds::Vector{Individual},
-        chunks::Vector{UnitRange{Int}}, ::Type{T}) where {T <: Setting}
+        parts::Vector{Vector{Int32}}, owners::Vector{Vector{Int32}}, slots::Vector{Vector{Int32}},
+        member_scales::Union{Nothing, Vector{Float16}}, plans::AbstractActivityPlanStore, inds::Vector{Individual})
     # each entry's setting id becomes its setting's position; each setting's member count, one
     # position ahead, is summed into each setting's first position
     @inbounds for part in parts, j in eachindex(part)
@@ -1215,12 +1214,15 @@ function _place_members!(members::Vector{Individual}, starts::Vector{Int32}, ids
         starts[k] = starts[k - 1]
     end
     starts[1] = 1
-    # the chunks place their individuals in parallel, walking their entries in the same order
-    Threads.@threads for c in eachindex(chunks)
-        j = 1
-        @inbounds for i in chunks[c], _ in plan_slots(plans, inds[i], T)
-            members[parts[c][j]] = inds[i]
-            j += 1
+    # the chunks place their entries in parallel, reading the entries in slot order and no individual
+    Threads.@threads for c in eachindex(parts)
+        part, part_owners, part_slots = parts[c], owners[c], slots[c]
+        @inbounds for j in eachindex(part)
+            pos = Int(part[j])
+            e = plans.entries[part_slots[j]]
+            members[pos] = inds[part_owners[j]]
+            plan_set_member_index!(plans, Int(part_slots[j]), pos - Int(starts[searchsortedfirst(ids, setting_id(e))]) + 1)
+            member_scales === nothing || (member_scales[pos] = entry_scale(e))
         end
     end
     return nothing
@@ -1291,17 +1293,22 @@ function _check_global_positions(pop::Population, cntnr)
 end
 
 
-# Collects the setting id of each type-`T` entry in `r` into `sids`, in individual and plan order;
-# returns the smallest and largest.
-function _collect_setting_ids!(sids::Vector{Int32}, plans::AbstractActivityPlanStore, inds::Vector{Individual},
+# Collects each type-`T` entry in `r`, in individual and plan order: its setting id into `sids`, its
+# individual's index in `inds` into `owners` and its slot into `slots`. Returns the smallest and largest id.
+function _collect_setting_ids!(sids::Vector{Int32}, owners::Vector{Int32}, slots::Vector{Int32},
+                               plans::AbstractActivityPlanStore, inds::Vector{Individual},
                                r::UnitRange{Int}, ::Type{T}) where {T <: Setting}
     # most types hold at most one entry per individual
     sizehint!(sids, length(r))
+    sizehint!(owners, length(r))
+    sizehint!(slots, length(r))
     min_id = typemax(Int32)
     max_id = typemin(Int32)
     @inbounds for i in r, slot in plan_slots(plans, inds[i], T)
         sid = setting_id(plans.entries[slot])
         push!(sids, sid)
+        push!(owners, Int32(i))
+        push!(slots, Int32(slot))
         min_id = min(min_id, sid)
         max_id = max(max_id, sid)
     end
@@ -1326,12 +1333,14 @@ function _settings_for_type!(
 
     plans = activity_plans(population)
 
-    # chunks collect their entries' setting ids in parallel, one Int32 per entry
+    # chunks collect their entries in parallel, three Int32 per entry, so later passes read no individual
     parts = [Int32[] for _ in chunks]
+    owners = [Int32[] for _ in chunks]
+    slots = [Int32[] for _ in chunks]
     min_ids = fill(typemax(Int32), length(chunks))
     max_ids = fill(typemin(Int32), length(chunks))
     Threads.@threads for c in eachindex(chunks)
-        @inbounds min_ids[c], max_ids[c] = _collect_setting_ids!(parts[c], plans, inds, chunks[c], T)
+        @inbounds min_ids[c], max_ids[c] = _collect_setting_ids!(parts[c], owners[c], slots[c], plans, inds, chunks[c], T)
     end
 
     valid_count = sum(length, parts)
@@ -1346,13 +1355,16 @@ function _settings_for_type!(
     flat = _new_flat_pool(T, valid_count)
     members = flat === nothing ? Vector{Individual}(undef, valid_count) : flat.members
     starts = zeros(Int32, length(ids) + 1)
-    _place_members!(members, starts, ids, parts, plans, inds, chunks, T)
+    # the members' scales by position, needed only for a scale bound above 1
+    member_scales = hasfield(T, :scale_bound) && _type_scale_bound(plans, setting_type_index(T)) > 1 ?
+        Vector{Float16}(undef, valid_count) : nothing
+    _place_members!(members, starts, ids, parts, owners, slots, member_scales, plans, inds)
 
     add_type!(settings, T)
     # the container stores its vectors as `Vector`; asserting the concrete type keeps the call static
     setting_vec = get(settings, T)::Vector{T}
 
-    construct_and_add_settings!(setting_vec, members, starts, ids, T, plans, flat, default_sampling)
+    construct_and_add_settings!(setting_vec, members, starts, ids, T, member_scales, flat, default_sampling)
     # registered so `repack_dirty_pools!` can compact it
     flat === nothing || (settings.flat_pools[T] = flat)
 
