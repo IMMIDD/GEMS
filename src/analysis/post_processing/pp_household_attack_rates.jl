@@ -61,7 +61,7 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
     # `household_b` is the infectee's primary household, so only the sampled households are looked up
     hhs = households(simulation(postProcessor))
     infs.hh_id = Int32.(infs.household_b)
-    infs.hh_size = Int16[size(hhs[h]) for h in infs.hh_id]
+    infs.hh_size = _household_sizes(infs.hh_id, hhs)
 
     return infs |>
         x -> DataFrames.select(x, :tick, :hh_id, :home_chain, :started_chain, :hh_size, :pathogen_id) |>
@@ -102,3 +102,6 @@ function _unique_households(col::AbstractVector)
     end
     return households
 end
+
+# The size of each household in `hh_ids`, in a function of its own, so the loop knows the column's type
+_household_sizes(hh_ids::AbstractVector, hhs::Vector{Household}) = Int16[size(hhs[h]) for h in hh_ids]
