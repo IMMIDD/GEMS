@@ -240,23 +240,21 @@ mutable struct ResultData <: AbstractResultData
 
     @doc """
 
-        ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS, share_logger_data::Bool = true)
+        ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
 
     Create a `ResultData` object using a `Simulation` and the name of a `ResultDataStyle`, that describes the level of detail
     for the fields to be calculated. This constructor instantiates a default `PostProcessor` for
     the passed simulation object. If you want to manually configure the `PostProcessor`,
     you need to instantiate it first and pass the `PostProcessor` to the `ResultData` constructor instead.
     Post Processing requires a simulation to be done.
-    At most `max_tasks` result functions run at the same time. `share_logger_data` is passed to the
-    `PostProcessor`: with it, the result's logger columns share memory with the simulation's loggers.
+    At most `max_tasks` result functions run at the same time.
     """
-    ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS,
-            share_logger_data::Bool = true) =
-        ResultData(PostProcessor(sim; share_logger_data), style = style, max_tasks = max_tasks)
+    ResultData(sim::Simulation; style::String = "DefaultResultData", max_tasks::Integer = POST_PROCESSING_MAX_TASKS) =
+        ResultData(PostProcessor(sim), style = style, max_tasks = max_tasks)
 
     @doc """
 
-        ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false, max_tasks::Integer = POST_PROCESSING_MAX_TASKS, share_logger_data::Bool = true)
+        ResultData(sim::Vector{Simulation}; style::String = "DefaultResultData", print_infos::Bool = false, max_tasks::Integer = POST_PROCESSING_MAX_TASKS)
 
     Create a vector `ResultData` objects using a vector of `Simulation` objects and the name of a `ResultDataStyle`, that describes the level of detail
     for the fields to be calculated. If you want to manually configure the `PostProcessor`,
@@ -264,12 +262,11 @@ mutable struct ResultData <: AbstractResultData
     Post Processing requires a simulation to be done.
     It supresses the usual info outputs that are being made during the `ResultData`
     generation. If you want to enable them, pass `print_infos = true`.
-    At most `max_tasks` result functions run at the same time. `share_logger_data` is passed to the
-    `PostProcessor`s.
+    At most `max_tasks` result functions run at the same time.
     """
     ResultData(sim::Vector{<:Simulation}; style::String = "DefaultResultData", print_infos::Bool = false,
-            max_tasks::Integer = POST_PROCESSING_MAX_TASKS, share_logger_data::Bool = true) =
-        ResultData(PostProcessor(sim; share_logger_data), style = style, print_infos = print_infos, max_tasks = max_tasks)
+            max_tasks::Integer = POST_PROCESSING_MAX_TASKS) =
+        ResultData(PostProcessor(sim), style = style, print_infos = print_infos, max_tasks = max_tasks)
 
 end
 

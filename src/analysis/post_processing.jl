@@ -47,15 +47,11 @@ mutable struct PostProcessor
 
 @doc """
 
-        PostProcessor(simulation::Simulation; share_logger_data::Bool = true)
+        PostProcessor(simulation::Simulation)
 
     Create a `PostProcessor` object for an associated `Simulation`. Post Processing requires a simulation to be done.
-
-    With `share_logger_data` (the default), the columns the `PostProcessor`'s dataframes take from the
-    simulation's loggers are the loggers' own storage rather than copies, which saves their memory;
-    changing such a column in place changes the logger. Pass `false` to work on copies.
     """
-    function PostProcessor(simulation::Simulation; share_logger_data::Bool = true)
+    function PostProcessor(simulation::Simulation)
 
         # a run can end on settings opened or closed; repack their pools here, before result steps
         # that may run concurrently read them
@@ -65,13 +61,13 @@ mutable struct PostProcessor
         pop = dataframe(population(simulation))
 
         # import tests
-        tests = dataframe(testlogger(simulation); share = share_logger_data)
+        tests = dataframe(testlogger(simulation))
 
         # import seroprevalence tests
-        serotests = dataframe(seroprevalencelogger(simulation); share = share_logger_data)
+        serotests = dataframe(seroprevalencelogger(simulation))
 
-        # the steps below only add or replace columns, so they leave shared logger columns intact
-        infections = dataframe(infectionlogger(simulation); share = share_logger_data)
+        # import infections
+        infections = dataframe(infectionlogger(simulation))
 
         # the logger keeps the infectee's household; locate the infection there, with its setting's AGS
         lats, lons = _household_coordinates(infections.household_id, households(simulation))
@@ -109,7 +105,7 @@ mutable struct PostProcessor
         infections.household_ags_a = _ags_of_households(_gather(pop.household, rows_a), household_ags)
         infections.household_ags_b = _ags_of_households(infections.household_b, household_ags)
 
-        deaths = dataframe(deathlogger(simulation); share = share_logger_data)
+        deaths = dataframe(deathlogger(simulation))
 
         # a host death ends every co-active infection: clear `:recovery` and record `:removed`
         death_rows = _matching_rows(infections.id_b, deaths.id)
@@ -126,24 +122,23 @@ mutable struct PostProcessor
         # join tests with population data
         leftjoin!(tests, pop, on = :id)
         
-        pooltests = dataframe(pooltestlogger(simulation); share = share_logger_data)
+        pooltests = dataframe(pooltestlogger(simulation))
 
         # add "Other" column to quarantines DF indicating all non-student and non-worker quarantines
-        quarantines = dataframe(quarantinelogger(simulation); share = share_logger_data)
+        quarantines = dataframe(quarantinelogger(simulation))
         transform!(quarantines, [:quarantined, :students, :workers] => ByRow((q, s, w) -> q - s - w) => :other)
 
-        compartments = dataframe(statelogger(simulation); share = share_logger_data)
+        compartments = dataframe(statelogger(simulation))
         rename!(compartments,
             :exposed => :exposed_cnt,
             :infectious => :infectious_cnt,
             :detected => :detected_cnt,
             :dead => :dead_cnt)
 
-        health = dataframe(healthlogger(simulation); share = share_logger_data)
+        health = dataframe(healthlogger(simulation))
 
-        # the custom logger keeps its data as a DataFrame already
-        custom = dataframe(customlogger(simulation))
-        share_logger_data || (custom = copy(custom))
+        # the custom logger keeps its data as a DataFrame already; copy it, as the other tables are copies
+        custom = copy(dataframe(customlogger(simulation)))
 
         new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, health, custom,
             Dict{String, Any}())
@@ -152,13 +147,13 @@ mutable struct PostProcessor
 
     @doc """
 
-        PostProcessor(simulations::Vector{Simulation}; share_logger_data::Bool = true)
+        PostProcessor(simulations::Vector{Simulation})
 
     Create a vector of `PostProcessor` objects for a vector of associated `Simulation` objects.
     Post Processing requires all simulations to be done.
     """
-    function PostProcessor(simulations::Vector{<:Simulation}; share_logger_data::Bool = true)
-        return map(s -> PostProcessor(s; share_logger_data), simulations)
+    function PostProcessor(simulations::Vector{<:Simulation})
+        return map(PostProcessor, simulations)
     end
 
 end

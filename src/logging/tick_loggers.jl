@@ -24,13 +24,12 @@ function log!(
     Threads.atomic_xchg!(quarantinelogger.last_modified_tick, tick)
 end
 
-function dataframe(quarantinelogger::QuarantineLogger; share::Bool = false)::DataFrame
+function dataframe(quarantinelogger::QuarantineLogger)::DataFrame
     return DataFrame(
         tick = quarantinelogger.tick,
         quarantined = quarantinelogger.quarantined,
         students = quarantinelogger.students,
-        workers = quarantinelogger.workers;
-        copycols = !share
+        workers = quarantinelogger.workers
     )
 end
 
@@ -87,7 +86,7 @@ function log!(
     Threads.atomic_xchg!(statelogger.last_modified_tick, tick)
 end
 
-function dataframe(statelogger::StateLogger; share::Bool = false)::DataFrame
+function dataframe(statelogger::StateLogger)::DataFrame
     return DataFrame(
         tick = statelogger.tick,
         exposed = statelogger.exposed,
@@ -100,8 +99,7 @@ function dataframe(statelogger::StateLogger; share::Bool = false)::DataFrame
         unable_to_attend_students = statelogger.unable_to_attend_students,
         quarantined_workers = statelogger.quarantined_workers,
         isolated_workers = statelogger.isolated_workers,
-        unable_to_attend_workers = statelogger.unable_to_attend_workers;
-        copycols = !share
+        unable_to_attend_workers = statelogger.unable_to_attend_workers
     )
 end
 

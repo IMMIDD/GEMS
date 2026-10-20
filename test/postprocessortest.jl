@@ -28,23 +28,6 @@ import GEMS: _mean_contacts_per_age_group,
         @test infections(pp) isa DataFrame
         @test infections(pp) === infectionsDF(pp)
 
-        # the logger columns are the logger's own storage, not copies, and hold the same data
-        il = infectionlogger(sim)
-        @test infectionsDF(pp).infection_id === il.infection_id[1].head
-        @test infectionsDF(pp).id_b === il.id_b[1].head
-        @test infectionsDF(pp).infection_id == dataframe(il).infection_id
-        # the logger's own dataframe is still a copy
-        @test dataframe(il).infection_id !== il.infection_id[1].head
-        # the other logger tables share too; the dead are joined with the population, so compare by id
-        @test deathsDF(pp).id === deathlogger(sim).id[1]
-
-        # without sharing, the same data in copies
-        pp_copy = PostProcessor(sim; share_logger_data = false)
-        @test infectionsDF(pp_copy).infection_id !== il.infection_id[1].head
-        @test isequal(infectionsDF(pp_copy), infectionsDF(pp))
-        @test deathsDF(pp_copy).id !== deathlogger(sim).id[1]
-        @test isequal(deathsDF(pp_copy), deathsDF(pp))
-
         # the infections table carries only the population columns post processing reads
         infs = infectionsDF(pp)
         @test issubset(["age_a", "age_b", "household_b", "household_ags_a", "household_ags_b"], names(infs))
@@ -68,13 +51,10 @@ import GEMS: _mean_contacts_per_age_group,
         @test isequal(sel.sex_b, full.sex_b) && isequal(sel.office_a, full.office_a)
         @test_throws ArgumentError with_population_columns(infs, pp, "sex")
 
-        # the health and custom logger tables follow the same flag
-        @test healthDF(pp).id === healthlogger(sim).id[1]
-        @test customDF(pp) === dataframe(customlogger(sim))
-        @test healthDF(pp_copy).id !== healthlogger(sim).id[1]
-        @test isequal(healthDF(pp_copy), healthDF(pp))
-        @test customDF(pp_copy) !== dataframe(customlogger(sim))
-        @test isequal(customDF(pp_copy), customDF(pp))
+        # the health and custom logger tables are copies of the loggers' data
+        @test isequal(healthDF(pp), dataframe(healthlogger(sim)))
+        @test customDF(pp) !== dataframe(customlogger(sim))
+        @test isequal(customDF(pp), dataframe(customlogger(sim)))
 
         # compartmentsDF returns the state-logger compartment data
         @test compartmentsDF(pp) isa DataFrame
