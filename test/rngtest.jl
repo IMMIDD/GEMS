@@ -227,11 +227,17 @@ GEMS.calculate_infectiousness(::DailyNoisyInfectiousness, s::InfectionState, i::
         # a profile declared not to draw gets its rng unkeyed, so it must read the same from any rng state
         @test GEMS._draws_from_rng(NoisyInfectiousness())
         ind = Individual(id = 1, sex = 0, age = 30)
-        st = InfectionState(Int8(1), Int32(1), DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1),
-            symptom_onset = Int16(3), recovery = Int16(9)))
-        for profile in (ConstantInfectiousness(), StagedInfectiousness(), BetaInfectiousness())
+        # passes through every stage, so draws made only in a late stage are caught too
+        st = InfectionState(Int8(1), Int32(1), DiseaseProgression(exposure = 0, infectiousness_onset = 1,
+            symptom_onset = 3, severeness_onset = 5, critical_onset = 7, critical_offset = 9,
+            severeness_offset = 11, recovery = 13))
+        non_drawing = (ConstantInfectiousness(), StagedInfectiousness(), BetaInfectiousness())
+        # every profile type with its own `_draws_from_rng` method is checked here
+        declared = setdiff(Set(m.sig.parameters[2] for m in methods(GEMS._draws_from_rng)), [GEMS.InfectiousnessProfile])
+        @test declared == Set(typeof.(non_drawing))
+        for profile in non_drawing
             @test !GEMS._draws_from_rng(profile)
-            @test all(Int16.(0:10)) do t
+            @test all(Int16.(0:15)) do t
                 calculate_infectiousness(profile, st, ind, t, GEMS._keyed_infection_rng(1, Int32(1), st)) ==
                     calculate_infectiousness(profile, st, ind, t, GEMS._keyed_infection_rng(2, Int32(5), st))
             end
