@@ -101,8 +101,12 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             can_be_contacted(ind, s) || continue
 
             s_host = _membership_scale(plans, ind, s, cntnr)
-            sample_scaled_contacts!(contacts, draws, s.contact_sampling_method, s, ind_index, present_inds,
-                tick(simulation), true, survey_rng, plans, cntnr, s_host, _scale_bound(s))
+            # the closure gets its own copy, as capturing `present_inds`, which the loop reassigns, would box it
+            members = present_inds
+            _with_sampling_method(s.contact_sampling_method) do csm
+                sample_scaled_contacts!(contacts, draws, csm, s, ind_index, members,
+                    tick(simulation), true, survey_rng, plans, cntnr, s_host, _scale_bound(s))
+            end
 
             if length(contacts) > 0
                 for contact in contacts
