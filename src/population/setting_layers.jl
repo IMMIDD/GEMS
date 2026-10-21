@@ -249,18 +249,24 @@ _layer_type(::SettingLayer{T}) where {T} = T
     add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing)
 
 Gives the population's individuals the plan entries each layer describes, layer by layer, with
-draws seeded from `seed` and each layer's name. `SpatialSettings` and `JoinNearby` need
-`household_coordinates`, a table with each household's `id`, `lon` and `lat`.
+draws seeded from `seed` and each layer's name, and records each layer in
+`params(pop)["setting_layers"]`. `SpatialSettings` and `JoinNearby` need `household_coordinates`,
+a table with each household's `id`, `lon` and `lat`. An error in one layer leaves the layers
+before it applied and recorded.
 """
 function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing)
     # the merge checks this too, but only after the first layer is generated
     activity_plans(pop).indexed && throw(ArgumentError(
         "the settings are already built; add setting layers before building them"))
-    names = _layer_names(layers)
+    isempty(layers) && return pop
+    names = _layer_names(layers, get(pop.params, "setting_layers", Dict{String, Any}[]))
     coords = _layer_coordinates(layers, household_coordinates)
+    bytes = 0
     for (layer, name) in zip(layers, names)
-        _apply_layer!(pop, layer, name, seed, coords)
+        bytes += _apply_layer!(pop, layer, name, seed, coords)
     end
+    added = sum(r -> r["entries"], last(_layer_records!(pop), length(layers)))
+    @info "Setting layers added $added plan entries; merging them allocated $(round(bytes / 2^20; digits = 1)) MiB"
     return pop
 end
 
@@ -274,7 +280,7 @@ end
 
 _needs_coordinates(::LayerAssignment) = false
 
-# Generates one layer and merges it into the plans; returns the bytes the merge allocated.
+# Generates one layer, merges it into the plans and records it; returns the bytes the merge allocated.
 function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed::Integer, coords)
     store, inds = activity_plans(pop), individuals(pop)
     streams = _LayerStreams(seed, name)
@@ -282,21 +288,24 @@ function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed:
     _check_room(entry_counts, inds)
     additions = _layer_additions(layer, entry_counts, streams)
     ctx = _LayerContext(store, inds, additions.tidx, coords, streams.size)
-    _assign!(additions, layer.assignment, ctx, streams.assignment)
-    return _merge_additions!(store, inds, additions)
+    shortfall = _assign!(additions, layer.assignment, ctx, streams.assignment)
+    bytes = _merge_additions!(store, inds, additions)
+    push!(_layer_records!(pop), _layer_record(layer, name, seed, additions, shortfall))
+    return bytes
 end
 
-# The layers' names: their own, else "<Type>[k]" for the k-th layer of that type. Errors on a repeat.
-function _layer_names(layers)
-    names = String[]
+# The layers' names: their own, else "<Type>[k]" for the k-th layer of that type, counting the
+# `recorded` ones. Errors on a name used twice, here or among the recorded layers.
+function _layer_names(layers, recorded::Vector{Dict{String, Any}})
+    names = String[r["name"] for r in recorded]
     for (k, layer) in enumerate(layers)
         T = _layer_type(layer)
-        n = count(l -> _layer_type(l) === T, layers[1:k])
+        n = count(r -> r["type"] == setting_type_name(T), recorded) + count(l -> _layer_type(l) === T, layers[1:k])
         name = something(layer.name, "$(setting_type_name(T))[$n]")
         name in names && throw(ArgumentError("two setting layers are named \"$name\"; names must be unique"))
         push!(names, name)
     end
-    return names
+    return names[(length(recorded) + 1):end]
 end
 
 """
@@ -752,3 +761,43 @@ end
 
 # The member count of the candidate at position `j`.
 @inline _candidate_weight(c::_JoinCandidates, j::Int) = c.cumulative[j] - (j == 1 ? 0 : c.cumulative[j - 1])
+
+###
+### RECORDS
+###
+
+# The layers recorded on the population, an empty list stored on first use.
+_layer_records!(pop::Population) =
+    get!(() -> Dict{String, Any}[], pop.params, "setting_layers")::Vector{Dict{String, Any}}
+
+"""
+    _layer_record(layer::SettingLayer, name::String, seed::Integer, additions::_PlanAdditions, shortfall::Int)
+
+What the population keeps about an applied layer: its name, setting type, parameters as text,
+seed, entries added and left out, and the id range of the settings it created.
+"""
+function _layer_record(layer::SettingLayer, name::String, seed::Integer, additions::_PlanAdditions, shortfall::Int)
+    added = filter(!=(DEFAULT_SETTING_ID), additions.sids)
+    record = Dict{String, Any}("name" => name, "type" => setting_type_name(_layer_type(layer)),
+        "description" => _layer_description(layer), "seed" => seed,
+        "entries" => length(added), "shortfall" => shortfall)
+    if layer.assignment isa NewSettingsAssignment && !isempty(added)
+        record["first_id"], record["last_id"] = extrema(added)
+    end
+    return record
+end
+
+# The layer's parameters as text, setting types by name.
+function _layer_description(layer::SettingLayer)
+    type_names(ts) = join((setting_type_name(setting_type_from_index(t)) for t in ts), ", ")
+    parts = [_assignment_description(layer.assignment), "participation = $(layer.participation)",
+        "entries = $(layer.entries)", "scale = $(layer.scale)"]
+    isempty(layer.holding) || push!(parts, "holding = [$(type_names(layer.holding))]")
+    isempty(layer.not_holding) || push!(parts, "not_holding = [$(type_names(layer.not_holding))]")
+    return join(parts, ", ")
+end
+
+function _assignment_description(a::LayerAssignment)
+    value(f) = f === :by ? setting_type_name(setting_type_from_index(a.by)) : getfield(a, f)
+    return "$(nameof(typeof(a)))(" * join(("$f = $(value(f))" for f in fieldnames(typeof(a))), ", ") * ")"
+end

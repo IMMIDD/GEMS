@@ -1,10 +1,11 @@
 import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots, plan_add!,
     plan_remove!, setting_type_of, setting_id, entry_active, entry_active!, entry_scale,
-    declare_setting_type!, DeclaredSetting, DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX, NewSettingsAssignment, JoinAssignment,
+    setting_ids, declare_setting_type!, DeclaredSetting, DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX,
+    NewSettingsAssignment, JoinAssignment, validate_plans, settingscontainer, settings,
     _membership_bit, _mask_slot, _type_scale_bound, _name_key,
     _LayerStreams, _layer_entry_counts, _check_room, _draw_entries, _draw_scale, _draw_size,
     _PlanAdditions, _merge_additions!, _max_setting_id, _setting_id,
-    setting_ids, validate_plans, settingscontainer, settings, _JoinCandidates, _draw_unheld
+    _JoinCandidates, _draw_unheld, _layer_description
 
 # `n` individuals, two per household; the first half work, three to an office
 function layer_pop(n = 12)
@@ -395,7 +396,9 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # with two offices, a worker's third entry finds none it does not hold
         pop = layer_pop()
         third = SettingLayer(Office; assignment = JoinExisting(), holding = Office, entries = 3)
-        @test_logs (:warn, r"^12 layer entries") add_setting_layers!(pop, third; seed = 1)
+        @test_logs (:warn, r"^12 layer entries") (:info,) add_setting_layers!(pop, third; seed = 1)
+        @test pop.params["setting_layers"][1]["shortfall"] == 12
+        @test !haskey(pop.params["setting_layers"][1], "first_id")
         @test all(i -> sort(setting_ids(i, Office, activity_plans(pop))) == [1, 2], individuals(pop)[1:6])
 
         # the exact draw steps past held settings and keeps the others' proportions
@@ -442,6 +445,41 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # past the ring cap, and without coordinates, the draw falls back to all offices
         @test all(in(1:167), joined_offices(1e5)) && length(unique(joined_offices(1e5))) > 100
         @test all(in(1:167), joined_offices(1, layer_coords(250)))
+    end
+
+    @testset "Names and records" begin
+        packed = SettingLayer(LayerGym; assignment = PackedSettings(size = 10))
+
+        # each call's layers are recorded, default names counting the recorded ones
+        pop = layer_pop(1000)
+        @test_logs (:info, r"^Setting layers added 1000 plan entries") add_setting_layers!(pop, packed; seed = 1)
+        add_setting_layers!(pop, packed; seed = 1)
+        records = pop.params["setting_layers"]
+        @test [r["name"] for r in records] == ["LayerTestGym[1]", "LayerTestGym[2]"]
+        @test (records[1]["first_id"], records[1]["last_id"], records[2]["first_id"]) == (1, 100, 101)
+        @test records[1]["entries"] == 1000 && records[1]["shortfall"] == 0 && records[1]["seed"] == 1
+        @test records[1]["description"] == "PackedSettings(size = 10.0), participation = 1.0, entries = 1, scale = 1.0"
+        # so the second layer draws differently
+        @test [h[2] - 100 for h in held_ids(pop)] != [h[1] for h in held_ids(pop)]
+        # a name the population already records is refused
+        named = SettingLayer(LayerGym; assignment = PackedSettings(size = 10), name = "LayerTestGym[1]")
+        @test_throws ArgumentError add_setting_layers!(pop, named; seed = 1)
+        @test !haskey(add_setting_layers!(layer_pop(); seed = 1).params, "setting_layers")
+
+        # types by name in the description
+        grouped = SettingLayer(LayerGym; assignment = GroupedSettings(size = 4), holding = Office)
+        @test _layer_description(grouped) ==
+            "GroupedSettings(size = 4.0, by = Household), participation = 1.0, entries = 1, scale = 1.0, holding = [Office]"
+
+        # a failing layer leaves the ones before it applied and recorded
+        pop = layer_pop()
+        too_many = SettingLayer(LayerGym; assignment = RandomSettings(size = 36), entries = 3)
+        @test_throws ArgumentError add_setting_layers!(pop, packed, too_many; seed = 1)
+        @test length(pop.params["setting_layers"]) == 1 && all(i -> setting_id(i, LayerGym, activity_plans(pop)) > 0, individuals(pop))
+
+        # a layer's draws do not depend on another type's layer before it
+        offices(size) = SettingLayer(Office; assignment = PackedSettings(size = size), not_holding = Office)
+        @test gym_ids(layered(offices(5), packed)) == gym_ids(layered(offices(7), packed))
     end
 
     @testset "Packed layer through a simulation" begin
