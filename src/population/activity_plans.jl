@@ -602,6 +602,10 @@ struct _PlanAdditions{S<:Union{Nothing, Vector{Float16}}}
 end
 
 @inline _addition_rows(a::_PlanAdditions, i::Int) = Int(a.offsets[i]):(Int(a.offsets[i + 1]) - 1)
+# the r-th of individual i's rows
+@inline _addition_row(a::_PlanAdditions, i::Int, r::Int) = Int(a.offsets[i]) + r - 1
+# the positions of the individuals the additions cover
+_addition_individuals(a::_PlanAdditions) = 1:(length(a.offsets) - 1)
 
 @inline _addition_scale(::_PlanAdditions{Nothing}, ::Int) = Float16(1)
 @inline _addition_scale(a::_PlanAdditions, k::Int) = @inbounds a.scales[k]

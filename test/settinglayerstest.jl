@@ -1,9 +1,10 @@
 import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots, plan_add!,
-    plan_remove!, setting_type_of, setting_id, entry_active, entry_active!, entry_scale, declare_setting_type!, DeclaredSetting,
-    DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX, NewSettingsAssignment, JoinAssignment,
+    plan_remove!, setting_type_of, setting_id, entry_active, entry_active!, entry_scale,
+    declare_setting_type!, DeclaredSetting, DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX, NewSettingsAssignment, JoinAssignment,
     _membership_bit, _mask_slot, _type_scale_bound, _name_key,
     _LayerStreams, _layer_entry_counts, _check_room, _draw_entries, _draw_scale, _draw_size,
-    _PlanAdditions, _merge_additions!, _max_setting_id, _setting_id
+    _PlanAdditions, _merge_additions!, _max_setting_id, _setting_id,
+    setting_ids, validate_plans, settingscontainer, settings
 
 # `n` individuals, two per household; the first half work, three to an office
 function layer_pop(n = 12)
@@ -12,6 +13,9 @@ function layer_pop(n = 12)
                    office = Int32[i <= n ÷ 2 ? cld(i, 3) : -1 for i in 1:n])
     return Population(df)
 end
+
+# a declared setting type for the layers; its default char would clash with other test types
+const LayerGym = declare_setting_type!("LayerTestGym"; char = 'γ')
 
 # every block sorted by type, its mask the bits of the slotted types it holds, and no dead entries
 function plans_well_formed(pop)
@@ -75,12 +79,11 @@ merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), 
         @test SettingLayer(Office; assignment = packed, not_holding = (Office, SchoolClass, Office)).not_holding == [office, class]
 
         # declared and distribution-valued layers
-        gym = declare_setting_type!("LayerTestGym"; char = 'γ')
-        gym_layer = SettingLayer(gym; assignment = packed, entries = Poisson(2), scale = Exponential(1))
-        @test gym_layer isa SettingLayer{gym}
+        gym_layer = SettingLayer(LayerGym; assignment = packed, entries = Poisson(2), scale = Exponential(1))
+        @test gym_layer isa SettingLayer{LayerGym}
         @test gym_layer.entries isa Poisson && gym_layer.scale isa Exponential
-        @test SettingLayer(gym; assignment = packed, entries = DiscreteUniform(0, 127)).entries isa DiscreteUniform
-        @test SettingLayer(gym; assignment = packed, entries = 0, scale = 0).entries === 0
+        @test SettingLayer(LayerGym; assignment = packed, entries = DiscreteUniform(0, 127)).entries isa DiscreteUniform
+        @test SettingLayer(LayerGym; assignment = packed, entries = 0, scale = 0).entries === 0
     end
 
     @testset "Layer validation" begin
@@ -258,5 +261,63 @@ merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), 
         merge_into!(pop, hand_additions(Office, [Int32[] for _ in 1:12]))
         @test isempty(store.free) && plans_well_formed(pop)
         @test !any(e -> setting_id(e) == 99, store.entries)
+    end
+
+    @testset "Packed layers" begin
+        packed(size; kwargs...) = SettingLayer(LayerGym; assignment = PackedSettings(size = size), kwargs...)
+        layered(layers...; seed = 1) = add_setting_layers!(layer_pop(1000), layers...; seed = seed)
+        gym_ids(pop) = [setting_id(i, LayerGym, activity_plans(pop)) for i in individuals(pop)]
+        held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individuals(pop)]
+
+        # sizes as drawn, ids from 1
+        pop = layered(packed(10))
+        @test plans_well_formed(pop)
+        @test sort(unique(gym_ids(pop))) == 1:100
+        @test all(==(10), values(countmap(gym_ids(pop))))
+        sizes = collect(values(countmap(gym_ids(layered(packed(2.5))))))
+        @test issubset(sizes[sizes .> 1], [2, 3]) && isapprox(mean(sizes), 2.5; atol = 0.1)
+        @test isapprox(mean(values(countmap(gym_ids(layered(packed(Poisson(5))))))), 5; atol = 0.5)
+
+        # a second entry is a different setting; each round numbers its own
+        pop = layered(packed(10; entries = 2))
+        @test all(h -> length(h) == 2 && h[1] in 1:100 && h[2] in 101:200, held_ids(pop))
+        @test plans_well_formed(pop)
+
+        # only participants get entries; the same seed gives the same plans
+        pop = layered(packed(10; participation = 0.5))
+        joined = gym_ids(pop) .!= DEFAULT_SETTING_ID
+        works = [plan_slot(activity_plans(pop), i, Office) != 0 for i in individuals(pop)]
+        @test 400 < count(joined) < 600
+        @test plan_length.(individuals(pop)) == 1 .+ works .+ joined
+        @test activity_plans(pop).entries == activity_plans(layered(packed(10; participation = 0.5))).entries
+        @test activity_plans(pop).entries != activity_plans(layered(packed(10; participation = 0.5); seed = 2)).entries
+
+        # two layers of one type get disjoint ids; names must differ
+        @test all(h -> h[1] in 1:100 && h[2] in 101:200, held_ids(layered(packed(10), packed(10))))
+        @test_throws ArgumentError add_setting_layers!(layer_pop(), packed(10; name = "a"), packed(10; name = "a"); seed = 1)
+
+        # not once the settings are built
+        pop = layer_pop()
+        activity_plans(pop).indexed = true
+        @test_throws ArgumentError add_setting_layers!(pop, packed(10); seed = 1)
+    end
+
+    @testset "Packed layer through a simulation" begin
+        # non-workers get offices of five, numbered after the existing ones
+        pop = layer_pop(300)
+        store, inds = activity_plans(pop), individuals(pop)
+        before = [setting_id(i, Office, store) for i in inds]
+        add_setting_layers!(pop, SettingLayer(Office; assignment = PackedSettings(size = 5), not_holding = Office); seed = 3)
+        after = [setting_id(i, Office, store) for i in inds]
+        @test after[1:150] == before[1:150]
+        @test sort(unique(after[151:end])) == 51:80
+
+        sim = Simulation(population = pop, infected_fraction = 0.0)
+        cntnr = settingscontainer(sim)
+        @test validate_plans(pop, cntnr)
+        offices = settings(cntnr, Office)
+        @test length(offices) == 80
+        @test all(length(individuals(offices[k])) == 5 for k in 51:80)
+        @test all(length(individuals(offices[k])) == 3 for k in 1:50)
     end
 end
