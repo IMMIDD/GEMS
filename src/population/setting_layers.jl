@@ -289,9 +289,22 @@ function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed:
     additions = _layer_additions(layer, entry_counts, streams)
     ctx = _LayerContext(store, inds, additions.tidx, coords, streams.size)
     shortfall = _assign!(additions, layer.assignment, ctx, streams.assignment)
-    bytes = _merge_additions!(store, inds, additions)
-    push!(_layer_records!(pop), _layer_record(layer, name, seed, additions, shortfall))
+    added, ids = _added_entries(additions)
+    # a layer that adds nothing leaves the plans as they are
+    bytes = added == 0 ? 0 : _merge_additions!(store, inds, additions)
+    push!(_layer_records!(pop), _layer_record(layer, name, seed, added, ids, shortfall))
     return bytes
+end
+
+# How many rows got a setting, and the range of their setting ids (`nothing` if none did).
+function _added_entries(additions::_PlanAdditions)
+    n, lo, hi = 0, typemax(Int32), typemin(Int32)
+    for sid in additions.sids
+        sid == DEFAULT_SETTING_ID && continue
+        n += 1
+        lo, hi = min(lo, sid), max(hi, sid)
+    end
+    return n, n == 0 ? nothing : (lo, hi)
 end
 
 # The layers' names: their own, else "<Type>[k]" for the k-th layer of that type, counting the
@@ -350,8 +363,6 @@ _draw_participates(rng::Xoshiro, p::Float64) = gems_rand(rng) < p
 
 _draw_entries(::Xoshiro, n::Int) = n
 _draw_entries(rng::Xoshiro, d::Distribution) = round(Int, _rand_val(d, rng))
-
-_draw_scale(::Xoshiro, s::Float64) = Float16(s)
 
 function _draw_scale(rng::Xoshiro, d::Distribution)
     s = _rand_val(d, rng)
@@ -437,15 +448,16 @@ function _addition_offsets(entry_counts::Vector{UInt8})
     return offsets
 end
 
-# One scale per row, or `nothing` when every scale is 1.
-_addition_scales(s::Float64, n::Int, ::Xoshiro) = s == 1 ? nothing : fill(Float16(s), n)
+# The rows' scales: one drawn per row, one for all, or `nothing` when every scale is 1.
+_addition_scales(s::Float64, ::Int, ::Xoshiro) = s == 1 ? nothing : Float16(s)
 _addition_scales(d::Distribution, n::Int, rng::Xoshiro) = Float16[_draw_scale(rng, d) for _ in 1:n]
 
 # The positions of the individuals with at least `r` rows.
 function _round_members(additions::_PlanAdditions, r::Int)
-    members = Int32[]
+    members = Vector{Int32}(undef, count(i -> length(_addition_rows(additions, i)) >= r, _addition_individuals(additions)))
+    k = 0
     for i in _addition_individuals(additions)
-        length(_addition_rows(additions, i)) >= r && push!(members, Int32(i))
+        length(_addition_rows(additions, i)) >= r && (members[k += 1] = Int32(i))
     end
     return members
 end
@@ -465,14 +477,17 @@ Puts round `r`'s members, those with at least `r` rows, into new settings by `_p
 nobody gets one setting twice. Returns the number of rows left without a setting, here 0.
 """
 function _assign!(additions::_PlanAdditions, a::NewSettingsAssignment, ctx::_LayerContext, rng::Xoshiro)
-    next_id = _max_setting_id(ctx.store, ctx.inds, ctx.tidx) + Int32(1)
+    next_id = _first_new_id(ctx)
     for r in 1:_round_count(additions)
         members = _round_members(additions, r)
-        rows = [_addition_row(additions, Int(i), r) for i in members]
+        rows = (_addition_row(additions, Int(i), r) for i in members)
         next_id = _write_labels!(additions, _partition(a, members, ctx, rng), rows, next_id)
     end
     return 0
 end
+
+# The first id after every setting of the layer's type in the plans.
+_first_new_id(ctx::_LayerContext) = Int(_max_setting_id(ctx.store, ctx.inds, ctx.tidx)) + 1
 
 """
     _assign!(additions::_PlanAdditions, a::RandomSettings, ctx::_LayerContext, rng::Xoshiro)
@@ -485,8 +500,7 @@ function _assign!(additions::_PlanAdditions, a::RandomSettings, ctx::_LayerConte
     rounds = _round_count(additions)
     rounds <= n || throw(ArgumentError(
         "an individual has $rounds entries but the pool has $n settings; lower `size` or `entries`"))
-    first_id = _max_setting_id(ctx.store, ctx.inds, ctx.tidx) + Int32(1)
-    _write_labels!(additions, _pool_labels(additions, n, rng), eachindex(additions.sids), first_id)
+    _write_labels!(additions, _pool_labels(additions, n, rng), eachindex(additions.sids), _first_new_id(ctx))
     return 0
 end
 
@@ -527,15 +541,16 @@ end
 
 # `order` sorted by the age of the member at each position, keeping its order within one age.
 function _sort_by_age(order::Vector{Int32}, members::Vector{Int32}, inds::Vector{Individual})
-    ages = Int[age(inds[members[p]]) for p in order]
+    ages = Int8[age(inds[members[p]]) for p in order]
     # counting sort: firsts[a + 1] counts the members younger than a
-    firsts = zeros(Int, typemax(Int8) + 2)
-    foreach(a -> firsts[a + 2] += 1, ages)
+    firsts = zeros(Int32, typemax(Int8) + 2)
+    foreach(a -> firsts[Int(a) + 2] += 1, ages)
     cumsum!(firsts, firsts)
     sorted = similar(order)
     for (k, p) in enumerate(order)
-        firsts[ages[k] + 1] += 1
-        sorted[firsts[ages[k] + 1]] = p
+        a = Int(ages[k]) + 1
+        firsts[a] += 1
+        sorted[firsts[a]] = p
     end
     return sorted
 end
@@ -552,22 +567,22 @@ end
 function _group_members(gids::Vector{Int32})
     max_gid = Int(maximum(gids; init = Int32(0)))
     # counting sort: firsts[g] counts the members of groups below g
-    firsts = zeros(Int, max_gid + 1)
+    firsts = zeros(Int32, max_gid + 1)
     foreach(g -> g > 0 && (firsts[g + 1] += 1), gids)
     cumsum!(firsts, firsts)
     positions, next, loner = similar(gids), copy(firsts), firsts[end]
     for (p, g) in enumerate(gids)
-        k = g > 0 ? (next[g] += 1) : (loner += 1)
+        k = g > 0 ? (next[g] += 1) : (loner += Int32(1))
         positions[k] = p
     end
-    starts = [firsts[g] + 1 for g in 1:max_gid if firsts[g + 1] > firsts[g]]
-    append!(starts, (firsts[end] + 1):(length(gids) + 1))
+    starts = Int32[firsts[g] + 1 for g in 1:max_gid if firsts[g + 1] > firsts[g]]
+    append!(starts, (firsts[end] + 1):Int32(length(gids) + 1))
     return starts, positions
 end
 
 # Labels the members group by group in `order`. A group opens a new setting, of a drawn size,
 # when it would overfill the current one and that one is not empty.
-function _fill_groups(starts::Vector{Int}, positions::Vector{Int32}, order::Vector{Int32}, size, size_rng::Xoshiro)
+function _fill_groups(starts::Vector{Int32}, positions::Vector{Int32}, order::Vector{Int32}, size, size_rng::Xoshiro)
     labels = Vector{Int32}(undef, length(positions))
     label, filled, target = Int32(1), 0, _draw_size(size_rng, size)
     for g in order
@@ -608,12 +623,12 @@ function _cut_labels!(labels::Vector{Int32}, order::Vector{Int32}, size, size_rn
 end
 
 """
-    _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int32)
+    _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)
 
 Gives row `rows[k]` the setting label `labels[k]` names, numbering the labels in use in sorted
 order from `first_id`; returns the next free id. The only place rows get new ids.
 """
-function _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int32)
+function _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)
     length(labels) == length(rows) || error("got $(length(labels)) labels for $(length(rows)) rows")
     ids, next_id = _label_ids(labels, first_id)
     @inbounds for (k, row) in enumerate(rows)
@@ -623,19 +638,20 @@ function _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, 
 end
 
 # The setting id of each label in use, numbered in sorted order from `first_id`, and the next free id.
-function _label_ids(labels::Vector{Int32}, first_id::Int32)
+function _label_ids(labels::Vector{Int32}, first_id::Int)
     isempty(labels) && return Int32[], first_id
     minimum(labels) >= 1 || error("setting labels must be at least 1; got $(minimum(labels))")
     used = falses(maximum(labels))
     used[labels] .= true
-    Int(first_id) + count(used) - 1 <= typemax(Int32) || throw(ArgumentError(
+    first_id + count(used) - 1 <= typemax(Int32) || throw(ArgumentError(
         "new settings would need ids past $(typemax(Int32))"))
     ids = zeros(Int32, length(used))
+    # an Int, so the id after the last one allowed does not wrap
     next_id = first_id
     for l in eachindex(used)
         used[l] || continue
-        ids[l] = next_id
-        next_id += Int32(1)
+        ids[l] = Int32(next_id)
+        next_id += 1
     end
     return ids, next_id
 end
@@ -771,18 +787,17 @@ _layer_records!(pop::Population) =
     get!(() -> Dict{String, Any}[], pop.params, "setting_layers")::Vector{Dict{String, Any}}
 
 """
-    _layer_record(layer::SettingLayer, name::String, seed::Integer, additions::_PlanAdditions, shortfall::Int)
+    _layer_record(layer::SettingLayer, name::String, seed::Integer, added::Int, ids, shortfall::Int)
 
 What the population keeps about an applied layer: its name, setting type, parameters as text,
-seed, entries added and left out, and the id range of the settings it created.
+seed, entries added and left out, and for new settings their id range `ids`.
 """
-function _layer_record(layer::SettingLayer, name::String, seed::Integer, additions::_PlanAdditions, shortfall::Int)
-    added = filter(!=(DEFAULT_SETTING_ID), additions.sids)
+function _layer_record(layer::SettingLayer, name::String, seed::Integer, added::Int, ids, shortfall::Int)
     record = Dict{String, Any}("name" => name, "type" => setting_type_name(_layer_type(layer)),
         "description" => _layer_description(layer), "seed" => seed,
-        "entries" => length(added), "shortfall" => shortfall)
-    if layer.assignment isa NewSettingsAssignment && !isempty(added)
-        record["first_id"], record["last_id"] = extrema(added)
+        "entries" => added, "shortfall" => shortfall)
+    if layer.assignment isa NewSettingsAssignment && ids !== nothing
+        record["first_id"], record["last_id"] = ids
     end
     return record
 end

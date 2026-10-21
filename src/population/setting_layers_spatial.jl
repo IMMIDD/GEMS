@@ -19,9 +19,11 @@ struct _HomeCoordinates
     y::Vector{Float32}
 end
 
-function _HomeCoordinates(table)
-    ids, lon, lat = table.id, table.lon, table.lat
-    known = [k for k in eachindex(ids) if ids[k] >= 1 && _finite(lon[k]) && _finite(lat[k])]
+# a table's columns can be abstractly typed, so the work happens behind this call
+_HomeCoordinates(table) = _HomeCoordinates(table.id, table.lon, table.lat)
+
+function _HomeCoordinates(ids::AbstractVector, lon::AbstractVector, lat::AbstractVector)
+    known = [k for k in eachindex(ids) if _finite(ids[k]) && ids[k] >= 1 && _finite(lon[k]) && _finite(lat[k])]
     isempty(known) && throw(ArgumentError("`household_coordinates` has no household with a finite `lon` and `lat`"))
     km = 6371.0 * π / 180
     x_km = km * cosd(mean(lat[k] for k in known))
@@ -60,38 +62,46 @@ end
 ###
 
 function _partition(a::SpatialSettings, members::Vector{Int32}, ctx::_LayerContext{_HomeCoordinates}, rng::Xoshiro)
-    points = _displaced_homes(a.spread, members, ctx, rng)
+    points, box = _displaced_homes(a.spread, members, ctx, rng)
     located = Int32[k for k in eachindex(points) if isfinite(points[k][1])]
     loose = Int32[k for k in eachindex(points) if !isfinite(points[k][1])]
     labels = Vector{Int32}(undef, length(members))
-    last = _cut_labels!(labels, _hilbert_order(points, located), a.size, ctx.size_rng, Int32(0))
+    last = _cut_labels!(labels, _hilbert_order(points, located, box), a.size, ctx.size_rng, Int32(0))
     # members without coordinates are packed among themselves
     _cut_labels!(labels, loose[_shuffled_positions(rng, length(loose))], a.size, ctx.size_rng, last)
     return labels
 end
 
-# Each member's home displaced by a fresh draw, NaN for members without coordinates.
+# Each member's home displaced by a fresh draw, NaN for members without coordinates, and the
+# bounding box `(x0, x1, y0, y1)` of the homes themselves.
 function _displaced_homes(spread, members::Vector{Int32}, ctx::_LayerContext{_HomeCoordinates}, rng::Xoshiro)
     points = Vector{NTuple{2, Float32}}(undef, length(members))
+    x0, x1, y0, y1 = Inf32, -Inf32, Inf32, -Inf32
     for (k, i) in enumerate(members)
         hx, hy = _home(ctx.coords, ctx.inds[i], ctx.store)
         # drawn for everyone, so the draws do not depend on who has coordinates
         dx, dy = _draw_displacement(rng, spread)
         points[k] = (hx + Float32(dx), hy + Float32(dy))
+        if isfinite(hx)
+            x0, x1, y0, y1 = min(x0, hx), max(x1, hx), min(y0, hy), max(y1, hy)
+        end
     end
-    return points
+    return points, (x0, x1, y0, y1)
 end
 
-# The positions `located` in the order a Hilbert curve over their points' bounding box visits
-# them, ties by position.
-function _hilbert_order(points::Vector{NTuple{2, Float32}}, located::Vector{Int32})
+# The positions `located` in the order a Hilbert curve over the homes' bounding box `box` visits
+# their points, ties by position. Points displaced past the box count as on its edge, so a few far
+# draws don't coarsen the curve for everyone.
+function _hilbert_order(points::Vector{NTuple{2, Float32}}, located::Vector{Int32}, box::NTuple{4, Float32})
     isempty(located) && return Int32[]
-    (x0, x1), (y0, y1) = extrema(points[p][1] for p in located), extrema(points[p][2] for p in located)
+    x0, x1, y0, y1 = box
     # one scale for both axes, so the curve's cells are square
-    scale = (2^15 - 1) / max(x1 - x0, y1 - y0, eps(Float32))
+    side = max(x1 - x0, y1 - y0, eps(Float32))
+    scale = (2^15 - 1) / side
     keys = Vector{UInt64}(undef, length(located))
     for (k, p) in enumerate(located)
-        cell = _hilbert(round(Int, (points[p][1] - x0) * scale), round(Int, (points[p][2] - y0) * scale))
+        x, y = clamp(points[p][1], x0, x0 + side), clamp(points[p][2], y0, y0 + side)
+        cell = _hilbert(round(Int, (x - x0) * scale), round(Int, (y - y0) * scale))
         # the position in `located` in the low bits, so plain sorting orders and breaks ties
         keys[k] = (UInt64(cell) << 32) | UInt64(k)
     end
@@ -185,6 +195,9 @@ end
 # The candidates with located members, by position, and the centroids of those members' homes.
 function _centroids(c::_JoinCandidates, ctx::_LayerContext{_HomeCoordinates})
     sx, sy, n = zeros(length(c.ids)), zeros(length(c.ids)), zeros(Int, length(c.ids))
+    # each id's position among the candidates, a lookup instead of a search per entry
+    position = zeros(Int32, isempty(c.ids) ? 0 : Int(last(c.ids)))
+    position[c.ids] .= Int32(1):Int32(length(c.ids))
     @inbounds for ind in ctx.inds
         hx, hy = _home(ctx.coords, ind, ctx.store)
         isfinite(hx) || continue
@@ -194,7 +207,7 @@ function _centroids(c::_JoinCandidates, ctx::_LayerContext{_HomeCoordinates})
             sid = setting_id(ctx.store.entries[k])
             # as in `_JoinCandidates`, which counts ids from 1 only
             sid >= 1 || continue
-            j = searchsortedfirst(c.ids, sid)
+            j = position[sid]
             sx[j] += hx
             sy[j] += hy
             n[j] += 1

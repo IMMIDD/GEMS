@@ -5,7 +5,7 @@ import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots,
     _membership_bit, _mask_slot, _type_scale_bound, _name_key,
     _LayerStreams, _layer_entry_counts, _check_room, _draw_entries, _draw_scale, _draw_size,
     _PlanAdditions, _merge_additions!, _max_setting_id, _setting_id,
-    _JoinCandidates, _draw_unheld, _layer_description
+    _JoinCandidates, _draw_unheld, _layer_description, _addition_offsets, _label_ids
 
 # `n` individuals, two per household; the first half work, three to an office
 function layer_pop(n = 12)
@@ -171,7 +171,6 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
 
         rng = Xoshiro(1)
         @test _draw_entries(rng, 3) == 3
-        @test _draw_scale(rng, 2.0) === Float16(2)
         @test_throws ArgumentError _draw_scale(rng, Dirac(1e6))
         # a number is the mean size; every setting has a member
         sizes = [_draw_size(rng, 2.5) for _ in 1:10_000]
@@ -201,6 +200,9 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         older = entry_counts(participation = 0.5, eligible = i -> age(i) >= 40)
         adults = entry_counts(participation = 0.5, eligible = i -> age(i) >= 20)
         @test all(adults[older .> 0] .> 0) && count(>(0), adults) > count(>(0), older)
+        workers = entry_counts(participation = 0.5, holding = Office)
+        everyone = entry_counts(participation = 0.5)
+        @test all(everyone[workers .> 0] .> 0) && count(>(0), everyone) > count(>(0), workers)
 
         # draws past the cap are clamped, then refused by the room check
         many = entry_counts(entries = Poisson(1000))
@@ -428,7 +430,8 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test count(h -> members[h[1]] != members[h[2]], held) > 900
 
         # members whose household has no coordinates are packed among themselves
-        ids = gym_ids(spatial(near(SpatialSettings(size = 10, spread = 1)), layer_coords(250)))
+        # (sizes of 7 don't divide the 500 located members, so the last setting can't fill up exactly)
+        ids = gym_ids(spatial(near(SpatialSettings(size = 7, spread = 1)), layer_coords(250)))
         @test isdisjoint(ids[1:500], ids[501:end]) && all(!=(DEFAULT_SETTING_ID), ids)
 
         # without coordinates, spatial layers are refused
@@ -444,7 +447,48 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test distance(joined_offices(0.2)) < distance(joined_offices(20)) / 2
         # past the ring cap, and without coordinates, the draw falls back to all offices
         @test all(in(1:167), joined_offices(1e5)) && length(unique(joined_offices(1e5))) > 100
-        @test all(in(1:167), joined_offices(1, layer_coords(250)))
+        @test all(in(1:167), joined_offices(1, layer_coords(250))) && length(unique(joined_offices(1, layer_coords(250)))) > 100
+        # settings already held are skipped: four more offices for every worker, all different
+        pop = spatial(SettingLayer(Office; assignment = JoinNearby(spread = 0.1), holding = Office, entries = 4))
+        @test all(h -> length(h) == 5 && allunique(h), [setting_ids(i, Office, activity_plans(pop)) for i in individuals(pop)[1:500]])
+    end
+
+    @testset "Scales, limits and merge checks" begin
+        office, gym = setting_type_index(Office), setting_type_index(LayerGym)
+        layer_scale(pop, T) = [Float32(entry_scale(activity_plans(pop).entries[plan_slot(activity_plans(pop), i, T)]))
+                               for i in individuals(pop) if plan_slot(activity_plans(pop), i, T) != 0]
+
+        # a number as the scale: every new entry has it, and only its holders are scaled
+        pop = add_setting_layers!(layer_pop(1000),
+            SettingLayer(Office; assignment = PackedSettings(size = 5), not_holding = Office, scale = 2.0); seed = 1)
+        inds = individuals(pop)
+        @test all(==(2.0f0), layer_scale(pop, Office)[501:end]) && _type_scale_bound(activity_plans(pop), office) == 2.0f0
+        @test all(i -> i.plan_scaled, inds[501:end]) && !any(i -> i.plan_scaled, inds[1:500])
+        # a distribution: drawn per entry, the type's bound the largest one written
+        pop = add_setting_layers!(layer_pop(1000), SettingLayer(LayerGym; assignment = PackedSettings(size = 5), scale = Exponential(2)); seed = 1)
+        scales = layer_scale(pop, LayerGym)
+        @test length(unique(scales)) > 100 && _type_scale_bound(activity_plans(pop), gym) == maximum(scales)
+        # a drawn scale above the range is refused when the layer is applied
+        @test_throws ArgumentError add_setting_layers!(layer_pop(), SettingLayer(LayerGym; assignment = PackedSettings(size = 5), scale = Dirac(1e6)); seed = 1)
+
+        # a layer that adds nothing leaves the plans as they are, but is recorded
+        pop = layer_pop()
+        entries = activity_plans(pop).entries
+        add_setting_layers!(pop, SettingLayer(LayerGym; assignment = PackedSettings(size = 5), participation = 0.0); seed = 1)
+        @test activity_plans(pop).entries === entries && pop.params["setting_layers"][1]["entries"] == 0
+
+        # the merge refuses, before writing, a setting held twice and more entries than the cap
+        pop = layer_pop()
+        to_first(ids) = hand_additions(Office, vcat([ids], [Int32[] for _ in 2:12]))
+        @test_throws ArgumentError merge_into!(pop, to_first([1]))
+        @test_throws ArgumentError merge_into!(pop, to_first([5, 5]))
+        @test_throws ArgumentError merge_into!(pop, to_first(collect(100:226)))
+        @test plans_well_formed(pop) && all(i -> plan_length(i) <= 2, individuals(pop))
+
+        # offsets and ids stay within Int32
+        @test_throws ArgumentError _addition_offsets(fill(UInt8(255), cld(Int(typemax(Int32)), 255) + 1))
+        @test _label_ids(Int32[1], Int(typemax(Int32))) == (Int32[typemax(Int32)], Int(typemax(Int32)) + 1)
+        @test_throws ArgumentError _label_ids(Int32[1, 2], Int(typemax(Int32)))
     end
 
     @testset "Names and records" begin

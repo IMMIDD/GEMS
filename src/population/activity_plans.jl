@@ -591,10 +591,10 @@ end
     _PlanAdditions{S}
 
 New plan entries of one setting type by individual position: individual `i`'s setting ids are
-`sids[offsets[i]:(offsets[i + 1] - 1)]`, `DEFAULT_SETTING_ID` for none, with `scales` alongside
-unless every scale is 1.
+`sids[offsets[i]:(offsets[i + 1] - 1)]`, `DEFAULT_SETTING_ID` for none. `scales` holds one scale
+per row, one scale for all rows, or `nothing` when every scale is 1.
 """
-struct _PlanAdditions{S<:Union{Nothing, Vector{Float16}}}
+struct _PlanAdditions{S<:Union{Nothing, Float16, Vector{Float16}}}
     tidx::UInt8
     offsets::Vector{Int32}
     sids::Vector{Int32}
@@ -608,20 +608,21 @@ end
 _addition_individuals(a::_PlanAdditions) = 1:(length(a.offsets) - 1)
 
 @inline _addition_scale(::_PlanAdditions{Nothing}, ::Int) = Float16(1)
+@inline _addition_scale(a::_PlanAdditions{Float16}, ::Int) = a.scales
 @inline _addition_scale(a::_PlanAdditions, k::Int) = @inbounds a.scales[k]
 
 """
     _merge_additions!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions; chunks)
 
 Rebuilds the store with each individual's new entries behind its existing ones of their type, so
-every primary stays, and returns the bytes allocated. The ids must be new to each individual and
-fit under the entry cap (see `_check_room`); freed blocks are dropped.
+every primary stays, and returns the bytes allocated. Throws before writing anything if an
+individual would hold a setting twice or more entries than the cap; freed blocks are dropped.
 """
 function _merge_additions!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions;
                            chunks::Vector{UnitRange{Int}} = _thread_chunks(eachindex(inds)))
     # built settings would not hold the new entries' individuals
     store.indexed && throw(ArgumentError("the settings are already built; entries can only be merged before"))
-    starts = _merged_starts(inds, additions, chunks)
+    starts = _merged_starts(store, inds, additions, chunks)
     entries = Vector{PlanEntry}(undef, starts[end] - 1)
     # staged as Bools when some entry is inactive; threads can't share a BitVector's words
     staged = all(store.active) ? nothing : Vector{Bool}(undef, length(entries))
@@ -635,11 +636,18 @@ function _merge_additions!(store::ActivityPlanStore, inds::Vector{Individual}, a
     return sizeof(entries) + (staged === nothing ? 0 : sizeof(staged)) + Base.summarysize(store.active)
 end
 
-# Each chunk's first slot in the merged entries, then one past the last.
-function _merged_starts(inds::Vector{Individual}, additions::_PlanAdditions, chunks::Vector{UnitRange{Int}})
+# Each chunk's first slot in the merged entries, then one past the last. Throws for the first
+# individual whose new entries can't be merged.
+function _merged_starts(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions,
+                        chunks::Vector{UnitRange{Int}})
     starts = zeros(Int, length(chunks) + 1)
+    first_bad = zeros(Int, length(chunks))
     Threads.@threads for c in eachindex(chunks)
-        @inbounds starts[c + 1] = _merged_count(inds, additions, chunks[c])
+        @inbounds starts[c + 1], first_bad[c] = _merged_count(store, inds, additions, chunks[c])
+    end
+    # thrown here, as an exception in a threaded loop arrives wrapped
+    for i in first_bad
+        i == 0 || throw(ArgumentError(_addition_problem(store, inds[i], additions, i)))
     end
     starts[1] = 1
     cumsum!(starts, starts)
@@ -649,16 +657,34 @@ function _merged_starts(inds::Vector{Individual}, additions::_PlanAdditions, chu
     return starts
 end
 
-# Plan entries the individuals in `r` hold after the merge.
-function _merged_count(inds::Vector{Individual}, additions::_PlanAdditions, r::UnitRange{Int})
+# Plan entries the individuals in `r` hold after the merge, and the first of them whose new
+# entries can't be merged, or 0.
+function _merged_count(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions, r::UnitRange{Int})
     m = 0
     @inbounds for i in r
+        _addition_problem(store, inds[i], additions, i) === nothing || return m, i
         m += plan_length(inds[i])
         for k in _addition_rows(additions, i)
             additions.sids[k] == DEFAULT_SETTING_ID || (m += 1)
         end
     end
-    return m
+    return m, 0
+end
+
+# Why individual `i`'s new entries can't be merged, or `nothing`: a setting it would hold twice,
+# or more entries than the cap.
+function _addition_problem(store::ActivityPlanStore, ind::Individual, additions::_PlanAdditions, i::Int)
+    rows = _addition_rows(additions, i)
+    n = plan_length(ind)
+    @inbounds for k in rows
+        sid = additions.sids[k]
+        sid == DEFAULT_SETTING_ID && continue
+        repeated = _entry_slot(store, ind, additions.tidx, sid) != 0 || sid in view(additions.sids, first(rows):(k - 1))
+        repeated && return "individual $(id(ind)) would hold $(setting_type_from_index(additions.tidx)) $sid twice"
+        n += 1
+    end
+    n <= typemax(Int8) || return "individual $(id(ind)) would hold $n plan entries; the cap is $(typemax(Int8))"
+    return nothing
 end
 
 # Writes the merged blocks of the individuals in `r` from slot `at`: old entries up to the end of
@@ -709,6 +735,7 @@ end
 end
 
 _max_addition_scale(::_PlanAdditions{Nothing}) = 1.0f0
+_max_addition_scale(a::_PlanAdditions{Float16}) = max(1.0f0, Float32(a.scales))
 
 function _max_addition_scale(a::_PlanAdditions)
     m = 1.0f0
