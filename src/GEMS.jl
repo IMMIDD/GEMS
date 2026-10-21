@@ -76,6 +76,7 @@ module GEMS
     include("settings/settingscontainers.jl")
     include("settings/setting_pool_methods.jl")
     include("population/activity_plans.jl")
+    include("population/setting_layers.jl")
     include("simulation/update_states.jl")
     include("logging/state_log_counts.jl")
     include("simulation/simulation.jl")

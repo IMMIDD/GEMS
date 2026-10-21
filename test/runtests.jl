@@ -31,6 +31,7 @@ include("testutils.jl")
         "healthprogressiontest.jl",
         "settingstest.jl",
         "activityplanstest.jl",
+        "settinglayerstest.jl",
         "simulationtest.jl",
         "infectionstest.jl",
         "registriestest.jl",
