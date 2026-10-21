@@ -160,6 +160,7 @@ dispatches statically for those.
     val isa Uniform{Float64} && return _draw_val(val, rng)
     val isa LogNormal{Float64} && return _draw_val(val, rng)
     val isa Exponential{Float64} && return _draw_val(val, rng)
+    val isa Gamma{Float64} && return _draw_val(val, rng)
     val isa Int && return val
     val isa Float64 && return val
     return _draw_val(val, rng)
