@@ -246,7 +246,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
 
         @testset "ImmunityState acquired-tick predicates" begin
             # natural-only, acquired at tick 10
-            nat = ImmunityState(Int32(0), Int16(10), GEMS.DEFAULT_TICK, Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0))
+            nat = ImmunityState(Int32(0), Int16(10), GEMS.NO_IMMUNITY_TICK, Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0))
             @test natural_immunity_recorded(nat)
             @test !vaccine_immunity_recorded(nat)
             @test natural_immunity_pending(nat, Int16(9))
@@ -258,7 +258,7 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             @test !immunity_active(nat, Int16(9))
 
             # vaccine-only, acquired at tick 5
-            vac = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(5), Int8(1), Int8(1), Int8(1))
+            vac = ImmunityState(Int32(0), GEMS.NO_IMMUNITY_TICK, Int16(5), Int8(1), Int8(1), Int8(1))
             @test !natural_immunity_recorded(vac)
             @test vaccine_immunity_recorded(vac)
             @test vaccine_immunity_pending(vac, Int16(4))
@@ -272,6 +272,10 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
 
             # the deprecated form with an immunity level drops the level
             @test ImmunityState(Int32(0), Int16(10), Int16(5), Int8(40), Int8(1), Int8(1), Int8(1)) == both
+            # it reads the old DEFAULT_TICK marker as "no record"
+            @test ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(5), Int8(40), Int8(1), Int8(1), Int8(1)) == vac
+            # tick -1 is a valid acquisition tick
+            @test natural_immunity_recorded(ImmunityState(Int32(0), Int16(-1), GEMS.NO_IMMUNITY_TICK, Int8(1), GEMS.DEFAULT_VACCINE_ID, Int8(0)))
             @test immunity_active(both, Int16(5))            # vaccine active, natural pending
             @test natural_immunity_pending(both, Int16(5))
 

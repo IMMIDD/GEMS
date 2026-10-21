@@ -33,6 +33,7 @@ mutable struct OptimisedResultData <: ResultDataStyle
                     "pathogens" => () -> collect(pathogens(simulation(pP))),
                     "tick_unit" => () -> pP |> simulation |> tickunit,
                     "start_condition" => () -> pP |> simulation |> start_condition,
+                    "prior_immunity" => () -> pP |> simulation |> prior_immunity,
                     "stop_criterion" =>  () -> pP |> simulation |> stop_criterion
                 ),
             "setting_age_contacts" =>

@@ -1184,8 +1184,8 @@ end
         pid = Int8(1)
 
         # helper: build an ImmunityState from tick values
-        nat_state(t) = ImmunityState(Int32(0), Int16(t), GEMS.DEFAULT_TICK, pid, GEMS.DEFAULT_VACCINE_ID, Int8(0))
-        vac_state(t) = ImmunityState(Int32(0), GEMS.DEFAULT_TICK, Int16(t), pid, Int8(1), Int8(1))
+        nat_state(t) = ImmunityState(Int32(0), Int16(t), GEMS.NO_IMMUNITY_TICK, pid, GEMS.DEFAULT_VACCINE_ID, Int8(0))
+        vac_state(t) = ImmunityState(Int32(0), GEMS.NO_IMMUNITY_TICK, Int16(t), pid, Int8(1), Int8(1))
         both_state(nt, vt) = ImmunityState(Int32(0), Int16(nt), Int16(vt), pid, Int8(1), Int8(1))
         empty_state = ImmunityState()
 
@@ -1278,7 +1278,7 @@ end
         @testset "Abstract ImmunityProfile fallbacks" begin
             struct UnimplementedImmunityProfile <: GEMS.ImmunityProfile end
             p = UnimplementedImmunityProfile()
-            state = ImmunityState(Int32(0), Int16(0), GEMS.DEFAULT_TICK, Int8(1),
+            state = ImmunityState(Int32(0), Int16(0), GEMS.NO_IMMUNITY_TICK, Int8(1),
                                   GEMS.DEFAULT_VACCINE_ID, Int8(0))
 
             # calculate_immunity with rng throws

@@ -183,89 +183,137 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 !!! info "Example"
     The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/custom-transmission-function) with a working config file for the code snippet above.
 
-## Immunity & Waning
+## [Immunity & Waning](@id immunity-waning)
 
-Individuals in GEMS don't have an immunity attribute.
-Immunity is considered implicitly by the `transmission_probabilty()` function.
-Making an individual "immune" corresponds to having the transmission probability function return `0`, e.g., if we assume perfect natural immunity after infection and that the individual has been infected at least once.
-Waning (of natural immunity or vaccination protection) can be modeled the same way.
-All cases require the definition of a custom transmission function.
-We recommend doing [this](@ref custom-transmission) tutorial first, if you have not yet built a custom transmission function yourself.
+GEMS records when an individual recovers from an infection or gets vaccinated.
+Each pathogen's `immunity_profile` turns these records into an immunity level between `0` and `100`.
+The level scales every transmission probability by `1 - level/100`, so a level of `100` means the individual cannot be infected.
+GEMS comes with four profiles:
 
-For this example, we want an individual to have natural immunty against a pathogen after infection for exactly 50 days.
-The example below shows a custom transmission function including that rule.
-The `FixedWaning` struct takes two parameters.
-A `rate` representing the infection probability if no immunity applies and a `waning_time` specifying the duration of immunity after recovery.
+- `FullImmunity` (default): full protection after recovery or vaccination, which never wanes
+- `NoImmunity`: no protection at all
+- `ExponentialWaning`: protection halves every `halflife` ticks, down to a `floor`
+- `SigmoidalWaning`: protection stays high at first, then falls steeply around `halflife` ticks
 
-```julia
-using GEMS
-using Parameters
-import GEMS.transmission_probability
-
-# define custom transmission struct
-@with_kw mutable struct FixedWaning <: GEMS.TransmissionFunction
-    rate::Float64
-    waning_time::Int64
-end
-
-# override transmission probability function for your struct
-function GEMS.transmission_probability(transFunc::FixedWaning,
-    infecter::Individual, infected::Individual,
-    setting::Setting, tick::Int16)::Float64
-
-    # if never infected before, usual rate applies
-    if number_of_infections(infected) == 0
-        return transFunc.rate
-    end
-
-    # calculate until when individual is immune if he was previously infected
-    immune_until = recovery(infected) + transFunc.waning_time
-    
-    # if waning date is in the future, return 0 as transmission probability,
-    # else, return provided rate
-    return immune_until > tick ? 0.0 : transFunc.rate
-end
-```
-
-Now, run a simulation as such and inspect the results:
-
-```julia
-tf = FixedWaning(rate = 0.2, waning_time = 50)
-sim = Simulation(transmission_function = tf)
-run!(sim)
-rd = ResultData(sim)
-gemsplot(rd)
-```
-
-
-**Plot**
-
-```@raw html
-<p align="center">
-    <img src="../assets/tutorials/tut_advanced_fixed-waning.png" width="80%"/>
-</p>
-```
-
-The plots show oscillating behavior of the daily infections and the effective reproduction number as individuals are becoming susceptible again a few weeks after their initial infection.
-
-If you want to use a config file, specify the use of the `FixedWaning` method and provide the parameters as you defined them.
-The example below shows the parameterization in a custom config file.
-If you are not comfortable with where to put this, [here's](@ref config-contact-sampling) the explanation on config file layouts.
+To use waning immunity, set the profile in the pathogen section of your config file:
 
 ```@TOML
 ### Pathogen section of the config file ###
 
 [Pathogens]
     [Pathogens.Covid19]
-        [Pathogens.Covid19.transmission_function]
+        [Pathogens.Covid19.immunity_profile]
+            type = "ExponentialWaning"
+            [Pathogens.Covid19.immunity_profile.parameters]
+                halflife = 90
+```
+
+If none of the built-in profiles fit, you can write your own.
+For this example, we want an individual to be fully immune for exactly 50 days after recovery.
+Define a keyworded struct that inherits from `ImmunityProfile`, and a `calculate_immunity()` method for it that returns the immunity level at `tick`.
+The `state` argument holds the individual's immunity records for the pathogen, e.g., the recovery tick in `state.natural_acquired_tick`.
+
+```julia
+using GEMS
+using Parameters
+using Random
+import GEMS.calculate_immunity
+
+# define custom immunity profile struct
+@with_kw struct FixedWaning <: ImmunityProfile
+    waning_time::Int64
+end
+
+# override immunity calculation for your struct
+function GEMS.calculate_immunity(profile::FixedWaning, state::ImmunityState,
+    individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+
+    # no protection before the first recovery
+    natural_immunity_active(state, tick) || return Int8(0)
+
+    # full protection for waning_time ticks after recovery
+    return tick - state.natural_acquired_tick < profile.waning_time ? Int8(100) : Int8(0)
+end
+```
+
+Now, run a simulation with a pathogen that uses your profile:
+
+```julia
+p = Pathogen(name = "Covid19", immunity_profile = FixedWaning(waning_time = 50))
+sim = Simulation(pathogen = p)
+run!(sim)
+rd = ResultData(sim)
+gemsplot(rd)
+```
+
+Daily infections and the effective reproduction number should oscillate, as individuals become susceptible again 50 days after their recovery.
+
+To use your profile in a config file, give its name as the `type` and its fields as `parameters`:
+
+```@TOML
+### Pathogen section of the config file ###
+
+[Pathogens]
+    [Pathogens.Covid19]
+        [Pathogens.Covid19.immunity_profile]
             type = "FixedWaning"
-            [Pathogens.Covid19.transmission_function.parameters]
-                rate = 0.2
+            [Pathogens.Covid19.immunity_profile.parameters]
                 waning_time = 50
 ```
 
-!!! info "Example"
-    The repository contains an [example folder](https://github.com/IMMIDD/GEMS/tree/main/examples/fixed-waning) with a working config file for the code snippet above.
+## Prior Immunity
+
+By default, nobody is immune at the start of a simulation.
+`PriorImmunity` gives part of the population natural immunity, as if they had recovered `ticks_ago` ticks before the start.
+How much this protects depends on the pathogen's [immunity profile](@ref immunity-waning): with the default `FullImmunity`, these individuals cannot be infected at all, whatever `ticks_ago` is.
+
+In the example below, 20% of children, 35% of adults under 65 and 50% of people aged 65 and older are immune.
+Each of them recovered between 30 and 365 days before the start.
+
+```julia
+using GEMS
+using Distributions
+
+prior = PriorImmunity(
+    age_groups = ["-17", "18-64", "65-"],
+    fraction = [0.2, 0.35, 0.5],
+    ticks_ago = Uniform(30, 365))
+
+baseline = Simulation(label = "no prior immunity")
+immune = Simulation(label = "prior immunity", prior_immunity = prior)
+run!(baseline)
+run!(immune)
+rd_b = ResultData(baseline)
+rd_i = ResultData(immune)
+gemsplot([rd_b, rd_i])
+```
+
+**Plot**
+
+```@raw html
+<p align="center">
+    <img src="../assets/tutorials/tut_advanced_prior-immunity.png" width="80%"/>
+</p>
+```
+
+With prior immunity, the outbreak peaks later and much lower, and far fewer individuals get infected overall.
+
+Leave out `age_groups` to use a single `fraction` for everyone, and set `ags` to limit the immunity to one region.
+To combine several entries, e.g., one per pathogen, pass a vector of `PriorImmunity` objects.
+`prior_immunity(rd)` returns the entries a simulation was started with.
+
+In a config file, add a `[Simulation.PriorImmunity]` table, or one `[[Simulation.PriorImmunity]]` table per entry.
+See the [config file reference](@ref config-files) for all parameters.
+
+```@TOML
+### Simulation section of the config file ###
+
+[Simulation]
+    [Simulation.PriorImmunity]
+        age_groups = ["-17", "18-64", "65-"]
+        fraction = [0.2, 0.35, 0.5]
+        ticks_ago = { distribution = "Uniform", parameters = [30, 365] }
+```
 
 
 ## Custom Disease Progression

@@ -354,7 +354,7 @@ end
 
             @test isdead(ind)
             st = GEMS.get_immunity_state(ind, GEMS.immunity_registry(s, ind), Int8(1))
-            @test st.natural_acquired_tick == GEMS.DEFAULT_TICK
+            @test st.natural_acquired_tick == GEMS.NO_IMMUNITY_TICK
         end
 
         @testset "cross-immunity survives an active infection" begin

@@ -275,9 +275,9 @@ function _push_immunity_overflow!(
 
     # New overflow entry
     new_state = if source == IMMUNITY_SOURCE_NATURAL
-        ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
+        ImmunityState(Int32(0), acquired_tick, NO_IMMUNITY_TICK, pathogen_id, DEFAULT_VACCINE_ID, Int8(0))
     else
-        ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, pathogen_id, vaccine_id, Int8(1))
+        ImmunityState(Int32(0), NO_IMMUNITY_TICK, acquired_tick, pathogen_id, vaccine_id, Int8(1))
     end
     _link_overflow!(reg, ind, new_state)
     return nothing
@@ -324,8 +324,8 @@ function push_immunity!(
         _is_active_immunity(s) && continue
         ind.immunity_cache = Base.setindex(ind.immunity_cache,
             source == IMMUNITY_SOURCE_NATURAL ?
-                ImmunityState(Int32(0), acquired_tick, DEFAULT_TICK, pathogen_id, DEFAULT_VACCINE_ID, Int8(0)) :
-                ImmunityState(Int32(0), DEFAULT_TICK, acquired_tick, pathogen_id, vaccine_id, Int8(1)),
+                ImmunityState(Int32(0), acquired_tick, NO_IMMUNITY_TICK, pathogen_id, DEFAULT_VACCINE_ID, Int8(0)) :
+                ImmunityState(Int32(0), NO_IMMUNITY_TICK, acquired_tick, pathogen_id, vaccine_id, Int8(1)),
             i)
         return nothing
     end
