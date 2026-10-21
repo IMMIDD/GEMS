@@ -14,6 +14,7 @@ Order   = [:function]
 ## Structs
 ```@docs
 ContainerSetting
+DeclaredSetting
 Department
 GlobalSetting
 Household
@@ -49,6 +50,7 @@ contact_sampling_method
 contained(::Setting)
 contained_type(::Setting)
 contains_type(::ContainerSetting)
+declare_setting_type!
 delete_dangling_ids!(::SettingsContainer)
 geolocation
 get_contained!
@@ -69,9 +71,11 @@ min_max_avg_individuals(::Vector{Setting}, ::Simulation)
 new_setting_ids!(::SettingsContainer, ::Dict)
 open!
 present_individuals!
+register_setting_type!
 schoolclass(::Individual, ::Simulation)
 sample_individuals
 setting(::SettingsContainer, ::DataType, ::Int32)
+setting_type_names
 settingchar(::Setting)
 settings(::SettingsContainer)
 settings(::SettingsContainer, ::DataType)

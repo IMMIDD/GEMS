@@ -749,7 +749,8 @@ const SETTING_TYPE_CHARS = Dict{DataType, Char}()
 """
     settingchar(setting::Setting)
 
-Returns a character that represents the type of setting.
+Returns a character that represents the type of setting, or `'?'` for a type that isn't
+registered. The infection log also marks seed infections with `'?'`.
 """
 function settingchar(setting::Setting)::Char
     # a registered custom type's char, '?' for an unregistered one
@@ -791,8 +792,8 @@ end
 """
     settingstring(c::Char)
 
-Returns a string that represents the type of setting based on a char that is returned from 
-the function `settingchar`.
+Returns a string that represents the type of setting based on a char that is returned from
+the function `settingchar`, or `"Unknown"` for a char no registered type has.
 """
 function settingstring(c::Char)::String
     if c == 'h'

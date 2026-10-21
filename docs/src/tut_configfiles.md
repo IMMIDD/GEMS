@@ -698,6 +698,51 @@ _tp(tf::MyTransFunc, ea::MyExt, eb::MyExt, pathogen_id, setting, tick, sim, rng)
 
 coming soon ...
 
+## [Custom Setting Types](@id custom-setting-types)
+
+Besides households, offices, schools, and their containers, you can add setting types of your own.
+The quickest way is a config file section: `[Settings.Gym]` declares a setting type called `Gym` (see [declaring setting types](@ref config-setting-types) in the config file documentation).
+In Julia, this type is `DeclaredSetting{:Gym}`, which `declare_setting_type!("Gym")` also returns.
+You can dispatch on it like on any other setting type, e.g. to give gyms a custom contact sampling method.
+
+If your settings need fields of their own, define a struct instead.
+It has to be a mutable subtype of `IndividualSetting` with a keyword constructor and these fields:
+
+```julia
+using GEMS
+
+@kwdef mutable struct Gym <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(contactparameter = 1.0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+    # fields of your own
+    opening_hours::Int8 = 12
+end
+```
+
+GEMS writes these fields itself: it renumbers `id` when it builds the settings, sets `isopen` when a measure opens or closes a setting, and changes `individuals` when someone joins or leaves.
+Post-processing reads `ags` to locate infections.
+Two more fields are optional.
+Members can only have a contact `scale` above `1` if the struct has a `scale_bound::Float32` field.
+With a `deceased::Int32` field, members who die are moved out of the way; without it, they stay in the list and can still be drawn as contacts.
+
+You don't need to register a struct type.
+A config section or a memberships file that names `Gym` finds it, and so does `assign_settings!` or a `SettingLayer` that uses it.
+To choose the character it is logged with, add a `char` key to its config section or call `register_setting_type!(Gym; char = 'g')` before using it.
+If you add individuals to a new type during a run (e.g. in a `stepmod`), give it at least one member before the run starts.
+
+!!! info "Declared type or struct?"
+    A declared type stores its members in one array that all its settings share, like the built-in households, offices, and school classes.
+    A struct keeps one vector per setting, which costs more memory when you have millions of small settings.
+    Prefer a declared type unless you need extra fields.
+
+Custom setting types are a bit slower than the built-in ones: GEMS looks up their settings at runtime, and, for members with a `scale` other than `1`, once more per contact.
+Only the first twelve custom types get a fast lookup; for individuals who belong to further types, GEMS searches their settings at each lookup.
+GEMS numbers setting types in the order it first sees them, and this order decides the order in which a tick processes them.
+A simulation can therefore turn out differently depending on which custom types earlier simulations of the same Julia session used.
+
 ## [Custom Contact Sampling](@id custom-contacts)
 
 coming soon ...

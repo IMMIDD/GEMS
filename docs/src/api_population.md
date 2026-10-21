@@ -42,3 +42,19 @@ set_primary!
 set_scale!
 size(::Population)
 ```
+
+## Setting Layers
+```@docs
+SettingLayer
+add_setting_layers!
+GEMS.LayerAssignment
+GEMS.NewSettingsAssignment
+GEMS.JoinAssignment
+PackedSettings
+RandomSettings
+GroupedSettings
+AgeSortedSettings
+SpatialSettings
+JoinExisting
+JoinNearby
+```
