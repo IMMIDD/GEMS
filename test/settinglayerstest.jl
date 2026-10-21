@@ -37,6 +37,11 @@ end
 
 merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), individuals(pop), additions; kwargs...)
 
+# a population of 1000 with the layers added, and each individual's primary or every gym id
+layered(layers...; seed = 1) = add_setting_layers!(layer_pop(1000), layers...; seed = seed)
+gym_ids(pop) = [setting_id(i, LayerGym, activity_plans(pop)) for i in individuals(pop)]
+held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individuals(pop)]
+
 @testset "Setting Layers" begin
 
     @testset "Assignment types" begin
@@ -265,9 +270,6 @@ merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), 
 
     @testset "Packed layers" begin
         packed(size; kwargs...) = SettingLayer(LayerGym; assignment = PackedSettings(size = size), kwargs...)
-        layered(layers...; seed = 1) = add_setting_layers!(layer_pop(1000), layers...; seed = seed)
-        gym_ids(pop) = [setting_id(i, LayerGym, activity_plans(pop)) for i in individuals(pop)]
-        held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individuals(pop)]
 
         # sizes as drawn, ids from 1
         pop = layered(packed(10))
@@ -300,6 +302,47 @@ merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), 
         pop = layer_pop()
         activity_plans(pop).indexed = true
         @test_throws ArgumentError add_setting_layers!(pop, packed(10); seed = 1)
+    end
+
+    @testset "Other new settings" begin
+        gym(a; kwargs...) = SettingLayer(LayerGym; assignment = a, kwargs...)
+
+        # a second entry is a different setting for every type, and ids stay compact
+        for a in (RandomSettings(size = 10), GroupedSettings(size = 4), AgeSortedSettings(size = 10))
+            pop = layered(gym(a; entries = 2))
+            held = held_ids(pop)
+            @test all(h -> length(h) == 2 && h[1] != h[2], held)
+            ids = unique(reduce(vcat, held))
+            @test sort(ids) == 1:length(ids)
+            @test plans_well_formed(pop)
+        end
+
+        # grouped: households stay whole, filling settings of 5 with two households each
+        ids = gym_ids(layered(gym(GroupedSettings(size = 5))))
+        @test ids[1:2:end] == ids[2:2:end]
+        @test all(==(4), values(countmap(ids)))
+        # offices stay whole; members without one are groups of one, so no setting overfills
+        ids = gym_ids(layered(gym(GroupedSettings(size = 6, by = Office))))
+        @test all(k -> allequal(ids[(3k - 2):3k]), 1:166)
+        @test all(<=(6), values(countmap(ids)))
+
+        # age-sorted: settings in id order cover consecutive age bands
+        pop = layered(gym(AgeSortedSettings(size = 10)))
+        ids, ages = gym_ids(pop), age.(individuals(pop))
+        @test all(s -> maximum(ages[ids .== s]) <= minimum(ages[ids .== s + 1]), 1:99)
+
+        # random: one pool across rounds, so some setting holds first and second entries
+        held = held_ids(layered(gym(RandomSettings(size = 10); entries = 2)))
+        pool = unique(reduce(vcat, held))
+        @test 150 < length(pool) <= 200
+        @test !isdisjoint(first.(held), last.(held))
+        # more entries than the pool has settings
+        @test_throws ArgumentError add_setting_layers!(layer_pop(), gym(RandomSettings(size = 36); entries = 3); seed = 1)
+
+        # a different size keeps every round's order: settings of 5 halve those of 10
+        tens = held_ids(layered(gym(PackedSettings(size = 10); entries = 2)))
+        fives = held_ids(layered(gym(PackedSettings(size = 5); entries = 2)))
+        @test all(cld.(f .- [0, 200], 2) == t .- [0, 100] for (t, f) in zip(tens, fives))
     end
 
     @testset "Packed layer through a simulation" begin

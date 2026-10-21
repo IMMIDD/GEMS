@@ -446,23 +446,120 @@ function _assign!(additions::_PlanAdditions, a::NewSettingsAssignment, ctx::_Lay
     next_id = _max_setting_id(ctx.store, ctx.inds, ctx.tidx) + Int32(1)
     for r in 1:_round_count(additions)
         members = _round_members(additions, r)
-        next_id = _write_labels!(additions, _partition(a, members, ctx, rng), members, r, next_id)
+        rows = [_addition_row(additions, Int(i), r) for i in members]
+        next_id = _write_labels!(additions, _partition(a, members, ctx, rng), rows, next_id)
     end
     return 0
+end
+
+"""
+    _assign!(additions::_PlanAdditions, a::RandomSettings, ctx::_LayerContext, rng::Xoshiro)
+
+Puts every row into one pool of `rows / size` new settings, each participant into distinct,
+uniformly drawn ones. Throws if someone has more rows than the pool has settings; returns 0.
+"""
+function _assign!(additions::_PlanAdditions, a::RandomSettings, ctx::_LayerContext, rng::Xoshiro)
+    n = max(1, round(Int, length(additions.sids) / mean(a.size)))
+    rounds = _round_count(additions)
+    rounds <= n || throw(ArgumentError(
+        "an individual has $rounds entries but the pool has $n settings; lower `size` or `entries`"))
+    first_id = _max_setting_id(ctx.store, ctx.inds, ctx.tidx) + Int32(1)
+    _write_labels!(additions, _pool_labels(additions, n, rng), eachindex(additions.sids), first_id)
+    return 0
+end
+
+# One label in 1..n per row, drawn uniformly and redrawn while the individual already has it.
+function _pool_labels(additions::_PlanAdditions, n::Int, rng::Xoshiro)
+    labels = Vector{Int32}(undef, length(additions.sids))
+    for i in _addition_individuals(additions)
+        rows = _addition_rows(additions, i)
+        for k in rows
+            l = Int32(gems_rand(rng, 1:n))
+            while l in view(labels, first(rows):(k - 1))
+                l = Int32(gems_rand(rng, 1:n))
+            end
+            labels[k] = l
+        end
+    end
+    return labels
 end
 
 """
     _partition(a::NewSettingsAssignment, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
 
 Returns a label ≥ 1 per member, by position in `members`; members with one label share a new
-setting. Setting sizes are drawn from `ctx.size_rng`, never from `rng`.
+setting. Setting sizes are drawn from `ctx.size_rng`.
 """
 function _partition end
 
 function _partition(a::PackedSettings, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
-    order = gems_shuffle!(rng, collect(Int32(1):Int32(length(members))))
+    return _cut_labels(_shuffled_positions(rng, length(members)), a.size, ctx.size_rng)
+end
+
+function _partition(a::AgeSortedSettings, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
+    order = _sort_by_age(_shuffled_positions(rng, length(members)), members, ctx.inds)
     return _cut_labels(order, a.size, ctx.size_rng)
 end
+
+# `order` sorted by the age of the member at each position, keeping its order within one age.
+function _sort_by_age(order::Vector{Int32}, members::Vector{Int32}, inds::Vector{Individual})
+    ages = Int[age(inds[members[p]]) for p in order]
+    # counting sort: firsts[a + 1] counts the members younger than a
+    firsts = zeros(Int, typemax(Int8) + 2)
+    foreach(a -> firsts[a + 2] += 1, ages)
+    cumsum!(firsts, firsts)
+    sorted = similar(order)
+    for (k, p) in enumerate(order)
+        firsts[ages[k] + 1] += 1
+        sorted[firsts[ages[k] + 1]] = p
+    end
+    return sorted
+end
+
+function _partition(a::GroupedSettings, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
+    gids = Int32[_setting_id(ctx.inds[i], a.by, ctx.store) for i in members]
+    starts, positions = _group_members(gids)
+    order = _shuffled_positions(rng, length(starts) - 1)
+    return _fill_groups(starts, positions, order, a.size, ctx.size_rng)
+end
+
+# The member positions by group, as group `g`'s `positions[starts[g]:(starts[g + 1] - 1)]`: groups
+# in ascending id, then one group per member without a group id, in member order.
+function _group_members(gids::Vector{Int32})
+    max_gid = Int(maximum(gids; init = Int32(0)))
+    # counting sort: firsts[g] counts the members of groups below g
+    firsts = zeros(Int, max_gid + 1)
+    foreach(g -> g > 0 && (firsts[g + 1] += 1), gids)
+    cumsum!(firsts, firsts)
+    positions, next, loner = similar(gids), copy(firsts), firsts[end]
+    for (p, g) in enumerate(gids)
+        k = g > 0 ? (next[g] += 1) : (loner += 1)
+        positions[k] = p
+    end
+    starts = [firsts[g] + 1 for g in 1:max_gid if firsts[g + 1] > firsts[g]]
+    append!(starts, (firsts[end] + 1):(length(gids) + 1))
+    return starts, positions
+end
+
+# Labels the members group by group in `order`. A group opens a new setting, of a drawn size,
+# when it would overfill the current one and that one is not empty.
+function _fill_groups(starts::Vector{Int}, positions::Vector{Int32}, order::Vector{Int32}, size, size_rng::Xoshiro)
+    labels = Vector{Int32}(undef, length(positions))
+    label, filled, target = Int32(1), 0, _draw_size(size_rng, size)
+    for g in order
+        group = starts[g]:(starts[g + 1] - 1)
+        if filled > 0 && filled + length(group) > target
+            label, filled, target = label + Int32(1), 0, _draw_size(size_rng, size)
+        end
+        for k in group
+            @inbounds labels[positions[k]] = label
+        end
+        filled += length(group)
+    end
+    return labels
+end
+
+_shuffled_positions(rng::Xoshiro, n::Int) = gems_shuffle!(rng, collect(Int32(1):Int32(n)))
 
 # Labels the positions in `order` setting by setting along it, each setting's size drawn from
 # `size_rng`; the last one may be smaller than drawn.
@@ -481,17 +578,16 @@ function _cut_labels(order::Vector{Int32}, size, size_rng::Xoshiro)
 end
 
 """
-    _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, members::Vector{Int32}, r::Int, first_id::Int32)
+    _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int32)
 
-Gives each member's round-`r` row the setting its label names, numbering the labels in use in
-sorted order from `first_id`; returns the next free id. The only place rows get new ids.
+Gives row `rows[k]` the setting label `labels[k]` names, numbering the labels in use in sorted
+order from `first_id`; returns the next free id. The only place rows get new ids.
 """
-function _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, members::Vector{Int32},
-                        r::Int, first_id::Int32)
-    length(labels) == length(members) || error("got $(length(labels)) labels for $(length(members)) members")
+function _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int32)
+    length(labels) == length(rows) || error("got $(length(labels)) labels for $(length(rows)) rows")
     ids, next_id = _label_ids(labels, first_id)
-    @inbounds for (k, i) in enumerate(members)
-        additions.sids[_addition_row(additions, Int(i), r)] = ids[labels[k]]
+    @inbounds for (k, row) in enumerate(rows)
+        additions.sids[row] = ids[labels[k]]
     end
     return next_id
 end
