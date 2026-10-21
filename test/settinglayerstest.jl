@@ -587,6 +587,105 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test_throws ArgumentError GEMS._HomeCoordinates(table[2:end, :])
     end
 
+    @testset "Layers from a config file" begin
+        office, gym = setting_type_index(Office), DeclaredSetting{:LayerConfGym}
+        gym_section(layers) = Dict("char" => "λ", "layer" => layers, "contact_sampling_method" =>
+            Dict("type" => "ContactparameterSampling", "parameters" => Dict("contactparameter" => 2.0)))
+        packed = Dict("type" => "PackedSettings", "size" => 10)
+
+        # one section with an array of layers, one with a single table; sections in sorted order
+        config = Dict("Settings" => Dict(
+            "LayerConfGym" => gym_section([
+                Dict("ages" => [18, 65], "participation" => 0.5, "assignment" => packed,
+                     "entries" => Dict("distribution" => "Poisson", "parameters" => [2])),
+                Dict("name" => "weekend", "holding" => "Office", "assignment" => Dict("type" => "JoinExisting"))]),
+            "Office" => Dict("layer" => Dict("holding" => ["Office"], "participation" => 0.1,
+                "assignment" => Dict("type" => "JoinNearby", "spread" => Dict("distribution" => "Exponential", "parameters" => [2.0]))))))
+        @test GEMS.determine_setting_types!(config) == [gym]
+        layers = GEMS.create_setting_layers(config)
+        @test length(layers) == 3 && layers[1] isa SettingLayer{gym} && layers[3] isa SettingLayer{Office}
+        @test layers[1].eligible == GEMS._AgeBand(18, 65) && layers[1].entries isa Poisson
+        @test layers[1].assignment == PackedSettings(size = 10) && occursin("eligible = ages 18-65", _layer_description(layers[1]))
+        @test layers[2].name == "weekend" && layers[2].holding == [office] && layers[2].assignment == JoinExisting()
+        @test layers[3].assignment.spread isa Exponential && layers[3].holding == [office]
+
+        # what a layer table can't hold
+        bad(layer) = GEMS.create_setting_layers(Dict("Settings" => Dict("LayerConfGym" => Dict("layer" => layer))))
+        @test_throws ArgumentError bad(Dict("assignment" => packed, "colour" => "red"))
+        @test_throws ArgumentError bad(Dict("participation" => 0.5))
+        @test_throws ArgumentError bad(Dict("assignment" => Dict("type" => "Packed", "size" => 10)))
+        @test_throws ArgumentError bad(Dict("assignment" => Dict("type" => "PackedSettings", "size" => 10, "spread" => 1)))
+        @test_throws ArgumentError bad(Dict("ages" => [65, 18], "assignment" => packed))
+
+        # layers passed in replace the config's; the layer seed defaults to the simulation's
+        one_layer = SettingLayer(gym; assignment = PackedSettings(size = 10))
+        @test GEMS.determine_setting_layers(config, one_layer) == (one_layer,)
+        @test GEMS.determine_setting_layers(config, [one_layer, one_layer]) == (one_layer, one_layer)
+        @test length(GEMS.determine_setting_layers(config, nothing)) == 3
+        @test_throws ArgumentError GEMS.determine_setting_layers(config, [1])
+        with_seed = Dict("Simulation" => Dict("layer_seed" => 3))
+        @test GEMS.determine_layer_seed(Dict(), nothing, 7) == 7
+        @test GEMS.determine_layer_seed(with_seed, nothing, 7) == 3 && GEMS.determine_layer_seed(with_seed, 5, 7) == 5
+        @test_throws ArgumentError GEMS.determine_layer_seed(Dict(), 1.5, 7)
+
+        # end to end: adults go to the gym, which shows in the results; an empty declared type warns
+        cfg = TOML.parsefile(joinpath(pkgdir(GEMS), "data", "DefaultConf.toml"))
+        cfg["Settings"]["LayerConfGym"] = gym_section(Dict("ages" => [18, 65], "assignment" => packed))
+        cfg["Settings"]["LayerConfUnused"] = Dict("char" => "μ")
+        mktempdir() do dir
+            path = joinpath(dir, "config.toml")
+            open(io -> TOML.print(io, cfg), path, "w")
+            sim = @test_logs (:warn, r"LayerConfUnused") match_mode = :any Simulation(configfile = path, pop_size = 2000, seed = 1, infected_fraction = 0.05)
+            adults = count(i -> 18 <= age(i) <= 65, individuals(sim))
+            @test sum(s -> length(individuals(s)), settings(sim, gym)) == adults
+            @test population(sim).params["setting_layers"][1]["seed"] == 1
+            run!(sim)
+            rd = ResultData(sim)
+            @test "LayerConfGym" in setting_data(rd).setting_type
+            @test 'λ' in tick_cases_per_setting(rd).setting_type
+
+            # on one population, a fixed layer seed gives the same layers in every run, the default a new draw
+            people = DataFrame(id = Int32.(1:500), age = Int8.(mod.(1:500, 90)), sex = Int8.(ones(500)), household = Int32.(cld.(1:500, 2)))
+            gyms(seed; kwargs...) = (s = Simulation(configfile = path, population = people, seed = seed, infected_fraction = 0.0; kwargs...);
+                [setting_id(i, gym, activity_plans(s)) for i in individuals(s)])
+            @test gyms(1; layer_seed = 9) == gyms(2; layer_seed = 9)
+            @test gyms(1) != gyms(2)
+        end
+
+        # a passed population keeps its plans; a DataFrame gets the layers
+        pop = layer_pop()
+        @test_logs (:warn, r"setting layers will be ignored") match_mode = :any Simulation(population = pop, setting_layers = one_layer, infected_fraction = 0.0)
+        @test !haskey(pop.params, "setting_layers")
+        df = DataFrame(id = Int32.(1:12), age = Int8.(fill(30, 12)), sex = Int8.(ones(12)), household = Int32.(1:12))
+        @test length(settings(Simulation(population = df, setting_layers = one_layer, infected_fraction = 0.0), gym)) == 2
+
+        # a population that already holds the type a layer creates is likely applied twice
+        pop = add_setting_layers!(layer_pop(), one_layer; seed = 1)
+        @test_logs (:warn, r"already holds") match_mode = :any GEMS._settings_from_layered_population(pop, false, (one_layer,), 2)
+
+        # renumbered ids move the records along; floors keep new ids above the settings file's
+        df = DataFrame(id = Int32.(1:12), age = Int8.(fill(30, 12)), sex = Int8.(ones(12)), household = Int32.(1:12),
+                       office = Int32[101, 101, 102, 102, 103, 103, -1, -1, -1, -1, -1, -1])
+        pop = Population(df)
+        new_offices = SettingLayer(Office; assignment = PackedSettings(size = 3), not_holding = Office)
+        GEMS._settings_from_layered_population(pop, false, (new_offices,), 1)
+        @test (pop.params["setting_layers"][1]["first_id"], pop.params["setting_layers"][1]["last_id"]) == (4, 5)
+        pop = add_setting_layers!(layer_pop(), one_layer; seed = 1, id_floors = Dict(gym => 50))
+        @test minimum(i -> setting_id(i, gym, activity_plans(pop)), individuals(pop)) == 51
+        file = Dict(:Office => DataFrame(id = [1, 7, 3]), :Household => DataFrame(id = [1, 2]), :NoSuchType => DataFrame(id = [9]))
+        @test GEMS._settings_file_max_ids(file) == Dict(Office => 7, Household => 2)
+    end
+
+    @testset "Layers on a loaded population" begin
+        # the settings file gives a spatial layer its coordinates
+        data = joinpath(pkgdir(GEMS), "test", "testdata")
+        layer = SettingLayer(LayerGym; assignment = SpatialSettings(size = 20, spread = 1.0), participation = 0.2)
+        sim = Simulation(population = joinpath(data, "people_muenster.jld2"), settingsfile = joinpath(data, "settings_muenster.jld2"),
+                         setting_layers = layer, infected_fraction = 0.0, seed = 1)
+        @test validate_plans(population(sim), settingscontainer(sim))
+        @test 0.15 < sum(s -> length(individuals(s)), settings(sim, LayerGym)) / length(individuals(sim)) < 0.25
+    end
+
     @testset "Packed layer through a simulation" begin
         # non-workers get offices of five, numbered after the existing ones
         pop = layer_pop(300)

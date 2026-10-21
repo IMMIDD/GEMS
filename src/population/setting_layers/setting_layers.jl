@@ -147,6 +147,17 @@ end
 _needs_coordinates(::LayerAssignment) = false
 _needs_coordinates(::Union{SpatialSettings, JoinNearby}) = true
 
+# The assignment type called `name`, as a config file names it. Both kinds are searched, as
+# `get_subtype` sees direct subtypes only.
+function _assignment_type(name::AbstractString)
+    kinds = (NewSettingsAssignment, JoinAssignment)
+    for kind in kinds, A in _cached_subtypes(kind)
+        structname(A) == name && return A
+    end
+    known = [structname(A) for kind in kinds for A in _cached_subtypes(kind)]
+    throw(ArgumentError("\"$name\" is not a setting layer assignment; use one of $(join(known, ", "))"))
+end
+
 ###
 ### LAYER TYPE
 ###
@@ -199,9 +210,6 @@ function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible =
     _check_layer(layer)
     return layer
 end
-
-# the default `eligible`, named so a layer's description can tell it apart
-_everyone(::Individual) = true
 
 """
     _check_layer(layer::SettingLayer)
@@ -260,6 +268,24 @@ _layer_type_indices(types, what::AbstractString) = unique!(UInt8[_layer_type_ind
 _layer_type(::SettingLayer{T}) where {T} = T
 
 ###
+### ELIGIBILITY
+### What a layer's `eligible` defaults to, or a config file builds it from, each with how a record
+### describes it.
+###
+
+# the default `eligible`, named so a layer's description can tell it apart
+_everyone(::Individual) = true
+_describe(::typeof(_everyone)) = nothing
+
+# `eligible` for a config file's `ages = [lo, hi]`: individuals aged `lo` to `hi`, both included
+struct _AgeBand
+    lo::Int
+    hi::Int
+end
+(band::_AgeBand)(ind::Individual) = band.lo <= age(ind) <= band.hi
+_describe(band::_AgeBand) = "ages $(band.lo)-$(band.hi)"
+
+###
 ### APPLYING LAYERS
 ###
 
@@ -274,11 +300,13 @@ it applied and recorded.
 - `seed`: seeds the layers' draws, together with each layer's name
 - `household_coordinates`: a table with each household's `id`, `lon` and `lat`, needed by
   `SpatialSettings` and `JoinNearby`
+- `id_floors`: internal; per setting type, an id the new settings' ids must stay above
 
 New entries go behind the ones an individual already holds of their type, so they become the
 primary only for those who held none: an `Office` layer makes `is_working` true for them.
 """
-function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing)
+function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing,
+                             id_floors::AbstractDict = Dict{DataType, Int}())
     # the merge checks this too, but only after the first layer is generated
     activity_plans(pop).indexed && throw(ArgumentError(
         "the settings are already built; add setting layers before building them"))
@@ -287,7 +315,7 @@ function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Int
     coords = _layer_coordinates(layers, household_coordinates)
     bytes = 0
     for (layer, name) in zip(layers, names)
-        bytes += _apply_layer!(pop, layer, name, seed, coords)
+        bytes += _apply_layer!(pop, layer, name, seed, coords, get(id_floors, _layer_type(layer), 0))
     end
     added = sum(r -> r["entries"], last(_layer_records(pop), length(layers)))
     @info "Setting layers added $added plan entries; merging them allocated $(round(bytes / 2^20; digits = 1)) MiB"
@@ -303,13 +331,13 @@ function _layer_coordinates(layers, table)
 end
 
 # Generates one layer, merges it into the plans and records it; returns the bytes the merge allocated.
-function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed::Integer, coords)
+function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed::Integer, coords, id_floor::Int)
     store, inds = activity_plans(pop), individuals(pop)
     streams = _LayerStreams(seed, name)
     entry_counts = _layer_entry_counts(layer, pop, streams)
     _check_room(entry_counts, inds)
     additions = _layer_additions(layer, entry_counts, streams)
-    ctx = _LayerContext(store, inds, additions.tidx, coords, streams.size)
+    ctx = _LayerContext(store, inds, additions.tidx, coords, streams.size, id_floor)
     shortfall = _assign!(additions, layer.assignment, ctx, streams.assignment)
     shortfall > 0 && @warn "Setting layer \"$name\" left out $shortfall entries: no " *
         "$(setting_type_name(_layer_type(layer))) was left that their individual did not already hold"
@@ -491,6 +519,18 @@ function _layer_record(layer::SettingLayer, name::String, seed::Integer, added::
     return record
 end
 
+# Moves the recorded id ranges along when building the settings renumbered a type's ids;
+# `renaming[T]` maps a type's old ids to its new ones, as `settings_from_population` returns it.
+function _rename_layer_records!(pop::Population, renaming::AbstractDict)
+    for record in _layer_records(pop)
+        haskey(record, "first_id") || continue
+        new_ids = get(renaming, _registered_setting_type(record["type"]), nothing)
+        new_ids === nothing && continue
+        record["first_id"], record["last_id"] = new_ids[record["first_id"]], new_ids[record["last_id"]]
+    end
+    return pop
+end
+
 # The layer's parameters as text, field by field, leaving out those at their defaults.
 _layer_description(layer::SettingLayer) = _field_descriptions(layer, (:name,))
 
@@ -510,5 +550,5 @@ _describe(x) = string(x)
 _describe(a::LayerAssignment) = "$(nameof(typeof(a)))($(_field_descriptions(a)))"
 _describe(t::UInt8) = setting_type_name(setting_type_from_index(t))
 _describe(ts::Vector{UInt8}) = isempty(ts) ? nothing : "[" * join(_describe.(ts), ", ") * "]"
-_describe(::typeof(_everyone)) = nothing
+# an `eligible` the ELIGIBILITY section doesn't describe
 _describe(::Function) = "custom"

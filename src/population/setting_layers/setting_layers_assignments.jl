@@ -17,7 +17,8 @@
 
 What an assignment reads while placing a layer's participants: the plans (`store`), the
 individuals (`inds`), the layer's setting type index (`tidx`), home coordinates (`coords`,
-`nothing` without), and the stream setting sizes are drawn from (`size_rng`).
+`nothing` without), the stream setting sizes are drawn from (`size_rng`), and an id new
+settings' ids must stay above besides those in the plans (`id_floor`).
 """
 struct _LayerContext{C}
     store::ActivityPlanStore
@@ -25,6 +26,7 @@ struct _LayerContext{C}
     tidx::UInt8
     coords::C
     size_rng::Xoshiro
+    id_floor::Int
 end
 
 """
@@ -86,8 +88,8 @@ function _members_in_round(additions::_PlanAdditions, r::Int)
     return members
 end
 
-# The first id after every setting of the layer's type in the plans.
-_first_new_id(ctx::_LayerContext) = Int(_max_setting_id(ctx.store, ctx.inds, ctx.tidx)) + 1
+# The first id after every setting of the layer's type in the plans, and after `ctx.id_floor`.
+_first_new_id(ctx::_LayerContext) = max(Int(_max_setting_id(ctx.store, ctx.inds, ctx.tidx)), ctx.id_floor) + 1
 
 """
     _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)

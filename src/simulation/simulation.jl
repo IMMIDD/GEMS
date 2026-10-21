@@ -89,6 +89,8 @@ Here's a list of all available parameters:
 | `global_setting`          | `Bool`                                 | Flag indicating whether to use the global setting.                                                                                                                                |
 | `membershipsfile`         | `String`                               | Path to a CSV file holding settings beyond each type's primary (see `memberships`).                                                                                               |
 | `settingsfile`            | `String`                               | Path to a settings file.                                                                                                                                                          |
+| `setting_layers`          | `SettingLayer` or a collection of them | Layers of plan entries to add before the settings are built, instead of the config file's `layer` tables. Not applied to a passed `Population` object.                            |
+| `layer_seed`              | `Int`                                  | Seed of the setting layers' draws; defaults to `seed`.                                                                                                                            |
 | `household_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
 | `office_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
 | `department_contacts`     | `ContactSamplingMethod` or `Float`     | Method for sampling department contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                   |
@@ -419,6 +421,8 @@ function _BUILD_Simulation(;
         global_setting = nothing,
         settingsfile = nothing,
         membershipsfile = nothing,
+        setting_layers = nothing,
+        layer_seed = nothing,
 
         # contacts
         household_contacts = nothing,
@@ -473,7 +477,7 @@ function _BUILD_Simulation(;
     config = load_configfile(configpath)
 
     # SETTING TYPES, before the population files that may name them
-    determine_setting_types!(config)
+    declared_types = determine_setting_types!(config)
 
     # SEED
     rng_seed = determine_seed(config, seed)
@@ -482,6 +486,10 @@ function _BUILD_Simulation(;
 
     # GLOBAL SETTING FLAG
     gs = determine_global_setting(config, global_setting)
+
+    # SETTING LAYERS
+    layers = determine_setting_layers(config, setting_layers)
+    lseed = determine_layer_seed(config, layer_seed, rng_seed)
 
     # POPULATION
     pop, settings = determine_population_and_settings(
@@ -495,8 +503,11 @@ function _BUILD_Simulation(;
         settingsfile,
         rngs[1],
         ind_extension;
-        membershipsfile = membershipsfile
+        membershipsfile = membershipsfile,
+        layers = layers,
+        layer_seed = lseed
     )
+    _warn_unused_declared_types(declared_types, settings)
 
     # everything after this is just generating, not loading from disk
     _printinfo("\u2514 Creating simulation object")
@@ -1046,9 +1057,12 @@ Determines the population and settings for the simulation based on the provided 
 If a `population` string is provided, it will be used to load the population from a file or obtain remote files.
 If a `settingsfile` is provided, it will be used to load the settings from a file.
 If a `membershipsfile` is provided, the settings beyond each type's primary are read from it.
+The setting `layers` are added before the settings are built, with the settings file's household
+coordinates.
 If neither is provided, an error will be thrown.
 """
-function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing, membershipsfile = nothing)
+function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing, membershipsfile = nothing,
+                              layers = (), layer_seed::Integer = 0)
     # if a path was provided, load the population from the file, otherwise assume it's a population identifier
     (pop_path, settings_path) = try
         is_pop_file(population) ? (population, settingsfile) : obtain_remote_files(population)
@@ -1061,14 +1075,75 @@ function determine_population(population::String, settingsfile, global_setting; 
     end
 
     pop = Population(pop_path; ind_extension = ind_extension, memberships = membershipsfile)
-    settings, renaming = settings_from_population(pop, global_setting)
+    # read before the settings are built, so the layers get its coordinates and ids
+    settings_file = isnothing(settings_path) ? nothing : _read_settings_jld2(settings_path)
+    settings, renaming = _settings_from_layered_population(pop, global_setting, layers, layer_seed; settings_file = settings_file)
 
-    if !isnothing(settings_path)
+    if !isnothing(settings_file)
         _printinfo("\u2514 Loading settings from $(basename(settings_path))")
-        settings_from_jld2!(settings_path, settings, renaming)
+        _add_jld2_settings!(settings_file, settings, renaming)
     end
 
     return pop, settings
+end
+
+"""
+    _settings_from_layered_population(pop::Population, global_setting, layers, layer_seed::Integer; settings_file = nothing)
+
+Adds the setting `layers` to `pop`, then builds its settings as `settings_from_population` does
+and moves the layers' recorded id ranges along with any renumbering. `settings_file` is the
+settings file's contents, giving the layers household coordinates and ids to stay above.
+"""
+function _settings_from_layered_population(pop::Population, global_setting, layers, layer_seed::Integer; settings_file = nothing)
+    if !isempty(layers)
+        _warn_reapplied_layers(pop, layers)
+        add_setting_layers!(pop, layers...; seed = layer_seed,
+            household_coordinates = _settings_file_table(settings_file, Household),
+            id_floors = _settings_file_max_ids(settings_file))
+    end
+    settings, renaming = settings_from_population(pop, global_setting)
+    _rename_layer_records!(pop, renaming)
+    return settings, renaming
+end
+
+# The settings file's table of setting type `T`, or `nothing`.
+_settings_file_table(::Nothing, ::Type) = nothing
+_settings_file_table(file::Dict, ::Type{T}) where {T} = get(file, Symbol(setting_type_name(T)), nothing)
+
+# The largest id of each setting type in the settings file.
+_settings_file_max_ids(::Nothing) = Dict{DataType, Int}()
+
+function _settings_file_max_ids(file::Dict)
+    max_ids = Dict{DataType, Int}()
+    for (name, table) in file
+        T = _registered_setting_type(string(name))
+        (T === nothing || !("id" in names(table)) || nrow(table) == 0) && continue
+        max_ids[T] = Int(maximum(table[!, "id"]))
+    end
+    return max_ids
+end
+
+# Warns when the population already holds entries of a declared type a layer creates new settings
+# of, as a saved population that had the layer applied would.
+function _warn_reapplied_layers(pop::Population, layers)
+    store = activity_plans(pop)
+    for layer in layers
+        T = _layer_type(layer)
+        (T <: DeclaredSetting && layer.assignment isa NewSettingsAssignment) || continue
+        any(ind -> _plan_type_run(store, ind, setting_type_index(T))[2] > 0, individuals(pop)) && @warn "The population " *
+            "already holds $(setting_type_name(T)) entries and a setting layer adds more; if it was saved with the " *
+            "layer applied, run it with a config without the layer"
+    end
+    return nothing
+end
+
+# Warns for each setting type the config declared that no individual belongs to.
+function _warn_unused_declared_types(declared::Vector{DataType}, settings::SettingsContainer)
+    for T in declared
+        isempty(get(settings.settings, T, ())) && @warn "[Settings.$(setting_type_name(T))] declares a setting " *
+            "type no individual belongs to; add a `layer` or a memberships file"
+    end
+    return nothing
 end
 
 """
@@ -1077,8 +1152,10 @@ end
 Determines the population and settings for the simulation based on the provided parameters.
 If a `population` is provided, it will be used to load the population from a file or obtain remote files.
 If not, it will create a new population based on the provided parameters or config file parameters.
+The setting `layers` are added to every population but a passed `Population` object.
 """
-function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension; membershipsfile = nothing)
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension;
+                                           membershipsfile = nothing, layers = (), layer_seed::Integer = 0)
     # if population is provided, use it
     if !isnothing(population)
         # if a Population object is provided, use it
@@ -1091,9 +1168,10 @@ function determine_population_and_settings(configfile_params::Dict, population, 
                         - or apply it at construction:  Population(df; ind_extension = ...)"""
             elseif !isnothing(ind_extension)
                 # apply ind_extension to the population if provided
-                population = Population(dataframe(population); ind_extension = ind_extension, memberships = memberships(population)) 
+                population = Population(dataframe(population); ind_extension = ind_extension, memberships = memberships(population))
             end
-            settings, renaming = settings_from_population(population, global_setting)
+            isempty(layers) || @warn "A population object was provided, therefore the setting layers will be ignored; add them with `add_setting_layers!` before passing the population."
+            settings, renaming = _settings_from_layered_population(population, global_setting, (), 0)
             return population, settings
         end
 
@@ -1101,7 +1179,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         if isa(population, DataFrame)
             !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A DataFrame was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
             pop = Population(population; ind_extension = ind_extension, memberships = membershipsfile)
-            settings, renaming = settings_from_population(pop, global_setting)
+            settings, renaming = _settings_from_layered_population(pop, global_setting, layers, layer_seed)
             return pop, settings
         end
 
@@ -1111,7 +1189,8 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
 
         # if a population file path is provided, load the population from the file
-        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension, membershipsfile = membershipsfile)
+        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension, membershipsfile = membershipsfile,
+                                    layers = layers, layer_seed = layer_seed)
     end
 
     # if no population is provided, use the provided parameters
@@ -1127,7 +1206,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
 
     # create population object
     pop = Population(; rng = rng, ind_extension = ind_extension, params...)
-    settings, renaming = settings_from_population(pop, global_setting)
+    settings, renaming = _settings_from_layered_population(pop, global_setting, layers, layer_seed)
     return pop, settings
 end
 
@@ -1166,10 +1245,11 @@ end
 
 Registers the setting type each `[Settings.<Name>]` section names, with its optional `char`: a struct
 type of that name, or else a new `DeclaredSetting`. Runs before the population loads, whose files may
-name these types.
+name these types. Returns the `DeclaredSetting`s the sections name, declared now or before.
 """
 function determine_setting_types!(configfile_params::Dict)
-    _haspath(configfile_params, ["Settings"]) || return nothing
+    declared = DataType[]
+    _haspath(configfile_params, ["Settings"]) || return declared
     sections = configfile_params["Settings"]
     # sorted, so a config registers its types in the same order every time
     for name in sort!(collect(keys(sections)))
@@ -1181,11 +1261,26 @@ function determine_setting_types!(configfile_params::Dict)
             # a type registered before keeps its char; a built-in's is fixed
             (char === nothing || get(SETTING_TYPE_CHARS, T, nothing) == char) || throw(ArgumentError(
                 "[Settings.$name] sets char '$char', but $T is already registered with another char"))
+            T <: DeclaredSetting && push!(declared, T)
             continue
         end
-        _resolve_setting_type(name; char = char) === nothing && declare_setting_type!(name; char = char)
+        _resolve_setting_type(name; char = char) === nothing && push!(declared, declare_setting_type!(name; char = char))
     end
-    return nothing
+    return declared
+end
+
+"""
+    determine_setting_layers(configfile_params::Dict, setting_layers)
+
+Determines the setting layers to add to the population.
+If `setting_layers` is provided, a `SettingLayer` or a collection of them, it will be used.
+If not, they are created from the `layer` tables of the config file's `[Settings.<Name>]` sections.
+"""
+function determine_setting_layers(configfile_params::Dict, setting_layers)
+    isnothing(setting_layers) && return create_setting_layers(configfile_params)
+    layers = setting_layers isa SettingLayer ? (setting_layers,) : Tuple(setting_layers)
+    all(l -> l isa SettingLayer, layers) || throw(ArgumentError("Provided setting_layers must be SettingLayers."))
+    return layers
 end
 
 # A section's `char` key as a `Char`, or `nothing` without one.
@@ -1361,6 +1456,24 @@ function determine_seed(configfile_params::Dict, seed)
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
     _printinfo("\u2514 Initializing RNG with seed $sd")
     return sd
+end
+
+"""
+    determine_layer_seed(configfile_params::Dict, layer_seed, seed::Integer)
+
+Determines the seed of the setting layers' draws.
+If a `layer_seed` is provided, it will be used.
+If not, it will look for `Simulation.layer_seed` in the config file.
+If neither is found, it is the simulation's `seed`, so the layers draw no number from its RNGs.
+"""
+function determine_layer_seed(configfile_params::Dict, layer_seed, seed::Integer)
+    ls = layer_seed
+    if isnothing(ls)
+        _haspath(configfile_params, ["Simulation", "layer_seed"]) || return seed
+        ls = configfile_params["Simulation"]["layer_seed"]
+    end
+    !isa(ls, Integer) && throw(ArgumentError("Provided layer seed must be an integer value."))
+    return ls
 end
 
 """
@@ -1761,6 +1874,75 @@ function create_stop_criterion(params::Dict)
         sc_type(;kw_args...)
     catch e
         throw(ErrorException("StopCriterion of type '$sc_type' could not be created. $(sprint(showerror, e))"))
+    end
+end
+
+"""
+    create_setting_layers(params::Dict)
+
+Creates the setting layers the `layer` tables of the config file's `[Settings.<Name>]` sections
+describe: a section's single `layer` table or its `[[...layer]]` array, sections in sorted order.
+"""
+function create_setting_layers(params::Dict)
+    layers = SettingLayer[]
+    _haspath(params, ["Settings"]) || return Tuple(layers)
+    sections = params["Settings"]
+    # sorted, so the layers' default names don't depend on the file's key order
+    for name in sort!(collect(keys(sections)))
+        section = sections[name]
+        (section isa Dict && haskey(section, "layer")) || continue
+        tables = section["layer"] isa Dict ? [section["layer"]] : section["layer"]
+        # `determine_setting_types!` registered the section's type
+        T = _registered_setting_type(name)
+        for table in tables
+            push!(layers, create_setting_layer(T, table, name))
+        end
+    end
+    return Tuple(layers)
+end
+
+const _LAYER_CONFIG_KEYS = ("name", "ages", "holding", "not_holding", "participation", "entries", "scale", "assignment")
+
+"""
+    create_setting_layer(::Type{T}, params::Dict, section::AbstractString) where {T<:Setting}
+
+Creates one `SettingLayer` of type `T` from a `[Settings.<section>.layer]` table: `ages = [lo, hi]`
+becomes `eligible`, the `assignment` table becomes the assignment, the other keys are passed on.
+"""
+function create_setting_layer(::Type{T}, params::Dict, section::AbstractString) where {T<:Setting}
+    unknown = setdiff(keys(params), _LAYER_CONFIG_KEYS)
+    isempty(unknown) || throw(ArgumentError(
+        "[Settings.$section.layer] has unknown keys $(join(unknown, ", ")); use $(join(_LAYER_CONFIG_KEYS, ", "))"))
+    haskey(params, "assignment") || throw(ArgumentError("[Settings.$section.layer] needs an `assignment` table."))
+    kw_args = Dict{Symbol, Any}(Symbol(k) => _config_value(v) for (k, v) in params if k ∉ ("ages", "assignment"))
+    haskey(params, "ages") && (kw_args[:eligible] = _config_age_band(params["ages"], section))
+    return SettingLayer(T; assignment = create_layer_assignment(params["assignment"], section), kw_args...)
+end
+
+# A config file's `ages = [lo, hi]` as `eligible`, both ages included.
+function _config_age_band(ages, section::AbstractString)
+    valid = ages isa AbstractVector && length(ages) == 2 && all(a -> a isa Integer, ages) && 0 <= ages[1] <= ages[2]
+    valid || throw(ArgumentError("[Settings.$section.layer] `ages` must be [lowest, highest] age; got $(repr(ages))"))
+    return _AgeBand(ages[1], ages[2])
+end
+
+"""
+    create_layer_assignment(params::Dict, section::AbstractString)
+
+Creates a setting layer's `LayerAssignment` from its config table: `type` names it, the other keys
+are its keyword arguments, distribution sub-tables converted via `_config_value`.
+"""
+function create_layer_assignment(params::Dict, section::AbstractString)
+    haskey(params, "type") || throw(ArgumentError("[Settings.$section.layer.assignment] needs a `type`."))
+    assignment_type = _assignment_type(params["type"])
+    kw_args = Dict(Symbol(k) => _config_value(v) for (k, v) in params if k != "type")
+    return try
+        assignment_type(; kw_args...)
+    catch e
+        # a key the type does not take
+        e isa MethodError && throw(ArgumentError("[Settings.$section.layer.assignment] keys " *
+            "$(join(keys(kw_args), ", ")) do not fit $(params["type"]): $(sprint(showerror, e))"))
+        rethrow()
     end
 end
 
