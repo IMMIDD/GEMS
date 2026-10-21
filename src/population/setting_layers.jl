@@ -218,3 +218,88 @@ end
 
 _layer_type_indices(S::Type, what::AbstractString) = [_layer_type_index(S, what)]
 _layer_type_indices(types, what::AbstractString) = unique!(UInt8[_layer_type_index(S, what) for S in types])
+
+###
+### STREAMS AND DRAWS
+###
+
+"""
+    _LayerStreams(seed::Integer, name::AbstractString)
+
+One random stream per kind of draw a layer makes, seeded from the layer's seed and name.
+"""
+struct _LayerStreams
+    participation::Xoshiro
+    entries::Xoshiro
+    scale::Xoshiro
+    assignment::Xoshiro
+    size::Xoshiro
+end
+
+function _LayerStreams(seed::Integer, name::AbstractString)
+    key = _mix(UInt64(3), seed % UInt64, _name_key(name))
+    # the k-th field's stream is keyed on k
+    return _LayerStreams(ntuple(k -> _rekey!(Xoshiro(0), _mix(key, k)), fieldcount(_LayerStreams))...)
+end
+
+_draw_participates(rng::Xoshiro, p::Float64) = gems_rand(rng) < p
+
+_draw_entries(::Xoshiro, n::Int) = n
+_draw_entries(rng::Xoshiro, d::Distribution) = round(Int, _rand_val(d, rng))
+
+_draw_scale(::Xoshiro, s::Float64) = Float16(s)
+
+function _draw_scale(rng::Xoshiro, d::Distribution)
+    s = _rand_val(d, rng)
+    s <= floatmax(Float16) || throw(ArgumentError(
+        "a `scale` of $s was drawn from $d; scales are at most $(floatmax(Float16))"))
+    return Float16(s)
+end
+
+# a number is the mean size, rounded at random so it stays the mean
+_draw_size(rng::Xoshiro, size::Float64) = max(1, rand_round(size, rng))
+_draw_size(rng::Xoshiro, d::Distribution) = max(1, round(Int, _rand_val(d, rng)))
+
+###
+### PARTICIPANTS
+###
+
+"""
+    _layer_entry_counts(layer::SettingLayer, pop::Population, streams::_LayerStreams)
+
+Returns how many entries the layer gives each individual, by position, 0 for those not taking part.
+"""
+function _layer_entry_counts(layer::SettingLayer, pop::Population, streams::_LayerStreams)
+    store, inds = activity_plans(pop), individuals(pop)
+    counts = zeros(UInt8, length(inds))
+    for (i, ind) in enumerate(inds)
+        # drawn for everyone, so participants nest as participation or eligibility widen
+        takes_part = _draw_participates(streams.participation, layer.participation)
+        n = _draw_entries(streams.entries, layer.entries)
+        (takes_part && _layer_eligible(layer, store, ind)) || continue
+        counts[i] = min(n, typemax(UInt8))
+    end
+    return counts
+end
+
+# Whether `ind` is eligible and holds every type in `holding` and none in `not_holding`.
+function _layer_eligible(layer::SettingLayer, store::ActivityPlanStore, ind::Individual)
+    layer.eligible(ind) || return false
+    for t in layer.holding
+        _plan_type_run(store, ind, t)[2] == 0 && return false
+    end
+    for t in layer.not_holding
+        _plan_type_run(store, ind, t)[2] == 0 || return false
+    end
+    return true
+end
+
+# Throws if the layer would give an individual more plan entries than the cap.
+function _check_room(counts::Vector{UInt8}, inds::Vector{Individual})
+    for (i, ind) in enumerate(inds)
+        n = plan_length(ind) + counts[i]
+        n <= typemax(Int8) || throw(ArgumentError(
+            "the layer would give individual $(id(ind)) $n plan entries; the cap is $(typemax(Int8))"))
+    end
+    return nothing
+end

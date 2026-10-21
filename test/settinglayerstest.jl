@@ -1,4 +1,13 @@
-import GEMS: setting_type_index
+import GEMS: setting_type_index, plan_slot, _LayerStreams, _layer_entry_counts, _check_room,
+    _draw_entries, _draw_scale, _draw_size
+
+# `n` individuals, two per household; the first half work, three to an office
+function layer_pop(n = 12)
+    df = DataFrame(id = Int32.(1:n), age = Int8.(mod.(5 .* (1:n), 90)), sex = Int8.(ones(n)),
+                   household = Int32.(cld.(1:n, 2)),
+                   office = Int32[i <= n ÷ 2 ? cld(i, 3) : -1 for i in 1:n])
+    return Population(df)
+end
 
 @testset "Setting Layers" begin
 
@@ -94,5 +103,61 @@ import GEMS: setting_type_index
         end
         @test_throws ArgumentError SettingLayer(Office; assignment = GroupedSettings(size = 0))
         @test SettingLayer(Office; assignment = SpatialSettings(size = Poisson(10), spread = Exponential(2))) isa SettingLayer
+    end
+
+    @testset "Streams and draws" begin
+        draws(s) = [gems_rand(getfield(s, k)) for k in 1:fieldcount(typeof(s))]
+        d = draws(_LayerStreams(1, "Office[1]"))
+        @test d == draws(_LayerStreams(1, "Office[1]"))
+        @test allunique(d)
+        @test d != draws(_LayerStreams(2, "Office[1]"))
+        @test d != draws(_LayerStreams(1, "Office[2]"))
+        @test GEMS._name_key("Gym") == GEMS._name_key("Gym") != GEMS._name_key("Gyn")
+
+        rng = Xoshiro(1)
+        @test _draw_entries(rng, 3) == 3
+        @test _draw_scale(rng, 2.0) === Float16(2)
+        @test_throws ArgumentError _draw_scale(rng, Dirac(1e6))
+        # a number is the mean size; every setting has a member
+        sizes = [_draw_size(rng, 2.5) for _ in 1:10_000]
+        @test Set(sizes) == Set([2, 3]) && isapprox(mean(sizes), 2.5; atol = 0.05)
+        @test all(_draw_size(rng, 0.2) == 1 for _ in 1:100)
+        @test _draw_size(rng, Dirac(4.0)) == 4
+    end
+
+    @testset "Participants" begin
+        pop = layer_pop(1000)
+        store, inds = activity_plans(pop), individuals(pop)
+        works = [plan_slot(store, i, Office) != 0 for i in inds]
+        entry_counts(; kwargs...) = _layer_entry_counts(
+            SettingLayer(Office; assignment = PackedSettings(size = 10), kwargs...), pop, _LayerStreams(7, "L"))
+
+        @test all(==(1), entry_counts())
+        @test all(==(3), entry_counts(entries = 3))
+        @test (entry_counts(holding = Office) .> 0) == works
+        @test (entry_counts(not_holding = Office) .> 0) == .!works
+        @test (entry_counts(eligible = i -> age(i) >= 18) .> 0) == (age.(inds) .>= 18)
+        @test isapprox(mean(entry_counts(entries = Poisson(2))), 2; atol = 0.2)
+
+        # participants nest as participation or eligibility widen, and keep their entry counts
+        few, more = entry_counts(participation = 0.3, entries = Poisson(3)), entry_counts(participation = 0.6, entries = Poisson(3))
+        @test all(more[few .> 0] .> 0) && count(>(0), more) > count(>(0), few)
+        @test more[few .> 0] == few[few .> 0]
+        older = entry_counts(participation = 0.5, eligible = i -> age(i) >= 40)
+        adults = entry_counts(participation = 0.5, eligible = i -> age(i) >= 20)
+        @test all(adults[older .> 0] .> 0) && count(>(0), adults) > count(>(0), older)
+
+        # draws past the cap are clamped, then refused by the room check
+        many = entry_counts(entries = Poisson(1000))
+        @test all(==(255), many)
+        @test_throws ArgumentError _check_room(many, inds)
+    end
+
+    @testset "Room under the cap" begin
+        inds = individuals(layer_pop())
+        room = UInt8.(127 .- plan_length.(inds))
+        @test _check_room(room, inds) === nothing
+        room[end] += 1
+        @test_throws ArgumentError _check_room(room, inds)
     end
 end
