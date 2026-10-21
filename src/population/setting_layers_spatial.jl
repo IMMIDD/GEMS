@@ -38,8 +38,6 @@ end
 
 _finite(v) = !ismissing(v) && isfinite(v)
 
-_needs_coordinates(::Union{SpatialSettings, JoinNearby}) = true
-
 # The individual's home in km, NaN if their household has no coordinates.
 function _home(coords::_HomeCoordinates, ind::Individual, store::ActivityPlanStore)
     h = household_id(ind, store)
@@ -178,8 +176,11 @@ function _CentroidGrid(c::_JoinCandidates, ctx::_LayerContext{_HomeCoordinates})
     # about four candidates a cell, and at most about 4n cells along a thin strip
     cell = max(sqrt(w * h * 4 / length(js)), max(w, h) / (4 * length(js)))
     nx, ny = floor(Int, w / cell) + 1, floor(Int, h / cell) + 1
-    grid_cell(x, y) = 1 + min(floor(Int, (x - x0) / cell), nx - 1) + nx * min(floor(Int, (y - y0) / cell), ny - 1)
-    cells = [grid_cell(cx[k], cy[k]) for k in eachindex(js)]
+    cells = map(eachindex(js)) do k
+        ix, iy = _cell_coords(x0, y0, cell, cx[k], cy[k])
+        # the largest centroids sit on the far edge
+        1 + min(ix, nx - 1) + nx * min(iy, ny - 1)
+    end
     # counting sort by cell
     starts = zeros(Int, nx * ny + 1)
     foreach(cl -> starts[cl + 1] += 1, cells)
@@ -201,9 +202,7 @@ function _centroids(c::_JoinCandidates, ctx::_LayerContext{_HomeCoordinates})
     @inbounds for ind in ctx.inds
         hx, hy = _home(ctx.coords, ind, ctx.store)
         isfinite(hx) || continue
-        start, len = _plan_type_run(ctx.store, ind, ctx.tidx)
-        off = Int(ind.plan_offset) + start
-        for k in off:(off + len - 1)
+        for k in _type_slots(ctx.store, ind, ctx.tidx)
             sid = setting_id(ctx.store.entries[k])
             # as in `_JoinCandidates`, which counts ids from 1 only
             sid >= 1 || continue
@@ -217,9 +216,11 @@ function _centroids(c::_JoinCandidates, ctx::_LayerContext{_HomeCoordinates})
     return js, sx[js] ./ n[js], sy[js] ./ n[js]
 end
 
-# The column and row of the cell holding point `(x, y)`, from 0; outside the grid for a point outside it.
-_cell_coords(g::_CentroidGrid, x, y) =
-    (floor(Int, clamp((x - g.x0) / g.cell, -1e9, 1e9)), floor(Int, clamp((y - g.y0) / g.cell, -1e9, 1e9)))
+# The column and row of the cell holding point `(x, y)` in a grid from `(x0, y0)` with cells of
+# side `cell`, from 0; outside the grid for a point outside it.
+_cell_coords(x0, y0, cell, x, y) =
+    (floor(Int, clamp((x - x0) / cell, -1e9, 1e9)), floor(Int, clamp((y - y0) / cell, -1e9, 1e9)))
+_cell_coords(g::_CentroidGrid, x, y) = _cell_coords(g.x0, g.y0, g.cell, x, y)
 
 function _choose(a::JoinNearby, i::Int, held::Vector{Int32}, s::_NearbyState, ctx::_LayerContext{_HomeCoordinates}, rng::Xoshiro)
     hx, hy = _home(ctx.coords, ctx.inds[i], ctx.store)

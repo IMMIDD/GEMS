@@ -23,7 +23,8 @@ layer_place(h) = h <= 250 ? 2h - 2 : 2(h - 250) - 1
 layer_coords(n = 500) = DataFrame(id = Int32.(1:n), lon = Float32.(mod.(layer_place.(1:n), 25) .* 0.01),
                                   lat = Float32.(50 .+ div.(layer_place.(1:n), 25) .* 0.01))
 
-# the home of `layer_pop`'s individual `i` in km, as `layer_coords` places its household
+# the home of `layer_pop`'s individual `i` in km, as `layer_coords` places its household; the
+# km per degree at 50° are rounded, which is fine as the tests only compare distances
 layer_home(i) = (q = layer_place(cld(i, 2)); (mod(q, 25) * 0.01 * 71.47, div(q, 25) * 0.01 * 111.19))
 
 # the mean distance of the members of the settings in `ids` to their setting's centroid
@@ -59,6 +60,17 @@ function hand_additions(T, rows; scales = nothing)
 end
 
 merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), individuals(pop), additions; kwargs...)
+
+# assignment types written outside GEMS, through the assignment contract: everyone in one new
+# setting per round, and joining the lowest-id setting not yet held
+struct OneSettingTest <: NewSettingsAssignment end
+GEMS._partition(::OneSettingTest, members, ctx, rng) = ones(Int32, length(members))
+struct LowestIdTest <: JoinAssignment end
+GEMS._join_state(::LowestIdTest, ctx) = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx).ids
+function GEMS._choose(::LowestIdTest, i, held, ids, ctx, rng)
+    k = findfirst(!in(held), ids)
+    return k === nothing ? Int32(0) : ids[k]
+end
 
 # a population of 1000 with the layers added, and each individual's primary or every gym id
 layered(layers...; seed = 1) = add_setting_layers!(layer_pop(1000), layers...; seed = seed)
@@ -105,6 +117,11 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         office, class = setting_type_index(Office), setting_type_index(SchoolClass)
         @test SettingLayer(Office; assignment = JoinExisting(), holding = Office).holding == [office]
         @test SettingLayer(Office; assignment = packed, not_holding = (Office, SchoolClass, Office)).not_holding == [office, class]
+        # or by name, as a config file gives them
+        @test SettingLayer(Office; assignment = packed, holding = "Office").holding == [office]
+        @test SettingLayer(Office; assignment = packed, not_holding = ["Office", "SchoolClass"]).not_holding == [office, class]
+        @test GroupedSettings(size = 4, by = "Office").by == office
+        @test_throws ArgumentError SettingLayer(Office; assignment = packed, holding = "NoSuchType")
 
         # declared and distribution-valued layers
         gym_layer = SettingLayer(LayerGym; assignment = packed, entries = Poisson(2), scale = Exponential(1))
@@ -398,7 +415,7 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # with two offices, a worker's third entry finds none it does not hold
         pop = layer_pop()
         third = SettingLayer(Office; assignment = JoinExisting(), holding = Office, entries = 3)
-        @test_logs (:warn, r"^12 layer entries") (:info,) add_setting_layers!(pop, third; seed = 1)
+        @test_logs (:warn, r"^Setting layer \"Office\[1\]\" left out 12 entries") (:info,) add_setting_layers!(pop, third; seed = 1)
         @test pop.params["setting_layers"][1]["shortfall"] == 12
         @test !haskey(pop.params["setting_layers"][1], "first_id")
         @test all(i -> sort(setting_ids(i, Office, activity_plans(pop))) == [1, 2], individuals(pop)[1:6])
@@ -513,7 +530,14 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # types by name in the description
         grouped = SettingLayer(LayerGym; assignment = GroupedSettings(size = 4), holding = Office)
         @test _layer_description(grouped) ==
-            "GroupedSettings(size = 4.0, by = Household), participation = 1.0, entries = 1, scale = 1.0, holding = [Office]"
+            "GroupedSettings(size = 4.0, by = Household), holding = [Office], participation = 1.0, entries = 1, scale = 1.0"
+        @test occursin("eligible = custom", _layer_description(SettingLayer(LayerGym; assignment = JoinExisting(), eligible = i -> true)))
+
+        # default names count the named layers of the type too
+        pop = layer_pop()
+        named = SettingLayer(LayerGym; assignment = PackedSettings(size = 10), name = "weekly")
+        add_setting_layers!(pop, named, packed, packed; seed = 1)
+        @test [r["name"] for r in pop.params["setting_layers"]] == ["weekly", "LayerTestGym[2]", "LayerTestGym[3]"]
 
         # a failing layer leaves the ones before it applied and recorded
         pop = layer_pop()
@@ -524,6 +548,43 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # a layer's draws do not depend on another type's layer before it
         offices(size) = SettingLayer(Office; assignment = PackedSettings(size = size), not_holding = Office)
         @test gym_ids(layered(offices(5), packed)) == gym_ids(layered(offices(7), packed))
+    end
+
+    @testset "Assignment types from outside GEMS" begin
+        @test all(==([1, 2]), held_ids(layered(SettingLayer(LayerGym; assignment = OneSettingTest(), entries = 2))))
+        pop = layered(SettingLayer(Office; assignment = LowestIdTest(), not_holding = Office, entries = 2))
+        @test all(i -> setting_ids(i, Office, activity_plans(pop)) == [1, 2], individuals(pop)[501:end])
+        @test plans_well_formed(pop)
+    end
+
+    @testset "Empty layers" begin
+        # nobody taking part leaves the plans as they are, for every kind of assignment
+        assignments = (PackedSettings(size = 5), RandomSettings(size = 5), GroupedSettings(size = 5),
+            AgeSortedSettings(size = 5), SpatialSettings(size = 5, spread = 1), JoinExisting(), JoinNearby(spread = 1))
+        for a in assignments
+            pop = layer_pop(1000)
+            entries = activity_plans(pop).entries
+            add_setting_layers!(pop, SettingLayer(Office; assignment = a, participation = 0.0); seed = 1,
+                household_coordinates = layer_coords())
+            @test activity_plans(pop).entries === entries && pop.params["setting_layers"][1]["entries"] == 0
+        end
+        # joining a type nobody holds leaves every entry out, with one warning
+        @test_logs (:warn, r"left out 1000 entries") (:info,) add_setting_layers!(layer_pop(1000),
+            SettingLayer(LayerGym; assignment = JoinExisting()); seed = 1)
+    end
+
+    @testset "Hilbert order and coordinates" begin
+        # the curve visits every cell of a 64 × 64 block first, each next to the one before
+        cells = sort([(x, y) for x in 0:63 for y in 0:63]; by = c -> GEMS._hilbert(c...))
+        @test [GEMS._hilbert(c...) for c in cells] == 0:4095
+        @test all(sum(abs.(cells[k + 1] .- cells[k])) == 1 for k in 1:4095)
+
+        # rows with a missing or non-finite value, or no valid id, give households without coordinates
+        table = DataFrame(id = Union{Missing, Int}[1, 2, 3, 0, missing], lon = Union{Missing, Float64}[7.6, missing, 7.6, 7.6, 7.6],
+                          lat = [51.9, 51.9, NaN, 51.9, 51.9])
+        coords = GEMS._HomeCoordinates(table)
+        @test length(coords.x) == 1 && isfinite(coords.x[1])
+        @test_throws ArgumentError GEMS._HomeCoordinates(table[2:end, :])
     end
 
     @testset "Packed layer through a simulation" begin

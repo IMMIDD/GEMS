@@ -269,6 +269,13 @@ Returns every slot in `store.entries` holding an entry of type `T`, empty when t
     return s:(s + len - 1)
 end
 
+# As `plan_slots` for a type, by type index.
+@inline function _type_slots(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+    start, len = _plan_type_run(store, individual, tidx)
+    s = Int(individual.plan_offset) + start
+    return s:(s + len - 1)
+end
+
 """
     plan_slots(store::ActivityPlanStore, individual::Individual)
 
@@ -749,12 +756,8 @@ end
 # since freed ones can hold stale ids.
 function _max_setting_id(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
     m = Int32(0)
-    @inbounds for ind in inds
-        start, len = _plan_type_run(store, ind, t)
-        off = Int(ind.plan_offset) + start
-        for k in off:(off + len - 1)
-            m = max(m, setting_id(store.entries[k]))
-        end
+    @inbounds for ind in inds, k in _type_slots(store, ind, t)
+        m = max(m, setting_id(store.entries[k]))
     end
     return m
 end

@@ -47,8 +47,9 @@ PackedSettings(; size) = PackedSettings(_layer_value(size))
 """
     RandomSettings(; size)
 
-New settings: one pool of settings with `size` members on average, each participant in
-uniformly drawn ones, so sizes vary.
+New settings: one pool of `entries / mean(size)` settings, each participant in distinct,
+uniformly drawn ones, so sizes vary around `size`. Settings nobody drew aren't created, which
+raises the mean size of the rest when `size` is small (1.58 for 1, 2.31 for 2, about `size` from 5 on).
 """
 struct RandomSettings{S} <: NewSettingsAssignment
     size::S
@@ -80,7 +81,8 @@ AgeSortedSettings(; size) = AgeSortedSettings(_layer_value(size))
     SpatialSettings(; size, spread)
 
 New settings of `size` members who live near each other: homes displaced by `spread` km (a
-number for a Gaussian, or a distribution of distances), cut along a space-filling curve.
+number for a Gaussian, or a distribution of distances), cut along a space-filling curve. Members
+without coordinates are packed among themselves.
 """
 struct SpatialSettings{S, D} <: NewSettingsAssignment
     size::S
@@ -99,7 +101,8 @@ struct JoinExisting <: JoinAssignment end
     JoinNearby(; spread)
 
 Existing settings near the participant's home displaced by `spread` km (a number for a
-Gaussian, or a distribution of distances).
+Gaussian, or a distribution of distances). With none within 32 cells of the displaced home, or
+without coordinates, a participant draws from every setting as `JoinExisting` does.
 """
 struct JoinNearby{D} <: JoinAssignment
     spread::D
@@ -113,15 +116,16 @@ _layer_value(x) = x
 """
     _check_assignment(a::LayerAssignment)
 
-Throws an `ArgumentError` if an assignment's parameters are out of range.
+Throws an `ArgumentError` if an assignment's parameters are out of range; accepts any by default.
 """
-_check_assignment(a::NewSettingsAssignment) = _check_positive(a.size, "`size`"; finite_mean = true)
+_check_assignment(::LayerAssignment) = nothing
+_check_assignment(a::Union{PackedSettings, RandomSettings, GroupedSettings, AgeSortedSettings}) =
+    _check_positive(a.size, "`size`"; finite_mean = true)
 function _check_assignment(a::SpatialSettings)
     _check_positive(a.size, "`size`"; finite_mean = true)
     _check_positive(a.spread, "`spread`")
     return nothing
 end
-_check_assignment(::JoinExisting) = nothing
 _check_assignment(a::JoinNearby) = _check_positive(a.spread, "`spread`")
 
 # Throws unless `x` is a finite number > 0 or a non-negative distribution, with a finite
@@ -138,6 +142,10 @@ function _check_positive(x, what::AbstractString; finite_mean::Bool = false)
         (finite_mean ? " with a finite positive mean" : "") * "; got $x"))
     return nothing
 end
+
+# Whether an assignment places by household coordinates.
+_needs_coordinates(::LayerAssignment) = false
+_needs_coordinates(::Union{SpatialSettings, JoinNearby}) = true
 
 ###
 ### LAYER TYPE
@@ -161,7 +169,7 @@ struct SettingLayer{T<:IndividualSetting, A<:LayerAssignment, F, E, C}
 end
 
 """
-    SettingLayer(T; assignment, name = nothing, eligible = _ -> true, holding = (),
+    SettingLayer(T; assignment, name = nothing, eligible = _everyone, holding = (),
                  not_holding = (), participation = 1.0, entries = 1, scale = 1.0)
 
 Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range parameters.
@@ -170,13 +178,13 @@ Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range p
 - `assignment::LayerAssignment`: how participants are put into settings
 - `name`: identifies the layer in the population's records, unique per population; by default
   `"<Type>[k]"`. The layer's random draws are seeded from it.
-- `eligible`: a function of an `Individual` saying who may take part
-- `holding` / `not_holding`: setting types an individual must / must not already hold
+- `eligible`: a function of an `Individual` saying who may take part; by default everyone
+- `holding` / `not_holding`: setting types, or their names, an individual must / must not already hold
 - `participation`: probability that an eligible individual takes part
 - `entries`: settings per participant, an integer in 0-127 or a discrete distribution
 - `scale`: contact scale per entry, a number in 0-floatmax(Float16) or a distribution
 """
-function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible = _ -> true,
+function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible = _everyone,
         holding = (), not_holding = (), participation::Real = 1.0,
         entries::Union{Integer, DiscreteUnivariateDistribution} = 1,
         scale::Union{Real, UnivariateDistribution} = 1.0)
@@ -191,6 +199,9 @@ function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible =
     _check_layer(layer)
     return layer
 end
+
+# the default `eligible`, named so a layer's description can tell it apart
+_everyone(::Individual) = true
 
 """
     _check_layer(layer::SettingLayer)
@@ -236,7 +247,14 @@ function _layer_type_index(S, what::AbstractString)
     return register_setting_type!(S)
 end
 
-_layer_type_indices(S::Type, what::AbstractString) = [_layer_type_index(S, what)]
+# A type given by name, as a config file gives it.
+function _layer_type_index(name::AbstractString, what::AbstractString)
+    T = _resolve_setting_type(name)
+    T === nothing && throw(ArgumentError("$what names no setting type: \"$name\""))
+    return _layer_type_index(T, what)
+end
+
+_layer_type_indices(S::Union{Type, AbstractString}, what::AbstractString) = [_layer_type_index(S, what)]
 _layer_type_indices(types, what::AbstractString) = unique!(UInt8[_layer_type_index(S, what) for S in types])
 
 _layer_type(::SettingLayer{T}) where {T} = T
@@ -248,24 +266,30 @@ _layer_type(::SettingLayer{T}) where {T} = T
 """
     add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing)
 
-Gives the population's individuals the plan entries each layer describes, layer by layer, with
-draws seeded from `seed` and each layer's name, and records each layer in
-`params(pop)["setting_layers"]`. `SpatialSettings` and `JoinNearby` need `household_coordinates`,
-a table with each household's `id`, `lon` and `lat`. An error in one layer leaves the layers
-before it applied and recorded.
+Gives the population's individuals the plan entries each layer describes, layer by layer,
+recording each in `params(pop)["setting_layers"]`. An error in one layer leaves the ones before
+it applied and recorded.
+
+# Keywords
+- `seed`: seeds the layers' draws, together with each layer's name
+- `household_coordinates`: a table with each household's `id`, `lon` and `lat`, needed by
+  `SpatialSettings` and `JoinNearby`
+
+New entries go behind the ones an individual already holds of their type, so they become the
+primary only for those who held none: an `Office` layer makes `is_working` true for them.
 """
 function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing)
     # the merge checks this too, but only after the first layer is generated
     activity_plans(pop).indexed && throw(ArgumentError(
         "the settings are already built; add setting layers before building them"))
     isempty(layers) && return pop
-    names = _layer_names(layers, get(pop.params, "setting_layers", Dict{String, Any}[]))
+    names = _layer_names(layers, _layer_records(pop))
     coords = _layer_coordinates(layers, household_coordinates)
     bytes = 0
     for (layer, name) in zip(layers, names)
         bytes += _apply_layer!(pop, layer, name, seed, coords)
     end
-    added = sum(r -> r["entries"], last(_layer_records!(pop), length(layers)))
+    added = sum(r -> r["entries"], last(_layer_records(pop), length(layers)))
     @info "Setting layers added $added plan entries; merging them allocated $(round(bytes / 2^20; digits = 1)) MiB"
     return pop
 end
@@ -278,8 +302,6 @@ function _layer_coordinates(layers, table)
     return _HomeCoordinates(table)
 end
 
-_needs_coordinates(::LayerAssignment) = false
-
 # Generates one layer, merges it into the plans and records it; returns the bytes the merge allocated.
 function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed::Integer, coords)
     store, inds = activity_plans(pop), individuals(pop)
@@ -289,6 +311,8 @@ function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed:
     additions = _layer_additions(layer, entry_counts, streams)
     ctx = _LayerContext(store, inds, additions.tidx, coords, streams.size)
     shortfall = _assign!(additions, layer.assignment, ctx, streams.assignment)
+    shortfall > 0 && @warn "Setting layer \"$name\" left out $shortfall entries: no " *
+        "$(setting_type_name(_layer_type(layer))) was left that their individual did not already hold"
     added, ids = _added_entries(additions)
     # a layer that adds nothing leaves the plans as they are
     bytes = added == 0 ? 0 : _merge_additions!(store, inds, additions)
@@ -319,21 +343,6 @@ function _layer_names(layers, recorded::Vector{Dict{String, Any}})
         push!(names, name)
     end
     return names[(length(recorded) + 1):end]
-end
-
-"""
-    _LayerContext{C}
-
-What an assignment reads while placing a layer's participants: the plans, the individuals, the
-layer's setting type index, home coordinates (`nothing` without), and the stream setting sizes
-are drawn from.
-"""
-struct _LayerContext{C}
-    store::ActivityPlanStore
-    inds::Vector{Individual}
-    tidx::UInt8
-    coords::C
-    size_rng::Xoshiro
 end
 
 ###
@@ -370,6 +379,10 @@ function _draw_scale(rng::Xoshiro, d::Distribution)
         "a `scale` of $s was drawn from $d; scales are at most $(floatmax(Float16))"))
     return Float16(s)
 end
+
+# The scales of `n` rows: one drawn per row, one for all, or `nothing` when every scale is 1.
+_draw_scales(s::Float64, ::Int, ::Xoshiro) = s == 1 ? nothing : Float16(s)
+_draw_scales(d::Distribution, n::Int, rng::Xoshiro) = Float16[_draw_scale(rng, d) for _ in 1:n]
 
 # a number is the mean size, rounded at random so it stays the mean
 _draw_size(rng::Xoshiro, size::Float64) = max(1, rand_round(size, rng))
@@ -432,7 +445,7 @@ and setting ids still to be assigned.
 function _layer_additions(layer::SettingLayer, entry_counts::Vector{UInt8}, streams::_LayerStreams)
     offsets = _addition_offsets(entry_counts)
     n = Int(offsets[end]) - 1
-    scales = _addition_scales(layer.scale, n, streams.scale)
+    scales = _draw_scales(layer.scale, n, streams.scale)
     return _PlanAdditions(setting_type_index(_layer_type(layer)), offsets, fill(DEFAULT_SETTING_ID, n), scales)
 end
 
@@ -448,23 +461,53 @@ function _addition_offsets(entry_counts::Vector{UInt8})
     return offsets
 end
 
-# The rows' scales: one drawn per row, one for all, or `nothing` when every scale is 1.
-_addition_scales(s::Float64, ::Int, ::Xoshiro) = s == 1 ? nothing : Float16(s)
-_addition_scales(d::Distribution, n::Int, rng::Xoshiro) = Float16[_draw_scale(rng, d) for _ in 1:n]
+###
+### ASSIGNMENT CONTRACT
+### An assignment type plugs in through these: a new-settings type defines `_partition`, a join
+### type `_join_state` and `_choose`; either may add `_check_assignment` and `_needs_coordinates`.
+### A new-settings type that needs all rows at once overrides `_assign!` instead, as
+### `RandomSettings` does; the general `_assign!` methods open NEW SETTINGS and JOINING EXISTING SETTINGS.
+###
 
-# The positions of the individuals with at least `r` rows.
-function _round_members(additions::_PlanAdditions, r::Int)
-    members = Vector{Int32}(undef, count(i -> length(_addition_rows(additions, i)) >= r, _addition_individuals(additions)))
-    k = 0
-    for i in _addition_individuals(additions)
-        length(_addition_rows(additions, i)) >= r && (members[k += 1] = Int32(i))
-    end
-    return members
+"""
+    _LayerContext{C}
+
+What an assignment reads while placing a layer's participants: the plans (`store`), the
+individuals (`inds`), the layer's setting type index (`tidx`), home coordinates (`coords`,
+`nothing` without), and the stream setting sizes are drawn from (`size_rng`).
+"""
+struct _LayerContext{C}
+    store::ActivityPlanStore
+    inds::Vector{Individual}
+    tidx::UInt8
+    coords::C
+    size_rng::Xoshiro
 end
 
-# The most rows any individual has.
-_round_count(additions::_PlanAdditions) =
-    maximum(i -> length(_addition_rows(additions, i)), _addition_individuals(additions); init = 0)
+"""
+    _partition(a::NewSettingsAssignment, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
+
+Returns a label ≥ 1 per member, by position in `members`, which are positions in `ctx.inds`;
+members with one label share a new setting. Sizes come from `_draw_size(ctx.size_rng, size)`;
+`_cut_labels` and `_shuffled_positions` do the common cuts.
+"""
+function _partition end
+
+"""
+    _join_state(a::JoinAssignment, ctx::_LayerContext)
+
+Builds the lookup `_choose` draws from, once per layer; `_JoinCandidates` holds every setting of
+the layer's type with members.
+"""
+function _join_state end
+
+"""
+    _choose(a::JoinAssignment, i::Int, held::Vector{Int32}, state, ctx::_LayerContext, rng::Xoshiro)
+
+Returns the id of an existing setting for the individual at position `i` to join, never one in
+`held`, or 0 if there is none. `state` is what `_join_state(a, ctx)` built once for the layer.
+"""
+function _choose end
 
 ###
 ### NEW SETTINGS
@@ -478,16 +521,64 @@ nobody gets one setting twice. Returns the number of rows left without a setting
 """
 function _assign!(additions::_PlanAdditions, a::NewSettingsAssignment, ctx::_LayerContext, rng::Xoshiro)
     next_id = _first_new_id(ctx)
-    for r in 1:_round_count(additions)
-        members = _round_members(additions, r)
+    for r in 1:_rounds(additions)
+        members = _members_in_round(additions, r)
         rows = (_addition_row(additions, Int(i), r) for i in members)
         next_id = _write_labels!(additions, _partition(a, members, ctx, rng), rows, next_id)
     end
     return 0
 end
 
+# The most rows any individual has.
+_rounds(additions::_PlanAdditions) =
+    maximum(i -> length(_addition_rows(additions, i)), _addition_individuals(additions); init = 0)
+
+# The positions of the individuals with at least `r` rows.
+function _members_in_round(additions::_PlanAdditions, r::Int)
+    members = Vector{Int32}(undef, count(i -> length(_addition_rows(additions, i)) >= r, _addition_individuals(additions)))
+    k = 0
+    for i in _addition_individuals(additions)
+        length(_addition_rows(additions, i)) >= r && (members[k += 1] = Int32(i))
+    end
+    return members
+end
+
 # The first id after every setting of the layer's type in the plans.
 _first_new_id(ctx::_LayerContext) = Int(_max_setting_id(ctx.store, ctx.inds, ctx.tidx)) + 1
+
+"""
+    _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)
+
+Gives row `rows[k]` the setting label `labels[k]` names, numbering the labels in use in sorted
+order from `first_id`; returns the next free id. The only place rows get new ids.
+"""
+function _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)
+    length(labels) == length(rows) || error("got $(length(labels)) labels for $(length(rows)) rows")
+    ids, next_id = _label_ids(labels, first_id)
+    @inbounds for (k, row) in enumerate(rows)
+        additions.sids[row] = ids[labels[k]]
+    end
+    return next_id
+end
+
+# The setting id of each label in use, numbered in sorted order from `first_id`, and the next free id.
+function _label_ids(labels::Vector{Int32}, first_id::Int)
+    isempty(labels) && return Int32[], first_id
+    minimum(labels) >= 1 || error("setting labels must be at least 1; got $(minimum(labels))")
+    used = falses(maximum(labels))
+    used[labels] .= true
+    first_id + count(used) - 1 <= typemax(Int32) || throw(ArgumentError(
+        "new settings would need ids past $(typemax(Int32))"))
+    ids = zeros(Int32, length(used))
+    # an Int, so the id after the last one allowed does not wrap
+    next_id = first_id
+    for l in eachindex(used)
+        used[l] || continue
+        ids[l] = Int32(next_id)
+        next_id += 1
+    end
+    return ids, next_id
+end
 
 """
     _assign!(additions::_PlanAdditions, a::RandomSettings, ctx::_LayerContext, rng::Xoshiro)
@@ -497,7 +588,7 @@ uniformly drawn ones. Throws if someone has more rows than the pool has settings
 """
 function _assign!(additions::_PlanAdditions, a::RandomSettings, ctx::_LayerContext, rng::Xoshiro)
     n = max(1, round(Int, length(additions.sids) / mean(a.size)))
-    rounds = _round_count(additions)
+    rounds = _rounds(additions)
     rounds <= n || throw(ArgumentError(
         "an individual has $rounds entries but the pool has $n settings; lower `size` or `entries`"))
     _write_labels!(additions, _pool_labels(additions, n, rng), eachindex(additions.sids), _first_new_id(ctx))
@@ -520,13 +611,29 @@ function _pool_labels(additions::_PlanAdditions, n::Int, rng::Xoshiro)
     return labels
 end
 
-"""
-    _partition(a::NewSettingsAssignment, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
+_shuffled_positions(rng::Xoshiro, n::Int) = gems_shuffle!(rng, collect(Int32(1):Int32(n)))
 
-Returns a label ≥ 1 per member, by position in `members`; members with one label share a new
-setting. Setting sizes are drawn from `ctx.size_rng`.
-"""
-function _partition end
+# Labels the positions in `order` setting by setting along it, each setting's size drawn from
+# `size_rng`; the last one may be smaller than drawn.
+function _cut_labels(order::Vector{Int32}, size, size_rng::Xoshiro)
+    labels = Vector{Int32}(undef, length(order))
+    _cut_labels!(labels, order, size, size_rng, Int32(0))
+    return labels
+end
+
+# As `_cut_labels`, into `labels` with labels after `last`; returns the last label used.
+function _cut_labels!(labels::Vector{Int32}, order::Vector{Int32}, size, size_rng::Xoshiro, last::Int32)
+    label, left = last, 0
+    for p in order
+        if left == 0
+            label += Int32(1)
+            left = _draw_size(size_rng, size)
+        end
+        @inbounds labels[p] = label
+        left -= 1
+    end
+    return label
+end
 
 # `SpatialSettings`' method is in setting_layers_spatial.jl.
 
@@ -598,64 +705,6 @@ function _fill_groups(starts::Vector{Int32}, positions::Vector{Int32}, order::Ve
     return labels
 end
 
-_shuffled_positions(rng::Xoshiro, n::Int) = gems_shuffle!(rng, collect(Int32(1):Int32(n)))
-
-# Labels the positions in `order` setting by setting along it, each setting's size drawn from
-# `size_rng`; the last one may be smaller than drawn.
-function _cut_labels(order::Vector{Int32}, size, size_rng::Xoshiro)
-    labels = Vector{Int32}(undef, length(order))
-    _cut_labels!(labels, order, size, size_rng, Int32(0))
-    return labels
-end
-
-# As `_cut_labels`, into `labels` with labels after `last`; returns the last label used.
-function _cut_labels!(labels::Vector{Int32}, order::Vector{Int32}, size, size_rng::Xoshiro, last::Int32)
-    label, left = last, 0
-    for p in order
-        if left == 0
-            label += Int32(1)
-            left = _draw_size(size_rng, size)
-        end
-        @inbounds labels[p] = label
-        left -= 1
-    end
-    return label
-end
-
-"""
-    _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)
-
-Gives row `rows[k]` the setting label `labels[k]` names, numbering the labels in use in sorted
-order from `first_id`; returns the next free id. The only place rows get new ids.
-"""
-function _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)
-    length(labels) == length(rows) || error("got $(length(labels)) labels for $(length(rows)) rows")
-    ids, next_id = _label_ids(labels, first_id)
-    @inbounds for (k, row) in enumerate(rows)
-        additions.sids[row] = ids[labels[k]]
-    end
-    return next_id
-end
-
-# The setting id of each label in use, numbered in sorted order from `first_id`, and the next free id.
-function _label_ids(labels::Vector{Int32}, first_id::Int)
-    isempty(labels) && return Int32[], first_id
-    minimum(labels) >= 1 || error("setting labels must be at least 1; got $(minimum(labels))")
-    used = falses(maximum(labels))
-    used[labels] .= true
-    first_id + count(used) - 1 <= typemax(Int32) || throw(ArgumentError(
-        "new settings would need ids past $(typemax(Int32))"))
-    ids = zeros(Int32, length(used))
-    # an Int, so the id after the last one allowed does not wrap
-    next_id = first_id
-    for l in eachindex(used)
-        used[l] || continue
-        ids[l] = Int32(next_id)
-        next_id += 1
-    end
-    return ids, next_id
-end
-
 ###
 ### JOINING EXISTING SETTINGS
 ###
@@ -664,7 +713,7 @@ end
     _assign!(additions::_PlanAdditions, a::JoinAssignment, ctx::_LayerContext, rng::Xoshiro)
 
 Gives each row an existing setting of the layer's type by `_choose`, never one the individual
-already holds. Returns the number of rows left without one, and warns if there are any.
+already holds. Returns the number of rows left without one.
 """
 function _assign!(additions::_PlanAdditions, a::JoinAssignment, ctx::_LayerContext, rng::Xoshiro)
     state = _join_state(a, ctx)
@@ -684,33 +733,13 @@ function _assign!(additions::_PlanAdditions, a::JoinAssignment, ctx::_LayerConte
             end
         end
     end
-    shortfall > 0 && @warn "$shortfall layer entries found no $(setting_type_name(setting_type_from_index(ctx.tidx))) " *
-        "their individual did not already hold, and were left out"
     return shortfall
 end
-
-"""
-    _choose(a::JoinAssignment, i::Int, held::Vector{Int32}, state, ctx::_LayerContext, rng::Xoshiro)
-
-Returns the id of an existing setting for the individual at position `i` to join, never one in
-`held`, or 0 if there is none. `state` is what `_join_state(a, ctx)` built once for the layer.
-"""
-function _choose end
-
-"""
-    _join_state(a::JoinAssignment, ctx::_LayerContext)
-
-Builds the lookup `_choose` draws from, once per layer.
-"""
-function _join_state end
 
 # Refills `held` with the ids of the layer's type the individual at position `i` holds.
 function _held_ids!(held::Vector{Int32}, ctx::_LayerContext, i::Int)
     empty!(held)
-    ind = ctx.inds[i]
-    start, len = _plan_type_run(ctx.store, ind, ctx.tidx)
-    off = Int(ind.plan_offset) + start
-    for k in off:(off + len - 1)
+    for k in _type_slots(ctx.store, ctx.inds[i], ctx.tidx)
         push!(held, setting_id(ctx.store.entries[k]))
     end
     return held
@@ -729,13 +758,9 @@ end
 
 function _JoinCandidates(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
     counts = zeros(Int, _max_setting_id(store, inds, t))
-    @inbounds for ind in inds
-        start, len = _plan_type_run(store, ind, t)
-        off = Int(ind.plan_offset) + start
-        for k in off:(off + len - 1)
-            sid = setting_id(store.entries[k])
-            sid >= 1 && (counts[sid] += 1)
-        end
+    @inbounds for ind in inds, k in _type_slots(store, ind, t)
+        sid = setting_id(store.entries[k])
+        sid >= 1 && (counts[sid] += 1)
     end
     ids = Int32.(findall(>(0), counts))
     return _JoinCandidates(ids, cumsum(counts[ids]))
@@ -782,9 +807,15 @@ end
 ### RECORDS
 ###
 
-# The layers recorded on the population, an empty list stored on first use.
+# where a population keeps its layers' records
+const _LAYER_RECORDS_KEY = "setting_layers"
+
+# The layers recorded on the population, empty if there are none.
+_layer_records(pop::Population) = get(pop.params, _LAYER_RECORDS_KEY, Dict{String, Any}[])::Vector{Dict{String, Any}}
+
+# As `_layer_records`, stored on first use so records can be added.
 _layer_records!(pop::Population) =
-    get!(() -> Dict{String, Any}[], pop.params, "setting_layers")::Vector{Dict{String, Any}}
+    get!(() -> Dict{String, Any}[], pop.params, _LAYER_RECORDS_KEY)::Vector{Dict{String, Any}}
 
 """
     _layer_record(layer::SettingLayer, name::String, seed::Integer, added::Int, ids, shortfall::Int)
@@ -802,17 +833,24 @@ function _layer_record(layer::SettingLayer, name::String, seed::Integer, added::
     return record
 end
 
-# The layer's parameters as text, setting types by name.
-function _layer_description(layer::SettingLayer)
-    type_names(ts) = join((setting_type_name(setting_type_from_index(t)) for t in ts), ", ")
-    parts = [_assignment_description(layer.assignment), "participation = $(layer.participation)",
-        "entries = $(layer.entries)", "scale = $(layer.scale)"]
-    isempty(layer.holding) || push!(parts, "holding = [$(type_names(layer.holding))]")
-    isempty(layer.not_holding) || push!(parts, "not_holding = [$(type_names(layer.not_holding))]")
+# The layer's parameters as text, field by field, leaving out those at their defaults.
+_layer_description(layer::SettingLayer) = _field_descriptions(layer, (:name,))
+
+# "f = value" for each of `x`'s fields but `skip`, by `_describe`, leaving out those it gives `nothing`.
+function _field_descriptions(x, skip = ())
+    parts = String[]
+    for f in fieldnames(typeof(x))
+        f in skip && continue
+        text = _describe(getfield(x, f))
+        text === nothing || push!(parts, f === :assignment ? text : "$f = $text")
+    end
     return join(parts, ", ")
 end
 
-function _assignment_description(a::LayerAssignment)
-    value(f) = f === :by ? setting_type_name(setting_type_from_index(a.by)) : getfield(a, f)
-    return "$(nameof(typeof(a)))(" * join(("$f = $(value(f))" for f in fieldnames(typeof(a))), ", ") * ")"
-end
+# a field's value as text: setting types by name, an assignment with its own fields
+_describe(x) = string(x)
+_describe(a::LayerAssignment) = "$(nameof(typeof(a)))($(_field_descriptions(a)))"
+_describe(t::UInt8) = setting_type_name(setting_type_from_index(t))
+_describe(ts::Vector{UInt8}) = isempty(ts) ? nothing : "[" * join(_describe.(ts), ", ") * "]"
+_describe(::typeof(_everyone)) = nothing
+_describe(::Function) = "custom"
