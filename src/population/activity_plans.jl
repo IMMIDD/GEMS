@@ -162,14 +162,17 @@ end
 @inline _effective_scale(store::ActivityPlanStore, slot::Int)::Float32 =
     entry_active(store, slot) ? Float32(entry_scale(@inbounds store.entries[slot])) : 0.0f0
 
-# Raises the scale bound of `entry`'s setting type to its scale; nothing lowers one.
-@inline function _raise_scale_bound!(store::ActivityPlanStore, entry::PlanEntry)
-    t = Int(setting_type_of(entry))
+# Raises the scale bound of setting type index `t` to `scale`; nothing lowers one. Serial only, as
+# it may append.
+@inline function _raise_scale_bound!(store::ActivityPlanStore, t::UInt8, scale::Float32)
     b = store.scale_bounds
-    length(b) < t && append!(b, fill(1.0f0, t - length(b)))
-    @inbounds b[t] = max(b[t], Float32(entry_scale(entry)))
+    length(b) < t && append!(b, fill(1.0f0, Int(t) - length(b)))
+    @inbounds b[t] = max(b[t], scale)
     return nothing
 end
+
+@inline _raise_scale_bound!(store::ActivityPlanStore, entry::PlanEntry) =
+    _raise_scale_bound!(store, setting_type_of(entry), Float32(entry_scale(entry)))
 
 # The largest scale any entry of setting type index `t` holds, at least 1.
 @inline _type_scale_bound(store::ActivityPlanStore, t::UInt8)::Float32 =
@@ -576,6 +579,153 @@ function assign_settings!(pop::Population, individual::Individual, memberships::
         plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX, scale); primary = primary)
     end
     return pop
+end
+
+###
+### ADDING ENTRIES
+### New entries of one setting type merged into built plans in one parallel pass, block by block
+### as in `build_plans!`.
+###
+
+"""
+    _PlanAdditions{S}
+
+New plan entries of one setting type by individual position: individual `i`'s setting ids are
+`sids[offsets[i]:(offsets[i + 1] - 1)]`, `DEFAULT_SETTING_ID` for none, with `scales` alongside
+unless every scale is 1.
+"""
+struct _PlanAdditions{S<:Union{Nothing, Vector{Float16}}}
+    tidx::UInt8
+    offsets::Vector{Int32}
+    sids::Vector{Int32}
+    scales::S
+end
+
+@inline _addition_rows(a::_PlanAdditions, i::Int) = Int(a.offsets[i]):(Int(a.offsets[i + 1]) - 1)
+
+@inline _addition_scale(::_PlanAdditions{Nothing}, ::Int) = Float16(1)
+@inline _addition_scale(a::_PlanAdditions, k::Int) = @inbounds a.scales[k]
+
+"""
+    _merge_additions!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions; chunks)
+
+Rebuilds the store with each individual's new entries behind its existing ones of their type, so
+every primary stays, and returns the bytes allocated. The ids must be new to each individual and
+fit under the entry cap (see `_check_room`); freed blocks are dropped.
+"""
+function _merge_additions!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions;
+                           chunks::Vector{UnitRange{Int}} = _thread_chunks(eachindex(inds)))
+    # built settings would not hold the new entries' individuals
+    store.indexed && throw(ArgumentError("the settings are already built; entries can only be merged before"))
+    starts = _merged_starts(inds, additions, chunks)
+    entries = Vector{PlanEntry}(undef, starts[end] - 1)
+    # staged as Bools when some entry is inactive; threads can't share a BitVector's words
+    staged = all(store.active) ? nothing : Vector{Bool}(undef, length(entries))
+    Threads.@threads for c in eachindex(chunks)
+        @inbounds _merge_chunk!(entries, staged, store, inds, additions, chunks[c], starts[c])
+    end
+    store.entries = entries
+    store.active = staged === nothing ? trues(length(entries)) : BitVector(staged)
+    empty!(store.free)
+    _raise_scale_bound!(store, additions.tidx, _max_addition_scale(additions))
+    return sizeof(entries) + (staged === nothing ? 0 : sizeof(staged)) + Base.summarysize(store.active)
+end
+
+# Each chunk's first slot in the merged entries, then one past the last.
+function _merged_starts(inds::Vector{Individual}, additions::_PlanAdditions, chunks::Vector{UnitRange{Int}})
+    starts = zeros(Int, length(chunks) + 1)
+    Threads.@threads for c in eachindex(chunks)
+        @inbounds starts[c + 1] = _merged_count(inds, additions, chunks[c])
+    end
+    starts[1] = 1
+    cumsum!(starts, starts)
+    # plan offsets are Int32
+    n = starts[end] - 1
+    n <= typemax(Int32) || throw(ArgumentError("the plans would hold $n entries; at most $(typemax(Int32)) fit"))
+    return starts
+end
+
+# Plan entries the individuals in `r` hold after the merge.
+function _merged_count(inds::Vector{Individual}, additions::_PlanAdditions, r::UnitRange{Int})
+    m = 0
+    @inbounds for i in r
+        m += plan_length(inds[i])
+        for k in _addition_rows(additions, i)
+            additions.sids[k] == DEFAULT_SETTING_ID || (m += 1)
+        end
+    end
+    return m
+end
+
+# Writes the merged blocks of the individuals in `r` from slot `at`: old entries up to the end of
+# the type's run, the new ones, then the rest.
+function _merge_chunk!(entries::Vector{PlanEntry}, staged::Union{Nothing, Vector{Bool}}, store::ActivityPlanStore,
+                       inds::Vector{Individual}, additions::_PlanAdditions, r::UnitRange{Int}, at::Int)
+    @inbounds for i in r
+        ind = inds[i]
+        old, n = Int(ind.plan_offset), plan_length(ind)
+        start, len = _plan_type_run(store, ind, additions.tidx)
+        off = at
+        at = _copy_entries!(entries, staged, store, old, 0:(start + len - 1), at)
+        at, mask, scaled = _write_additions!(entries, staged, additions, i, at, ind.membership_mask, ind.plan_scaled)
+        at = _copy_entries!(entries, staged, store, old, (start + len):(n - 1), at)
+        _set_plan!(ind, off, at - off, mask, scaled)
+    end
+    return nothing
+end
+
+# Writes individual `i`'s new entries from slot `at`; returns the next slot, and `mask` and `scaled`
+# updated for them.
+@inline function _write_additions!(entries::Vector{PlanEntry}, staged::Union{Nothing, Vector{Bool}},
+                                   additions::_PlanAdditions, i::Int, at::Int, mask::UInt16, scaled::Bool)
+    t = additions.tidx
+    @inbounds for k in _addition_rows(additions, i)
+        sid = additions.sids[k]
+        sid == DEFAULT_SETTING_ID && continue
+        s = _addition_scale(additions, k)
+        entries[at] = PlanEntry(sid, DEFAULT_MEMBER_INDEX, s, t)
+        staged === nothing || (staged[at] = true)
+        _mask_slot(t) != 0 && (mask |= _membership_bit(t))
+        scaled |= s != 1
+        at += 1
+    end
+    return at, mask, scaled
+end
+
+# Copies the old entries at block positions `ks` of the block at `old`, with their flags if
+# staged, to slot `at`; returns the next slot.
+@inline function _copy_entries!(entries::Vector{PlanEntry}, staged::Union{Nothing, Vector{Bool}}, store::ActivityPlanStore,
+                                old::Int, ks::UnitRange{Int}, at::Int)
+    @inbounds for k in ks
+        entries[at] = store.entries[old + k]
+        staged === nothing || (staged[at] = store.active[old + k])
+        at += 1
+    end
+    return at
+end
+
+_max_addition_scale(::_PlanAdditions{Nothing}) = 1.0f0
+
+function _max_addition_scale(a::_PlanAdditions)
+    m = 1.0f0
+    @inbounds for k in eachindex(a.sids)
+        a.sids[k] == DEFAULT_SETTING_ID || (m = max(m, Float32(a.scales[k])))
+    end
+    return m
+end
+
+# The largest id of a setting of type index `t` in any plan, 0 if none. Reads live blocks only,
+# since freed ones can hold stale ids.
+function _max_setting_id(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
+    m = Int32(0)
+    @inbounds for ind in inds
+        start, len = _plan_type_run(store, ind, t)
+        off = Int(ind.plan_offset) + start
+        for k in off:(off + len - 1)
+            m = max(m, setting_id(store.entries[k]))
+        end
+    end
+    return m
 end
 
 ###

@@ -106,7 +106,7 @@ struct JoinNearby{D} <: JoinAssignment
 end
 JoinNearby(; spread) = JoinNearby(_layer_value(spread))
 
-# numbers are stored as Float64 so a layer's fields stay concrete
+# numbers become Float64, so the draws need one method for numbers
 _layer_value(x::Real) = Float64(x)
 _layer_value(x) = x
 
@@ -116,16 +116,24 @@ _layer_value(x) = x
 Throws an `ArgumentError` if an assignment's parameters are out of range.
 """
 _check_assignment(a::NewSettingsAssignment) = _check_positive(a.size, "`size`"; finite_mean = true)
-_check_assignment(a::SpatialSettings) =
-    (_check_positive(a.size, "`size`"; finite_mean = true); _check_positive(a.spread, "`spread`"))
+function _check_assignment(a::SpatialSettings)
+    _check_positive(a.size, "`size`"; finite_mean = true)
+    _check_positive(a.spread, "`spread`")
+    return nothing
+end
 _check_assignment(::JoinExisting) = nothing
 _check_assignment(a::JoinNearby) = _check_positive(a.spread, "`spread`")
 
 # Throws unless `x` is a finite number > 0 or a non-negative distribution, with a finite
 # positive mean if `finite_mean`.
 function _check_positive(x, what::AbstractString; finite_mean::Bool = false)
-    ok = x isa Real ? isfinite(x) && x > 0 :
-        x isa UnivariateDistribution && minimum(x) >= 0 && (!finite_mean || (isfinite(mean(x)) && mean(x) > 0))
+    ok = if x isa Real
+        isfinite(x) && x > 0
+    elseif x isa UnivariateDistribution
+        minimum(x) >= 0 && (!finite_mean || (isfinite(mean(x)) && mean(x) > 0))
+    else
+        false
+    end
     ok || throw(ArgumentError("$what must be a number > 0 or a non-negative distribution" *
         (finite_mean ? " with a finite positive mean" : "") * "; got $x"))
     return nothing
@@ -139,6 +147,7 @@ end
     SettingLayer{T, A, F, E, C}
 
 Rules for giving individuals entries of setting type `T`; built with `SettingLayer(T; ...)`.
+`E` and `C` are the types of `entries` and `scale`.
 """
 struct SettingLayer{T<:IndividualSetting, A<:LayerAssignment, F, E, C}
     name::Union{Nothing, String}
@@ -155,7 +164,7 @@ end
     SettingLayer(T; assignment, name = nothing, eligible = _ -> true, holding = (),
                  not_holding = (), participation = 1.0, entries = 1, scale = 1.0)
 
-Rules for giving individuals entries of setting type `T`, checked here.
+Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range parameters.
 
 # Keywords
 - `assignment::LayerAssignment`: how participants are put into settings
@@ -171,7 +180,7 @@ function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible =
         holding = (), not_holding = (), participation::Real = 1.0,
         entries::Union{Integer, DiscreteUnivariateDistribution} = 1,
         scale::Union{Real, UnivariateDistribution} = 1.0)
-    _check_holds_entries(T, "a layer's setting type")
+    _layer_type_index(T, "a layer's setting type")
     n = entries isa Integer ? Int(entries) : entries
     s = _layer_value(scale)
     layer = SettingLayer{T, typeof(assignment), typeof(eligible), typeof(n), typeof(s)}(
@@ -179,7 +188,6 @@ function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible =
         _layer_type_indices(holding, "`holding`"), _layer_type_indices(not_holding, "`not_holding`"),
         Float64(participation), n, s)
     _check_layer(layer)
-    register_setting_type!(T)
     return layer
 end
 
@@ -194,11 +202,18 @@ function _check_layer(layer::SettingLayer)
     0 <= layer.participation <= 1 ||
         throw(ArgumentError("`participation` must be in [0, 1]; got $(layer.participation)"))
     n, cap = layer.entries, typemax(Int8)
-    (n isa Int ? 0 <= n <= cap : minimum(n) >= 0 && (!isfinite(maximum(n)) || maximum(n) <= cap)) ||
-        throw(ArgumentError("`entries` must be in 0-$cap, or a non-negative distribution at most $cap if bounded; got $n"))
+    if n isa Int
+        entries_ok = 0 <= n <= cap
+    else
+        bounded_ok = !isfinite(maximum(n)) || maximum(n) <= cap
+        entries_ok = minimum(n) >= 0 && bounded_ok
+    end
+    entries_ok || throw(ArgumentError(
+        "`entries` must be in 0-$cap, or a non-negative distribution at most $cap if bounded; got $n"))
     s = layer.scale
-    (s isa Real ? 0 <= s <= floatmax(Float16) : minimum(s) >= 0) ||
-        throw(ArgumentError("`scale` must be in [0, $(floatmax(Float16))] or a non-negative distribution; got $s"))
+    scale_ok = s isa Real ? 0 <= s <= floatmax(Float16) : minimum(s) >= 0
+    scale_ok || throw(ArgumentError(
+        "`scale` must be in [0, $(floatmax(Float16))] or a non-negative distribution; got $s"))
     _check_assignment(layer.assignment)
     return nothing
 end
@@ -238,7 +253,7 @@ end
 
 function _LayerStreams(seed::Integer, name::AbstractString)
     key = _mix(UInt64(3), seed % UInt64, _name_key(name))
-    # the k-th field's stream is keyed on k
+    # the k-th field's stream is keyed on k, so add streams at the end
     return _LayerStreams(ntuple(k -> _rekey!(Xoshiro(0), _mix(key, k)), fieldcount(_LayerStreams))...)
 end
 
@@ -276,14 +291,14 @@ function _layer_entry_counts(layer::SettingLayer, pop::Population, streams::_Lay
         # drawn for everyone, so participants nest as participation or eligibility widen
         takes_part = _draw_participates(streams.participation, layer.participation)
         n = _draw_entries(streams.entries, layer.entries)
-        (takes_part && _layer_eligible(layer, store, ind)) || continue
+        (takes_part && _qualifies(layer, store, ind)) || continue
         counts[i] = min(n, typemax(UInt8))
     end
     return counts
 end
 
 # Whether `ind` is eligible and holds every type in `holding` and none in `not_holding`.
-function _layer_eligible(layer::SettingLayer, store::ActivityPlanStore, ind::Individual)
+function _qualifies(layer::SettingLayer, store::ActivityPlanStore, ind::Individual)
     layer.eligible(ind) || return false
     for t in layer.holding
         _plan_type_run(store, ind, t)[2] == 0 && return false

@@ -65,6 +65,12 @@ Convenience for callers holding a `Simulation` rather than the store.
 @inline setting_id(individual::Individual, ::Type{T}, sim::Simulation) where {T<:Setting} =
     setting_id(individual, T, activity_plans(sim))
 
+# The id of the individual's primary setting of type index `tidx`, or `DEFAULT_SETTING_ID`.
+@inline function _setting_id(individual::Individual, tidx::UInt8, plans::ActivityPlanStore)::Int32
+    start, len = _plan_type_run(plans, individual, tidx)
+    return len == 0 ? DEFAULT_SETTING_ID : @inbounds setting_id(plans.entries[Int(individual.plan_offset) + start])
+end
+
 """
     setting_ids(individual::Individual, ::Type{T}, plans::ActivityPlanStore) where {T<:Setting}
 

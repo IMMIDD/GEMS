@@ -1,5 +1,9 @@
-import GEMS: setting_type_index, plan_slot, _LayerStreams, _layer_entry_counts, _check_room,
-    _draw_entries, _draw_scale, _draw_size
+import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots, plan_add!,
+    plan_remove!, setting_type_of, setting_id, entry_active, entry_active!, entry_scale, declare_setting_type!, DeclaredSetting,
+    DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX, NewSettingsAssignment, JoinAssignment,
+    _membership_bit, _mask_slot, _type_scale_bound, _name_key,
+    _LayerStreams, _layer_entry_counts, _check_room, _draw_entries, _draw_scale, _draw_size,
+    _PlanAdditions, _merge_additions!, _max_setting_id, _setting_id
 
 # `n` individuals, two per household; the first half work, three to an office
 function layer_pop(n = 12)
@@ -8,6 +12,26 @@ function layer_pop(n = 12)
                    office = Int32[i <= n ÷ 2 ? cld(i, 3) : -1 for i in 1:n])
     return Population(df)
 end
+
+# every block sorted by type, its mask the bits of the slotted types it holds, and no dead entries
+function plans_well_formed(pop)
+    store = activity_plans(pop)
+    length(store) == sum(plan_length, individuals(pop)) || return false
+    return all(individuals(pop)) do ind
+        types = [setting_type_of(store.entries[k]) for k in plan_slots(store, ind)]
+        mask = reduce(|, (_membership_bit(t) for t in types if _mask_slot(t) != 0); init = UInt16(0))
+        issorted(types) && ind.membership_mask == mask
+    end
+end
+
+# additions giving the individual at position `i` the setting ids `rows[i]` of type `T`
+function hand_additions(T, rows; scales = nothing)
+    offsets = Int32.(cumsum([1; length.(rows)]))
+    sids = Int32.(reduce(vcat, rows; init = Int32[]))
+    return _PlanAdditions(setting_type_index(T), offsets, sids, scales === nothing ? nothing : Float16.(scales))
+end
+
+merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), individuals(pop), additions; kwargs...)
 
 @testset "Setting Layers" begin
 
@@ -20,8 +44,8 @@ end
         spatial = SpatialSettings(size = 10, spread = 2)
         @test spatial.size === 10.0 && spatial.spread === 2.0
         @test JoinNearby(spread = Exponential(3)).spread isa Exponential
-        @test JoinExisting() isa GEMS.JoinAssignment
-        @test spatial isa GEMS.NewSettingsAssignment
+        @test JoinExisting() isa JoinAssignment
+        @test spatial isa NewSettingsAssignment
 
         # keywords another assignment type has fail
         @test_throws UndefKeywordError PackedSettings()
@@ -51,7 +75,7 @@ end
         @test SettingLayer(Office; assignment = packed, not_holding = (Office, SchoolClass, Office)).not_holding == [office, class]
 
         # declared and distribution-valued layers
-        gym = GEMS.declare_setting_type!("LayerTestGym"; char = 'γ')
+        gym = declare_setting_type!("LayerTestGym"; char = 'γ')
         gym_layer = SettingLayer(gym; assignment = packed, entries = Poisson(2), scale = Exponential(1))
         @test gym_layer isa SettingLayer{gym}
         @test gym_layer.entries isa Poisson && gym_layer.scale isa Exponential
@@ -66,7 +90,7 @@ end
         # setting types
         @test_throws ArgumentError layer(Workplace)
         @test_throws ArgumentError layer(GlobalSetting)
-        @test_throws ArgumentError layer(GEMS.DeclaredSetting)
+        @test_throws ArgumentError layer(DeclaredSetting)
         @test_throws ArgumentError layer(1)
         @test_throws ArgumentError layer(holding = School)
         @test_throws ArgumentError layer(not_holding = GlobalSetting)
@@ -112,7 +136,7 @@ end
         @test allunique(d)
         @test d != draws(_LayerStreams(2, "Office[1]"))
         @test d != draws(_LayerStreams(1, "Office[2]"))
-        @test GEMS._name_key("Gym") == GEMS._name_key("Gym") != GEMS._name_key("Gyn")
+        @test _name_key("Gym") == _name_key("Gym") != _name_key("Gyn")
 
         rng = Xoshiro(1)
         @test _draw_entries(rng, 3) == 3
@@ -159,5 +183,80 @@ end
         @test _check_room(room, inds) === nothing
         room[end] += 1
         @test_throws ArgumentError _check_room(room, inds)
+    end
+
+    @testset "Merging additions" begin
+        pop = layer_pop()
+        store, inds = activity_plans(pop), individuals(pop)
+        office = setting_type_index(Office)
+        primaries = [_setting_id(i, office, store) for i in inds]
+        # workers (1-6) get a second office, 7 and 8 their first ones, the rest none
+        rows = [i <= 6 ? [10 + i] : [-1] for i in 1:12]
+        rows[7], rows[8] = [20], [21, 22]
+        bytes = merge_into!(pop, hand_additions(Office, rows))
+        @test bytes >= sizeof(store.entries)
+        @test plans_well_formed(pop)
+        @test [_setting_id(i, office, store) for i in inds[1:6]] == primaries[1:6]
+        @test all(plan_slot(store, inds[i], Office, Int32(10 + i)) != 0 for i in 1:6)
+        @test all(plan_length(inds[i]) == 3 for i in 1:6)
+        @test _setting_id(inds[7], office, store) == 20
+        @test _setting_id(inds[8], office, store) == 21 && plan_length(inds[8]) == 3
+        @test all(plan_length(inds[i]) == 1 for i in 9:12)
+        @test _setting_id(inds[9], office, store) == DEFAULT_SETTING_ID
+        @test all(store.active) && isempty(store.free)
+        @test !any(i -> i.plan_scaled, inds)
+        @test _max_setting_id(store, inds, office) == 22
+
+        # the chunking does not change the result
+        a, b = layer_pop(), layer_pop()
+        add = hand_additions(Office, [[40 + i, 60 + i] for i in 1:12])
+        merge_into!(a, add)
+        merge_into!(b, add; chunks = [1:12])
+        @test activity_plans(a).entries == activity_plans(b).entries
+
+        # a held type with others behind it: the new entries go between them
+        hh = hand_additions(Household, [[100 + i] for i in 1:12])
+        merge_into!(pop, hh)
+        @test plans_well_formed(pop)
+        block_types(ind) = [setting_type_from_index(setting_type_of(store.entries[k])) for k in plan_slots(store, ind)]
+        @test block_types(inds[1]) == [Household, Household, Office, Office]
+        @test _setting_id(inds[1], setting_type_index(Household), store) == 1
+
+        # once the settings are built, entries can't be merged
+        store.indexed = true
+        @test_throws ArgumentError merge_into!(pop, hh)
+    end
+
+    @testset "Merged scales and flags" begin
+        pop = layer_pop()
+        store, inds = activity_plans(pop), individuals(pop)
+        # an inactive entry keeps its flag through the merge; SchoolClass's type index sorts
+        # between Household's and Office's, so workers get it mid-block
+        entry_active!(store, inds[1], plan_slot(store, inds[1], Household), false)
+        scales = [i == 2 ? 3.0 : 1.0 for i in 1:12]
+        merge_into!(pop, hand_additions(SchoolClass, [[30 + i] for i in 1:12]; scales = scales))
+        @test plans_well_formed(pop)
+        @test _type_scale_bound(store, setting_type_index(SchoolClass)) == 3.0f0
+        @test !entry_active(store, plan_slot(store, inds[1], Household))
+        @test entry_active(store, plan_slot(store, inds[1], SchoolClass))
+        @test count(!, store.active) == 1
+        # scaled: the inactive entry's holder and the one with scale 3
+        @test inds[1].plan_scaled && inds[2].plan_scaled
+        @test !any(i -> i.plan_scaled, inds[3:end])
+        @test entry_scale(store.entries[plan_slot(store, inds[2], SchoolClass)]) == Float16(3)
+    end
+
+    @testset "Merging drops freed blocks" begin
+        pop = layer_pop()
+        store, inds = activity_plans(pop), individuals(pop)
+        office = setting_type_index(Office)
+        # the block holding office 99 is freed but keeps the entry
+        plan_add!(store, inds[1], PlanEntry(Office, 99, DEFAULT_MEMBER_INDEX))
+        plan_remove!(store, inds[1], plan_slot(store, inds[1], Office, Int32(99)))
+        @test !isempty(store.free) && any(e -> setting_id(e) == 99, store.entries)
+        @test _max_setting_id(store, inds, office) == 2
+        merge_into!(pop, hand_additions(Office, [Int32[] for _ in 1:12]))
+        @test isempty(store.free) && plans_well_formed(pop)
+        @test !any(e -> setting_id(e) == 99, store.entries)
     end
 end
