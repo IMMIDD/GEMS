@@ -14,6 +14,28 @@ function layer_pop(n = 12)
     return Population(df)
 end
 
+# where `layer_pop(1000)`'s household h sits on a grid 25 wide, from 0: the workers' households
+# (1-250) and the others' alternate, so both spread over the whole grid
+layer_place(h) = h <= 250 ? 2h - 2 : 2(h - 250) - 1
+
+# coordinates for households 1..n, about 0.7 km apart east-west and 1.1 km north-south
+layer_coords(n = 500) = DataFrame(id = Int32.(1:n), lon = Float32.(mod.(layer_place.(1:n), 25) .* 0.01),
+                                  lat = Float32.(50 .+ div.(layer_place.(1:n), 25) .* 0.01))
+
+# the home of `layer_pop`'s individual `i` in km, as `layer_coords` places its household
+layer_home(i) = (q = layer_place(cld(i, 2)); (mod(q, 25) * 0.01 * 71.47, div(q, 25) * 0.01 * 111.19))
+
+# the mean distance of the members of the settings in `ids` to their setting's centroid
+function layer_spread(ids, members = eachindex(ids))
+    by_setting = Dict{Int32, Vector{Int}}()
+    foreach(i -> push!(get!(by_setting, ids[i], Int[]), i), members)
+    return mean(values(by_setting)) do group
+        homes = layer_home.(group)
+        c = (mean(first.(homes)), mean(last.(homes)))
+        mean(h -> hypot(h[1] - c[1], h[2] - c[2]), homes)
+    end
+end
+
 # a declared setting type for the layers; its default char would clash with other test types
 const LayerGym = declare_setting_type!("LayerTestGym"; char = 'γ')
 
@@ -383,6 +405,43 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test Set(draws) == Set(Int32[1, 3]) && isapprox(count(==(3), draws) / 3000, 2 / 3; atol = 0.05)
         @test all(_draw_unheld(c, Int32[3], rng) in (1, 2) for _ in 1:100)
         @test _draw_unheld(c, Int32[1, 2, 3], rng) == 0
+    end
+
+    @testset "Spatial layers" begin
+        near(a; kwargs...) = SettingLayer(LayerGym; assignment = a, kwargs...)
+        spatial(a, coords = layer_coords(); seed = 1) =
+            add_setting_layers!(layer_pop(1000), a; seed = seed, household_coordinates = coords)
+
+        # new settings: smaller spread, closer co-members; exact sizes
+        nearby = gym_ids(spatial(near(SpatialSettings(size = 10, spread = 0.2))))
+        far = gym_ids(spatial(near(SpatialSettings(size = 10, spread = 20))))
+        @test all(==(10), values(countmap(nearby)))
+        @test layer_spread(nearby) < layer_spread(far) / 2
+
+        # a second round has other co-members
+        held = held_ids(spatial(near(SpatialSettings(size = 10, spread = 1); entries = 2)))
+        members = Dict{Int32, Set{Int}}()
+        foreach(i -> foreach(s -> push!(get!(members, s, Set{Int}()), i), held[i]), eachindex(held))
+        @test count(h -> members[h[1]] != members[h[2]], held) > 900
+
+        # members whose household has no coordinates are packed among themselves
+        ids = gym_ids(spatial(near(SpatialSettings(size = 10, spread = 1)), layer_coords(250)))
+        @test isdisjoint(ids[1:500], ids[501:end]) && all(!=(DEFAULT_SETTING_ID), ids)
+
+        # without coordinates, spatial layers are refused
+        @test_throws ArgumentError add_setting_layers!(layer_pop(), near(SpatialSettings(size = 10, spread = 1)); seed = 1)
+        @test_throws ArgumentError add_setting_layers!(layer_pop(), near(JoinNearby(spread = 1)); seed = 1)
+
+        # joining: non-workers join offices nearer their home as the spread falls
+        office_at(pop) = [setting_id(i, Office, activity_plans(pop)) for i in individuals(pop)[501:end]]
+        office_home(k) = (homes = layer_home.(filter(<=(500), (3k - 2):3k)); (mean(first.(homes)), mean(last.(homes))))
+        distance(offices) = mean(hypot((layer_home(500 + n) .- office_home(k))...) for (n, k) in enumerate(offices))
+        joined_offices(spread, coords = layer_coords()) =
+            office_at(spatial(SettingLayer(Office; assignment = JoinNearby(spread = spread), not_holding = Office), coords))
+        @test distance(joined_offices(0.2)) < distance(joined_offices(20)) / 2
+        # past the ring cap, and without coordinates, the draw falls back to all offices
+        @test all(in(1:167), joined_offices(1e5)) && length(unique(joined_offices(1e5))) > 100
+        @test all(in(1:167), joined_offices(1, layer_coords(250)))
     end
 
     @testset "Packed layer through a simulation" begin

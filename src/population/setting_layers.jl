@@ -246,20 +246,33 @@ _layer_type(::SettingLayer{T}) where {T} = T
 ###
 
 """
-    add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer)
+    add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing)
 
 Gives the population's individuals the plan entries each layer describes, layer by layer, with
-draws seeded from `seed` and each layer's name.
+draws seeded from `seed` and each layer's name. `SpatialSettings` and `JoinNearby` need
+`household_coordinates`, a table with each household's `id`, `lon` and `lat`.
 """
-function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer)
+function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing)
     # the merge checks this too, but only after the first layer is generated
     activity_plans(pop).indexed && throw(ArgumentError(
         "the settings are already built; add setting layers before building them"))
-    for (layer, name) in zip(layers, _layer_names(layers))
-        _apply_layer!(pop, layer, name, seed, nothing)
+    names = _layer_names(layers)
+    coords = _layer_coordinates(layers, household_coordinates)
+    for (layer, name) in zip(layers, names)
+        _apply_layer!(pop, layer, name, seed, coords)
     end
     return pop
 end
+
+# The households' coordinates if a layer places by location, else `nothing`.
+function _layer_coordinates(layers, table)
+    any(l -> _needs_coordinates(l.assignment), layers) || return nothing
+    table === nothing && throw(ArgumentError(
+        "`SpatialSettings` and `JoinNearby` need `household_coordinates`, a table with `id`, `lon` and `lat`"))
+    return _HomeCoordinates(table)
+end
+
+_needs_coordinates(::LayerAssignment) = false
 
 # Generates one layer and merges it into the plans; returns the bytes the merge allocated.
 function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed::Integer, coords)
@@ -492,6 +505,8 @@ setting. Setting sizes are drawn from `ctx.size_rng`.
 """
 function _partition end
 
+# `SpatialSettings`' method is in setting_layers_spatial.jl.
+
 function _partition(a::PackedSettings, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
     return _cut_labels(_shuffled_positions(rng, length(members)), a.size, ctx.size_rng)
 end
@@ -565,7 +580,13 @@ _shuffled_positions(rng::Xoshiro, n::Int) = gems_shuffle!(rng, collect(Int32(1):
 # `size_rng`; the last one may be smaller than drawn.
 function _cut_labels(order::Vector{Int32}, size, size_rng::Xoshiro)
     labels = Vector{Int32}(undef, length(order))
-    label, left = Int32(0), 0
+    _cut_labels!(labels, order, size, size_rng, Int32(0))
+    return labels
+end
+
+# As `_cut_labels`, into `labels` with labels after `last`; returns the last label used.
+function _cut_labels!(labels::Vector{Int32}, order::Vector{Int32}, size, size_rng::Xoshiro, last::Int32)
+    label, left = last, 0
     for p in order
         if left == 0
             label += Int32(1)
@@ -574,7 +595,7 @@ function _cut_labels(order::Vector{Int32}, size, size_rng::Xoshiro)
         @inbounds labels[p] = label
         left -= 1
     end
-    return labels
+    return label
 end
 
 """
@@ -695,6 +716,8 @@ function _JoinCandidates(store::ActivityPlanStore, inds::Vector{Individual}, t::
     return _JoinCandidates(ids, cumsum(counts[ids]))
 end
 
+# `JoinNearby`'s methods are in setting_layers_spatial.jl.
+
 _join_state(::JoinExisting, ctx::_LayerContext) = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx)
 
 function _choose(::JoinExisting, ::Int, held::Vector{Int32}, c::_JoinCandidates, ::_LayerContext, rng::Xoshiro)
@@ -717,13 +740,15 @@ function _draw_unheld(c::_JoinCandidates, held::Vector{Int32}, rng::Xoshiro)
         j <= length(c.ids) && c.ids[j] == h && push!(js, j)
     end
     sort!(js)
-    below(j) = j == 1 ? 0 : c.cumulative[j - 1]
-    free = c.cumulative[end] - sum(j -> c.cumulative[j] - below(j), js; init = 0)
+    free = c.cumulative[end] - sum(j -> _candidate_weight(c, j), js; init = 0)
     free > 0 || return Int32(0)
     x = gems_rand(rng, 1:free)
     for j in js
-        x > below(j) || break
-        x += c.cumulative[j] - below(j)
+        x > c.cumulative[j] - _candidate_weight(c, j) || break
+        x += _candidate_weight(c, j)
     end
     return c.ids[searchsortedfirst(c.cumulative, x)]
 end
+
+# The member count of the candidate at position `j`.
+@inline _candidate_weight(c::_JoinCandidates, j::Int) = c.cumulative[j] - (j == 1 ? 0 : c.cumulative[j - 1])
