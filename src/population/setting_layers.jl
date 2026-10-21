@@ -609,3 +609,121 @@ function _label_ids(labels::Vector{Int32}, first_id::Int32)
     end
     return ids, next_id
 end
+
+###
+### JOINING EXISTING SETTINGS
+###
+
+"""
+    _assign!(additions::_PlanAdditions, a::JoinAssignment, ctx::_LayerContext, rng::Xoshiro)
+
+Gives each row an existing setting of the layer's type by `_choose`, never one the individual
+already holds. Returns the number of rows left without one, and warns if there are any.
+"""
+function _assign!(additions::_PlanAdditions, a::JoinAssignment, ctx::_LayerContext, rng::Xoshiro)
+    state = _join_state(a, ctx)
+    held = Int32[]
+    shortfall = 0
+    for i in _addition_individuals(additions)
+        rows = _addition_rows(additions, i)
+        isempty(rows) && continue
+        _held_ids!(held, ctx, i)
+        for k in rows
+            sid = _choose(a, i, held, state, ctx, rng)
+            if sid == 0
+                shortfall += 1
+            else
+                additions.sids[k] = sid
+                push!(held, sid)
+            end
+        end
+    end
+    shortfall > 0 && @warn "$shortfall layer entries found no $(setting_type_name(setting_type_from_index(ctx.tidx))) " *
+        "their individual did not already hold, and were left out"
+    return shortfall
+end
+
+"""
+    _choose(a::JoinAssignment, i::Int, held::Vector{Int32}, state, ctx::_LayerContext, rng::Xoshiro)
+
+Returns the id of an existing setting for the individual at position `i` to join, never one in
+`held`, or 0 if there is none. `state` is what `_join_state(a, ctx)` built once for the layer.
+"""
+function _choose end
+
+"""
+    _join_state(a::JoinAssignment, ctx::_LayerContext)
+
+Builds the lookup `_choose` draws from, once per layer.
+"""
+function _join_state end
+
+# Refills `held` with the ids of the layer's type the individual at position `i` holds.
+function _held_ids!(held::Vector{Int32}, ctx::_LayerContext, i::Int)
+    empty!(held)
+    ind = ctx.inds[i]
+    start, len = _plan_type_run(ctx.store, ind, ctx.tidx)
+    off = Int(ind.plan_offset) + start
+    for k in off:(off + len - 1)
+        push!(held, setting_id(ctx.store.entries[k]))
+    end
+    return held
+end
+
+"""
+    _JoinCandidates
+
+The existing settings of one type that have members: their `ids` in ascending order, and the
+running total of their member counts, `cumulative`. Fixed while a layer joins them.
+"""
+struct _JoinCandidates
+    ids::Vector{Int32}
+    cumulative::Vector{Int}
+end
+
+function _JoinCandidates(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
+    counts = zeros(Int, _max_setting_id(store, inds, t))
+    @inbounds for ind in inds
+        start, len = _plan_type_run(store, ind, t)
+        off = Int(ind.plan_offset) + start
+        for k in off:(off + len - 1)
+            sid = setting_id(store.entries[k])
+            sid >= 1 && (counts[sid] += 1)
+        end
+    end
+    ids = Int32.(findall(>(0), counts))
+    return _JoinCandidates(ids, cumsum(counts[ids]))
+end
+
+_join_state(::JoinExisting, ctx::_LayerContext) = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx)
+
+function _choose(::JoinExisting, ::Int, held::Vector{Int32}, c::_JoinCandidates, ::_LayerContext, rng::Xoshiro)
+    isempty(c.ids) && return Int32(0)
+    # most draws miss the few settings an individual holds
+    for _ in 1:64
+        sid = c.ids[searchsortedfirst(c.cumulative, gems_rand(rng, 1:c.cumulative[end]))]
+        sid in held || return sid
+    end
+    return _draw_unheld(c, held, rng)
+end
+
+# A draw ∝ member count among the candidates not in `held`, or 0 if there are none: a draw over
+# the others' total, stepped past each held setting's share.
+function _draw_unheld(c::_JoinCandidates, held::Vector{Int32}, rng::Xoshiro)
+    # the held settings' positions among the candidates, ascending
+    js = Int[]
+    for h in held
+        j = searchsortedfirst(c.ids, h)
+        j <= length(c.ids) && c.ids[j] == h && push!(js, j)
+    end
+    sort!(js)
+    below(j) = j == 1 ? 0 : c.cumulative[j - 1]
+    free = c.cumulative[end] - sum(j -> c.cumulative[j] - below(j), js; init = 0)
+    free > 0 || return Int32(0)
+    x = gems_rand(rng, 1:free)
+    for j in js
+        x > below(j) || break
+        x += c.cumulative[j] - below(j)
+    end
+    return c.ids[searchsortedfirst(c.cumulative, x)]
+end

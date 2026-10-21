@@ -4,7 +4,7 @@ import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots,
     _membership_bit, _mask_slot, _type_scale_bound, _name_key,
     _LayerStreams, _layer_entry_counts, _check_room, _draw_entries, _draw_scale, _draw_size,
     _PlanAdditions, _merge_additions!, _max_setting_id, _setting_id,
-    setting_ids, validate_plans, settingscontainer, settings
+    setting_ids, validate_plans, settingscontainer, settings, _JoinCandidates, _draw_unheld
 
 # `n` individuals, two per household; the first half work, three to an office
 function layer_pop(n = 12)
@@ -343,6 +343,46 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         tens = held_ids(layered(gym(PackedSettings(size = 10); entries = 2)))
         fives = held_ids(layered(gym(PackedSettings(size = 5); entries = 2)))
         @test all(cld.(f .- [0, 200], 2) == t .- [0, 100] for (t, f) in zip(tens, fives))
+    end
+
+    @testset "Joining existing settings" begin
+        # second job: a tenth of the workers join a second office, keeping their own as primary
+        pop = layer_pop(3000)
+        store, inds = activity_plans(pop), individuals(pop)
+        primaries = [setting_id(i, Office, store) for i in inds]
+        second_job = SettingLayer(Office; assignment = JoinExisting(), holding = Office, participation = 0.1)
+        add_setting_layers!(pop, second_job; seed = 4)
+        held = [setting_ids(i, Office, store) for i in inds]
+        second = length.(held) .== 2
+        @test 100 < count(second) < 200 && !any(second[1501:end])
+        @test [setting_id(i, Office, store) for i in inds] == primaries
+        @test all(allunique, held) && maximum(reduce(vcat, held)) == 500
+        @test plans_well_formed(pop)
+        cntnr = settingscontainer(Simulation(population = pop, infected_fraction = 0.0))
+        @test validate_plans(pop, cntnr)
+        @test sum(s -> length(individuals(s)), settings(cntnr, Office)) == 1500 + count(second)
+
+        # draws ∝ member count: of offices with 1 and 9 members, the small one gets about a tenth
+        df = DataFrame(id = Int32.(1:1010), age = Int8.(fill(30, 1010)), sex = Int8.(ones(1010)),
+                       household = Int32.(1:1010), office = Int32[i == 1 ? 1 : i <= 10 ? 2 : -1 for i in 1:1010])
+        pop = Population(df)
+        add_setting_layers!(pop, SettingLayer(Office; assignment = JoinExisting(), not_holding = Office); seed = 5)
+        joined = [setting_id(i, Office, activity_plans(pop)) for i in individuals(pop)[11:end]]
+        @test all(in((1, 2)), joined) && 50 < count(==(1), joined) < 150
+
+        # with two offices, a worker's third entry finds none it does not hold
+        pop = layer_pop()
+        third = SettingLayer(Office; assignment = JoinExisting(), holding = Office, entries = 3)
+        @test_logs (:warn, r"^12 layer entries") add_setting_layers!(pop, third; seed = 1)
+        @test all(i -> sort(setting_ids(i, Office, activity_plans(pop))) == [1, 2], individuals(pop)[1:6])
+
+        # the exact draw steps past held settings and keeps the others' proportions
+        c = _JoinCandidates(Int32[1, 2, 3], [1, 10, 12])
+        rng = Xoshiro(1)
+        draws = [_draw_unheld(c, Int32[2], rng) for _ in 1:3000]
+        @test Set(draws) == Set(Int32[1, 3]) && isapprox(count(==(3), draws) / 3000, 2 / 3; atol = 0.05)
+        @test all(_draw_unheld(c, Int32[3], rng) in (1, 2) for _ in 1:100)
+        @test _draw_unheld(c, Int32[1, 2, 3], rng) == 0
     end
 
     @testset "Packed layer through a simulation" begin
