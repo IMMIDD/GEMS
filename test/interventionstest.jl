@@ -34,7 +34,8 @@ end
     @test length(sim.strategies) == 2
 
     #define Individuals and settings
-    i = Individual(id=1, sex=0, age=31, household=1)
+    i = Individual(id=1, sex=0, age=31)
+    fake_membership!(population(sim), i, Household, 1)
     i2 = Individual(id=4, age=10, sex=1)
     indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
     indis2 = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
@@ -190,6 +191,82 @@ end
         @test events_from_strategy(evs, i_strategy2)
     end
 
+    @testset "Find Settings" begin
+        df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
+                       household = Int32[1, 2, 2], office = Int32[1, 1, 2])
+        pop = Population(df)
+        a = individuals(pop)[1]
+        # a also lives in household 2 and works in office 2
+        assign_settings!(pop, a, Household => 2, Office => 2)
+        sim4 = Simulation(population = pop)
+        fu = SStrategy("find_settings_fu", sim4)
+        add_measure!(fu, CloseSetting())
+        eq = GEMS.event_queue(sim4)
+        empty!(eq)
+
+        # FindSetting acts on the primary, or on the setting it is given
+        process_measure(sim4, a, FindSetting(Household, fu))
+        @test followup_focals(drain_events!(eq)) == [households(sim4)[1]]
+        process_measure(sim4, a, FindSetting(Household, fu), Int32(2))
+        @test followup_focals(drain_events!(eq)) == [households(sim4)[2]]
+
+        # FindSettingMembers likewise
+        i_fu = IStrategy("find_members_fu", sim4)
+        add_measure!(i_fu, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
+        process_measure(sim4, a, FindSettingMembers(Household, i_fu), Int32(2))
+        @test Set(followup_focals(drain_events!(eq))) == Set(individuals(households(sim4)[2]))
+
+        # FindSettings acts on every setting of the type; the queue, not the measure, orders them
+        fs = FindSettings(Office, fu)
+        @test settingtype(fs) === Office
+        @test follow_up(fs) === fu
+        process_measure(sim4, a, fs)
+        @test Set(id.(followup_focals(drain_events!(eq)))) == Set(Int32[1, 2])
+
+        # without a settings file the offices belong to no department: a clear error, and nothing to find
+        @test_throws ArgumentError getsetting(a, sim4, Department)
+        process_measure(sim4, a, FindSetting(Department, fu))
+        process_measure(sim4, a, FindSettingMembers(Department, i_fu))
+        @test isempty(eq)
+
+        # a container is found above each setting and handed over once
+        mktempdir() do dir
+            path = joinpath(dir, "pop.csv")
+            mpath = joinpath(dir, "extra.csv")
+            spath = joinpath(dir, "settings.jld2")
+            CSV.write(path, df)
+            CSV.write(mpath, DataFrame(id = Int32[1], setting_type = ["Office"], setting_id = Int32[2]))
+            # both offices in one department
+            jldsave(spath; data = Dict(
+                :Office => DataFrame(id = Int32[1, 2], contained = Int32[1, 1]),
+                :Department => DataFrame(id = Int32[1], contains = [Int32[1, 2]])))
+            sim5 = Simulation(population = path, membershipsfile = mpath, settingsfile = spath)
+            a5 = individuals(sim5)[1]
+            @test setting_ids(a5, Office, sim5) == Int32[1, 2]
+            @test setting_ids(a5, Department, sim5) == Int32[1]
+
+            dept_fu = SStrategy("find_departments_fu", sim5)
+            add_measure!(dept_fu, CloseSetting())
+            eq5 = GEMS.event_queue(sim5)
+            empty!(eq5)
+            process_measure(sim5, a5, FindSettings(Department, dept_fu))
+            @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
+
+            # FindSetting and FindSettingMembers reach the department through the offices below it
+            process_measure(sim5, a5, FindSetting(Department, dept_fu))
+            @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
+            i_fu5 = IStrategy("find_department_members_fu", sim5)
+            add_measure!(i_fu5, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
+            process_measure(sim5, a5, FindSettingMembers(Department, i_fu5))
+            @test Set(followup_focals(drain_events!(eq5))) == Set(individuals(sim5))
+            # the department belongs to no workplace: a clear error, and nothing to find
+            @test_throws ArgumentError getsetting(a5, sim5, Workplace)
+            process_measure(sim5, a5, FindSetting(Workplace, dept_fu))
+            process_measure(sim5, a5, FindSettingMembers(Workplace, i_fu5))
+            @test isempty(eq5)
+        end
+    end
+
     @testset "Testing" begin
 
         test = TestType("Test", id(first_pathogen(sim)), sim)
@@ -235,7 +312,8 @@ end
             test_measure5 = GEMS.Test()
         end
 
-        i_test_neg = Individual(id=201, sex=0, age=31, household=1)
+        i_test_neg = Individual(id=201, sex=0, age=31)
+        fake_membership!(population(sim), i_test_neg, Household, 1)
         eq = GEMS.event_queue(sim)
         empty!(eq)
         @test process_measure(sim, i_test_neg, test_measure3) === nothing   # negative result → negative follow-up
@@ -243,7 +321,8 @@ end
         @test followup_focals(evs) == [i_test_neg]
         @test events_from_strategy(evs, i_strategy)
 
-        i_test_pos = Individual(id=202, sex=0, age=31, household=1)
+        i_test_pos = Individual(id=202, sex=0, age=31)
+        fake_membership!(population(sim), i_test_pos, Household, 1)
         infect!(i_test_pos, Int16(0), first_pathogen(sim), rng = Xoshiro())
         empty!(eq)
         @test process_measure(sim, i_test_pos, test_measure2) === nothing
@@ -299,7 +378,8 @@ end
             s_test_measure5 = GEMS.Test()
         end
 
-        i_sero = Individual(id=203, sex=0, age=31, household=1)
+        i_sero = Individual(id=203, sex=0, age=31)
+        fake_membership!(population(sim), i_sero, Household, 1)
         infect!(i_sero, Int16(0), first_pathogen(sim), rng = Xoshiro())
         GEMS.push_immunity!(immunity_registry(sim, i_sero), i_sero, id(first_pathogen(sim)), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
         eq = GEMS.event_queue(sim)
@@ -336,6 +416,8 @@ end
         # then infect ind2 at tick=0; get_infections_between finds it in range [-1..0]
         set_progression!(ind1, pid3)
         infect!(ind2, Int16(0), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
+        # the trace reads the infection log, which only fills at the flush
+        GEMS.flush_pending_infections!(sim3)
         
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
         eq3 = GEMS.event_queue(sim3)
@@ -398,13 +480,13 @@ end
             "CancelSelfIsolation",
             "FindSetting",
             "FindSettingMembers",
-            "GEMS.Test",
+            "Test",
             "TraceInfectiousContacts",
-            "GEMS.Test"
+            "Test"
         ]
 
         # the configured follow-up strategy (i_strategy) carries the expected measures
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
+        strategy_names = map(x -> string(nameof(typeof(measure(x)))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 
@@ -413,7 +495,7 @@ end
         @test process_measure(sim, gs, find_members3) === nothing
         @test isempty(drain_events!(eq))
 
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
+        strategy_names = map(x -> string(nameof(typeof(measure(x)))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 
@@ -746,7 +828,7 @@ end
         GEMS.trigger(s_tick_trigger, sim)
         sim_settings = offices(sim)
         step!(sim)
-        @test all(h -> (length(h.individuals) <= 5 || !h.isopen), sim_settings)
+        @test all(h -> (length(individuals(h)) <= 5 || !h.isopen), sim_settings)
 
         #test other return cases of trigger function        
         sim = Simulation()
@@ -794,25 +876,13 @@ end
         GEMS.trigger(s_tick_trigger, sim)
         sim_settings = offices(sim)
         step!(sim)
-        @test all(h -> (length(h.individuals) <= 5 || h.isopen), sim_settings)
+        @test all(h -> (length(individuals(h)) <= 5 || h.isopen), sim_settings)
 
+        # a condition that cannot return a Bool is rejected when the strategy or measure is built
         sim = Simulation()
-        i = Individual(id=1, age=10, sex=1)
-        i_measure_function = (i, sim) -> i.mandate_compliance = 0.4
-        custom_i_measure = CustomIMeasure(i_measure_function)
-        custom_i_strategy = IStrategy("custom i strategy", sim, condition=(_) -> nothing)
-        add_measure!(custom_i_strategy, custom_i_measure)
-        symptom_trigger = SymptomTrigger(custom_i_strategy)
-        add_symptom_trigger!(sim, symptom_trigger)
-        @test_throws ErrorException GEMS.trigger(symptom_trigger, i, sim)
-
-        s_measure_function = (s, simobj) -> (size(s) > 5 ? close!(s) : nothing)
-        custom_s_measure = CustomSMeasure(s_measure_function)
-        custom_s_strategy = SStrategy("custom s strategy", sim, condition=(_) -> nothing)
-        add_measure!(custom_s_strategy, custom_s_measure)
-        s_tick_trigger = STickTrigger(Office, custom_s_strategy)
-        add_tick_trigger!(sim, s_tick_trigger)
-        @test_throws ErrorException GEMS.trigger(s_tick_trigger, sim)
+        @test_throws ArgumentError IStrategy("custom i strategy", sim, condition=(_) -> nothing)
+        @test_throws ArgumentError SStrategy("custom s strategy", sim, condition=(_) -> nothing)
+        @test_throws ArgumentError add_measure!(IStrategy("measure condition", sim), SelfIsolation(14), condition=(_) -> nothing)
 
         #test should_fire function
         @testset "Testing should_fire" begin
@@ -858,9 +928,8 @@ end
             future_trigger = ITickTrigger(strategy, switch_tick = Int16(10), condition = s -> true)
             @test should_fire(future_trigger, sim) == false
 
-            # a non-boolean-returning condition raises a clear error, same as strategy conditions
-            bad_trigger = ITickTrigger(strategy, condition = s -> nothing)
-            @test_throws ErrorException should_fire(bad_trigger, sim)
+            # a non-boolean-returning condition is rejected when the trigger is built, same as strategy conditions
+            @test_throws ArgumentError ITickTrigger(strategy, condition = s -> nothing)
 
             # STickTrigger supports the same trigger-level condition
             s_strategy = SStrategy("s_strategy", sim)
@@ -871,7 +940,8 @@ end
 
     @testset "Test Measure Events" begin
         sim = Simulation()
-        i = Individual(id=1, sex=0, age=31, household=1)
+        i = Individual(id=1, sex=0, age=31)
+        fake_membership!(population(sim), i, Household, 1)
         indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
         rs = RandomSampling()
         gs = GlobalSetting(individuals=indis, contact_sampling_method=rs)

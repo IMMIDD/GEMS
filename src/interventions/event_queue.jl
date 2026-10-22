@@ -89,10 +89,8 @@ Base.isempty(eq::EventQueue) = eq.count == 0
     return (s_bucket === nothing || isempty(s_bucket)) && (i_bucket === nothing || isempty(i_bucket))
 end
 
-# A tick passed by `_advance_head!` can never receive new events again (events are always
-# scheduled at tick >= current), so this is the safe point to recycle its bucket onto the free
-# list. A slot still holding `nothing` needs no action. The size cap bounds the free list for
-# patterns where more buckets get used than get reused from tick to tick.
+# Recycles a passed tick's bucket onto the free list; nothing is scheduled before the current tick.
+# The cap bounds the free list when more buckets are used than reused.
 @inline function _retire_tick!(eq::EventQueue, idx::Int)
     if idx <= length(eq.i_buckets)
         b = eq.i_buckets[idx]
@@ -287,10 +285,8 @@ function process_due!(queue::EventQueue, sim, t)
     return nothing
 end
 
-# Drain one tick bucket in place, specialized per event type via `where {E}` so `pop!` and
-# `process_event` are statically dispatched. The bucket is left in `buckets[idx]` rather than
-# recycled (see `_advance_head!`), so re-entrant refills reuse its capacity. Skips immediately
-# if the slot is `nothing` or already empty.
+# Drains one tick bucket in place; `where {E}` makes `pop!` and `process_event` static. The bucket stays
+# in `buckets[idx]` until `_advance_head!` recycles it, so events added while draining reuse it.
 @inline function _drain_bucket!(buckets::Vector{Union{Nothing, Vector{E}}}, idx::Int, queue::EventQueue, sim) where {E}
     idx <= length(buckets) || return nothing
     b = buckets[idx]

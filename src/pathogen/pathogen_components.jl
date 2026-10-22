@@ -6,9 +6,13 @@ export progression_categories
 export progression_assignments
 export health_progressions
 export calculate_infectiousness
+export next_infectiousness_change, next_tick_after
 export calculate_immunity
 export immunity_is_stable
 export susceptibility_factor
+export max_transmission_probability, max_transmission_probability_in_type
+export max_transmission_factor, max_transmission_factor_in_type
+export susceptibility_bound
 
 # the main defintion of pathogens is in src/pathogen/pathogens.jl
 
@@ -157,6 +161,42 @@ function transmission_probability(transFunc::TransmissionFunction, pathogen_id::
 end
 
 """
+    max_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Upper bound on `transmission_probability` over every possible infectee in `setting`. Defaults to
+`max_transmission_probability_in_type`, or `1.0` without one, which disables transmission pre-thinning.
+"""
+function max_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    p = max_transmission_probability_in_type(transFunc, pathogen_id, infecter, typeof(setting), tick, sim)
+    return isinf(p) ? 1.0 : p
+end
+
+"""
+    max_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Upper bound on `max_transmission_probability` over every setting of type `S`. Defaults to `Inf`,
+which the effective bound caps at `1.0`.
+"""
+max_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} = Inf
+
+"""
+    max_transmission_factor(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Upper bound on `transmission_factor` over every possible infectee in `setting`. Defaults to
+`max_transmission_factor_in_type`.
+"""
+max_transmission_factor(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
+    max_transmission_factor_in_type(modifier, pathogen_id, infecter, typeof(setting), tick, sim)
+
+"""
+    max_transmission_factor_in_type(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Upper bound on `max_transmission_factor` over every setting of type `S`. Defaults to `Inf`, as a
+modifier may raise the probability.
+"""
+max_transmission_factor_in_type(modifier::TransmissionModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} = Inf
+
+"""
     effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation, rng::Xoshiro)::Float64
 
 Framework entry point called by the simulation loop. Applies infectiousness and standard
@@ -194,6 +234,52 @@ effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id:
     effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
+    max_effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+
+Upper bound on `effective_transmission_probability` over every possible infectee in `setting`, at most `1.0`.
+"""
+function max_effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
+    profile = immunity_profile(get_pathogen(sim, pathogen_id))
+    p = max_transmission_probability(transFunc, pathogen_id, infecter, setting, tick, sim) *
+        infectiousness(infecter, sim, pathogen_id) / 100.0 *
+        susceptibility_bound(profile)
+    # a zero factor zeroes the probability, whatever an unbounded one says
+    return isnan(p) ? 0.0 : min(1.0, p)
+end
+
+"""
+    max_effective_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Upper bound on `max_effective_transmission_probability` over every setting of type `S`, at most `1.0`.
+"""
+function max_effective_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation)::Float64 where {S<:Setting}
+    profile = immunity_profile(get_pathogen(sim, pathogen_id))
+    p = max_transmission_probability_in_type(transFunc, pathogen_id, infecter, S, tick, sim) *
+        infectiousness(infecter, sim, pathogen_id) / 100.0 *
+        susceptibility_bound(profile)
+    # same expression as `max_effective_transmission_probability`, so equal bounds give equal values
+    return isnan(p) ? 0.0 : min(1.0, p)
+end
+
+# whether transmission pre-thinning may rely on the pathogen's bounds
+function _prethinnable(pathogen::Pathogen)::Bool
+    TF = typeof(transmission_function(pathogen))
+    IM = typeof(immunity_profile(pathogen))
+    _overrides(effective_transmission_probability, TF, TransmissionFunction) && return false
+    return !_overrides(susceptibility_factor, IM, ImmunityProfile) || _overrides(susceptibility_bound, IM, ImmunityProfile)
+end
+
+# whether `f` has a method taking a `T` first, other than its fallback on `fallback`
+function _overrides(f, T::Type, fallback::Type)::Bool
+    for m in methods(f)
+        P = Base.unwrap_unionall(m.sig).parameters[2]
+        P === fallback && continue
+        T <: Base.rewrap_unionall(P, m.sig) && return true
+    end
+    return false
+end
+
+"""
     calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
 Returns the infectiousness (0-100) of the infection `state` at `tick`; concrete profiles must implement it and
@@ -202,6 +288,38 @@ with `infectiousness_rng!`.
 """
 function calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     error("calculate_infectiousness is not implemented for InfectiousnessProfile type $(typeof(profile)).")
+end
+
+# whether `calculate_infectiousness` may draw from its rng; one that never does gets it unkeyed
+_draws_from_rng(::InfectiousnessProfile) = true
+
+"""
+    next_infectiousness_change(profile::InfectiousnessProfile, state::InfectionState, tick::Int16)::Int16
+
+Returns the first tick after `tick` at which `calculate_infectiousness` may return a different level, so the
+disease update can skip the ticks before it. Optional: the default, `tick + 1`, is always correct, while a
+tick past the next change makes the update miss it.
+
+# Example
+A profile whose level only changes at infectiousness onset and recovery:
+```julia
+GEMS.next_infectiousness_change(p::MyProfile, state::InfectionState, tick::Int16) =
+    next_tick_after(tick, state.infectiousness_onset, state.recovery)
+```
+"""
+@inline next_infectiousness_change(profile::InfectiousnessProfile, state::InfectionState, tick::Int16) = tick + Int16(1)
+
+"""
+    next_tick_after(tick::Int16, ticks::Int16...)::Int16
+
+Returns the first of `ticks` after `tick`, or `typemax(Int16)` if there is none. Unset ticks (`-1`) are never after `tick`.
+"""
+@inline function next_tick_after(tick::Int16, ticks::Int16...)
+    next = typemax(Int16)
+    for t in ticks
+        tick < t < next && (next = t)
+    end
+    return next
 end
 
 """
@@ -241,6 +359,14 @@ elsewhere than on transmission: `1.0` leaves the level readable by the rest of t
 (e.g. a progression assignment that attenuates severity) without affecting transmission.
 """
 susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64 = 1.0 - level / 100.0
+
+"""
+    susceptibility_bound(profile::ImmunityProfile)::Float64
+
+Upper bound on `susceptibility_factor` over every immunity level. Defaults to `1.0`; a profile
+that overrides `susceptibility_factor` without it is not pre-thinned.
+"""
+susceptibility_bound(profile::ImmunityProfile)::Float64 = 1.0
 
 
 """

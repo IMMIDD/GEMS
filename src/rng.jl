@@ -200,13 +200,22 @@ end
 const _PROFILE_RNGS = Union{Nothing, _ProfileRNG}[]
 
 # folds fields into a key with splitmix64, one at a time
-# leading domain tags in use: 0 immunity, 1 infection, 2 prior immunity
+# leading domain tags in use: 0 immunity, 1 infection, 2 prior immunity, 3 setting layers
 @inline _mix(key::UInt64) = key
 @inline function _mix(key::UInt64, field::Integer, rest::Integer...)
     x = (key ⊻ (field % UInt64)) + 0x9e3779b97f4a7c15
     x = (x ⊻ (x >> 30)) * 0xbf58476d1ce4e5b9
     x = (x ⊻ (x >> 27)) * 0x94d049bb133111eb
     return _mix(x ⊻ (x >> 31), rest...)
+end
+
+# folds a name's bytes into a key
+function _name_key(name::AbstractString)
+    key = UInt64(0)
+    for b in codeunits(name)
+        key = _mix(key, b)
+    end
+    return key
 end
 
 # sets the state from `key`, as `Random.initstate!` does from four words

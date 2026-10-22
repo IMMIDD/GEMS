@@ -3,20 +3,15 @@ export offset, measure, delay, condition
 export IStrategy, SStrategy
 export name, condition, measures, add_measure!
 
-# Concrete function-wrapper types for the per-strategy callbacks. Wrapping the user closures in
-# these keeps the callback fields (and the measure vector) concretely typed, so calling them on
-# the intervention hot path is type-stable instead of a dynamic dispatch. The focal object is an
-# Individual for IStrategies/IMeasures and a Setting for SStrategies/SMeasures.
+# Concrete wrappers for the per-strategy callbacks, so their fields are concretely typed and calls are
+# static. The focal object is an Individual for IStrategies/IMeasures, a Setting for SStrategies/SMeasures.
 const IPredicate = FunctionWrapper{Bool, Tuple{Individual}}
 const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
 const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
 
-# Per-measure process callbacks. Built once at `add_measure!` time, where the concrete measure
-# type and the `Simulation` are statically known, so the wrapped closure captures both and resolves
-# `process_measure` statically. The wrapper takes only the focal object; `Simulation` is kept out of
-# the argument tuple because it is a parametric (abstract) type and an abstract argument type would
-# make the call a dynamic dispatch.
+# Per-measure process callbacks, built in `add_measure!` with the measure and `sim` captured. They take
+# only the focal object, as the abstract `Simulation` type as an argument would make the call dynamic.
 const IProcessFn = FunctionWrapper{Any, Tuple{Individual}}
 const SProcessFn = FunctionWrapper{Any, Tuple{Setting}}
 
@@ -153,6 +148,7 @@ struct IStrategy{S<:Simulation} <: Strategy
 
     """
     function IStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        _check_condition(condition, Individual, "IStrategy '$name'")
         str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
@@ -235,6 +231,7 @@ struct SStrategy{S<:Simulation} <: Strategy
 
     """
     function SStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        _check_condition(condition, Setting, "SStrategy '$name'")
         str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
@@ -315,6 +312,7 @@ calculated `delay` is added to the `offset` (if specified).
 function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
+    _check_condition(condition, Individual, "a measure of IStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
     return str
 end
@@ -324,8 +322,23 @@ end
 function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
     fn = SProcessFn(s -> process_measure(sim, s, measure))
+    _check_condition(condition, Setting, "a measure of SStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
     return str
+end
+
+"""
+    _check_condition(condition::Function, argtype::Type, owner::AbstractString)
+
+Throws an `ArgumentError` if `condition` can return something other than a `Bool` for an `argtype` argument.
+A condition whose return type Julia cannot infer is accepted.
+"""
+function _check_condition(condition::Function, argtype::Type, owner::AbstractString)
+    for R in Base.return_types(condition, (argtype,))
+        R === Any || R <: Bool ||
+            throw(ArgumentError("The condition that you passed to $owner does not return a boolean value."))
+    end
+    return nothing
 end
 
 
@@ -336,7 +349,7 @@ end
 function Base.show(io::IO, s::Strategy)
     res = "$(typeof(s)): $(name(s))"
     for me in measures(s)
-        res *= "\n\u2514 $(offset(me)): $(typeof(measure(me)))"
+        res *= "\n\u2514 $(offset(me)): $(nameof(typeof(measure(me))))"
     end
     write(io, res)
 end

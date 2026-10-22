@@ -4,10 +4,8 @@
 ### SLOT ADDRESSING
 ###
 
-# A single record lives either in an individual's inline cache NTuple or in an overflow node of the
-# registry linked list; these markers name which, so the disease-update loops can
-# read/write/clear a slot through one dispatched interface instead of duplicating the cache-
-# and overflow-specific code.
+# A record lives in the individual's inline cache or in an overflow node of the registry; these markers
+# name which, so the disease-update loops read, write and clear both through one interface.
 
 struct _CacheSlot; i::Int32; end # inline cache slot index
 struct _OverflowNode; node::Int32; end # registry overflow linked-list node index
@@ -26,9 +24,9 @@ struct _OverflowNode; node::Int32; end # registry overflow linked-list node inde
 
 # Stage an ended infection; the defaults grant no immunity (death path).
 @inline _stage_ended_infection!(buf, ind, l::_CacheSlot, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
-    push!(buf, _EndedInfection(ind.id, l.i, recovery, pathogen_id, false))
+    push!(buf, _EndedInfection(ind, l.i, recovery, pathogen_id, false))
 @inline _stage_ended_infection!(buf, ind, l::_OverflowNode, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
-    push!(buf, _EndedInfection(ind.id, l.node, recovery, pathogen_id, true))
+    push!(buf, _EndedInfection(ind, l.node, recovery, pathogen_id, true))
 
 
 

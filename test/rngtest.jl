@@ -119,28 +119,6 @@ GEMS.transmission_probability(::NoisyTransmission, p::Int8, a::Individual, b::In
         @test all(3 .<= results .<= 4)
     end
 
-    @testset "rng keyword defaults" begin
-        # functions with an optional rng keyword must not fall back to the enforced global RNG
-        @test Population(n = 500) isa Population
-
-        inds = [Individual(id = j, age = 30, sex = 1, household = 1) for j in 1:20]
-        @test length(sample_individuals(inds, 5)) == 5
-        @test length(GEMS.sample_individuals!(Individual[], inds, 5)) == 5
-
-        rs = RandomSampling()
-        h = Household(id = 1, individuals = inds, contact_sampling_method = rs)
-        @test length(sample_contacts(rs, h, 1, inds, GEMS.DEFAULT_TICK)) == 1
-        @test length(sample_individuals(h, 5)) == 5
-
-        @test infect!(inds[1], Int16(0), Pathogen(id = 1, name = "P1")) == GEMS.DEFAULT_INFECTION_ID
-        @test isinfected(inds[1])
-
-        # rng-less transmission wrapper with a transmission function that draws
-        sim = Simulation(pop_size = 100, seed = 42)
-        p = transmission_probability(NoisyTransmission(), Int8(1), individuals(sim)[1], individuals(sim)[2], households(sim)[1], Int16(0), sim)
-        @test 0 <= p <= 1
-    end
-
     @testset "Keyed Immunity RNG" begin
         keyed(seed, host, pid) = GEMS._keyed_immunity_rng(seed, Int32(host), Int8(pid))
         key_draws(seed, host, pid) = rand(keyed(seed, host, pid), 4)
@@ -249,5 +227,46 @@ GEMS.transmission_probability(::NoisyTransmission, p::Int8, a::Individual, b::In
         daily, _ = infectiousness_path(DailyNoisyInfectiousness())
         @test length(unique(daily)) > 1
         @test infectiousness_path(DailyNoisyInfectiousness())[1] == daily
+
+        # a profile declared not to draw gets its rng unkeyed, so it must read the same from any rng state
+        @test GEMS._draws_from_rng(NoisyInfectiousness())
+        ind = Individual(id = 1, sex = 0, age = 30)
+        # passes through every stage, so draws made only in a late stage are caught too
+        st = InfectionState(Int8(1), Int32(1), DiseaseProgression(exposure = 0, infectiousness_onset = 1,
+            symptom_onset = 3, severeness_onset = 5, critical_onset = 7, critical_offset = 9,
+            severeness_offset = 11, recovery = 13))
+        non_drawing = (ConstantInfectiousness(), StagedInfectiousness(), BetaInfectiousness())
+        # every profile type with its own `_draws_from_rng` method is checked here
+        declared = setdiff(Set(m.sig.parameters[2] for m in methods(GEMS._draws_from_rng)), [GEMS.InfectiousnessProfile])
+        @test declared == Set(typeof.(non_drawing))
+        for profile in non_drawing
+            @test !GEMS._draws_from_rng(profile)
+            @test all(Int16.(0:15)) do t
+                calculate_infectiousness(profile, st, ind, t, GEMS._keyed_infection_rng(1, Int32(1), st)) ==
+                    calculate_infectiousness(profile, st, ind, t, GEMS._keyed_infection_rng(2, Int32(5), st))
+            end
+        end
+    end
+
+    @testset "rng keyword defaults" begin
+        # functions with an optional rng keyword must not fall back to the enforced global RNG
+        @test Population(n = 500) isa Population
+
+        inds = [Individual(id = j, age = 30, sex = 1) for j in 1:20]
+        @test length(sample_individuals(inds, 5)) == 5
+        @test length(GEMS.sample_individuals!(Individual[], inds, 5)) == 5
+
+        rs = RandomSampling()
+        h = Household(id = 1, individuals = inds, contact_sampling_method = rs)
+        @test length(sample_contacts(rs, h, 1, inds, GEMS.DEFAULT_TICK)) == 1
+        @test length(sample_individuals(h, 5)) == 5
+
+        @test infect!(inds[1], Int16(0), Pathogen(id = 1, name = "P1")) == GEMS.DEFAULT_INFECTION_ID
+        @test isinfected(inds[1])
+
+        # rng-less transmission wrapper with a transmission function that draws
+        sim = Simulation(pop_size = 100, seed = 42)
+        p = transmission_probability(NoisyTransmission(), Int8(1), individuals(sim)[1], individuals(sim)[2], households(sim)[1], Int16(0), sim)
+        @test 0 <= p <= 1
     end
 end
