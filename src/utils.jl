@@ -1148,15 +1148,23 @@ function germanshapes(level::Int64)
     # make sure directory exists
     mkpath(dirname(zipath))
     
-    # download stuff
-    try 
-        urldownload(GERMAN_SHAPEFILE_URL, true;
-            compress = :none,
-            parser = x -> nothing,
-            save_raw = zipath)
+    # download stuff, from the fallback if the original is unavailable
+    try
+        try
+            urldownload(GERMAN_SHAPEFILE_URL, true;
+                compress = :none,
+                parser = x -> nothing,
+                save_raw = zipath)
+        catch
+            _printinfo("Download from $GERMAN_SHAPEFILE_URL failed. Trying $GERMAN_SHAPEFILE_FALLBACK_URL...")
+            urldownload(GERMAN_SHAPEFILE_FALLBACK_URL, true;
+                compress = :none,
+                parser = x -> nothing,
+                save_raw = zipath)
+        end
         _printinfo("Unpacking ZIP file")
     catch e
-        msg = "Data could not be downloaded. Are you sure the data is available at $GERMAN_SHAPEFILE_URL? "
+        msg = "Data could not be downloaded. Are you sure the data is available at $GERMAN_SHAPEFILE_URL or $GERMAN_SHAPEFILE_FALLBACK_URL? "
         msg *= "Is there a firewall preventing automatic downloads? "
         msg *= "Try downloading the files manually and extract the ZIP-folder into $SHAPEFILE_FOLDER_PATH"
         throw(msg)
