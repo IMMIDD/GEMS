@@ -131,7 +131,13 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         @test rd |> pathogens == collect(sim |> GEMS.pathogens)
         @test rd |> tick_unit == sim |> tickunit
         @test rd |> start_condition == sim |> start_condition
+        @test rd |> prior_immunity == sim |> prior_immunity
         @test rd |> stop_criterion == sim |> stop_criterion
+        # prior immunity entries are kept in the metadata
+        pi_sim = Simulation(pop_size = 100, stop_criterion = TimesUp(limit = 5),
+            prior_immunity = PriorImmunity(fraction = 0.3, ticks_ago = 10))
+        run!(pi_sim)
+        @test only(ResultData(PostProcessor(pi_sim), style = "LightRD") |> prior_immunity) === only(pi_sim |> prior_immunity)
 
         # system data
 

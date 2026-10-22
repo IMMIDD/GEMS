@@ -45,15 +45,8 @@ becomes one condition per pathogen, a name is validated, and an empty name is re
 there is exactly one pathogen.
 """
 function _expand_pathogens(c::StartCondition, pathogens::Tuple)
-    isempty(pathogens) && return c # nothing to resolve against
-    if isempty(c.pathogen)
-        length(pathogens) > 1 && throw(ArgumentError("$(nameof(typeof(c))) does not name a pathogen, but the simulation has $(length(pathogens)) ($(join((p.name for p in pathogens), ", "))). Name one, or use pathogen = \"$ALL_PATHOGENS\" to seed all of them."))
-        return c
-    end
-    if c.pathogen != ALL_PATHOGENS
-        any(p -> p.name == c.pathogen, pathogens) || throw(ArgumentError("$(nameof(typeof(c))) names pathogen '$(c.pathogen)', which the simulation does not have ($(join((p.name for p in pathogens), ", ")))."))
-        return c
-    end
+    _check_pathogen(c, pathogens)
+    (isempty(pathogens) || c.pathogen != ALL_PATHOGENS) && return c # nothing to expand
     length(pathogens) == 1 && return _with_pathogen(c, first(pathogens).name)
     return MultiStartCondition([_with_pathogen(c, p.name) for p in pathogens])
 end

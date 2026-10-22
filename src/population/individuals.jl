@@ -106,7 +106,6 @@ A type to represent individuals that act as agents inside the simulation.
     - `municipality::Int32`: Reference to municipality id
 
 - Bookkeeping
-    - `needs_immunity_update::Bool`: Flag for deferred immunity calculations
     - `number_of_infections::Int8`: Lifetime infection count
     - `disease_flags::UInt8`: Bitpacked disease-state flags (`infected`/`infectious`/`symptomatic`/`severe`/`critical`/`dead`), accessed via the `is_*`/`*!` accessors
     - `killing_pathogen_id::Int8`: Pathogen credited for the host death (set when death is scheduled, read by the death logger)
@@ -157,10 +156,10 @@ A type to represent individuals that act as agents inside the simulation.
     municipality::Int32 = DEFAULT_SETTING_ID        # off 32,  4B,  line 0
 
     # BOOKKEEPING
-    needs_immunity_update::Bool = false             # off 36,  1B,  line 0
-    number_of_infections::Int8 = 0                  # off 37,  1B,  line 0
-    disease_flags::DiseaseFlags = DiseaseFlags()    # off 38,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 39,  1B,  line 0
+    number_of_infections::Int8 = 0                  # off 36,  1B,  line 0
+    disease_flags::DiseaseFlags = DiseaseFlags()    # off 37,  1B,  line 0
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 38,  1B,  line 0
+    #                                                 off 39,  1B free (alignment)
 
     # INTERVENTIONS
     detected_mask::UInt32 = 0                       # off 40,  4B,  line 0

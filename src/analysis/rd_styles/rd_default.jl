@@ -35,6 +35,7 @@ and computationally intensive (memory & runtime) option.
         - `vaccination_strategy::VaccineScheduler`: Vaccination strategy used in this model [CURRENTLY DEACTIVATED]
         - `tick_unit::String`: Unit of time that one tick corresponds to
         - `start_condition::StartCondition`: Initial setup of the simulation
+        - `prior_immunity::Vector{AbstractPriorImmunity}`: Immunity some individuals acquired before the start
         - `stop_criterion::StopCriterion`: Termination conditions
         - `strategies::Vector{Strategy}`: Intervention strategies
         - `symptom_triggers::Vector{ITrigger} `: Strategies that are triggered upon experiencing symptoms
@@ -139,6 +140,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "pathogens" => () -> collect(pathogens(simulation(pP))),
                     "tick_unit" => () -> pP |> simulation |> tickunit,
                     "start_condition" => () -> pP |> simulation |> start_condition,
+                    "prior_immunity" => () -> pP |> simulation |> prior_immunity,
                     "stop_criterion" =>  () -> pP |> simulation |> stop_criterion,
                     "strategies" => () -> pP |> simulation |> strategies,
                     "symptom_triggers" => () -> pP |> simulation |> symptom_triggers,

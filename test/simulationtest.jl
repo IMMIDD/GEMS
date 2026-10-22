@@ -957,6 +957,149 @@ import GEMS: increment!, infected!
         end
     end
 
+    @testset "Prior Immunity" begin
+        nat_tick(i, s, pid = Int8(1)) = get_immunity_state(i, s, pid).natural_acquired_tick
+
+        # FAILING CONSTRUCTORS
+        @test_throws ArgumentError PriorImmunity(fraction = -0.1, ticks_ago = 10)
+        @test_throws ArgumentError PriorImmunity(fraction = 1.1, ticks_ago = 10)
+        @test_throws ArgumentError PriorImmunity(fraction = [0.1, 0.2], ticks_ago = 10)
+        @test_throws ArgumentError PriorImmunity(fraction = [0.1], age_groups = ["-17", "18-"], ticks_ago = 10)
+        @test_throws ArgumentError PriorImmunity(fraction = 0.1, ticks_ago = 0)
+        @test_throws ArgumentError PriorImmunity(fraction = 0.1, ticks_ago = 0.5)
+        @test_throws ArgumentError PriorImmunity(fraction = 0.1, ticks_ago = GEMS.MAX_PRIOR_TICKS_AGO + 1)
+        @test_throws ArgumentError PriorImmunity(fraction = 0.1, ticks_ago = NaN)
+        @test_throws ArgumentError PriorImmunity(fraction = 0.1, ags = 123, ticks_ago = 10)
+        @test_throws ArgumentError Simulation(pop_size = 100, prior_immunity = "none")
+
+        # display
+        @test sprint(show, PriorImmunity(fraction = 0.3, ticks_ago = 100)) == "PriorImmunity(30.0%, 100.0 ticks ago)"
+        @test sprint(show, PriorImmunity(pathogen = "PA", fraction = 0.3, ticks_ago = 100)) == "PriorImmunity(PA, 30.0%, 100.0 ticks ago)"
+
+        # exact fraction of everyone at a fixed tick
+        sim = Simulation(pop_size = 100, prior_immunity = PriorImmunity(fraction = 0.3, ticks_ago = 100))
+        @test count(i -> nat_tick(i, sim) == -100, individuals(sim)) == 30
+        @test occursin("Prior Immunity", @capture_out info(sim))
+        nosim = Simulation(pop_size = 100)
+        @test isempty(prior_immunity(nosim))
+        @test !occursin("Prior Immunity", @capture_out info(nosim))
+
+        # entries apply in order, so the last one wins
+        sim = Simulation(pop_size = 100, prior_immunity = [PriorImmunity(fraction = 1.0, ticks_ago = 10), PriorImmunity(fraction = 1.0, ticks_ago = 20)])
+        @test all(i -> nat_tick(i, sim) == -20, individuals(sim))
+
+        # recorded ticks: rounded up, clamped to [1, MAX_PRIOR_TICKS_AGO] before rounding
+        @test GEMS._prior_tick(2.5, Xoshiro(1)) == Int16(-3)
+        @test GEMS._prior_tick(0.5, Xoshiro(1)) == Int16(-1)
+        @test GEMS._prior_tick(Normal(-50, 1), Xoshiro(1)) == Int16(-1)
+        @test GEMS._prior_tick(1e6, Xoshiro(1)) == Int16(-GEMS.MAX_PRIOR_TICKS_AGO)
+        @test GEMS._prior_tick(Inf, Xoshiro(1)) == Int16(-GEMS.MAX_PRIOR_TICKS_AGO)
+        sim = Simulation(pop_size = 100, prior_immunity = [PriorImmunity(fraction = 1.0, ticks_ago = 1)])
+        @test all(i -> nat_tick(i, sim) == -1, individuals(sim))
+
+        # distributions are drawn per individual
+        sim = Simulation(pop_size = 100, prior_immunity = PriorImmunity(fraction = 1.0, ticks_ago = Uniform(30, 365)))
+        tcks = [nat_tick(i, sim) for i in individuals(sim)]
+        @test all(t -> -365 <= t <= -30, tcks)
+        @test length(unique(tcks)) > 1
+
+        # age groups
+        sim = Simulation(pop_size = 1000, prior_immunity = PriorImmunity(age_groups = ["-17", "18-"], fraction = [1.0, 0.0], ticks_ago = 10))
+        @test any(i -> age(i) <= 17, individuals(sim))
+        @test any(i -> age(i) > 17, individuals(sim))
+        @test all(i -> (nat_tick(i, sim) == -10) == (age(i) <= 17), individuals(sim))
+
+        # region combined with age groups
+        sim = Simulation(population = "HB", prior_immunity = PriorImmunity(age_groups = ["-17", "18-"], fraction = [1.0, 0.0], ags = 04011000, ticks_ago = 10))
+        in_region(i) = GEMS.in_county(ags(household(i, sim)), AGS(04011000))
+        @test any(i -> age(i) <= 17 && in_region(i), individuals(sim))
+        @test any(i -> age(i) <= 17 && !in_region(i), individuals(sim))
+        @test all(i -> (nat_tick(i, sim) == -10) == (age(i) <= 17 && in_region(i)), individuals(sim))
+
+        # pathogen selection
+        pa = Pathogen(id = 1, name = "PA")
+        pb = Pathogen(id = 2, name = "PB")
+        # also covers the overflow registry: anyone immune to both holds a second record there
+        sim = Simulation(pathogens = (pa, pb), pop_size = 100, start_condition = PatientZero(pathogen = "PA"),
+            prior_immunity = PriorImmunity(pathogen = ALL_PATHOGENS, fraction = 0.3, ticks_ago = 10))
+        immune_a = Set(id.(filter(i -> nat_tick(i, sim, Int8(1)) == -10, individuals(sim))))
+        immune_b = Set(id.(filter(i -> nat_tick(i, sim, Int8(2)) == -10, individuals(sim))))
+        @test length(immune_a) == 30 && length(immune_b) == 30
+        @test immune_a != immune_b # each pathogen gets its own draw
+        sim = Simulation(pathogens = (pa, pb), pop_size = 100, start_condition = PatientZero(pathogen = "PA"),
+            prior_immunity = PriorImmunity(pathogen = "PB", fraction = 0.3, ticks_ago = 10))
+        @test count(i -> nat_tick(i, sim, Int8(1)) == -10, individuals(sim)) == 0
+        @test count(i -> nat_tick(i, sim, Int8(2)) == -10, individuals(sim)) == 30
+        @test_throws ArgumentError Simulation(pathogens = (pa, pb), pop_size = 100, start_condition = PatientZero(pathogen = "PA"),
+            prior_immunity = PriorImmunity(fraction = 0.3, ticks_ago = 10))
+        @test_throws ArgumentError Simulation(pathogens = (pa, pb), pop_size = 100, start_condition = PatientZero(pathogen = "PA"),
+            prior_immunity = PriorImmunity(pathogen = "PC", fraction = 0.3, ticks_ago = 10))
+
+        # levels wane from the acquisition tick
+        sim = Simulation(pathogen = Pathogen(id = 1, name = "PA", immunity_profile = ExponentialWaning(halflife = 180)), pop_size = 100,
+            prior_immunity = PriorImmunity(fraction = 1.0, ticks_ago = 180))
+        @test all(i -> immunity_level(i, sim, Int8(1)) == Int8(50), individuals(sim))
+        # the oldest acquisition still reads without Int16 overflow at the last supported tick
+        sim = Simulation(pathogen = Pathogen(id = 1, name = "PA", immunity_profile = ExponentialWaning(halflife = 180)), pop_size = 100,
+            prior_immunity = PriorImmunity(fraction = 1.0, ticks_ago = GEMS.MAX_PRIOR_TICKS_AGO))
+        @test all(i -> immunity_level(i, sim, Int8(1), Int16(GEMS.MAX_PRIOR_TICKS_AGO - 1)) == Int8(0), individuals(sim))
+
+        # own rng stream: seeding is unchanged with and without prior immunity
+        base = Simulation(pop_size = 100, seed = 7, start_condition = InfectedFraction(fraction = 0.05))
+        with = Simulation(pop_size = 100, seed = 7, start_condition = InfectedFraction(fraction = 0.05),
+            prior_immunity = PriorImmunity(fraction = 0.5, ticks_ago = Uniform(30, 365)))
+        @test id.(filter(infected, individuals(base))) == id.(filter(infected, individuals(with)))
+        # reset! clears the records and initialize! rebuilds them identically
+        recs = [get_immunity_state(i, with, Int8(1)) for i in individuals(with)]
+        reset!(with)
+        @test [get_immunity_state(i, with, Int8(1)) for i in individuals(with)] == recs
+
+        # full immunity: nobody but the seeds gets infected
+        sim = Simulation(pop_size = 100, start_condition = InfectedFraction(fraction = 0.1), stop_criterion = TimesUp(limit = 60),
+            prior_immunity = PriorImmunity(fraction = 1.0, ticks_ago = 10))
+        seeded = Set(id.(filter(infected, individuals(sim))))
+        run!(sim)
+        @test length(seeded) == 10
+        @test all(i -> id(i) in seeded || (nat_tick(i, sim) == -10 && !infected(i)), individuals(sim))
+
+        # CONFIG FILE
+        cfg = TOML.parse("""
+            [[Simulation.PriorImmunity]]
+            fraction = [0, 0.5]
+            age_groups = ["-17", "18-"]
+            ticks_ago = { distribution = "Uniform", parameters = [30, 365] }
+            [[Simulation.PriorImmunity]]
+            pathogen = "PB"
+            fraction = 0.1
+            ticks_ago = 5
+            """)
+        entries = GEMS.determine_prior_immunity(cfg, nothing)
+        @test length(entries) == 2
+        @test entries[1].fraction == [0.0, 0.5]
+        @test entries[1].ticks_ago isa Uniform
+        @test entries[2].pathogen == "PB" && entries[2].ticks_ago == 5.0
+        @test_throws ArgumentError GEMS.determine_prior_immunity(cfg, nothing, (pa, pb))
+        # a single table, and the keyword argument taking precedence
+        single = TOML.parse("[Simulation.PriorImmunity]\nfraction = 0.2\nticks_ago = 7")
+        @test only(GEMS.determine_prior_immunity(single, nothing)).fraction == [0.2]
+        kw = PriorImmunity(fraction = 0.4, ticks_ago = 3)
+        @test only(GEMS.determine_prior_immunity(single, kw)) === kw
+        @test isempty(GEMS.determine_prior_immunity(Dict(), nothing))
+        # bad parameters
+        @test_throws GEMS.ConfigfileError GEMS.determine_prior_immunity(
+            TOML.parse("[Simulation.PriorImmunity]\nfraction = 2.0\nticks_ago = 7"), nothing)
+        @test_throws GEMS.ConfigfileError GEMS.determine_prior_immunity(
+            TOML.parse("[Simulation.PriorImmunity]\nfraction = 0.2\nticks_ago = 7\nunknown = 1"), nothing)
+        # end to end through a config file
+        mktempdir() do dir
+            path = joinpath(dir, "prior.toml")
+            write(path, read(joinpath(BASE_FOLDER, "data/DefaultConf.toml"), String) * "\n[Simulation.PriorImmunity]\nfraction = 0.3\nticks_ago = 10\n")
+            sim = Simulation(configfile = path, pop_size = 100)
+            @test length(prior_immunity(sim)) == 1
+            @test count(i -> nat_tick(i, sim) == -10, individuals(sim)) == 30
+        end
+    end
+
     @testset "Imported Cases" begin
         # FAILING CONSTRUCTORS
         @test_throws ArgumentError ImportedCases(count = 0, ticks = 5)
@@ -1274,6 +1417,16 @@ import GEMS: increment!, infected!
         @test_throws ArgumentError get_pathogen(sim, Int8(-1))
         @test_throws ArgumentError get_pathogen(GEMS.pathogens(sim), Int8(-1))
         @test_throws ArgumentError get_pathogen(sim, "NonExistentPathogen")
+
+        # _with_pathogen stays type-stable past the 4 distinct pathogen types get_pathogen infers
+        ps5 = (Pathogen(id=1, name="P1", immunity_profile=FullImmunity()),
+            Pathogen(id=2, name="P2", immunity_profile=NoImmunity()),
+            Pathogen(id=3, name="P3", immunity_profile=ExponentialWaning()),
+            Pathogen(id=4, name="P4", immunity_profile=SigmoidalWaning()),
+            Pathogen(id=5, name="P5", infectiousness_profile=StagedInfectiousness()))
+        @test length(unique(typeof.(ps5))) == 5
+        @test (@inferred GEMS._with_pathogen(p -> susceptibility_factor(GEMS.immunity_profile(p), Int8(50)), ps5, Int8(4))) ≈ 0.5
+        @test_throws ArgumentError GEMS._with_pathogen(identity, ps5, Int8(9))
     end
 
     @testset "stepmod Getter" begin
