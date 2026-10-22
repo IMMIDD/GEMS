@@ -1098,17 +1098,13 @@ function _settings_from_layered_population(pop::Population, global_setting, laye
     if !isempty(layers)
         _warn_reapplied_layers(pop, layers)
         add_setting_layers!(pop, layers...; seed = layer_seed,
-            household_coordinates = _settings_file_table(settings_file, Household),
+            household_coordinates = isnothing(settings_file) ? nothing : get(settings_file, :Household, nothing),
             id_floors = _settings_file_max_ids(settings_file))
     end
     settings, renaming = settings_from_population(pop, global_setting)
     _rename_layer_records!(pop, renaming)
     return settings, renaming
 end
-
-# The settings file's table of setting type `T`, or `nothing`.
-_settings_file_table(::Nothing, ::Type) = nothing
-_settings_file_table(file::Dict, ::Type{T}) where {T} = get(file, Symbol(setting_type_name(T)), nothing)
 
 # The largest id of each setting type in the settings file.
 _settings_file_max_ids(::Nothing) = Dict{DataType, Int}()
@@ -1901,29 +1897,82 @@ function create_setting_layers(params::Dict)
     return Tuple(layers)
 end
 
-const _LAYER_CONFIG_KEYS = ("name", "ages", "holding", "not_holding", "participation", "entries", "scale", "assignment")
+# the keys that pick out individuals, in a layer table and in a participation table's rows
+const _CRITERIA_CONFIG_KEYS = ("ages", "sex", "occupation", "education")
+const _LAYER_CONFIG_KEYS = ("name", _CRITERIA_CONFIG_KEYS..., "holding", "not_holding", "participation", "entries",
+    "scale", "assignment")
 
 """
     create_setting_layer(::Type{T}, params::Dict, section::AbstractString) where {T<:Setting}
 
-Creates one `SettingLayer` of type `T` from a `[Settings.<section>.layer]` table: `ages = [lo, hi]`
-becomes `eligible`, the `assignment` table becomes the assignment, the other keys are passed on.
+Creates one `SettingLayer` of type `T` from a `[Settings.<section>.layer]` table: `ages`, `sex`,
+`occupation` and `education` become `eligible`, `participation` tables become participation by
+attribute, the `assignment` table becomes the assignment, and the other keys are passed on.
 """
 function create_setting_layer(::Type{T}, params::Dict, section::AbstractString) where {T<:Setting}
-    unknown = setdiff(keys(params), _LAYER_CONFIG_KEYS)
-    isempty(unknown) || throw(ArgumentError(
-        "[Settings.$section.layer] has unknown keys $(join(unknown, ", ")); use $(join(_LAYER_CONFIG_KEYS, ", "))"))
-    haskey(params, "assignment") || throw(ArgumentError("[Settings.$section.layer] needs an `assignment` table."))
-    kw_args = Dict{Symbol, Any}(Symbol(k) => _config_value(v) for (k, v) in params if k ∉ ("ages", "assignment"))
-    haskey(params, "ages") && (kw_args[:eligible] = _config_age_band(params["ages"], section))
+    context = "[Settings.$section.layer]"
+    _check_config_keys(params, _LAYER_CONFIG_KEYS, context)
+    haskey(params, "assignment") || throw(ArgumentError("$context needs an `assignment` table."))
+    kw_args = Dict{Symbol, Any}(Symbol(k) => _config_value(v) for (k, v) in params
+        if k ∉ (_CRITERIA_CONFIG_KEYS..., "participation", "assignment"))
+    if any(k -> haskey(params, k), _CRITERIA_CONFIG_KEYS)
+        kw_args[:eligible] = _config_criteria(params, context)
+    end
+    if haskey(params, "participation")
+        kw_args[:participation] = _config_participation(params["participation"], context)
+    end
     return SettingLayer(T; assignment = create_layer_assignment(params["assignment"], section), kw_args...)
 end
 
-# A config file's `ages = [lo, hi]` as `eligible`, both ages included.
-function _config_age_band(ages, section::AbstractString)
+# Throws for a key of a config table that is not one of `allowed`.
+function _check_config_keys(params::Dict, allowed, context::AbstractString)
+    unknown = setdiff(keys(params), allowed)
+    isempty(unknown) || throw(ArgumentError(
+        "$context has unknown keys $(join(unknown, ", ")); use $(join(allowed, ", "))"))
+    return nothing
+end
+
+# The individuals a config table's `ages = [lo, hi]` (both included), `sex`, `occupation` and
+# `education` (each a code or a list of them) pick out.
+function _config_criteria(params::Dict, context::AbstractString)
+    ages = haskey(params, "ages") ? _config_ages(params["ages"], context) : _ALL_AGES
+    return _Criteria(; ages = ages, sex = _config_codes(params, "sex", Int8, context),
+        occupation = _config_codes(params, "occupation", Int16, context),
+        education = _config_codes(params, "education", Int8, context))
+end
+
+# A config file's `ages = [lo, hi]` as a pair of ages.
+function _config_ages(ages, context::AbstractString)
     valid = ages isa AbstractVector && length(ages) == 2 && all(a -> a isa Integer, ages) && 0 <= ages[1] <= ages[2]
-    valid || throw(ArgumentError("[Settings.$section.layer] `ages` must be [lowest, highest] age; got $(repr(ages))"))
-    return _AgeBand(ages[1], ages[2])
+    valid || throw(ArgumentError("$context `ages` must be [lowest, highest] age; got $(repr(ages))"))
+    return Int(ages[1]), Int(ages[2])
+end
+
+# A config table's `key`, a code or a non-empty list of codes, as a vector of `C`; empty if absent.
+function _config_codes(params::Dict, key::AbstractString, ::Type{C}, context::AbstractString) where {C<:Integer}
+    haskey(params, key) || return C[]
+    codes = params[key] isa AbstractVector ? params[key] : [params[key]]
+    valid = !isempty(codes) && all(c -> c isa Integer && typemin(C) <= c <= typemax(C), codes)
+    valid || throw(ArgumentError("$context `$key` must be a code or a list of codes in " *
+        "$(typemin(C))-$(typemax(C)); got $(repr(params[key]))"))
+    return C.(codes)
+end
+
+# A layer's `participation`: a number, one table, or an array of tables, each with criteria and a probability `p`.
+_config_participation(value, ::AbstractString) = value
+_config_participation(row::Dict, context::AbstractString) = _config_participation([row], context)
+
+function _config_participation(rows::AbstractVector, context::AbstractString)
+    criteria, ps = _Criteria[], Float64[]
+    for (k, row) in enumerate(rows)
+        row_context = "$context participation row $k"
+        row isa Dict || throw(ArgumentError("$row_context must be a table; got $(repr(row))"))
+        _check_config_keys(row, (_CRITERIA_CONFIG_KEYS..., "p"), row_context)
+        (haskey(row, "p") && row["p"] isa Real) || throw(ArgumentError("$row_context needs a probability `p`."))
+        push!(criteria, _config_criteria(row, row_context))
+        push!(ps, Float64(row["p"]))
+    end
+    return _ParticipationTable(criteria, ps)
 end
 
 """

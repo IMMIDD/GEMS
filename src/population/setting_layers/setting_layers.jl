@@ -163,18 +163,18 @@ end
 ###
 
 """
-    SettingLayer{T, A, F, E, C}
+    SettingLayer{T, A, F, P, E, C}
 
 Rules for giving individuals entries of setting type `T`; built with `SettingLayer(T; ...)`.
-`E` and `C` are the types of `entries` and `scale`.
+`P`, `E` and `C` are the types of `participation`, `entries` and `scale`.
 """
-struct SettingLayer{T<:IndividualSetting, A<:LayerAssignment, F, E, C}
+struct SettingLayer{T<:IndividualSetting, A<:LayerAssignment, F, P, E, C}
     name::Union{Nothing, String}
     assignment::A
     eligible::F
     holding::Vector{UInt8}
     not_holding::Vector{UInt8}
-    participation::Float64
+    participation::P
     entries::E
     scale::C
 end
@@ -191,22 +191,24 @@ Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range p
   `"<Type>[k]"`. The layer's random draws are seeded from it.
 - `eligible`: a function of an `Individual` saying who may take part; by default everyone
 - `holding` / `not_holding`: setting types, or their names, an individual must / must not already hold
-- `participation`: probability that an eligible individual takes part
+- `participation`: probability that an eligible individual takes part: a number, or a function of
+  an `Individual` returning one
 - `entries`: settings per participant, an integer in 0-127 or a discrete distribution
 - `scale`: contact scale per entry, a number in 0-floatmax(Float16) or a distribution
 """
 function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible = _everyone,
-        holding = (), not_holding = (), participation::Real = 1.0,
+        holding = (), not_holding = (), participation = 1.0,
         entries::Union{Integer, DiscreteUnivariateDistribution} = 1,
         scale::Union{Real, UnivariateDistribution} = 1.0)
     # checks and registers `T`
     _layer_type_index(T, "a layer's setting type")
+    p = _layer_value(participation)
     n = entries isa Integer ? Int(entries) : entries
     s = _layer_value(scale)
-    layer = SettingLayer{T, typeof(assignment), typeof(eligible), typeof(n), typeof(s)}(
+    layer = SettingLayer{T, typeof(assignment), typeof(eligible), typeof(p), typeof(n), typeof(s)}(
         name === nothing ? nothing : String(name), assignment, eligible,
         _layer_type_indices(holding, "`holding`"), _layer_type_indices(not_holding, "`not_holding`"),
-        Float64(participation), n, s)
+        p, n, s)
     _check_layer(layer)
     return layer
 end
@@ -219,8 +221,17 @@ Throws an `ArgumentError` if a layer's parameters are out of range.
 function _check_layer(layer::SettingLayer)
     isdisjoint(layer.holding, layer.not_holding) ||
         throw(ArgumentError("`holding` and `not_holding` share a setting type"))
-    0 <= layer.participation <= 1 ||
-        throw(ArgumentError("`participation` must be in [0, 1]; got $(layer.participation)"))
+    p = layer.participation
+    if p isa Real
+        participation_ok = 0 <= p <= 1
+    elseif p isa _ParticipationTable
+        participation_ok = !isempty(p.p) && length(p.criteria) == length(p.p) && all(q -> 0 <= q <= 1, p.p)
+    else
+        # a function's values are checked as they are drawn
+        participation_ok = p isa Function
+    end
+    participation_ok || throw(ArgumentError("`participation` must be a probability in [0, 1], rows of " *
+        "probabilities, or a function of an individual returning one; got $(p isa _ParticipationTable ? _describe(p) : repr(p))"))
     n, cap = layer.entries, typemax(Int8)
     if n isa Int
         entries_ok = 0 <= n <= cap
@@ -268,22 +279,68 @@ _layer_type_indices(types, what::AbstractString) = unique!(UInt8[_layer_type_ind
 _layer_type(::SettingLayer{T}) where {T} = T
 
 ###
-### ELIGIBILITY
-### What a layer's `eligible` defaults to, or a config file builds it from, each with how a record
-### describes it.
+### ELIGIBILITY AND PARTICIPATION
+### What a layer's `eligible` and `participation` default to, or a config file builds them from,
+### each with how a record describes it.
 ###
 
 # the default `eligible`, named so a layer's description can tell it apart
 _everyone(::Individual) = true
 _describe(::typeof(_everyone)) = nothing
 
-# `eligible` for a config file's `ages = [lo, hi]`: individuals aged `lo` to `hi`, both included
-struct _AgeBand
+# A config file's condition on individuals: aged `lo` to `hi`, both included, with a sex,
+# occupation and education among those listed; an empty list allows any.
+struct _Criteria
     lo::Int
     hi::Int
+    sex::Vector{Int8}
+    occupation::Vector{Int16}
+    education::Vector{Int8}
 end
-(band::_AgeBand)(ind::Individual) = band.lo <= age(ind) <= band.hi
-_describe(band::_AgeBand) = "ages $(band.lo)-$(band.hi)"
+
+# every age an individual can have
+const _ALL_AGES = (0, Int(typemax(Int8)))
+
+_Criteria(; ages = _ALL_AGES, sex = Int8[], occupation = Int16[], education = Int8[]) =
+    _Criteria(Int(ages[1]), Int(ages[2]), sex, occupation, education)
+
+(c::_Criteria)(ind::Individual) = c.lo <= age(ind) <= c.hi && _allows(c.sex, sex(ind)) &&
+    _allows(c.occupation, occupation(ind)) && _allows(c.education, education(ind))
+_allows(values::Vector, value) = isempty(values) || value in values
+
+function _describe(c::_Criteria)
+    parts = String[]
+    (c.lo, c.hi) == _ALL_AGES || push!(parts, "ages $(c.lo)-$(c.hi)")
+    for (name, values) in (("sex", c.sex), ("occupation", c.occupation), ("education", c.education))
+        isempty(values) || push!(parts, "$name $(join(values, "/"))")
+    end
+    return isempty(parts) ? "everyone" : join(parts, " ")
+end
+
+# A config file's participation by attribute: the first `criteria` an individual meets gives
+# their probability `p`; meeting none gives 0.
+struct _ParticipationTable
+    criteria::Vector{_Criteria}
+    p::Vector{Float64}
+end
+_describe(t::_ParticipationTable) = "[" * join(("$(_describe(c)): $q" for (c, q) in zip(t.criteria, t.p)), "; ") * "]"
+
+# The probability that `ind` takes part.
+_participation(p::Float64, ::Individual) = p
+
+function _participation(t::_ParticipationTable, ind::Individual)
+    for (c, q) in zip(t.criteria, t.p)
+        c(ind) && return q
+    end
+    return 0.0
+end
+
+function _participation(f::Function, ind::Individual)
+    p = f(ind)
+    (p isa Real && 0 <= p <= 1) || throw(ArgumentError(
+        "`participation` gave $(repr(p)) for individual $(id(ind)); it must be a probability in [0, 1]"))
+    return Float64(p)
+end
 
 ###
 ### APPLYING LAYERS
@@ -396,7 +453,8 @@ function _LayerStreams(seed::Integer, name::AbstractString)
     return _LayerStreams(ntuple(k -> _rekey!(Xoshiro(0), _mix(key, k)), fieldcount(_LayerStreams))...)
 end
 
-_draw_participates(rng::Xoshiro, p::Float64) = gems_rand(rng) < p
+# the uniform number an individual's participation probability is compared with
+_draw_participation(rng::Xoshiro) = gems_rand(rng)
 
 _draw_entries(::Xoshiro, n::Int) = n
 _draw_entries(rng::Xoshiro, d::Distribution) = round(Int, _rand_val(d, rng))
@@ -430,9 +488,10 @@ function _layer_entry_counts(layer::SettingLayer, pop::Population, streams::_Lay
     counts = zeros(UInt8, length(inds))
     for (i, ind) in enumerate(inds)
         # drawn for everyone, so participants nest as participation or eligibility widen
-        takes_part = _draw_participates(streams.participation, layer.participation)
+        u = _draw_participation(streams.participation)
         n = _draw_entries(streams.entries, layer.entries)
-        (takes_part && _qualifies(layer, store, ind)) || continue
+        _qualifies(layer, store, ind) || continue
+        u < _participation(layer.participation, ind) || continue
         counts[i] = min(n, typemax(UInt8))
     end
     return counts
@@ -550,5 +609,5 @@ _describe(x) = string(x)
 _describe(a::LayerAssignment) = "$(nameof(typeof(a)))($(_field_descriptions(a)))"
 _describe(t::UInt8) = setting_type_name(setting_type_from_index(t))
 _describe(ts::Vector{UInt8}) = isempty(ts) ? nothing : "[" * join(_describe.(ts), ", ") * "]"
-# an `eligible` the ELIGIBILITY section doesn't describe
+# an `eligible` or `participation` function the ELIGIBILITY AND PARTICIPATION section doesn't describe
 _describe(::Function) = "custom"

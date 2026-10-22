@@ -604,7 +604,9 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test GEMS.determine_setting_types!(config) == [gym]
         layers = GEMS.create_setting_layers(config)
         @test length(layers) == 3 && layers[1] isa SettingLayer{gym} && layers[3] isa SettingLayer{Office}
-        @test layers[1].eligible == GEMS._AgeBand(18, 65) && layers[1].entries isa Poisson
+        eligible = layers[1].eligible
+        @test eligible isa GEMS._Criteria && (eligible.lo, eligible.hi) == (18, 65)
+        @test isempty(eligible.sex) && isempty(eligible.occupation) && isempty(eligible.education) && layers[1].entries isa Poisson
         @test layers[1].assignment == PackedSettings(size = 10) && occursin("eligible = ages 18-65", _layer_description(layers[1]))
         @test layers[2].name == "weekend" && layers[2].holding == [office] && layers[2].assignment == JoinExisting()
         @test layers[3].assignment.spread isa Exponential && layers[3].holding == [office]
@@ -674,6 +676,70 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test minimum(i -> setting_id(i, gym, activity_plans(pop)), individuals(pop)) == 51
         file = Dict(:Office => DataFrame(id = [1, 7, 3]), :Household => DataFrame(id = [1, 2]), :NoSuchType => DataFrame(id = [9]))
         @test GEMS._settings_file_max_ids(file) == Dict(Office => 7, Household => 2)
+    end
+
+    @testset "Eligibility and participation by attribute" begin
+        n = 3000
+        df = DataFrame(id = Int32.(1:n), age = Int8.(mod.(1:n, 90)), sex = Int8.(mod.(1:n, 2) .+ 1),
+                       occupation = Int16.(mod.(1:n, 5)), education = Int8.(mod.(1:n, 7)), household = Int32.(cld.(1:n, 2)))
+        inds = individuals(Population(df))
+        ages = age.(inds)
+        packed = Dict("type" => "PackedSettings", "size" => 10)
+        gym(; kwargs...) = SettingLayer(LayerGym; assignment = PackedSettings(size = 10), kwargs...)
+        from_config(layer) = only(GEMS.create_setting_layers(Dict("Settings" => Dict("LayerTestGym" => Dict("layer" => layer)))))
+        joined(layer) = (p = add_setting_layers!(Population(df), layer; seed = 1);
+            [setting_id(i, LayerGym, activity_plans(p)) != DEFAULT_SETTING_ID for i in individuals(p)])
+
+        # attributes in a layer table pick out who may take part
+        layer = from_config(Dict("ages" => [20, 60], "sex" => 2, "occupation" => [1, 3], "education" => 4, "assignment" => packed))
+        expected = [20 <= age(i) <= 60 && sex(i) == 2 && occupation(i) in (1, 3) && education(i) == 4 for i in inds]
+        @test count(expected) > 0 && joined(layer) == expected
+        @test occursin("eligible = ages 20-60 sex 2 occupation 1/3 education 4", _layer_description(layer))
+
+        # participation by age band; the first matching row counts, and no row means no participation
+        rows = [Dict("ages" => [0, 17], "p" => 0.2), Dict("ages" => [18, 64], "p" => 0.6), Dict("ages" => [10, 99], "p" => 1.0)]
+        layer = from_config(Dict("participation" => rows[1:2], "assignment" => packed))
+        took_part = joined(layer)
+        share(band) = count(took_part .& band) / count(band)
+        @test isapprox(share(ages .<= 17), 0.2; atol = 0.05) && isapprox(share(18 .<= ages .<= 64), 0.6; atol = 0.05)
+        @test !any(took_part[ages .>= 65])
+        @test _layer_description(layer) == "PackedSettings(size = 10.0), participation = [ages 0-17: 0.2; ages 18-64: 0.6], entries = 1, scale = 1.0"
+        # a third row catches everyone up to 99, but rows before it come first
+        with_third = joined(from_config(Dict("participation" => rows, "assignment" => packed)))
+        @test with_third[ages .< 65] == took_part[ages .< 65] && all(with_third[ages .>= 65])
+        # a row without criteria matches everyone
+        @test all(joined(from_config(Dict("participation" => [Dict("p" => 1.0)], "assignment" => packed))))
+
+        # each row is the same as eligibility for its band with its probability
+        for (lo, hi, p) in ((0, 17, 0.2), (18, 64, 0.6))
+            in_band = lo .<= ages .<= hi
+            @test took_part[in_band] == joined(gym(eligible = GEMS._Criteria(ages = (lo, hi)), participation = p))[in_band]
+        end
+        # and participants nest as one row's probability rises
+        raised = joined(from_config(Dict("participation" => [rows[1], Dict("ages" => [18, 64], "p" => 0.9)], "assignment" => packed)))
+        @test all(raised[took_part]) && count(raised) > count(took_part)
+
+        # one table in single brackets is one row
+        @test from_config(Dict("participation" => Dict("ages" => [18, 64], "p" => 0.6), "assignment" => packed)).participation.p == [0.6]
+
+        # a function of the individual gives the probability, checked as it is drawn, only for those eligible
+        @test joined(gym(participation = i -> age(i) >= 40 ? 1.0 : 0.0)) == (ages .>= 40)
+        @test occursin("participation = custom", _layer_description(gym(participation = i -> 0.5)))
+        @test_throws ArgumentError add_setting_layers!(Population(df), gym(participation = i -> 1.5); seed = 1)
+        adults_only(i) = age(i) >= 18 ? 0.5 : error("asked about a child")
+        @test !any(joined(gym(eligible = GEMS._Criteria(ages = (18, 99)), participation = adults_only))[ages .< 18])
+
+        # what is refused
+        band = GEMS._Criteria(ages = (18, 64))
+        @test_throws ArgumentError gym(participation = GEMS._ParticipationTable([band], [1.5]))
+        @test_throws ArgumentError gym(participation = GEMS._ParticipationTable([band], [0.5, 0.5]))
+        @test_throws ArgumentError gym(participation = Poisson(1))
+        @test_throws ArgumentError from_config(Dict("participation" => [], "assignment" => packed))
+        @test_throws ArgumentError from_config(Dict("participation" => [Dict("ages" => [0, 17])], "assignment" => packed))
+        @test_throws ArgumentError from_config(Dict("participation" => [Dict("colour" => "red", "p" => 0.5)], "assignment" => packed))
+        @test_throws ArgumentError from_config(Dict("sex" => "female", "assignment" => packed))
+        @test_throws ArgumentError from_config(Dict("sex" => 200, "assignment" => packed))
+        @test_throws ArgumentError from_config(Dict("occupation" => [], "assignment" => packed))
     end
 
     @testset "Layers on a loaded population" begin

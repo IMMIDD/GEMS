@@ -562,14 +562,33 @@ A layer table takes these keys:
 
 - `assignment`: how participants are put into settings; a table with a `type` (see below) and that type's parameters
 - `ages` (optional): `[lowest, highest]` age of the individuals who can take part, both included
+- `sex`, `occupation`, `education` (optional): the value, or a list of values, that an individual's field must have to take part, as the population stores it: `sex` is `1` (female), `2` (male), or `3` (diverse); GEMS's own populations code `occupation` as in the Mikrozensus (EF172) and `education` as an ISCED 2011 level; `-1` means unknown.
 - `holding` / `not_holding` (optional): a setting type, or a list of them, that an individual must / must not belong to already
-- `participation` (optional): probability that an individual who can take part does so; defaults to `1`
+- `participation` (optional): probability that an individual who can take part does so; defaults to `1`. Can also depend on attributes (see below).
 - `entries` (optional): how many settings of the type each participant joins, an integer between `0` and `127` or a distribution; defaults to `1`
 - `scale` (optional): contacts in these settings relative to a regular member, a number or a distribution; defaults to `1`
 - `name` (optional): the layer's name in the population's records; it also seeds the layer's draws. Defaults to the type's name with a counter, e.g. `Gym[1]`.
 
+An individual has to match every attribute key a layer gives.
 Numbers can be replaced by a distribution everywhere except in `ages` and `participation`.
 To cap `entries`, use a bounded distribution such as `Binomial`.
+
+For a `participation` that depends on attributes, give it as rows, each with a probability `p` and any of the keys `ages`, `sex`, `occupation`, and `education`:
+
+```toml
+[Settings.Gym]
+    [Settings.Gym.layer]
+        [[Settings.Gym.layer.participation]]
+            ages = [18, 39]
+            p = 0.4
+        [[Settings.Gym.layer.participation]]
+            ages = [40, 99]
+            p = 0.2
+        [Settings.Gym.layer.assignment]
+            type = "PackedSettings"
+            size = 20
+```
+The first row an individual matches gives their probability; an individual who matches no row doesn't take part.
 
 The assignment `type` is one of these:
 

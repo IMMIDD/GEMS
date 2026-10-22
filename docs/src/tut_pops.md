@@ -200,6 +200,7 @@ sim = Simulation(setting_layers = second_jobs)
 
 `holding = Office` restricts the layer to individuals who already have an office, and `JoinExisting()` picks each second office among the existing ones, in proportion to their number of members.
 The first office stays the individual's primary office, so functions like `office(individual, sim)` still return it.
+`participation` can also be a function of the individual, e.g. `participation = ind -> age(ind) < 30 ? 0.2 : 0.1`.
 Layers can also be written into the config file; the [`layer`](@ref config-layer) section of the config file documentation shows how, using the gyms from the start of this section.
 
 The assignment decides whether a layer creates new settings or adds individuals to existing ones:
