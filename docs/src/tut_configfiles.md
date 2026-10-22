@@ -192,7 +192,7 @@ GEMS comes with four profiles:
 
 - `FullImmunity` (default): full protection after recovery or vaccination, which never wanes
 - `NoImmunity`: no protection at all
-- `ExponentialWaning`: protection halves every `halflife` ticks, down to a `floor`
+- `ExponentialWaning`: protection halves every `halflife` ticks, down to a `floor` (default `0`)
 - `SigmoidalWaning`: protection stays high at first, then falls steeply around `halflife` ticks
 
 To use waning immunity, set the profile in the pathogen section of your config file:
@@ -206,6 +206,7 @@ To use waning immunity, set the profile in the pathogen section of your config f
             type = "ExponentialWaning"
             [Pathogens.Covid19.immunity_profile.parameters]
                 halflife = 90
+                floor = 10
 ```
 
 If none of the built-in profiles fit, you can write your own.
@@ -267,7 +268,7 @@ By default, nobody is immune at the start of a simulation.
 `PriorImmunity` gives part of the population natural immunity, as if they had recovered `ticks_ago` ticks before the start.
 How much this protects depends on the pathogen's [immunity profile](@ref immunity-waning): with the default `FullImmunity`, these individuals cannot be infected at all, whatever `ticks_ago` is.
 
-In the example below, 20% of children, 35% of adults under 65 and 50% of people aged 65 and older are immune.
+In the example below, 20% of children, 35% of adults under 65 and 50% of people aged 65 and older are fully immune.
 Each of them recovered between 30 and 365 days before the start.
 
 ```julia
@@ -279,8 +280,8 @@ prior = PriorImmunity(
     fraction = [0.2, 0.35, 0.5],
     ticks_ago = Uniform(30, 365))
 
-baseline = Simulation(label = "no prior immunity")
-immune = Simulation(label = "prior immunity", prior_immunity = prior)
+baseline = Simulation(label = "No Prior Immunity")
+immune = Simulation(label = "Prior Immunity", prior_immunity = prior)
 run!(baseline)
 run!(immune)
 rd_b = ResultData(baseline)
