@@ -26,6 +26,7 @@ and computationally intensive (memory & runtime) option.
         - `initial_infections::DataFrame`: Per-pathogen seeding infection counts (`pathogen_id`, `initial_infections`)
         - `total_infections::DataFrame`: Per-pathogen total infection counts (`pathogen_id`, `total_infections`)
         - `attack_rate::DataFrame`: Per-pathogen attack rate (`pathogen_id`, `attack_rate`)
+        - `household_secondary_attack_rate::DataFrame`: Per-pathogen pooled household secondary attack rate (`pathogen_id`, `household_sar`, `household_sar_home`)
         - `setting_data::DataFrame`: DataFrame containing information on all setting types
         - `setting_sizes::Dict{Any, Any}`: Dictionary containing the setting sizes distributions for all included settingtypes
         - `region_info::Dataframe`: Municipality population size and area (if geolocalized model is used)
@@ -103,6 +104,7 @@ and computationally intensive (memory & runtime) option.
         - `tick_hosptitalizations::DataFrame`: DataFrame containing the daily hospitalizations etc.
         - `time_to_detection::DataFrame`: Statistics on the time between exposure and first detection of an infection through a test
         - `household_attack_rates::DataFrame`: Statistics on the seconary infections in households
+        - `household_secondary_attack_rates::DataFrame`: Household secondary attack rate counts per household size, defined like a household study
         - `customlogger::DataFrame`: Dataframe obtained from any custom logger that might have been set
         - `weekly_county_incidence::DataFrame`: DataFrame with 7-day incidence per 100,000 per county and week (only for georeferential population models)
         - `r0_per_county::DataFrame`: DataFrame with basic reproduction number per county
@@ -130,6 +132,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "initial_infections" => () -> pP |> initial_infections,
                     "total_infections" => () -> pP |> total_infections,
                     "attack_rate" => () -> pP |> attack_rate,
+                    "household_secondary_attack_rate" => () -> pP |> household_secondary_attack_rate,
                     "setting_data" => () -> pP |> _settingdata,
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "region_info" => () -> pP |> simulation |> region_info,
@@ -214,6 +217,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
                     "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
+                    "household_secondary_attack_rates" => () -> pP |> household_secondary_attack_rates,
                     "tick_hosptitalizations" => () -> pP |> _hospital_df,
                     "health_episodes" => () -> pP |> health_episodes,
                     "weekly_county_incidence" => () -> pP |> _weekly_county_incidence,

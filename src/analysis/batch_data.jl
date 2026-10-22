@@ -5,7 +5,7 @@ export BatchDataStyle
 export meta_data, execution_date, GEMS_version, id
 export runtime, allocations
 export system_data, kernel, julia_version, word_size, threads, cpu_data, total_mem_size, free_mem_size, git_repo, git_branch, git_commit
-export runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, total_quarantines, pathogen_names
+export runs, median_run, median_runs, seed, number_of_runs, total_infections, total_tests, attack_rate, household_secondary_attack_rate, total_quarantines, pathogen_names
 export total_detected_cases, detection_rate
 export dataframes, tick_cases, effectiveR, tests, pool_tests, sero_tests, cumulative_quarantines, cumulative_disease_progressions
 export dark_figure, cumulative_cases, generation_times, hospitalizations, observed_R, per_group
@@ -402,6 +402,16 @@ function r0(bd::BatchData)
 end
 
 """
+    household_secondary_attack_rate(bd::BatchData)
+
+Returns aggregated values for the pooled household secondary attack rates (`household_sar`, `household_sar_home`)
+accross the simulation runs in this batch. It returns mean, standard deviation, range, and confidence intervals.
+"""
+function household_secondary_attack_rate(bd::BatchData)
+    return(get(bd |> sim_data, "household_secondary_attack_rate", ""))
+end
+
+"""
     total_quarantines(batchData)
 
 Returns aggregated values for `total_quarantines` accross the simulation runs in this batch.
@@ -667,6 +677,7 @@ function Base.show(io::IO, bd::BatchData)
     infs = total_infections(bd)
     attr = attack_rate(bd)
     r0vals = r0(bd)
+    hsar = household_secondary_attack_rate(bd)
     quar = total_quarantines(bd)
     
     lines = [
@@ -676,6 +687,7 @@ function Base.show(io::IO, bd::BatchData)
         () -> "  \u2514 Total infections: $(round(infs["mean"], digits = 2)) ($(round(infs["lower_95"], digits = 2)) - $(round(infs["upper_95"], digits = 2)) 95% CI)"
         () -> "  \u2514 Attack rate: $(isa(attr, Dict) ? join(["$(get(v,"mean",0.0) |> x -> round(x, digits=2))" for v in values(attr)], ", ") : round(attr["mean"], digits=2))"
         () -> "  \u2514 Basic reproduction number (R0): $(isa(r0vals, Dict) ? join(["$(get(v,"mean",0.0) |> x -> round(x, digits=2))" for v in values(r0vals)], ", ") : round(r0vals["mean"], digits=2))"
+        () -> "  \u2514 Household secondary attack rate: $(join(["$(round(v["household_sar"]["mean"], digits=2))" for v in values(hsar)], ", "))"
         () -> "  \u2514 Total quarantine days: $(round(quar["mean"], digits = 2)) ($(round(quar["lower_95"], digits = 2)) - $(round(quar["upper_95"], digits = 2)) 95% CI)"
     ]
 

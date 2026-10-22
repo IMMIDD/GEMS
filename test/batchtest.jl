@@ -133,6 +133,15 @@ import GEMS: BatchProcessor, n_runs, rundata
             @test bd |> attack_rate |> length != 0
             @test bd |> total_quarantines |> length != 0
 
+            # the batch mean is the mean of the runs' pooled rates
+            hsar = household_secondary_attack_rate(bd)
+            @test !isempty(hsar)
+            for (pid, rates) in hsar, col in ("household_sar", "household_sar_home")
+                per_run = [only(subset(household_secondary_attack_rate(rd), :pathogen_id => ByRow(==(pid))))[col] for rd in runs(bd)]
+                @test rates[col]["mean"] ≈ mean(filter(!isnan, per_run))
+            end
+            @test occursin("Household secondary attack rate", @capture_out show(bd))
+
             @test bd |> system_data |> length != 0
             @test bd |> kernel |> length != 0
             @test bd |> julia_version |> length != 0
