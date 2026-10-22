@@ -442,7 +442,7 @@ end
         tick::Int16,
         pathogen::Pathogen;
         sim::Union{Simulation, Nothing} = nothing,
-        rng::Xoshiro = default_gems_rng(),
+        rng::Xoshiro = Xoshiro(),
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
         setting_type::Char = '?',
@@ -456,7 +456,7 @@ function infect!(infectee::Individual,
         tick::Int16,
         pathogen::Pathogen;
         sim::Union{Simulation, Nothing} = nothing,
-        rng::Xoshiro = default_gems_rng(),
+        rng::Xoshiro = Xoshiro(),
         infecter_id::Int32 = Int32(-1),
         setting_id::Int32 = Int32(-1),
         setting_type::Char = '?',
