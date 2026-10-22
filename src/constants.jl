@@ -151,6 +151,8 @@ const settingslocal(identifier::String, dir::String = poplocal(identifier)) = jo
 const SHAPEFILE_FOLDER_PATH = joinpath(LOCALDATA_PATH, "shapefiles")
 const GERMAN_SHAPEFILE(identifier::String) = joinpath(SHAPEFILE_FOLDER_PATH, "vg250-ew_12-31.gk3.shape.ebenen", "vg250-ew_ebenen_1231", "VG250_$identifier.shp")
 const GERMAN_SHAPEFILE_URL = "https://daten.gdz.bkg.bund.de/produkte/vg/vg250-ew_ebenen_1231/aktuell/vg250-ew_12-31.gk3.shape.ebenen.zip"
+# copy of the shapefile, used if the download above fails
+const GERMAN_SHAPEFILE_FALLBACK_URL = "https://github.com/IMMIDD/GEMS/releases/download/v1.0.0/vg250-ew_12-31.gk3.shape.ebenen.zip"
 
 # throw error when global RNG is used in gems_rand/gems_sample functions
 const ENFORCE_SIM_RNGS = true
