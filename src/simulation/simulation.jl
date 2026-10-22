@@ -1899,8 +1899,8 @@ end
 
 # the keys that pick out individuals, in a layer table and in a participation table's rows
 const _CRITERIA_CONFIG_KEYS = ("ages", "sex", "occupation", "education")
-const _LAYER_CONFIG_KEYS = ("name", _CRITERIA_CONFIG_KEYS..., "holding", "not_holding", "participation", "entries",
-    "scale", "assignment")
+const _LAYER_CONFIG_KEYS = ("name", _CRITERIA_CONFIG_KEYS..., "holding", "not_holding", "participation",
+    "participation_unit", "entries", "scale", "assignment")
 
 """
     create_setting_layer(::Type{T}, params::Dict, section::AbstractString) where {T<:Setting}

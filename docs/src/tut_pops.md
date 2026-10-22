@@ -206,7 +206,9 @@ Layers can also be written into the config file; the [`layer`](@ref config-layer
 The assignment decides whether a layer creates new settings or adds individuals to existing ones:
 
 - `PackedSettings`, `RandomSettings`, `GroupedSettings`, `AgeSortedSettings`, and `SpatialSettings` create new settings of a given `size`, e.g. `PackedSettings(size = 20)`.
-- `JoinExisting` and `JoinNearby` add individuals to settings that already exist.
+- `JoinExisting`, `JoinNearby`, and `JoinVia` add individuals to settings that already exist. `JoinVia` picks a setting someone else in the individual's household (or another `via` setting) already belongs to, e.g. the gym of a household member.
+
+With `participation_unit = Household`, the members of a household decide together whether they take part, e.g. to let whole families join a sports club.
 
 `SpatialSettings` and `JoinNearby` put individuals into settings near their home, based on the household coordinates of the settings file.
 Their `spread` is the distance in km by which a home is moved before GEMS looks for settings nearby.

@@ -347,3 +347,50 @@ end
 
 # The member count of the candidate at position `j`.
 @inline _candidate_weight(c::_JoinCandidates, j::Int) = c.cumulative[j] - (j == 1 ? 0 : c.cumulative[j - 1])
+
+"""
+    _ViaGroups
+
+For each setting of a `JoinVia`'s `via` type, the settings of the layer's type its members
+hold, once per member who holds one: group `g`'s are `ids[starts[g]:(starts[g + 1] - 1)]`.
+"""
+struct _ViaGroups
+    starts::Vector{Int}
+    ids::Vector{Int32}
+end
+
+function _join_state(a::JoinVia, ctx::_LayerContext)
+    store, inds = ctx.store, ctx.inds
+    starts = zeros(Int, Int(_max_setting_id(store, inds, a.via)) + 1)
+    # counting sort by group: count each group's held settings, then place them
+    for ind in inds
+        g = _setting_id(ind, a.via, store)
+        g >= 1 && (starts[g + 1] += length(_type_slots(store, ind, ctx.tidx)))
+    end
+    starts[1] = 1
+    cumsum!(starts, starts)
+    ids, next = Vector{Int32}(undef, starts[end] - 1), starts[1:(end - 1)] .- 1
+    for ind in inds
+        g = _setting_id(ind, a.via, store)
+        g >= 1 || continue
+        for k in _type_slots(store, ind, ctx.tidx)
+            ids[next[g] += 1] = setting_id(store.entries[k])
+        end
+    end
+    return _ViaGroups(starts, ids)
+end
+
+function _choose(a::JoinVia, i::Int, held::Vector{Int32}, groups::_ViaGroups, ctx::_LayerContext, rng::Xoshiro)
+    g = _setting_id(ctx.inds[i], a.via, ctx.store)
+    g >= 1 || return Int32(0)
+    group = view(groups.ids, groups.starts[g]:(groups.starts[g + 1] - 1))
+    # a group's list is short, so count the settings not yet held and pick one of them
+    free = count(!in(held), group)
+    free == 0 && return Int32(0)
+    k = gems_rand(rng, 1:free)
+    for sid in group
+        sid in held && continue
+        (k -= 1) == 0 && return sid
+    end
+    return Int32(0)
+end

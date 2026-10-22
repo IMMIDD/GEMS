@@ -742,6 +742,63 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test_throws ArgumentError from_config(Dict("occupation" => [], "assignment" => packed))
     end
 
+    @testset "Joining via another setting" begin
+        # 300 households of two adults; households 1-100 have one child, 101-200 two in different classes
+        rows = NamedTuple[]
+        for h in 1:300, k in 1:(2 + (h <= 100) + 2 * (100 < h <= 200))
+            child = k > 2
+            class = child ? Int32(k == 3 ? mod(h, 20) + 1 : mod(h + 7, 20) + 1) : Int32(-1)
+            push!(rows, (age = Int8(child ? 8 : 35), household = Int32(h), schoolclass = class))
+        end
+        df = DataFrame(rows)
+        df.id = Int32.(1:nrow(df))
+        df.sex = Int8.(ones(nrow(df)))
+        adults(pop) = filter(i -> age(i) >= 18, individuals(pop))
+        classes(pop, i) = setting_ids(i, SchoolClass, activity_plans(pop))
+        children_classes(pop, h) = [classes(pop, c)[1] for c in individuals(pop) if age(c) < 18 && household_id(c, activity_plans(pop)) == h]
+        parents = SettingLayer(SchoolClass; assignment = JoinVia(via = Household), eligible = i -> age(i) >= 18)
+
+        # parents join a class one of their children is in; parents without a child get none
+        pop = Population(df)
+        @test_logs (:warn, r"left out 200 entries") (:info,) add_setting_layers!(pop, parents; seed = 1)
+        @test plans_well_formed(pop)
+        for i in adults(pop)
+            h = household_id(i, activity_plans(pop))
+            @test h > 200 ? isempty(classes(pop, i)) : (length(classes(pop, i)) == 1 && classes(pop, i)[1] in children_classes(pop, h))
+        end
+        # with two children, both classes come up
+        first_class = count(i -> 100 < household_id(i, activity_plans(pop)) <= 200 &&
+            classes(pop, i)[1] == children_classes(pop, household_id(i, activity_plans(pop)))[1], adults(pop))
+        @test 60 < first_class < 140
+        # a second entry takes the other child's class, and finds none with one child
+        pop = Population(df)
+        add_setting_layers!(pop, SettingLayer(SchoolClass; assignment = JoinVia(via = Household), eligible = i -> age(i) >= 18, entries = 2); seed = 1)
+        @test all(i -> sort(classes(pop, i)) == sort(children_classes(pop, household_id(i, activity_plans(pop)))),
+            filter(i -> household_id(i, activity_plans(pop)) <= 200, adults(pop)))
+        @test occursin("JoinVia(via = Household)", _layer_description(parents))
+        @test GEMS.create_layer_assignment(Dict("type" => "JoinVia", "via" => "Household"), "X") == JoinVia()
+        @test_throws ArgumentError JoinVia(via = Workplace)
+
+        # a household decides together: both members or neither, also as participation rises
+        family(p; unit = Household) = SettingLayer(LayerGym; assignment = PackedSettings(size = 10), participation = p,
+            participation_unit = unit)
+        joined(layer) = (pop = layered(layer); gym_ids(pop) .!= DEFAULT_SETTING_ID)
+        half = joined(family(0.5))
+        @test half[1:2:end] == half[2:2:end] && 400 < count(half) < 600
+        @test all(joined(family(0.8))[half]) && count(joined(family(0.8))) > count(half)
+        # with different probabilities, the more likely member joins whenever the other does
+        uneven = joined(family(i -> isodd(id(i)) ? 0.8 : 0.4))
+        @test all(uneven[1:2:end][uneven[2:2:end]]) && count(uneven[1:2:end]) > count(uneven[2:2:end])
+        # individuals outside every unit draw alone: offices decide together, non-workers each on their own
+        by_office = joined(family(0.5; unit = Office))
+        @test all(k -> allequal(by_office[(3k - 2):3k]), 1:166)
+        @test !all(k -> by_office[500 + 2k - 1] == by_office[500 + 2k], 1:250)
+        from_config = GEMS.create_setting_layer(LayerGym, Dict("participation_unit" => "Household",
+            "assignment" => Dict("type" => "PackedSettings", "size" => 10)), "LayerTestGym")
+        @test from_config.participation_unit == setting_type_index(Household)
+        @test occursin("participation_unit = Household", _layer_description(family(0.5)))
+    end
+
     @testset "Layers on a loaded population" begin
         # the settings file gives a spatial layer its coordinates
         data = joinpath(pkgdir(GEMS), "test", "testdata")

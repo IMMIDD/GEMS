@@ -565,6 +565,7 @@ A layer table takes these keys:
 - `sex`, `occupation`, `education` (optional): the value, or a list of values, that an individual's field must have to take part, as the population stores it: `sex` is `1` (female), `2` (male), or `3` (diverse); GEMS's own populations code `occupation` as in the Mikrozensus (EF172) and `education` as an ISCED 2011 level; `-1` means unknown.
 - `holding` / `not_holding` (optional): a setting type, or a list of them, that an individual must / must not belong to already
 - `participation` (optional): probability that an individual who can take part does so; defaults to `1`. Can also depend on attributes (see below).
+- `participation_unit` (optional): a setting type, e.g. `"Household"`, whose members decide together: with the same probability, they all take part or none of them does
 - `entries` (optional): how many settings of the type each participant joins, an integer between `0` and `127` or a distribution; defaults to `1`
 - `scale` (optional): contacts in these settings relative to a regular member, a number or a distribution; defaults to `1`
 - `name` (optional): the layer's name in the population's records; it also seeds the layer's draws. Defaults to the type's name with a counter, e.g. `Gym[1]`.
@@ -601,6 +602,7 @@ The assignment `type` is one of these:
 | `SpatialSettings` | `size`, `spread` | new settings of `size` members living near each other |
 | `JoinExisting` | - | existing settings of the type, each picked in proportion to its number of members |
 | `JoinNearby` | `spread` | existing settings near the participant's home |
+| `JoinVia` | `via` | existing settings that someone in the participant's `via` setting (by default `"Household"`) already belongs to |
 
 `spread` is the distance in km by which a participant's home is moved before GEMS looks for settings nearby: a number is the standard deviation of a random shift, a distribution gives the shift's length in a random direction.
 `SpatialSettings` and `JoinNearby` take the household coordinates from the settings file.

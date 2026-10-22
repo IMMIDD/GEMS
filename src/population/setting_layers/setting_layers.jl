@@ -6,7 +6,7 @@
 # EXPORTS
 export SettingLayer, add_setting_layers!
 export PackedSettings, RandomSettings, GroupedSettings, AgeSortedSettings, SpatialSettings
-export JoinExisting, JoinNearby
+export JoinExisting, JoinNearby, JoinVia
 
 ###
 ### ASSIGNMENT TYPES
@@ -109,6 +109,18 @@ struct JoinNearby{D} <: JoinAssignment
 end
 JoinNearby(; spread) = JoinNearby(_layer_value(spread))
 
+"""
+    JoinVia(; via = Household)
+
+Existing settings that someone sharing the participant's `via` setting already belongs to, e.g. a
+gym a household member goes to, or, with `via = Office`, a sports club a colleague plays in; each
+drawn in proportion to how many of them hold it.
+"""
+struct JoinVia <: JoinAssignment
+    via::UInt8
+end
+JoinVia(; via = Household) = JoinVia(_layer_type_index(via, "`via`"))
+
 # numbers become Float64, so the draws need one method for numbers
 _layer_value(x::Real) = Float64(x)
 _layer_value(x) = x
@@ -175,13 +187,15 @@ struct SettingLayer{T<:IndividualSetting, A<:LayerAssignment, F, P, E, C}
     holding::Vector{UInt8}
     not_holding::Vector{UInt8}
     participation::P
+    participation_unit::Union{Nothing, UInt8}
     entries::E
     scale::C
 end
 
 """
     SettingLayer(T; assignment, name = nothing, eligible = _everyone, holding = (),
-                 not_holding = (), participation = 1.0, entries = 1, scale = 1.0)
+                 not_holding = (), participation = 1.0, participation_unit = nothing,
+                 entries = 1, scale = 1.0)
 
 Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range parameters.
 
@@ -193,22 +207,25 @@ Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range p
 - `holding` / `not_holding`: setting types, or their names, an individual must / must not already hold
 - `participation`: probability that an eligible individual takes part: a number, or a function of
   an `Individual` returning one
+- `participation_unit`: a setting type, or its name, whose members decide together, e.g.
+  `Household`: they share one random draw, so with the same probability they all take part or none does
 - `entries`: settings per participant, an integer in 0-127 or a discrete distribution
 - `scale`: contact scale per entry, a number in 0-floatmax(Float16) or a distribution
 """
 function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible = _everyone,
-        holding = (), not_holding = (), participation = 1.0,
+        holding = (), not_holding = (), participation = 1.0, participation_unit = nothing,
         entries::Union{Integer, DiscreteUnivariateDistribution} = 1,
         scale::Union{Real, UnivariateDistribution} = 1.0)
     # checks and registers `T`
     _layer_type_index(T, "a layer's setting type")
     p = _layer_value(participation)
+    unit = participation_unit === nothing ? nothing : _layer_type_index(participation_unit, "`participation_unit`")
     n = entries isa Integer ? Int(entries) : entries
     s = _layer_value(scale)
     layer = SettingLayer{T, typeof(assignment), typeof(eligible), typeof(p), typeof(n), typeof(s)}(
         name === nothing ? nothing : String(name), assignment, eligible,
         _layer_type_indices(holding, "`holding`"), _layer_type_indices(not_holding, "`not_holding`"),
-        p, n, s)
+        p, unit, n, s)
     _check_layer(layer)
     return layer
 end
@@ -486,15 +503,39 @@ Returns how many entries the layer gives each individual, by position, 0 for tho
 function _layer_entry_counts(layer::SettingLayer, pop::Population, streams::_LayerStreams)
     store, inds = activity_plans(pop), individuals(pop)
     counts = zeros(UInt8, length(inds))
+    # passed on as their own arguments, so the loop is compiled for their concrete types
+    _fill_entry_counts!(counts, layer, store, inds, streams, layer.participation_unit,
+        _unit_draws(layer.participation_unit, store, inds))
+    return counts
+end
+
+function _fill_entry_counts!(counts::Vector{UInt8}, layer::SettingLayer, store::ActivityPlanStore,
+                             inds::Vector{Individual}, streams::_LayerStreams, unit, unit_draws)
     for (i, ind) in enumerate(inds)
         # drawn for everyone, so participants nest as participation or eligibility widen
-        u = _draw_participation(streams.participation)
+        u = _shared_draw!(unit_draws, unit, store, ind, _draw_participation(streams.participation))
         n = _draw_entries(streams.entries, layer.entries)
         _qualifies(layer, store, ind) || continue
         u < _participation(layer.participation, ind) || continue
         counts[i] = min(n, typemax(UInt8))
     end
     return counts
+end
+
+# Each unit's shared draw by unit id, NaN until its first member draws; `nothing` without units.
+_unit_draws(::Nothing, ::ActivityPlanStore, ::Vector{Individual}) = nothing
+_unit_draws(unit::UInt8, store::ActivityPlanStore, inds::Vector{Individual}) =
+    fill(NaN, Int(_max_setting_id(store, inds, unit)))
+
+# The draw `ind` takes part by: their own `u`, or their unit's, which its first member's `u` sets.
+_shared_draw!(::Nothing, ::Nothing, ::ActivityPlanStore, ::Individual, u::Float64) = u
+
+function _shared_draw!(unit_draws::Vector{Float64}, unit::UInt8, store::ActivityPlanStore, ind::Individual, u::Float64)
+    unit_id = _setting_id(ind, unit, store)
+    # an individual outside every unit draws alone
+    unit_id >= 1 || return u
+    isnan(unit_draws[unit_id]) && (unit_draws[unit_id] = u)
+    return unit_draws[unit_id]
 end
 
 # Whether `ind` is eligible and holds every type in `holding` and none in `not_holding`.
@@ -606,6 +647,7 @@ end
 
 # a field's value as text: setting types by name, an assignment with its own fields
 _describe(x) = string(x)
+_describe(::Nothing) = nothing
 _describe(a::LayerAssignment) = "$(nameof(typeof(a)))($(_field_descriptions(a)))"
 _describe(t::UInt8) = setting_type_name(setting_type_from_index(t))
 _describe(ts::Vector{UInt8}) = isempty(ts) ? nothing : "[" * join(_describe.(ts), ", ") * "]"
