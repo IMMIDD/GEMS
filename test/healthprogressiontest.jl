@@ -398,6 +398,10 @@ end
             run!(sim; with_progressbar = false)
             he = health_episodes(PostProcessor(sim))
             hosp = he[he.care_level .== :hospital, :]
+            # both policies end their last stay 9 ticks after the first admission; later hosts are cut off by the run's end
+            first_admission = combine(groupby(hosp, :host_id), :admission_tick => minimum => :first)
+            complete = Set(first_admission.host_id[first_admission.first .+ 9 .<= tick(sim)])
+            hosp = hosp[in.(hosp.host_id, Ref(complete)), :]
             @test nrow(hosp) > 0
             return combine(groupby(hosp, :host_id), nrow).nrow
         end
