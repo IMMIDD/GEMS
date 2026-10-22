@@ -123,7 +123,7 @@ function transmission_factor(
 end
 
 transmission_factor(modifier::CrossImmunityModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 
 ###
@@ -217,4 +217,4 @@ end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default
 transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())

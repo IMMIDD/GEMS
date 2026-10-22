@@ -138,10 +138,10 @@ calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCatego
 """
     transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
 
-Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using `default_gems_rng()`.
+Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using a fresh `Xoshiro()`.
 """
 function transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
-    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 end
 
 """
@@ -188,10 +188,10 @@ end
 """
     effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
 
-Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using `default_gems_rng()`.
+Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using a fresh `Xoshiro()`.
 """
 effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
-    effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
@@ -218,11 +218,11 @@ end
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
 
-For profiles that don't draw: passes the unkeyed `default_gems_rng()`, so draws differ from reads
+For profiles that don't draw: passes a fresh, unkeyed `Xoshiro()`, so draws differ from reads
 during a simulation.
 """
 @inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
-    return calculate_immunity(profile, state, individual, tick, default_gems_rng())
+    return calculate_immunity(profile, state, individual, tick, Xoshiro())
 end
 
 """

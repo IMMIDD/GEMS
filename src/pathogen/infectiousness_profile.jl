@@ -174,5 +174,5 @@ end
 Fallback for `InfectiousnessProfile` that doesn't need an RNG.
 """
 @inline function calculate_infectiousness(profile::InfectiousnessProfile, state::InfectionState, individual::Individual, tick::Int16)::Int8
-    return calculate_infectiousness(profile, state, individual, tick, default_gems_rng())
+    return calculate_infectiousness(profile, state, individual, tick, Xoshiro())
 end

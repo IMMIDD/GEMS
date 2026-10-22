@@ -63,7 +63,7 @@ function transmission_factor(
 end
 
 transmission_factor(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 
 ###
@@ -130,4 +130,4 @@ function transmission_probability(
 end
 
 transmission_probability(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())

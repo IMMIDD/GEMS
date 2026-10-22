@@ -93,7 +93,7 @@ function transmission_factor(
 end
 
 transmission_factor(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 # Converts the current tick to whole calendar days based on the simulation tick unit.
 function _seasonal_tick_to_days(tick::Int16, tickunit::Char)::Int
@@ -194,4 +194,4 @@ end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default
 transmission_probability(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())

@@ -11,6 +11,10 @@ struct DailyNoisyInfectiousness <: GEMS.InfectiousnessProfile end
 GEMS.calculate_infectiousness(::DailyNoisyInfectiousness, s::InfectionState, i::Individual, t::Int16, r::Xoshiro) =
     s.infectiousness_onset <= t < s.recovery ? Int8(rand(GEMS.infectiousness_rng!(r, s, t), 1:100)) : Int8(0)
 
+# draws its probability from the rng it is given
+struct NoisyTransmission <: GEMS.TransmissionFunction end
+GEMS.transmission_probability(::NoisyTransmission, p::Int8, a::Individual, b::Individual, s::Setting, t::Int16, sim::Simulation, r::Xoshiro) = gems_rand(r)
+
 @testset "RNG" begin
 
     @testset "set_global_seed" begin
@@ -130,6 +134,11 @@ GEMS.calculate_infectiousness(::DailyNoisyInfectiousness, s::InfectionState, i::
 
         @test infect!(inds[1], Int16(0), Pathogen(id = 1, name = "P1")) == GEMS.DEFAULT_INFECTION_ID
         @test isinfected(inds[1])
+
+        # rng-less transmission wrapper with a transmission function that draws
+        sim = Simulation(pop_size = 100, seed = 42)
+        p = transmission_probability(NoisyTransmission(), Int8(1), individuals(sim)[1], individuals(sim)[2], households(sim)[1], Int16(0), sim)
+        @test 0 <= p <= 1
     end
 
     @testset "Keyed Immunity RNG" begin

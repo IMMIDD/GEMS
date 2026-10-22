@@ -67,7 +67,7 @@ automatically by the framework via `effective_transmission_probability`.
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
 - `sim::Simulation'`: Simulation object
-- `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
+- `rng::Xoshiro`: RNG used for probability
 
 # Returns
 
@@ -94,4 +94,4 @@ end
 
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
