@@ -1,4 +1,4 @@
-export household_attack_rate
+export household_attack_rates
 
 """
     household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
@@ -15,6 +15,8 @@ for a subset of households. You can change the desired subset size
 through the optional `hh_samples` argument. Its default can be found
 in `constants.jl`. If several infections introduce a pathogen into a household
 at the same first tick, the one with the lowest infection id counts.
+Members who died by the first introduction are not counted as contacts.
+Households left with no one to infect, like single-person ones, are excluded.
 
 # Returns
 
@@ -27,7 +29,7 @@ at the same first tick, the one with the lowest infection id counts.
 | `hh_id`              | `Int32`   | Household setting identifier                                          |
 | `hh_size`            | `Int16`   | Household size                                                        |
 | `chain_size`         | `Int32`   | Number of individuals that got infected within the household          |
-| `hh_attack_rate`     | `Float64` | Number of infected individuals divided by household size              |
+| `hh_attack_rate`     | `Float64` | Chain size divided by members alive at introduction minus one         |
 """
 function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 = HOUSEHOLD_ATTACK_RATE_SAMPLES)
     # exception handling
@@ -62,18 +64,39 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
     hhs = households(simulation(postProcessor))
     infs.hh_id = Int32.(infs.household_b)
     infs.hh_size = _household_sizes(infs.hh_id, hhs)
+    deaths = deathsDF(postProcessor)
+    death_households = coalesce.(deaths.household, Int32(0))
 
     return infs |>
-        x -> DataFrames.select(x, :tick, :hh_id, :home_chain, :started_chain, :hh_size, :pathogen_id) |>
+        x -> DataFrames.select(x, :tick, :id_b, :hh_id, :home_chain, :started_chain, :hh_size, :pathogen_id) |>
         x -> x[x.started_chain, :] |>
         x -> groupby(x, [:hh_id, :pathogen_id]) |>
         x -> combine(x,
             :tick => minimum => :first_introduction,
+            [:tick, :id_b] => ((tick, id) -> id[argmin(tick)]) => :introducer,
             [:tick, :home_chain] => ((tick, chain) -> isempty(chain) ? 0 : chain[argmin(tick)]) => :chain_size,
             [:tick, :hh_size] => ((tick, size) -> isempty(size) ? 0 : size[argmin(tick)]) => :hh_size) |>
-        x -> transform(x, [:chain_size, :hh_size] => ByRow((c, h) -> (h == 0 ? 0 : c / (h - 1))) => :hh_attack_rate) |>
+        x -> transform!(x, [:hh_id, :first_introduction, :introducer] =>
+            ((h, t, i) -> _dead_before_introduction(h, t, i, death_households, deaths.id, deaths.tick)) => :dead) |>
+        x -> x[x.hh_size .- x.dead .> 1, :] |>
+        x -> transform(x, [:chain_size, :hh_size, :dead] => ByRow((c, h, d) -> c / (h - d - 1)) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>
         x -> DataFrames.select(x, :pathogen_id, :first_introduction, :hh_id, :hh_size, :chain_size, :hh_attack_rate)
+end
+
+# Per introduction into household `hh_ids[k]`, the members other than the introducer who died at or before it.
+function _dead_before_introduction(hh_ids::AbstractVector, first_ticks::AbstractVector, introducers::AbstractVector,
+        death_households::AbstractVector, death_ids::AbstractVector, death_ticks::AbstractVector)
+    order = sortperm(death_households)
+    dh = death_households[order]
+    dead = zeros(Int16, length(hh_ids))
+    for k in eachindex(hh_ids)
+        for d in searchsorted(dh, hh_ids[k])
+            r = order[d]
+            death_ticks[r] <= first_ticks[k] && death_ids[r] != introducers[k] && (dead[k] += 1)
+        end
+    end
+    return dead
 end
 
 # Per infection, the size of the household chain it started, and whether it started one (was not infected

@@ -983,7 +983,7 @@ function determine_health_progression(configfile_params::Dict, health_progressio
 
     # one warning for all uncovered categories; only the default policy needs the index
     if !embedded && isnothing(baseline)
-        policy isa DefaultHealthProgression && @warn "No health parameters were embedded on any progression; no hospitalization, ICU admission, or health-related death will occur."
+        policy isa DefaultHealthProgression && @warn "No health parameters were embedded on any progression; no hospitalization, ICU admission, or health-related death will occur (severe cases still stay home)."
         return policy, HealthProfileIndex()
     end
 

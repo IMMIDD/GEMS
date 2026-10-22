@@ -28,7 +28,7 @@ mutable struct AgeDependentTransmissionRate <: TransmissionFunction
         length(age_groups) != length(transmission_rates) &&
             throw(ArgumentError("Number of age groups and age transmission rates must be the same (input vector lengths: $(length(age_groups)) and $(length(transmission_rates)))."))
         # check that all transmission rates are between 0 and 1
-        any(x -> x < 0.0 || x > 1.0, transmission_rates) &&
+        any(x -> !(0.0 <= x <= 1.0), transmission_rates) &&
             throw(ArgumentError("All transmission rates must be between 0 and 1."))
         
         # convert age group strings to AgeGroup structs
@@ -67,7 +67,7 @@ automatically by the framework via `effective_transmission_probability`.
 - `setting::Setting`: Setting in which the infection happens
 - `tick::Int16`: Current tick
 - `sim::Simulation'`: Simulation object
-- `rng::Xoshiro = default_gems_rng()` *(optional)*: RNG used for probability. Uses Random's default RNG as default.
+- `rng::Xoshiro`: RNG used for probability
 
 # Returns
 
@@ -94,7 +94,7 @@ end
 
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_transmission_probability_in_type(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}

@@ -192,7 +192,7 @@ GEMS comes with four profiles:
 
 - `FullImmunity` (default): full protection after recovery or vaccination, which never wanes
 - `NoImmunity`: no protection at all
-- `ExponentialWaning`: protection halves every `halflife` ticks, down to a `floor`
+- `ExponentialWaning`: protection halves every `halflife` ticks, down to a `floor` (default `0`)
 - `SigmoidalWaning`: protection stays high at first, then falls steeply around `halflife` ticks
 
 To use waning immunity, set the profile in the pathogen section of your config file:
@@ -206,6 +206,7 @@ To use waning immunity, set the profile in the pathogen section of your config f
             type = "ExponentialWaning"
             [Pathogens.Covid19.immunity_profile.parameters]
                 halflife = 90
+                floor = 10
 ```
 
 If none of the built-in profiles fit, you can write your own.
@@ -267,7 +268,7 @@ By default, nobody is immune at the start of a simulation.
 `PriorImmunity` gives part of the population natural immunity, as if they had recovered `ticks_ago` ticks before the start.
 How much this protects depends on the pathogen's [immunity profile](@ref immunity-waning): with the default `FullImmunity`, these individuals cannot be infected at all, whatever `ticks_ago` is.
 
-In the example below, 20% of children, 35% of adults under 65 and 50% of people aged 65 and older are immune.
+In the example below, 20% of children, 35% of adults under 65 and 50% of people aged 65 and older are fully immune.
 Each of them recovered between 30 and 365 days before the start.
 
 ```julia
@@ -279,8 +280,8 @@ prior = PriorImmunity(
     fraction = [0.2, 0.35, 0.5],
     ticks_ago = Uniform(30, 365))
 
-baseline = Simulation(label = "no prior immunity")
-immune = Simulation(label = "prior immunity", prior_immunity = prior)
+baseline = Simulation(label = "No Prior Immunity")
+immune = Simulation(label = "Prior Immunity", prior_immunity = prior)
 run!(baseline)
 run!(immune)
 rd_b = ResultData(baseline)
@@ -318,7 +319,7 @@ See the [config file reference](@ref config-files) for all parameters.
 
 ## Custom Disease Progression
 
-Beyond the default progression categories (`Asymptomatic`, `Mild`, `Severe`, and `Critical`), GEMS allows you to specify custom disese progressions.
+Beyond the default progression categories (`Asymptomatic`, `Mild`, `Severe`, `Critical`, `Ward`, `ICU`, and `Fatal`), GEMS allows you to specify custom disese progressions.
 To do that, you need to define two things:
 - A struct for your new progression that inherits from `ProgressionCategory` and
 - A `calculate_progression()` function that defines the actual progression for an individual
@@ -387,7 +388,7 @@ Which profile an infection draws from is a separate question from how a host's i
 
 To go further, you can replace the policy entirely. Suppose we want a share of `severe` cases to die *without* ever being hospitalized — because death is host-level, this belongs in a health progression, not a disease one. Define a struct that inherits from `GEMS.HealthProgression` and a `calculate_health_progression!()` method: it `push!`es its care demand onto `contributions` and returns the death it proposes.
 
-The method is invoked once per arriving infection, and `new_infection` is the one that triggered it. `index` is the simulation's `HealthProfileIndex`: `GEMS._health_profile(index, infection)` gives the profile any infection carries, so a policy can draw the standard care for one and add to it. `DefaultHealthProgression`'s own method is the template to start from.
+The method is invoked once per arriving infection, and `new_infection` is the one that triggered it. `index` is the simulation's `HealthProfileIndex`: `GEMS._health_profile(index, infection)` gives the profile any infection carries, so a policy can draw the standard care for one and add to it. `DefaultHealthProgression`'s own method is the template to start from. Whether a host stays home is not part of the policy: GEMS draws it from the profile itself, so a custom policy cannot drop it. A custom `HealthProfile` keeps severe cases at home, unless it has fields named `symptomatic_homebound_probability` and `severe_homebound_probability`, which are then used instead.
 
 !!! warning "Contribute only the increment"
     Contributions superpose and are never retracted, so a policy must contribute only what previous calls did not. Re-deriving the whole active set and contributing all of it again on every call leaves the host admitted for the rest of the run, and nothing detects it. The returned `HealthOutcome` is likewise this call's own contribution: GEMS folds it with the host's committed death (earliest wins), so returning an empty `HealthOutcome()` means "no mortality from this infection", not "cancel the scheduled death".

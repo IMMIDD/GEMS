@@ -34,6 +34,7 @@ be calculated from a `BatchProcessor`.
         - `total_infections::Dict{Int8, Dict{String, Real}}`: Per-pathogen summary statistics on total infections across simulation runs
         - `attack_rate::Dict{Int8, Dict{String, Real}}`: Per-pathogen summary statistics on attack rates across simulation runs
         - `r0::Dict{Int8, Dict{String, Real}}`: Per-pathogen summary statistics on the basic reproduction number (R0)
+        - `household_secondary_attack_rate::Dict{Int8, Dict{String, Dict{String, Real}}}`: Per-pathogen summary statistics on the pooled household secondary attack rates (`household_sar`, `household_sar_home`)
         - `total_quarantines::Dict{String, Real}`: Summary statistics on total quarantines across simulation runs
         - `total_tests::Dict{String, Dict{String, Real}}`: Summary statistics on total tests per TestType
 
@@ -80,6 +81,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "total_infections" => () -> total_infections(bP),
                     "attack_rate" => () -> attack_rate(bP),
                     "r0" => () -> r0(bP),
+                    "household_secondary_attack_rate" => () -> household_secondary_attack_rate(bP),
                     "total_quarantines" => () -> total_quarantines(bP),
                     "total_tests" => () -> total_tests(bP),
                     "total_detected_cases" => () -> total_detected_cases(bP),

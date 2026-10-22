@@ -49,7 +49,7 @@ struct CrossImmunityModifier <: TransmissionModifier
             cross_immunities = Tuple{String, Float64}[],
             default_cross_factor::Float64 = 0.0)
 
-        (default_cross_factor < 0.0 || default_cross_factor > 1.0) &&
+        !(0.0 <= default_cross_factor <= 1.0) &&
             throw(ArgumentError("default_cross_factor must be between 0 and 1."))
 
         # accepts a list of (name, factor) pairs, incl. TOML's [name, factor] vectors
@@ -59,7 +59,7 @@ struct CrossImmunityModifier <: TransmissionModifier
             factor = Float64(entry[2])
             isempty(name) &&
                 throw(ArgumentError("cross_immunities pathogen names must be non-empty."))
-            (factor < 0.0 || factor > 1.0) &&
+            !(0.0 <= factor <= 1.0) &&
                 throw(ArgumentError("cross_immunities factors must be between 0 and 1."))
             haskey(factors, name) &&
                 throw(ArgumentError("Duplicate pathogen name '$name' in cross_immunities."))
@@ -72,7 +72,7 @@ end
 
 Base.show(io::IO, m::CrossImmunityModifier) = print(io,
     "CrossImmunityModifier(" *
-    "cross_immunities=$(m.cross_immunities), " *
+    "cross_immunities=$(sort!(collect(m.cross_immunities))), " *
     "default_cross_factor=$(m.default_cross_factor))")
 
 
@@ -123,7 +123,7 @@ function transmission_factor(
 end
 
 transmission_factor(modifier::CrossImmunityModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_transmission_factor_in_type(modifier::CrossImmunityModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
@@ -168,7 +168,7 @@ mutable struct CrossImmunityTransmissionRate <: TransmissionFunction
             cross_immunities = Tuple{String, Float64}[],
             default_cross_factor::Float64 = 0.0)
 
-        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
+        !(0.0 <= transmission_rate <= 1.0) &&
             throw(ArgumentError("transmission_rate must be between 0 and 1."))
 
         modifier = CrossImmunityModifier(
@@ -182,7 +182,7 @@ end
 
 Base.show(io::IO, tf::CrossImmunityTransmissionRate) = print(io,
     "CrossImmunityTransmissionRate(β=$(tf.transmission_rate), " *
-    "cross_immunities=$(tf.modifier.cross_immunities), " *
+    "cross_immunities=$(sort!(collect(tf.modifier.cross_immunities))), " *
     "default_cross_factor=$(tf.modifier.default_cross_factor))")
 
 
@@ -224,7 +224,7 @@ end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default
 transmission_probability(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_transmission_probability_in_type(transFunc::CrossImmunityTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}

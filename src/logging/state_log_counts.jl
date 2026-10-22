@@ -9,7 +9,7 @@
 mutable struct _StateLogCounts
     exposed::Int
     detected::Int
-    # severe or hospitalized after the disease update, whose open settings the log counts
+    # homebound or hospitalized after the disease update, whose open settings the log counts
     in_care::Vector{Individual}
     quarantined::Int
     quarantined_students::Int

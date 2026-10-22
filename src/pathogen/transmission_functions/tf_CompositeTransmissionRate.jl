@@ -105,7 +105,7 @@ function transmission_probability(
 end
 
 transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_transmission_probability(transFunc::CompositeTransmissionRate, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64

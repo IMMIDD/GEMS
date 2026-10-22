@@ -142,10 +142,10 @@ calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCatego
 """
     transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
 
-Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using `default_gems_rng()`.
+Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using a fresh `Xoshiro()`.
 """
 function transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
-    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 end
 
 """
@@ -201,7 +201,7 @@ max_transmission_factor_in_type(modifier::TransmissionModifier, pathogen_id::Int
 
 Framework entry point called by the simulation loop. Applies infectiousness and standard
 immunity exactly once around the base rate from `transmission_probability`:
-`base_rate × infectiousness/100 × susceptibility_factor(immunity_profile, immunity_level)`.
+`min(base_rate, 1) × infectiousness/100 × susceptibility_factor(immunity_profile, immunity_level)`.
 
 How much the infectee's immunity reduces the probability is decided by the pathogen's
 `ImmunityProfile` via `susceptibility_factor`, which defaults to `1 − immunity/100`.
@@ -220,7 +220,7 @@ function effective_transmission_probability(transFunc::TransmissionFunction, pat
         level = _immunity_recorded(state) ? _immunity_level(p, state, infectee, sim, tick) : Int8(0)
         susceptibility_factor(immunity_profile(p), level)
     end
-    return transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng) *
+    return min(1.0, transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, rng)) *
            inf / 100.0 *
            susceptibility
 end
@@ -228,10 +228,10 @@ end
 """
     effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
 
-Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using `default_gems_rng()`.
+Convenience wrapper without explicit RNG that delegates to the rng-accepting overload using a fresh `Xoshiro()`.
 """
 effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64 =
-    effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    effective_transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
@@ -336,11 +336,11 @@ end
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
 
-For profiles that don't draw: passes the unkeyed `default_gems_rng()`, so draws differ from reads
+For profiles that don't draw: passes a fresh, unkeyed `Xoshiro()`, so draws differ from reads
 during a simulation.
 """
 @inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
-    return calculate_immunity(profile, state, individual, tick, default_gems_rng())
+    return calculate_immunity(profile, state, individual, tick, Xoshiro())
 end
 
 """

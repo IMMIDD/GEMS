@@ -26,6 +26,7 @@ export is_mild, ismild, mild
 export is_hospitalized, ishospitalized, hospitalized
 export is_icu, isicu, icu
 export is_ventilated, isventilated, ventilated
+export is_homebound, ishomebound, homebound
 export is_recovered, isrecovered, recovered
 export is_dead, isdead, dead, death
 export is_detected, isdetected, detected
@@ -120,6 +121,7 @@ A type to represent individuals that act as agents inside the simulation.
     - `hospital_demands::Int16`: Count of active care contributions demanding a hospital bed. The host occupies the level while the count is above zero.
     - `icu_demands::Int16`: Count of active care contributions demanding ICU.
     - `ventilation_demands::Int16`: Count of active care contributions demanding ventilation.
+    - `homebound_demands::Int16`: Count of active homebound windows. The host cannot leave the household while the count is above zero.
     - `death::Int16`: Tick of host death
 
 - Pathogen
@@ -172,8 +174,8 @@ A type to represent individuals that act as agents inside the simulation.
     hospital_demands::Int16 = 0                     # off 42,  2B,  line 0
     icu_demands::Int16 = 0                          # off 44,  2B,  line 0
     ventilation_demands::Int16 = 0                  # off 46,  2B,  line 0
-    death::Int16 = DEFAULT_TICK                     # off 48,  2B,  line 0
-    #                                                 off 50-51, 2B free (alignment)
+    homebound_demands::Int16 = 0                    # off 48,  2B,  line 0
+    death::Int16 = DEFAULT_TICK                     # off 50,  2B,  line 0
 
     # PATHOGEN
     infection_cache::NTuple{INFECTIONS_CACHE_SIZE, InfectionState} =
@@ -508,6 +510,17 @@ isventilated(individual::Individual) = is_ventilated(individual)
 ventilated(individual::Individual) = is_ventilated(individual)
 
 """
+    is_homebound(individual::Individual)
+    ishomebound(individual::Individual)
+    homebound(individual::Individual)
+
+Returns `true` if the individual is currently too sick to leave the household.
+"""
+is_homebound(individual::Individual) = individual.homebound_demands > 0
+ishomebound(individual::Individual) = is_homebound(individual)
+homebound(individual::Individual) = is_homebound(individual)
+
+"""
     is_dead(individual::Individual)
     isdead(individual::Individual)
     dead(individual::Individual)
@@ -747,7 +760,7 @@ end
     individual_base_fieldnames()
 
 Return the field names of `Individual` that a constructor may populate from external data,
-excluding `:extensions`, the three `*_demands` counters and the four plan fields.
+excluding `:extensions`, the `*_demands` counters and the four plan fields.
 Used by constructors that iterate over fields (e.g. from a `Dict` or `DataFrame`) so that
 they don't accidentally try to populate the extension slot from a column that doesn't exist.
 
@@ -756,7 +769,7 @@ matching discharge scheduled, stranding the host as permanently admitted. The pl
 are likewise derived; membership is read from the `household`/`office`/... columns instead.
 """
 const _INDIVIDUAL_DERIVED_FIELDS = (:extensions, :hospital_demands, :icu_demands,
-                                    :ventilation_demands, :plan_offset, :plan_count, :membership_mask, :plan_scaled)
+                                    :ventilation_demands, :homebound_demands, :plan_offset, :plan_count, :membership_mask, :plan_scaled)
 
 individual_base_fieldnames() = filter(f -> !(f in _INDIVIDUAL_DERIVED_FIELDS), fieldnames(Individual))
 
@@ -842,6 +855,7 @@ function Base.show(io::IO, individual::Individual)
         "Hospital Demands" => individual.hospital_demands,
         "ICU Demands" => individual.icu_demands,
         "Ventilation Demands" => individual.ventilation_demands,
+        "Homebound Demands" => individual.homebound_demands,
         "Is Dead" => is_dead(individual),
 
         # the plan itself lives on the population, so only its extent is visible from here

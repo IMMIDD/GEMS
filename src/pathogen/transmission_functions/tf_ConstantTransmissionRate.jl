@@ -10,7 +10,7 @@ mutable struct ConstantTransmissionRate <: TransmissionFunction
     transmission_rate::Float64
 
     function ConstantTransmissionRate(;transmission_rate::Float64 = .5)
-        transmission_rate < 0 && throw(ArgumentError("Transmission rate must be non-negative."))
+        !(transmission_rate >= 0) && throw(ArgumentError("Transmission rate must be non-negative."))
         transmission_rate > 1 && throw(ArgumentError("Transmission rate must be at most 1."))
        
         return new(transmission_rate)
@@ -57,7 +57,7 @@ end
 
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_transmission_probability_in_type(transFunc::ConstantTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}

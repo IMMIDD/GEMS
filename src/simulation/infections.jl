@@ -200,7 +200,7 @@ end
     can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
 
 Whether `ind` can infect others in `setting`: infectious, not hospitalized, the setting open, and kept
-home neither by severe symptoms nor by household quarantine.
+home neither by being homebound nor by household quarantine.
 """
 function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
     return _can_infect(ind, typeof(setting)) && is_open(setting)
@@ -216,8 +216,8 @@ function _can_infect(ind::Individual, setting_type::Type{S})::Bool where {S<:Set
         return false
     end
 
-    # severe symptoms keep the host home
-    if is_severe(ind) && (setting_type !== Household)
+    # homebound hosts cannot leave the household
+    if is_homebound(ind) && (setting_type !== Household)
         return false
     end
 
@@ -233,8 +233,8 @@ end
 """
     can_be_contacted(ind::Individual, setting::Setting)::Bool
 
-Whether `ind` can be contacted, and so infected, in `setting`: alive, not hospitalized, and not kept
-home by household quarantine.
+Whether `ind` can be contacted, and so infected, in `setting`: alive, not hospitalized, and kept
+home neither by being homebound nor by household quarantine.
 """
 function can_be_contacted(ind::Individual, setting::Setting)::Bool
     if dead(ind)
@@ -242,6 +242,11 @@ function can_be_contacted(ind::Individual, setting::Setting)::Bool
     end
 
     if is_hospitalized(ind)
+        return false
+    end
+
+    # homebound hosts cannot leave the household
+    if is_homebound(ind) && (typeof(setting) != Household)
         return false
     end
 
@@ -423,7 +428,7 @@ function infect!(infectee::Individual,
         any(i -> !infectee.infection_cache[i].active, 1:INFECTIONS_CACHE_SIZE) ||
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         state = push_infection!(InfectionRegistry(), infectee, id(pathogen), DEFAULT_INFECTION_ID, dp, tag)
-        # a throwaway schedule: nothing drains it without a sim, and an empty profile index draws no care
+        # a throwaway schedule: nothing drains it without a sim, so neither care nor a homebound window takes effect
         compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), HealthProfileIndex(), state, tick, rng, HealthSchedule())
         _mark_infected!(infectee, id(pathogen))
     else

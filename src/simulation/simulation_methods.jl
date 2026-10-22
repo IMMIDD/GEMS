@@ -32,6 +32,7 @@ to the simulation's `QuarantineLogger`.
 function log_stepinfo(simulation::Simulation)
     st_unab_cnt = zeros(Int, Threads.maxthreadid())
     wo_unab_cnt = zeros(Int, Threads.maxthreadid())
+    hb_cnt = zeros(Int, Threads.maxthreadid())
 
     plans = activity_plans(simulation)
     s_classes = schoolclasses(simulation)
@@ -40,18 +41,21 @@ function log_stepinfo(simulation::Simulation)
     classes_open = _all_open(settingscontainer(simulation), SchoolClass)
     offices_open = _all_open(settingscontainer(simulation), Office)
 
-    # the severe and hospitalized the disease update found, unless `update_quarantines!` counted them as quarantined
+    # the homebound and hospitalized the disease update found, unless `update_quarantines!` counted them as quarantined
     log_counts = simulation.state_log_counts
     Threads.@threads :static for counts in log_counts
         tid = Threads.threadid()
-        loc_st_unab = 0; loc_wo_unab = 0
+        loc_st_unab = 0; loc_wo_unab = 0; loc_hb = 0
         for i in counts.in_care
+            # at home, so not counted again under hospital occupancy
+            loc_hb += is_homebound(i) && !is_hospitalized(i) ? 1 : 0
             isquarantined(i) && continue
             loc_st_unab += _open_memberships(plans, i, s_classes, classes_open)
             loc_wo_unab += _open_memberships(plans, i, offs, offices_open)
         end
         @inbounds st_unab_cnt[tid] += loc_st_unab
         @inbounds wo_unab_cnt[tid] += loc_wo_unab
+        @inbounds hb_cnt[tid] += loc_hb
     end
 
     if !classes_open
@@ -89,7 +93,8 @@ function log_stepinfo(simulation::Simulation)
         unable_to_attend_students = sum(st_unab_cnt) + sum(t -> t.missed_classes, log_counts),
         quarantined_workers = quarantined_workers,
         isolated_workers = sum(t -> t.isolated_workers, log_counts),
-        unable_to_attend_workers = sum(wo_unab_cnt) + sum(t -> t.missed_offices, log_counts)
+        unable_to_attend_workers = sum(wo_unab_cnt) + sum(t -> t.missed_offices, log_counts),
+        homebound = sum(hb_cnt)
     )
 end
 
@@ -116,7 +121,8 @@ function copy_last_log_state(simulation::Simulation)
     last_quar_wo = isempty(sl.quarantined_workers) ? 0 : sl.quarantined_workers[end]
     last_isol_wo = isempty(sl.isolated_workers) ? 0 : sl.isolated_workers[end]
     last_unab_wo = isempty(sl.unable_to_attend_workers) ? 0 : sl.unable_to_attend_workers[end]
-    
+    last_homebound = isempty(sl.homebound) ? 0 : sl.homebound[end]
+
     current_tick = tick(simulation)
     
     # Log the copied state for the current tick
@@ -125,7 +131,7 @@ function copy_last_log_state(simulation::Simulation)
          detected=last_detected, quarantined=last_quar, quarantined_students=last_quar_st, 
          isolated_students=last_isol_st, unable_to_attend_students=last_unab_st, 
          quarantined_workers=last_quar_wo, isolated_workers=last_isol_wo, 
-         unable_to_attend_workers=last_unab_wo)             
+         unable_to_attend_workers=last_unab_wo, homebound=last_homebound)             
 end
 
 """
@@ -252,11 +258,11 @@ function seed_scheduled!(simulation::Simulation)
     return nothing
 end
 
-# An import lands only on a host that is alive, not in hospital or isolating, and without the pathogen.
+# An import lands only on a host that is alive, not in hospital, homebound or isolating, and without the pathogen.
 # Seeding runs before this tick's flags are updated, so death and quarantine are read from their ticks.
 @inline _can_be_seeded(individual::Individual, pathogen_id::Int8, t::Int16) =
     !dead(individual) && !(Int16(0) <= individual.death <= t) &&
-    !hospitalized(individual) && !is_quarantined(individual, t) &&
+    !hospitalized(individual) && !is_homebound(individual) && !is_quarantined(individual, t) &&
     !infected(individual, pathogen_id)
 
 """
@@ -582,11 +588,11 @@ Returns `true` if an admission edge fired, for the trigger phase.
 """
 @inline function _apply_transition!(indiv::Individual, hl::HealthLogger, tr::CareTransition, tick::Int16)
     if tr.is_admission
-        _adjust_demand!(indiv, tr.level, Int16(1)) == 1 || return false
+        _adjust_care_demand!(indiv, tr.level, Int16(1)) == 1 || return false
         log!(hl, id(indiv), _care_event(tr.level, true), tick)
         return true
     end
-    _adjust_demand!(indiv, tr.level, Int16(-1)) == 0 &&
+    _adjust_care_demand!(indiv, tr.level, Int16(-1)) == 0 &&
         log!(hl, id(indiv), _care_event(tr.level, false), tick)
     return false
 end
@@ -594,7 +600,7 @@ end
 """
     drain_health_schedule!(sim::Simulation)
 
-Realizes every care transition due at or before the current tick.
+Realizes every care transition and homebound start or end due at or before the current tick.
 
 Admissions first, then discharges, each in ladder order (reversed for discharges). That split is what
 lets one stay end exactly where another begins without logging a spurious discharge and re-admission,
@@ -616,7 +622,20 @@ function drain_health_schedule!(sim::Simulation)
         while sched.head <= Int(t)
             bucket_tick = Int16(sched.head)
             sched.head += 1
-            bucket = get(sched.buckets, bucket_tick, nothing)
+
+            # homebound windows are not logged and never zero-length, so start/end order is irrelevant
+            homebound = get(sched.homebound_buckets, bucket_tick, nothing)
+            if homebound !== nothing
+                for tr in homebound
+                    indiv = get_individual_by_id(pop, tr.host_id)
+                    (Int16(0) <= indiv.death <= t) && continue
+                    n = _adjust_homebound_demand!(indiv, tr.is_start ? Int16(1) : Int16(-1))
+                    tr.is_start && n == 1 && _mark_active!(sim, indiv)
+                end
+                delete!(sched.homebound_buckets, bucket_tick)
+            end
+
+            bucket = get(sched.care_buckets, bucket_tick, nothing)
             bucket === nothing && continue
 
             for level in instances(CareLevel), tr in bucket
@@ -637,7 +656,7 @@ function drain_health_schedule!(sim::Simulation)
                 _mark_active!(sim, indiv)
             end
 
-            delete!(sched.buckets, bucket_tick)
+            delete!(sched.care_buckets, bucket_tick)
         end
     end
     return nothing
@@ -668,15 +687,16 @@ end
     _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
 
 Closes every open care level when a host dies, logging one discharge per level in reverse ladder
-order. Counters are zeroed rather than decremented, so a stale queued discharge cannot drive one
-negative.
+order, and ends any homebound window unlogged. Counters are zeroed rather than decremented, so a
+stale queued discharge cannot drive one negative.
 """
 @inline function _close_care_at_death!(indiv::Individual, hl::HealthLogger, tick::Int16)
     for level in reverse(instances(CareLevel))
-        _get_demand(indiv, level) > 0 || continue
-        _set_demand!(indiv, level, Int16(0))
+        _get_care_demand(indiv, level) > 0 || continue
+        _set_care_demand!(indiv, level, Int16(0))
         log!(hl, id(indiv), _care_event(level, false), tick)
     end
+    indiv.homebound_demands = 0
     return nothing
 end
 
@@ -711,7 +731,7 @@ end
 Whether `indiv` must keep its active flag after this tick's disease update.
 """
 @inline _stays_active(indiv::Individual) = infected(indiv) ||
-    (Int16(0) <= indiv.death && !dead(indiv)) || hospitalized(indiv) || detected(indiv)
+    (Int16(0) <= indiv.death && !dead(indiv)) || hospitalized(indiv) || detected(indiv) || is_homebound(indiv)
 
 """
     update_individual!(indiv::Individual, tick::Int16, sim::Simulation)

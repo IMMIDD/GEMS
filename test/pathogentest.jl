@@ -166,6 +166,70 @@ end
         @test pr_crit.critical_offset_to_severeness_offset === poi3
         @test pr_crit.severeness_offset_to_recovery === poi4
         @test isnothing(pr_crit.health)
+
+        # ward, icu, fatal: severe / critical course with their own timings, outcome fixed by their profile
+        pr_ward = Ward(
+            exposure_to_infectiousness_onset = poi2,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi2,
+            severeness_onset_to_severeness_offset = poi10,
+            severeness_offset_to_recovery = poi4,
+            hospital_admission_to_hospital_discharge = poi10
+        )
+        pr_icu = ICU(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi1,
+            critical_onset_to_critical_offset = poi10,
+            critical_offset_to_severeness_offset = poi5,
+            severeness_offset_to_recovery = poi2,
+            icu_admission_to_icu_discharge = poi10
+        )
+        pr_fatal = Fatal(
+            exposure_to_infectiousness_onset = poi1,
+            infectiousness_onset_to_symptom_onset = poi1,
+            symptom_onset_to_severeness_onset = poi1,
+            severeness_onset_to_critical_onset = poi2,
+            critical_onset_to_critical_offset = poi5,
+            critical_offset_to_severeness_offset = poi1,
+            severeness_offset_to_recovery = poi1,
+            critical_onset_to_death = poi7
+        )
+        @test pr_ward.inner isa Severe && pr_ward.inner.severeness_onset_to_severeness_offset === poi10
+        @test pr_ward.health isa WardHealthProfile
+        @test pr_icu.inner isa Critical && pr_icu.inner.critical_onset_to_critical_offset === poi10
+        @test pr_icu.health isa ICUHealthProfile
+        @test pr_fatal.inner isa Critical && pr_fatal.inner.critical_onset_to_critical_offset === poi5
+        @test pr_fatal.health isa FatalHealthProfile
+        # the inner course carries no health of its own
+        @test isnothing(pr_ward.inner.health) && isnothing(pr_fatal.inner.health)
+
+        # they sit alongside the general tiers in one pathogen and resolve by name
+        p_tiers = Pathogen(
+            name = "Tiers",
+            id = 6,
+            progressions = [pr_sev, pr_ward, pr_crit, pr_icu, pr_fatal],
+            progression_assignment = AgeBasedProgressionAssignment(
+                age_groups = ["-59", "60-"],
+                progression_categories = ["Severe", "Ward", "Critical", "ICU", "Fatal"],
+                stratification_matrix = [[0.2, 0.2, 0.2, 0.2, 0.2], [0.0, 0.0, 0.0, 0.0, 1.0]]),
+            transmission_function = ctf
+        )
+        @test get_progression(p_tiers, Ward) === pr_ward
+        @test get_progression(p_tiers, ICU) === pr_icu
+        @test get_progression(p_tiers, Fatal) === pr_fatal
+        ind_old = Individual(id = Int32(1), sex = Int8(1), age = Int8(70))
+        @test GEMS.assign(ind_old, progression_assignment(p_tiers), Xoshiro(1)) == Fatal
+
+        # courses have the shape of the category they copy
+        dp_ward = GEMS.calculate_progression(ind_old, Int16(0), pr_ward, Xoshiro(1))
+        @test 0 <= dp_ward.severeness_onset <= dp_ward.severeness_offset <= dp_ward.recovery
+        @test dp_ward.critical_onset == -1
+        for pr in (pr_icu, pr_fatal)
+            dp = GEMS.calculate_progression(ind_old, Int16(0), pr, Xoshiro(1))
+            @test 0 <= dp.severeness_onset <= dp.critical_onset <= dp.critical_offset <= dp.severeness_offset <= dp.recovery
+        end
     end
 
     @testset "Embedded Health Profile" begin
@@ -542,6 +606,7 @@ end
 
             @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = -0.1)
             @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = 1.5)
+            @test_throws ArgumentError ConstantTransmissionRate(transmission_rate = NaN)
 
             # effective_transmission_probability throws when infecter has zero infectiousness
             @test_throws ArgumentError effective_transmission_probability(test_ctr, id(first_pathogen(sim)), suscpt_ind, individuals(sim)[3], households(sim)[1], Int16(1), sim)
@@ -600,6 +665,9 @@ end
             @test_throws ArgumentError AgeDependentTransmissionRate(
                 age_groups = ["0-19", "20-39", "40-59", "60-"],
                 transmission_rates = [0.1, 1.2, 0.3, 0.4])
+            @test_throws ArgumentError AgeDependentTransmissionRate(
+                age_groups = ["0-19", "20-39", "40-59", "60-"],
+                transmission_rates = [0.1, NaN, 0.3, 0.4])
 
             @test !isempty(@capture_out show(abtr))
         end
@@ -620,6 +688,8 @@ end
             @test_throws ArgumentError CrossImmunityTransmissionRate(transmission_rate = 1.5)
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = -0.1)
             @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = 1.5)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(default_cross_factor = NaN)
+            @test_throws ArgumentError CrossImmunityTransmissionRate(cross_immunities = [("A", NaN)])
             @test_throws ArgumentError CrossImmunityTransmissionRate(
                 cross_immunities = [("A", 1.5)])
             @test_throws ArgumentError CrossImmunityTransmissionRate(
@@ -699,6 +769,11 @@ end
                 interferences = [("A", 0.5), ("A", 0.3)])   # duplicate name
             @test_throws ArgumentError ViralInterferenceTransmissionRate(default_persistence = -1.0)
             @test_throws ArgumentError ViralInterferenceTransmissionRate(persistence = [("A", -1.0)])
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_interference_factor = NaN)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(default_persistence = NaN)
+            @test_throws ArgumentError ViralInterferenceTransmissionRate(persistence = [("A", NaN)])
+            # Inf persistence means interference never wears off
+            @test ViralInterferenceTransmissionRate(persistence = [("A", Inf)]).modifier.persistence["A"] == Inf
             @test_throws ArgumentError ViralInterferenceTransmissionRate(
                 persistence = [("A", 5.0), ("A", 3.0)])     # duplicate persistence name
 
@@ -903,6 +978,7 @@ end
             # constructor validation
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=-0.1, peak_day=1)
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=1.5, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=NaN, peak_day=1)
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=0)
             @test_throws ArgumentError SinusoidalSeasonalModifier(amplitude=0.5, peak_day=366)
 
@@ -937,6 +1013,7 @@ end
             # constructor validation
             @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=-0.1, amplitude=0.3, peak_day=1)
             @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=1.5, amplitude=0.3, peak_day=1)
+            @test_throws ArgumentError SinusoidalSeasonalTransmissionRate(transmission_rate=NaN, amplitude=0.3, peak_day=1)
 
             # transmission_probability = base_rate × seasonal_factor
             @test transmission_probability(tf_ssm, pid, ind1, ind2, hh, Int16(0), sim_ssm) ≈ 0.4 * 1.5
@@ -947,11 +1024,17 @@ end
             @test mod.factors[Household] === 3.0
             @test mod.default_factor === 0.5
             @test !isempty(@capture_out show(mod))
+            # entries print sorted, independent of Dict order
+            @test sprint(show, mod) == "SettingModifier(Household=3.0, SchoolClass=1.5, default=0.5)"
 
             # constructor validation
             @test_throws ArgumentError SettingModifier(factors=Dict("NoSuchSetting" => 1.0), default_factor=1.0)
             @test_throws ArgumentError SettingModifier(factors=Dict("Household" => -1.0), default_factor=1.0)
             @test_throws ArgumentError SettingModifier(factors=Dict("Household" => 1.0), default_factor=-0.1)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => Inf), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => NaN), default_factor=1.0)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => 1.0), default_factor=Inf)
+            @test_throws ArgumentError SettingModifier(factors=Dict("Household" => 1.0), default_factor=NaN)
             @test_throws UndefKeywordError SettingModifier(factors=Dict("Household" => 1.0))
 
             p_sm = Pathogen(id=1, name="TestSM",
@@ -985,6 +1068,15 @@ end
             @test max_transmission_probability(tf_str, pid, ind1, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
             @test max_transmission_probability(tf_str, pid, ind1, office, Int16(0), sim_sm) == 0.0
             @test max_transmission_probability(tf_str, pid, ind1, SchoolClass(id=1), Int16(0), sim_sm) ≈ 0.2 * 0.5
+
+            # base rate above 1 is capped before infectiousness and immunity are applied
+            tf_cap = SettingTransmissionRate(transmission_rate=0.5, factors=Dict("Household" => 3.0), default_factor=1.0)
+            infect!(ind1, Int16(0), first_pathogen(sim_sm), rng=Xoshiro())
+            GEMS.update_individual!(ind1, Int16(1), sim_sm)
+            inf_sm = infectiousness(ind1, sim_sm, pid)
+            imm_sm = immunity_level(ind2, sim_sm, pid)
+            @test transmission_probability(tf_cap, pid, ind1, ind2, hh, Int16(1), sim_sm) ≈ 1.5
+            @test effective_transmission_probability(tf_cap, pid, ind1, ind2, hh, Int16(1), sim_sm) ≈ 1.0 * (inf_sm / 100.0) * (1.0 - imm_sm / 100.0)
         end
 
         @testset "Transmission Bounds" begin

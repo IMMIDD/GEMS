@@ -66,9 +66,9 @@ struct ViralInterferenceModifier <: TransmissionModifier
             persistence = Tuple{String, Float64}[],
             default_persistence::Float64 = 0.0)
 
-        (default_interference_factor < 0.0 || default_interference_factor > 1.0) &&
+        !(0.0 <= default_interference_factor <= 1.0) &&
             throw(ArgumentError("default_interference_factor must be between 0 and 1."))
-        default_persistence < 0.0 &&
+        !(default_persistence >= 0.0) &&
             throw(ArgumentError("default_persistence must be non-negative."))
 
         # accepts a list of (name, factor) pairs, incl. TOML's [name, factor] vectors
@@ -78,7 +78,7 @@ struct ViralInterferenceModifier <: TransmissionModifier
             factor = Float64(entry[2])
             isempty(name) &&
                 throw(ArgumentError("interferences pathogen names must be non-empty."))
-            (factor < 0.0 || factor > 1.0) &&
+            !(0.0 <= factor <= 1.0) &&
                 throw(ArgumentError("interferences factors must be between 0 and 1."))
             haskey(factors, name) &&
                 throw(ArgumentError("Duplicate pathogen name '$name' in interferences."))
@@ -92,7 +92,7 @@ struct ViralInterferenceModifier <: TransmissionModifier
             ticks = Float64(entry[2])
             isempty(name) &&
                 throw(ArgumentError("persistence pathogen names must be non-empty."))
-            ticks < 0.0 &&
+            !(ticks >= 0.0) &&
                 throw(ArgumentError("persistence durations must be non-negative."))
             haskey(windows, name) &&
                 throw(ArgumentError("Duplicate pathogen name '$name' in persistence."))
@@ -105,9 +105,9 @@ end
 
 Base.show(io::IO, m::ViralInterferenceModifier) = print(io,
     "ViralInterferenceModifier(" *
-    "interferences=$(m.interferences), " *
+    "interferences=$(sort!(collect(m.interferences))), " *
     "default_interference_factor=$(m.default_interference_factor), " *
-    "persistence=$(m.persistence), " *
+    "persistence=$(sort!(collect(m.persistence))), " *
     "default_persistence=$(m.default_persistence))")
 
 
@@ -170,7 +170,7 @@ function transmission_factor(
 end
 
 transmission_factor(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_transmission_factor_in_type(modifier::ViralInterferenceModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
@@ -217,7 +217,7 @@ mutable struct ViralInterferenceTransmissionRate <: TransmissionFunction
             persistence = Tuple{String, Float64}[],
             default_persistence::Float64 = 0.0)
 
-        (transmission_rate < 0.0 || transmission_rate > 1.0) &&
+        !(0.0 <= transmission_rate <= 1.0) &&
             throw(ArgumentError("transmission_rate must be between 0 and 1."))
 
         modifier = ViralInterferenceModifier(
@@ -233,9 +233,9 @@ end
 
 Base.show(io::IO, tf::ViralInterferenceTransmissionRate) = print(io,
     "ViralInterferenceTransmissionRate(β=$(tf.transmission_rate), " *
-    "interferences=$(tf.modifier.interferences), " *
+    "interferences=$(sort!(collect(tf.modifier.interferences))), " *
     "default_interference_factor=$(tf.modifier.default_interference_factor), " *
-    "persistence=$(tf.modifier.persistence), " *
+    "persistence=$(sort!(collect(tf.modifier.persistence))), " *
     "default_persistence=$(tf.modifier.default_persistence))")
 
 
@@ -277,7 +277,7 @@ end
 
 # Convenience wrapper without explicit RNG — uses the thread-local default
 transmission_probability(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
-    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, default_gems_rng())
+    transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
 
 """
     max_transmission_probability_in_type(transFunc::ViralInterferenceTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}

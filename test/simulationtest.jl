@@ -1723,7 +1723,7 @@ import GEMS: increment!, infected!
                 c[:exposed] += GEMS.is_exposed(i)
                 c[:infectious] += GEMS.infectious(i)
                 c[:detected] += GEMS.is_detected(i)
-                if GEMS.is_severe(i) || GEMS.is_hospitalized(i) || GEMS.isquarantined(i)
+                if GEMS.is_homebound(i) || GEMS.is_hospitalized(i) || GEMS.isquarantined(i)
                     c[:unable_to_attend_students] += GEMS._open_memberships(plans, i, classes)
                     c[:unable_to_attend_workers] += GEMS._open_memberships(plans, i, offs)
                 end
