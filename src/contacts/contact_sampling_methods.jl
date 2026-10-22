@@ -254,7 +254,7 @@ end
         present_inds::Vector{Individual}, 
         tick::Int16; 
         replace::Bool = true, 
-        rng::Xoshiro = default_gems_rng()
+        rng::Xoshiro = Xoshiro()
     )
 
 Wrapper for non-mutating function and keyword arguments
@@ -266,7 +266,7 @@ function sample_contacts(
     present_inds::Vector{Individual}, 
     tick::Int16; 
     replace::Bool = true, 
-    rng::Xoshiro = default_gems_rng()
+    rng::Xoshiro = Xoshiro()
 )
     indivs = Vector{Individual}()
     sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)

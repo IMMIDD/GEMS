@@ -153,7 +153,7 @@ mutable struct Population
         avg_household_size::Real = 3.0,
         avg_office_size::Real = 5.0,
         avg_school_size::Real = 100.0,
-        rng::Xoshiro = default_gems_rng(),
+        rng::Xoshiro = Xoshiro(),
         empty::Bool = false,
         ind_extension = nothing)
 

@@ -101,4 +101,21 @@
         results = [rand_round(3.7, Xoshiro(42)) for _ in 1:100]
         @test all(3 .<= results .<= 4)
     end
+
+    @testset "rng keyword defaults" begin
+        # functions with an optional rng keyword must not fall back to the enforced global RNG
+        @test Population(n = 500) isa Population
+
+        inds = [Individual(id = j, age = 30, sex = 1, household = 1) for j in 1:20]
+        @test length(sample_individuals(inds, 5)) == 5
+        @test length(GEMS.sample_individuals!(Individual[], inds, 5)) == 5
+
+        rs = RandomSampling()
+        h = Household(id = 1, individuals = inds, contact_sampling_method = rs)
+        @test length(sample_contacts(rs, h, 1, inds, GEMS.DEFAULT_TICK)) == 1
+        @test length(sample_individuals(h, 5)) == 5
+
+        @test infect!(inds[1], Int16(0), Pathogen(id = 1, name = "P1")) == GEMS.DEFAULT_INFECTION_ID
+        @test isinfected(inds[1])
+    end
 end

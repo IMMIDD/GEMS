@@ -208,11 +208,11 @@ end
 
 
 """
-    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+    sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Xoshiro())
 
 Returns a subsample of a vector of `Individuals` of sample size `n`.
 """
-function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+function sample_individuals(individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Xoshiro())
     if n >= length(individuals)
         return individuals
     else
@@ -222,21 +222,21 @@ end
 
 
 """
-    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_gems_rng())
+    sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = Xoshiro())
 
 Returns a subsample of the setting's `Individuals` of sample size `n`.
 """
-sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = default_gems_rng()) = sample_individuals(setting |> individuals, n, rng=rng)
+sample_individuals(setting::IndividualSetting, n::Int64; rng::Xoshiro = Xoshiro()) = sample_individuals(setting |> individuals, n, rng=rng)
 
 
 """
-    sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+    sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Xoshiro())
 
 In-place variant of `sample_individuals` that writes the subsample of size `n` into `buffer`
 (resized accordingly) instead of allocating a new vector. Copies all individuals if
 `n >= length(individuals)`. Returns `buffer`.
 """
-function sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = default_gems_rng())
+function sample_individuals!(buffer::Vector{Individual}, individuals::Vector{Individual}, n::Int64; rng::Xoshiro = Xoshiro())
     if n >= length(individuals)
         resize!(buffer, length(individuals))
         copyto!(buffer, individuals)
