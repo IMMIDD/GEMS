@@ -43,6 +43,7 @@ HealthProgression
 HealthProfile
 DefaultHealthProgression
 HealthProfileIndex
+MildHealthProfile
 SevereHealthProfile
 CriticalHealthProfile
 WardHealthProfile

@@ -80,8 +80,8 @@ function infect!(infectee::Individual,
             throw(ArgumentError("infect! without a Simulation cannot store more than $INFECTIONS_CACHE_SIZE concurrent infection(s) per individual; pass `sim=...`."))
         new_infection_id = DEFAULT_INFECTION_ID
         state = push_infection!(InfectionRegistry(), infectee, id(pathogen), new_infection_id, dp, tag)
-        # throwaway schedule: with no tick loop nothing would drain it, and with an
-        # empty profile index no care is drawn anyway
+        # throwaway schedule: with no tick loop nothing would drain it, so neither care
+        # nor a homebound window takes effect
         compute_health!(infectee, InfectionRegistry(), DefaultHealthProgression(), HealthProfileIndex(), state, tick, rng, HealthSchedule())
     else
         # log infection
@@ -299,7 +299,7 @@ end
     can_infect(ind::Individual, setting::Setting)::Bool
 
 Determines whether the individual can infect others in the given setting.
-Checks for infectiousness, setting openness, and quarantine status.
+Checks for infectiousness, hospital, setting openness, homebound and quarantine status.
 
 # Parameters
 - `ind::Individual`: Individual to check
@@ -324,8 +324,8 @@ function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
         return false
     end
 
-    # severe symptoms prevent infecting others outside the household
-    if is_severe(ind) && (typeof(setting) != Household)
+    # homebound individuals cannot leave the household
+    if is_homebound(ind) && (typeof(setting) != Household)
         return false
     end
 
@@ -344,7 +344,7 @@ end
     can_be_contacted(ind::Individual, setting::Setting)::Bool
 
 Determines whether the individual can be contacted (and thus infected) in the given setting.
-Checks for death and quarantine status.
+Checks for death, hospital, homebound and quarantine status.
 
 # Parameters
 - `ind::Individual`: Individual to check
@@ -361,6 +361,11 @@ function can_be_contacted(ind::Individual, setting::Setting, tick::Int16)::Bool
 
     # if individual is hospitalized
     if is_hospitalized(ind)
+        return false
+    end
+
+    # homebound individuals cannot leave the household
+    if is_homebound(ind) && (typeof(setting) != Household)
         return false
     end
 

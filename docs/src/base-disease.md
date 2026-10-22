@@ -33,6 +33,7 @@ Host-level care and mortality (hospitalization, ICU, ventilation, death) are **n
 This is what lets a host who is concurrently infected with multiple pathogens have their hospitalization or death decided jointly, rather than by whichever single infection happens to "win".
 Each infection contributes when it arrives, and the policy is told what the host is already committed to, so an infection whose contribution has been decided is never re-decided by a later co-infection.
 In the default configuration, only `Severe` and `Critical` infections demand any host care: a `Severe`-peak infection may lead to a ward admission; a `Critical`-peak infection may additionally require ICU admission (and, optionally, ventilation), and carries an ungated `30%` death probability.
+By default, `Severe` and `Critical` hosts are also too sick to leave the household while severe, and `Mild` hosts can be set to stay home while symptomatic.
 In the default configuration, all care and timing offsets (admission delays and stay lengths) are drawn from Poisson distributions; see the `health` block on each progression in `DefaultConf.toml` for the concrete parameters.
 See the "Health Progression" section of the pathogen API reference for the extension API.
 

@@ -67,6 +67,11 @@
                     distribution = "Poisson"
                     parameters = [7]
 
+                # HOST HEALTH FOR THIS TIER [staying home only]
+                [Pathogens.Covid19.progressions.Mild.health]
+                    # probability of staying home from symptom onset to recovery
+                    symptomatic_homebound_probability = 0.0
+
             # SEVERE PROGRESSION [TOTAL DURATION ~ 15 DAYS]
             [Pathogens.Covid19.progressions.Severe]
                 # time to infectiousness (after exposure) [+1 will be added internally to avoid zero-day durations]
@@ -93,6 +98,10 @@
                 # HOST HEALTH FOR THIS TIER [ward admission only]
                 [Pathogens.Covid19.progressions.Severe.health]
                     hospital_probability = 0.05
+                    # probability of staying home from symptom onset to recovery
+                    symptomatic_homebound_probability = 0.0
+                    # probability of staying home while severe, at least the one above
+                    severe_homebound_probability = 1.0
                     # hospital admission delay (after severeness onset)
                     [Pathogens.Covid19.progressions.Severe.health.severeness_onset_to_hospital_admission]
                         distribution = "Poisson"
@@ -139,6 +148,10 @@
                     hospital_to_icu_probability = 0.5
                     icu_to_ventilation_probability = 0.0
                     death_probability = 0.3          # ungated by hospital/ICU
+                    # probability of staying home from symptom onset to recovery
+                    symptomatic_homebound_probability = 0.0
+                    # probability of staying home while severe, at least the one above
+                    severe_homebound_probability = 1.0
                     icu_admission_to_ventilation_admission = 0
                     ventilation_admission_to_ventilation_discharge = 0
                     ventilation_discharge_to_icu_discharge = 0
