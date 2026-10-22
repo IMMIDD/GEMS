@@ -696,6 +696,22 @@ import GEMS: increment!, infected!
                 "parameters" => Dict("amplitude" => 0.3, "peak_day" => 15)))
             @test mod isa SinusoidalSeasonalModifier
 
+            # setting factors come in as a nested table, with integer values
+            tf_set = GEMS.create_transmission_function(Dict(
+                "type" => "SettingTransmissionRate",
+                "parameters" => Dict("transmission_rate" => 0.1, "default_factor" => 1,
+                                     "factors" => Dict{String, Any}("Household" => 3, "Office" => 0.5))))
+            @test tf_set isa SettingTransmissionRate
+            @test tf_set.modifier.factors[Household] == 3.0
+            tf_set_comp = GEMS.create_transmission_function(Dict(
+                "type" => "CompositeTransmissionRate",
+                "base" => Dict("type" => "ConstantTransmissionRate",
+                               "parameters" => Dict("transmission_rate" => 0.1)),
+                "modifiers" => [Dict("type" => "SettingModifier",
+                                     "parameters" => Dict("default_factor" => 1.0,
+                                                          "factors" => Dict{String, Any}("Household" => 3.0)))]))
+            @test only(tf_set_comp.modifiers) isa SettingModifier
+
             # create_immunity_profile: with parameters
             im = GEMS.create_immunity_profile(Dict(
                 "type" => "ExponentialWaning",
