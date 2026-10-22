@@ -568,6 +568,7 @@ A layer table takes these keys:
 - `participation_unit` (optional): a setting type, e.g. `"Household"`, whose members decide together: with the same probability, they all take part or none of them does
 - `entries` (optional): how many settings of the type each participant joins, an integer between `0` and `127` or a distribution; defaults to `1`
 - `scale` (optional): contacts in these settings relative to a regular member, a number or a distribution; defaults to `1`
+- `rescale` (optional): a table of setting types and factors, e.g. `{ Office = 0.7 }`, that multiplies each participant's contacts in the settings of that type they already belonged to; every type in it must be in `holding`
 - `name` (optional): the layer's name in the population's records; it also seeds the layer's draws. Defaults to the type's name with a counter, e.g. `Gym[1]`.
 
 An individual has to match every attribute key a layer gives.
@@ -619,6 +620,8 @@ This one gives 10% of all workers a second office, picked among the existing off
         [Settings.Office.layer.assignment]
             type = "JoinExisting"
 ```
+Add `rescale = { Office = 0.7 }` to lower their contacts in the offices they already had to 70%.
+
 For several layers of one type, write `[[Settings.<Name>.layer]]` once per layer.
 GEMS applies them in the order of their section names and, within a section, in file order.
 Have a look at the [setting layers](@ref setting-layers) section of the population tutorial before you use them.

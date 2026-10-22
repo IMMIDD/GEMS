@@ -190,12 +190,13 @@ struct SettingLayer{T<:IndividualSetting, A<:LayerAssignment, F, P, E, C}
     participation_unit::Union{Nothing, UInt8}
     entries::E
     scale::C
+    rescale::Vector{Tuple{UInt8, Float64}}
 end
 
 """
     SettingLayer(T; assignment, name = nothing, eligible = _everyone, holding = (),
                  not_holding = (), participation = 1.0, participation_unit = nothing,
-                 entries = 1, scale = 1.0)
+                 entries = 1, scale = 1.0, rescale = ())
 
 Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range parameters.
 
@@ -211,11 +212,14 @@ Builds a layer of setting type `T`; throws an `ArgumentError` for out-of-range p
   `Household`: they share one random draw, so with the same probability they all take part or none does
 - `entries`: settings per participant, an integer in 0-127 or a discrete distribution
 - `scale`: contact scale per entry, a number in 0-floatmax(Float16) or a distribution
+- `rescale`: setting types (or their names) mapped to factors, e.g. `Office => 0.7`: each
+  participant's settings of such a type from before the layer get their contact scale multiplied
+  by the factor. The types must be in `holding`.
 """
 function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible = _everyone,
         holding = (), not_holding = (), participation = 1.0, participation_unit = nothing,
         entries::Union{Integer, DiscreteUnivariateDistribution} = 1,
-        scale::Union{Real, UnivariateDistribution} = 1.0)
+        scale::Union{Real, UnivariateDistribution} = 1.0, rescale = ())
     # checks and registers `T`
     _layer_type_index(T, "a layer's setting type")
     p = _layer_value(participation)
@@ -225,10 +229,18 @@ function SettingLayer(T; assignment::LayerAssignment, name = nothing, eligible =
     layer = SettingLayer{T, typeof(assignment), typeof(eligible), typeof(p), typeof(n), typeof(s)}(
         name === nothing ? nothing : String(name), assignment, eligible,
         _layer_type_indices(holding, "`holding`"), _layer_type_indices(not_holding, "`not_holding`"),
-        p, unit, n, s)
+        p, unit, n, s, _layer_rescale(rescale))
     _check_layer(layer)
     return layer
 end
+
+# `rescale` as (type index, factor) pairs in type-index order, from a pair or pairs of type => factor.
+_layer_rescale(r::Pair) = _layer_rescale((r,))
+_layer_rescale(r) =
+    sort!(Tuple{UInt8, Float64}[(_layer_type_index(T, "`rescale`"), _rescale_factor(f)) for (T, f) in r]; by = first)
+
+_rescale_factor(f::Real) = Float64(f)
+_rescale_factor(f) = throw(ArgumentError("a `rescale` factor must be a number; got $(repr(f))"))
 
 """
     _check_layer(layer::SettingLayer)
@@ -266,6 +278,12 @@ function _check_layer(layer::SettingLayer)
     end
     scale_ok || throw(ArgumentError(
         "`scale` must be in [0, $(floatmax(Float16))] or a non-negative distribution; got $s"))
+    types = first.(layer.rescale)
+    allunique(types) || throw(ArgumentError("`rescale` names a setting type twice"))
+    issubset(types, layer.holding) || throw(ArgumentError(
+        "`rescale` may only name setting types in `holding`, so every participant has one to rescale"))
+    all(r -> 0 <= last(r) <= floatmax(Float16), layer.rescale) || throw(ArgumentError(
+        "`rescale` factors must be in [0, $(floatmax(Float16))]; got $(_describe(layer.rescale))"))
     _check_assignment(layer.assignment)
     return nothing
 end
@@ -418,8 +436,44 @@ function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed:
     added, ids = _added_entries(additions)
     # a layer that adds nothing leaves the plans as they are
     bytes = added == 0 ? 0 : _merge_additions!(store, inds, additions)
+    added == 0 || _rescale_held_entries!(store, inds, additions, layer.rescale)
     push!(_layer_records!(pop), _layer_record(layer, name, seed, added, ids, shortfall))
     return bytes
+end
+
+# Multiplies each entry of a `rescale` type that an individual held before the layer by its factor,
+# for every individual the layer gave an entry. Checks every result before writing any.
+function _rescale_held_entries!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions,
+                                rescale::Vector{Tuple{UInt8, Float64}})
+    isempty(rescale) && return nothing
+    added(i) = count(k -> additions.sids[k] != DEFAULT_SETTING_ID, _addition_rows(additions, i))
+    # the merge puts the layer's entries behind the earlier ones of their type
+    function held(ind, t, n)
+        start, len = _plan_type_run(store, ind, t)
+        lo = Int(ind.plan_offset) + start
+        return lo:(lo + len - 1 - (t == additions.tidx ? n : 0))
+    end
+    rescaled(slot, factor) = Float64(entry_scale(store.entries[slot])) * factor
+    for i in _addition_individuals(additions)
+        n = added(i)
+        n == 0 && continue
+        for (t, factor) in rescale, slot in held(inds[i], t, n)
+            s = rescaled(slot, factor)
+            s <= floatmax(Float16) || throw(ArgumentError("`rescale` would give individual $(id(inds[i])) a " *
+                "$(setting_type_name(setting_type_from_index(t))) scale of $s; scales are at most $(floatmax(Float16))"))
+        end
+    end
+    for i in _addition_individuals(additions)
+        n = added(i)
+        n == 0 && continue
+        ind = inds[i]
+        for (t, factor) in rescale, slot in held(ind, t, n)
+            store.entries[slot] = _with_scale(store.entries[slot], rescaled(slot, factor))
+            _raise_scale_bound!(store, store.entries[slot])
+        end
+        _refresh_plan_scaled!(store, ind)
+    end
+    return nothing
 end
 
 # How many rows got a setting, and the range of their setting ids (`nothing` if none did).
@@ -651,5 +705,6 @@ _describe(::Nothing) = nothing
 _describe(a::LayerAssignment) = "$(nameof(typeof(a)))($(_field_descriptions(a)))"
 _describe(t::UInt8) = setting_type_name(setting_type_from_index(t))
 _describe(ts::Vector{UInt8}) = isempty(ts) ? nothing : "[" * join(_describe.(ts), ", ") * "]"
+_describe(r::Vector{Tuple{UInt8, Float64}}) = isempty(r) ? nothing : "[" * join(("$(_describe(t)) => $f" for (t, f) in r), ", ") * "]"
 # an `eligible` or `participation` function the ELIGIBILITY AND PARTICIPATION section doesn't describe
 _describe(::Function) = "custom"

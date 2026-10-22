@@ -799,6 +799,60 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test occursin("participation_unit = Household", _layer_description(family(0.5)))
     end
 
+    @testset "Rescaling another entry" begin
+        office = setting_type_index(Office)
+        primary_scale(pop, i) = Float64(entry_scale(activity_plans(pop).entries[plan_slot(activity_plans(pop), i, Office)]))
+        second_job(factor; participation = 0.5, kwargs...) = SettingLayer(Office; assignment = JoinExisting(), holding = Office,
+            participation = participation, rescale = Office => factor, kwargs...)
+
+        # the primary office of each participant is scaled once, below or above 1; nobody else's
+        for factor in (0.7, 1.5)
+            pop = layered(second_job(factor))
+            inds = individuals(pop)
+            second = [length(setting_ids(i, Office, activity_plans(pop))) == 2 for i in inds]
+            @test count(second) > 100
+            @test all(primary_scale(pop, i) == Float64(Float16(factor)) for i in inds[second])
+            @test all(primary_scale(pop, i) == 1 for i in inds[1:500][.!second[1:500]])
+            @test all(i -> i.plan_scaled, inds[second])
+            @test _type_scale_bound(activity_plans(pop), office) == max(1.0f0, Float32(Float16(factor)))
+            # the settings take the new scales into their bounds
+            @test validate_plans(pop, settingscontainer(Simulation(population = pop, infected_fraction = 0.0)))
+        end
+        # once per participant, even with several entries; not for participants who get none
+        pop = layer_pop()
+        add_setting_layers!(pop, SettingLayer(Office; assignment = JoinExisting(), holding = Office, entries = 3,
+            rescale = Office => 0.5); seed = 1)
+        @test all(primary_scale(pop, i) == 0.5 for i in individuals(pop)[1:6])
+        no_entries = layered(second_job(0.5; entries = 0))
+        @test all(primary_scale(no_entries, i) == 1 for i in individuals(no_entries)[1:500])
+        # every office held before the layer, not the one it adds
+        pop = layered(second_job(1.0; participation = 1.0, name = "second"), second_job(0.5; name = "third"))
+        store = activity_plans(pop)
+        office_scales(i) = (r = GEMS._plan_type_run(store, i, office);
+            [Float64(entry_scale(store.entries[Int(i.plan_offset) + r[1] + k])) for k in 0:(r[2] - 1)])
+        third = filter(i -> length(setting_ids(i, Office, store)) == 3, individuals(pop))
+        @test length(third) > 100
+        @test all(office_scales(i) == [0.5, 0.5, 1.0] for i in third)
+
+        # a result above the scale range is refused, and nothing is rescaled
+        pop = layer_pop()
+        workers = individuals(pop)[1:6]
+        foreach(i -> set_scale!(pop, i, Office, setting_id(i, Office, activity_plans(pop)), 60000), workers)
+        @test_throws ArgumentError add_setting_layers!(pop, second_job(2.0; participation = 1.0); seed = 1)
+        @test all(primary_scale(pop, i) == 60000 for i in workers)
+
+        # what is refused, and how it reads from a config file
+        @test_throws ArgumentError SettingLayer(Office; assignment = JoinExisting(), rescale = Office => 0.5)
+        @test_throws ArgumentError second_job(-0.5)
+        @test_throws ArgumentError second_job("half")
+        @test_throws ArgumentError SettingLayer(Office; assignment = JoinExisting(), holding = Office,
+            rescale = (Office => 0.5, "Office" => 0.7))
+        from_config = GEMS.create_setting_layer(Office, Dict("holding" => "Office", "rescale" => Dict("Office" => 0.7),
+            "assignment" => Dict("type" => "JoinExisting")), "Office")
+        @test from_config.rescale == [(office, 0.7)]
+        @test occursin("rescale = [Office => 0.7]", _layer_description(from_config))
+    end
+
     @testset "Layers on a loaded population" begin
         # the settings file gives a spatial layer its coordinates
         data = joinpath(pkgdir(GEMS), "test", "testdata")
