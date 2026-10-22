@@ -25,6 +25,9 @@ Asymptomatic
 Mild
 Severe
 Critical
+Ward
+ICU
+Fatal
 ```
 
 ### Functions
@@ -42,6 +45,9 @@ DefaultHealthProgression
 HealthProfileIndex
 SevereHealthProfile
 CriticalHealthProfile
+WardHealthProfile
+ICUHealthProfile
+FatalHealthProfile
 calculate_health_progression!
 calculate_health_profile
 compute_health!

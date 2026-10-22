@@ -270,7 +270,7 @@ If you are not comfortable with where to put this, [here's](@ref config-contact-
 
 ## Custom Disease Progression
 
-Beyond the default progression categories (`Asymptomatic`, `Mild`, `Severe`, and `Critical`), GEMS allows you to specify custom disese progressions.
+Beyond the default progression categories (`Asymptomatic`, `Mild`, `Severe`, `Critical`, `Ward`, `ICU`, and `Fatal`), GEMS allows you to specify custom disese progressions.
 To do that, you need to define two things:
 - A struct for your new progression that inherits from `ProgressionCategory` and
 - A `calculate_progression()` function that defines the actual progression for an individual

@@ -356,7 +356,7 @@ The `type` argument specifies the `TransmissionFunction` that conditions the dis
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `TransmissionFunction` struct upon initialization.
 
 #### `progressions`
-Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Mild`, `Severe`, and `Critical`. `Severe` and `Critical` may also carry host-health parameters (see [`HealthProgression`](#healthprogression) below), either as a `health` sub-table or inline, giving that pathogen its own care and mortality rates.
+Defines distinct disease progression tracks. The engine currently supports explicit pathways like `Asymptomatic`, `Mild`, `Severe`, `Ward`, `Critical`, `ICU`, and `Fatal`. `Severe` and `Critical` may also carry host-health parameters (see [`HealthProgression`](#healthprogression) below), either as a `health` sub-table or inline, giving that pathogen its own care and mortality rates.
 
 Within each category, you must define the intervals between state transitions (e.g., `exposure_to_infectiousness_onset`, `symptom_onset_to_recovery`). Every interval requires two arguments to initialize the underlying random distribution:
 * **`distribution`**: A string representing the statistical distribution (e.g., `"Poisson"`, `"Binomial"`).
@@ -448,6 +448,22 @@ progression, two pathogens can differ in mortality while sharing a severity stra
 
 A category with no `health` of its own demands no hospitalization and causes no deaths; GEMS warns
 when that happens.
+
+`Ward`, `ICU`, and `Fatal` fix their outcome instead of drawing it: a `Ward` infection is always admitted
+to the ward, an `ICU` infection always reaches the ICU, and a `Fatal` infection always dies. They take the
+timings of `Severe` (`Ward`) or `Critical` (`ICU`, `Fatal`) and require a `health` block without the fixed
+probabilities. Adding them to the stratification matrix lets ward, ICU, and death rates vary by age independently:
+
+```toml
+[Pathogens.Covid19.progressions.Fatal]
+    # ... disease timings as for Critical ...
+    [Pathogens.Covid19.progressions.Fatal.health]
+        hospital_probability = 0.7
+        hospital_to_icu_probability = 0.3
+        [Pathogens.Covid19.progressions.Fatal.health.critical_onset_to_death]
+            distribution = "Poisson"
+            parameters = [10]
+```
 
 #### HealthProgression
 
