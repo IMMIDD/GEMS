@@ -352,11 +352,18 @@ end
     _ViaGroups
 
 For each setting of a `JoinVia`'s `via` type, the settings of the layer's type its members
-hold, once per member who holds one: group `g`'s are `ids[starts[g]:(starts[g + 1] - 1)]`.
+hold (only their primary ones if `primary_only`), once per member who holds one: group `g`'s are
+`ids[starts[g]:(starts[g + 1] - 1)]`.
 """
 struct _ViaGroups
     starts::Vector{Int}
     ids::Vector{Int32}
+end
+
+# The slots of `ind`'s settings of type `tidx` that a `JoinVia` offers to the members of their `via` setting.
+function _via_slots(a::JoinVia, store::ActivityPlanStore, ind::Individual, tidx::UInt8)
+    r = _type_slots(store, ind, tidx)
+    return a.primary_only && !isempty(r) ? (first(r):first(r)) : r
 end
 
 function _join_state(a::JoinVia, ctx::_LayerContext)
@@ -365,7 +372,7 @@ function _join_state(a::JoinVia, ctx::_LayerContext)
     # counting sort by group: count each group's held settings, then place them
     for ind in inds
         g = _setting_id(ind, a.via, store)
-        g >= 1 && (starts[g + 1] += length(_type_slots(store, ind, ctx.tidx)))
+        g >= 1 && (starts[g + 1] += length(_via_slots(a, store, ind, ctx.tidx)))
     end
     starts[1] = 1
     cumsum!(starts, starts)
@@ -373,7 +380,7 @@ function _join_state(a::JoinVia, ctx::_LayerContext)
     for ind in inds
         g = _setting_id(ind, a.via, store)
         g >= 1 || continue
-        for k in _type_slots(store, ind, ctx.tidx)
+        for k in _via_slots(a, store, ind, ctx.tidx)
             ids[next[g] += 1] = setting_id(store.entries[k])
         end
     end

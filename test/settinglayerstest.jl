@@ -779,6 +779,28 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test GEMS.create_layer_assignment(Dict("type" => "JoinVia", "via" => "Household"), "X") == JoinVia()
         @test_throws ArgumentError JoinVia(via = Workplace)
 
+        # one gym per individual, joined by the partner, then by a colleague: with `primary_only`
+        # the colleague joins a coworker's own gym, otherwise also one their coworker's partner owns
+        own = SettingLayer(LayerGym; assignment = PackedSettings(size = 1))
+        partner = SettingLayer(LayerGym; assignment = JoinVia(via = Household, primary_only = true))
+        colleague(p) = SettingLayer(LayerGym; assignment = JoinVia(via = Office, primary_only = p), holding = (Office,))
+        # whether each worker's third gym is owned by a coworker; 499 and 500 share their office
+        # and household, so they find no third gym
+        function coworker_owned(pop)
+            owner, held = Dict(zip(gym_ids(pop), 1:1000)), held_ids(pop)
+            return map(1:498) do i
+                o = owner[held[i][3]]
+                o != i && o <= 500 && cld(o, 3) == cld(i, 3)
+            end
+        end
+        pop = @test_logs (:warn, r"left out 2 entries") (:info,) layered(own, partner, colleague(true))
+        @test all(i -> held_ids(pop)[i][2] == gym_ids(pop)[iseven(i) ? i - 1 : i + 1], 1:1000)
+        @test all(coworker_owned(pop))
+        @test !all(coworker_owned(@test_logs (:warn,) (:info,) layered(own, partner, colleague(false))))
+        @test occursin("JoinVia(via = Office, primary_only = true)", _layer_description(colleague(true)))
+        @test GEMS.create_layer_assignment(Dict("type" => "JoinVia", "via" => "Office", "primary_only" => true), "X") ==
+            JoinVia(via = Office, primary_only = true)
+
         # a household decides together: both members or neither, also as participation rises
         family(p; unit = Household) = SettingLayer(LayerGym; assignment = PackedSettings(size = 10), participation = p,
             participation_unit = unit)

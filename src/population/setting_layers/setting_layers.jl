@@ -110,16 +110,18 @@ end
 JoinNearby(; spread) = JoinNearby(_layer_value(spread))
 
 """
-    JoinVia(; via = Household)
+    JoinVia(; via = Household, primary_only = false)
 
 Existing settings that someone sharing the participant's `via` setting already belongs to, e.g. a
 gym a household member goes to, or, with `via = Office`, a sports club a colleague plays in; each
-drawn in proportion to how many of them hold it.
+drawn in proportion to how many of them hold it. With `primary_only`, only their primary settings
+of the layer's type count.
 """
 struct JoinVia <: JoinAssignment
     via::UInt8
+    primary_only::Bool
 end
-JoinVia(; via = Household) = JoinVia(_layer_type_index(via, "`via`"))
+JoinVia(; via = Household, primary_only::Bool = false) = JoinVia(_layer_type_index(via, "`via`"), primary_only)
 
 # numbers become Float64, so the draws need one method for numbers
 _layer_value(x::Real) = Float64(x)
@@ -702,6 +704,8 @@ end
 # a field's value as text: setting types by name, an assignment with its own fields
 _describe(x) = string(x)
 _describe(::Nothing) = nothing
+# a flag shows only when set
+_describe(b::Bool) = b ? "true" : nothing
 _describe(a::LayerAssignment) = "$(nameof(typeof(a)))($(_field_descriptions(a)))"
 _describe(t::UInt8) = setting_type_name(setting_type_from_index(t))
 _describe(ts::Vector{UInt8}) = isempty(ts) ? nothing : "[" * join(_describe.(ts), ", ") * "]"

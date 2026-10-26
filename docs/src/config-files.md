@@ -636,7 +636,7 @@ The assignment `type` is one of these:
 | `SpatialSettings` | `size`, `spread` | new settings of `size` members living near each other |
 | `JoinExisting` | - | existing settings of the type, each picked in proportion to its number of members |
 | `JoinNearby` | `spread` | existing settings near the participant's home |
-| `JoinVia` | `via` | existing settings that someone in the participant's `via` setting (by default `"Household"`) already belongs to |
+| `JoinVia` | `via`, `primary_only` | existing settings that someone in the participant's `via` setting (by default `"Household"`) already belongs to; with `primary_only = true`, only their primary settings of the type |
 
 `spread` is the distance in km by which a participant's home is moved before GEMS looks for settings nearby: a number is the standard deviation of a random shift, a distribution gives the shift's length in a random direction.
 `SpatialSettings` and `JoinNearby` take the household coordinates from the settings file.
