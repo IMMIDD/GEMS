@@ -60,6 +60,7 @@ RandomSettings(; size) = RandomSettings(_layer_value(size))
     GroupedSettings(; size, by = Household)
 
 New settings of about `size` members that keep participants sharing a `by` setting together.
+A group that would overfill a non-empty setting starts a new one, so `size = 1` gives one setting per `by` setting.
 """
 struct GroupedSettings{S} <: NewSettingsAssignment
     size::S

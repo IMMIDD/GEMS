@@ -631,7 +631,7 @@ The assignment `type` is one of these:
 | :--- | :--- | :--- |
 | `PackedSettings` | `size` | new settings of `size` members, filled in random order |
 | `RandomSettings` | `size` | new settings drawn at random for each participant, so sizes vary around `size` |
-| `GroupedSettings` | `size`, `by` | new settings of about `size` members that keep the members of a `by` setting together (by default `"Household"`) |
+| `GroupedSettings` | `size`, `by` | new settings of about `size` members that keep the members of a `by` setting together (by default `"Household"`); `size = 1` gives one setting per `by` setting |
 | `AgeSortedSettings` | `size` | new settings of `size` members of similar age |
 | `SpatialSettings` | `size`, `spread` | new settings of `size` members living near each other |
 | `JoinExisting` | - | existing settings of the type, each picked in proportion to its number of members |

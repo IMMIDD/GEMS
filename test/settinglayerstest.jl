@@ -367,6 +367,11 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         ids = gym_ids(layered(gym(GroupedSettings(size = 6, by = Office))))
         @test all(k -> allequal(ids[(3k - 2):3k]), 1:166)
         @test all(<=(6), values(countmap(ids)))
+        # with size 1, exactly one setting per household or office
+        ids = gym_ids(layered(gym(GroupedSettings(size = 1))))
+        @test ids[1:2:end] == ids[2:2:end] && length(unique(ids)) == 500
+        ids = gym_ids(layered(gym(GroupedSettings(size = 1, by = Office))))
+        @test all(k -> allequal(ids[(3k - 2):min(3k, 500)]), 1:167) && length(unique(ids)) == 167 + 500
 
         # age-sorted: settings in id order cover consecutive age bands
         pop = layered(gym(AgeSortedSettings(size = 10)))
