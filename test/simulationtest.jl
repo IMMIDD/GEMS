@@ -1689,6 +1689,19 @@ import GEMS: increment!, infected!
         @test tick(sim_cl) == 3
     end
 
+    @testset "Closed pooled Setting in Step" begin
+        # closing a pooled class leaves its pool dirty; spreading must repack before it reads frames
+        sim_cl = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+            settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+            stop_criterion = TimesUp(limit = 5), seed = 1)
+        s_cl = SStrategy("close_classes", sim_cl)
+        add_measure!(s_cl, CloseSetting())
+        add_tick_trigger!(sim_cl, STickTrigger(SchoolClass, s_cl, switch_tick = Int16(1)))
+        run!(sim_cl)
+        @test tick(sim_cl) == 5
+        @test !any(is_open, schoolclasses(sim_cl))
+    end
+
     @testset "State log counts match a full scan" begin
         # The state log counts where the disease update, the infection flush and tests already
         # read the individuals. Each tick it must equal a scan of everyone active or quarantined.

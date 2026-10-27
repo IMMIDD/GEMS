@@ -388,9 +388,8 @@ end
 
 Repack every pool left stale by a member edit, a death, a scale change, or a setting opened or closed,
 and compact every flat pool that moved settings have left a third stranded.
-Must run between such a change and the next read of `present_members`. `update_population!`
-calls it once per tick, after the tick's deaths and ahead of everything that reads frames, so
-changes made anywhere in the previous tick are covered too.
+Must run between such a change and the next read of `present_members`, so every reader of frames
+calls it first; `spread_infections!` does once per tick.
 Cheap when nothing changed. The dirty blocks of a pool are repacked in parallel.
 
 Invalidates any member view handed out before, since members move and a pool may be replaced.

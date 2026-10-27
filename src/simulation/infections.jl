@@ -10,9 +10,10 @@ export infect!
     spread_infections!(sim::Simulation)
 
 Spreads each infectious individual's infections in their plan entries' settings, the containers above
-those, and the GlobalSetting.
+those, and the GlobalSetting. Repacks dirty pools first, as spreading reads the frames.
 """
 function spread_infections!(sim::Simulation)
+    repack_dirty_pools!(settingscontainer(sim))
     Threads.@threads :static for _ in 1:Threads.nthreads()
         hosts = sim.infectious_individuals[Threads.threadid()]
         for k in eachindex(hosts)
