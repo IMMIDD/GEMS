@@ -9,6 +9,7 @@ export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
 export susceptibility_factor
+export uses_vaccine_peaks
 
 # the main defintion of pathogens is in src/pathogen/pathogens.jl
 
@@ -241,6 +242,14 @@ elsewhere than on transmission: `1.0` leaves the level readable by the rest of t
 (e.g. a progression assignment that attenuates severity) without affecting transmission.
 """
 susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64 = 1.0 - level / 100.0
+
+"""
+    uses_vaccine_peaks(profile::ImmunityProfile)::Bool
+
+Whether `profile` applies a vaccine's peaks and buildup. Defaults to `false`; a vaccine that sets them then
+triggers a warning at its first dose.
+"""
+uses_vaccine_peaks(profile::ImmunityProfile)::Bool = false
 
 
 """

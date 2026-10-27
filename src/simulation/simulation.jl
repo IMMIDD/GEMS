@@ -177,6 +177,8 @@ sim = Simulation(params)
     - `event_queue::EventQueue`: Event Queue to apply intervention measures
     - `strategies::Vector{Strategy}`: List of all registered intervention strategies
     - `testtypes::Vector{AbstractTestType}`: List of all `TestTypes` (e.g. Antigen- or PCR-Test)
+    - `vaccine_protection::Matrix{VaccineProtection}`: Protection of each registered vaccine, by vaccine id and pathogen id
+    - `vaccine_registered::Vector{UInt128}`: Per pathogen id, one bit per registered vaccine id
 - Runtime Modifiers
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
@@ -229,6 +231,9 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     event_queue::AbstractEventQueue
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
+    # vaccines register on their first dose
+    vaccine_protection::Matrix{VaccineProtection}
+    vaccine_registered::Vector{UInt128}
 
     # recurring seeding bucketed by tick
     seeding_schedule::Dict{Int16, Vector{InfectionSeed}}
@@ -312,6 +317,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             EventQueue(),
             [],
             [],
+            fill(VaccineProtection(), 127, MAX_PATHOGENS),
+            zeros(UInt128, MAX_PATHOGENS),
 
             # recurring seeding schedule (populated by initialize!)
             Dict{Int16, Vector{InfectionSeed}}(),
@@ -2480,6 +2487,9 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     simulation.customlogger = CustomLogger()
 
     simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
+    # vaccines register again on their next first dose
+    fill!(simulation.vaccine_protection, VaccineProtection())
+    fill!(simulation.vaccine_registered, UInt128(0))
 
     # before initialize! below, which infects and schedules care again. Must stay paired with the
     # per-individual reset! above; clearing one alone leaves the two disagreeing
@@ -2633,6 +2643,29 @@ Returns the test types registered in the simulation.
 """
 function testtypes(simulation::Simulation)
     return(simulation.testtypes)
+end
+
+# stores a vaccine's protection at its first dose and checks every later dose against it
+function _register_vaccine!(simulation::Simulation, vaccine::Vaccine)
+    vid, pid = id(vaccine), target_pathogen_id(vaccine)
+    vid >= 1 || throw(ArgumentError("Vaccine '$(name(vaccine))' has id $vid; vaccine ids must be at least 1."))
+    any(p -> id(p) == pid, pathogens(simulation)) ||
+        throw(ArgumentError("Vaccine '$(name(vaccine))' targets pathogen $pid, which is not in the simulation."))
+    entry = VaccineProtection(vaccine)
+    bit = UInt128(1) << (vid - 1)
+    if simulation.vaccine_registered[pid] & bit != 0
+        simulation.vaccine_protection[vid, pid] == entry || throw(ArgumentError(
+            "Vaccine id $vid for pathogen $pid was registered with other peaks or buildup; " *
+            "vaccine values are frozen at the first dose and ids must be unique per pathogen."))
+        return nothing
+    end
+    simulation.vaccine_protection[vid, pid] = entry
+    simulation.vaccine_registered[pid] |= bit
+
+    profile = immunity_profile(get_pathogen(simulation, pid))
+    _sets_protection(vaccine) && !uses_vaccine_peaks(profile) &&
+        @warn "Vaccine '$(name(vaccine))' sets peaks or a buildup, but the immunity profile $(nameof(typeof(profile))) of pathogen $pid ignores them."
+    return nothing
 end
 
 """

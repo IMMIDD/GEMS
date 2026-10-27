@@ -850,6 +850,8 @@ which picks the individual's registry shard.
 """
 function vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
     @warn "vaccinate!(individual, registry, vaccine, tick) is deprecated; use vaccinate!(individual, sim, vaccine, tick), which picks the individual's registry shard." maxlog=1
+    _sets_protection(vaccine) &&
+        @warn "vaccinate!(individual, registry, vaccine, tick) ignores the peaks and buildup of vaccine '$(name(vaccine))'." maxlog=1 _id=(:ignored_peaks, id(vaccine))
     _vaccinate!(individual, registry, vaccine, tick)
 end
 
@@ -862,9 +864,11 @@ end
 """
     vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
 
-Vaccinates an individual against the vaccine's target pathogen at `tick`.
+Vaccinates an individual against the vaccine's target pathogen at `tick`. The vaccine's first dose registers its
+peaks and buildup with `sim`; later doses must carry the same values.
 """
 function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
+    _register_vaccine!(sim, vaccine)
     _vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
 end
 

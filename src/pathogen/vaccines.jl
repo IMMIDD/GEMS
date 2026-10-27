@@ -113,3 +113,46 @@ function logger(vaccine::Vaccine)::VaccinationLogger
     return vaccine.logger
 end
 
+# whether the vaccine sets a peak or buildup other than the defaults
+_sets_protection(vaccine::Vaccine)::Bool =
+    peak(vaccine) != 100 || severity_peak(vaccine) != peak(vaccine) || !isnothing(buildup_duration(vaccine))
+
+
+###
+### VACCINE PROTECTION
+###
+
+"""
+    VaccineProtection
+
+Peaks and buildup of a vaccine as the simulation stores them per vaccine id and pathogen.
+A `buildup_duration` of -1 means the pathogen's `vaccine_buildup_duration`.
+"""
+struct VaccineProtection
+    peak::Int8
+    severity_peak::Int8
+    buildup_duration::Int16
+
+    function VaccineProtection(peak::Integer, severity_peak::Integer, buildup_duration::Integer)
+        0 <= peak <= severity_peak <= 100 ||
+            throw(ArgumentError("Vaccine peaks must satisfy 0 <= peak <= severity_peak <= 100 (got peak $peak, severity_peak $severity_peak)."))
+        buildup_duration >= -1 || throw(ArgumentError("buildup_duration must be non-negative (got $buildup_duration)."))
+        return new(Int8(peak), Int8(severity_peak), Int16(buildup_duration))
+    end
+end
+
+"""
+    VaccineProtection()
+
+The protection of an unregistered vaccine id: full peaks and the pathogen's buildup.
+"""
+VaccineProtection() = VaccineProtection(100, 100, -1)
+
+"""
+    VaccineProtection(vaccine::Vaccine)
+
+The protection `vaccine` gives, checking its current values.
+"""
+VaccineProtection(vaccine::Vaccine) =
+    VaccineProtection(peak(vaccine), severity_peak(vaccine), something(buildup_duration(vaccine), -1))
+
