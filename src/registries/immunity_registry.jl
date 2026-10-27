@@ -134,12 +134,6 @@ been reached yet.
 @inline immunity_active(s::ImmunityState, tick::Int16)::Bool =
     natural_immunity_active(s, tick) || vaccine_immunity_active(s, tick)
 
-# encodes `e` ticks as 1 + round(16 log2(1 + e)) (~4% resolution); 0 for no or an unusable interval
-@inline function _encode_dose_interval(e::Integer)::UInt8
-    0 <= e <= typemax(Int16) || return 0x00
-    return UInt8(1 + round(Int, 16 * log2(1 + e)))
-end
-
 """
     previous_dose_interval(s::ImmunityState)::Int16
 
@@ -148,6 +142,12 @@ Ticks from the previous vaccine dose to the current one (rounded to ~4%), or `NO
 @inline function previous_dose_interval(s::ImmunityState)::Int16
     s.prev_dose_interval == 0x00 && return NO_IMMUNITY_TICK
     return Int16(min(round(Int, exp2((s.prev_dose_interval - 1) / 16) - 1), typemax(Int16)))
+end
+
+# encodes `e` ticks as 1 + round(16 log2(1 + e)) (~4% resolution); 0 for no or an unusable interval
+@inline function _encode_dose_interval(e::Integer)::UInt8
+    0 <= e <= typemax(Int16) || return 0x00
+    return UInt8(1 + round(Int, 16 * log2(1 + e)))
 end
 
 # the encoded interval a new dose at `tick` has since the dose recorded in `s`
