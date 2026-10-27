@@ -1230,6 +1230,32 @@ end
             @test 0 < mid_buildup_sig < 100
         end
 
+        @testset "Booster buildup" begin
+            dose(t, interval) = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, t, pid, 1, 2, GEMS._encode_dose_interval(interval))
+            booster = dose(120, 120)
+            no_prev = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, 120, pid, 1, 2)
+            overlap = dose(7, 7)
+
+            for p in (ExponentialWaning(halflife = 180.0, vaccine_buildup_duration = Int16(14)),
+                      SigmoidalWaning(halflife = 180.0, vaccine_buildup_duration = Int16(14)))
+                level(s, t) = calculate_immunity(p, s, ind, Int16(t), rng)
+                # no dip: during its buildup the booster stays at what the first dose still gives
+                @test all(t -> level(booster, t) >= level(vac_state(0), t) - 2, 120:133)
+                @test level(no_prev, 121) < level(booster, 121)
+                # it ends at the peak, and after its buildup it is a single dose (no accumulation)
+                @test level(booster, 134) == Int8(100)
+                @test all(t -> level(booster, t) == level(vac_state(120), t), 134:400)
+                # a first dose still ramps from 0
+                @test level(vac_state(0), 0) == Int8(0)
+                # a dose during the previous dose's buildup: the previous one keeps ramping
+                @test all(t -> level(overlap, t) >= level(vac_state(0), t), 7:21)
+            end
+
+            # without a buildup the interval changes nothing
+            p0 = ExponentialWaning(halflife = 180.0)
+            @test all(t -> calculate_immunity(p0, booster, ind, Int16(t), rng) == calculate_immunity(p0, no_prev, ind, Int16(t), rng), 100:200)
+        end
+
         @testset "Abstract ImmunityProfile fallbacks" begin
             struct UnimplementedImmunityProfile <: GEMS.ImmunityProfile end
             p = UnimplementedImmunityProfile()

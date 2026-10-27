@@ -183,6 +183,18 @@ GEMS.transmission_probability(::NoisyTransmission, p::Int8, a::Individual, b::In
         @test vaccine_draws(ImmunityState(Int32(0), Int16(30), Int16(7), Int8(1), Int8(1), Int8(2))) == vplain
         @test vaccine_draws(ImmunityState(Int32(0), Int16(3), Int16(7), Int8(1), Int8(1), Int8(3))) != vplain
 
+        # :prev_vaccine is the previous dose's :vaccine stream when the interval decodes exactly
+        function component_draws(state, component)
+            r = keyed(1, 5, 1)
+            immunity_rng!(r, state, component)
+            return rand(r, 4)
+        end
+        dose1 = ImmunityState(0, 3, 1, 1, 1, 1)
+        dose2 = ImmunityState(0, 3, 2, 1, 1, 2, GEMS._encode_dose_interval(1))
+        @test component_draws(dose2, :prev_vaccine) == component_draws(dose1, :vaccine)
+        @test component_draws(dose2, :prev_vaccine) != component_draws(dose2, :vaccine)
+        @test_throws ArgumentError immunity_rng!(keyed(1, 5, 1), dose1, :prev_vaccine)
+
         # :host goes back to the stream as passed
         base = key_draws(1, 5, 1)
         r = keyed(1, 5, 1)

@@ -70,11 +70,22 @@ end
     return Int8(max(Int(profile.floor), clamp(round(Int, level), 0, 100)))
 end
 
+# during a dose's buildup, the vaccine level is at least what the previous dose still gives
+@inline function _exponential_vaccine_level(profile::ExponentialWaning, state::ImmunityState, tick::Int16)::Int8
+    buildup = profile.vaccine_buildup_duration
+    current = _exponential_level(profile, state.vaccine_acquired_tick, tick, buildup)
+    elapsed = tick - state.vaccine_acquired_tick
+    (0 <= elapsed < buildup && state.prev_dose_interval != 0x00) || return current
+    prev_tick = Int(state.vaccine_acquired_tick) - Int(previous_dose_interval(state))
+    prev_tick > typemin(Int16) || return current
+    return max(current, _exponential_level(profile, Int16(prev_tick), tick, buildup))
+end
+
 @inline function calculate_immunity(profile::ExponentialWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     nat_level = natural_immunity_recorded(state) ?
         _exponential_level(profile, state.natural_acquired_tick, tick) : Int8(0)
     vac_level = vaccine_immunity_recorded(state) ?
-        _exponential_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
+        _exponential_vaccine_level(profile, state, tick) : Int8(0)
     return Int8(clamp(round(Int, Int(nat_level) + Int(vac_level) - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
 end
 
@@ -130,11 +141,22 @@ end
     level = 100.0f0 * hl_n / (hl_n + waning_elapsed ^ profile.hill)
     return Int8(max(Int(profile.floor), clamp(round(Int, level), 0, 100)))
 end
- 
+
+# during a dose's buildup, the vaccine level is at least what the previous dose still gives
+@inline function _sigmoidal_vaccine_level(profile::SigmoidalWaning, state::ImmunityState, tick::Int16)::Int8
+    buildup = profile.vaccine_buildup_duration
+    current = _sigmoidal_level(profile, state.vaccine_acquired_tick, tick, buildup)
+    elapsed = tick - state.vaccine_acquired_tick
+    (0 <= elapsed < buildup && state.prev_dose_interval != 0x00) || return current
+    prev_tick = Int(state.vaccine_acquired_tick) - Int(previous_dose_interval(state))
+    prev_tick > typemin(Int16) || return current
+    return max(current, _sigmoidal_level(profile, Int16(prev_tick), tick, buildup))
+end
+
 @inline function calculate_immunity(profile::SigmoidalWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     nat_level = natural_immunity_recorded(state) ?
         _sigmoidal_level(profile, state.natural_acquired_tick, tick) : Int8(0)
     vac_level = vaccine_immunity_recorded(state) ?
-        _sigmoidal_level(profile, state.vaccine_acquired_tick, tick, profile.vaccine_buildup_duration) : Int8(0)
+        _sigmoidal_vaccine_level(profile, state, tick) : Int8(0)
     return Int8(clamp(round(Int, Int(nat_level) + Int(vac_level) - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
 end

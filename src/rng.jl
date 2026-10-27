@@ -247,6 +247,12 @@ end
     return _rekey!(r.rng, _mix(r.key, state.pathogen_id, state.exposure))
 end
 
+# the `:vaccine` key of the previous dose, from its tick as far as the encoded interval gives it
+function _prev_vaccine_key(base::UInt64, state::ImmunityState)::UInt64
+    state.prev_dose_interval == 0x00 && throw(ArgumentError("the immunity record has no previous dose"))
+    return _mix(base, 2, Int(state.vaccine_acquired_tick) - Int(previous_dose_interval(state)), state.dose_number - 1)
+end
+
 """
     infectiousness_rng!(rng::Xoshiro, state::InfectionState, tick::Int16)::Xoshiro
 
@@ -260,14 +266,15 @@ infectiousness_rng!(rng::Xoshiro, state::InfectionState, tick::Int16)::Xoshiro =
     immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
 
 Re-keys the `rng` of `calculate_immunity` to draw anew per acquisition: `:natural` per infection,
-`:vaccine` per dose, `:host` back to the stream as passed. Components don't affect each other, and any
-rng other than the one a simulation passes throws.
+`:vaccine` per dose, `:prev_vaccine` for the previous dose (keyed on its rounded tick), `:host` back to the
+stream as passed. Components don't affect each other, and any rng other than the one a simulation passes throws.
 """
 function immunity_rng!(rng::Xoshiro, state::ImmunityState, component::Symbol)::Xoshiro
     base = _base_key(rng)
     key = component === :host ? base :
         component === :natural ? _mix(base, 1, state.natural_acquired_tick) :
         component === :vaccine ? _mix(base, 2, state.vaccine_acquired_tick, state.dose_number) :
-        throw(ArgumentError("unknown immunity component :$component; use :natural, :vaccine or :host"))
+        component === :prev_vaccine ? _prev_vaccine_key(base, state) :
+        throw(ArgumentError("unknown immunity component :$component; use :natural, :vaccine, :prev_vaccine or :host"))
     return _rekey!(rng, key)
 end
