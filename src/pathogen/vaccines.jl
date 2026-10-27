@@ -2,7 +2,7 @@
 ### VACCINES (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
 export Vaccine
-export id, name, waning, logger, target_pathogen_id
+export id, name, waning, logger, target_pathogen_id, peak, severity_peak, buildup_duration
 
 """
     Vaccine
@@ -13,15 +13,40 @@ A type representing a vaccine.
 - `id::Int8`: Unique identifier of the vaccine
 - `name::String`: Name of the vaccine
 - `target_pathogen_id::Int8`: Identifier of the pathogen this vaccine targets
+- `peak::Int8`: Immunity level (protection against infection, 0-100) a dose reaches after its buildup (default: 100)
+- `severity_peak::Int8`: Protection against severe disease (0-100) a dose reaches; at least `peak` (default: `peak`)
+- `buildup_duration::Union{Nothing, Int16}`: Ticks from a dose to its peak; `nothing` uses the pathogen's
+  `vaccine_buildup_duration` (default: `nothing`)
 - `logger::VaccinationLogger`. Logger to log vaccinations with the vaccine
 """
 @with_kw mutable struct Vaccine
     id::Int8
     name::String
     target_pathogen_id::Int8          # pathogen this vaccine protects against
+    peak::Int8 = Int8(100)
+    severity_peak::Int8 = peak
+    buildup_duration::Union{Nothing, Int16} = nothing
 
     logger::VaccinationLogger = VaccinationLogger()
+
+    function Vaccine(id, name, target_pathogen_id, peak, severity_peak, buildup_duration, logger)
+        0 <= peak <= 100 || throw(ArgumentError("peak must be in [0, 100] (got $peak)."))
+        severity_peak <= 100 || throw(ArgumentError("severity_peak must be in [0, 100] (got $severity_peak)."))
+        peak <= severity_peak || throw(ArgumentError("peak ($peak, protection against infection, default 100) must not exceed severity_peak ($severity_peak, protection against severe disease, default peak)."))
+        isnothing(buildup_duration) || buildup_duration >= 0 ||
+            throw(ArgumentError("buildup_duration must be non-negative or nothing (got $buildup_duration)."))
+        return new(Int8(id), String(name), Int8(target_pathogen_id), Int8(peak), Int8(severity_peak),
+            isnothing(buildup_duration) ? nothing : Int16(buildup_duration), logger)
+    end
 end
+
+"""
+    Vaccine(id, name, target_pathogen_id, logger)
+
+Positional constructor with the default peaks and buildup.
+"""
+Vaccine(id, name, target_pathogen_id, logger::VaccinationLogger) =
+    Vaccine(id, name, target_pathogen_id, 100, 100, nothing, logger)
 
 ### BASIC FUNCTIONALITY aka GETTER/SETTER
 """
@@ -49,6 +74,33 @@ Returns the identifier of the pathogen this vaccine targets.
 """
 function target_pathogen_id(vaccine::Vaccine)::Int8
     return vaccine.target_pathogen_id
+end
+
+"""
+    peak(vaccine)
+
+Returns the immunity level (protection against infection) a dose reaches after its buildup.
+"""
+function peak(vaccine::Vaccine)::Int8
+    return vaccine.peak
+end
+
+"""
+    severity_peak(vaccine)
+
+Returns the protection against severe disease a dose reaches after its buildup.
+"""
+function severity_peak(vaccine::Vaccine)::Int8
+    return vaccine.severity_peak
+end
+
+"""
+    buildup_duration(vaccine)
+
+Returns the ticks from a dose to its peak, or `nothing` if the pathogen's `vaccine_buildup_duration` applies.
+"""
+function buildup_duration(vaccine::Vaccine)::Union{Nothing, Int16}
+    return vaccine.buildup_duration
 end
 
 

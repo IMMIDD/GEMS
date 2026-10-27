@@ -6,6 +6,35 @@
         @test id(v) == 1
         @test name(v) == "Antitest"
         @test typeof(logger(v)) == VaccinationLogger
+        @test peak(v) == Int8(100)
+        @test severity_peak(v) == Int8(100)
+        @test isnothing(buildup_duration(v))
+    end
+
+    @testset "Peaks and buildup" begin
+        # defaults: full peaks, the pathogen's buildup
+        @test v.peak == Int8(100) && v.severity_peak == Int8(100) && isnothing(v.buildup_duration)
+        # severity_peak defaults to peak
+        partial = Vaccine(id=2, name="Partial", target_pathogen_id=Int8(1), peak=50)
+        @test partial.peak == Int8(50) && partial.severity_peak == Int8(50)
+        flu = Vaccine(id=3, name="Flu", target_pathogen_id=Int8(1), peak=50, severity_peak=85, buildup_duration=14)
+        @test flu.severity_peak == Int8(85) && flu.buildup_duration === Int16(14)
+
+        @test_throws ArgumentError Vaccine(id=4, name="X", target_pathogen_id=Int8(1), peak=-1)
+        @test_throws ArgumentError Vaccine(id=4, name="X", target_pathogen_id=Int8(1), peak=101)
+        @test_throws ArgumentError Vaccine(id=4, name="X", target_pathogen_id=Int8(1), severity_peak=101)
+        @test_throws ArgumentError Vaccine(id=4, name="X", target_pathogen_id=Int8(1), buildup_duration=-1)
+        # only severity_peak set: the defaulted peak of 100 exceeds it, and the message says so
+        err = try
+            Vaccine(id=4, name="X", target_pathogen_id=Int8(1), severity_peak=85)
+        catch e
+            e
+        end
+        @test err isa ArgumentError && occursin("default 100", err.msg)
+
+        # the old positional form keeps working and converts
+        old = Vaccine(1, "Old", 1, VaccinationLogger())
+        @test old.id === Int8(1) && old.peak == Int8(100) && isnothing(old.buildup_duration)
     end
 
     @testset "Vaccinate Individuals" begin
