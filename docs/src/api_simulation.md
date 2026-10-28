@@ -85,6 +85,8 @@ testtypes(::Simulation)
 tick(::Simulation)
 tick_triggers(::Simulation)
 tickunit(::Simulation)
+vaccinationlogger(::Simulation)
+vaccinations(::Simulation)
 ```
 
 ## Start Conditions

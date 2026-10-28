@@ -91,6 +91,8 @@ end
 
 _health_profile_type(::Type{Critical}) = CriticalHealthProfile
 
+severity_tier(::Type{Critical}) = :critical
+
 function calculate_progression(individual::Individual, tick::Int16, dp::Critical, rng::Xoshiro)
 
     # Calculate the time to infectiousness

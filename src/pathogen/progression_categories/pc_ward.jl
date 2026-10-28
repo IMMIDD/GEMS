@@ -61,5 +61,7 @@ end
 
 _health_profile_type(::Type{Ward}) = WardHealthProfile
 
+severity_tier(::Type{Ward}) = :severe
+
 calculate_progression(individual::Individual, tick::Int16, dp::Ward, rng::Xoshiro) =
     calculate_progression(individual, tick, dp.inner, rng)

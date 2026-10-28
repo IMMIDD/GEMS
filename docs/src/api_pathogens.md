@@ -33,7 +33,7 @@ Fatal
 ### Functions
 
 ```@docs
-
+GEMS.severity_tier
 ```
 
 ## Health Progression
@@ -69,6 +69,43 @@ AgeBasedProgressionAssignment
 ```@docs
 AgeDependentTransmissionRate
 ConstantTransmissionRate
+```
+
+## Immunity
+
+### Profiles
+
+```@docs
+FullImmunity
+NoImmunity
+ExponentialWaning
+SigmoidalWaning
+WaningImmunity
+```
+
+### Vaccines
+
+```@docs
+Vaccine
+VaccineProtection
+peak(::Vaccine)
+severity_peak(::Vaccine)
+buildup_duration(::Vaccine)
+```
+
+### Functions
+
+```@docs
+calculate_immunity
+calculate_severity_immunity
+susceptibility_factor
+calculate_waning_immunity
+calculate_waning_severity_immunity
+waning_level
+severity_waning_level
+natural_peak
+severity_natural_peak
+previous_dose_interval
 ```
 
 

@@ -39,6 +39,8 @@ Reproduction is distributional, not bit-exact: disease and health now roll in se
     icu_admission_to_death::Union{Distribution, Real}
 end
 
+severity_tier(::Type{LegacyCritical}) = :critical
+
 function calculate_progression(individual::Individual, tick::Int16, dp::LegacyCritical, rng::Xoshiro)
 
     # Calculate the time to infectiousness

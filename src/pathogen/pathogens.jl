@@ -101,6 +101,9 @@ mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:Trans
         length(name) <= 0 && throw(ArgumentError("Pathogen name must not be empty!"))
         name == ALL_PATHOGENS && throw(ArgumentError("Pathogen name must not be '$ALL_PATHOGENS'!"))
         length(unique(typeof.(progressions))) < length(progressions) && throw(ArgumentError("Pathogen must not have multiple progressions of the same type!"))
+        for c in progressions
+            severity_tier(typeof(c)) in (nothing, :asymptomatic, :mild, :severe, :critical) || throw(ArgumentError("severity_tier of $(typeof(c)) must be :asymptomatic, :mild, :severe, :critical or nothing!"))
+        end
 
         if isempty(progressions)
             @warn "Pathogen $name ($id) has no progressions defined. Defining a default Mild progression."
@@ -121,6 +124,9 @@ mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:Trans
             @warn "Pathogen $name ($id) has no transmission function defined. Setting to default ConstantTransmissionRate with rate 0.2."
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.2)
         end
+
+        _has_own_method(calculate_immunity, immunity_profile) ||
+            @warn "Immunity profile $(nameof(typeof(immunity_profile))) only implements the deprecated 5-arg calculate_immunity, so it ignores vaccine peaks and buildup; implement calculate_immunity(profile, state, vaccine_protection, individual, tick, rng)." maxlog=1 _id=(:five_arg_calculate_immunity, typeof(immunity_profile))
 
         # convert progression vector to a typed tuple
         prg_tuple = (progressions...,)
@@ -202,6 +208,31 @@ Emits a static if/elseif chain at compile time, enabling union-splitting.
     return quote $(exprs...) end
 end
 progression_index(p::Pathogen, dp_type::DataType) = progression_index(p.progressions, dp_type)
+
+# whether `dp_type` is one of `progressions` with `severity_tier` `:severe` or `:critical`; a static chain like `get_progression`
+@generated function _severe_category(progressions::PR, dp_type::DataType)::Bool where {PR<:Tuple}
+    N = fieldcount(PR)
+    exprs = Expr[]
+    for i in 1:N
+        T = fieldtype(PR, i)
+        push!(exprs, :( $T === dp_type && return severity_tier($T) in (:severe, :critical) ))
+    end
+    push!(exprs, :(return false))
+    return quote $(exprs...) end
+end
+
+# the category of `progressions` that protection against severe disease turns severe cases into: the first with
+# `severity_tier` `:mild`, else the first `:asymptomatic` one, else `nothing`
+@generated function _downgrade_target(progressions::PR) where {PR<:Tuple}
+    N = fieldcount(PR)
+    exprs = Expr[]
+    for tier in (:mild, :asymptomatic), i in 1:N
+        T = fieldtype(PR, i)
+        push!(exprs, :( severity_tier($T) === $(QuoteNode(tier)) && return $T ))
+    end
+    push!(exprs, :(return nothing))
+    return quote $(exprs...) end
+end
 
 
 function Base.show(io::IO, p::Pathogen)

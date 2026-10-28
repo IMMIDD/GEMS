@@ -68,6 +68,8 @@ function infect!(infectee::Individual,
     # calculate disease progression
     paf = progression_assignment(pathogen)
     pc = assign(infectee, paf, sim, id(pathogen), tick, rng)
+    # protection against severe disease can turn a severe case into a milder category of the pathogen
+    _averts_severe_disease(pathogen, pc, infectee, sim, tick) && (pc = _downgrade_target(pathogen.progressions)::DataType)
 
     prog = get_progression(pathogen.progressions, pc)
     tag = progression_index(pathogen.progressions, pc)
@@ -184,6 +186,17 @@ Mainly a convenience wrapper around `infect!` with less parameters.
 Used for example in test cases.
 """
 infect!(infectee::Individual, sim::Simulation) = infect!(infectee, tick(sim), first_pathogen(sim); sim = sim, rng = rng(sim))
+
+# whether protection against severe disease turns the severe category `pc` of a new infection into the pathogen's
+# `_downgrade_target`; drawn with `_severity_downgrade_probability` from the host's own severity stream
+function _averts_severe_disease(pathogen::Pathogen, pc::DataType, infectee::Individual, sim::Union{Simulation, Nothing}, tick::Int16)::Bool
+    (!isnothing(sim) && _severe_category(pathogen.progressions, pc) && !isnothing(_downgrade_target(pathogen.progressions))) || return false
+    state = get_immunity_state(infectee, sim, id(pathogen))
+    severity_level = _immunity_recorded(state) ? _severity_immunity_level(pathogen, state, infectee, sim, tick) : nothing
+    isnothing(severity_level) && return false
+    p = _severity_downgrade_probability(immunity_profile(pathogen), _immunity_level(pathogen, state, infectee, sim, tick), severity_level)
+    return p > 0 && gems_rand(_keyed_severity_rng(sim.seed, id(infectee), id(pathogen), tick)) < p
+end
 
 """
     try_to_infect!(infctr::Individual, infctd::Individual, sim::Simulation, pathogen::Pathogen, setting::Setting,

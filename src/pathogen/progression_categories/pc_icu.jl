@@ -68,5 +68,7 @@ end
 
 _health_profile_type(::Type{ICU}) = ICUHealthProfile
 
+severity_tier(::Type{ICU}) = :critical
+
 calculate_progression(individual::Individual, tick::Int16, dp::ICU, rng::Xoshiro) =
     calculate_progression(individual, tick, dp.inner, rng)
