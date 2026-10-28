@@ -2,41 +2,17 @@ export FullImmunity, NoImmunity, ExponentialWaning, SigmoidalWaning
 
 
 """
-    FullImmunity <: ImmunityProfile
+    FullImmunity <: WaningImmunity
 
 The default `ImmunityProfile`. Immunity never wanes: natural immunity is full (level 100) from recovery, and a
 vaccine dose rises to the vaccine's `peak` over its `buildup_duration` (default 0) and stays there.
 """
-struct FullImmunity <: ImmunityProfile end
+struct FullImmunity <: WaningImmunity end
 
-# a dose's level: ramps from 0 to `peak` over the buildup, then stays at `peak`
-@inline function _full_level(acquired_tick::Int16, tick::Int16, buildup_duration::Int16, peak::Int8)::Int8
-    tick < acquired_tick && return Int8(0)
-    elapsed = tick - acquired_tick
-    elapsed < buildup_duration && return Int8(clamp(round(Int, Float32(peak) * elapsed / buildup_duration), 0, 100))
-    return peak
-end
+@inline waning_level(profile::FullImmunity, peak::Int8, elapsed::Int16)::Int8 = peak
 
-# during a dose's buildup, the vaccine level is at least what the previous dose still gives
-@inline function _full_vaccine_level(state::ImmunityState, vaccine_protection::VaccineProtection, tick::Int16)::Int8
-    buildup = max(vaccine_protection.buildup_duration, Int16(0))
-    peak = vaccine_protection.peak
-    current = _full_level(state.vaccine_acquired_tick, tick, buildup, peak)
-    elapsed = tick - state.vaccine_acquired_tick
-    (0 <= elapsed < buildup && state.prev_dose_interval != 0x00) || return current
-    prev_tick = Int(state.vaccine_acquired_tick) - Int(previous_dose_interval(state))
-    prev_tick > typemin(Int16) || return current
-    return max(current, _full_level(Int16(prev_tick), tick, buildup, peak))
-end
-
-@inline function calculate_immunity(profile::FullImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    # full natural immunity combined with any vaccine level is full
-    natural_immunity_active(state, tick) && return Int8(100)
-    return vaccine_immunity_recorded(state) ? _full_vaccine_level(state, vaccine_protection, tick) : Int8(0)
-end
-
-@inline calculate_immunity(profile::FullImmunity, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_immunity(profile, state, VaccineProtection(), individual, tick, rng)
+@inline calculate_immunity(profile::FullImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_immunity(profile, state, vaccine_protection, tick)
 
 """
     NoImmunity <: ImmunityProfile
@@ -54,7 +30,7 @@ end
     calculate_immunity(profile, state, VaccineProtection(), individual, tick, rng)
 
 """
-    ExponentialWaning <: ImmunityProfile
+    ExponentialWaning <: WaningImmunity
 
 An `ImmunityProfile` that starts at a peak at acquisition and decays
 exponentially toward `floor` with the given `halflife` (in ticks): natural
@@ -75,7 +51,7 @@ Level at elapsed ticks e (after buildup):  `max(min(floor, peak), peak × 0.5^(e
   immunity for vaccines that set none (default: 0).
 - `natural_peak::Int8`: Level of natural immunity at recovery (default: 100).
 """
-@with_kw struct ExponentialWaning <: ImmunityProfile
+@with_kw struct ExponentialWaning <: WaningImmunity
     halflife::Float32 = 180.0f0
     floor::Int8 = Int8(0)
     vaccine_buildup_duration::Int16 = Int16(0)
@@ -100,45 +76,24 @@ Positional constructor with the default `natural_peak`.
 ExponentialWaning(halflife, floor, vaccine_buildup_duration) =
     ExponentialWaning(halflife, floor, vaccine_buildup_duration, 100)
 
-@inline function _exponential_level(profile::ExponentialWaning, acquired_tick::Int16, tick::Int16, buildup_duration::Int16, peak::Int8)::Int8
-    tick < acquired_tick && return Int8(0)
-    elapsed = tick - acquired_tick
-    if elapsed < buildup_duration
-        return Int8(clamp(round(Int, Float32(peak) * elapsed / buildup_duration), 0, 100))
-    end
-    waning_elapsed = Float32(elapsed - buildup_duration)
-    level = Float32(peak) * 0.5f0^(waning_elapsed / profile.halflife)
+@inline function waning_level(profile::ExponentialWaning, peak::Int8, elapsed::Int16)::Int8
+    level = Float32(peak) * 0.5f0^(Float32(elapsed) / profile.halflife)
     return Int8(max(min(Int(profile.floor), Int(peak)), clamp(round(Int, level), 0, 100)))
 end
 
-# during a dose's buildup, the vaccine level is at least what the previous dose still gives
-@inline function _exponential_vaccine_level(profile::ExponentialWaning, state::ImmunityState, vaccine_protection::VaccineProtection, tick::Int16)::Int8
-    buildup = vaccine_protection.buildup_duration < 0 ? profile.vaccine_buildup_duration : vaccine_protection.buildup_duration
-    peak = vaccine_protection.peak
-    current = _exponential_level(profile, state.vaccine_acquired_tick, tick, buildup, peak)
-    elapsed = tick - state.vaccine_acquired_tick
-    (0 <= elapsed < buildup && state.prev_dose_interval != 0x00) || return current
-    prev_tick = Int(state.vaccine_acquired_tick) - Int(previous_dose_interval(state))
-    prev_tick > typemin(Int16) || return current
-    return max(current, _exponential_level(profile, Int16(prev_tick), tick, buildup, peak))
-end
+natural_peak(profile::ExponentialWaning)::Int8 = profile.natural_peak
 
-@inline function calculate_immunity(profile::ExponentialWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    nat_level = natural_immunity_recorded(state) ?
-        _exponential_level(profile, state.natural_acquired_tick, tick, Int16(0), profile.natural_peak) : Int8(0)
-    vac_level = vaccine_immunity_recorded(state) ?
-        _exponential_vaccine_level(profile, state, vaccine_protection, tick) : Int8(0)
-    return Int8(clamp(round(Int, Int(nat_level) + Int(vac_level) - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
-end
+@inline calculate_immunity(profile::ExponentialWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_immunity(profile, state, vaccine_protection, tick)
 
-@inline calculate_immunity(profile::ExponentialWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_immunity(profile, state, VaccineProtection(), individual, tick, rng)
+# deprecated with `vaccine_buildup_duration`; remove both in the next major release
+_profile_vaccine_buildup(profile::ExponentialWaning)::Int16 = profile.vaccine_buildup_duration
 
 
 
 """
-    SigmoidalWaning <: ImmunityProfile
- 
+    SigmoidalWaning <: WaningImmunity
+
 An `ImmunityProfile` based on the Hill (sigmoidal) equation. Immunity starts
 at a peak at acquisition (natural immunity at `natural_peak`, a vaccine dose at
 the vaccine's `peak`) and falls with a characteristic
@@ -162,7 +117,7 @@ Level at elapsed ticks e (after buildup):  `max(min(floor, peak), peak × halfli
   immunity for vaccines that set none (default: 0).
 - `natural_peak::Int8`: Level of natural immunity at recovery (default: 100).
 """
-@with_kw struct SigmoidalWaning <: ImmunityProfile
+@with_kw struct SigmoidalWaning <: WaningImmunity
     halflife::Float32 = 180.0f0
     hill::Float32 = 3.0f0
     floor::Int8 = Int8(0)
@@ -189,37 +144,16 @@ Positional constructor with the default `natural_peak`.
 SigmoidalWaning(halflife, hill, floor, vaccine_buildup_duration) =
     SigmoidalWaning(halflife, hill, floor, vaccine_buildup_duration, 100)
 
-@inline function _sigmoidal_level(profile::SigmoidalWaning, acquired_tick::Int16, tick::Int16, buildup_duration::Int16, peak::Int8)::Int8
-    tick < acquired_tick && return Int8(0)
-    elapsed = tick - acquired_tick
-    if elapsed < buildup_duration
-        return Int8(clamp(round(Int, Float32(peak) * elapsed / buildup_duration), 0, 100))
-    end
-    waning_elapsed = Float32(elapsed - buildup_duration)
+@inline function waning_level(profile::SigmoidalWaning, peak::Int8, elapsed::Int16)::Int8
     hl_n = profile.halflife ^ profile.hill
-    level = Float32(peak) * hl_n / (hl_n + waning_elapsed ^ profile.hill)
+    level = Float32(peak) * hl_n / (hl_n + Float32(elapsed) ^ profile.hill)
     return Int8(max(min(Int(profile.floor), Int(peak)), clamp(round(Int, level), 0, 100)))
 end
 
-# during a dose's buildup, the vaccine level is at least what the previous dose still gives
-@inline function _sigmoidal_vaccine_level(profile::SigmoidalWaning, state::ImmunityState, vaccine_protection::VaccineProtection, tick::Int16)::Int8
-    buildup = vaccine_protection.buildup_duration < 0 ? profile.vaccine_buildup_duration : vaccine_protection.buildup_duration
-    peak = vaccine_protection.peak
-    current = _sigmoidal_level(profile, state.vaccine_acquired_tick, tick, buildup, peak)
-    elapsed = tick - state.vaccine_acquired_tick
-    (0 <= elapsed < buildup && state.prev_dose_interval != 0x00) || return current
-    prev_tick = Int(state.vaccine_acquired_tick) - Int(previous_dose_interval(state))
-    prev_tick > typemin(Int16) || return current
-    return max(current, _sigmoidal_level(profile, Int16(prev_tick), tick, buildup, peak))
-end
+natural_peak(profile::SigmoidalWaning)::Int8 = profile.natural_peak
 
-@inline function calculate_immunity(profile::SigmoidalWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    nat_level = natural_immunity_recorded(state) ?
-        _sigmoidal_level(profile, state.natural_acquired_tick, tick, Int16(0), profile.natural_peak) : Int8(0)
-    vac_level = vaccine_immunity_recorded(state) ?
-        _sigmoidal_vaccine_level(profile, state, vaccine_protection, tick) : Int8(0)
-    return Int8(clamp(round(Int, Int(nat_level) + Int(vac_level) - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
-end
+@inline calculate_immunity(profile::SigmoidalWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_immunity(profile, state, vaccine_protection, tick)
 
-@inline calculate_immunity(profile::SigmoidalWaning, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_immunity(profile, state, VaccineProtection(), individual, tick, rng)
+# deprecated with `vaccine_buildup_duration`; remove both in the next major release
+_profile_vaccine_buildup(profile::SigmoidalWaning)::Int16 = profile.vaccine_buildup_duration

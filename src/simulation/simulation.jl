@@ -1429,7 +1429,7 @@ The `params` dictionary must contain a `type` key with the name of the immunity 
 The `parameters` key is optional, as profiles like `FullImmunity` take no arguments.
 """
 function create_immunity_profile(params::Dict)
-    im_type = GEMS.get_subtype(params["type"], ImmunityProfile)
+    im_type = GEMS.get_subtype(params["type"], ImmunityProfile; nested = true)
     kw_args = Dict(Symbol(k) => v for (k, v) in get(params, "parameters", Dict()))
     return try
         im_type(;kw_args...)

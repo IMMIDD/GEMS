@@ -12,6 +12,12 @@ GEMS.calculate_immunity(::HalfImmunity, s::ImmunityState, i::Individual, t::Int1
     GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
 GEMS.susceptibility_factor(::HalfImmunity, level::Int8) = 1.0 - 0.5 * level / 100.0
 
+# custom waning shapes: one that loses a level per tick, and one that defines no shape
+struct LinearWaning <: GEMS.WaningImmunity end
+GEMS.waning_level(::LinearWaning, peak::Int8, elapsed::Int16) = Int8(max(0, peak - elapsed))
+
+struct ShapelessWaning <: GEMS.WaningImmunity end
+
 # an assignment function that reads immunity, recording what it saw so tests can assert on it
 const SEEN_OWN = Ref(Int8(-1))
 const SEEN_OTHER = Ref(Int8(-1))
@@ -1267,6 +1273,19 @@ end
             # the profile's vaccine buildup is deprecated in favour of the vaccine's
             @test_deprecated ExponentialWaning(vaccine_buildup_duration = Int16(5))
             @test_deprecated SigmoidalWaning(vaccine_buildup_duration = Int16(5))
+
+            # a custom WaningImmunity only defines its shape and gets peaks, buildup and combination
+            @test FullImmunity() isa WaningImmunity && !(NoImmunity() isa WaningImmunity)
+            lw = LinearWaning()
+            @test GEMS._implements_vaccine_protection(lw)
+            @test calculate_immunity(lw, nat_state(0), ind, Int16(30), rng) == Int8(70)
+            @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(5), rng) == Int8(30)
+            @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(30), rng) == Int8(40)
+            @test calculate_immunity(lw, both_state(0, 0), vp(60, 0), ind, Int16(30), rng) == Int8(79)
+            @test_throws ErrorException calculate_immunity(ShapelessWaning(), nat_state(0), ind, Int16(1), rng)
+            # config tables find profiles below WaningImmunity
+            @test GEMS.create_immunity_profile(Dict("type" => "FullImmunity")) isa FullImmunity
+            @test GEMS.create_immunity_profile(Dict("type" => "LinearWaning")) isa LinearWaning
 
             # the 5-arg methods are the 6-arg ones with the default entry
             for p in (FullImmunity(), ExponentialWaning(vaccine_buildup_duration = Int16(10)), SigmoidalWaning(vaccine_buildup_duration = Int16(10)))

@@ -7,6 +7,9 @@ export progression_assignments
 export health_progressions
 export calculate_infectiousness
 export calculate_immunity
+export calculate_waning_immunity
+export waning_level
+export natural_peak
 export immunity_is_stable
 export susceptibility_factor
 
@@ -241,6 +244,75 @@ function _implements_vaccine_protection(profile::ImmunityProfile)::Bool
     own = which(calculate_immunity, Tuple{typeof(profile), ImmunityState, VaccineProtection, Individual, Int16, Xoshiro})
     fallback = which(calculate_immunity, Tuple{ImmunityProfile, ImmunityState, VaccineProtection, Individual, Int16, Xoshiro})
     return own !== fallback
+end
+
+"""
+    waning_level(profile::WaningImmunity, peak::Int8, elapsed::Int16)::Int8
+
+Returns the level (0-100) `elapsed` ticks after a dose or a recovery reached `peak`.
+"""
+function waning_level(profile::WaningImmunity, peak::Int8, elapsed::Int16)::Int8
+    error("waning_level is not implemented for WaningImmunity type $(typeof(profile)).")
+end
+
+"""
+    natural_peak(profile::WaningImmunity)::Int8
+
+Returns the level of natural immunity at recovery. Defaults to 100.
+"""
+natural_peak(profile::WaningImmunity)::Int8 = Int8(100)
+
+"""
+    calculate_waning_immunity(profile::WaningImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, tick::Int16)::Int8
+
+Returns the level of `state` at `tick` from the profile's `waning_level` and `natural_peak`: a dose ramps to the
+vaccine's peak over its buildup, a booster's buildup keeps what the previous dose still gives, and natural and
+vaccine immunity combine as 1 − (1−p)(1−q).
+"""
+@inline function calculate_waning_immunity(profile::WaningImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, tick::Int16)::Int8
+    nat_level = natural_immunity_recorded(state) ?
+        _dose_level(profile, state.natural_acquired_tick, tick, Int16(0), natural_peak(profile)) : Int8(0)
+    # full natural immunity combined with any vaccine level is full
+    nat_level == 100 && return nat_level
+    vac_level = vaccine_immunity_recorded(state) ?
+        _vaccine_level(profile, state, vaccine_protection, tick) : Int8(0)
+    return Int8(clamp(round(Int, Int(nat_level) + Int(vac_level) - (Int(nat_level) * Int(vac_level)) / 100.0f0), 0, 100))
+end
+
+"""
+    calculate_immunity(profile::WaningImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+
+Calls `calculate_waning_immunity`, for `WaningImmunity` subtypes that don't define their own `calculate_immunity`.
+"""
+@inline calculate_immunity(profile::WaningImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_immunity(profile, state, vaccine_protection, tick)
+
+@inline calculate_immunity(profile::WaningImmunity, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_immunity(profile, state, VaccineProtection(), individual, tick, rng)
+
+# the deprecated buildup a profile gives vaccines that set none
+_profile_vaccine_buildup(profile::ImmunityProfile)::Int16 = Int16(0)
+
+# a dose's level: ramps from 0 to `peak` over the buildup, then follows the profile's curve
+@inline function _dose_level(profile::WaningImmunity, acquired_tick::Int16, tick::Int16, buildup_duration::Int16, peak::Int8)::Int8
+    tick < acquired_tick && return Int8(0)
+    elapsed = tick - acquired_tick
+    if elapsed < buildup_duration
+        return Int8(clamp(round(Int, Float32(peak) * elapsed / buildup_duration), 0, 100))
+    end
+    return waning_level(profile, peak, elapsed - buildup_duration)
+end
+
+# during a dose's buildup, the vaccine level is at least what the previous dose still gives
+@inline function _vaccine_level(profile::WaningImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, tick::Int16)::Int8
+    buildup = vaccine_protection.buildup_duration < 0 ? _profile_vaccine_buildup(profile) : vaccine_protection.buildup_duration
+    peak = vaccine_protection.peak
+    current = _dose_level(profile, state.vaccine_acquired_tick, tick, buildup, peak)
+    elapsed = tick - state.vaccine_acquired_tick
+    (0 <= elapsed < buildup && state.prev_dose_interval != 0x00) || return current
+    prev_tick = Int(state.vaccine_acquired_tick) - Int(previous_dose_interval(state))
+    prev_tick > typemin(Int16) || return current
+    return max(current, _dose_level(profile, Int16(prev_tick), tick, buildup, peak))
 end
 
 """

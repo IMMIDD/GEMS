@@ -8,6 +8,7 @@ export TransmissionFunction
 export TransmissionModifier
 export InfectiousnessProfile
 export ImmunityProfile
+export WaningImmunity
 
 export id, name
 export progressions, progression_assignment, transmission_function
@@ -22,6 +23,16 @@ abstract type TransmissionFunction end
 abstract type TransmissionModifier end
 abstract type InfectiousnessProfile end
 abstract type ImmunityProfile end
+
+"""
+    WaningImmunity <: ImmunityProfile
+
+Supertype of profiles whose immunity reaches a peak and then follows a curve. A subtype implements
+`waning_level(profile, peak, elapsed)` and, to change natural immunity's peak, `natural_peak(profile)`; its
+`calculate_immunity` calls `calculate_waning_immunity`, which does the vaccine buildup and boosters and combines
+natural and vaccine immunity as 1 − (1−p)(1−q).
+"""
+abstract type WaningImmunity <: ImmunityProfile end
 
 """
     Pathogen
