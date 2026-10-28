@@ -271,7 +271,7 @@ import GEMS.calculate_immunity
 end
 
 # override immunity calculation for your struct
-function GEMS.calculate_immunity(profile::FixedWaning, state::ImmunityState, vaccine_protection::GEMS.VaccineProtection,
+function GEMS.calculate_immunity(profile::FixedWaning, state::ImmunityState, vaccine_protection::VaccineProtection,
     individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
     # no protection before the first recovery

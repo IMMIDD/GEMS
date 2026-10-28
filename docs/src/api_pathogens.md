@@ -87,6 +87,7 @@ WaningImmunity
 
 ```@docs
 Vaccine
+VaccineProtection
 peak(::Vaccine)
 severity_peak(::Vaccine)
 buildup_duration(::Vaccine)

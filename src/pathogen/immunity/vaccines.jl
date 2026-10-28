@@ -1,7 +1,7 @@
 ###
 ### VACCINES (TYPE DEFINITION & BASIC FUNCTIONALITY)
 ###
-export Vaccine
+export Vaccine, VaccineProtection
 export id, name, waning, logger, target_pathogen_id, peak, severity_peak, buildup_duration
 
 """
