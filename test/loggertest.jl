@@ -367,7 +367,7 @@
     end
 
     @testset "VaccinationLogger" begin
-        attributes = ["id", "pathogen_id", "tick"]
+        attributes = ["id", "pathogen_id", "vaccine_id", "dose_number", "tick"]
 
         @testset "Creation and Basic Functionality" begin
             vl = VaccinationLogger()
@@ -378,7 +378,7 @@
                 @test sum(length, getproperty(vl, Symbol(attr))) == 0
             end
 
-            log!(vl, Int32(0), Int8(0), Int16(0))
+            log!(vl, Int32(0), Int8(0), Int8(0), Int8(0), Int16(0))
 
             # test that last_modified_tick was updated by the log! function
             @test vl.last_modified_tick[] == Int16(0)

@@ -17,9 +17,9 @@ export evaluate
 export initialize!, reinitialize!
 export reset!
 export tickunit
-export infectionlogger, deathlogger, healthlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export infectionlogger, deathlogger, vaccinationlogger, healthlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
 export statelogger, states
-export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
+export infections, tests, deaths, vaccinations, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
@@ -165,6 +165,7 @@ sim = Simulation(params)
 - Logger
     - `infectionlogger::InfectionLogger`: A logger tracking all infections    
     - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
+    - `vaccinationlogger::VaccinationLogger`: A logger tracking all vaccinations
     - `testlogger::TestLogger`: A logger tracking all individual tests
     - `pooltestlogger::PoolTestLogger`: A logger tracking all pool tests
     - `seroprevalencelogger::SeroprevalenceLogger`: A logger tracking all seroprevalence tests
@@ -215,6 +216,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     # logger
     infectionlogger::InfectionLogger
     deathlogger::DeathLogger
+    vaccinationlogger::VaccinationLogger
     healthlogger::HealthLogger
     testlogger::TestLogger
     pooltestlogger::PoolTestLogger
@@ -302,6 +304,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # logger
             InfectionLogger(minid = population.minid, maxid = population.maxid),
             DeathLogger(),
+            VaccinationLogger(),
             HealthLogger(),
             TestLogger(),
             PoolTestLogger(),
@@ -2317,6 +2320,22 @@ Calls the `dataframe()` function on the internal simulation's `DeathLogger`.
 deaths(simulation::Simulation) = simulation |> deathlogger |> dataframe
 
 """
+    vaccinationlogger(simulation)
+
+Returns the `VaccinationLogger` of the simulation.
+"""
+function vaccinationlogger(simulation::Simulation)::VaccinationLogger
+    return simulation.vaccinationlogger
+end
+
+"""
+    vaccinations(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `VaccinationLogger`.
+"""
+vaccinations(simulation::Simulation) = simulation |> vaccinationlogger |> dataframe
+
+"""
     healthlogger(simulation)
 
 Returns the `HealthLogger` of the simulation.
@@ -2484,6 +2503,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     pop = population(simulation)
     simulation.infectionlogger = InfectionLogger(minid = pop.minid, maxid = pop.maxid)
     simulation.deathlogger = DeathLogger()
+    simulation.vaccinationlogger = VaccinationLogger()
     simulation.healthlogger = HealthLogger()
     simulation.testlogger = TestLogger()
     simulation.pooltestlogger = PoolTestLogger()

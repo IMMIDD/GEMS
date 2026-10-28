@@ -5,6 +5,8 @@
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
     id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
     pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
+    vaccine_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
+    dose_number::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
     tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
 end
 
@@ -12,13 +14,23 @@ function log!(
         vacclogger::VaccinationLogger,
         id::Int32,
         pathogen_id::Int8,
+        vaccine_id::Int8,
+        dose_number::Int8,
         tick::Int16,
     )
     tid = Threads.threadid()
     push!(vacclogger.id[tid], id)
     push!(vacclogger.pathogen_id[tid], pathogen_id)
+    push!(vacclogger.vaccine_id[tid], vaccine_id)
+    push!(vacclogger.dose_number[tid], dose_number)
     push!(vacclogger.tick[tid], tick)
     Threads.atomic_xchg!(vacclogger.last_modified_tick, tick)
+end
+
+# deprecated: logs the vaccination without vaccine id and dose number
+function log!(vacclogger::VaccinationLogger, id::Int32, pathogen_id::Int8, tick::Int16)
+    @warn "log!(::VaccinationLogger, id, pathogen_id, tick) is deprecated; pass vaccine_id and dose_number too." maxlog=1
+    log!(vacclogger, id, pathogen_id, DEFAULT_VACCINE_ID, Int8(0), tick)
 end
 
 function save(vacclogger::VaccinationLogger, path::AbstractString)
@@ -30,6 +42,8 @@ function save_JLD2(vacclogger::VaccinationLogger, path::AbstractString)
         file["tick"] = vcat(vacclogger.tick...)
         file["id"] = vcat(vacclogger.id...)
         file["pathogen_id"] = vcat(vacclogger.pathogen_id...)
+        file["vaccine_id"] = vcat(vacclogger.vaccine_id...)
+        file["dose_number"] = vcat(vacclogger.dose_number...)
     end
 end
 
@@ -37,7 +51,9 @@ function dataframe(vacclogger::VaccinationLogger)
     return DataFrame(
         tick = vcat(vacclogger.tick...),
         id = vcat(vacclogger.id...),
-        pathogen_id = vcat(vacclogger.pathogen_id...);
+        pathogen_id = vcat(vacclogger.pathogen_id...),
+        vaccine_id = vcat(vacclogger.vaccine_id...),
+        dose_number = vcat(vacclogger.dose_number...);
         copycols = false
     )
 end

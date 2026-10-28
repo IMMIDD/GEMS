@@ -885,24 +885,25 @@ function vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine:
     @warn "vaccinate!(individual, registry, vaccine, tick) is deprecated; use vaccinate!(individual, sim, vaccine, tick), which picks the individual's registry shard." maxlog=1
     _sets_protection(vaccine) &&
         @warn "vaccinate!(individual, registry, vaccine, tick) ignores the peaks and buildup of vaccine '$(name(vaccine))'." maxlog=1 _id=(:ignored_peaks, id(vaccine))
-    _vaccinate!(individual, registry, vaccine, tick)
-end
-
-# records the vaccination in `registry`
-function _vaccinate!(individual::Individual, registry::ImmunityRegistry, vaccine::Vaccine, tick::Int16)
-    log!(logger(vaccine), id(individual), target_pathogen_id(vaccine), tick)
-    push_immunity!(registry, individual, target_pathogen_id(vaccine), IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
+    pid = target_pathogen_id(vaccine)
+    push_immunity!(registry, individual, pid, IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
+    log!(vaccine.logger, id(individual), pid, id(vaccine), number_of_vaccinations(individual, registry, pid), tick)
+    return nothing
 end
 
 """
     vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
 
-Vaccinates an individual against the vaccine's target pathogen at `tick`. The vaccine's first dose registers its
-peaks and buildup with `sim`; later doses must carry the same values.
+Vaccinates an individual against the vaccine's target pathogen at `tick` and logs the dose in `vaccinationlogger(sim)`.
+The vaccine's first dose registers its peaks and buildup with `sim`; later doses must carry the same values.
 """
 function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, tick::Int16)
     _register_vaccine!(sim, vaccine)
-    _vaccinate!(individual, immunity_registry(sim, individual), vaccine, tick)
+    registry = immunity_registry(sim, individual)
+    pid = target_pathogen_id(vaccine)
+    push_immunity!(registry, individual, pid, IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
+    log!(vaccinationlogger(sim), id(individual), pid, id(vaccine), number_of_vaccinations(individual, registry, pid), tick)
+    return nothing
 end
 
 """

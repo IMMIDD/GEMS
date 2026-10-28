@@ -19,7 +19,8 @@ A type representing a vaccine.
   `peak` (default: `peak`)
 - `buildup_duration::Union{Nothing, Int16}`: Ticks from a dose to its peak; `nothing` uses the pathogen's
   `vaccine_buildup_duration` (default: `nothing`)
-- `logger::VaccinationLogger`. Logger to log vaccinations with the vaccine
+- `logger::VaccinationLogger`. Deprecated: vaccinations are logged in `vaccinationlogger(sim)`; this logger only
+  records doses from the deprecated `vaccinate!(individual, registry, vaccine, tick)`
 """
 @with_kw mutable struct Vaccine
     id::Int8
@@ -109,9 +110,10 @@ end
 """
     logger(vaccine)
 
-Returns the `VaccinationsLogger` attached to the vaccine.
+Returns the `VaccinationLogger` attached to the vaccine. Deprecated: use `vaccinationlogger(sim)`.
 """
 function logger(vaccine::Vaccine)::VaccinationLogger
+    @warn "logger(vaccine) is deprecated; vaccinations are logged in vaccinationlogger(sim)." maxlog=1
     return vaccine.logger
 end
 
