@@ -354,6 +354,18 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
             gemsplot(rd)
         end
 
+        @testset "Plots without infections" begin
+            sim_empty = Simulation(pop_size = 1000, infected_fraction = 0.0)
+            run!(sim_empty)
+            rd_empty = sim_empty |> PostProcessor |> ResultData
+
+            # plot_title is what a per-group batch plot passes
+            @test generate(HouseholdAttackRate(), rd_empty) isa Plots.Plot
+            @test generate(HouseholdAttackRate(), rd_empty; plot_title = "Group") isa Plots.Plot
+            @test generate(HouseholdAttackRate(), [rd_empty, rd_empty]) isa Plots.Plot
+            @test generate(InfectionDuration(), [rd_empty, rd_empty]) isa Plots.Plot
+        end
+
         @testset "Plots with ResultData-Array" begin
             plts = [
                 ActiveDarkFigure()
@@ -416,8 +428,8 @@ import GEMS: splitplot, splitgroup, BatchProcessor, GMTWrapper, maptypes, region
 
             # multi-group batch — exercises _plot_labelled_ribbon! and grouped sp_cum_cases
             b_ml = merge(
-                Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.2, label = "Baseline"),
-                Batch(n_runs = 3, pop_size = 1000, transmission_rate = 0.15, label = "Masks")
+                Batch(n_runs = 3, pop_size = 1000, infected_fraction = 0.01, transmission_rate = 0.2, label = "Baseline"),
+                Batch(n_runs = 3, pop_size = 1000, infected_fraction = 0.01, transmission_rate = 0.15, label = "Masks")
             )
             bd_ml = BatchData(b_ml; group_by = :label)
             @test gemsplot(bd_ml) isa Plots.Plot
