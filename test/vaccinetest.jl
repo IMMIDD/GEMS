@@ -1,3 +1,17 @@
+# a custom profile without calculate_severity_immunity: protects at 40 once anything is recorded
+struct PlainImmunity <: GEMS.ImmunityProfile end
+GEMS.calculate_immunity(::PlainImmunity, s::ImmunityState, v::GEMS.VaccineProtection, i::Individual, t::Int16, r::Xoshiro) =
+    GEMS.immunity_active(s, t) ? Int8(40) : Int8(0)
+
+# a waning curve whose halflife is drawn once per acquisition, between 30 and 330 ticks
+struct RandomHalflifeWaning <: GEMS.WaningImmunity end
+function GEMS.waning_level(::RandomHalflifeWaning, peak::Int8, elapsed::Int16, s::ImmunityState, source::Symbol, r::Xoshiro)
+    halflife = 30 + 300 * rand(immunity_rng!(r, s, source))
+    return Int8(round(Int, peak * 0.5^(elapsed / halflife)))
+end
+GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.VaccineProtection, i::Individual, t::Int16, r::Xoshiro) =
+    calculate_waning_immunity(p, s, v, t, r)
+
 @testset "Vaccines" begin
 
     v = Vaccine(id=1, name="Antitest", target_pathogen_id=Int8(1))
@@ -177,6 +191,53 @@
         vaccinate!(b, s, Vaccine(id=4, name="Weak", target_pathogen_id=pid, peak=40), Int16(180))
         @test level(s, b, 180) < before
         @test level(s, b, 194) == Int8(40)
+    end
+
+    @testset "Severity" begin
+        pid = Int8(1)
+        sim_with(profile) = Simulation(pop_size = 100, infected_fraction = 0.0,
+            pathogens = (Pathogen(id = 1, name = "P", immunity_profile = profile),))
+
+        # a vaccine without a severity_peak protects against severe disease as against infection
+        s = sim_with(ExponentialWaning(halflife = 90.0))
+        a, b = individuals(s)[1:2]
+        vaccinate!(a, s, Vaccine(id=1, name="Plain", target_pathogen_id=pid, peak=50), Int16(0))
+        @test severity_immunity_level(a, s, pid, Int16(90)) == immunity_level(a, s, pid, Int16(90)) == Int8(25)
+        # one with a severity_peak follows its own severity curve
+        @test_logs vaccinate!(b, s, Vaccine(id=2, name="Severe", target_pathogen_id=pid, peak=50, severity_peak=90), Int16(0))
+        @test immunity_level(b, s, pid, Int16(90)) == Int8(25)
+        @test severity_immunity_level(b, s, pid, Int16(90)) == Int8(45)
+        # without a record there is no protection
+        @test severity_immunity_level(individuals(s)[3], s, pid, Int16(90)) == Int8(0)
+
+        # a profile without severity protection of its own gives its infection level, whatever the vaccine sets,
+        # and warns about the ignored severity_peak at the vaccine's first dose only
+        p = sim_with(PlainImmunity())
+        c, d = individuals(p)[1:2]
+        severe = Vaccine(id=1, name="Severe", target_pathogen_id=pid, peak=50, severity_peak=90)
+        @test_logs (:warn, r"severity_peak") vaccinate!(c, p, severe, Int16(0))
+        @test_logs vaccinate!(d, p, severe, Int16(0))
+        @test_logs vaccinate!(d, p, Vaccine(id=2, name="Plain", target_pathogen_id=pid, peak=50), Int16(1))
+        @test severity_immunity_level(c, p, pid, Int16(10)) == immunity_level(c, p, pid, Int16(10)) == Int8(40)
+    end
+
+    @testset "Stochastic waning" begin
+        pid = Int8(1)
+        s = Simulation(pop_size = 100, infected_fraction = 0.0,
+            pathogens = (Pathogen(id = 1, name = "R", immunity_profile = RandomHalflifeWaning()),))
+        inds = individuals(s)[1:20]
+        vac = Vaccine(id=1, name="V", target_pathogen_id=pid)
+        foreach(i -> vaccinate!(i, s, vac, Int16(0)), inds)
+        levels() = [immunity_level(i, s, pid, Int16(200)) for i in inds]
+        first_levels = levels()
+        # each read draws the same halflife, and hosts draw different ones
+        @test levels() == first_levels
+        @test length(unique(first_levels)) > 1
+        # a new dose draws anew
+        foreach(i -> vaccinate!(i, s, vac, Int16(100)), inds)
+        @test [immunity_level(i, s, pid, Int16(300)) for i in inds] != first_levels
+        # the severity curve follows the stochastic infection curve by default
+        @test all(i -> severity_immunity_level(i, s, pid, Int16(300)) == immunity_level(i, s, pid, Int16(300)), inds)
     end
 
 end

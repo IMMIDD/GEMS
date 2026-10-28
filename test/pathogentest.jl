@@ -14,7 +14,8 @@ GEMS.susceptibility_factor(::HalfImmunity, level::Int8) = 1.0 - 0.5 * level / 10
 
 # custom waning shapes: one that loses a level per tick, and one that defines no shape
 struct LinearWaning <: GEMS.WaningImmunity end
-GEMS.waning_level(::LinearWaning, peak::Int8, elapsed::Int16) = Int8(max(0, peak - elapsed))
+GEMS.waning_level(::LinearWaning, peak::Int8, elapsed::Int16, s::ImmunityState, source::Symbol, r::Xoshiro) =
+    Int8(max(0, peak - elapsed))
 
 struct ShapelessWaning <: GEMS.WaningImmunity end
 
@@ -1306,6 +1307,58 @@ end
             @test ExponentialWaning(180.0, 0, 0) == ExponentialWaning()
             @test SigmoidalWaning(180.0, 3.0, 0, 0) == SigmoidalWaning()
             @test GEMS.create_immunity_profile(Dict("type" => "ExponentialWaning", "parameters" => Dict("natural_peak" => 70))).natural_peak == Int8(70)
+        end
+
+        @testset "Severity" begin
+            vp(peak, severity_peak = peak, buildup = -1) = GEMS.VaccineProtection(peak, severity_peak, buildup)
+            inf(p, s, v, t) = calculate_immunity(p, s, v, ind, Int16(t), rng)
+            sev(p, s, v, t) = calculate_severity_immunity(p, s, v, ind, Int16(t), rng)
+
+            # only the peaks are ordered; the message names both fields
+            err = try
+                ExponentialWaning(natural_peak = 80, severity_natural_peak = 70)
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("severity_natural_peak", err.msg)
+            @test_throws ArgumentError SigmoidalWaning(severity_natural_peak = 101)
+            @test_throws ArgumentError ExponentialWaning(severity_halflife = 0.0)
+            @test_throws ArgumentError SigmoidalWaning(severity_floor = Int8(-1))
+            @test ExponentialWaning(halflife = 90.0, severity_halflife = 10.0) isa ExponentialWaning
+
+            # by default the severity curve is the infection curve, so there is no severity protection
+            @test ExponentialWaning(halflife = 50.0, floor = Int8(5)).severity_halflife == 50.0f0
+            for p in (FullImmunity(), ExponentialWaning(halflife = 90.0), SigmoidalWaning(halflife = 90.0), LinearWaning())
+                @test all(((s, t),) -> sev(p, s, vp(60), t) == inf(p, s, vp(60), t),
+                    Iterators.product((nat_state(0), vac_state(0), both_state(0, 30)), 0:20:300))
+            end
+
+            # its own peak, halflife and floor, and the vaccine's severity_peak
+            p = ExponentialWaning(halflife = 90.0, natural_peak = 80, severity_natural_peak = 100,
+                severity_halflife = 360.0, severity_floor = Int8(20))
+            @test inf(p, nat_state(0), vp(60), 90) == Int8(40)
+            @test sev(p, nat_state(0), vp(60), 360) == Int8(50)
+            @test sev(p, nat_state(0), vp(60), 10000) == Int8(20)
+            @test sev(p, vac_state(0), vp(50, 90), 0) == Int8(90)
+            @test sev(p, vac_state(0), vp(50, 90), 360) == Int8(45)
+            # hybrid immunity on both endpoints
+            @test inf(p, both_state(0, 0), vp(50, 90), 180) == Int8(30)
+            @test sev(p, both_state(0, 0), vp(50, 90), 180) == Int8(90)
+            # a booster keeps the severity curve up during its buildup
+            booster = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, 120, pid, 1, 2, GEMS._encode_dose_interval(120))
+            @test all(t -> sev(p, booster, vp(50, 90, 14), t) >= sev(p, vac_state(0), vp(50, 90, 14), t) - 2, 120:133)
+
+            # profiles without severity protection of their own return nothing; WaningImmunity subtypes have it
+            @test isnothing(sev(SeverityOnlyImmunity(), nat_state(0), vp(60), 1))
+            @test isnothing(sev(NoImmunity(), nat_state(0), vp(60), 1))
+            @test sev(LinearWaning(), nat_state(0), vp(60), 30) == Int8(70)
+
+            # old positional constructors keep the default severity curve; severity keys from a config table
+            old = ExponentialWaning(90.0, 10, 0)
+            @test (old.natural_peak, old.severity_natural_peak, old.severity_halflife, old.severity_floor) == (100, 100, 90.0f0, 10)
+            q = GEMS.create_immunity_profile(Dict("type" => "SigmoidalWaning",
+                "parameters" => Dict("severity_halflife" => 365, "severity_floor" => 20)))
+            @test q.severity_halflife == 365.0f0 && q.severity_floor == Int8(20) && q.halflife == 180.0f0
         end
 
         @testset "Abstract ImmunityProfile fallbacks" begin
