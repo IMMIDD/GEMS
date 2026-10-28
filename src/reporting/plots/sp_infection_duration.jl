@@ -145,6 +145,7 @@ function generate(plt::InfectionDuration, rds::Vector{ResultData}; pathogen = no
     pids = sort(unique(vcat([unique(aggregated_compartment_periods(rd).pathogen_id) for rd in rds]...)))
     pnames = pathogen_names(rds[1])
 
+    isempty(pids) && return plot!(emptyplot("No data available for any pathogen."); plotargs...)
     if length(pids) == 1
         p = _boxplot_for_pid(pids[1])
         plot!(p; plotargs...)
