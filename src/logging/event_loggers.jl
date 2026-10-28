@@ -27,7 +27,7 @@ function log!(
     Threads.atomic_xchg!(vacclogger.last_modified_tick, tick)
 end
 
-# deprecated: logs the vaccination without vaccine id and dose number
+# deprecated: logs the vaccination without vaccine id and dose number, so it never counts as a first dose
 function log!(vacclogger::VaccinationLogger, id::Int32, pathogen_id::Int8, tick::Int16)
     @warn "log!(::VaccinationLogger, id, pathogen_id, tick) is deprecated; pass vaccine_id and dose_number too." maxlog=1
     log!(vacclogger, id, pathogen_id, DEFAULT_VACCINE_ID, Int8(0), tick)
