@@ -104,9 +104,11 @@ mutable struct PostProcessor
 
         # join vaccinations with additional info from population DF
         vaccinations = dataframe(vaccinationlogger(simulation))
-        leftjoin!(vaccinations, pop, on = :id)
-        transform!(vaccinations,
-            :household => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags)
+        vaccination_rows = _matching_rows(vaccinations.id, pop.id)
+        for name in names(pop, Not(:id))
+            vaccinations[!, name] = _gather(pop[!, name], vaccination_rows)
+        end
+        vaccinations.household_ags = _ags_of_households(vaccinations.household, household_ags)
 
         # join tests with population data
         leftjoin!(tests, pop, on = :id)
