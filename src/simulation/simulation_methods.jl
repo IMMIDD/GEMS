@@ -355,20 +355,6 @@ function step!(simulation::Simulation)
     # merge per-thread staged trigger events into the queue before processing
     flush_staging!(event_queue(simulation))
 
-    # infect individuals in settings
-    if !dormant
-        foreach_setting_vector(settingscontainer(simulation)) do stngs
-            Threads.@threads :static for stng in stngs
-                if isactive(stng)
-                    spread_infection!(stng, simulation)
-                end
-            end
-        end
-
-        # push pending infections to InfectionRegistry
-        flush_pending_infections!(simulation)
-    end
-
     # trigger tick triggers
     for tt in simulation |> tick_triggers
         if should_fire(tt, simulation)
@@ -381,6 +367,20 @@ function step!(simulation::Simulation)
     # update quarantine state
     if !dormant
         update_quarantines!(simulation)
+    end
+
+    # infect individuals in settings
+    if !dormant
+        foreach_setting_vector(settingscontainer(simulation)) do stngs
+            Threads.@threads :static for stng in stngs
+                if isactive(stng)
+                    spread_infection!(stng, simulation)
+                end
+            end
+        end
+
+        # push pending infections to InfectionRegistry
+        flush_pending_infections!(simulation)
     end
 
     if !dormant
