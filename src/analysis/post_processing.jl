@@ -71,7 +71,11 @@ mutable struct PostProcessor
             infections.symptom_onset, symptom_onset_source)
 
         # add tests
-        leftjoin!(infections, detection_ticks(tests), on = :infection_id)
+        detections = detection_ticks(tests)
+        detection_rows = _matching_rows(infections.infection_id, detections.infection_id)
+        for name in names(detections, Not(:infection_id))
+            infections[!, name] = _gather(detections[!, name], detection_rows)
+        end
 
         # add population data of the infecter (_a) and the infectee (_b)
         for (id_col, suffix) in ((:id_a, "_a"), (:id_b, "_b"))
@@ -96,11 +100,13 @@ mutable struct PostProcessor
         insertcols!(infections, columnindex(infections, :recovery) + 1, :removed => removed)
 
         # join deaths with additional info from population DF
-        leftjoin!(deaths, pop, on = :id)
+        death_population_rows = _matching_rows(deaths.id, pop.id)
+        for name in names(pop, Not(:id))
+            deaths[!, name] = _gather(pop[!, name], death_population_rows)
+        end
 
         # region of each death, for regional rates that don't go via the infection rows
-        transform!(deaths,
-            :household => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags)
+        deaths.household_ags = _ags_of_households(deaths.household, household_ags)
 
         # join vaccinations with additional info from population DF
         vaccinations = dataframe(vaccinationlogger(simulation))
@@ -111,7 +117,10 @@ mutable struct PostProcessor
         vaccinations.household_ags = _ags_of_households(vaccinations.household, household_ags)
 
         # join tests with population data
-        leftjoin!(tests, pop, on = :id)
+        test_population_rows = _matching_rows(tests.id, pop.id)
+        for name in names(pop, Not(:id))
+            tests[!, name] = _gather(pop[!, name], test_population_rows)
+        end
         
         pooltests = dataframe(pooltestlogger(simulation))
 
