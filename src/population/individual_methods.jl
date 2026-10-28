@@ -389,7 +389,9 @@ end
 # level of a recorded `state` from the already looked-up `pathogen`
 @inline function _immunity_level(pathogen, state::ImmunityState, individual::Individual, sim::Simulation, t::Int16)::Int8
     rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
-    return calculate_immunity(immunity_profile(pathogen), state, individual, t, rng)
+    vaccine_protection = vaccine_immunity_recorded(state) ?
+        _vaccine_protection(sim, state.pathogen_id, state.vaccine_id) : VaccineProtection()
+    return calculate_immunity(immunity_profile(pathogen), state, vaccine_protection, individual, t, rng)
 end
 
 """

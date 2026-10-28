@@ -103,25 +103,16 @@
         @test_throws ArgumentError vaccinate!(ind, s, Vaccine(id=0, name="Zero", target_pathogen_id=pid), Int16(0))
         @test_throws ArgumentError vaccinate!(ind, s, Vaccine(id=3, name="Elsewhere", target_pathogen_id=Int8(5)), Int16(0))
 
-        # a profile that ignores peaks warns once per vaccine, at its first dose
-        flu = Vaccine(id=4, name="Flu", target_pathogen_id=pid, peak=50)
-        @test_logs (:warn, r"ignores them") vaccinate!(ind, s, flu, Int16(0))
-        @test_logs vaccinate!(ind, s, flu, Int16(1))
-        @test_logs (:warn, r"ignores them") vaccinate!(ind, s, Vaccine(id=5, name="Slow", target_pathogen_id=pid, buildup_duration=14), Int16(0))
-        @test_logs vaccinate!(ind, s, Vaccine(id=6, name="Plain", target_pathogen_id=pid), Int16(0))
-        # and again in another simulation
-        s2 = Simulation(pop_size = 100)
-        @test_logs (:warn, r"ignores them") vaccinate!(individuals(s2)[1], s2, flu, Int16(0))
+        # registration doesn't log, whatever the vaccine sets
+        @test_logs vaccinate!(ind, s, Vaccine(id=4, name="Flu", target_pathogen_id=pid, peak=50, buildup_duration=14), Int16(0))
 
         # the same vaccine id for two pathogens with non-contiguous ids
         a = Pathogen(id = 3, name = "A", immunity_profile = NoImmunity())
         b = Pathogen(id = 7, name = "B", immunity_profile = NoImmunity())
         s3 = Simulation(pop_size = 100, pathogens = (a, b), start_condition = InfectedFraction(fraction = 0.01, pathogen = "all"))
         ind3 = individuals(s3)[1]
-        @test_logs (:warn, r"pathogen 3") (:warn, r"pathogen 7") begin
-            vaccinate!(ind3, s3, Vaccine(id=1, name="ForA", target_pathogen_id=Int8(3), peak=60), Int16(0))
-            vaccinate!(ind3, s3, Vaccine(id=1, name="ForB", target_pathogen_id=Int8(7), peak=80), Int16(0))
-        end
+        vaccinate!(ind3, s3, Vaccine(id=1, name="ForA", target_pathogen_id=Int8(3), peak=60), Int16(0))
+        vaccinate!(ind3, s3, Vaccine(id=1, name="ForB", target_pathogen_id=Int8(7), peak=80), Int16(0))
         @test s3.vaccine_protection[1, 3].peak == Int8(60)
         @test s3.vaccine_protection[1, 7].peak == Int8(80)
 
@@ -139,8 +130,53 @@
         reset!(s)
         @test all(==(UInt128(0)), s.vaccine_registered)
         @test all(==(GEMS.VaccineProtection()), s.vaccine_protection)
-        @test_logs (:warn, r"ignores them") vaccinate!(individuals(s)[1], s, Vaccine(id=1, name="Sweep", target_pathogen_id=pid, peak=40), Int16(0))
+        vaccinate!(individuals(s)[1], s, Vaccine(id=1, name="Sweep", target_pathogen_id=pid, peak=40), Int16(0))
         @test s.vaccine_protection[1, pid].peak == Int8(40)
+    end
+
+    @testset "Peaks" begin
+        pid = Int8(1)
+        sim_with(profile) = Simulation(pop_size = 100, infected_fraction = 0.0,
+            pathogens = (Pathogen(id = 1, name = "P", immunity_profile = profile),))
+        level(sim, ind, t) = immunity_level(ind, sim, pid, Int16(t))
+
+        # FullImmunity: default vaccines give 100 from the dose; a partial one ramps and stays at its peak
+        s = sim_with(FullImmunity())
+        a, b = individuals(s)[1:2]
+        vaccinate!(a, s, Vaccine(id=1, name="Full", target_pathogen_id=pid), Int16(0))
+        @test level(s, a, 0) == Int8(100)
+        partial = Vaccine(id=2, name="Partial", target_pathogen_id=pid, peak=60, buildup_duration=10)
+        vaccinate!(b, s, partial, Int16(0))
+        @test level(s, b, 5) == Int8(30)
+        @test all(t -> level(s, b, t) == Int8(60), 10:400)
+        # a booster keeps the level during its buildup
+        vaccinate!(b, s, partial, Int16(100))
+        @test all(t -> level(s, b, t) == Int8(60), 100:120)
+
+        # waning profiles: natural immunity starts at natural_peak, each product at its own peak
+        for profile in (ExponentialWaning(halflife = 180.0, natural_peak = 80), SigmoidalWaning(halflife = 180.0, natural_peak = 80))
+            s = sim_with(profile)
+            a, b, c = individuals(s)[1:3]
+            GEMS.push_immunity!(immunity_registry(s, a), a, pid, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+            vaccinate!(b, s, Vaccine(id=1, name="Strong", target_pathogen_id=pid, peak=90), Int16(0))
+            vaccinate!(c, s, Vaccine(id=2, name="Weak", target_pathogen_id=pid, peak=50), Int16(0))
+            @test (level(s, a, 0), level(s, b, 0), level(s, c, 0)) == (80, 90, 50)
+            @test (level(s, a, 180), level(s, b, 180), level(s, c, 180)) == (40, 45, 25)
+        end
+
+        # product switches: the previous dose is read with the current product's peak
+        s = sim_with(ExponentialWaning(halflife = 180.0, vaccine_buildup_duration = 14))
+        a, b = individuals(s)[1:2]
+        # weak -> strong: dose 2 (peak 70) on day 21 skips its buildup at ~70 * w(7)
+        vaccinate!(a, s, Vaccine(id=1, name="Dose 1", target_pathogen_id=pid, peak=30), Int16(0))
+        vaccinate!(a, s, Vaccine(id=2, name="Dose 2", target_pathogen_id=pid, peak=70), Int16(21))
+        @test level(s, a, 21) == Int8(68)
+        # strong -> weak: a booster below the remaining protection lowers it at the dose
+        vaccinate!(b, s, Vaccine(id=3, name="Strong", target_pathogen_id=pid, peak=90), Int16(0))
+        before = level(s, b, 180)
+        vaccinate!(b, s, Vaccine(id=4, name="Weak", target_pathogen_id=pid, peak=40), Int16(180))
+        @test level(s, b, 180) < before
+        @test level(s, b, 194) == Int8(40)
     end
 
 end

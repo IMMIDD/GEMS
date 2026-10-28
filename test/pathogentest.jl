@@ -1176,6 +1176,7 @@ end
             @test_throws ArgumentError ExponentialWaning(floor=Int8(-1))
             @test_throws ArgumentError ExponentialWaning(floor=Int8(101))
             @test_throws ArgumentError ExponentialWaning(vaccine_buildup_duration=Int16(-1))
+            @test_throws ArgumentError ExponentialWaning(natural_peak=101)
 
             p = ExponentialWaning(halflife=180.0)
 
@@ -1206,6 +1207,7 @@ end
             @test_throws ArgumentError SigmoidalWaning(hill=-1.0)
             @test_throws ArgumentError SigmoidalWaning(floor=Int8(-1))
             @test_throws ArgumentError SigmoidalWaning(vaccine_buildup_duration=Int16(-1))
+            @test_throws ArgumentError SigmoidalWaning(natural_peak=-1)
 
             p = SigmoidalWaning(halflife=180.0, hill=3.0)
 
@@ -1254,6 +1256,37 @@ end
             # without a buildup the interval changes nothing
             p0 = ExponentialWaning(halflife = 180.0)
             @test all(t -> calculate_immunity(p0, booster, ind, Int16(t), rng) == calculate_immunity(p0, no_prev, ind, Int16(t), rng), 100:200)
+        end
+
+        @testset "Vaccine peaks" begin
+            vp(peak, buildup = -1) = GEMS.VaccineProtection(peak, peak, buildup)
+            # built-ins implement the 6-arg method; a profile with only the deprecated 5-arg one warns at its pathogen
+            @test all(GEMS._implements_vaccine_protection, (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning()))
+            @test !GEMS._implements_vaccine_protection(SeverityOnlyImmunity())
+            @test_logs (:warn, r"deprecated 5-arg") match_mode=:any Pathogen(id = 1, name = "Old", immunity_profile = SeverityOnlyImmunity())
+            # the profile's vaccine buildup is deprecated in favour of the vaccine's
+            @test_deprecated ExponentialWaning(vaccine_buildup_duration = Int16(5))
+            @test_deprecated SigmoidalWaning(vaccine_buildup_duration = Int16(5))
+
+            # the 5-arg methods are the 6-arg ones with the default entry
+            for p in (FullImmunity(), ExponentialWaning(vaccine_buildup_duration = Int16(10)), SigmoidalWaning(vaccine_buildup_duration = Int16(10)))
+                @test all(t -> calculate_immunity(p, both_state(0, 3), ind, Int16(t), rng) ==
+                    calculate_immunity(p, both_state(0, 3), GEMS.VaccineProtection(), ind, Int16(t), rng), 0:300)
+            end
+            # FullImmunity: a dose ramps to the vaccine's peak over its buildup and stays there; natural stays full
+            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), ind, Int16(5), rng) == Int8(30)
+            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), ind, Int16(1000), rng) == Int8(60)
+            @test calculate_immunity(FullImmunity(), both_state(0, 0), vp(60), ind, Int16(1000), rng) == Int8(100)
+            # waning profiles cap the floor at the vaccine's peak
+            @test calculate_immunity(ExponentialWaning(halflife = 1.0, floor = Int8(30)), vac_state(0), vp(20), ind, Int16(500), rng) == Int8(20)
+            # a profile without the 6-arg method ignores the entry
+            @test calculate_immunity(SeverityOnlyImmunity(), vac_state(0), vp(20), ind, Int16(5), rng) ==
+                calculate_immunity(SeverityOnlyImmunity(), vac_state(0), ind, Int16(5), rng)
+
+            # old positional constructors, and natural_peak from a config table
+            @test ExponentialWaning(180.0, 0, 0) == ExponentialWaning()
+            @test SigmoidalWaning(180.0, 3.0, 0, 0) == SigmoidalWaning()
+            @test GEMS.create_immunity_profile(Dict("type" => "ExponentialWaning", "parameters" => Dict("natural_peak" => 70))).natural_peak == Int8(70)
         end
 
         @testset "Abstract ImmunityProfile fallbacks" begin

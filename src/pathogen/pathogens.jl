@@ -122,6 +122,9 @@ mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:Trans
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.2)
         end
 
+        _implements_vaccine_protection(immunity_profile) ||
+            @warn "Immunity profile $(nameof(typeof(immunity_profile))) only implements the deprecated 5-arg calculate_immunity, so it ignores vaccine peaks and buildup; implement calculate_immunity(profile, state, vaccine_protection, individual, tick, rng)." maxlog=1 _id=(:five_arg_calculate_immunity, typeof(immunity_profile))
+
         # convert progression vector to a typed tuple
         prg_tuple = (progressions...,)
 

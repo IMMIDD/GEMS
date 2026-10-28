@@ -9,7 +9,6 @@ export calculate_infectiousness
 export calculate_immunity
 export immunity_is_stable
 export susceptibility_factor
-export uses_vaccine_peaks
 
 # the main defintion of pathogens is in src/pathogen/pathogens.jl
 
@@ -206,24 +205,42 @@ function calculate_infectiousness(profile::InfectiousnessProfile, state::Infecti
 end
 
 """
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+
+Returns the immunity level (0-100) of `state` at `tick`, given the peaks and buildup of the vaccine recorded in
+`state` (only meaningful if `state` has a vaccine record). Called on every read from any thread, so it must be
+cheap and deterministic and must not yield or read other levels. `rng` draws the same numbers on every read for
+this host and pathogen; re-key it per acquisition with `immunity_rng!`. Falls back to the deprecated 5-arg method.
+"""
+@inline calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_immunity(profile, state, individual, tick, rng)
+
+"""
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
-Returns the immunity level (0-100) of `state` at `tick`; called on every read from any thread, so it must be
-cheap and deterministic and must not yield or read other levels. `rng` draws the same numbers on every read for
-this host and pathogen; re-key it per acquisition with `immunity_rng!`.
+Deprecated to implement: profiles that only implement this form ignore vaccine peaks and buildup. Calling it on a
+built-in profile gives the level with the default vaccine values.
 """
 function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)).")
+    error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)); implement " *
+        "calculate_immunity(profile, state, vaccine_protection, individual, tick, rng).")
 end
 
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
 
-For profiles that don't draw: passes a fresh, unkeyed `Xoshiro()`, so draws differ from reads
-during a simulation.
+For profiles that don't draw: passes the default vaccine values and a fresh, unkeyed `Xoshiro()`, so draws differ
+from reads during a simulation.
 """
 @inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
-    return calculate_immunity(profile, state, individual, tick, Xoshiro())
+    return calculate_immunity(profile, state, VaccineProtection(), individual, tick, Xoshiro())
+end
+
+# whether `profile` has its own 6-arg calculate_immunity, not only the deprecated 5-arg one
+function _implements_vaccine_protection(profile::ImmunityProfile)::Bool
+    own = which(calculate_immunity, Tuple{typeof(profile), ImmunityState, VaccineProtection, Individual, Int16, Xoshiro})
+    fallback = which(calculate_immunity, Tuple{ImmunityProfile, ImmunityState, VaccineProtection, Individual, Int16, Xoshiro})
+    return own !== fallback
 end
 
 """
@@ -242,14 +259,6 @@ elsewhere than on transmission: `1.0` leaves the level readable by the rest of t
 (e.g. a progression assignment that attenuates severity) without affecting transmission.
 """
 susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64 = 1.0 - level / 100.0
-
-"""
-    uses_vaccine_peaks(profile::ImmunityProfile)::Bool
-
-Whether `profile` applies a vaccine's peaks and buildup. Defaults to `false`; a vaccine that sets them then
-triggers a warning at its first dose.
-"""
-uses_vaccine_peaks(profile::ImmunityProfile)::Bool = false
 
 
 """

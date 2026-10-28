@@ -2188,6 +2188,12 @@ function immunity_registry(simulation::Simulation, individual::Individual)::Immu
     return immunity_registry(simulation, id(individual))
 end
 
+# the protection registered for `vaccine_id` against `pathogen_id`; the default for ids that can't be registered
+@inline function _vaccine_protection(simulation::Simulation, pathogen_id::Int8, vaccine_id::Int8)::VaccineProtection
+    vaccine_id >= 1 || return VaccineProtection()
+    return @inbounds simulation.vaccine_protection[vaccine_id, pathogen_id]
+end
+
 """
     test_registry(simulation, ind_id::Int32)::TestRegistry
 
@@ -2661,10 +2667,6 @@ function _register_vaccine!(simulation::Simulation, vaccine::Vaccine)
     end
     simulation.vaccine_protection[vid, pid] = entry
     simulation.vaccine_registered[pid] |= bit
-
-    profile = immunity_profile(get_pathogen(simulation, pid))
-    _sets_protection(vaccine) && !uses_vaccine_peaks(profile) &&
-        @warn "Vaccine '$(name(vaccine))' sets peaks or a buildup, but the immunity profile $(nameof(typeof(profile))) of pathogen $pid ignores them."
     return nothing
 end
 
