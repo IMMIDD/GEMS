@@ -1149,6 +1149,7 @@ function germanshapes(level::Int64)
     mkpath(dirname(zipath))
     
     # download stuff, from the fallback if the original is unavailable
+    source = GERMAN_SHAPEFILE_URL
     try
         try
             urldownload(GERMAN_SHAPEFILE_URL, true;
@@ -1157,6 +1158,7 @@ function germanshapes(level::Int64)
                 save_raw = zipath)
         catch
             _printinfo("Download from $GERMAN_SHAPEFILE_URL failed. Trying $GERMAN_SHAPEFILE_FALLBACK_URL...")
+            source = GERMAN_SHAPEFILE_FALLBACK_URL
             urldownload(GERMAN_SHAPEFILE_FALLBACK_URL, true;
                 compress = :none,
                 parser = x -> nothing,
@@ -1166,27 +1168,22 @@ function germanshapes(level::Int64)
     catch e
         msg = "Data could not be downloaded. Are you sure the data is available at $GERMAN_SHAPEFILE_URL or $GERMAN_SHAPEFILE_FALLBACK_URL? "
         msg *= "Is there a firewall preventing automatic downloads? "
-        msg *= "Try downloading the files manually and extract the ZIP-folder into $SHAPEFILE_FOLDER_PATH"
+        msg *= "Try downloading the files manually and copy the VG250_LAN, VG250_KRS and VG250_GEM files into $(dirname(filename))"
         throw(msg)
     end
 
-    # unzip
+    # unzip the three levels into the folder `GERMAN_SHAPEFILE` points to, wherever the ZIP keeps them
+    target = dirname(filename)
+    mkpath(target)
+    dated = nothing
     z = ZipFile.Reader(zipath)
     for f in z.files
-        #println(f)
-        # Determine the output file path
-        out_path = joinpath(SHAPEFILE_FOLDER_PATH, f.name)
-        
-        # Ensure that the output directory exists
-        mkpath(dirname(out_path))
-        
-        if !(isdir(out_path))
-            # Open the output file for writing
-            open(out_path, "w") do io
-                # Write the uncompressed data to the output file
-                write(io, read(f))
-            end
+        name = basename(f.name)
+        occursin(r"^VG250_(LAN|KRS|GEM)\.", name) || continue
+        open(joinpath(target, name), "w") do io
+            write(io, read(f))
         end
+        name == basename(filename) && (dated = Date(unix2datetime(mtime(f))))
     end
 
     # Close the ZIP archive to free resources
@@ -1194,6 +1191,9 @@ function germanshapes(level::Int64)
 
     # remove temporary zipfile
     rm(zipath, force = true)
+
+    isfile(filename) || throw(ErrorException("The ZIP file from $source does not contain $(basename(filename))."))
+    _printinfo("Using German shapefile from $source, dated $dated")
 
     # return shapefile
     return(Shapefile.Table(filename))
