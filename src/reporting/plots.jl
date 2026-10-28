@@ -434,6 +434,7 @@ end
 # Combines subplots into a multi-panel layout (one panel per pathogen).
 # For a single subplot, returns it directly (plotargs already applied inside).
 function _multi_pathogen_plot(subplots::Vector, plotargs; width_per_plot::Int = 600, height::Int = 400)
+    isempty(subplots) && return plot!(emptyplot("No data available for any pathogen."); plotargs...)
     length(subplots) == 1 && return first(subplots)
     return plot(subplots..., layout = (1, length(subplots)),
         size = (width_per_plot * length(subplots), height); plotargs...)
