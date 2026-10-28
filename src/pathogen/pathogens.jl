@@ -8,7 +8,6 @@ export TransmissionFunction
 export TransmissionModifier
 export InfectiousnessProfile
 export ImmunityProfile
-export WaningImmunity
 
 export id, name
 export progressions, progression_assignment, transmission_function
@@ -23,16 +22,6 @@ abstract type TransmissionFunction end
 abstract type TransmissionModifier end
 abstract type InfectiousnessProfile end
 abstract type ImmunityProfile end
-
-"""
-    WaningImmunity <: ImmunityProfile
-
-Supertype of profiles whose immunity reaches a peak and then follows a curve. A subtype implements
-`waning_level(profile, peak, elapsed)` and, to change natural immunity's peak, `natural_peak(profile)`; its
-`calculate_immunity` calls `calculate_waning_immunity`, which does the vaccine buildup and boosters and combines
-natural and vaccine immunity as 1 − (1−p)(1−q).
-"""
-abstract type WaningImmunity <: ImmunityProfile end
 
 """
     Pathogen
@@ -133,7 +122,7 @@ mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:Trans
             transmission_function = ConstantTransmissionRate(transmission_rate = 0.2)
         end
 
-        _implements_vaccine_protection(immunity_profile) ||
+        _has_own_method(calculate_immunity, immunity_profile) ||
             @warn "Immunity profile $(nameof(typeof(immunity_profile))) only implements the deprecated 5-arg calculate_immunity, so it ignores vaccine peaks and buildup; implement calculate_immunity(profile, state, vaccine_protection, individual, tick, rng)." maxlog=1 _id=(:five_arg_calculate_immunity, typeof(immunity_profile))
 
         # convert progression vector to a typed tuple

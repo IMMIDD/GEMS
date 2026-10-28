@@ -1268,8 +1268,8 @@ end
         @testset "Vaccine peaks" begin
             vp(peak, buildup = -1) = GEMS.VaccineProtection(peak, peak, buildup)
             # built-ins implement the 6-arg method; a profile with only the deprecated 5-arg one warns at its pathogen
-            @test all(GEMS._implements_vaccine_protection, (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning()))
-            @test !GEMS._implements_vaccine_protection(SeverityOnlyImmunity())
+            @test all(p -> GEMS._has_own_method(calculate_immunity, p), (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning()))
+            @test !GEMS._has_own_method(calculate_immunity, SeverityOnlyImmunity())
             @test_logs (:warn, r"deprecated 5-arg") match_mode=:any Pathogen(id = 1, name = "Old", immunity_profile = SeverityOnlyImmunity())
             # the profile's vaccine buildup is deprecated in favour of the vaccine's
             @test_deprecated ExponentialWaning(vaccine_buildup_duration = Int16(5))
@@ -1278,7 +1278,7 @@ end
             # a custom WaningImmunity only defines its shape and gets peaks, buildup and combination
             @test FullImmunity() isa WaningImmunity && !(NoImmunity() isa WaningImmunity)
             lw = LinearWaning()
-            @test GEMS._implements_vaccine_protection(lw)
+            @test GEMS._has_own_method(calculate_immunity, lw)
             @test calculate_immunity(lw, nat_state(0), ind, Int16(30), rng) == Int8(70)
             @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(5), rng) == Int8(30)
             @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(30), rng) == Int8(40)
