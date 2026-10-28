@@ -177,6 +177,7 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; pathogen = 
     pids = sort(unique(vcat([unique(household_attack_rates(rd).pathogen_id) for rd in rds]...)))
     pnames = pathogen_names(rds[1])
 
+    isempty(pids) && return plot!(emptyplot("No data available for any pathogen."); plotargs...)
     length(pids) == 1 && return _scatter_for_pid(pids[1])
 
     subplots = [begin
