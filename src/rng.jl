@@ -200,7 +200,7 @@ end
 const _PROFILE_RNGS = Union{Nothing, _ProfileRNG}[]
 
 # folds fields into a key with splitmix64, one at a time
-# leading domain tags in use: 0 immunity, 1 infection, 2 prior immunity
+# leading domain tags in use: 0 immunity, 1 infection, 2 prior immunity, 4 severity protection
 @inline _mix(key::UInt64) = key
 @inline function _mix(key::UInt64, field::Integer, rest::Integer...)
     x = (key ⊻ (field % UInt64)) + 0x9e3779b97f4a7c15
@@ -245,6 +245,13 @@ end
     r = _profile_rng()
     r.key = _mix(UInt64(1), seed, host_id)
     return _rekey!(r.rng, _mix(r.key, state.pathogen_id, state.exposure))
+end
+
+# this thread's scratch rng, reset to the stream of one host's severity protection draw at `tick`
+@inline function _keyed_severity_rng(seed::Int64, host_id::Int32, pathogen_id::Int8, tick::Int16)::Xoshiro
+    r = _profile_rng()
+    r.key = _mix(UInt64(4), seed, host_id, pathogen_id, tick)
+    return _rekey!(r.rng, r.key)
 end
 
 # the `:vaccine` key of the previous dose, from its tick as far as the encoded interval gives it

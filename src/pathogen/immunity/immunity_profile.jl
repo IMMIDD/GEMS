@@ -48,7 +48,8 @@ before waning begins. Natural immunity (post-recovery) starts at its peak immedi
 Level at elapsed ticks e (after buildup):  `max(min(floor, peak), peak × 0.5^(e / halflife))`
 
 Protection against severe disease follows the same curve with `severity_halflife` and `severity_floor`, starting
-at `severity_natural_peak` or the vaccine's `severity_peak`.
+at `severity_natural_peak` or the vaccine's `severity_peak`. It counts per exposure against unprotected hosts, so it
+includes the severe cases that protection against infection prevents rather than adding to it.
 
 # Fields
 - `natural_peak::Int8`: Level of natural immunity at recovery (default: 100).
@@ -138,7 +139,8 @@ before waning begins. Natural immunity (post-recovery) starts at its peak immedi
 Level at elapsed ticks e (after buildup):  `max(min(floor, peak), peak × halflife^n / (halflife^n + e^n))`
 
 Protection against severe disease follows the same curve with `severity_halflife` and `severity_floor`, starting
-at `severity_natural_peak` or the vaccine's `severity_peak`.
+at `severity_natural_peak` or the vaccine's `severity_peak`. It counts per exposure against unprotected hosts, so it
+includes the severe cases that protection against infection prevents rather than adding to it.
 
 # Fields
 - `natural_peak::Int8`: Level of natural immunity at recovery (default: 100).

@@ -29,6 +29,8 @@ legacy health profile harvest (always hospitalized, no ICU, no death). Prefer a 
     severeness_offset_to_recovery::Union{Distribution, Real}
 end
 
+severity_tier(::Type{Hospitalized}) = :severe
+
 function calculate_progression(individual::Individual, tick::Int16, dp::Hospitalized, rng::Xoshiro)
 
     # Calculate the time to infectiousness

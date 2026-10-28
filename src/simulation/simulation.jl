@@ -2669,7 +2669,10 @@ function _register_vaccine!(simulation::Simulation, vaccine::Vaccine)
     simulation.vaccine_registered[pid] |= bit
 
     if entry.severity_peak > entry.peak
-        profile = immunity_profile(get_pathogen(simulation, pid))
+        pathogen = get_pathogen(simulation, pid)
+        isnothing(_downgrade_target(pathogen.progressions)) &&
+            @warn "Vaccine '$(name(vaccine))' sets a severity_peak above its peak, but pathogen $pid has no category with severity_tier :mild or :asymptomatic to turn severe cases into, so the severity_peak has no effect."
+        profile = immunity_profile(pathogen)
         _has_own_method(calculate_severity_immunity, profile) ||
             @warn "Vaccine '$(name(vaccine))' sets a severity_peak above its peak, but the immunity profile $(nameof(typeof(profile))) of pathogen $pid has no calculate_severity_immunity, so it protects against severe disease only as against infection."
     end

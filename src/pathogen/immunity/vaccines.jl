@@ -14,7 +14,9 @@ A type representing a vaccine.
 - `name::String`: Name of the vaccine
 - `target_pathogen_id::Int8`: Identifier of the pathogen this vaccine targets
 - `peak::Int8`: Immunity level (protection against infection, 0-100) a dose reaches after its buildup (default: 100)
-- `severity_peak::Int8`: Protection against severe disease (0-100) a dose reaches; at least `peak` (default: `peak`)
+- `severity_peak::Int8`: Protection against severe disease (0-100) a dose reaches, per exposure against unprotected
+  hosts like published effectiveness against hospitalisation, so it includes the cases `peak` prevents; at least
+  `peak` (default: `peak`)
 - `buildup_duration::Union{Nothing, Int16}`: Ticks from a dose to its peak; `nothing` uses the pathogen's
   `vaccine_buildup_duration` (default: `nothing`)
 - `logger::VaccinationLogger`. Logger to log vaccinations with the vaccine

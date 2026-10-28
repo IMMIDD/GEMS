@@ -262,4 +262,15 @@ GEMS.transmission_probability(::NoisyTransmission, p::Int8, a::Individual, b::In
         @test length(unique(daily)) > 1
         @test infectiousness_path(DailyNoisyInfectiousness())[1] == daily
     end
+
+    @testset "Keyed Severity RNG" begin
+        severity_draws(seed, host, pid, t) = rand(GEMS._keyed_severity_rng(seed, Int32(host), Int8(pid), Int16(t)), 4)
+        # same key, same draws; any field changes them
+        @test severity_draws(1, 5, 1, 7) == severity_draws(1, 5, 1, 7)
+        @test severity_draws(1, 5, 1, 7) != severity_draws(1, 5, 1, 8)
+        @test severity_draws(1, 5, 1, 7) != severity_draws(1, 6, 1, 7)
+        # not the stream of an infection of the same host at the same tick
+        inf_st = InfectionState(Int8(1), Int32(1), DiseaseProgression(exposure = Int16(7), infectiousness_onset = Int16(8), recovery = Int16(12)))
+        @test rand(GEMS._keyed_infection_rng(1, Int32(5), inf_st), 4) != severity_draws(1, 5, 1, 7)
+    end
 end

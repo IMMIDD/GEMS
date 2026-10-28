@@ -399,7 +399,10 @@ Returns the protection (0-100) against severe disease of one immunity record at 
 """
 function severity_immunity_level(state::ImmunityState, individual::Individual, sim::Simulation, t::Int16 = tick(sim))::Int8
     _immunity_recorded(state) || return Int8(0)
-    return _with_pathogen(p -> _severity_immunity_level(p, state, individual, sim, t), sim.pathogens, state.pathogen_id)
+    return _with_pathogen(sim.pathogens, state.pathogen_id) do p
+        level = _severity_immunity_level(p, state, individual, sim, t)
+        isnothing(level) ? _immunity_level(p, state, individual, sim, t) : level
+    end
 end
 
 # whether `state` holds natural or vaccine immunity
@@ -415,12 +418,11 @@ end
     return calculate_immunity(immunity_profile(pathogen), state, _recorded_vaccine_protection(sim, state), individual, t, rng)
 end
 
-# protection against severe disease of a recorded `state` from the already looked-up `pathogen`; the infection
-# level for profiles without severity protection of their own
-@inline function _severity_immunity_level(pathogen, state::ImmunityState, individual::Individual, sim::Simulation, t::Int16)::Int8
+# protection against severe disease of a recorded `state` from the already looked-up `pathogen`; `nothing` for
+# profiles without severity protection of their own
+@inline function _severity_immunity_level(pathogen, state::ImmunityState, individual::Individual, sim::Simulation, t::Int16)::Union{Int8, Nothing}
     rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
-    level = calculate_severity_immunity(immunity_profile(pathogen), state, _recorded_vaccine_protection(sim, state), individual, t, rng)
-    return isnothing(level) ? _immunity_level(pathogen, state, individual, sim, t) : level
+    return calculate_severity_immunity(immunity_profile(pathogen), state, _recorded_vaccine_protection(sim, state), individual, t, rng)
 end
 
 """

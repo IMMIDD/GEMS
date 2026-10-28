@@ -195,8 +195,12 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
 
     @testset "Severity" begin
         pid = Int8(1)
+        # a pathogen with a severe category and Mild to downgrade it to
+        progressions = [Mild(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1, symptom_onset_to_recovery = 5),
+            Severe(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1, symptom_onset_to_severeness_onset = 1,
+                severeness_onset_to_severeness_offset = 3, severeness_offset_to_recovery = 2)]
         sim_with(profile) = Simulation(pop_size = 100, infected_fraction = 0.0,
-            pathogens = (Pathogen(id = 1, name = "P", immunity_profile = profile),))
+            pathogens = (Pathogen(id = 1, name = "P", progressions = progressions, immunity_profile = profile),))
 
         # a vaccine without a severity_peak protects against severe disease as against infection
         s = sim_with(ExponentialWaning(halflife = 90.0))

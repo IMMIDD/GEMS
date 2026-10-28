@@ -1359,6 +1359,41 @@ end
             q = GEMS.create_immunity_profile(Dict("type" => "SigmoidalWaning",
                 "parameters" => Dict("severity_halflife" => 365, "severity_floor" => 20)))
             @test q.severity_halflife == 365.0f0 && q.severity_floor == Int8(20) && q.halflife == 180.0f0
+
+            # the downgrade probability given infection: severe cases prevented beyond infection protection
+            dp(p, i, s) = GEMS._severity_downgrade_probability(p, Int8(i), Int8(s))
+            @test dp(FullImmunity(), 50, 90) ≈ 0.8
+            @test dp(FullImmunity(), 50, 50) == 0.0
+            @test dp(FullImmunity(), 60, 40) == 0.0
+            @test dp(FullImmunity(), 100, 100) == 0.0
+            @test all(((i, s),) -> 0.0 <= dp(FullImmunity(), i, s) <= 1.0, Iterators.product(0:5:100, 0:5:100))
+            # with the profile's own susceptibility_factor: HalfImmunity at level 100 halves infections
+            @test dp(HalfImmunity(), 100, 75) ≈ 0.5
+
+            # severity tiers of the built-in categories; undeclared categories have none
+            @test GEMS.severity_tier.((Asymptomatic, Mild, Symptomatic)) == (:asymptomatic, :mild, :mild)
+            @test all(==(:severe), GEMS.severity_tier.((Severe, Ward, Hospitalized)))
+            @test all(==(:critical), GEMS.severity_tier.((Critical, ICU, Fatal, LegacyCritical)))
+            struct UntieredCategory <: ProgressionCategory end
+            struct MistieredCategory <: ProgressionCategory end
+            GEMS.severity_tier(::Type{MistieredCategory}) = :Severe
+            @test isnothing(GEMS.severity_tier(UntieredCategory))
+            @test_throws ArgumentError Pathogen(name = "mistiered", progressions = [MistieredCategory()])
+
+            # a protected :severe category becomes the first :mild one, else the first :asymptomatic one
+            mild = Mild(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1, symptom_onset_to_recovery = 5)
+            asymp = Asymptomatic(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_recovery = 5)
+            severe = Severe(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+                symptom_onset_to_severeness_onset = 1, severeness_onset_to_severeness_offset = 3, severeness_offset_to_recovery = 2)
+            critical = Critical(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+                symptom_onset_to_severeness_onset = 1, severeness_onset_to_critical_onset = 1, critical_onset_to_critical_offset = 3,
+                critical_offset_to_severeness_offset = 2, severeness_offset_to_recovery = 3)
+            @test GEMS._severe_category((mild, severe), Severe) && GEMS._severe_category((mild, critical), Critical)
+            @test !GEMS._severe_category((mild, severe), Mild) && !GEMS._severe_category((asymp, severe), Asymptomatic)
+            @test !GEMS._severe_category((mild,), Severe)
+            @test GEMS._downgrade_target((asymp, mild, severe)) === Mild
+            @test GEMS._downgrade_target((asymp, severe)) === Asymptomatic
+            @test isnothing(GEMS._downgrade_target((severe, UntieredCategory())))
         end
 
         @testset "Abstract ImmunityProfile fallbacks" begin
