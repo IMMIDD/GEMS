@@ -35,6 +35,7 @@ Here, the chance to trace an infection falls with the days since it happened.
 With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn
 from the index's settings of the given `settingtypes` (default: `Household`, `Office`, `SchoolClass`)
 using today's memberships, so they are a plausible set, not the contacts drawn during the run.
+Infectees the re-draw missed replace re-drawn contacts of a shared setting where possible, keeping the count.
 Past closures are unknown to GEMS; a `contact_filter(setting, tick)` returning `false` skips
 re-drawing in that setting at that tick, e.g. `(s, t) -> !(s isa SchoolClass && 30 <= t <= 44)`.
 """
@@ -141,10 +142,10 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
 
     # add re-drawn contacts; each contact keeps its latest tick and is traced once, in id order
     if resample_contacts(measure) && infectious_at >= 0
-        latest = Dict(zip(infectee_ids, infection_ticks))
-        _sample_past_contacts!(latest, ind, sim, settingtypes(measure), infectious_at, now, contact_filter(measure))
-        infectee_ids = sort!(collect(keys(latest)))
-        infection_ticks = [latest[c] for c in infectee_ids]
+        last_contact = _sample_past_contacts(ind, sim, settingtypes(measure), infectious_at, now, contact_filter(measure))
+        _merge_infectees!(last_contact, infectee_ids, infection_ticks, ind, sim, settingtypes(measure))
+        infectee_ids = sort!(collect(keys(last_contact)))
+        infection_ticks = [last_contact[c] for c in infectee_ids]
     end
 
     # filter by success_rate (one draw per infectee, in order) and trigger the follow-up
@@ -175,4 +176,30 @@ function _trace_probability(success_rate::TraceRateFn, dt::Int)
         throw(ArgumentError("success_rate function returned $p for $dt days; it must return a value between 0 and 1"))
     end
     return p
+end
+
+"""
+    _merge_infectees!(last_contact::Dict{Int32, Int16}, infectee_ids::Vector{Int32}, infection_ticks::Vector{Int16}, ind::Individual, sim::Simulation, settingtypes::Vector{DataType})
+
+Adds the logged infectees to the re-drawn `last_contact`. Each infectee the re-draw missed replaces a random re-drawn
+non-infectee of the first listed setting it shares with `ind`, or is added on top if there is none.
+"""
+function _merge_infectees!(last_contact::Dict{Int32, Int16}, infectee_ids::Vector{Int32}, infection_ticks::Vector{Int16},
+        ind::Individual, sim::Simulation, settingtypes::Vector{DataType})
+    logged = Set(infectee_ids)
+    pop = sim |> population
+    for (iid, t) in zip(infectee_ids, infection_ticks)
+        if !haskey(last_contact, iid)
+            infectee = get_individual_by_id(pop, iid)
+            for T in settingtypes
+                s = _member_setting(ind, sim, T)
+                (isnothing(s) || _member_setting(infectee, sim, T) !== s) && continue
+                pool = [id(m) for m in individuals(s, sim) if haskey(last_contact, id(m)) && !(id(m) in logged)]
+                isempty(pool) || delete!(last_contact, gems_rand(sim, pool))
+                break
+            end
+        end
+        last_contact[iid] = max(get(last_contact, iid, t), t)
+    end
+    return last_contact
 end

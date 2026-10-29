@@ -402,6 +402,86 @@ end
         empty!(eq4)
         process_measure(sim4, inds4[2], TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
         @test isempty(drain_events!(eq4))
+
+        # infectees replace re-drawn contacts; two school years of two classes of four, the index is individual 1
+        school_inds = [Individual(id=i, sex=1, age=10, schoolclass=div(i - 1, 4) + 1) for i in 1:16]
+        scs = [SchoolClass(id=c, individuals=school_inds[4c-3:4c], contained=div(c - 1, 2) + 1, contact_sampling_method=ContactparameterSampling(1)) for c in 1:4]
+        sys = [SchoolYear(id=y, contains=[2y - 1, 2y], contained=1, contact_sampling_method=ContactparameterSampling(1)) for y in 1:2]
+        sc = SettingsContainer()
+        add_types!(sc, [SchoolClass, SchoolYear])
+        foreach(x -> add!(sc, x), scs)
+        foreach(x -> add!(sc, x), sys)
+        school_sim = Simulation()
+        school_sim.population = Population(school_inds)
+        school_sim.settings = sc
+        merge_infectees(last, ids, ticks, types) = GEMS._merge_infectees!(Dict{Int32, Int16}(last), Int32.(ids), Int16.(ticks),
+            school_inds[1], school_sim, DataType[types...])
+
+        # a missed classmate replaces the re-drawn non-infectee of the class
+        @test merge_infectees(Dict(3 => 2, 9 => 1), [2], [4], [SchoolClass]) == Dict(2 => 4, 9 => 1)
+        # an infectee the re-draw found replaces no one and keeps the later tick
+        @test merge_infectees(Dict(2 => 3, 3 => 1), [2], [5], [SchoolClass]) == Dict(2 => 5, 3 => 1)
+        # an infectee sharing no listed setting is added on top
+        @test merge_infectees(Dict(3 => 2), [9], [4], [SchoolClass]) == Dict(3 => 2, 9 => 4)
+        # a container type: an infectee from the other class of the same year replaces a re-drawn year member
+        @test merge_infectees(Dict(3 => 2, 9 => 1), [5], [4], [SchoolYear]) == Dict(5 => 4, 9 => 1)
+        # no re-drawn non-infectee to replace: added on top
+        @test merge_infectees(Dict(2 => 1), [2, 3], [1, 2], [SchoolClass]) == Dict(2 => 1, 3 => 2)
+        # two missed infectees, one contact to replace: the second is added on top
+        @test merge_infectees(Dict(4 => 1), [2, 3], [1, 2], [SchoolClass]) == Dict(2 => 1, 3 => 2)
+        # an infectee listed twice (two pathogens) replaces one contact and keeps the later tick
+        @test merge_infectees(Dict(4 => 2), [2, 2], [1, 3], [SchoolClass]) == Dict(2 => 3)
+    end
+
+    @testset "Trace Source Contacts" begin
+        # one household of five
+        pop5 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
+        sim5 = Simulation(population=pop5, household_contacts=10.0)
+        i_strategy5 = IStrategy("i_strategy5", sim5)
+        add_measure!(i_strategy5, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
+        source, index5, seeded, healthy = individuals(sim5)[1:4]
+        pat5 = first_pathogen(sim5)
+
+        trace_source = TraceSourceContacts(i_strategy5)
+        @test success_rate(trace_source) == 1.0
+        @test follow_up(trace_source) === i_strategy5
+        @test lookback(trace_source) == 14
+        @test resample_contacts(trace_source) == false
+        @test settingtypes(trace_source) == [Household, Office, SchoolClass]
+        @test contact_filter(trace_source) isa GEMS.ContactFilterFn
+        @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = -1)
+        @test_throws ArgumentError TraceSourceContacts(i_strategy5, success_rate = 2.0)
+
+        # the source infects the index at tick 0; the seeded infection has no source
+        infect!(index5, Int16(0), pat5, sim = sim5, infecter_id = id(source), rng = rng(sim5))
+        infect!(seeded, Int16(0), pat5, sim = sim5, rng = rng(sim5))
+        GEMS.flush_pending_infections!(sim5)
+        eq5 = GEMS.event_queue(sim5)
+
+        empty!(eq5)
+        process_measure(sim5, index5, trace_source)
+        @test followup_focals(drain_events!(eq5)) == [source]
+
+        # no source for a seeded infection, nothing to trace back without an active infection
+        empty!(eq5)
+        process_measure(sim5, seeded, trace_source)
+        process_measure(sim5, healthy, trace_source)
+        @test isempty(drain_events!(eq5))
+
+        # with resampling, re-drawn household members are added, each once, never the index
+        empty!(eq5)
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household]))
+        traced = followup_focals(drain_events!(eq5))
+        @test source in traced
+        @test allunique(traced)
+        @test index5 ∉ traced
+        @test all(c -> household_id(c) == household_id(index5), traced)
+
+        # an infection older than the lookback is not traced
+        GEMS.increment!(sim5)
+        empty!(eq5)
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, lookback = 0))
+        @test isempty(drain_events!(eq5))
     end
 
     @testset "Custom I Measure" begin

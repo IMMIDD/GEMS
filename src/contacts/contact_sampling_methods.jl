@@ -274,38 +274,60 @@ function sample_contacts(
 end
 
 """
-    _sample_past_contacts!(latest::Dict{Int32, Int16}, ind::Individual, sim::Simulation, settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
+    _member_setting(ind::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
 
-Re-draws `ind`'s contacts in its settings of the given `settingtypes` for every tick in `[start_tick, end_tick]`
-where `contact_filter(setting, tick)` holds, and stores each living contact's latest tick in `latest`. Uses today's memberships.
+Returns `ind`'s setting of type `T`, also for container types, or `nothing` if `ind` has none.
 """
-function _sample_past_contacts!(latest::Dict{Int32, Int16}, ind::Individual, sim::Simulation,
+function _member_setting(ind::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
+    # a container's membership is that of the leaf setting type it is built from
+    leaf = T
+    while leaf <: ContainerSetting
+        leaf = contains_type(leaf)
+    end
+    sid = setting_id(ind, leaf)
+    sid == DEFAULT_SETTING_ID && return nothing
+    return leaf === T ? setting(settingscontainer(sim), T, sid) : getsetting(ind, sim, T)
+end
+
+"""
+    _sample_past_contacts(ind::Individual, sim::Simulation, settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
+
+Re-draws `ind`'s contacts in its settings of the given `settingtypes` at every tick from `start_tick` to `end_tick` where
+`contact_filter(setting, tick)` holds, using today's memberships. Returns a `Dict` from each living contact's id to the last tick it was drawn.
+"""
+function _sample_past_contacts(ind::Individual, sim::Simulation,
         settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
+    last_contact = Dict{Int32, Int16}()
     buf = sim.contact_buffers[Threads.threadid()]
     for T in settingtypes
-        # a container's membership is that of the leaf setting type it is built from
-        leaf = T
-        while leaf <: ContainerSetting
-            leaf = contains_type(leaf)
-        end
-        sid = setting_id(ind, leaf)
-        sid == DEFAULT_SETTING_ID && continue
-        s = leaf === T ? setting(settingscontainer(sim), T, sid) : getsetting(ind, sim, T)
-        members = individuals(s, sim)
-        length(members) < 2 && continue
-        pos = findfirst(m -> m === ind, members)
+        s = _member_setting(ind, sim, T)
+        isnothing(s) && continue
+        _sample_past_contacts_in!(last_contact, buf, s.contact_sampling_method, s, ind, sim, start_tick, end_tick, contact_filter)
+    end
+    return last_contact
+end
 
-        for t in start_tick:end_tick
-            contact_filter(s, t) || continue
-            empty!(buf)
-            sample_contacts!(buf, s.contact_sampling_method, s, pos, members, t, true, rng(sim))
-            for c in buf
-                dead(c) && continue
-                latest[id(c)] = max(get(latest, id(c), t), t)
-            end
+"""
+    _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, buf::Vector{Individual}, csm::ContactSamplingMethod, s::Setting, ind::Individual, sim::Simulation, start_tick::Int16, end_tick::Int16, contact_filter)
+
+Re-draws `ind`'s contacts in `s` for `_sample_past_contacts`, compiled per setting and sampling method type so the tick loop calls them statically.
+"""
+function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, buf::Vector{Individual}, csm::ContactSamplingMethod,
+        s::Setting, ind::Individual, sim::Simulation, start_tick::Int16, end_tick::Int16, contact_filter)
+    members = individuals(s, sim)
+    length(members) < 2 && return last_contact
+    pos = findfirst(m -> m === ind, members)
+
+    for t in start_tick:end_tick
+        contact_filter(s, t) || continue
+        empty!(buf)
+        sample_contacts!(buf, csm, s, pos, members, t, true, rng(sim))
+        for c in buf
+            dead(c) && continue
+            last_contact[id(c)] = max(get(last_contact, id(c), t), t)
         end
     end
-    return nothing
+    return last_contact
 end
 
 """

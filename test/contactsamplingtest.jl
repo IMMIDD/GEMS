@@ -175,26 +175,22 @@ end
     keep_all = GEMS.ContactFilterFn((s, t) -> true)
 
     # a container type draws from the whole school year, never the index or the other year
-    latest = Dict{Int32, Int16}()
-    GEMS._sample_past_contacts!(latest, inds[1], sim, DataType[SchoolYear], Int16(1), Int16(3), keep_all)
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolYear], Int16(1), Int16(3), keep_all)
     @test !isempty(latest)
     @test all(in(Int32(2):Int32(4)), keys(latest))
     @test all(t -> 1 <= t <= 3, values(latest))
 
     # a leaf type draws from the class only; a missing membership is skipped
-    latest = Dict{Int32, Int16}()
-    GEMS._sample_past_contacts!(latest, inds[1], sim, DataType[SchoolClass, Household], Int16(1), Int16(3), keep_all)
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolClass, Household], Int16(1), Int16(3), keep_all)
     @test collect(keys(latest)) == Int32[2]
     @test latest[Int32(2)] == Int16(3)
 
     # the filter skips settings at ticks it rejects
-    latest = Dict{Int32, Int16}()
-    GEMS._sample_past_contacts!(latest, inds[1], sim, DataType[SchoolClass], Int16(1), Int16(3),
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolClass], Int16(1), Int16(3),
         GEMS.ContactFilterFn((s, t) -> t != 3))
     @test latest[Int32(2)] == Int16(2)
 
-    latest = Dict{Int32, Int16}()
-    GEMS._sample_past_contacts!(latest, inds[1], sim, DataType[SchoolClass, SchoolYear], Int16(1), Int16(3),
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolClass, SchoolYear], Int16(1), Int16(3),
         GEMS.ContactFilterFn((s, t) -> !(s isa SchoolClass)))
     @test all(in(Int32(2):Int32(4)), keys(latest))
 end
