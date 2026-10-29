@@ -335,6 +335,35 @@
                 for a in 1:50
                     @test issorted([ticks[b] for b in query(il, a, 0, 30)])
                 end
+
+                # the ticks variant returns the same ids plus each infection's tick
+                for a in 1:50
+                    ids, link_ticks = GEMS._infections_with_ticks_between(il, Int32(a), Int16(0), Int16(30))
+                    @test ids == query(il, a, 0, 30)
+                    @test link_ticks == [ticks[b] for b in ids]
+                end
+            end
+
+            @testset "Infecter Of Infection Ids" begin
+                il = InfectionLogger()
+                seed = log_infection!(il, -1, 10, 0)
+                i1 = log_infection!(il, 5, 11, 0)
+                i2 = log_infection!(il, 7, 12, 1)
+
+                # backfilled on first use
+                @test GEMS._infecter_of(il, i1) == Int32(5)
+                @test GEMS._infecter_of(il, i2) == Int32(7)
+                @test GEMS._infecter_of(il, seed) == Int32(0)
+
+                # logged after the index exists, so this goes through register!/_merge_staged!
+                seed2 = log_infection!(il, -1, 13, 2)
+                i3 = log_infection!(il, 5, 14, 2)
+                @test GEMS._infecter_of(il, i3) == Int32(5)
+                @test GEMS._infecter_of(il, seed2) == Int32(0)
+
+                # unknown ids return 0
+                @test GEMS._infecter_of(il, Int32(0)) == Int32(0)
+                @test GEMS._infecter_of(il, Int32(1_000)) == Int32(0)
             end
 
             @testset "Untraced Runs Carry No Index" begin
