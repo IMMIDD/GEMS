@@ -1,5 +1,5 @@
 export TraceInfectiousContacts
-export success_rate, follow_up, resample_contacts, contact_filter
+export success_rate, follow_up, resample_contacts, contact_filter, max_contacts
 
 ###
 ### STRUCT
@@ -38,6 +38,9 @@ using today's memberships, so they are a plausible set, not the contacts drawn d
 Infectees the re-draw missed replace re-drawn contacts of a shared setting where possible, keeping the count.
 Past closures are unknown to GEMS; a `contact_filter(setting, tick)` returning `false` skips
 re-drawing in that setting at that tick, e.g. `(s, t) -> !(s isa SchoolClass && 30 <= t <= 44)`.
+
+The optional `max_contacts` caps how many contacts the index names; a random subset of that size is
+picked before the `success_rate` draws (default: no cap).
 """
 struct TraceInfectiousContacts <: IMeasure
     success_rate::Union{Float64, TraceRateFn}
@@ -45,19 +48,24 @@ struct TraceInfectiousContacts <: IMeasure
     resample_contacts::Bool
     settingtypes::Vector{DataType}
     contact_filter::ContactFilterFn
+    max_contacts::Int
 
     function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
             resample_contacts::Bool = false, settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
-            contact_filter::Function = (setting, tick) -> true)
+            contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
+        if max_contacts < 0
+            throw(ArgumentError("max_contacts parameter must not be negative"))
+        end
+
         if success_rate isa Function
-            return(new(TraceRateFn(success_rate), follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter)))
+            return(new(TraceRateFn(success_rate), follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
         end
 
         if !(0 <= success_rate <= 1)
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
 
-        return(new(success_rate, follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter)))
+        return(new(success_rate, follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
     end
 end
 
@@ -107,6 +115,15 @@ function contact_filter(tic::TraceInfectiousContacts)
     return(tic.contact_filter)
 end
 
+"""
+    max_contacts(tic::TraceInfectiousContacts)
+
+Returns the largest number of contacts an index names to a `TraceInfectiousContacts` struct.
+"""
+function max_contacts(tic::TraceInfectiousContacts)
+    return(tic.max_contacts)
+end
+
 
 ###
 ### PROCESS MEASURE
@@ -146,6 +163,13 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
         _merge_infectees!(last_contact, infectee_ids, infection_ticks, ind, sim, settingtypes(measure))
         infectee_ids = sort!(collect(keys(last_contact)))
         infection_ticks = [last_contact[c] for c in infectee_ids]
+    end
+
+    # the index names at most max_contacts of them, picked at random
+    if length(infectee_ids) > max_contacts(measure)
+        keep = sort!(gems_sample(sim, 1:length(infectee_ids), max_contacts(measure); replace = false))
+        infectee_ids = infectee_ids[keep]
+        infection_ticks = infection_ticks[keep]
     end
 
     # filter by success_rate (one draw per infectee, in order) and trigger the follow-up

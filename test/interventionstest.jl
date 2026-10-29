@@ -391,6 +391,13 @@ end
         @test index4 ∉ traced
         @test all(c -> household_id(c) == household_id(index4), traced)
 
+        # max_contacts caps the named contacts
+        @test max_contacts(trace_infectious) == typemax(Int)
+        @test_throws ArgumentError TraceInfectiousContacts(i_strategy4, max_contacts = -1)
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household], max_contacts = 1))
+        @test length(followup_focals(drain_events!(eq4))) == 1
+
         # a contact_filter rejecting every tick re-draws nothing
         empty!(eq4)
         process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true,
@@ -476,6 +483,15 @@ end
         @test allunique(traced)
         @test index5 ∉ traced
         @test all(c -> household_id(c) == household_id(index5), traced)
+
+        # max_contacts caps the named contacts
+        @test max_contacts(trace_source) == typemax(Int)
+        @test_throws ArgumentError TraceSourceContacts(i_strategy5, max_contacts = -1)
+        empty!(eq5)
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household], max_contacts = 1))
+        @test length(followup_focals(drain_events!(eq5))) == 1
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, max_contacts = 0))
+        @test isempty(drain_events!(eq5))
 
         # an infection older than the lookback is not traced
         GEMS.increment!(sim5)

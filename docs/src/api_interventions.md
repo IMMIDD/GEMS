@@ -89,6 +89,8 @@ duration(::SelfIsolation)
 follow_up
 i_measuretypes
 lookback(::TraceSourceContacts)
+max_contacts(::TraceInfectiousContacts)
+max_contacts(::TraceSourceContacts)
 measure_logic
 name(::PoolTest)
 name(::TestAll)

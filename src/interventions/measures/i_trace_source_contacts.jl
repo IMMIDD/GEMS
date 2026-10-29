@@ -32,6 +32,9 @@ They are re-drawn from the index's settings of the given `settingtypes` (default
 `Office`, `SchoolClass`) using today's memberships, so they are a plausible set, not the contacts
 drawn during the run. A `contact_filter(setting, tick)` returning `false` skips re-drawing in that
 setting at that tick, e.g. to leave out a past school closure.
+
+The optional `max_contacts` caps how many contacts the index names; a random subset of that size is
+picked before the `success_rate` draws (default: no cap).
 """
 struct TraceSourceContacts <: IMeasure
     success_rate::Union{Float64, TraceRateFn}
@@ -40,24 +43,29 @@ struct TraceSourceContacts <: IMeasure
     resample_contacts::Bool
     settingtypes::Vector{DataType}
     contact_filter::ContactFilterFn
+    max_contacts::Int
 
     function TraceSourceContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
             lookback::Integer = 14, resample_contacts::Bool = false,
             settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
-            contact_filter::Function = (setting, tick) -> true)
+            contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
         if lookback < 0
             throw(ArgumentError("lookback parameter must not be negative"))
         end
 
+        if max_contacts < 0
+            throw(ArgumentError("max_contacts parameter must not be negative"))
+        end
+
         if success_rate isa Function
-            return(new(TraceRateFn(success_rate), follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter)))
+            return(new(TraceRateFn(success_rate), follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
         end
 
         if !(0 <= success_rate <= 1)
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
 
-        return(new(success_rate, follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter)))
+        return(new(success_rate, follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
     end
 end
 
@@ -116,6 +124,15 @@ function contact_filter(tsc::TraceSourceContacts)
     return(tsc.contact_filter)
 end
 
+"""
+    max_contacts(tsc::TraceSourceContacts)
+
+Returns the largest number of contacts an index names to a `TraceSourceContacts` struct.
+"""
+function max_contacts(tsc::TraceSourceContacts)
+    return(tsc.max_contacts)
+end
+
 
 ###
 ### PROCESS MEASURE
@@ -170,6 +187,13 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceSourceC
         mergewith!(max, last_contact, Dict(zip(contact_ids, contact_ticks)))
         contact_ids = sort!(collect(keys(last_contact)))
         contact_ticks = [last_contact[c] for c in contact_ids]
+    end
+
+    # the index names at most max_contacts of them, picked at random
+    if length(contact_ids) > max_contacts(measure)
+        keep = sort!(gems_sample(sim, 1:length(contact_ids), max_contacts(measure); replace = false))
+        contact_ids = contact_ids[keep]
+        contact_ticks = contact_ticks[keep]
     end
 
     # filter by success_rate (one draw per contact, in order) and trigger the follow-up
