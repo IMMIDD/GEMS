@@ -67,6 +67,7 @@ CustomSMeasure
 FindMembers
 FindSetting
 FindSettingMembers
+FindSettings
 IsOpen
 OpenSetting
 PoolTest

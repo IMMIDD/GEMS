@@ -211,6 +211,18 @@ import GEMS: increment!, infected!
             @test label(sim) == "test_sim"
             sim = Simulation(pop_size = 100, label = 123)
             @test label(sim) == "123"
+
+            # TRANSMISSION PRE-THINNING
+            # passing
+            config(value) = Dict("Simulation" => Dict("transmission_prethinning" => value))
+            @test Simulation(pop_size = 100, transmission_prethinning = true).prethinning
+            @test !Simulation(pop_size = 100, transmission_prethinning = false).prethinning
+            @test GEMS.determine_transmission_prethinning(Dict(), nothing)
+            @test !GEMS.determine_transmission_prethinning(config(false), nothing)
+            @test GEMS.determine_transmission_prethinning(config(false), true)
+            # failing
+            @test_throws ArgumentError Simulation(pop_size = 100, transmission_prethinning = 1)
+            @test_throws ArgumentError GEMS.determine_transmission_prethinning(config("yes"), nothing)
         end
 
         @testset "Population & Settings" begin
@@ -1624,7 +1636,7 @@ import GEMS: increment!, infected!
     @testset "Multipathogen run!" begin
         # both pathogens are seeded at 30% so that ~9% of individuals start with both
         # simultaneously (INFECTIONS_CACHE_SIZE = 1 → overflow), exercising the overflow
-        # block in _process_infections!
+        # iteration in _spread_in!
         p1 = Pathogen(id=1, name="PathA")
         p2 = Pathogen(id=2, name="PathB")
         mc = MultiStartCondition([
@@ -1641,6 +1653,31 @@ import GEMS: increment!, infected!
         @test Int8(2) in inf_df.pathogen_id
     end
 
+    @testset "Transmission pre-thinning toggle" begin
+        # without usable bounds, spreading draws the same with the toggle on or off
+        struct UnboundedRate <: GEMS.TransmissionFunction end
+        GEMS.transmission_probability(::UnboundedRate, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+            setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.2
+        function runs(names)
+            return map((true, false)) do on
+                ps = Tuple(Pathogen(id = k, name = nm, transmission_function = UnboundedRate()) for (k, nm) in enumerate(names))
+                sim = Simulation(pathogens = ps, pop_size = 5000, infected_fraction = 0.01, seed = 7,
+                    stop_criterion = TimesUp(limit = 30), transmission_prethinning = on)
+                run!(sim)
+                return infections(sim)
+            end
+        end
+        single = runs(["A"])
+        @test nrow(single[1]) > 100 && isequal(single[1], single[2])
+        multi = runs(["A", "B"])
+        @test nrow(multi[1]) > 100 && isequal(multi[1], multi[2])
+
+        # the contact survey never thins
+        surveys = map(on -> GEMS.contact_samples(Simulation(pop_size = 1000, seed = 3, transmission_prethinning = on), Household, false),
+            (true, false))
+        @test isequal(surveys[1], surveys[2])
+    end
+
     @testset "Closed Setting in Step" begin
         # _compute_non_locatable! adds all individuals in a closed setting to the
         # unable-to-locate counter (simulation_methods.jl line 106)
@@ -1652,24 +1689,156 @@ import GEMS: increment!, infected!
         @test tick(sim_cl) == 3
     end
 
+    @testset "Closed pooled Setting in Step" begin
+        # closing a pooled class leaves its pool dirty; spreading must repack before it reads frames
+        sim_cl = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+            settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+            stop_criterion = TimesUp(limit = 5), seed = 1)
+        s_cl = SStrategy("close_classes", sim_cl)
+        add_measure!(s_cl, CloseSetting())
+        add_tick_trigger!(sim_cl, STickTrigger(SchoolClass, s_cl, switch_tick = Int16(1)))
+        run!(sim_cl)
+        @test tick(sim_cl) == 5
+        @test !any(is_open, schoolclasses(sim_cl))
+    end
+
+    @testset "State log counts match a full scan" begin
+        # The state log counts where the disease update, the infection flush and tests already
+        # read the individuals. Each tick it must equal a scan of everyone active or quarantined.
+        sim = Simulation(pop_size = 20_000, seed = 7)
+        pcr = TestType("PCR", id(first_pathogen(sim)), sim, sensitivity = 0.9, specificity = 0.9)
+        close_class = SStrategy("close class", sim)
+        add_measure!(close_class, CloseSetting())
+        isolate = IStrategy("isolate", sim)
+        add_measure!(isolate, SelfIsolation(7))
+        add_measure!(isolate, FindSetting(SchoolClass, close_class))
+        # household members are tested whether infected or not, so some positives are false
+        test_household = SStrategy("test household", sim)
+        add_measure!(test_household, TestAll("household", pcr, nothing, nothing))
+        on_symptoms = IStrategy("on symptoms", sim)
+        add_measure!(on_symptoms, GEMS.Test("symptoms", pcr, positive_followup = isolate))
+        add_measure!(on_symptoms, FindSetting(Household, test_household))
+        add_symptom_trigger!(sim, SymptomTrigger(on_symptoms))
+
+        function scanned(sim)
+            plans = GEMS.activity_plans(sim)
+            classes, offs = schoolclasses(sim), offices(sim)
+            c = Dict(k => 0 for k in (:exposed, :infectious, :detected, :quarantined, :quarantined_students,
+                :isolated_students, :unable_to_attend_students, :quarantined_workers, :isolated_workers,
+                :unable_to_attend_workers))
+            for (k, i) in enumerate(individuals(sim))
+                (sim.active_individuals[k] || sim.quarantined_individuals[k]) || continue
+                if GEMS.isquarantined(i)
+                    c[:quarantined] += 1
+                    GEMS.is_student(i, plans) && (c[:quarantined_students] += 1; GEMS.infected(i) && (c[:isolated_students] += 1))
+                    GEMS.is_working(i, plans) && (c[:quarantined_workers] += 1; GEMS.infected(i) && (c[:isolated_workers] += 1))
+                end
+                c[:exposed] += GEMS.is_exposed(i)
+                c[:infectious] += GEMS.infectious(i)
+                c[:detected] += GEMS.is_detected(i)
+                if GEMS.is_homebound(i) || GEMS.is_hospitalized(i) || GEMS.isquarantined(i)
+                    c[:unable_to_attend_students] += GEMS._open_memberships(plans, i, classes)
+                    c[:unable_to_attend_workers] += GEMS._open_memberships(plans, i, offs)
+                end
+            end
+            c[:unable_to_attend_students] += sum(s -> GEMS.is_open(s) ? 0 : size(s), classes; init = 0)
+            c[:unable_to_attend_workers] += sum(o -> GEMS.is_open(o) ? 0 : size(o), offs; init = 0)
+            return c
+        end
+
+        sl = statelogger(sim)
+        mismatches = 0
+        seen = Dict(k => 0 for k in (:detected, :quarantined, :unable_to_attend_students, :hospitalized))
+        false_positive = false
+        while !GEMS.evaluate(sim, GEMS.stop_criterion(sim))
+            logged = length(sl.tick)
+            step!(sim)
+            # a dormant tick copies the last row instead of counting
+            length(sl.tick) > logged && sl.tick[end] == tick(sim) - 1 || continue
+            c = scanned(sim)
+            for (k, v) in c
+                getfield(sl, k)[end] == v || (mismatches += 1)
+            end
+            seen[:detected] = max(seen[:detected], c[:detected])
+            seen[:quarantined] = max(seen[:quarantined], c[:quarantined])
+            seen[:unable_to_attend_students] = max(seen[:unable_to_attend_students], c[:unable_to_attend_students])
+            seen[:hospitalized] = max(seen[:hospitalized], count(GEMS.is_hospitalized, individuals(sim)))
+            false_positive |= any(i -> GEMS.is_detected(i) && !GEMS.infected(i), individuals(sim))
+        end
+        @test mismatches == 0
+        # the scenario reached every count it is meant to check
+        @test all(>(0), values(seen))
+        @test false_positive
+    end
+
+    @testset "Skipped disease updates change nothing" begin
+        # An update is skipped while nothing is due. Making everyone due before every tick, as
+        # before the skip, must give the same run.
+        function intervened()
+            sim = Simulation(pop_size = 20_000, seed = 7)
+            pcr = TestType("PCR", id(first_pathogen(sim)), sim, sensitivity = 0.9, specificity = 0.9)
+            isolate = IStrategy("isolate", sim)
+            add_measure!(isolate, SelfIsolation(7))
+            on_symptoms = IStrategy("on symptoms", sim)
+            add_measure!(on_symptoms, GEMS.Test("symptoms", pcr, positive_followup = isolate))
+            add_symptom_trigger!(sim, SymptomTrigger(on_symptoms))
+            return sim
+        end
+        beta() = Pathogen(id = 2, name = "B", infectiousness_profile = BetaInfectiousness(),
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.2))
+        constant() = Pathogen(id = 1, name = "A",
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.2))
+        scenarios = [
+            "default" => () -> Simulation(pop_size = 20_000, seed = 3),
+            "beta" => () -> Simulation(pop_size = 20_000, pathogens = (beta(),), infected_fraction = 0.005, seed = 3),
+            "two pathogens" => () -> Simulation(pop_size = 20_000, pathogens = (constant(), beta()), infected_fraction = 0.005, seed = 3),
+            "interventions" => intervened]
+
+        # infection ids are left out: threads hand them out in no fixed order
+        logs(sim) = (sort(select(dataframe(infectionlogger(sim)), Not([:infection_id, :source_infection_id]))),
+            sort(dataframe(deathlogger(sim))), dataframe(statelogger(sim)))
+
+        for (name, make) in scenarios
+            skipping, forced = make(), make()
+            skipped = 0
+            while !GEMS.evaluate(skipping, GEMS.stop_criterion(skipping))
+                fill!(forced.update_states, GEMS._UpdateState())
+                step!(skipping)
+                step!(forced)
+                skipped += count(k -> skipping.active_individuals[k] && skipping.update_states[k].next_update > tick(skipping),
+                    eachindex(skipping.update_states))
+            end
+            @testset "$name" begin
+                @test isequal(logs(skipping), logs(forced))
+                @test nrow(dataframe(infectionlogger(skipping))) > 100
+                # Beta is due every tick while infectious, but not while exposed
+                @test skipped > 0
+            end
+        end
+    end
+
     @testset "Simulation Buffers" begin
         sim = Simulation()
         num_threads = Threads.maxthreadid()
         
-        @test length(present_buffers(sim)) == num_threads
         @test length(contact_buffers(sim)) == num_threads
         
         # Verify they are actual individual vectors
-        @test present_buffers(sim)[1] isa Vector{Individual}
+        @test contact_buffers(sim)[1] isa Vector{Individual}
 
         # run! releases the capacity the buffers grew to, down to what they still hold
         capacity(v) = length(v.ref.mem)
         @test any(b -> capacity(b) > 0, sim.infection_buffers)  # reserved up front
         run!(sim)
-        @test all(b -> capacity(b) == length(b), present_buffers(sim))
+        @test all(b -> capacity(b) == length(b), sim.infectious_individuals)
         @test all(b -> capacity(b) == length(b), contact_buffers(sim))
+        @test all(b -> capacity(b) == length(b), sim.draw_buffers)
+        @test all(b -> capacity(b) == length(b), sim.newly_dead)
+        @test all(t -> capacity(t.in_care) == length(t.in_care), sim.state_log_counts)
         @test all(b -> capacity(b) == length(b), sim.infection_buffers)
         @test all(b -> capacity(b) == length(b), sim.removal_buffers)
+        # reserved up front too; a Dict shrinks to the table its last tick's winners need
+        @test all(d -> length(d.slots) <= max(16, 4 * length(d)), sim.deduplication_winners)
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)
@@ -1684,5 +1853,30 @@ import GEMS: increment!, infected!
         simA = Simulation(pop_size=100, seed=999)
         simB = Simulation(pop_size=100, seed=999)
         @test rand(rngs(simA)[1]) == rand(rngs(simB)[1])
+    end
+
+    @testset "The dead leave their settings' contacts" begin
+        sim = Simulation(seed = 1)
+        run!(sim)
+        dead_inds = filter(dead, individuals(sim))
+        @test !isempty(dead_inds)
+        cntnr = settingscontainer(sim)
+        repack_dirty_pools!(cntnr)
+        plans = GEMS.activity_plans(sim)
+        for d in dead_inds, e in GEMS.plan_entries(plans, d)
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            # still a member, but never drawn
+            @test d in individuals(s)
+            @test !(d in GEMS.present_members(s, cntnr))
+        end
+        @test GEMS.validate_plans(population(sim), cntnr)
+
+        # a reset brings them back
+        reset!(sim)
+        for d in dead_inds, e in GEMS.plan_entries(plans, d)
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            @test d in GEMS.present_members(s, cntnr)
+        end
+        @test GEMS.validate_plans(population(sim), cntnr)
     end
 end

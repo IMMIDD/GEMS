@@ -25,7 +25,7 @@ export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export InfectionSeed, seeding_schedule
 export rng, rngs, seed
-export present_buffers, contact_buffers
+export contact_buffers
 
 export info
 
@@ -87,7 +87,10 @@ Here's a list of all available parameters:
 | `avg_office_size`         | `Float`                                | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
 | `avg_school_size`         | `Float`                                | Average school size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
 | `global_setting`          | `Bool`                                 | Flag indicating whether to use the global setting.                                                                                                                                |
+| `membershipsfile`         | `String`                               | Path to a CSV file holding settings beyond each type's primary (see `memberships`).                                                                                               |
 | `settingsfile`            | `String`                               | Path to a settings file.                                                                                                                                                          |
+| `setting_layers`          | `SettingLayer` or a collection of them | Layers of plan entries to add before the settings are built, instead of the config file's `layer` tables. Not applied to a passed `Population` object.                            |
+| `layer_seed`              | `Int`                                  | Seed of the setting layers' draws; defaults to `seed`.                                                                                                                            |
 | `household_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
 | `office_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
 | `department_contacts`     | `ContactSamplingMethod` or `Float`     | Method for sampling department contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                   |
@@ -240,17 +243,34 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
+    # TRANSMISSION PRE-THINNING
+    prethinning::Bool
+
+    # INFECTIOUS INDIVIDUALS
+    # who each thread's part of the disease-update sweep found infectious this tick; the
+    # transmission phase goes through exactly these
+    infectious_individuals::Vector{Vector{Individual}}
+
     # PER-INDIVIDUAL FLAGS
-    # who the disease-update loop and state log must visit
+    # who the disease-update loop must visit
     active_individuals::Vector{Bool}
     # who has a quarantine that has not ended yet
     quarantined_individuals::Vector{Bool}
+    # when each individual's next disease update is due, and what its last one found
+    update_states::Vector{_UpdateState}
 
     # THREAD-LOCAL BUFFERS
-    present_buffers::Vector{Vector{Individual}}
     contact_buffers::Vector{Vector{Individual}}
+    # one sampler call's draws, for scaled hosts that call a sampler more than once
+    draw_buffers::Vector{Vector{Individual}}
+    # who each thread's part of the disease-update sweep found dead this tick
+    newly_dead::Vector{Vector{Individual}}
+    # what each thread counted for the state log
+    state_log_counts::Vector{_StateLogCounts}
     infection_buffers::Matrix{Vector{_PendingInfection}}
     removal_buffers::Matrix{Vector{_EndedInfection}}
+    # per shard, the attempt that wins each contested (host, pathogen) this tick
+    deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
 
     # inner default constructor
     function Simulation(
@@ -323,15 +343,25 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             seed,
             rngs,
 
+            # TRANSMISSION PRE-THINNING
+            all(_prethinnable, pathogens),
+            
+            # INFECTIOUS INDIVIDUALS
+            _thread_local_vector(Vector{Individual}),
+
             # PER-INDIVIDUAL FLAGS
             zeros(Bool, length(population.individuals)),
             zeros(Bool, length(population.individuals)),
-            
+            fill(_UpdateState(), length(population.individuals)),
+
             # INITIALIZE BUFFERS
-            _thread_local_vector(Vector{Individual}), # present_buffers
             _thread_local_vector(Vector{Individual}), # contact_buffers
+            _thread_local_vector(Vector{Individual}), # draw_buffers
+            _thread_local_vector(Vector{Individual}), # newly_dead
+            _thread_local_vector(_StateLogCounts), # state_log_counts
             _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
-            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)) # removal buffers matrix
+            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)), # removal buffers matrix
+            _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards)) # deduplication winners
         )
 
         # increase simulation counter
@@ -390,6 +420,9 @@ function _BUILD_Simulation(;
         # settings
         global_setting = nothing,
         settingsfile = nothing,
+        membershipsfile = nothing,
+        setting_layers = nothing,
+        layer_seed = nothing,
 
         # contacts
         household_contacts = nothing,
@@ -429,6 +462,12 @@ function _BUILD_Simulation(;
         # seed
         seed = nothing,
 
+        # setting pool
+        pool_slack = nothing,
+
+        # transmission pre-thinning
+        transmission_prethinning = nothing,
+
         # individual extensions
         ind_extension = nothing
 )
@@ -437,13 +476,20 @@ function _BUILD_Simulation(;
     configpath = configfile_path(configfile)
     config = load_configfile(configpath)
 
+    # SETTING TYPES, before the population files that may name them
+    declared_types = determine_setting_types!(config)
+
     # SEED
     rng_seed = determine_seed(config, seed)
     master_rng = Xoshiro(rng_seed)
-    rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+    rngs = _thread_local_rngs(master_rng)
 
     # GLOBAL SETTING FLAG
     gs = determine_global_setting(config, global_setting)
+
+    # SETTING LAYERS
+    layers = determine_setting_layers(config, setting_layers)
+    lseed = determine_layer_seed(config, layer_seed, rng_seed)
 
     # POPULATION
     pop, settings = determine_population_and_settings(
@@ -456,8 +502,12 @@ function _BUILD_Simulation(;
         avg_school_size,
         settingsfile,
         rngs[1],
-        ind_extension
+        ind_extension;
+        membershipsfile = membershipsfile,
+        layers = layers,
+        layer_seed = lseed
     )
+    _warn_unused_declared_types(declared_types, settings)
 
     # everything after this is just generating, not loading from disk
     _printinfo("\u2514 Creating simulation object")
@@ -532,6 +582,11 @@ function _BUILD_Simulation(;
     )
 
     precompute_ags!(sim)
+    build_pools!(settingscontainer(sim); slack = determine_pool_slack(config, pool_slack))
+    determine_transmission_prethinning(config, transmission_prethinning) || (sim.prethinning = false)
+    _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
+    _check_global_positions(sim.population, settingscontainer(sim))
+    _refresh_rate_bounds!(settingscontainer(sim))
 
     # update label
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
@@ -581,6 +636,25 @@ function _thread_local_matrix(T::Type, make = T)
         isassigned(m, i) || (m[i] = make())
     end
     return m
+end
+
+"""
+    _thread_local_rngs(master::Xoshiro)
+
+Returns one `Xoshiro` per thread id, seeded from `master` in thread-id order, each created on the thread that uses it.
+"""
+function _thread_local_rngs(master::Xoshiro)
+    seeds = [gems_rand(master, UInt) for _ in 1:Threads.maxthreadid()]
+    v = Vector{Xoshiro}(undef, length(seeds))
+    # every draw writes the generator, so neighbours on one cache line would contend (see `_thread_local_vector`)
+    Threads.@threads :static for _ in 1:Threads.nthreads()
+        t = Threads.threadid()
+        v[t] = Xoshiro(seeds[t])
+    end
+    for i in eachindex(v)
+        isassigned(v, i) || (v[i] = Xoshiro(seeds[i]))
+    end
+    return v
 end
 
 
@@ -890,7 +964,7 @@ function determine_health_progression(configfile_params::Dict, health_progressio
     policy = !isnothing(health_progression) ? health_progression :
         !isnothing(section) ? section : DefaultHealthProgression()
 
-    # a section from a config the caller did not write loses to health they embedded themselves
+    # health embedded on explicitly passed pathogens overrides the config's deprecated care section
     if !isnothing(baseline) && pathogens_explicit && embedded
         @warn "Embedded health parameters were found on explicitly-passed pathogens, therefore the config's deprecated care parameters will be ignored."
         baseline = nothing
@@ -902,12 +976,12 @@ function determine_health_progression(configfile_params::Dict, health_progressio
             "The legacy layer only reproduces pre-decoupling behavior; to mix custom per-category health, drop the legacy " *
             "categories and embed a `HealthProfile` on each progression instead."))
         has_section && throw(ArgumentError("legacy progression categories conflict with a [HealthProgression] config section; remove one."))
-        # the tier profiles only reach the modern categories mixed in alongside legacy ones
+        # the default tier profiles only apply to modern categories mixed in with the legacy ones
         return policy, _harvest_legacy_health_profiles(pathogens,
             StandardOfCare(severe = SevereHealthProfile(), critical = CriticalHealthProfile()))
     end
 
-    # warn once here rather than once per uncovered category; only the default policy needs the index
+    # one warning for all uncovered categories; only the default policy needs the index
     if !embedded && isnothing(baseline)
         policy isa DefaultHealthProgression && @warn "No health parameters were embedded on any progression; no hospitalization, ICU admission, or health-related death will occur (severe cases still stay home)."
         return policy, HealthProfileIndex()
@@ -982,9 +1056,13 @@ end
 Determines the population and settings for the simulation based on the provided parameters.
 If a `population` string is provided, it will be used to load the population from a file or obtain remote files.
 If a `settingsfile` is provided, it will be used to load the settings from a file.
+If a `membershipsfile` is provided, the settings beyond each type's primary are read from it.
+The setting `layers` are added before the settings are built, with the settings file's household
+coordinates.
 If neither is provided, an error will be thrown.
 """
-function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing)
+function determine_population(population::String, settingsfile, global_setting; ind_extension = nothing, membershipsfile = nothing,
+                              layers = (), layer_seed::Integer = 0)
     # if a path was provided, load the population from the file, otherwise assume it's a population identifier
     (pop_path, settings_path) = try
         is_pop_file(population) ? (population, settingsfile) : obtain_remote_files(population)
@@ -996,15 +1074,72 @@ function determine_population(population::String, settingsfile, global_setting; 
         !endswith(settings_path, ".jld2") && throw(ArgumentError("Provided settings file path does not point to a valid .jld2 file: $settings_path"))
     end
 
-    pop = Population(pop_path; ind_extension = ind_extension)
-    settings, renaming = settings_from_population(pop, global_setting)
+    pop = Population(pop_path; ind_extension = ind_extension, memberships = membershipsfile)
+    # read before the settings are built, so the layers get its coordinates and ids
+    settings_file = isnothing(settings_path) ? nothing : _read_settings_jld2(settings_path)
+    settings, renaming = _settings_from_layered_population(pop, global_setting, layers, layer_seed; settings_file = settings_file)
 
-    if !isnothing(settings_path)
+    if !isnothing(settings_file)
         _printinfo("\u2514 Loading settings from $(basename(settings_path))")
-        settings_from_jld2!(settings_path, settings, renaming)
+        _add_jld2_settings!(settings_file, settings, renaming)
     end
 
     return pop, settings
+end
+
+"""
+    _settings_from_layered_population(pop::Population, global_setting, layers, layer_seed::Integer; settings_file = nothing)
+
+Adds the setting `layers` to `pop`, then builds its settings as `settings_from_population` does
+and moves the layers' recorded id ranges along with any renumbering. `settings_file` is the
+settings file's contents, giving the layers household coordinates and ids to stay above.
+"""
+function _settings_from_layered_population(pop::Population, global_setting, layers, layer_seed::Integer; settings_file = nothing)
+    if !isempty(layers)
+        _warn_reapplied_layers(pop, layers)
+        add_setting_layers!(pop, layers...; seed = layer_seed,
+            household_coordinates = isnothing(settings_file) ? nothing : get(settings_file, :Household, nothing),
+            id_floors = _settings_file_max_ids(settings_file))
+    end
+    settings, renaming = settings_from_population(pop, global_setting)
+    _rename_layer_records!(pop, renaming)
+    return settings, renaming
+end
+
+# The largest id of each setting type in the settings file.
+_settings_file_max_ids(::Nothing) = Dict{DataType, Int}()
+
+function _settings_file_max_ids(file::Dict)
+    max_ids = Dict{DataType, Int}()
+    for (name, table) in file
+        T = _registered_setting_type(string(name))
+        (T === nothing || !("id" in names(table)) || nrow(table) == 0) && continue
+        max_ids[T] = Int(maximum(table[!, "id"]))
+    end
+    return max_ids
+end
+
+# Warns when the population already holds entries of a declared type a layer creates new settings
+# of, as a saved population that had the layer applied would.
+function _warn_reapplied_layers(pop::Population, layers)
+    store = activity_plans(pop)
+    for layer in layers
+        T = _layer_type(layer)
+        (T <: DeclaredSetting && layer.assignment isa NewSettingsAssignment) || continue
+        any(ind -> _plan_type_run(store, ind, setting_type_index(T))[2] > 0, individuals(pop)) && @warn "The population " *
+            "already holds $(setting_type_name(T)) entries and a setting layer adds more; if it was saved with the " *
+            "layer applied, run it with a config without the layer"
+    end
+    return nothing
+end
+
+# Warns for each setting type the config declared that no individual belongs to.
+function _warn_unused_declared_types(declared::Vector{DataType}, settings::SettingsContainer)
+    for T in declared
+        isempty(get(settings.settings, T, ())) && @warn "[Settings.$(setting_type_name(T))] declares a setting " *
+            "type no individual belongs to; add a `layer` or a memberships file"
+    end
+    return nothing
 end
 
 """
@@ -1013,31 +1148,34 @@ end
 Determines the population and settings for the simulation based on the provided parameters.
 If a `population` is provided, it will be used to load the population from a file or obtain remote files.
 If not, it will create a new population based on the provided parameters or config file parameters.
+The setting `layers` are added to every population but a passed `Population` object.
 """
-function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension)
+function determine_population_and_settings(configfile_params::Dict, population, global_setting, pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, rng, ind_extension;
+                                           membershipsfile = nothing, layers = (), layer_seed::Integer = 0)
     # if population is provided, use it
     if !isnothing(population)
         # if a Population object is provided, use it
         if isa(population, Population)
             # throw warning if any other parameters were provided
-            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, and settingsfile will be ignored."
+            !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, membershipsfile]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, avg_school_size, settingsfile, and membershipsfile will be ignored."
             if ind_extension isa AbstractVector{Symbol}
                 @warn """ind_extension as Vector{Symbol} requires the original DataFrame, which is not retained in a pre-built Population. Either:
                         - pass the DataFrame directly:  Simulation(population = df, ind_extension = ...)
                         - or apply it at construction:  Population(df; ind_extension = ...)"""
             elseif !isnothing(ind_extension)
                 # apply ind_extension to the population if provided
-                population = Population(dataframe(population); ind_extension = ind_extension) 
+                population = Population(dataframe(population); ind_extension = ind_extension, memberships = memberships(population))
             end
-            settings, renaming = settings_from_population(population, global_setting)
+            isempty(layers) || @warn "A population object was provided, therefore the setting layers will be ignored; add them with `add_setting_layers!` before passing the population."
+            settings, renaming = _settings_from_layered_population(population, global_setting, (), 0)
             return population, settings
         end
 
         # if a DataFrame is provided, build the population from it directly
         if isa(population, DataFrame)
             !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A DataFrame was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
-            pop = Population(population; ind_extension = ind_extension)
-            settings, renaming = settings_from_population(pop, global_setting)
+            pop = Population(population; ind_extension = ind_extension, memberships = membershipsfile)
+            settings, renaming = _settings_from_layered_population(pop, global_setting, layers, layer_seed)
             return pop, settings
         end
 
@@ -1047,7 +1185,8 @@ function determine_population_and_settings(configfile_params::Dict, population, 
         !all(isnothing, [pop_size, avg_household_size, avg_office_size, avg_school_size]) && @warn "A population object was provided, therefore pop_size, avg_household_size, avg_office_size, and avg_school_size will be ignored."
 
         # if a population file path is provided, load the population from the file
-        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension)
+        return determine_population(population, settingsfile, global_setting; ind_extension = ind_extension, membershipsfile = membershipsfile,
+                                    layers = layers, layer_seed = layer_seed)
     end
 
     # if no population is provided, use the provided parameters
@@ -1063,7 +1202,7 @@ function determine_population_and_settings(configfile_params::Dict, population, 
 
     # create population object
     pop = Population(; rng = rng, ind_extension = ind_extension, params...)
-    settings, renaming = settings_from_population(pop, global_setting)
+    settings, renaming = _settings_from_layered_population(pop, global_setting, layers, layer_seed)
     return pop, settings
 end
 
@@ -1082,7 +1221,7 @@ have no state to share, so all settings hold the same one.
 function _set_contact_sampling_method!(setting_list::Vector, method, settingtype::Type{T}) where {T <: Setting}
     isempty(setting_list) && return
     if isbitstype(typeof(method))
-        # storing into the abstract field boxes; reuse the first setting's box instead of one per setting
+        # storing into the abstract field boxes, so all settings share the first setting's box
         first_setting = setting_list[1]::settingtype
         first_setting.contact_sampling_method = method
         boxed = first_setting.contact_sampling_method
@@ -1097,6 +1236,58 @@ function _set_contact_sampling_method!(setting_list::Vector, method, settingtype
         end
     end
 end
+"""
+    determine_setting_types!(configfile_params::Dict)
+
+Registers the setting type each `[Settings.<Name>]` section names, with its optional `char`: a struct
+type of that name, or else a new `DeclaredSetting`. Runs before the population loads, whose files may
+name these types. Returns the `DeclaredSetting`s the sections name, declared now or before.
+"""
+function determine_setting_types!(configfile_params::Dict)
+    declared = DataType[]
+    _haspath(configfile_params, ["Settings"]) || return declared
+    sections = configfile_params["Settings"]
+    # sorted, so a config registers its types in the same order every time
+    for name in sort!(collect(keys(sections)))
+        section = sections[name]
+        section isa Dict || continue
+        char = _config_char(section, name)
+        T = _registered_setting_type(name)
+        if T !== nothing
+            # a type registered before keeps its char; a built-in's is fixed
+            (char === nothing || get(SETTING_TYPE_CHARS, T, nothing) == char) || throw(ArgumentError(
+                "[Settings.$name] sets char '$char', but $T is already registered with another char"))
+            T <: DeclaredSetting && push!(declared, T)
+            continue
+        end
+        _resolve_setting_type(name; char = char) === nothing && push!(declared, declare_setting_type!(name; char = char))
+    end
+    return declared
+end
+
+"""
+    determine_setting_layers(configfile_params::Dict, setting_layers)
+
+Determines the setting layers to add to the population.
+If `setting_layers` is provided, a `SettingLayer` or a collection of them, it will be used.
+If not, they are created from the `layer` tables of the config file's `[Settings.<Name>]` sections.
+"""
+function determine_setting_layers(configfile_params::Dict, setting_layers)
+    isnothing(setting_layers) && return create_setting_layers(configfile_params)
+    layers = setting_layers isa SettingLayer ? (setting_layers,) : Tuple(setting_layers)
+    all(l -> l isa SettingLayer, layers) || throw(ArgumentError("Provided setting_layers must be SettingLayers."))
+    return layers
+end
+
+# A section's `char` key as a `Char`, or `nothing` without one.
+function _config_char(section::Dict, name::AbstractString)
+    haskey(section, "char") || return nothing
+    c = section["char"]
+    (c isa AbstractString && length(c) == 1) || throw(ArgumentError(
+        "[Settings.$name] char must be a single character, got $(repr(c))"))
+    return only(c)
+end
+
 """
     determine_setting_type_config!(stngs::SettingsContainer, type::DataType, configfile_params::Dict; custom_par = nothing)
 
@@ -1129,24 +1320,24 @@ function determine_setting_type_config!(stngs::SettingsContainer, type::DataType
             _set_contact_sampling_method!(setting_list, method, type)
             return stngs
         else
-            throw(ArgumentError("Provided parameter for `$(structname(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
+            throw(ArgumentError("Provided parameter for `$(setting_type_name(type))` contacts must be a ContactSamplingMethod or a number indicating the average number of contacts per ticks!"))
         end
     end
 
     # if no custom parameters are provided, check if config file has section for the setting type
-    if !_haspath(configfile_params, ["Settings", structname(type)])
-        @warn "`$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+    if !_haspath(configfile_params, ["Settings", setting_type_name(type)])
+        @warn "`$(setting_type_name(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
 
     # check if the setting type has a config part for contact sampling method
-    if !_haspath(configfile_params, ["Settings", structname(type), "contact_sampling_method"])
-        @warn "`contact_sampling_method` for `$(structname(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
+    if !_haspath(configfile_params, ["Settings", setting_type_name(type), "contact_sampling_method"])
+        @warn "`contact_sampling_method` for `$(setting_type_name(type))` settings not found in config file. Using default settings only. This might cause 0 contacts and no infections."
         return stngs 
     end
 
     # build contact sampling method
-    csm_params = configfile_params["Settings"][structname(type)]["contact_sampling_method"]
+    csm_params = configfile_params["Settings"][setting_type_name(type)]["contact_sampling_method"]
     sampling_method = create_contact_sampling_method(csm_params)
     
     # Apply the sampling method
@@ -1261,6 +1452,61 @@ function determine_seed(configfile_params::Dict, seed)
     !isa(sd, Integer) && throw(ArgumentError("Provided seed in config file must be an integer value."))
     _printinfo("\u2514 Initializing RNG with seed $sd")
     return sd
+end
+
+"""
+    determine_layer_seed(configfile_params::Dict, layer_seed, seed::Integer)
+
+Determines the seed of the setting layers' draws.
+If a `layer_seed` is provided, it will be used.
+If not, it will look for `Simulation.layer_seed` in the config file.
+If neither is found, it is the simulation's `seed`, so the layers draw no number from its RNGs.
+"""
+function determine_layer_seed(configfile_params::Dict, layer_seed, seed::Integer)
+    ls = layer_seed
+    if isnothing(ls)
+        _haspath(configfile_params, ["Simulation", "layer_seed"]) || return seed
+        ls = configfile_params["Simulation"]["layer_seed"]
+    end
+    !isa(ls, Integer) && throw(ArgumentError("Provided layer seed must be an integer value."))
+    return ls
+end
+
+"""
+    determine_pool_slack(configfile_params::Dict, pool_slack)
+
+Determines the headroom each setting pool block carries, as a fraction of its length.
+If a `pool_slack` is provided, it will be used.
+If not, it will look for `Simulation.pool_slack` in the config file.
+If neither is found, it defaults to `DEFAULT_POOL_SLACK`.
+"""
+function determine_pool_slack(configfile_params::Dict, pool_slack)
+    ps = pool_slack
+    if isnothing(ps)
+        _haspath(configfile_params, ["Simulation", "pool_slack"]) || return DEFAULT_POOL_SLACK
+        ps = configfile_params["Simulation"]["pool_slack"]
+    end
+    !isa(ps, Real) && throw(ArgumentError("Provided pool slack must be a non-negative number."))
+    ps < 0 && throw(ArgumentError("Provided pool slack must not be negative, got $ps."))
+    return Float64(ps)
+end
+
+"""
+    determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+
+Determines whether spreading thins contacts by the pathogens' transmission bounds.
+If a `transmission_prethinning` flag is provided, it will be used.
+If not, it will look for `Simulation.transmission_prethinning` in the config file.
+If neither is found, it defaults to `true`.
+"""
+function determine_transmission_prethinning(configfile_params::Dict, transmission_prethinning)
+    tp = transmission_prethinning
+    if isnothing(tp)
+        _haspath(configfile_params, ["Simulation", "transmission_prethinning"]) || return true
+        tp = configfile_params["Simulation"]["transmission_prethinning"]
+    end
+    !isa(tp, Bool) && throw(ArgumentError("transmission_prethinning flag must be a boolean value!"))
+    return tp
 end
 
 
@@ -1627,6 +1873,128 @@ function create_stop_criterion(params::Dict)
     end
 end
 
+"""
+    create_setting_layers(params::Dict)
+
+Creates the setting layers the `layer` tables of the config file's `[Settings.<Name>]` sections
+describe: a section's single `layer` table or its `[[...layer]]` array, sections in sorted order.
+"""
+function create_setting_layers(params::Dict)
+    layers = SettingLayer[]
+    _haspath(params, ["Settings"]) || return Tuple(layers)
+    sections = params["Settings"]
+    # sorted, so the layers' default names don't depend on the file's key order
+    for name in sort!(collect(keys(sections)))
+        section = sections[name]
+        (section isa Dict && haskey(section, "layer")) || continue
+        tables = section["layer"] isa Dict ? [section["layer"]] : section["layer"]
+        # `determine_setting_types!` registered the section's type
+        T = _registered_setting_type(name)
+        for table in tables
+            push!(layers, create_setting_layer(T, table, name))
+        end
+    end
+    return Tuple(layers)
+end
+
+# the keys that pick out individuals, in a layer table and in a participation table's rows
+const _CRITERIA_CONFIG_KEYS = ("ages", "sex", "occupation", "education")
+const _LAYER_CONFIG_KEYS = ("name", _CRITERIA_CONFIG_KEYS..., "holding", "not_holding", "participation",
+    "participation_unit", "entries", "scale", "rescale", "assignment")
+
+"""
+    create_setting_layer(::Type{T}, params::Dict, section::AbstractString) where {T<:Setting}
+
+Creates one `SettingLayer` of type `T` from a `[Settings.<section>.layer]` table: `ages`, `sex`,
+`occupation` and `education` become `eligible`, `participation` tables become participation by
+attribute, the `assignment` table becomes the assignment, and the other keys are passed on.
+"""
+function create_setting_layer(::Type{T}, params::Dict, section::AbstractString) where {T<:Setting}
+    context = "[Settings.$section.layer]"
+    _check_config_keys(params, _LAYER_CONFIG_KEYS, context)
+    haskey(params, "assignment") || throw(ArgumentError("$context needs an `assignment` table."))
+    kw_args = Dict{Symbol, Any}(Symbol(k) => _config_value(v) for (k, v) in params
+        if k ∉ (_CRITERIA_CONFIG_KEYS..., "participation", "assignment"))
+    if any(k -> haskey(params, k), _CRITERIA_CONFIG_KEYS)
+        kw_args[:eligible] = _config_criteria(params, context)
+    end
+    if haskey(params, "participation")
+        kw_args[:participation] = _config_participation(params["participation"], context)
+    end
+    return SettingLayer(T; assignment = create_layer_assignment(params["assignment"], section), kw_args...)
+end
+
+# Throws for a key of a config table that is not one of `allowed`.
+function _check_config_keys(params::Dict, allowed, context::AbstractString)
+    unknown = setdiff(keys(params), allowed)
+    isempty(unknown) || throw(ArgumentError(
+        "$context has unknown keys $(join(unknown, ", ")); use $(join(allowed, ", "))"))
+    return nothing
+end
+
+# The individuals a config table's `ages = [lo, hi]` (both included), `sex`, `occupation` and
+# `education` (each a code or a list of them) pick out.
+function _config_criteria(params::Dict, context::AbstractString)
+    ages = haskey(params, "ages") ? _config_ages(params["ages"], context) : _ALL_AGES
+    return _Criteria(; ages = ages, sex = _config_codes(params, "sex", Int8, context),
+        occupation = _config_codes(params, "occupation", Int16, context),
+        education = _config_codes(params, "education", Int8, context))
+end
+
+# A config file's `ages = [lo, hi]` as a pair of ages.
+function _config_ages(ages, context::AbstractString)
+    valid = ages isa AbstractVector && length(ages) == 2 && all(a -> a isa Integer, ages) && 0 <= ages[1] <= ages[2]
+    valid || throw(ArgumentError("$context `ages` must be [lowest, highest] age; got $(repr(ages))"))
+    return Int(ages[1]), Int(ages[2])
+end
+
+# A config table's `key`, a code or a non-empty list of codes, as a vector of `C`; empty if absent.
+function _config_codes(params::Dict, key::AbstractString, ::Type{C}, context::AbstractString) where {C<:Integer}
+    haskey(params, key) || return C[]
+    codes = params[key] isa AbstractVector ? params[key] : [params[key]]
+    valid = !isempty(codes) && all(c -> c isa Integer && typemin(C) <= c <= typemax(C), codes)
+    valid || throw(ArgumentError("$context `$key` must be a code or a list of codes in " *
+        "$(typemin(C))-$(typemax(C)); got $(repr(params[key]))"))
+    return C.(codes)
+end
+
+# A layer's `participation`: a number, one table, or an array of tables, each with criteria and a probability `p`.
+_config_participation(value, ::AbstractString) = value
+_config_participation(row::Dict, context::AbstractString) = _config_participation([row], context)
+
+function _config_participation(rows::AbstractVector, context::AbstractString)
+    criteria, ps = _Criteria[], Float64[]
+    for (k, row) in enumerate(rows)
+        row_context = "$context participation row $k"
+        row isa Dict || throw(ArgumentError("$row_context must be a table; got $(repr(row))"))
+        _check_config_keys(row, (_CRITERIA_CONFIG_KEYS..., "p"), row_context)
+        (haskey(row, "p") && row["p"] isa Real) || throw(ArgumentError("$row_context needs a probability `p`."))
+        push!(criteria, _config_criteria(row, row_context))
+        push!(ps, Float64(row["p"]))
+    end
+    return _ParticipationTable(criteria, ps)
+end
+
+"""
+    create_layer_assignment(params::Dict, section::AbstractString)
+
+Creates a setting layer's `LayerAssignment` from its config table: `type` names it, the other keys
+are its keyword arguments, distribution sub-tables converted via `_config_value`.
+"""
+function create_layer_assignment(params::Dict, section::AbstractString)
+    haskey(params, "type") || throw(ArgumentError("[Settings.$section.layer.assignment] needs a `type`."))
+    assignment_type = _assignment_type(params["type"])
+    kw_args = Dict(Symbol(k) => _config_value(v) for (k, v) in params if k != "type")
+    return try
+        assignment_type(; kw_args...)
+    catch e
+        # a key the type does not take
+        e isa MethodError && throw(ArgumentError("[Settings.$section.layer.assignment] keys " *
+            "$(join(keys(kw_args), ", ")) do not fit $(params["type"]): $(sprint(showerror, e))"))
+        rethrow()
+    end
+end
+
 ### FILE LOADERS
 
 
@@ -1922,14 +2290,6 @@ function seed(simulation::Simulation)
     return simulation.seed
 end
 
-"""
-    present_buffers(simulation::Simulation)
-
-Returns the thread-local buffers for storing present individuals, used to eliminate array allocations.
-"""
-function present_buffers(simulation::Simulation)::Vector{Vector{Individual}}
-    return simulation.present_buffers
-end
 
 """
     contact_buffers(simulation::Simulation)
@@ -1943,10 +2303,14 @@ end
 # Frees the capacity the per-tick buffers grew to during a run
 function _release_tick_buffers!(simulation::Simulation)
     release!(buf) = sizehint!(buf, length(buf))
-    foreach(release!, simulation.present_buffers)
+    foreach(release!, simulation.infectious_individuals)
     foreach(release!, simulation.contact_buffers)
+    foreach(release!, simulation.draw_buffers)
+    foreach(release!, simulation.newly_dead)
+    foreach(t -> release!(t.in_care), simulation.state_log_counts)
     foreach(release!, simulation.infection_buffers)
     foreach(release!, simulation.removal_buffers)
+    foreach(release!, simulation.deduplication_winners)
     return nothing
 end
 
@@ -1986,6 +2350,13 @@ Returns the population associated with the simulation run.
 function population(simulation::Simulation)
     return simulation.population
 end
+
+"""
+    activity_plans(simulation::Simulation)
+
+Returns the `ActivityPlanStore` holding every individual's setting memberships.
+"""
+@inline activity_plans(simulation::Simulation)::ActivityPlanStore = activity_plans(simulation.population)
 
 """
     populationDF(simulation::Simulation)
@@ -2465,7 +2836,21 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     end
     fill!(simulation.active_individuals, false)
     fill!(simulation.quarantined_individuals, false)
+    fill!(simulation.update_states, _UpdateState())
     reset_tick!(simulation)
+
+    # the dead are alive again, so they return to their settings' frames
+    plans = activity_plans(simulation)
+    foreach_setting_vector(settingscontainer(simulation)) do vec
+        for s in vec
+            s isa IndividualSetting && _clear_deceased!(s, plans)
+        end
+    end
+    repack_dirty_pools!(settingscontainer(simulation))
+    foreach(empty!, simulation.newly_dead)
+    foreach(_reset!, simulation.state_log_counts)
+    # measures may have changed sampling methods since the last scan
+    _refresh_rate_bounds!(settingscontainer(simulation))
 
     # Reset all loggers
     pop = population(simulation)
@@ -2500,7 +2885,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # Re-initialize RNGs
     if !isnothing(simulation.seed)
         master_rng = Xoshiro(simulation.seed)
-        simulation.rngs = [Xoshiro(gems_rand(master_rng, UInt)) for _ in 1:Threads.maxthreadid()]
+        simulation.rngs = _thread_local_rngs(master_rng)
     end
 
     # Initialize the simulation's start condition
@@ -2676,7 +3061,7 @@ function info(sim::Simulation)
 
     res *= "\u2514 Population ($(sim |> population |> size) individuals):\n"
     for st in settingtypes(settingscontainer(sim))
-        res *= "  \u2514 $(st)s: $(get(settingscontainer(sim), st) |> length)\n"
+        res *= "  \u2514 $(setting_type_name(st))s: $(get(settingscontainer(sim), st) |> length)\n"
     end
 
     res *= "\u2514 Start Condition: $(sim |> start_condition)\n"

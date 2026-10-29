@@ -81,7 +81,7 @@ function _effective_r_counts(inf_ids::AbstractVector, source_ids::AbstractVector
         ticks::AbstractVector, setting_types::AbstractVector, id_a::AbstractVector, pathogen_ids::Vector, nticks::Int)
     nrows = length(inf_ids)
     max_id = nrows == 0 ? 0 : Int(maximum(inf_ids))
-    # Int32 rather than Int: three arrays the length of all infections
+    # Int32: three arrays as long as all infections
     row_of = zeros(Int32, max_id)
     for r in 1:nrows
         id_a[r] > 0 && (row_of[inf_ids[r]] = Int32(r))

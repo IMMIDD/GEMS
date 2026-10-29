@@ -136,6 +136,122 @@ Please be aware, that a settings-file usually belongs to a specific population-f
 Look up the settings-file section of the API documentation to learn about the internal structure of settings-files.
 
 
+## Memberships Beyond the Population File
+
+A population's membership columns, such as `household`, give each individual one setting per type: their *primary* setting of that type.
+Further memberships, e.g., a second office or a gym, can come from a table or be generated with *setting layers*.
+They can add settings of a type an individual already has, or of a type the population has no column for.
+Both can be combined, as layers are added on top of the memberships a population already has.
+
+### From a Memberships File
+
+A memberships table has one row per setting:
+
+```csv
+id,setting_type,setting_id,scale
+1,Household,3,1.0
+4,Office,7,0.5
+```
+
+Each row adds one membership: the individual with that `id` joins the setting with that `setting_id` of type `setting_type`.
+The type can be any setting type that holds individuals directly, including custom ones (see [Custom Setting Types](@ref custom-setting-types)), but not containers such as `Department`.
+For a type the population file has a column for, the setting in that column stays the individual's primary one, and the rows of the table follow it in file order.
+For a type without a column (e.g. a `Gym`), the first row of an individual becomes their primary setting.
+
+Two optional columns change how a row is read:
+
+- `scale`: the contact scale of this membership relative to a regular member, e.g. `0.5` for someone who spends half the usual time there. A row that names the same setting as the population file only changes the scale of that membership.
+- `primary` (`true`/`false`): makes the row the individual's primary setting of its type. This only works if the population file doesn't name one for that type.
+
+GEMS checks the table when it loads it and throws an error for an individual or type that doesn't exist, for a setting given to the same individual twice, and for a second primary setting of one type.
+
+The settings file doesn't change memberships.
+It adds the settings' attributes (e.g. their location) and their containers, matched by setting ID, also for settings that only the memberships table names.
+A setting whose ID isn't in the settings file has no container.
+
+Pass the table alongside a CSV population file, the same way as a settings file:
+
+```julia
+sim = Simulation(population = "path/to/my/population_file.csv", membershipsfile = "path/to/my/memberships.csv")
+```
+
+A JLD2 population file can instead store the table under the key `memberships`, which GEMS reads automatically.
+For a population built from a dataframe, pass the table as a dataframe: `Population(pop_df; memberships = memberships_df)`.
+`memberships(population)` returns the table as a dataframe, and `save(population, path; membershipsfile = ...)` writes both files.
+Saving a population writes every membership that doesn't fit into its columns, including scaled ones, so loading both files rebuilds the same population.
+
+### [Generated with Setting Layers](@id setting-layers)
+
+Membership columns and tables require you to know who goes where.
+Often, you only know what a setting looks like on average, e.g., that 30% of all adults visit a gym with about 20 members.
+A *setting layer* turns such a description into settings and members.
+Each layer adds settings of one type to the individuals' activity plans before the simulation builds its settings.
+
+This layer gives 10% of all workers a second office:
+
+```julia
+using GEMS
+second_jobs = SettingLayer(Office;
+    assignment = JoinExisting(),
+    holding = Office,
+    participation = 0.1)
+sim = Simulation(setting_layers = second_jobs)
+```
+
+`holding = Office` restricts the layer to individuals who already have an office, and `JoinExisting()` picks each second office among the existing ones, in proportion to their number of members.
+The first office stays the individual's primary office, so functions like `office(individual, sim)` still return it.
+As the second job takes time away from the first, `rescale = Office => 0.7` lowers the participants' contacts in the offices they already had to 70%.
+`participation` can also be a function of the individual, e.g. `participation = ind -> age(ind) < 30 ? 0.2 : 0.1`.
+Layers can also be written into the config file; the [`layer`](@ref config-layer) section of the config file documentation shows how, using the gyms from the start of this section.
+
+The assignment decides whether a layer creates new settings or adds individuals to existing ones:
+
+- `PackedSettings`, `RandomSettings`, `GroupedSettings`, `AgeSortedSettings`, and `SpatialSettings` create new settings of a given `size`, e.g. `PackedSettings(size = 20)`.
+- `JoinExisting`, `JoinNearby`, and `JoinVia` add individuals to settings that already exist. `JoinVia` picks a setting someone else in the individual's household (or another `via` setting) already belongs to, e.g. the gym of a household member.
+
+With `participation_unit = Household`, the members of a household decide together whether they take part, e.g. to let whole families join a sports club.
+
+`SpatialSettings` and `JoinNearby` put individuals into settings near their home, based on the household coordinates of the settings file.
+Their `spread` is the distance in km by which a home is moved before GEMS looks for settings nearby.
+A small `spread` keeps settings local, while a distribution with a long tail (e.g. `Exponential(5.0)`) sends a few individuals far away.
+If no setting lies within reach of the moved home, or the household has no coordinates, `JoinNearby` picks any setting of the type.
+
+You can also apply layers to a population yourself before passing it to the simulation:
+
+```julia
+pop = Population("path/to/my/population.jld2")
+add_setting_layers!(pop, second_jobs; seed = 1)
+sim = Simulation(population = pop)
+```
+
+Layers passed to `Simulation` are not applied to a `Population` object, so this is the only way to add layers to one.
+For `SpatialSettings` and `JoinNearby`, pass the household coordinates via `household_coordinates` (a dataframe with the columns `id`, `lon`, and `lat`).
+
+The layers' draws are seeded from the `layer_seed` (which defaults to the simulation's seed) and each layer's name.
+The same seed gives the same layers, regardless of the number of threads.
+As a result, every simulation in a batch gets new layers, unless you fix `layer_seed`.
+Calibration keeps the layers, as it reuses the population.
+`params(population)["setting_layers"]` lists the layers that were applied to a population, with the IDs of the settings they created.
+
+!!! warning "Layers add contacts"
+    A layer adds settings on top of the ones an individual already has, so it raises the number of contacts and, with it, the reproduction number.
+    Lower other contact rates, use `rescale` for the settings a layer takes time away from, or recalibrate after adding layers.
+
+!!! warning "Don't apply layers twice"
+    If you save a population after adding layers, run it with a config file without those layers.
+    Otherwise, GEMS applies them a second time.
+    GEMS warns you about this only for layers of declared setting types that create new settings.
+
+There are a few more things to keep in mind:
+
+- Layers are created once, before the simulation starts. Use `add_member!` and `remove_member!` to change memberships during a run.
+- An individual who gets their first office from a layer counts as working (`is_working`).
+- Household quarantine and severe illness keep individuals out of all settings except their `Household`, including settings created by layers.
+- New offices and school classes that a layer creates belong to no workplace or school; settings that a layer only adds individuals to keep theirs.
+- An individual who holds two settings of one type (e.g. with `entries = 2`, or from a `JoinExisting` layer) makes the simulation look up their settings a bit more slowly.
+- A layer that creates settings for all of Germany (83 million individuals, one setting each) needs about 2.5 GB of memory to keep and about 5 GB more while it is being added.
+
+
 ## Adjusting Populations
 
 In some cases, you might want to manually adjust populations after they have been loaded (e.g., to manually set a certain vaccination status for each individual).

@@ -13,7 +13,9 @@ the course of the simuation. As the attack rate calculation is very
 computationally intensive, it is not done for _all_ household but rather
 for a subset of households. You can change the desired subset size
 through the optional `hh_samples` argument. Its default can be found
-in `constants.jl`. Members who died by the first introduction are not counted as contacts.
+in `constants.jl`. If several infections introduce a pathogen into a household
+at the same first tick, the one with the lowest infection id counts.
+Members who died by the first introduction are not counted as contacts.
 Households left with no one to infect, like single-person ones, are excluded.
 
 # Returns
@@ -58,14 +60,14 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
 
     infs.home_chain, infs.started_chain = _home_chains(infs.infection_id, infs.source_infection_id, infs.setting_type)
 
-    # generate dataframe of households
-    sim = simulation(postProcessor)
-    hh_sizes = _household_sizes(individuals(sim), households(sim))
+    # `household_b` is the infectee's primary household, so only the sampled households are looked up
+    hhs = households(simulation(postProcessor))
+    infs.hh_id = Int32.(infs.household_b)
+    infs.hh_size = _household_sizes(infs.hh_id, hhs)
     deaths = deathsDF(postProcessor)
     death_households = coalesce.(deaths.household, Int32(0))
 
     return infs |>
-        x -> leftjoin(x, hh_sizes, on = [:id_b => :ind_id]) |>
         x -> DataFrames.select(x, :tick, :id_b, :hh_id, :home_chain, :started_chain, :hh_size, :pathogen_id) |>
         x -> x[x.started_chain, :] |>
         x -> groupby(x, [:hh_id, :pathogen_id]) |>
@@ -80,20 +82,6 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         x -> transform(x, [:chain_size, :hh_size, :dead] => ByRow((c, h, d) -> c / (h - d - 1)) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>
         x -> DataFrames.select(x, :pathogen_id, :first_introduction, :hh_id, :hh_size, :chain_size, :hh_attack_rate)
-end
-
-# Each individual's id, household id and household size, looking each household up once.
-function _household_sizes(inds::Vector{Individual}, hhs::Vector{Household})
-    ind_id = Vector{Int32}(undef, length(inds))
-    hh_id = Vector{Int32}(undef, length(inds))
-    hh_size = Vector{Int16}(undef, length(inds))
-    for (k, ind) in enumerate(inds)
-        hh = hhs[household_id(ind)]
-        ind_id[k] = id(ind)
-        hh_id[k] = id(hh)
-        hh_size[k] = Int16(size(hh))
-    end
-    return DataFrame(ind_id = ind_id, hh_id = hh_id, hh_size = hh_size)
 end
 
 # Per introduction into household `hh_ids[k]`, the members other than the introducer who died at or before it.
@@ -137,3 +125,6 @@ function _unique_households(col::AbstractVector)
     end
     return households
 end
+
+# The size of each household in `hh_ids`, in a function of its own, so the loop knows the column's type
+_household_sizes(hh_ids::AbstractVector, hhs::Vector{Household}) = Int16[size(hhs[h]) for h in hh_ids]

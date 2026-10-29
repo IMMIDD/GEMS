@@ -30,6 +30,34 @@ import GEMS: _mean_contacts_per_age_group,
         @test infections(pp) isa DataFrame
         @test infections(pp) === infectionsDF(pp)
 
+        # the infections table carries only the population columns post processing reads
+        infs = infectionsDF(pp)
+        @test issubset(["age_a", "age_b", "household_b", "household_ags_a", "household_ags_b"], names(infs))
+        @test !any(c -> c in names(infs), ["sex_a", "sex_b", "office_b", "household_a"])
+        # every infectee exists, so the infectee's columns hold no `missing`
+        @test eltype(infs.age_b) == Int8
+        # the helper adds every population column, joined by id, and leaves the table as it was
+        full = with_population_columns(infs, pp)
+        pop = populationDF(pp)
+        popcols = [n * s for s in ("_a", "_b") for n in names(pop, Not(:id))]
+        @test issubset(popcols, names(full))
+        @test !("sex_b" in names(infs))
+        row_of = Dict(zip(pop.id, 1:nrow(pop)))
+        @test all(r -> full.sex_b[r] == pop.sex[row_of[full.id_b[r]]], 1:nrow(full))
+        @test isequal(full.age_b, infs.age_b)
+        # a subset of rows works as well
+        @test nrow(with_population_columns(infs[2:end, :], pp)) == nrow(infs) - 1
+        # selected columns only, named by string or symbol
+        sel = with_population_columns(infs, pp, "sex_b", :office_a)
+        @test setdiff(names(sel), names(infs)) == ["sex_b", "office_a"]
+        @test isequal(sel.sex_b, full.sex_b) && isequal(sel.office_a, full.office_a)
+        @test_throws ArgumentError with_population_columns(infs, pp, "sex")
+
+        # the health and custom logger tables are copies of the loggers' data
+        @test isequal(healthDF(pp), dataframe(healthlogger(sim)))
+        @test customDF(pp) !== dataframe(customlogger(sim))
+        @test isequal(customDF(pp), dataframe(customlogger(sim)))
+
         # compartmentsDF returns the state-logger compartment data
         @test compartmentsDF(pp) isa DataFrame
         @test nrow(compartmentsDF(pp)) > 0

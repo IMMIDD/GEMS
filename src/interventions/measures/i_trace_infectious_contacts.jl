@@ -25,16 +25,16 @@ The above example creates an `IStrategy` called 'my\\_str' and adds
 an instance of the `TraceInfectiousContacts` measure that will trigger
 the 'my\\_other\\_str' for all detected infections. The `success_rate` is 50%.
 """
-struct TraceInfectiousContacts <: IMeasure
+struct TraceInfectiousContacts{FU<:IStrategy} <: IMeasure
     success_rate::Float64
-    follow_up::IStrategy
+    follow_up::FU
 
     function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Real = 1.0)
         if !(0 <= success_rate <= 1)
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
         
-        return(new(success_rate, follow_up))
+        return(new{typeof(follow_up)}(success_rate, follow_up))
     end
 end
 

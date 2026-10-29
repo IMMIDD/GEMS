@@ -221,6 +221,17 @@ The seed is being set upon creation of the `Simulation` object.
 ```
 The seed must be an integer value.
 
+#### `layer_seed`
+Random seed of the setting layers' draws (see [`layer`](@ref config-layer) below).
+
+```toml
+[Simulation]
+    layer_seed = 42
+    ...
+```
+Defaults to `seed`, so every simulation of a batch draws its layers anew.
+Set it to keep the same layers across simulations.
+
 #### `tickunit`
 Length of a simulated timestep.
 ```toml
@@ -239,6 +250,15 @@ Boolean flag that adds a single setting containing all individuals of the simula
     ...
 ```
 Can be activated or deactivated with `true` or `false`.
+
+#### `transmission_prethinning`
+Boolean flag that thins sampled contacts by an upper bound on their infection probability before attempting infections. This saves work without changing the distribution of results, but not the random draws of a seeded run. Defaults to `true`.
+
+```toml
+[Simulation]
+    transmission_prethinning = true
+    ...
+```
 
 #### `startdate`
 Start date in a `YYYY-MM-DD` format (e.g. `2024-01-01`).
@@ -536,3 +556,105 @@ Defines the routine which is used to generate contacts between individuals in a 
 ```
 The `type` argument specifies the `ContactSamplingMethod` that conditions the dispatching to the respective `sample_contacts!(...)` function when running GEMS.
 The subsequent `[.parameters]` section holds the arguments that the GEMS engine will pass to the `ContactSamplingMethod` struct upon initialization.
+
+#### [Declaring Setting Types](@id config-setting-types)
+A section whose name is not one of the built-in setting types declares a new setting type of that name.
+Its settings work like the built-in ones: they take their contact sampling method from the section and show up in the results.
+Individuals join them through a memberships file (see [Creating Populations](@ref tut_pops)) or a [`layer`](@ref config-layer).
+If a Julia struct of that name exists (see [Custom Setting Types](@ref custom-setting-types)), GEMS uses the struct instead.
+
+```toml
+[Settings]
+    [Settings.Gym]
+        char = "G"
+        [Settings.Gym.contact_sampling_method]
+                type = "ContactparameterSampling"
+                [Settings.Gym.contact_sampling_method.parameters]
+                    contactparameter = 2.0
+```
+The optional `char` is the single character that marks the setting type in the infection log.
+It defaults to the upper-case first letter of the name.
+If another setting type already uses that character, GEMS throws an error and asks you to set a different `char`.
+GEMS warns about a declared type that no individual belongs to once the simulation is set up, as that is usually a typo or a missing memberships file.
+
+#### [`layer`](@id config-layer)
+Generates settings of the section's type from a few parameters and adds individuals to them before the simulation starts.
+We call this a *setting layer*.
+The example lets 30% of all adults visit gyms of about 20 members:
+
+```toml
+[Settings.Gym]
+    [Settings.Gym.layer]
+        ages = [18, 99]
+        participation = 0.3
+        [Settings.Gym.layer.assignment]
+            type = "PackedSettings"
+            size = { distribution = "Poisson", parameters = [20] }
+```
+A layer table takes these keys:
+
+- `assignment`: how participants are put into settings; a table with a `type` (see below) and that type's parameters
+- `ages` (optional): `[lowest, highest]` age of the individuals who can take part, both included
+- `sex`, `occupation`, `education` (optional): the value, or a list of values, that an individual's field must have to take part, as the population stores it: `sex` is `1` (female), `2` (male), or `3` (diverse); GEMS's own populations code `occupation` as in the Mikrozensus (EF172) and `education` as an ISCED 2011 level; `-1` means unknown.
+- `holding` / `not_holding` (optional): a setting type, or a list of them, that an individual must / must not belong to already
+- `participation` (optional): probability that an individual who can take part does so; defaults to `1`. Can also depend on attributes (see below).
+- `participation_unit` (optional): a setting type, e.g. `"Household"`, whose members decide together: with the same probability, they all take part or none of them does
+- `entries` (optional): how many settings of the type each participant joins, an integer between `0` and `127` or a distribution; defaults to `1`
+- `scale` (optional): contacts in these settings relative to a regular member, a number or a distribution; defaults to `1`
+- `rescale` (optional): a table of setting types and factors, e.g. `{ Office = 0.7 }`, that multiplies each participant's contacts in the settings of that type they already belonged to; every type in it must be in `holding`
+- `name` (optional): the layer's name in the population's records; it also seeds the layer's draws. Defaults to the type's name with a counter, e.g. `Gym[1]`.
+
+An individual has to match every attribute key a layer gives.
+Numbers can be replaced by a distribution everywhere except in `ages` and `participation`.
+To cap `entries`, use a bounded distribution such as `Binomial`.
+
+For a `participation` that depends on attributes, give it as rows, each with a probability `p` and any of the keys `ages`, `sex`, `occupation`, and `education`:
+
+```toml
+[Settings.Gym]
+    [Settings.Gym.layer]
+        [[Settings.Gym.layer.participation]]
+            ages = [18, 39]
+            p = 0.4
+        [[Settings.Gym.layer.participation]]
+            ages = [40, 99]
+            p = 0.2
+        [Settings.Gym.layer.assignment]
+            type = "PackedSettings"
+            size = 20
+```
+The first row an individual matches gives their probability; an individual who matches no row doesn't take part.
+
+The assignment `type` is one of these:
+
+| `type` | Parameters | Puts participants into |
+| :--- | :--- | :--- |
+| `PackedSettings` | `size` | new settings of `size` members, filled in random order |
+| `RandomSettings` | `size` | new settings drawn at random for each participant, so sizes vary around `size` |
+| `GroupedSettings` | `size`, `by` | new settings of about `size` members that keep the members of a `by` setting together (by default `"Household"`); `size = 1` gives one setting per `by` setting |
+| `AgeSortedSettings` | `size` | new settings of `size` members of similar age |
+| `SpatialSettings` | `size`, `spread` | new settings of `size` members living near each other |
+| `JoinExisting` | - | existing settings of the type, each picked in proportion to its number of members |
+| `JoinNearby` | `spread` | existing settings near the participant's home |
+| `JoinVia` | `via`, `primary_only` | existing settings that someone in the participant's `via` setting (by default `"Household"`) already belongs to; with `primary_only = true`, only their primary settings of the type |
+
+`spread` is the distance in km by which a participant's home is moved before GEMS looks for settings nearby: a number is the standard deviation of a random shift, a distribution gives the shift's length in a random direction.
+`SpatialSettings` and `JoinNearby` take the household coordinates from the settings file.
+
+A layer can also add settings to a built-in type.
+This one gives 10% of all workers a second office, picked among the existing offices:
+
+```toml
+[Settings.Office]
+    [Settings.Office.layer]
+        name = "second_job"
+        holding = "Office"
+        participation = 0.1
+        [Settings.Office.layer.assignment]
+            type = "JoinExisting"
+```
+Add `rescale = { Office = 0.7 }` to lower their contacts in the offices they already had to 70%.
+
+For several layers of one type, write `[[Settings.<Name>.layer]]` once per layer.
+GEMS applies them in the order of their section names and, within a section, in file order.
+Have a look at the [setting layers](@ref setting-layers) section of the population tutorial before you use them.

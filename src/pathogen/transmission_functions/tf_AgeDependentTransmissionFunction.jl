@@ -95,3 +95,11 @@ end
 # if no RNG was passed, use default RNG
 transmission_probability(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
+
+"""
+    max_transmission_probability_in_type(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Returns the largest age group transmission rate, as in every setting.
+"""
+max_transmission_probability_in_type(transFunc::AgeDependentTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    maximum(transFunc.age_transmission_rates)

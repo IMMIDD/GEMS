@@ -33,14 +33,21 @@ struct SettingModifier <: TransmissionModifier
         !(isfinite(default_factor) && default_factor >= 0) &&
             throw(ArgumentError("default_factor must be finite and non-negative."))
         return new(
-            Dict{DataType, Float64}(_find_subtype(string(k), Setting) => Float64(v) for (k, v) in factors),
+            Dict{DataType, Float64}(_factor_setting_type(string(k)) => Float64(v) for (k, v) in factors),
             Float64(default_factor))
     end
 end
 
+# The setting type called `name`, a struct or a declared one; it must exist when the modifier is built.
+function _factor_setting_type(name::AbstractString)
+    T = _resolve_setting_type(name)
+    isnothing(T) && throw(ArgumentError("Unknown setting type \"$name\"; declare it before using it in a SettingModifier."))
+    return T
+end
+
 Base.show(io::IO, m::SettingModifier) = print(io,
     "SettingModifier(" *
-    join(sort!(["$(structname(k))=$v" for (k, v) in m.factors]), ", ") *
+    join(sort!(["$(setting_type_name(k))=$v" for (k, v) in m.factors]), ", ") *
     (isempty(m.factors) ? "" : ", ") *
     "default=$(m.default_factor))")
 
@@ -59,11 +66,23 @@ function transmission_factor(
         tick::Int16,
         sim::Simulation,
         rng::Xoshiro)::Float64
-    return get(modifier.factors, typeof(setting), modifier.default_factor)
+    return _setting_factor(modifier, typeof(setting))
 end
 
 transmission_factor(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
+
+"""
+    max_transmission_factor_in_type(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Returns the factor for type `S`, which every infectee in such a setting gets.
+"""
+max_transmission_factor_in_type(modifier::SettingModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    _setting_factor(modifier, S)
+
+# The factor for setting type `S`, or the default if the type has no entry.
+_setting_factor(modifier::SettingModifier, ::Type{S}) where {S<:Setting} =
+    get(modifier.factors, S, modifier.default_factor)::Float64
 
 
 ###
@@ -131,3 +150,11 @@ end
 
 transmission_probability(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
+
+"""
+    max_transmission_probability_in_type(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Returns the `transmission_rate` times the modifier's `max_transmission_factor_in_type`.
+"""
+max_transmission_probability_in_type(transFunc::SettingTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    transFunc.transmission_rate * max_transmission_factor_in_type(transFunc.modifier, pathogen_id, infecter, S, tick, sim)

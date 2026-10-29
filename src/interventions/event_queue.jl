@@ -37,9 +37,6 @@ mutable struct EventQueue <: AbstractEventQueue
     # total number of queued events (across both bucket arrays)
     count::Int
 
-    # Parallelization
-    lock::ReentrantLock
-
     # Per-thread, lock-free staging buffers (one set per event type).
     i_staging::Vector{Vector{Tuple{IMeasureEvent, Int16}}}
     s_staging::Vector{Vector{Tuple{SMeasureEvent, Int16}}}
@@ -60,7 +57,6 @@ EventQueue() = EventQueue(
     Union{Nothing, Vector{SMeasureEvent}}[],
     0,
     0,
-    ReentrantLock(),
     [Tuple{IMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
     [Tuple{SMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
     Vector{IMeasureEvent}[],
@@ -89,10 +85,8 @@ Base.isempty(eq::EventQueue) = eq.count == 0
     return (s_bucket === nothing || isempty(s_bucket)) && (i_bucket === nothing || isempty(i_bucket))
 end
 
-# A tick passed by `_advance_head!` can never receive new events again (events are always
-# scheduled at tick >= current), so this is the safe point to recycle its bucket onto the free
-# list. A slot still holding `nothing` needs no action. The size cap bounds the free list for
-# patterns where more buckets get used than get reused from tick to tick.
+# Recycles a passed tick's bucket onto the free list; nothing is scheduled before the current tick.
+# The cap bounds the free list when more buckets are used than reused.
 @inline function _retire_tick!(eq::EventQueue, idx::Int)
     if idx <= length(eq.i_buckets)
         b = eq.i_buckets[idx]
@@ -154,8 +148,8 @@ end
 
 Inserts `event` into the bucket for `tick`, growing the bucket vector if needed and moving
 `head` back if the target tick is below the current head. `O(1)`. Dispatches on the event
-type (individual vs setting). Not thread-safe on its own: callers either hold `queue.lock`
-(`enqueue!`) or run single-threaded (`flush_staging!`).
+type (individual vs setting). Not thread-safe: callers (`enqueue!`, `flush_staging!`) run
+single-threaded.
 
 Extending the array fills any intermediate gap with `nothing` (no allocation). The bucket for
 `tick` is created here, on first insert, drawing from the free list before allocating so
@@ -199,22 +193,17 @@ end
     enqueue!(queue::EventQueue, event, tick::Int16)
 
 Adds a new `Event` to the `EventQueue` at the specified `tick`. `O(1)`.
-Thread-safe via `queue.lock`; see `stage!` for the lock-free variant.
+Not thread-safe; inside parallel loops use `stage!`.
 """
 function enqueue!(queue::EventQueue, event, tick::Int16)
-    lock(queue.lock)
-    try
-        _insert!(queue, event, tick)
-    finally
-        unlock(queue.lock)
-    end
+    _insert!(queue, event, tick)
     return nothing
 end
 
 """
     stage!(queue::EventQueue, event, tick::Int16)
 
-Lock-free variant of `enqueue!` for use inside parallel loops: appends `event` and its
+Variant of `enqueue!` for use inside parallel loops: appends `event` and its
 `tick` to the calling thread's staging buffer (selected by event type). Staged events
 become visible only once `flush_staging!` merges them into the queue. `O(1)`.
 """
@@ -287,10 +276,8 @@ function process_due!(queue::EventQueue, sim, t)
     return nothing
 end
 
-# Drain one tick bucket in place, specialized per event type via `where {E}` so `pop!` and
-# `process_event` are statically dispatched. The bucket is left in `buckets[idx]` rather than
-# recycled (see `_advance_head!`), so re-entrant refills reuse its capacity. Skips immediately
-# if the slot is `nothing` or already empty.
+# Drains one tick bucket in place; `where {E}` makes `pop!` and `process_event` static. The bucket stays
+# in `buckets[idx]` until `_advance_head!` recycles it, so events added while draining reuse it.
 @inline function _drain_bucket!(buckets::Vector{Union{Nothing, Vector{E}}}, idx::Int, queue::EventQueue, sim) where {E}
     idx <= length(buckets) || return nothing
     b = buckets[idx]

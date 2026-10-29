@@ -4,8 +4,8 @@ These functions handle the aggregation of interesting data from a simulation run
 and combine them into specific output variables
 =#
 export PostProcessor, SerialOnly
-export simulation, infectionsDF, sim_infectionsDF, populationDF
-export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
+export simulation, infectionsDF, sim_infectionsDF, with_population_columns, populationDF
+export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF, healthDF, customDF
 
 """
     PostProcessor
@@ -23,6 +23,8 @@ A type to provide data processing features supplying reports, plots, or other da
 - `pooltestsDF::DataFrame`: Output of the pool test logger
 - `serotestsDF::DataFrame`: Output of the seroprevalence test logger
 - `quarantinesDF::DataFrame`: Output of th quarantine logger
+- `healthDF::DataFrame`: Output of the health logger
+- `customDF::DataFrame`: Output of the custom logger
 - `cache::Dict{String, Any}`: Internal cache to store and retrieve intermediate results
 
 """
@@ -37,6 +39,8 @@ mutable struct PostProcessor
     serotestsDF::DataFrame
     quarantinesDF::DataFrame
     compartmentsDF::DataFrame
+    healthDF::DataFrame
+    customDF::DataFrame
 
     # dataframe cache to speed up calculations
     cache::Dict{String, Any}
@@ -48,18 +52,33 @@ mutable struct PostProcessor
     Create a `PostProcessor` object for an associated `Simulation`. Post Processing requires a simulation to be done.
     """
     function PostProcessor(simulation::Simulation)
-       
+
+        # a run can end on settings opened or closed; repack their pools here, before result steps
+        # that may run concurrently read them
+        repack_dirty_pools!(settingscontainer(simulation))
+
         # convert population model to dataframe
         pop = dataframe(population(simulation))
-        
+
         # import tests
         tests = dataframe(testlogger(simulation))
-        
+
         # import seroprevalence tests
         serotests = dataframe(seroprevalencelogger(simulation))
 
-        # join all infections with additional info from population DF
-        infections = simulation |> infectionlogger |> dataframe
+        # import infections
+        infections = dataframe(infectionlogger(simulation))
+
+        # the logger keeps the infectee's household; locate the infection there, with its setting's AGS
+        lats, lons = _household_coordinates(infections.household_id, households(simulation))
+        infection_ags = _setting_ags(infections.setting_type, infections.setting_id, settingscontainer(simulation))
+        insertcols!(infections, :household_id, :lat => lats, :lon => lons, :ags => infection_ags; after = true)
+        DataFrames.select!(infections, Not(:household_id))
+
+        # the logger stores the progression index; resolve it here, where pathogens are known
+        infections[!, :progression_id] = progression_names(pathogens(simulation),
+            infections.pathogen_id, infections.progression_id)
+        DataFrames.rename!(infections, :progression_id => :progression_category)
 
         # calculate generation time and serial interval against each infection's source infection
         source_rows = _matching_rows(infections.source_infection_id, infections.infection_id)
@@ -72,19 +91,18 @@ mutable struct PostProcessor
         # add tests
         leftjoin!(infections, detection_ticks(tests), on = :infection_id)
 
-        # add population data of the infecter (_a) and the infectee (_b)
-        for (id_col, suffix) in ((:id_a, "_a"), (:id_b, "_b"))
-            rows = _matching_rows(infections[!, id_col], pop.id)
-            for name in names(pop, Not(:id))
-                infections[!, name * suffix] = _gather(pop[!, name], rows)
-            end
-        end
+        # the population data of the infecter (_a) and the infectee (_b) that post processing reads
+        rows_a = _matching_rows(infections.id_a, pop.id)
+        rows_b = _matching_rows(infections.id_b, pop.id)
+        infections.age_a = _gather(pop.age, rows_a)
+        infections.age_b = _gather(pop.age, rows_b)
+        infections.household_b = _gather(pop.household, rows_b)
 
         sim_households = households(simulation)
 
-        # each household's AGS once, so the rows read one compact vector rather than every household object
+        # each household's AGS once, as one compact vector
         household_ags = ags.(sim_households)
-        infections.household_ags_a = _ags_of_households(infections.household_a, household_ags)
+        infections.household_ags_a = _ags_of_households(_gather(pop.household, rows_a), household_ags)
         infections.household_ags_b = _ags_of_households(infections.household_b, household_ags)
 
         deaths = dataframe(deathlogger(simulation))
@@ -117,7 +135,13 @@ mutable struct PostProcessor
             :detected => :detected_cnt,
             :dead => :dead_cnt)
 
-        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, Dict{String, Any}())
+        health = dataframe(healthlogger(simulation))
+
+        # the custom logger keeps its data as a DataFrame already; copy it, as the other tables are copies
+        custom = copy(dataframe(customlogger(simulation)))
+
+        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, health, custom,
+            Dict{String, Any}())
     end
 
 
@@ -261,8 +285,7 @@ end
 # the pathogens of a simulation, sorted by id
 _sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
 
-# The AGS of each row's household, `missing` without one; typed like the `ByRow` it replaces, so a column
-# without `missing` values is a plain `Vector{AGS}`.
+# The AGS of each row's household, `missing` without one. A column without `missing` values is a plain `Vector{AGS}`.
 function _ags_of_households(households::AbstractVector, household_ags::Vector{AGS})
     n = length(households)
     out = (n == 0 || any(ismissing, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)
@@ -277,6 +300,39 @@ function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vect
     end
     return out
 end
+
+# Each row's household coordinates, NaN for a seed, which logs no household
+function _household_coordinates(household_ids::AbstractVector, households::Vector{Household})
+    lat_of, lon_of = map(lat, households), map(lon, households)
+    lats, lons = similar(lat_of, length(household_ids)), similar(lon_of, length(household_ids))
+    Threads.@threads for k in eachindex(household_ids)
+        h = household_ids[k]
+        lats[k], lons[k] = h == DEFAULT_SETTING_ID ? (NaN32, NaN32) : (lat_of[h], lon_of[h])
+    end
+    return lats, lons
+end
+
+# Each row's AGS id, that of the setting it happened in; -1 for a seed, which has no setting
+function _setting_ags(setting_types::AbstractVector{Char}, setting_ids::AbstractVector, cntnr::SettingsContainer)
+    # every setting's AGS id by setting id, per setting type; an ASCII char indexes a dense table
+    ascii_ids = fill(Int32[], 128)
+    other_ids = Dict{Char, Vector{Int32}}()
+    for T in settingtypes(cntnr)
+        stngs = settings(cntnr, T)
+        isempty(stngs) && continue
+        c = settingchar(first(stngs))
+        isascii(c) ? (ascii_ids[codepoint(c) + 1] = _ags_ids(stngs)) : (other_ids[c] = _ags_ids(stngs))
+    end
+    out = Vector{Int32}(undef, length(setting_ids))
+    Threads.@threads for k in eachindex(setting_ids)
+        sid, c = setting_ids[k], setting_types[k]
+        out[k] = sid == DEFAULT_SETTING_ID ? Int32(-1) : (isascii(c) ? ascii_ids[codepoint(c) + 1] : other_ids[c])[sid]
+    end
+    return out
+end
+
+# the AGS id of each setting, by setting id
+_ags_ids(stngs::Vector{T}) where {T<:Setting} = Int32[id(ags(s)) for s in stngs]
 
 # `recovery` cleared to -1 where the host died before it, and the tick each infection ended
 function _recovery_and_removal(recovery::AbstractVector, death_ticks::AbstractVector, death_rows::Vector{Int32})
@@ -293,9 +349,14 @@ function _recovery_and_removal(recovery::AbstractVector, death_ticks::AbstractVe
     return new_recovery, removed
 end
 
-# `col` at each of `rows`, `missing` for row 0: the column a left join adds
+# `col` at each of `rows`, `missing` for row 0: the column a left join adds. Without a row 0 it is a
+# plain `Vector{T}`, which spares a type byte per row.
 function _gather(col::AbstractVector{T}, rows::Vector{Int32}) where {T}
-    out = Vector{Union{Missing, T}}(undef, length(rows))
+    out = any(iszero, rows) ? Vector{Union{Missing, T}}(undef, length(rows)) : Vector{T}(undef, length(rows))
+    return _fill_gather!(out, col, rows)
+end
+
+function _fill_gather!(out::Vector, col::AbstractVector, rows::Vector{Int32})
     Threads.@threads for k in eachindex(rows)
         r = rows[k]
         out[k] = r == 0 ? missing : col[r]
@@ -383,22 +444,15 @@ Returns the internal flat infections `DataFrame`.
 | `serial_interval`      | `Int16`   | Time between onset of symptoms of this and preceeding infection                      |
 | `test_type`            | `String`  | Type of test which detected this infection                                           |
 | `first_detected_tick`  | `Int16`   | Tick of (reportable) test that first detected this infection                         |
-| `sex_a`                | `Int8`    | Infecter sex                                                                         |
 | `age_a`                | `Int8`    | Infecter age                                                                         |
-| `education_a`          | `Int8`    | Infecter education level                                                             |
-| `occupation_a`         | `Int16`   | Infecter occupation group                                                            |
-| `household_a`          | `Int32`   | Infecter associated household                                                        |
-| `office_a`             | `Int32`   | Infecter associated office                                                           |
-| `schoolclass_a`        | `Int32`   | Infecter associated schoolclass                                                      |
-| `sex_b`                | `Int8`    | Infectee sex                                                                         |
 | `age_b`                | `Int8`    | Infectee age                                                                         |
-| `education_b`          | `Int8`    | Infectee education level                                                             |
-| `occupation_b`         | `Int16`   | Infectee occupation group                                                            |
 | `household_b`          | `Int32`   | Infectee associated household                                                        |
-| `office_b`             | `Int32`   | Infectee associated office                                                           |
-| `schoolclass_b`        | `Int32`   | Infectee associated schoolclass                                                      |
 | `household_ags_a`      | `AGS`     | Infecter household German Community Identification Number                            |
 | `household_ags_b`      | `AGS`     | Infectee household German Community Identification Number                            |
+
+These are the population columns GEMS's own results and reports read. The infecter's and infectee's
+other population data (sex, education, occupation, office, ...) are added by
+`with_population_columns(infectionsDF(postProcessor), postProcessor, columns...)`.
 """
 function infections(postProcessor::PostProcessor)
     return postProcessor.infectionsDF
@@ -583,6 +637,33 @@ function compartmentsDF(postProcessor::PostProcessor)
     return(postProcessor.compartmentsDF)
 end
 
+"""
+    healthDF(postProcessor::PostProcessor)
+
+Returns a `DataFrame` of the host care events (hospital, ICU and ventilation admissions and discharges).
+
+# Columns
+
+| Name    | Type     | Description                                              |
+| :------ | :------- | :------------------------------------------------------- |
+| `tick`  | `Int16`  | Tick of the event                                        |
+| `id`    | `Int32`  | Individual id                                            |
+| `event` | `Symbol` | Event, e.g. `:hospital_admission` or `:icu_discharge`    |
+"""
+function healthDF(postProcessor::PostProcessor)
+    return postProcessor.healthDF
+end
+
+"""
+    customDF(postProcessor::PostProcessor)
+
+Returns the `DataFrame` of the simulation's custom logger, one row per tick and one column per
+logged function.
+"""
+function customDF(postProcessor::PostProcessor)
+    return postProcessor.customDF
+end
+
 ### DATA ANALYSIS ###
 
 """
@@ -606,6 +687,35 @@ function sim_infectionsDF(postProcessor::PostProcessor)
     store_cache(postProcessor, "sim_infectionsDF", sim_infs)
 
     return sim_infs
+end
+
+"""
+    with_population_columns(infections::AbstractDataFrame, postProcessor::PostProcessor, columns...)
+
+Returns `infections` (e.g. `infectionsDF(postProcessor)`, or some of its rows) with the infecter's
+(`_a`) and the infectee's (`_b`) population data, one column per column of `populationDF`, such as
+`sex_a` or `office_b`. Passing `columns` (e.g. `"sex_b"`, `:office_a`) adds only those.
+The result shares the columns it takes from `infections`.
+"""
+function with_population_columns(infections::AbstractDataFrame, postProcessor::PostProcessor,
+        columns::Union{AbstractString, Symbol}...)
+    pop = populationDF(postProcessor)
+    available = [name * suffix for suffix in ("_a", "_b") for name in names(pop, Not(:id))]
+    added = isempty(columns) ? available : unique(string.(columns))
+    unknown = setdiff(added, available)
+    isempty(unknown) || throw(ArgumentError("Unknown population columns $unknown; available are $available"))
+    out = DataFrame(infections; copycols = !(infections isa DataFrame))
+    for (id_col, suffix) in (("id_a", "_a"), ("id_b", "_b"))
+        side = filter(c -> endswith(c, suffix), added)
+        isempty(side) && continue
+        rows = _matching_rows(out[!, id_col], pop.id)
+        for c in side
+            out[!, c] = _gather(pop[!, chop(c, tail = 2)], rows)
+        end
+    end
+    # the population columns before the household AGS, where the full table always had them
+    ags_cols = intersect(["household_ags_a", "household_ags_b"], names(out))
+    return select!(out, setdiff(names(out), added, ags_cols), added, ags_cols)
 end
 
 ###
