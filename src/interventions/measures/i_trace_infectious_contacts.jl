@@ -32,6 +32,9 @@ add_measure!(my_str, TraceInfectiousContacts(my_other_str, success_rate = dt -> 
 
 Here, the chance to trace an infection falls with the days since it happened.
 
+Contacts are traced from the index's infectiousness onset until now, or until its recovery if its
+newest infection has already ended, but at most `lookback` ticks back (default: 14).
+
 With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn
 from the index's settings of the given `settingtypes` (default: `Household`, `Office`, `SchoolClass`)
 using today's memberships, so they are a plausible set, not the contacts drawn during the run.
@@ -45,27 +48,33 @@ picked before the `success_rate` draws (default: no cap).
 struct TraceInfectiousContacts <: IMeasure
     success_rate::Union{Float64, TraceRateFn}
     follow_up::IStrategy
+    lookback::Int16
     resample_contacts::Bool
     settingtypes::Vector{DataType}
     contact_filter::ContactFilterFn
     max_contacts::Int
 
     function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
-            resample_contacts::Bool = false, settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
+            lookback::Integer = 14, resample_contacts::Bool = false,
+            settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
             contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
+        if lookback < 0
+            throw(ArgumentError("lookback parameter must not be negative"))
+        end
+
         if max_contacts < 0
             throw(ArgumentError("max_contacts parameter must not be negative"))
         end
 
         if success_rate isa Function
-            return(new(TraceRateFn(success_rate), follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
+            return(new(TraceRateFn(success_rate), follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
         end
 
         if !(0 <= success_rate <= 1)
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
 
-        return(new(success_rate, follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
+        return(new(success_rate, follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
     end
 end
 
@@ -86,6 +95,15 @@ Returns the `follow_up` strategy attribute from a `TraceInfectiousContacts` stru
 """
 function follow_up(tic::TraceInfectiousContacts)
     return(tic.follow_up)
+end
+
+"""
+    lookback(tic::TraceInfectiousContacts)
+
+Returns how many ticks a `TraceInfectiousContacts` struct looks back from the current tick.
+"""
+function lookback(tic::TraceInfectiousContacts)
+    return(tic.lookback)
 end
 
 """
@@ -149,17 +167,32 @@ The `follow_up` strategy of the `TraceInfectiousContacts` measure is handed over
 function process_measure(sim::Simulation, ind::Individual, measure::TraceInfectiousContacts)
 
     now = sim |> tick
-    infectious_at = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
+    logger = sim |> infectionlogger
     sr = measure |> success_rate
 
-    # get infectee IDs and infection ticks from logger
-    infectee_ids, infection_ticks = _infections_with_ticks_between(sim  |> infectionlogger, ind |> id, infectious_at, now)
+    # the infectious period of the active infection, else of the newest one, which has ended
+    onset = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
+    if onset >= 0
+        infectious_from = onset
+        end_tick = now
+    else
+        last = _last_infection(logger, ind |> id)
+        # never infected, or never infectious
+        (isnothing(last) || last.infectiousness_onset < 0) && return nothing
+        infectious_from = last.infectiousness_onset
+        end_tick = min(last.recovery, now)
+    end
+    start_tick = max(infectious_from, now - lookback(measure))
+    start_tick > end_tick && return nothing
 
-    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) tracing $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
+    # get infectee IDs and infection ticks from logger
+    infectee_ids, infection_ticks = _infections_with_ticks_between(logger, ind |> id, start_tick, end_tick)
+
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) tracing $(infectee_ids |> length) infectious contacts between tick $start_tick and $end_tick: $infectee_ids at tick $now"
 
     # add re-drawn contacts; each contact keeps its latest tick and is traced once, in id order
-    if resample_contacts(measure) && infectious_at >= 0
-        last_contact = _sample_past_contacts(ind, sim, settingtypes(measure), infectious_at, now, contact_filter(measure))
+    if resample_contacts(measure)
+        last_contact = _sample_past_contacts(ind, sim, settingtypes(measure), start_tick, end_tick, contact_filter(measure))
         _merge_infectees!(last_contact, infectee_ids, infection_ticks, ind, sim, settingtypes(measure))
         infectee_ids = sort!(collect(keys(last_contact)))
         infection_ticks = [last_contact[c] for c in infectee_ids]

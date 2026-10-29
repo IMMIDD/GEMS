@@ -22,6 +22,13 @@ function events_from_strategy(evs, str)
     return !isempty(evs) && all(e -> any(m -> m === e.measure, sm), evs)
 end
 
+# logs an infection without putting it into the infectee's cache, as if it had already ended
+function log_ended_infection!(sim, infectee, infecter, exposure, onset, recovery)
+    log!(GEMS.infectionlogger(sim), Int32(infecter), id(infectee), Int8(1), :Mild, Int16(exposure),
+        Int16(onset), Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(recovery),
+        Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
+end
+
 @testset "Interventions" begin
     #setup of the simulation object:
     sim = Simulation()
@@ -332,11 +339,11 @@ end
         ind1 = first(individuals(sim3))
         ind2 = individuals(sim3)[2]
         pid3 = id(first_pathogen(sim3))
-        # seed a blank InfectionState (infectiousness_onset=-1) so earliest_infectiousness_onset returns -1
-        # then infect ind2 at tick=0; get_infections_between finds it in range [-1..0]
-        set_progression!(ind1, pid3)
-        infect!(ind2, Int16(0), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
-        
+        # ind1 is infectious from tick 1 and infects ind2 at tick 1
+        set_progression!(ind1, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)), pid3)
+        GEMS.increment!(sim3)
+        infect!(ind2, Int16(1), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
+
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
         eq3 = GEMS.event_queue(sim3)
         empty!(eq3)
@@ -352,7 +359,7 @@ end
         empty!(eq3)
         process_measure(sim3, ind1, trace_fn)
         @test followup_focals(drain_events!(eq3)) == [ind2]
-        @test seen_dt == [tick(sim3) - 0]
+        @test seen_dt == [tick(sim3) - 1]
 
         # a zero rate traces no one
         empty!(eq3)
@@ -397,6 +404,42 @@ end
         empty!(eq4)
         process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household], max_contacts = 1))
         @test length(followup_focals(drain_events!(eq4))) == 1
+
+        # lookback defaults
+        @test lookback(trace_infectious) == 14
+        @test_throws ArgumentError TraceInfectiousContacts(i_strategy4, lookback = -1)
+
+        # a recovered index, infectious in ticks 1-6, infected one person at tick 2 and one at tick 5; it is now tick 10
+        pop6 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
+        sim6 = Simulation(population=pop6, household_contacts=10.0)
+        i_strategy6 = IStrategy("i_strategy6", sim6)
+        add_measure!(i_strategy6, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
+        recovered, early, late, never = individuals(sim6)[1:4]
+        log_ended_infection!(sim6, recovered, -1, 0, 1, 6)
+        log_ended_infection!(sim6, early, id(recovered), 2, 4, 9)
+        log_ended_infection!(sim6, late, id(recovered), 5, 7, 12)
+        foreach(_ -> GEMS.increment!(sim6), 1:10)
+        eq6 = GEMS.event_queue(sim6)
+
+        # the ended infectious period is traced, within the lookback
+        empty!(eq6)
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6))
+        @test Set(followup_focals(drain_events!(eq6))) == Set([early, late])
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, lookback = 6))
+        @test followup_focals(drain_events!(eq6)) == [late]
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, lookback = 3))
+        @test isempty(drain_events!(eq6))
+
+        # someone never infected traces no one
+        process_measure(sim6, never, TraceInfectiousContacts(i_strategy6, resample_contacts = true))
+        @test isempty(drain_events!(eq6))
+
+        # a recovered index re-draws contacts in its ended infectious period
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household]))
+        traced = followup_focals(drain_events!(eq6))
+        @test early in traced && late in traced
+        @test recovered ∉ traced
+        @test all(c -> household_id(c) == household_id(recovered), traced)
 
         # a contact_filter rejecting every tick re-draws nothing
         empty!(eq4)
@@ -469,7 +512,7 @@ end
         process_measure(sim5, index5, trace_source)
         @test followup_focals(drain_events!(eq5)) == [source]
 
-        # no source for a seeded infection, nothing to trace back without an active infection
+        # no source for a seeded infection, nothing to trace back for someone never infected
         empty!(eq5)
         process_measure(sim5, seeded, trace_source)
         process_measure(sim5, healthy, trace_source)
@@ -492,6 +535,12 @@ end
         @test length(followup_focals(drain_events!(eq5))) == 1
         process_measure(sim5, index5, TraceSourceContacts(i_strategy5, max_contacts = 0))
         @test isempty(drain_events!(eq5))
+
+        # a recovered index traces the source of its ended infection
+        recovered5 = individuals(sim5)[5]
+        log_ended_infection!(sim5, recovered5, id(source), 0, 2, 4)
+        process_measure(sim5, recovered5, trace_source)
+        @test followup_focals(drain_events!(eq5)) == [source]
 
         # an infection older than the lookback is not traced
         GEMS.increment!(sim5)

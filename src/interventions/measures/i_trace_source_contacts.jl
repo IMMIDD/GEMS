@@ -10,7 +10,8 @@ export lookback
 
 Intervention struct for backward contact tracing: traces the individual who infected the
 index individual, if that infection happened within the last `lookback` ticks and before
-the index became infectious. The `follow_up` argument provides an `IStrategy` that is being
+the index became infectious. Without an active infection, the index's newest infection,
+which has ended, is used. The `follow_up` argument provides an `IStrategy` that is being
 executed for all detected contacts. The optional `success_rate` (0-1) models sub-perfect
 tracing; it can also be a function of the days since the contact that returns the probability (0-1).
 
@@ -158,25 +159,36 @@ that window are added. The `follow_up` strategy is handed over to all detected c
 function process_measure(sim::Simulation, ind::Individual, measure::TraceSourceContacts)
 
     now = sim |> tick
-    infectious_at = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
-    # without an active infection there is nothing to trace back
-    infectious_at < 0 && return nothing
+    logger = sim |> infectionlogger
     sr = measure |> success_rate
     pop = sim |> population
+
+    # the active infections, else the newest one, which has ended
+    onset = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
+    if onset >= 0
+        infectious_at = onset
+        infections = [(state.infection_id, state.exposure) for state in each_infection(ind, sim)]
+    else
+        last = _last_infection(logger, ind |> id)
+        # never infected, or never infectious
+        (isnothing(last) || last.infectiousness_onset < 0) && return nothing
+        infectious_at = last.infectiousness_onset
+        infections = [(last.infection_id, last.exposure)]
+    end
 
     # the window ends where forward tracing of the index starts
     start_tick = max(Int16(0), now - lookback(measure))
     end_tick = infectious_at - Int16(1)
 
-    # get the living infecters of the index's active infections from logger; seeds have none
+    # get the living infecters of the index's infections from logger; seeds have none
     contact_ids = Int32[]
     contact_ticks = Int16[]
-    for state in each_infection(ind, sim)
-        a = _infecter_of(sim |> infectionlogger, state.infection_id)
-        (a > 0 && start_tick <= state.exposure <= end_tick) || continue
+    for (infection_id, exposure) in infections
+        a = _infecter_of(logger, infection_id)
+        (a > 0 && start_tick <= exposure <= end_tick) || continue
         dead(get_individual_by_id(pop, a)) && continue
         push!(contact_ids, a)
-        push!(contact_ticks, state.exposure)
+        push!(contact_ticks, exposure)
     end
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) tracing $(contact_ids |> length) sources between tick $start_tick and $end_tick: $contact_ids at tick $now"

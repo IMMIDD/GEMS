@@ -100,7 +100,7 @@ function log!(
 
     # keep the infecter index up to date once it exists (see get_infections_between)
     idx = logger.infecter_index
-    idx === nothing || register!(idx, a, b, tick, new_infection_id)
+    idx === nothing || register!(idx, a, b, tick, new_infection_id, infectiousness_onset, recovery)
 
     Threads.atomic_xchg!(logger.last_modified_tick, tick)
 
@@ -152,8 +152,8 @@ Creates the logger's `InfecterIndex`, backfilled from everything logged so far a
 from the population's declared id range.
 """
 function _build_infecter_index!(logger::InfectionLogger)
-    idx = InfecterIndex(logger.infection_id, logger.id_a, logger.id_b, logger.tick;
-        minid = logger.minid, maxid = logger.maxid)
+    idx = InfecterIndex(logger.infection_id, logger.id_a, logger.id_b, logger.tick,
+        logger.infectiousness_onset, logger.recovery; minid = logger.minid, maxid = logger.maxid)
     logger.infecter_index = idx
     return idx
 end
@@ -201,6 +201,20 @@ function _infecter_of(logger::InfectionLogger, infection_id::Int32)
 
     _merge_staged!(idx)
     return _infecter_of(idx, infection_id)
+end
+
+"""
+    _last_infection(logger::InfectionLogger, id::Int32)
+
+Returns the newest infection of individual `id` as `(infection_id, infecter, exposure, infectiousness_onset, recovery)`,
+with `infecter` 0 for a seed, or `nothing` if they were never infected.
+"""
+function _last_infection(logger::InfectionLogger, id::Int32)
+    idx = logger.infecter_index
+    idx === nothing && (idx = _build_infecter_index!(logger))
+
+    _merge_staged!(idx)
+    return _last_infection(idx, id)
 end
 
 function save(logger::InfectionLogger, path::AbstractString)

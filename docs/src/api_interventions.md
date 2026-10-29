@@ -88,6 +88,7 @@ contact_filter(::TraceSourceContacts)
 duration(::SelfIsolation)
 follow_up
 i_measuretypes
+lookback(::TraceInfectiousContacts)
 lookback(::TraceSourceContacts)
 max_contacts(::TraceInfectiousContacts)
 max_contacts(::TraceSourceContacts)
