@@ -37,9 +37,6 @@ mutable struct EventQueue <: AbstractEventQueue
     # total number of queued events (across both bucket arrays)
     count::Int
 
-    # Parallelization
-    lock::ReentrantLock
-
     # Per-thread, lock-free staging buffers (one set per event type).
     i_staging::Vector{Vector{Tuple{IMeasureEvent, Int16}}}
     s_staging::Vector{Vector{Tuple{SMeasureEvent, Int16}}}
@@ -60,7 +57,6 @@ EventQueue() = EventQueue(
     Union{Nothing, Vector{SMeasureEvent}}[],
     0,
     0,
-    ReentrantLock(),
     [Tuple{IMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
     [Tuple{SMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
     Vector{IMeasureEvent}[],
@@ -152,8 +148,8 @@ end
 
 Inserts `event` into the bucket for `tick`, growing the bucket vector if needed and moving
 `head` back if the target tick is below the current head. `O(1)`. Dispatches on the event
-type (individual vs setting). Not thread-safe on its own: callers either hold `queue.lock`
-(`enqueue!`) or run single-threaded (`flush_staging!`).
+type (individual vs setting). Not thread-safe: callers (`enqueue!`, `flush_staging!`) run
+single-threaded.
 
 Extending the array fills any intermediate gap with `nothing` (no allocation). The bucket for
 `tick` is created here, on first insert, drawing from the free list before allocating so
@@ -197,22 +193,17 @@ end
     enqueue!(queue::EventQueue, event, tick::Int16)
 
 Adds a new `Event` to the `EventQueue` at the specified `tick`. `O(1)`.
-Thread-safe via `queue.lock`; see `stage!` for the lock-free variant.
+Not thread-safe; inside parallel loops use `stage!`.
 """
 function enqueue!(queue::EventQueue, event, tick::Int16)
-    lock(queue.lock)
-    try
-        _insert!(queue, event, tick)
-    finally
-        unlock(queue.lock)
-    end
+    _insert!(queue, event, tick)
     return nothing
 end
 
 """
     stage!(queue::EventQueue, event, tick::Int16)
 
-Lock-free variant of `enqueue!` for use inside parallel loops: appends `event` and its
+Variant of `enqueue!` for use inside parallel loops: appends `event` and its
 `tick` to the calling thread's staging buffer (selected by event type). Staged events
 become visible only once `flush_staging!` merges them into the queue. `O(1)`.
 """
