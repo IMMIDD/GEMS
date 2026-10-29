@@ -274,6 +274,41 @@ function sample_contacts(
 end
 
 """
+    _sample_past_contacts!(latest::Dict{Int32, Int16}, ind::Individual, sim::Simulation, settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
+
+Re-draws `ind`'s contacts in its settings of the given `settingtypes` for every tick in `[start_tick, end_tick]`
+where `contact_filter(setting, tick)` holds, and stores each living contact's latest tick in `latest`. Uses today's memberships.
+"""
+function _sample_past_contacts!(latest::Dict{Int32, Int16}, ind::Individual, sim::Simulation,
+        settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
+    buf = sim.contact_buffers[Threads.threadid()]
+    for T in settingtypes
+        # a container's membership is that of the leaf setting type it is built from
+        leaf = T
+        while leaf <: ContainerSetting
+            leaf = contains_type(leaf)
+        end
+        sid = setting_id(ind, leaf)
+        sid == DEFAULT_SETTING_ID && continue
+        s = leaf === T ? setting(settingscontainer(sim), T, sid) : getsetting(ind, sim, T)
+        members = individuals(s, sim)
+        length(members) < 2 && continue
+        pos = findfirst(m -> m === ind, members)
+
+        for t in start_tick:end_tick
+            contact_filter(s, t) || continue
+            empty!(buf)
+            sample_contacts!(buf, s.contact_sampling_method, s, pos, members, t, true, rng(sim))
+            for c in buf
+                dead(c) && continue
+                latest[id(c)] = max(get(latest, id(c), t), t)
+            end
+        end
+    end
+    return nothing
+end
+
+"""
     membership_changed!(csm::ContactSamplingMethod, setting::Setting)
 
 Signals that `setting`'s member list changed, so a sampling method can drop state derived

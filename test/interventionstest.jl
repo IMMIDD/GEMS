@@ -361,6 +361,47 @@ end
 
         # a rate outside 0-1 throws when the measure runs
         @test_throws ArgumentError process_measure(sim3, ind1, TraceInfectiousContacts(i_strategy3, success_rate = dt -> 2.0))
+
+        # resample_contacts defaults
+        @test resample_contacts(trace_infectious) == false
+        @test settingtypes(trace_infectious) == [Household, Office, SchoolClass]
+
+        # one household of five; the index is infectious from tick 1 and infected no one
+        pop4 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
+        sim4 = Simulation(population=pop4, household_contacts=10.0)
+        i_strategy4 = IStrategy("i_strategy4", sim4)
+        add_measure!(i_strategy4, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
+        inds4 = individuals(sim4)
+        index4 = first(inds4)
+        set_progression!(index4, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)), id(first_pathogen(sim4)))
+        foreach(_ -> GEMS.increment!(sim4), 1:3)
+        eq4 = GEMS.event_queue(sim4)
+
+        # without resampling, only infectees are traced
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, settingtypes = DataType[Household]))
+        @test isempty(drain_events!(eq4))
+
+        # with resampling, re-drawn household members are traced once each, never the index
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
+        traced = followup_focals(drain_events!(eq4))
+        @test !isempty(traced)
+        @test allunique(traced)
+        @test index4 ∉ traced
+        @test all(c -> household_id(c) == household_id(index4), traced)
+
+        # a contact_filter rejecting every tick re-draws nothing
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true,
+            settingtypes = DataType[Household], contact_filter = (s, t) -> false))
+        @test isempty(drain_events!(eq4))
+        @test contact_filter(trace_infectious) isa GEMS.ContactFilterFn
+
+        # an index without an active infection has no window to re-draw in
+        empty!(eq4)
+        process_measure(sim4, inds4[2], TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
+        @test isempty(drain_events!(eq4))
     end
 
     @testset "Custom I Measure" begin

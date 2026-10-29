@@ -1,5 +1,5 @@
 export TraceInfectiousContacts
-export success_rate, follow_up
+export success_rate, follow_up, resample_contacts, contact_filter
 
 ###
 ### STRUCT
@@ -31,21 +31,32 @@ add_measure!(my_str, TraceInfectiousContacts(my_other_str, success_rate = dt -> 
 ```
 
 Here, the chance to trace an infection falls with the days since it happened.
+
+With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn
+from the index's settings of the given `settingtypes` (default: `Household`, `Office`, `SchoolClass`)
+using today's memberships, so they are a plausible set, not the contacts drawn during the run.
+Past closures are unknown to GEMS; a `contact_filter(setting, tick)` returning `false` skips
+re-drawing in that setting at that tick, e.g. `(s, t) -> !(s isa SchoolClass && 30 <= t <= 44)`.
 """
 struct TraceInfectiousContacts <: IMeasure
     success_rate::Union{Float64, TraceRateFn}
     follow_up::IStrategy
+    resample_contacts::Bool
+    settingtypes::Vector{DataType}
+    contact_filter::ContactFilterFn
 
-    function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0)
+    function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
+            resample_contacts::Bool = false, settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
+            contact_filter::Function = (setting, tick) -> true)
         if success_rate isa Function
-            return(new(TraceRateFn(success_rate), follow_up))
+            return(new(TraceRateFn(success_rate), follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter)))
         end
 
         if !(0 <= success_rate <= 1)
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
 
-        return(new(success_rate, follow_up))
+        return(new(success_rate, follow_up, resample_contacts, settingtypes, ContactFilterFn(contact_filter)))
     end
 end
 
@@ -66,6 +77,33 @@ Returns the `follow_up` strategy attribute from a `TraceInfectiousContacts` stru
 """
 function follow_up(tic::TraceInfectiousContacts)
     return(tic.follow_up)
+end
+
+"""
+    resample_contacts(tic::TraceInfectiousContacts)
+
+Returns whether a `TraceInfectiousContacts` struct also traces re-drawn, non-infected contacts.
+"""
+function resample_contacts(tic::TraceInfectiousContacts)
+    return(tic.resample_contacts)
+end
+
+"""
+    settingtypes(tic::TraceInfectiousContacts)
+
+Returns the setting types a `TraceInfectiousContacts` struct re-draws contacts in.
+"""
+function settingtypes(tic::TraceInfectiousContacts)
+    return(tic.settingtypes)
+end
+
+"""
+    contact_filter(tic::TraceInfectiousContacts)
+
+Returns the wrapped function of a `TraceInfectiousContacts` struct that decides in which settings and at which ticks contacts are re-drawn.
+"""
+function contact_filter(tic::TraceInfectiousContacts)
+    return(tic.contact_filter)
 end
 
 
@@ -100,6 +138,14 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
     infectee_ids, infection_ticks = _infections_with_ticks_between(sim  |> infectionlogger, ind |> id, infectious_at, now)
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) tracing $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
+
+    # add re-drawn contacts; each contact keeps its latest tick and is traced once, in id order
+    if resample_contacts(measure) && infectious_at >= 0
+        latest = Dict(zip(infectee_ids, infection_ticks))
+        _sample_past_contacts!(latest, ind, sim, settingtypes(measure), infectious_at, now, contact_filter(measure))
+        infectee_ids = sort!(collect(keys(latest)))
+        infection_ticks = [latest[c] for c in infectee_ids]
+    end
 
     # filter by success_rate (one draw per infectee, in order) and trigger the follow-up
     fu = measure |> follow_up
