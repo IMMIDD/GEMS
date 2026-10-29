@@ -344,6 +344,23 @@ end
         evs = drain_events!(eq3)
         @test followup_focals(evs) == [ind2]
         @test events_from_strategy(evs, i_strategy3)
+
+        # function-valued success_rate gets the days since the infection
+        seen_dt = Int[]
+        trace_fn = TraceInfectiousContacts(i_strategy3, success_rate = dt -> (push!(seen_dt, dt); 1.0))
+        @test success_rate(trace_fn) isa GEMS.TraceRateFn
+        empty!(eq3)
+        process_measure(sim3, ind1, trace_fn)
+        @test followup_focals(drain_events!(eq3)) == [ind2]
+        @test seen_dt == [tick(sim3) - 0]
+
+        # a zero rate traces no one
+        empty!(eq3)
+        process_measure(sim3, ind1, TraceInfectiousContacts(i_strategy3, success_rate = dt -> 0.0))
+        @test isempty(drain_events!(eq3))
+
+        # a rate outside 0-1 throws when the measure runs
+        @test_throws ArgumentError process_measure(sim3, ind1, TraceInfectiousContacts(i_strategy3, success_rate = dt -> 2.0))
     end
 
     @testset "Custom I Measure" begin

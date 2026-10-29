@@ -12,6 +12,9 @@ const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
 const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
 
+# Tracing probability by days since the contact, for the `success_rate` of tracing measures.
+const TraceRateFn = FunctionWrapper{Float64, Tuple{Int}}
+
 # Per-measure process callbacks. Built once at `add_measure!` time, where the concrete measure
 # type and the `Simulation` are statically known, so the wrapped closure captures both and resolves
 # `process_measure` statically. The wrapper takes only the focal object; `Simulation` is kept out of

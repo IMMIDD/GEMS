@@ -12,7 +12,8 @@ Intervention struct to trace individuals that have been
 infected by the index individual, this measure is called with.
 The `follow_up` argument provides an `IStrategy` that is being
 exceuted for all detected contacts. The optional `success_rate` (0-1) argument
-can be used to model sub-perfect tracing (the default is 100%).
+can be used to model sub-perfect tracing (the default is 100%). It can also be a
+function of the days since the infection that returns the probability (0-1).
 
 # Example
 
@@ -24,16 +25,26 @@ add_measure!(my_str, TraceInfectiousContacts(my_other_str, success_rate = 0.5))
 The above example creates an `IStrategy` called 'my\\_str' and adds
 an instance of the `TraceInfectiousContacts` measure that will trigger
 the 'my\\_other\\_str' for all detected infections. The `success_rate` is 50%.
+
+```julia
+add_measure!(my_str, TraceInfectiousContacts(my_other_str, success_rate = dt -> 0.9 * exp(-dt / 7)))
+```
+
+Here, the chance to trace an infection falls with the days since it happened.
 """
 struct TraceInfectiousContacts <: IMeasure
-    success_rate::Float64
+    success_rate::Union{Float64, TraceRateFn}
     follow_up::IStrategy
 
-    function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Real = 1.0)
+    function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0)
+        if success_rate isa Function
+            return(new(TraceRateFn(success_rate), follow_up))
+        end
+
         if !(0 <= success_rate <= 1)
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
-        
+
         return(new(success_rate, follow_up))
     end
 end
@@ -41,7 +52,8 @@ end
 """
     success_rate(tic::TraceInfectiousContacts)
 
-Returns the `success_rate` attribute from a `TraceInfectiousContacts` struct. 
+Returns the `success_rate` attribute from a `TraceInfectiousContacts` struct: a number, or
+the wrapped function of the days since the infection.
 """
 function success_rate(tic::TraceInfectiousContacts)
     return(tic.success_rate)
@@ -84,17 +96,37 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
     infectious_at = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
     sr = measure |> success_rate
 
-    # get infectee IDs from logger
-    infectee_ids = get_infections_between(sim  |> infectionlogger, ind |> id, infectious_at, now)
+    # get infectee IDs and infection ticks from logger
+    infectee_ids, infection_ticks = _infections_with_ticks_between(sim  |> infectionlogger, ind |> id, infectious_at, now)
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) tracing $(infectee_ids |> length) infectious contacts between tick $infectious_at and $now: $infectee_ids at tick $(sim |> tick)"
 
     # filter by success_rate (one draw per infectee, in order) and trigger the follow-up
     fu = measure |> follow_up
     pop = sim |> population
-    for iid in infectee_ids
-        gems_rand(sim) < sr || continue
+    for (iid, t) in zip(infectee_ids, infection_ticks)
+        gems_rand(sim) < _trace_probability(sr, Int(now - t)) || continue
         trigger_strategy(fu, get_individual_by_id(pop, iid), sim)
     end
     return nothing
+end
+
+
+###
+### HELPERS
+###
+
+"""
+    _trace_probability(success_rate, dt::Int)
+
+Returns the chance to trace a contact from `dt` days ago, given a tracing measure's `success_rate`.
+"""
+_trace_probability(success_rate::Float64, ::Int) = success_rate
+
+function _trace_probability(success_rate::TraceRateFn, dt::Int)
+    p = success_rate(dt)
+    if !(0 <= p <= 1)
+        throw(ArgumentError("success_rate function returned $p for $dt days; it must return a value between 0 and 1"))
+    end
+    return p
 end
