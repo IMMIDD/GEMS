@@ -768,6 +768,48 @@ end
         @test all(isempty, counting_sim.staging_buffers.newly_symptomatic)
     end
 
+    @testset "Tick Trigger Closures" begin
+        flag_sim = Simulation(pop_size = 100, seed = 7)
+        no_closures = IStrategy("no closures", flag_sim)
+        add_measure!(no_closures, SelfIsolation(1))
+        @test no_closures.parallel_trigger[]
+        @test !IStrategy("condition", flag_sim, condition = i -> true).parallel_trigger[]
+        @test IStrategy("marked", flag_sim, condition = i -> true, parallel = true).parallel_trigger[]
+        # an entry condition runs at processing time, so it does not count
+        entry_condition = IStrategy("entry condition", flag_sim)
+        add_measure!(entry_condition, SelfIsolation(1), condition = i -> true)
+        @test entry_condition.parallel_trigger[]
+        marked_delay = IStrategy("marked delay", flag_sim)
+        add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0, parallel = true)
+        @test marked_delay.parallel_trigger[]
+        # a later measure with an unmarked delay turns it off
+        add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0)
+        @test !marked_delay.parallel_trigger[]
+
+        large_sim = Simulation(pop_size = GEMS.TICK_TRIGGER_THREADING_MIN + 1000, seed = 7)
+        # an unmarked closure runs serially: its plain counter loses no updates
+        calls = Ref(0)
+        counting = IStrategy("count", large_sim, condition = i -> (calls[] += 1; false))
+        GEMS.trigger(ITickTrigger(counting), large_sim)
+        @test calls[] == length(individuals(large_sim))
+
+        # marked and unmarked closures queue the same events in the same order
+        function queued_ids(str)
+            eq = GEMS.event_queue(large_sim)
+            empty!(eq)
+            GEMS.trigger(ITickTrigger(str), large_sim)
+            ids = [id(e.individual) for e in eq.i_buckets[tick(large_sim) + 1]]
+            empty!(eq)
+            return ids
+        end
+        unmarked = IStrategy("unmarked", large_sim, condition = i -> isodd(id(i)))
+        add_measure!(unmarked, SelfIsolation(1))
+        marked = IStrategy("marked", large_sim, condition = i -> isodd(id(i)), parallel = true)
+        add_measure!(marked, SelfIsolation(1))
+        @test !isempty(queued_ids(marked))
+        @test queued_ids(marked) == queued_ids(unmarked)
+    end
+
     @testset "Triggers" begin
 
         @test length(sim.symptom_triggers) == 1

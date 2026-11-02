@@ -70,7 +70,7 @@ strategy will be fired in each tick. If only the `interval` is given, the strate
 will be fired from tick 1 onwards in the specified interval.
 An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
 simulation-wide state), regardless of `switch_tick`/`interval`.
-For large populations, the strategy's condition and delays are evaluated on several threads.
+For large populations, the strategy's condition and delays are evaluated on several threads only if it has none or they are marked `parallel = true`.
 
 # Parameters
 
@@ -135,7 +135,7 @@ strategy will be fired in each tick. If only the `interval` is given, the strate
 will be fired from tick 1 onwards in the specified interval.
 An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
 simulation-wide state), regardless of `switch_tick`/`interval`.
-For many settings, the strategy's condition and delays are evaluated on several threads.
+For many settings, the strategy's condition and delays are evaluated on several threads only if it has none or they are marked `parallel = true`.
 
 # Parameters
 
@@ -346,12 +346,12 @@ end
 """
     _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
 
-Triggers `str` for every object in `objs`. From `TICK_TRIGGER_THREADING_MIN` objects on it uses all threads;
-the events are queued in the same order either way.
+Triggers `str` for every object in `objs`. From `TICK_TRIGGER_THREADING_MIN` objects on it uses all threads if
+the closures of `str` allow it; the events are queued in the same order either way.
 """
 function _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
     n = length(objs)
-    if n < TICK_TRIGGER_THREADING_MIN
+    if n < TICK_TRIGGER_THREADING_MIN || !str.parallel_trigger[]
         for o in objs
             trigger_strategy(str, o, sim)
         end
