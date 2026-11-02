@@ -123,7 +123,7 @@ import GEMS: _mean_contacts_per_age_group,
 
             @test nrow(df) > 0
 
-            @test isa(df.test_id, Vector{Int32})
+            @test isa(df.test_id, Vector{Int64})
             @test isa(df.tick, Vector{Int16})
             @test isa(df.id, Vector{Int32})
             @test isa(df.test_result, Vector{Bool})
