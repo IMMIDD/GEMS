@@ -749,6 +749,25 @@ end
         @test gs.isopen == true
     end
 
+    @testset "Symptom Trigger Closures Run Serially" begin
+        counting_sim = Simulation(pop_size = 1000, seed = 7)
+        conditions = Ref(0)
+        processed = Ref(0)
+        counting = IStrategy("count", counting_sim, condition = i -> (conditions[] += 1; true))
+        add_measure!(counting, CustomIMeasure((i, s) -> (processed[] += 1)))
+        add_symptom_trigger!(counting_sim, SymptomTrigger(counting))
+        run!(counting_sim, with_progressbar = false)
+        # the plain counter in the condition loses no updates against the one in the serial measure
+        @test conditions[] > 0
+        @test conditions[] == processed[]
+        @test all(isempty, counting_sim.staging_buffers.newly_symptomatic)
+
+        # reset! drops people still waiting to fire
+        push!(counting_sim.staging_buffers.newly_symptomatic[1], first(individuals(counting_sim)))
+        GEMS.reset!(counting_sim)
+        @test all(isempty, counting_sim.staging_buffers.newly_symptomatic)
+    end
+
     @testset "Triggers" begin
 
         @test length(sim.symptom_triggers) == 1

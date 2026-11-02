@@ -15,6 +15,7 @@ const SimPredicate = FunctionWrapper{Bool, Tuple{Simulation}}
 
 A struct defining an `IStrategy` that
 shall be fired upon an individual experiencing symptoms.
+The strategy's condition and delays are evaluated serially, after the tick's disease update.
 """
 struct SymptomTrigger <: ITrigger
     strategy::IStrategy
@@ -294,7 +295,7 @@ end
 ###
 
 """
-    trigger(st::SymptomTrigger, i::Individual, sim::Simulation; staged::Bool = false)
+    trigger(st::SymptomTrigger, i::Individual, sim::Simulation)
 
 Triggers the execution of the `IStrategy` associated with a `SymptomTrigger`.
 
@@ -303,14 +304,13 @@ Triggers the execution of the `IStrategy` associated with a `SymptomTrigger`.
 - `st::SymptomTrigger`: Trigger instance
 - `i::Individual`: Individual that the `IStrategy` contained in the `SymptomTrigger` is executed for
 - `sim::Simulation`: Simulation object
-- `staged::Bool = false`: stage events lock-free instead of enqueueing directly (set when fired from a parallel loop)
 """
-function trigger(st::SymptomTrigger, i::Individual, sim::Simulation; staged::Bool = false)
-    trigger_strategy(st |> strategy, i, sim, staged = staged)
+function trigger(st::SymptomTrigger, i::Individual, sim::Simulation)
+    trigger_strategy(st |> strategy, i, sim)
 end
 
 """
-    trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation; staged::Bool = false)
+    trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation)
 
 Triggers the execution of the `IStrategy` associated with a `HospitalizationTrigger`.
 
@@ -319,10 +319,9 @@ Triggers the execution of the `IStrategy` associated with a `HospitalizationTrig
 - `ht::HospitalizationTrigger`: Trigger instance
 - `i::Individual`: Individual that the `IStrategy` contained in the `HospitalizationTrigger` is executed for
 - `sim::Simulation`: Simulation object
-- `staged::Bool = false`: stage events lock-free instead of enqueueing directly (set when fired from a parallel loop)
 """
-function trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation; staged::Bool = false)
-    trigger_strategy(ht |> strategy, i, sim, staged = staged)
+function trigger(ht::HospitalizationTrigger, i::Individual, sim::Simulation)
+    trigger_strategy(ht |> strategy, i, sim)
 end
 
 """

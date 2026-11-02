@@ -88,11 +88,14 @@ struct _StagingBuffers
     removals::Matrix{Vector{_EndedInfection}}
     # who each thread's part of the disease-update sweep found dead this tick
     newly_dead::Vector{Vector{Individual}}
+    # who each thread's part of the disease-update sweep found newly symptomatic this tick
+    newly_symptomatic::Vector{Vector{Individual}}
 end
 
 _StagingBuffers(size_hint::Int) = _StagingBuffers(
     _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), size_hint)),
     _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), size_hint)),
+    _thread_local_vector(Vector{Individual}),
     _thread_local_vector(Vector{Individual})
 )
 
@@ -2354,6 +2357,7 @@ function _release_tick_buffers!(simulation::Simulation)
     foreach(release!, simulation.scratch_buffers.member_filter)
     foreach(release!, simulation.scratch_buffers.member_sample)
     foreach(release!, simulation.staging_buffers.newly_dead)
+    foreach(release!, simulation.staging_buffers.newly_symptomatic)
     foreach(t -> release!(t.in_care), simulation.state_log_counts)
     foreach(release!, simulation.staging_buffers.infections)
     foreach(release!, simulation.staging_buffers.removals)
@@ -2895,6 +2899,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     end
     repack_dirty_pools!(settingscontainer(simulation))
     foreach(empty!, simulation.staging_buffers.newly_dead)
+    foreach(empty!, simulation.staging_buffers.newly_symptomatic)
     foreach(_reset!, simulation.state_log_counts)
     # measures may have changed sampling methods since the last scan
     _refresh_rate_bounds!(settingscontainer(simulation))

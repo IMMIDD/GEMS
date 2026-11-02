@@ -321,10 +321,9 @@ function step!(simulation::Simulation)
     # update disease state and apply deaths
     update_population!(simulation, dormant)
 
-    # fire hospitalization_triggers
+    # fire hospitalization and symptom triggers
     fire_hospitalization_triggers!(simulation)
-    # merge per-thread staged trigger events into the queue before processing
-    flush_staging!(event_queue(simulation))
+    fire_symptom_triggers!(simulation)
 
     # infect individuals in settings
     if !dormant
@@ -678,8 +677,23 @@ function fire_hospitalization_triggers!(sim::Simulation)
     for sched in sim.health_schedules, host_id in sched.admitted
         indiv = get_individual_by_id(pop, host_id)
         for ht in triggers
-            trigger(ht, indiv, sim, staged = true)
+            trigger(ht, indiv, sim)
         end
+    end
+    return nothing
+end
+
+"""
+    fire_symptom_triggers!(sim::Simulation)
+
+Fires the symptom triggers for everyone who became symptomatic in this tick's disease update.
+"""
+function fire_symptom_triggers!(sim::Simulation)
+    for buf in sim.staging_buffers.newly_symptomatic
+        for indiv in buf, st in symptom_triggers(sim)
+            trigger(st, indiv, sim)
+        end
+        empty!(buf)
     end
     return nothing
 end
@@ -759,10 +773,8 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         end
     end
 
-    if !was_symptomatic && symptomatic(indiv)
-        for st in sim |> symptom_triggers
-            trigger(st, indiv, sim, staged = true)
-        end
+    if !was_symptomatic && symptomatic(indiv) && !isempty(symptom_triggers(sim))
+        push!(sim.staging_buffers.newly_symptomatic[Threads.threadid()], indiv)
     end
     return _UpdateState(_next_update(indiv, infection_registry(sim, id(indiv)), sim.pathogens, tick), indiv)
 end
