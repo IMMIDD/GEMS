@@ -1833,6 +1833,8 @@ import GEMS: increment!, infected!
         @test all(b -> capacity(b) == length(b), sim.infectious_individuals)
         @test all(b -> capacity(b) == length(b), contact_buffers(sim))
         @test all(b -> capacity(b) == length(b), sim.scratch_buffers.draw)
+        @test all(b -> capacity(b) == length(b), sim.scratch_buffers.member_filter)
+        @test all(b -> capacity(b) == length(b), sim.scratch_buffers.member_sample)
         @test all(b -> capacity(b) == length(b), sim.staging_buffers.newly_dead)
         @test all(t -> capacity(t.in_care) == length(t.in_care), sim.state_log_counts)
         @test all(b -> capacity(b) == length(b), sim.staging_buffers.infections)

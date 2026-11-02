@@ -66,12 +66,18 @@ struct _ScratchBuffers
     draw::Vector{Vector{Individual}}
     # per shard, the attempt that wins each contested (host, pathogen) this tick
     deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
+    # a sampled FindMembers' filtered candidates
+    member_filter::Vector{Vector{Individual}}
+    # a sampled FindMembers' sampled members
+    member_sample::Vector{Vector{Individual}}
 end
 
 _ScratchBuffers(deduplication_size_hint::Int) = _ScratchBuffers(
     _thread_local_vector(Vector{Individual}),
     _thread_local_vector(Vector{Individual}),
-    _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), deduplication_size_hint))
+    _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), deduplication_size_hint)),
+    _thread_local_vector(Vector{Individual}),
+    _thread_local_vector(Vector{Individual})
 )
 
 # Data one phase hands to a later one.
@@ -2325,12 +2331,28 @@ function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
     return simulation.scratch_buffers.contact
 end
 
+"""
+    _member_filter_buffer(simulation::Simulation)
+
+Returns this thread's buffer for the filtered candidates of a sampled `FindMembers`.
+"""
+_member_filter_buffer(simulation::Simulation) = simulation.scratch_buffers.member_filter[Threads.threadid()]
+
+"""
+    _member_sample_buffer(simulation::Simulation)
+
+Returns this thread's buffer for the sampled members of a sampled `FindMembers`.
+"""
+_member_sample_buffer(simulation::Simulation) = simulation.scratch_buffers.member_sample[Threads.threadid()]
+
 # Frees the capacity the per-tick buffers grew to during a run
 function _release_tick_buffers!(simulation::Simulation)
     release!(buf) = sizehint!(buf, length(buf))
     foreach(release!, simulation.infectious_individuals)
     foreach(release!, simulation.scratch_buffers.contact)
     foreach(release!, simulation.scratch_buffers.draw)
+    foreach(release!, simulation.scratch_buffers.member_filter)
+    foreach(release!, simulation.scratch_buffers.member_sample)
     foreach(release!, simulation.staging_buffers.newly_dead)
     foreach(t -> release!(t.in_care), simulation.state_log_counts)
     foreach(release!, simulation.staging_buffers.infections)
