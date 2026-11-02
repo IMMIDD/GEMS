@@ -58,6 +58,38 @@ end
 ###
 ### SIMULATION STRUCT
 ###
+
+# Temporary working memory.
+struct _ScratchBuffers
+    contact::Vector{Vector{Individual}}
+    # one sampler call's draws, for scaled hosts that call a sampler more than once
+    draw::Vector{Vector{Individual}}
+    # per shard, the attempt that wins each contested (host, pathogen) this tick
+    deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
+end
+
+_ScratchBuffers(deduplication_size_hint::Int) = _ScratchBuffers(
+    _thread_local_vector(Vector{Individual}),
+    _thread_local_vector(Vector{Individual}),
+    _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), deduplication_size_hint))
+)
+
+# Data one phase hands to a later one.
+struct _StagingBuffers
+    # pending infections, by producing thread and owning shard
+    infections::Matrix{Vector{_PendingInfection}}
+    # ended infections, by producing thread and owning shard
+    removals::Matrix{Vector{_EndedInfection}}
+    # who each thread's part of the disease-update sweep found dead this tick
+    newly_dead::Vector{Vector{Individual}}
+end
+
+_StagingBuffers(size_hint::Int) = _StagingBuffers(
+    _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), size_hint)),
+    _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), size_hint)),
+    _thread_local_vector(Vector{Individual})
+)
+
 """
     Simulation
 
@@ -259,18 +291,13 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     # when each individual's next disease update is due, and what its last one found
     update_states::Vector{_UpdateState}
 
-    # THREAD-LOCAL BUFFERS
-    contact_buffers::Vector{Vector{Individual}}
-    # one sampler call's draws, for scaled hosts that call a sampler more than once
-    draw_buffers::Vector{Vector{Individual}}
-    # who each thread's part of the disease-update sweep found dead this tick
-    newly_dead::Vector{Vector{Individual}}
+    # BUFFERS
+    scratch_buffers::_ScratchBuffers
+    staging_buffers::_StagingBuffers
+
+    # STATE LOG COUNTS
     # what each thread counted for the state log
     state_log_counts::Vector{_StateLogCounts}
-    infection_buffers::Matrix{Vector{_PendingInfection}}
-    removal_buffers::Matrix{Vector{_EndedInfection}}
-    # per shard, the attempt that wins each contested (host, pathogen) this tick
-    deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
 
     # inner default constructor
     function Simulation(
@@ -355,13 +382,11 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             fill(_UpdateState(), length(population.individuals)),
 
             # INITIALIZE BUFFERS
-            _thread_local_vector(Vector{Individual}), # contact_buffers
-            _thread_local_vector(Vector{Individual}), # draw_buffers
-            _thread_local_vector(Vector{Individual}), # newly_dead
-            _thread_local_vector(_StateLogCounts), # state_log_counts
-            _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
-            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)), # removal buffers matrix
-            _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards)) # deduplication winners
+            _ScratchBuffers(matrix_size_hint * num_shards),
+            _StagingBuffers(matrix_size_hint),
+
+            # STATE LOG COUNTS
+            _thread_local_vector(_StateLogCounts)
         )
 
         # increase simulation counter
@@ -2297,20 +2322,20 @@ end
 Returns the thread-local buffers for storing sampled contacts, used to eliminate array allocations.
 """
 function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
-    return simulation.contact_buffers
+    return simulation.scratch_buffers.contact
 end
 
 # Frees the capacity the per-tick buffers grew to during a run
 function _release_tick_buffers!(simulation::Simulation)
     release!(buf) = sizehint!(buf, length(buf))
     foreach(release!, simulation.infectious_individuals)
-    foreach(release!, simulation.contact_buffers)
-    foreach(release!, simulation.draw_buffers)
-    foreach(release!, simulation.newly_dead)
+    foreach(release!, simulation.scratch_buffers.contact)
+    foreach(release!, simulation.scratch_buffers.draw)
+    foreach(release!, simulation.staging_buffers.newly_dead)
     foreach(t -> release!(t.in_care), simulation.state_log_counts)
-    foreach(release!, simulation.infection_buffers)
-    foreach(release!, simulation.removal_buffers)
-    foreach(release!, simulation.deduplication_winners)
+    foreach(release!, simulation.staging_buffers.infections)
+    foreach(release!, simulation.staging_buffers.removals)
+    foreach(release!, simulation.scratch_buffers.deduplication_winners)
     return nothing
 end
 
@@ -2847,7 +2872,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
         end
     end
     repack_dirty_pools!(settingscontainer(simulation))
-    foreach(empty!, simulation.newly_dead)
+    foreach(empty!, simulation.staging_buffers.newly_dead)
     foreach(_reset!, simulation.state_log_counts)
     # measures may have changed sampling methods since the last scan
     _refresh_rate_bounds!(settingscontainer(simulation))

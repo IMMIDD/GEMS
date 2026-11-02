@@ -105,9 +105,9 @@ function _spread_in!(setting::Setting, frame_pos::Int, ind::Individual, sim::Sim
     # no pathogen can transmit here
     thin == 0 && return nothing
 
-    contacts = sim.contact_buffers[Threads.threadid()]
+    contacts = sim.scratch_buffers.contact[Threads.threadid()]
     _with_sampling_method(setting.contact_sampling_method) do csm
-        sample_scaled_contacts!(contacts, sim.draw_buffers[Threads.threadid()], csm, setting, frame_pos,
+        sample_scaled_contacts!(contacts, sim.scratch_buffers.draw[Threads.threadid()], csm, setting, frame_pos,
             present_members(setting, cntnr), current_tick, true, rng(sim), plans, cntnr,
             s_host, _scale_bound(setting); thin = thin, drawn = drawn)
     end
@@ -435,7 +435,7 @@ function infect!(infectee::Individual,
     else
         # stage for the serial flush, which dedups, logs and sets the host's flags
         shard_id = _owner_shard(id(infectee))
-        push!(sim.infection_buffers[Threads.threadid(), shard_id],
+        push!(sim.staging_buffers.infections[Threads.threadid(), shard_id],
             _PendingInfection(infectee, id(infectee), infecter_id, source_infection_id, setting_id,
                 infecter_position, setting_type, tick, id(pathogen), tag, type_rank, dp))
     end

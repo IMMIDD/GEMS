@@ -395,7 +395,7 @@ function is_dormant(simulation::Simulation)
     end
 
     # wake up if infections were staged outside the spreading phase
-    if any(!isempty, simulation.infection_buffers)
+    if any(!isempty, simulation.staging_buffers.infections)
         return false
     end
 
@@ -433,7 +433,7 @@ end
 """
     flush_pending_infections!(sim::Simulation)
  
-Commits every `_PendingInfection` staged in `sim.infection_buffers`, keeping one winner per
+Commits every `_PendingInfection` staged in `sim.staging_buffers.infections`, keeping one winner per
 `(host, pathogen)` and dropping the rest. Empties each buffer when done.
 
 Two passes: the first records the smallest `_deduplication_key` per
@@ -452,20 +452,20 @@ function flush_pending_infections!(sim::Simulation)
     @inbounds for shard_id in 1:num_shards
         arrivals = 0
         for producer_id in 1:num_shards
-            arrivals += length(sim.infection_buffers[producer_id, shard_id])
+            arrivals += length(sim.staging_buffers.infections[producer_id, shard_id])
         end
         id_bases[shard_id] = reserve_infection_ids!(logger, arrivals)
     end
 
     Threads.@threads :static for shard_id in 1:num_shards
         infections = sim.infection_registries[shard_id]
-        best = sim.deduplication_winners[shard_id]
+        best = sim.scratch_buffers.deduplication_winners[shard_id]
         next_id = id_bases[shard_id]
 
         # pass 1: pick canonical winner of each contest, over the whole column
         empty!(best)
         @inbounds for producer_id in 1:num_shards
-            for p in sim.infection_buffers[producer_id, shard_id]
+            for p in sim.staging_buffers.infections[producer_id, shard_id]
                 k = _deduplication_key(p)
                 hp = (p.host_id, p.pathogen_id)
                 cur = get(best, hp, nothing)
@@ -476,7 +476,7 @@ function flush_pending_infections!(sim::Simulation)
         # pass 2: commit the winners. The mask guard skips the losers' host and settles exact ties.
         counts = sim.state_log_counts[Threads.threadid()]
         @inbounds for producer_id in 1:num_shards
-            buf = sim.infection_buffers[producer_id, shard_id]
+            buf = sim.staging_buffers.infections[producer_id, shard_id]
             for j in eachindex(buf)
                 # hosts and their plan entries, read for the log's household, are cache misses unless fetched ahead
                 _prefetch_listed_ahead(i -> buf[i].host, length(buf), j, plans)
@@ -539,7 +539,7 @@ end
 """
     flush_ended_infections!(sim)
  
-Drains `removal_buffers` after the threaded update phase: grants the natural immunity each
+Drains `staging_buffers.removals` after the threaded update phase: grants the natural immunity each
 ended infection leaves behind, clears `slot_to_row` entries for infections that ended during
 this tick, and returns their indices to the free list so they can be reused.
 """
@@ -551,7 +551,7 @@ function flush_ended_infections!(sim::Simulation)
         immunities = sim.immunity_registries[shard_id]
 
         @inbounds for producer_id in 1:num_shards
-            buf = sim.removal_buffers[producer_id, shard_id]
+            buf = sim.staging_buffers.removals[producer_id, shard_id]
             for r in buf
                 r.pathogen_id == DEFAULT_PATHOGEN_ID && continue
                 ind = r.host
@@ -748,13 +748,13 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     if infected(indiv) || (Int16(0) <= indiv.death && !was_dead)
         shard_id = _owner_shard(id(indiv))
 
-        progress_disease!(indiv, sim.infection_registries[shard_id], sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, sim.seed)
+        progress_disease!(indiv, sim.infection_registries[shard_id], sim.pathogens, sim.staging_buffers.removals[Threads.threadid(), shard_id], tick, sim.seed)
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
             _close_care_at_death!(indiv, healthlogger(sim), tick)
             # leaves its settings in `apply_deaths!`, after this threaded loop
-            push!(sim.newly_dead[Threads.threadid()], indiv)
+            push!(sim.staging_buffers.newly_dead[Threads.threadid()], indiv)
         end
     end
 
@@ -851,7 +851,7 @@ end
 # Marks this tick's dead deceased; `spread_infections!` repacks the pools. A mark swaps two members, so
 # each setting, and all settings of a pooled type, are marked by a single thread.
 function apply_deaths!(sim::Simulation)
-    any(!isempty, sim.newly_dead) || return nothing
+    any(!isempty, sim.staging_buffers.newly_dead) || return nothing
     cntnr = settingscontainer(sim)
     # (type, part, parts): a flat type split by setting id, a pooled type whole
     parts = Tuple{DataType, Int, Int}[]
@@ -863,7 +863,7 @@ function apply_deaths!(sim::Simulation)
     Threads.@threads :dynamic for (T, part, n) in parts
         _apply_deaths!(sim, settings(cntnr, T), part, n)
     end
-    foreach(empty!, sim.newly_dead)
+    foreach(empty!, sim.staging_buffers.newly_dead)
     return nothing
 end
 
@@ -871,7 +871,7 @@ end
 # order the disease update found them, which is population order whichever thread found a death.
 function _apply_deaths!(sim::Simulation, stngs::Vector{T}, part::Int, n::Int) where {T<:IndividualSetting}
     plans = activity_plans(sim)
-    for buf in sim.newly_dead, ind in buf, slot in plan_slots(plans, ind, T)
+    for buf in sim.staging_buffers.newly_dead, ind in buf, slot in plan_slots(plans, ind, T)
         sid = setting_id(@inbounds plans.entries[slot])
         sid % n == part && mark_deceased!(stngs[sid], ind, sim)
     end

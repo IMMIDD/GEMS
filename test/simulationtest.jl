@@ -1828,17 +1828,17 @@ import GEMS: increment!, infected!
 
         # run! releases the capacity the buffers grew to, down to what they still hold
         capacity(v) = length(v.ref.mem)
-        @test any(b -> capacity(b) > 0, sim.infection_buffers)  # reserved up front
+        @test any(b -> capacity(b) > 0, sim.staging_buffers.infections)  # reserved up front
         run!(sim)
         @test all(b -> capacity(b) == length(b), sim.infectious_individuals)
         @test all(b -> capacity(b) == length(b), contact_buffers(sim))
-        @test all(b -> capacity(b) == length(b), sim.draw_buffers)
-        @test all(b -> capacity(b) == length(b), sim.newly_dead)
+        @test all(b -> capacity(b) == length(b), sim.scratch_buffers.draw)
+        @test all(b -> capacity(b) == length(b), sim.staging_buffers.newly_dead)
         @test all(t -> capacity(t.in_care) == length(t.in_care), sim.state_log_counts)
-        @test all(b -> capacity(b) == length(b), sim.infection_buffers)
-        @test all(b -> capacity(b) == length(b), sim.removal_buffers)
+        @test all(b -> capacity(b) == length(b), sim.staging_buffers.infections)
+        @test all(b -> capacity(b) == length(b), sim.staging_buffers.removals)
         # reserved up front too; a Dict shrinks to the table its last tick's winners need
-        @test all(d -> length(d.slots) <= max(16, 4 * length(d)), sim.deduplication_winners)
+        @test all(d -> length(d.slots) <= max(16, 4 * length(d)), sim.scratch_buffers.deduplication_winners)
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)
