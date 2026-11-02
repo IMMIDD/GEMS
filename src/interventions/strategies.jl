@@ -38,6 +38,8 @@ struct MeasureEntry{O}
     condition::FunctionWrapper{Bool, Tuple{O}}
     # type-erased `process_measure` callback for this measure (see IProcessFn/SProcessFn above)
     process_fn::FunctionWrapper{Any, Tuple{O}}
+    # whether this entry can run in the parallel lane
+    parallel::Bool
 end
 
 
@@ -278,6 +280,14 @@ function measures(str::Strategy)
 end
 
 """
+    _parallel_entry(measure::Measure, delay::Function, condition::Function, parallel::Bool)
+
+Returns whether a strategy entry with these closures can run in the parallel lane.
+"""
+_parallel_entry(measure::Measure, delay::Function, condition::Function, parallel::Bool) =
+    _parallel_safe(measure, parallel) && (parallel || (delay === _no_delay && condition === _always_true))
+
+"""
     add_measure!(str::Strategy, measure::Measure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true, parallel::Bool = false)
 
 Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
@@ -326,7 +336,7 @@ function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, d
     sim = str.sim
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
     _check_condition(condition, Individual, "a measure of IStrategy '$(str.name)'")
-    push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
+    push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn, _parallel_entry(measure, delay, condition, parallel)))
     str.parallel_trigger[] &= delay === _no_delay || parallel
     return str
 end
@@ -337,7 +347,7 @@ function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, d
     sim = str.sim
     fn = SProcessFn(s -> process_measure(sim, s, measure))
     _check_condition(condition, Setting, "a measure of SStrategy '$(str.name)'")
-    push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
+    push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn, _parallel_entry(measure, delay, condition, parallel)))
     str.parallel_trigger[] &= delay === _no_delay || parallel
     return str
 end

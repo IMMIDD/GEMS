@@ -810,6 +810,36 @@ end
         @test queued_ids(marked) == queued_ids(unmarked)
     end
 
+    @testset "Parallel Lane Classification" begin
+        lane_sim = Simulation(pop_size = 100, seed = 7)
+        lane_type = TestType("lane", pathogen(lane_sim), lane_sim)
+        lane_followup = IStrategy("follow up", lane_sim)
+        @test GEMS._parallel_safe(GEMS.Test("lane", lane_type), false)
+        @test GEMS._parallel_safe(SelfIsolation(1), false)
+        @test GEMS._parallel_safe(CancelSelfIsolation(), false)
+        @test GEMS._parallel_safe(FindMembers(lane_followup), false)
+        @test !GEMS._parallel_safe(FindMembers(lane_followup, sample_size = 1), true)
+        @test !GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), true)
+        @test !GEMS._parallel_safe(CloseSetting(), true)
+        @test !GEMS._parallel_safe(CustomIMeasure((i, s) -> nothing), true)
+
+        entry_parallel(str) = last(measures(str)).parallel
+        lane = IStrategy("lane", lane_sim)
+        add_measure!(lane, SelfIsolation(1))
+        @test entry_parallel(lane)
+        add_measure!(lane, SelfIsolation(1), condition = i -> true)
+        @test !entry_parallel(lane)
+        add_measure!(lane, SelfIsolation(1), delay = i -> 0)
+        @test !entry_parallel(lane)
+        add_measure!(lane, SelfIsolation(1), condition = i -> true, delay = i -> 0, parallel = true)
+        @test entry_parallel(lane)
+
+        # vouching for its closures does not make an unsafe measure parallel
+        closing = SStrategy("closing", lane_sim)
+        add_measure!(closing, CloseSetting(), delay = s -> 0, parallel = true)
+        @test !entry_parallel(closing)
+    end
+
     @testset "Triggers" begin
 
         @test length(sim.symptom_triggers) == 1

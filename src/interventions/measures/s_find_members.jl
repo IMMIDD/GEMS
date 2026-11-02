@@ -157,6 +157,8 @@ end
 
 
 
+_parallel_safe(fm::FindMembers, ::Bool) = !has_filter(fm) && sample_size(fm) < 0 && sample_fraction(fm) >= 1
+
 ###
 ### PROCESS MEASURE
 ###
