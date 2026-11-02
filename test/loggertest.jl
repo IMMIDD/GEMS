@@ -339,6 +339,16 @@
                 @test infectionlogger(sim).infecter_index === nothing
             end
 
+            @testset "Built Before Events If A Strategy Traces" begin
+                sim = Simulation(pop_size = 1000, seed = 7)
+                add_measure!(IStrategy("trace", sim), TraceInfectiousContacts(IStrategy("traced", sim)))
+                @test infectionlogger(sim).infecter_index === nothing
+                step!(sim)
+                idx = infectionlogger(sim).infecter_index
+                @test idx isa GEMS.InfecterIndex
+                @test all(isempty, idx.staging)
+            end
+
             @testset "Reset Drops The Index" begin
                 sim = Simulation(pop_size = 1000, seed = 7)
                 run!(sim, with_progressbar = false)

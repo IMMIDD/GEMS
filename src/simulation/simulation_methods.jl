@@ -19,6 +19,7 @@ Executes the `process_measure` function for all measures in the
 simulation's `EventQueue` for the current tick.
 """
 function process_events!(simulation::Simulation)
+    _prepare_infecter_index!(simulation)
     process_due!(event_queue(simulation), simulation, tick(simulation))
 end
 

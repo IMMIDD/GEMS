@@ -25,8 +25,8 @@ chains during the next (serial) merge, so `head` is never written from multiple 
 Chains are kept ordered by tick, newest first, which lets a query stop as soon as it walks
 past the start of its window.
 
-The index is an implementation detail of the `InfectionLogger` and is built lazily on the
-first `get_infections_between` call.
+The index is an implementation detail of the `InfectionLogger`, built before events if a strategy
+traces infections, or on the first `get_infections_between` call.
 """
 mutable struct InfecterIndex
     # smallest id `head` covers; slot of an id is `id - offset + 1`, as in Population

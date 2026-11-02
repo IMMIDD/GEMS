@@ -43,8 +43,8 @@ and stored in `ChunkedVector`s, which grow without reallocating.
     minid::Int32 = Int32(1)
     maxid::Int32 = Int32(0)
 
-    # Inverted infecter -> infectee index, built lazily on the first get_infections_between
-    # call. Stays `nothing` in runs that never trace infectious contacts.
+    # Inverted infecter -> infectee index, built before events if a strategy traces infections, or
+    # on the first get_infections_between call. Stays `nothing` in runs that never trace.
     infecter_index::Union{Nothing, InfecterIndex} = nothing
 end
 
@@ -165,14 +165,30 @@ function _build_infecter_index!(logger::InfectionLogger)
 end
 
 """
+    _prepare_infecter_index!(sim)
+
+Builds the infecter index if a strategy of `sim` traces infections, or merges its staged links if it exists.
+"""
+function _prepare_infecter_index!(sim)
+    logger = infectionlogger(sim)
+    idx = logger.infecter_index
+    if idx !== nothing
+        _merge_staged!(idx)
+    elseif any(str -> any(me -> measure(me) isa TraceInfectiousContacts, measures(str)), strategies(sim))
+        _build_infecter_index!(logger)
+    end
+    return nothing
+end
+
+"""
     get_infections_between(logger::InfectionLogger, infecter::Int32, start_tick::Int16, end_tick::Int16)
 
 Returns the ids of all individuals `infecter` infected in `[start_tick, end_tick]`, in
 chronological order.
 
-The first call builds an `InfecterIndex` over the infections logged so far, which `log!`
-then maintains incrementally. Runs that never call this carry no index and pay nothing.
-Not thread-safe: call it from a serial phase, as `process_events!` does.
+Builds an `InfecterIndex` over the infections logged so far if there is none yet, which `log!`
+then maintains incrementally. Runs that never trace carry no index and pay nothing.
+Thread-safe only if the index exists and nothing is staged, as after `_prepare_infecter_index!`.
 """
 function get_infections_between(logger::InfectionLogger, infecter::Int32, start_tick::Int16, end_tick::Int16)
     idx = logger.infecter_index
