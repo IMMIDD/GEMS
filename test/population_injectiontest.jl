@@ -914,6 +914,34 @@ end
         @test length(inj.events) == 1                                # the failed staging left no partial state
     end
 
+    @testset "snapshot of staged deaths" begin
+        # the base declares the death columns (the usual case); staged deaths are written
+        # into the snapshot as the constant flag, alive individuals keep the base value
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        base[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
+        schema = PI.create_column_schema(base)
+        PI.update_schema!(schema, :death_reason, [Int8(GEMS.DEATH_REASON_NATURAL)])
+        inj = PI.Injector(schema)
+        PI.stage_death!(inj, 3, GEMS.DEATH_REASON_NATURAL, Int16(5))
+        PI.stage_death!(inj, 9, nothing, Int16(8))
+
+        s = PI.snapshot(inj, base, Int16(8))
+        @test s[3, :death] == 1
+        @test s[3, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL)
+        @test s[9, :death] == 1
+        @test s[9, :death_reason] == Int8(GEMS.DEFAULT_DEATH_REASON)
+        @test s[5, :death] == Int8(-1)                               # not dead: base value kept
+
+        s1 = PI.snapshot(inj, 3, base, Int16(8))
+        @test s1[:death] == 1
+
+        h = PI.get_change_history(inj, 3, base)
+        @test h[1, :death] == Int8(-1)                               # base row (day 0): alive
+        @test h[end, :death] == 1                                    # death event row: the flag
+        @test h[end, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL)
+    end
+
     @testset "death with snapshot bake-in" begin
         # death at day 490, snapshot 500 -> dead from simulation tick 0, NOT in DeathLogger
         base = make_base()

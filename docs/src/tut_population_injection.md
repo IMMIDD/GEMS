@@ -13,7 +13,7 @@ In the example below, the population carries an extra column `income` of type `F
 
 | Term | Meaning |
 | :--- | :--- |
-| **stage** | record a population change in the `Injector` (collecting the payload) — `stage_event!`, `stage_new_individual!`, `stage_new_individuals!` |
+| **stage** | record a population change in the `Injector` (collecting the payload) — `stage_event!`, `stage_death!`, `stage_new_individual!`, `stage_new_individuals!` |
 | **inject** | apply staged changes to the live population during the run |
 | **staged changes** | the set of recorded population changes held by the `Injector` (and a `.jld2` file saved with `save`) |
 | **saved injector** | a `.jld2` file written by `save(injector, path)`, readable via `Injector(path)` |
@@ -30,7 +30,7 @@ In the example below, the population carries an extra column `income` of type `F
 | `Event.ind_id` | The individual id the event applies to (not an array position). |
 | New individuals | `:sex` and `:age` are required; all other fields keep GEMS default values unless staged. The `Injector` assigns the new ids (continuing its individual counter). |
 | Setting moves | A staged change of `:household`/`:office`/`:schoolclass`/`:municipality` moves the membership in the settings container (GEMS' `add_member!`/`remove_member!`); a value that is not in the base is a new setting and must be the next free id (staging otherwise throws). Staging the default id means "no setting" (membership is removed). |
-| Death | An event on the death column (`:death`) marks the individual dead from the event's timestamp. The staged value is **not** interpreted as a tick — only the timestamp is. |
+| Death | Staged with `PI.stage_death!`: the individual is dead from the event's timestamp, optionally carrying a non-infection death reason (`nothing` = default). The staged `:death` value is **not** interpreted as a tick — only the timestamp is. |
 | Dead individuals | They **remain** in `population(individuals)` (GEMS' flag-based model) but are excluded from transmission and seeding. |
 | `reset!` / re-runs | The baked-in prefix is re-applied idempotently (no duplicate births; deaths are re-marked). Attribute changes persist across `reset!` (only disease state is reset). |
 | Validation | The provided population is hash-checked against the staged base population **at construction, before any bake-in**; a mismatch throws an `ArgumentError`. |
@@ -232,6 +232,20 @@ Injectors are plain data and can be shared across simulations or saved for later
 ## Deaths in detail
 
 - Deaths are staged with `PI.stage_death!(inj, ind_id, reason, Int16(day))` — the individual is **dead from that timestamp**, and, when `reason` is not `nothing`, the death reason is applied with it, e.g. `PI.stage_death!(inj, 7, GEMS.DEATH_REASON_NATURAL, Int16(5))`. Staging `:death`/`:death_reason` via `PI.stage_event!` is rejected (with a hint pointing to `stage_death!`); the `:death` event value is a constant flag and never a tick.
+
+```julia
+# the base population declares the death columns before the schema is built
+# (default state: everyone alive, no death reason yet):
+base[!, :death] = fill(GEMS.DEFAULT_TICK, nrow(base))           # -1: alive (tick semantics of Individual.death)
+base[!, :death_reason] = fill(Int8(GEMS.DEFAULT_DEATH_REASON), nrow(base))
+schema = PI.create_column_schema(base)
+inj = PI.Injector(schema)
+PI.update_schema!(inj.schema, :death_reason, [Int8(GEMS.DEATH_REASON_NATURAL)])   # register codes beyond the base value
+
+PI.stage_death!(inj, 7, GEMS.DEATH_REASON_NATURAL, Int16(5))   # dead from day 5
+PI.stage_death!(inj, 9, nothing, Int16(8))                      # dead from day 8, no reason
+```
+
 - The engine mirrors GEMS' native death state: `ind.death` is set to the application tick (`0` when baked in), the `FLAG_DEAD` flag is set, and the infection masks are cleared — so the state is consistent even on dormant ticks.
 - **Death reason:** a staged event on the `:death_reason` column carries the cause of death and is applied together with the individual's death. Only non-infection codes are allowed: `GEMS.DEATH_REASON_NATURAL` (`-2`) for a natural death, or `GEMS.DEFAULT_DEATH_REASON` (`-1`) for unspecified — **positive codes are rejected at staging**, as they are reserved for simulation-caused (pathogen) deaths. Extend the schema with `PI.update_schema!` before staging new codes. Without a staged reason, `death_reason` stays at the default.
 - Run-time deaths are recorded **exactly once** in the `DeathLogger`; the `pathogen_id` column holds the individual's `death_reason` (`DEFAULT_DEATH_REASON` when unspecified — the injector never attributes a death to a pathogen). Baked-in (pre-run) deaths are initial state and are **not** logged.

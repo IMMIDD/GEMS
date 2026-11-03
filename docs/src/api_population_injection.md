@@ -39,6 +39,7 @@ PopulationInjection.get_original_value
 ### Staging population changes
 ```@docs
 PopulationInjection.stage_event!
+PopulationInjection.stage_death!
 PopulationInjection.stage_new_individual!
 PopulationInjection.stage_new_individuals!
 ```

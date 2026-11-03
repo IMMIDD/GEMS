@@ -764,10 +764,10 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag into the column (created if the base table has none)
+        # write the constant flag into the column (created alive if the base table has none)
         if field_symbol in (:death,)
-            if !(field_symbol in names(snapshot_df))
-                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            if !hasproperty(snapshot_df, field_symbol)
+                snapshot_df[!, field_symbol] = Int8(-1)
             end
             snapshot_df[ind_id, field_symbol] = INJECTION_DEATH_FLAG
             continue
@@ -836,10 +836,10 @@ function snapshot(injector::Injector, ind_id::Integer, base_population::DataFram
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag (into the column, created if the base table has none)
+        # write the constant flag (into the column, created alive if the base table has none)
         if field_symbol in (:death,)
-            if !(field_symbol in names(snapshot_df))
-                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            if !hasproperty(snapshot_df, field_symbol)
+                snapshot_df[!, field_symbol] = Int8(-1)
             end
             snapshot_df[field_symbol] = INJECTION_DEATH_FLAG
             continue
@@ -907,10 +907,10 @@ function snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag (into the column, created if the base table has none)
+        # write the constant flag into the column (created alive if the base table has none)
         if field_symbol in (:death,)
-            if !(field_symbol in names(snapshot_df))
-                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            if !hasproperty(snapshot_df, field_symbol)
+                snapshot_df[!, field_symbol] = Int8(-1)
             end
             snapshot_df[ind_id, field_symbol] = INJECTION_DEATH_FLAG
             continue
@@ -980,13 +980,13 @@ function get_change_history(injector::Injector, ind_id::Integer, base_population
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # the constant flag stands in for the value in the history table
+        # the constant flag stands in for the value in the history table (the base row stays alive)
         if field_symbol in (:death,)
-            if !(field_symbol in names(snapshot_df))
-                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            if !hasproperty(snapshot_df, field_symbol)
+                snapshot_df[!, field_symbol] = Int8(-1)
             end
-            if !(field_symbol in names(tmp_df))
-                tmp_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            if !hasproperty(tmp_df, field_symbol)
+                tmp_df[!, field_symbol] = Int8(-1)
             end
             tmp_df[!, field_symbol] .= INJECTION_DEATH_FLAG
             tmp_df.timestamp .= event.timestamp
