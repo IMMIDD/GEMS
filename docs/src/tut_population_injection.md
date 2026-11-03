@@ -6,8 +6,8 @@ The schedule is held by an **injector** (`GEMS.PopulationInjection.Injector`): s
 
 In the example below, the population carries an extra column `income` of type `Float32` that GEMS itself does not store. We stage changes at several different days, inspect the resulting state without running, and then run the *same injector* twice — with `population_snapshot = 0` and `population_snapshot = 5` — to see how the staged timeline re-bases onto the simulation clock.
 
-!!! note "Injectors are not loggers"
-    GEMS' loggers (`DeathLogger`, `InfectionLogger`, …) *record what happens* during a run. An injector *supplies what shall happen* to the population. The only overlap: injected deaths are also recorded in the `DeathLogger`, like any other death.
+> [!NOTE]
+> **Injectors are not loggers.** GEMS' loggers (`DeathLogger`, `InfectionLogger`, …) *record what happens* during a run. An injector *supplies what shall happen* to the population. The only overlap: injected deaths are also recorded in the `DeathLogger`, like any other death.
 
 ## Vocabulary
 
@@ -79,8 +79,8 @@ PI.update_schema!(inj.schema, :income, Float32[         # all the income values 
     4200.0, 1500.75, 2600.75, 2800.25, 3100.5, 2050.25])
 ```
 
-!!! note "Staging after `update_schema!`"
-    Once the `:income` column is switched to registered-values mode, staging an unregistered value fails, e.g. `PI.stage_event!(inj, 2, :income, 9999.0, Int16(3)` throws `Value 9999.0 could not be converted to a valid type for field income`. If you do *not* call `PI.update_schema!` on the float column at all, any float is accepted (open mode) — register only when you want the closed set.
+> [!NOTE]
+> **Staging after `update_schema!`.** Once the `:income` column is switched to registered-values mode, staging an unregistered value fails, e.g. `PI.stage_event!(inj, 2, :income, 9999.0, Int16(3)` throws `Value 9999.0 could not be converted to a valid type for field income`. If you do *not* call `PI.update_schema!` on the float column at all, any float is accepted (open mode) — register only when you want the closed set.
 
 ## Storing `income` on the population (extension column)
 
@@ -139,8 +139,8 @@ newids = PI.stage_new_individuals!(inj, DataFrame(       # the injector assigns 
 PI.stage_event!(inj, 5, :income, Float32(2050.25), Int16(12))
 ```
 
-!!! note "`income` is tracked by the injector, not by GEMS — unless you store it as an extension"
-    This population was created without an extension, so `income` is not stored per individual — it is neither an `Individual` field nor an `ind_extension` column. When the injector reaches one of these events, the change is applied to the injector's timeline only, and GEMS logs — once per field, not once per event — that `field :income is not stored on this population; the staged change is skipped`. The staged income values are fully preserved in the injector — read them back with `PI.snapshot(inj, base, day)` (below); the observable effects in the live population are the `occupation` change and the newborn. If `income` were stored as an extension column — e.g. `Population(pop_df, ind_extension = [:income])` — the staged changes would instead be injected into each individual's extension.
+> [!NOTE]
+> **`income` is tracked by the injector, not by GEMS — unless you store it as an extension.** This population was created without an extension, so `income` is not stored per individual — it is neither an `Individual` field nor an `ind_extension` column. When the injector reaches one of these events, the change is applied to the injector's timeline only, and GEMS logs — once per field, not once per event — that `field :income is not stored on this population; the staged change is skipped`. The staged income values are fully preserved in the injector — read them back with `PI.snapshot(inj, base, day)` (below); the observable effects in the live population are the `occupation` change and the newborn. If `income` were stored as an extension column — e.g. `Population(pop_df, ind_extension = [:income])` — the staged changes would instead be injected into each individual's extension.
 
 ## Inspecting the staged state without running
 
@@ -180,8 +180,8 @@ length(individuals(simA))                             # 101 — the newborn has 
 PI.snapshot(inj, base, Int16(12))[5, :income]         # 2050.25f0 — the income state comes from the injector
 ```
 
-!!! info "When is a staged change in effect?"
-    `step!` checks the staged changes *before* advancing the clock, and the clock starts at `0` (`tick(sim) == 0` right after construction). So during step `#1` the clock still reads `0`, during step `#2` it reads `1`, and so on. A change staged at day `t` is therefore injected during step `t + 1` when `population_snapshot = 0` — it is visible after `t + 1` calls of `step!`. With `population_snapshot = t0`, a change staged at day `t > t0` is injected during step `t - t0 + 1`.
+> [!NOTE]
+> **When is a staged change in effect?** `step!` checks the staged changes *before* advancing the clock, and the clock starts at `0` (`tick(sim) == 0` right after construction). So during step `#1` the clock still reads `0`, during step `#2` it reads `1`, and so on. A change staged at day `t` is therefore injected during step `t + 1` when `population_snapshot = 0` — it is visible after `t + 1` calls of `step!`. With `population_snapshot = t0`, a change staged at day `t > t0` is injected during step `t - t0 + 1`.
 
 ## Starting from day 5 (`population_snapshot = 5`)
 
