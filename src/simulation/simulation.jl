@@ -75,7 +75,7 @@ end
 _ScratchBuffers(deduplication_size_hint::Int) = _ScratchBuffers(
     _thread_local_vector(Vector{Individual}),
     _thread_local_vector(Vector{Individual}),
-    _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), deduplication_size_hint)),
+    _shard_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), deduplication_size_hint)),
     _thread_local_vector(Vector{Individual}),
     _thread_local_vector(Vector{Individual})
 )
@@ -345,10 +345,10 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             pathogens,
             health_progression,
             health_profiles,
-            [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
-            [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
-            [TestRegistry() for _ in 1:num_shards],
-            [HealthSchedule() for _ in 1:num_shards],
+            _shard_local_vector(InfectionRegistry, () -> InfectionRegistry(population.maxid, num_shards)),
+            _shard_local_vector(ImmunityRegistry, () -> ImmunityRegistry(population.maxid, num_shards)),
+            _shard_local_vector(TestRegistry),
+            _shard_local_vector(HealthSchedule),
 
             # logger
             InfectionLogger(minid = population.minid, maxid = population.maxid),
@@ -647,6 +647,19 @@ function _thread_local_vector(T::Type, make = T)
     # slots of threads outside the default pool
     for i in eachindex(v)
         isassigned(v, i) || (v[i] = make())
+    end
+    return v
+end
+
+"""
+    _shard_local_vector(T::Type, make = T)
+
+Returns a `Vector{T}` of `make()` results with one entry per shard, each created on the thread that processes that shard.
+"""
+function _shard_local_vector(T::Type, make = T)
+    v = Vector{T}(undef, Threads.maxthreadid())
+    Threads.@threads :static for s in eachindex(v)
+        v[s] = make()
     end
     return v
 end
@@ -2916,7 +2929,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     simulation.statelogger = StateLogger()
     simulation.customlogger = CustomLogger()
 
-    simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
+    simulation.test_registries = _shard_local_vector(TestRegistry)
 
     # before initialize! below, which infects and schedules care again. Must stay paired with the
     # per-individual reset! above; clearing one alone leaves the two disagreeing

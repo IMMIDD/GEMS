@@ -3,9 +3,9 @@
 ###
 @with_kw mutable struct VaccinationLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
-    id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
+    id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
+    pathogen_id::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
+    tick::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
 end
 
 function log!(
@@ -50,9 +50,9 @@ Base.length(logger::VaccinationLogger) = sum(length, logger.tick)
 ###
 @with_kw mutable struct DeathLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
-    id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
+    id::Vector{Vector{Int32}} = _thread_local_vector(Vector{Int32})
+    pathogen_id::Vector{Vector{Int8}} = _thread_local_vector(Vector{Int8})
+    tick::Vector{Vector{Int16}} = _thread_local_vector(Vector{Int16})
 end
 
 function log!(
@@ -106,9 +106,9 @@ are realized. Each event is `(id, event, tick)` where `event` is a `Symbol` such
 """
 @with_kw mutable struct HealthLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
-    id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    event::Vector{Vector{Symbol}} = [Vector{Symbol}() for _ in 1:Threads.maxthreadid()]
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
+    id::Vector{Vector{Int32}} = _thread_local_vector(Vector{Int32})
+    event::Vector{Vector{Symbol}} = _thread_local_vector(Vector{Symbol})
+    tick::Vector{Vector{Int16}} = _thread_local_vector(Vector{Int16})
 end
 
 function log!(
@@ -169,15 +169,15 @@ _TestTypeNames() = _TestTypeNames(Vector{String}(undef, typemax(Int8)), Threads.
 @with_kw mutable struct TestLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
-    id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    test_result::Vector{Vector{Bool}} = [Vector{Bool}() for _ in 1:Threads.maxthreadid()]
-    infected::Vector{Vector{Bool}} = [Vector{Bool}() for _ in 1:Threads.maxthreadid()]
-    infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    test_type::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
+    id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
+    tick::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
+    test_result::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
+    infected::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
+    infection_id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
+    pathogen_id::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
+    test_type::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
     test_type_names::_TestTypeNames = _TestTypeNames()
-    reportable::Vector{Vector{Bool}} = [Vector{Bool}() for _ in 1:Threads.maxthreadid()]
+    reportable::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
 end
 
 function log!(
@@ -248,14 +248,14 @@ Base.length(logger::TestLogger) = sum(length, logger.tick)
 ###
 @with_kw mutable struct PoolTestLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
-    setting_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    setting_type::Vector{Vector{Char}} = [Vector{Char}() for _ in 1:Threads.maxthreadid()]
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    test_result::Vector{Vector{Bool}} = [Vector{Bool}() for _ in 1:Threads.maxthreadid()]
-    no_of_individuals::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    no_of_infected::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    test_type::Vector{Vector{String}} = [Vector{String}() for _ in 1:Threads.maxthreadid()]
+    setting_id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
+    setting_type::Vector{Vector{Char}} = _shard_local_vector(Vector{Char})
+    tick::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
+    test_result::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
+    no_of_individuals::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
+    no_of_infected::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
+    pathogen_id::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
+    test_type::Vector{Vector{String}} = _shard_local_vector(Vector{String})
 end
 
 function log!(
@@ -323,14 +323,14 @@ Base.length(logger::PoolTestLogger) = sum(length, logger.tick)
 @with_kw mutable struct SeroprevalenceLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
-    id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    tick::Vector{Vector{Int16}} = [Vector{Int16}() for _ in 1:Threads.maxthreadid()]
-    test_result::Vector{Vector{Bool}} = [Vector{Bool}() for _ in 1:Threads.maxthreadid()]
-    infected::Vector{Vector{Bool}} = [Vector{Bool}() for _ in 1:Threads.maxthreadid()]
-    was_infected::Vector{Vector{Bool}} = [Vector{Bool}() for _ in 1:Threads.maxthreadid()]
-    infection_id::Vector{Vector{Int32}} = [Vector{Int32}() for _ in 1:Threads.maxthreadid()]
-    pathogen_id::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
-    test_type::Vector{Vector{Int8}} = [Vector{Int8}() for _ in 1:Threads.maxthreadid()]
+    id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
+    tick::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
+    test_result::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
+    infected::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
+    was_infected::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
+    infection_id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
+    pathogen_id::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
+    test_type::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
     test_type_names::_TestTypeNames = _TestTypeNames()
 end
 

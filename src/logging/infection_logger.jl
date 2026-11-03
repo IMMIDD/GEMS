@@ -15,29 +15,29 @@ and stored in `ChunkedVector`s, which grow without reallocating.
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
     # Infection ID
-    infection_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    infection_id::Vector{ChunkedVector{Int32}} = _thread_local_vector(ChunkedVector{Int32})
 
     # Infecting data
-    id_a::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    id_a::Vector{ChunkedVector{Int32}} = _thread_local_vector(ChunkedVector{Int32})
 
     # Infected data
-    id_b::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
-    pathogen_id::Vector{ChunkedVector{Int8}} = [ChunkedVector{Int8}() for _ in 1:Threads.maxthreadid()]
-    progression_id::Vector{ChunkedVector{Int8}} = [ChunkedVector{Int8}() for _ in 1:Threads.maxthreadid()]
-    infectiousness_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
-    symptom_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
-    severeness_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
-    critical_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
-    critical_offset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
-    severeness_offset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
-    recovery::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
+    id_b::Vector{ChunkedVector{Int32}} = _thread_local_vector(ChunkedVector{Int32})
+    pathogen_id::Vector{ChunkedVector{Int8}} = _thread_local_vector(ChunkedVector{Int8})
+    progression_id::Vector{ChunkedVector{Int8}} = _thread_local_vector(ChunkedVector{Int8})
+    infectiousness_onset::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
+    symptom_onset::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
+    severeness_onset::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
+    critical_onset::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
+    critical_offset::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
+    severeness_offset::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
+    recovery::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
 
     # External data
-    tick::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
-    setting_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
-    setting_type::Vector{ChunkedVector{Char}} = [ChunkedVector{Char}() for _ in 1:Threads.maxthreadid()]
-    household_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
-    source_infection_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    tick::Vector{ChunkedVector{Int16}} = _thread_local_vector(ChunkedVector{Int16})
+    setting_id::Vector{ChunkedVector{Int32}} = _thread_local_vector(ChunkedVector{Int32})
+    setting_type::Vector{ChunkedVector{Char}} = _thread_local_vector(ChunkedVector{Char})
+    household_id::Vector{ChunkedVector{Int32}} = _thread_local_vector(ChunkedVector{Int32})
+    source_infection_id::Vector{ChunkedVector{Int32}} = _thread_local_vector(ChunkedVector{Int32})
 
     # Individual id range of the logged population
     minid::Int32 = Int32(1)
