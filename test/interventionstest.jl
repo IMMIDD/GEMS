@@ -773,19 +773,19 @@ end
             flag_sim = Simulation(pop_size = 100, seed = 7)
             no_closures = IStrategy("no closures", flag_sim)
             add_measure!(no_closures, SelfIsolation(1))
-            @test no_closures.parallel_trigger[]
-            @test !IStrategy("condition", flag_sim, condition = i -> true).parallel_trigger[]
-            @test IStrategy("marked", flag_sim, condition = i -> true, parallel = true).parallel_trigger[]
+            @test no_closures.parallel_trigger
+            @test !IStrategy("condition", flag_sim, condition = i -> true).parallel_trigger
+            @test IStrategy("marked", flag_sim, condition = i -> true, parallel = true).parallel_trigger
             # an entry condition runs at processing time, so it does not count
             entry_condition = IStrategy("entry condition", flag_sim)
             add_measure!(entry_condition, SelfIsolation(1), condition = i -> true)
-            @test entry_condition.parallel_trigger[]
+            @test entry_condition.parallel_trigger
             marked_delay = IStrategy("marked delay", flag_sim)
             add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0, parallel = true)
-            @test marked_delay.parallel_trigger[]
+            @test marked_delay.parallel_trigger
             # a later measure with an unmarked delay turns it off
             add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0)
-            @test !marked_delay.parallel_trigger[]
+            @test !marked_delay.parallel_trigger
         end
 
         large_sim = Simulation(pop_size = GEMS.TICK_TRIGGER_THREADING_MIN + 1000, seed = 7)

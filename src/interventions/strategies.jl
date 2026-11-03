@@ -92,7 +92,7 @@ must be a one-argument function returning a boolean value.
 The function is called once the strategy was triggered and can
 condition its execution. The argument is the respective individual.
 """
-struct IStrategy{S<:Simulation} <: Strategy
+mutable struct IStrategy{S<:Simulation} <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
     measures::Vector{MeasureEntry{Individual}}
@@ -102,7 +102,7 @@ struct IStrategy{S<:Simulation} <: Strategy
     condition::IPredicate
 
     # whether the closures run when the strategy is triggered can run on several threads
-    parallel_trigger::Base.RefValue{Bool}
+    parallel_trigger::Bool
 
     # the simulation this strategy is bound to; captured by the per-measure process callbacks
     # (see IProcessFn) so `sim` is concretely typed at `add_measure!` time
@@ -159,7 +159,7 @@ struct IStrategy{S<:Simulation} <: Strategy
     """
     function IStrategy(name::String, sim::S; condition::Function = _always_true, parallel::Bool = false) where {S<:Simulation}
         _check_condition(condition, Individual, "IStrategy '$name'")
-        str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), Ref(condition === _always_true || parallel), sim)
+        str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), condition === _always_true || parallel, sim)
         add_strategy!(sim, str)
         return(str)
     end
@@ -178,7 +178,7 @@ must be a one-argument function returning a boolean value.
 The function is called once the strategy was triggered and can
 condition its execution. The argument is the respective individual.
 """
-struct SStrategy{S<:Simulation} <: Strategy
+mutable struct SStrategy{S<:Simulation} <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
     measures::Vector{MeasureEntry{Setting}}
@@ -188,7 +188,7 @@ struct SStrategy{S<:Simulation} <: Strategy
     condition::SPredicate
 
     # whether the closures run when the strategy is triggered can run on several threads
-    parallel_trigger::Base.RefValue{Bool}
+    parallel_trigger::Bool
 
     # the simulation this strategy is bound to; captured by the per-measure process callbacks
     # (see SProcessFn) so `sim` is concretely typed at `add_measure!` time
@@ -246,7 +246,7 @@ struct SStrategy{S<:Simulation} <: Strategy
     """
     function SStrategy(name::String, sim::S; condition::Function = _always_true, parallel::Bool = false) where {S<:Simulation}
         _check_condition(condition, Setting, "SStrategy '$name'")
-        str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), Ref(condition === _always_true || parallel), sim)
+        str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), condition === _always_true || parallel, sim)
         add_strategy!(sim, str)
         return(str)
     end
@@ -292,7 +292,7 @@ _parallel_entry(measure::Measure, delay::Function, condition::Function, parallel
 
 Returns whether `str` can run in the parallel lane as a whole, including its condition and delays.
 """
-_parallel_strategy(str::IStrategy) = str.parallel_trigger[] && all(me -> me.parallel, measures(str))
+_parallel_strategy(str::IStrategy) = str.parallel_trigger && all(me -> me.parallel, measures(str))
 
 """
     add_measure!(str::Strategy, measure::Measure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true, parallel::Bool = false)
@@ -344,7 +344,7 @@ function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, d
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
     _check_condition(condition, Individual, "a measure of IStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn, _parallel_entry(measure, delay, condition, parallel)))
-    str.parallel_trigger[] &= delay === _no_delay || parallel
+    str.parallel_trigger &= delay === _no_delay || parallel
     return str
 end
 # `where {S}` forces specialization on the strategy type so `str.sim` is concretely typed and the
@@ -355,7 +355,7 @@ function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, d
     fn = SProcessFn(s -> process_measure(sim, s, measure))
     _check_condition(condition, Setting, "a measure of SStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn, _parallel_entry(measure, delay, condition, parallel)))
-    str.parallel_trigger[] &= delay === _no_delay || parallel
+    str.parallel_trigger &= delay === _no_delay || parallel
     return str
 end
 

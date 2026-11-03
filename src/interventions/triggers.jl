@@ -462,7 +462,7 @@ end
 Returns whether `_trigger_all!` can use all threads for `str`.
 """
 _can_thread_trigger(str::IStrategy) = _parallel_strategy(str)
-_can_thread_trigger(str::SStrategy) = str.parallel_trigger[]
+_can_thread_trigger(str::SStrategy) = str.parallel_trigger
 
 """
     _trigger_in_chunk!(str::Strategy, focal, sim::Simulation)
