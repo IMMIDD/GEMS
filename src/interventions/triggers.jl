@@ -447,7 +447,7 @@ function _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
         end
         return nothing
     end
-    _foreach_chunk(sim, n, threaded = true) do range
+    _foreach_chunk(sim, n) do range
         for k in range
             _trigger_in_chunk!(str, @inbounds(objs[k]), sim)
         end

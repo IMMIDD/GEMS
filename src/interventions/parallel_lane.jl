@@ -163,19 +163,14 @@ function _with_slot(f, sim, slot::Int; owner_phase::Bool = false)
 end
 
 """
-    _foreach_slot(f, sim; owner_phase::Bool = false, threaded::Bool = false)
+    _foreach_slot(f, sim; owner_phase::Bool = false)
 
-Calls `f(slot)` as every slot, on all threads if `threaded`. In the owner phase each slot owns its shard. `sim` stays untyped: the tests add a method on `Simulation` that shuffles the slots.
+Calls `f(slot)` as every slot, on all threads. In the owner phase each slot owns its shard. `sim` stays untyped: the tests add a method on `Simulation` that shuffles the slots.
 """
-function _foreach_slot(f, sim; owner_phase::Bool = false, threaded::Bool = false)
-    run_slot(slot) = _with_slot(() -> f(slot), sim, slot; owner_phase)
-    if !threaded
-        foreach(run_slot, 1:Threads.maxthreadid())
-        return nothing
-    end
+function _foreach_slot(f, sim; owner_phase::Bool = false)
     try
         Threads.@threads :static for slot in 1:Threads.maxthreadid()
-            run_slot(slot)
+            _with_slot(() -> f(slot), sim, slot; owner_phase)
         end
     catch e
         throw(_thread_exception(e))
@@ -184,13 +179,13 @@ function _foreach_slot(f, sim; owner_phase::Bool = false, threaded::Bool = false
 end
 
 """
-    _foreach_chunk(f, sim, n::Int; threaded::Bool = false)
+    _foreach_chunk(f, sim, n::Int)
 
 Splits `1:n` into one contiguous chunk per slot and calls `f(range)` as that slot.
 """
-function _foreach_chunk(f, sim, n::Int; threaded::Bool = false)
+function _foreach_chunk(f, sim, n::Int)
     per_chunk = cld(n, Threads.maxthreadid())
-    _foreach_slot(sim, threaded = threaded) do chunk
+    _foreach_slot(sim) do chunk
         f(((chunk - 1) * per_chunk + 1):min(chunk * per_chunk, n))
     end
     return nothing
@@ -225,8 +220,15 @@ Returns whether any event queue of `sim` holds an event due at a tick `<= t`.
 function _events_due(sim, t)
     _has_due(event_queue(sim), t) && return true
     _has_due(_setting_queue(sim), t) && return true
-    return any(shard -> _has_due(_owner_queue(sim, shard), t), 1:Threads.maxthreadid())
+    return _owner_events_due(sim, t)
 end
+
+"""
+    _owner_events_due(sim, t)
+
+Returns whether any owner queue of `sim` holds an event due at a tick `<= t`.
+"""
+_owner_events_due(sim, t) = any(shard -> _has_due(_owner_queue(sim, shard), t), 1:Threads.maxthreadid())
 
 """
     _owner_requests_pending(sim)
@@ -257,6 +259,9 @@ end
 Lets every shard process its due events and the requests for it. Requests made during this phase wait for the next round.
 """
 function _run_owner_phase!(sim, t)
+    if !_owner_events_due(sim, t) && !_owner_requests_pending(sim)
+        return nothing
+    end
     parallel_lane = _parallel_lane(sim)
     # the requests made so far are the ones this phase processes
     foreach(c -> c.has_owner_requests = false, parallel_lane.contexts)

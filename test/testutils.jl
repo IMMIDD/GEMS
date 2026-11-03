@@ -79,8 +79,8 @@ end
 const SHUFFLED_SLOTS = Ref(false)
 
 # adds a method for `Simulation` next to the one in `src`, and passes on to that one unless the phases are shuffled
-function GEMS._foreach_slot(f, sim::Simulation; owner_phase::Bool = false, threaded::Bool = false)
-    SHUFFLED_SLOTS[] || return invoke(GEMS._foreach_slot, Tuple{Any, Any}, f, sim; owner_phase, threaded)
+function GEMS._foreach_slot(f, sim::Simulation; owner_phase::Bool = false)
+    SHUFFLED_SLOTS[] || return invoke(GEMS._foreach_slot, Tuple{Any, Any}, f, sim; owner_phase)
     for slot in GEMS.gems_shuffle!(GEMS.Xoshiro(Int(tick(sim))), collect(1:Threads.maxthreadid()))
         GEMS._with_slot(() -> f(slot), sim, slot; owner_phase)
     end
