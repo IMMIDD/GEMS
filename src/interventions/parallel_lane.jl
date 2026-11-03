@@ -302,10 +302,14 @@ Triggers what the phases requested from serial code, in producer order.
 function _run_serial_requests!(sim::S) where {S}
     parallel_lane = _parallel_lane(sim)
     for producer in eachindex(parallel_lane.serial_individual_requests)
-        for r in parallel_lane.serial_individual_requests[producer]
+        column = parallel_lane.serial_individual_requests[producer]
+        for k in eachindex(column)
+            # people are scattered in memory, so fetch the next ones early
+            _prefetch_listed_ahead(j -> @inbounds(column[j]).individual, length(column), k, activity_plans(sim))
+            r = @inbounds column[k]
             trigger_strategy(r.strategy::IStrategy{S}, r.individual, sim)
         end
-        empty!(parallel_lane.serial_individual_requests[producer])
+        empty!(column)
         for r in parallel_lane.serial_setting_requests[producer]
             trigger_strategy(r.strategy::SStrategy{S}, r.setting, sim)
         end
