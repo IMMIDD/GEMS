@@ -180,6 +180,7 @@ _TestTypeNames() = _TestTypeNames(Vector{String}(undef, typemax(Int8)), Threads.
     reportable::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
 end
 
+# `slot` is the column the row goes to
 function log!(
         testlogger::TestLogger,
         id::Int32,
@@ -189,19 +190,19 @@ function log!(
         infection_id::Int32,
         pathogen_id::Int8,
         test_type::String,
-        reportable::Bool
+        reportable::Bool;
+        slot::Int = Threads.threadid()
     )
     code = _test_type_code!(testlogger.test_type_names, test_type)
-    tid = Threads.threadid()
 
-    push!(testlogger.id[tid], id)
-    push!(testlogger.tick[tid], tick)
-    push!(testlogger.test_result[tid], test_result)
-    push!(testlogger.infected[tid], infected)
-    push!(testlogger.infection_id[tid], infection_id)
-    push!(testlogger.pathogen_id[tid], pathogen_id)
-    push!(testlogger.test_type[tid], code)
-    push!(testlogger.reportable[tid], reportable)
+    push!(testlogger.id[slot], id)
+    push!(testlogger.tick[slot], tick)
+    push!(testlogger.test_result[slot], test_result)
+    push!(testlogger.infected[slot], infected)
+    push!(testlogger.infection_id[slot], infection_id)
+    push!(testlogger.pathogen_id[slot], pathogen_id)
+    push!(testlogger.test_type[slot], code)
+    push!(testlogger.reportable[slot], reportable)
 
     # written only on change
     testlogger.last_modified_tick[] == tick || Threads.atomic_xchg!(testlogger.last_modified_tick, tick)
@@ -334,6 +335,7 @@ Base.length(logger::PoolTestLogger) = sum(length, logger.tick)
     test_type_names::_TestTypeNames = _TestTypeNames()
 end
 
+# `slot` is the column the row goes to
 function log!(
         logger::SeroprevalenceLogger,
         id::Int32,
@@ -343,19 +345,19 @@ function log!(
         was_infected::Bool,
         infection_id::Int32,
         pathogen_id::Int8,
-        test_type::String
+        test_type::String;
+        slot::Int = Threads.threadid()
     )
     code = _test_type_code!(logger.test_type_names, test_type)
-    tid = Threads.threadid()
 
-    push!(logger.id[tid], id)
-    push!(logger.tick[tid], tick)
-    push!(logger.test_result[tid], test_result)
-    push!(logger.infected[tid], infected)
-    push!(logger.was_infected[tid], was_infected)
-    push!(logger.infection_id[tid], infection_id)
-    push!(logger.pathogen_id[tid], pathogen_id)
-    push!(logger.test_type[tid], code)
+    push!(logger.id[slot], id)
+    push!(logger.tick[slot], tick)
+    push!(logger.test_result[slot], test_result)
+    push!(logger.infected[slot], infected)
+    push!(logger.was_infected[slot], was_infected)
+    push!(logger.infection_id[slot], infection_id)
+    push!(logger.pathogen_id[slot], pathogen_id)
+    push!(logger.test_type[slot], code)
 
     # written only on change
     logger.last_modified_tick[] == tick || Threads.atomic_xchg!(logger.last_modified_tick, tick)

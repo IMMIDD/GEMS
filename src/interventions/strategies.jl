@@ -124,7 +124,7 @@ struct IStrategy{S<:Simulation} <: Strategy
       - `name::String`: Name of the strategy
       - `sim::Simulation`: Simulation object (required to interlink test with simulation)
       - `condition::Function = x -> true` *(optional)*: Predicate function than can be used to limit the execution of this strategy to only cerain individuals.
-      - `parallel::Bool = false` *(optional)*: Promises that `condition` only reads the focal individual and state that does not change while events run, and writes nothing shared, so large tick triggers can evaluate it on several threads.
+      - `parallel::Bool = false` *(optional)*: Promises that `condition` only reads the focal individual and state that does not change while events run, and writes nothing shared, so it can be evaluated on several threads, on large tick triggers and in the parallel lane.
 
     # Examples
 
@@ -288,6 +288,13 @@ _parallel_entry(measure::Measure, delay::Function, condition::Function, parallel
     _parallel_safe(measure, parallel) && (parallel || (delay === _no_delay && condition === _always_true))
 
 """
+    _parallel_strategy(str::IStrategy)
+
+Returns whether `str` can run in the parallel lane as a whole, including its condition and delays.
+"""
+_parallel_strategy(str::IStrategy) = str.parallel_trigger[] && all(me -> me.parallel, measures(str))
+
+"""
     add_measure!(str::Strategy, measure::Measure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true, parallel::Bool = false)
 
 Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
@@ -299,7 +306,7 @@ Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
 - `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed.
 - `delay::Function = x -> 0` *(optional)*: Single-argument function that must resolve to an integer. The delay will extend the offset.
 - `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure.
-- `parallel::Bool = false` *(optional)*: Promises that `delay` and `condition` only read the focal object and state that does not change while events run, and write nothing shared, so large tick triggers can evaluate `delay` on several threads.
+- `parallel::Bool = false` *(optional)*: Promises that `delay` and `condition` only read the focal object and state that does not change while events run, and write nothing shared, so large tick triggers can evaluate `delay` on several threads and the measure can run in the parallel lane.
 
 # Examples
 

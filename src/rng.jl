@@ -200,7 +200,7 @@ end
 const _PROFILE_RNGS = Union{Nothing, _ProfileRNG}[]
 
 # folds fields into a key with splitmix64, one at a time
-# leading domain tags in use: 0 immunity, 1 infection, 2 prior immunity, 3 setting layers
+# leading domain tags in use: 0 immunity, 1 infection, 2 prior immunity, 3 setting layers, 4 event slots
 @inline _mix(key::UInt64) = key
 @inline function _mix(key::UInt64, field::Integer, rest::Integer...)
     x = (key ⊻ (field % UInt64)) + 0x9e3779b97f4a7c15

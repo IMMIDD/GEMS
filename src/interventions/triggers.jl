@@ -344,58 +344,32 @@ function trigger(stt::STickTrigger, sim::Simulation)
 end
 
 """
-    _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
+    trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
 
-Triggers `str` for every object in `objs`. From `TICK_TRIGGER_THREADING_MIN` objects on it uses all threads if
-the closures of `str` allow it; the events are queued in the same order either way.
-"""
-function _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
-    n = length(objs)
-    if n < TICK_TRIGGER_THREADING_MIN || !str.parallel_trigger[]
-        for o in objs
-            trigger_strategy(str, o, sim)
-        end
-        return nothing
-    end
-    per_thread = cld(n, Threads.nthreads())
-    try
-        # one contiguous chunk per thread, so merging the staged events keeps the serial order
-        Threads.@threads :static for c in 1:Threads.nthreads()
-            _trigger_range!(str, objs, ((c - 1) * per_thread + 1):min(c * per_thread, n), sim)
-        end
-    catch e
-        throw(_thread_exception(e))
-    end
-    flush_staging!(event_queue(sim))
-    return nothing
-end
-
-"""
-    _trigger_range!(str::Strategy, objs::AbstractVector, r::UnitRange{Int}, sim::Simulation)
-
-Triggers `str` for `objs[r]` and stages the events, for use inside a parallel loop.
-"""
-function _trigger_range!(str::Strategy, objs::AbstractVector, r::UnitRange{Int}, sim::Simulation)
-    for k in r
-        trigger_strategy(str, @inbounds(objs[k]), sim, staged = true)
-    end
-    return nothing
-end
-
-"""
-    trigger_strategy(str::IStrategy, i::Individual, sim::Simulation; staged::Bool = false)
-
-Enqueues an `IMeasureEvent` in the `Simulation` event queue for all `IMeasures`
-of the provided `IStrategy` and the specified `Individual`.
+Enqueues an `IMeasureEvent` for all `IMeasures` of the provided `IStrategy` and the specified `Individual`:
+in the owner's queue for entries of the parallel lane, otherwise in the `Simulation` event queue. Inside a
+phase of the parallel lane, anything but a parallel strategy on this shard's own people becomes a request.
 
 # Parameters
 
 - `str::IStrategy`: Strategy that is being triggered
 - `i::Individual`: Individual that the tiggered strategy is applied to
 - `sim::Simulation`: Simulation object
-- `staged::Bool = false`: stage events lock-free (via `stage!`) instead of `enqueue!`; set when triggered from a parallel loop
 """
-function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation; staged::Bool = false)
+function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation)
+    context = _event_context(sim)
+    shard = _owner_shard(id(i))
+    if _in_slot(context)
+        if !_parallel_strategy(str)
+            push!(_parallel_lane(sim).serial_individual_requests[context.slot], _IStrategyRequest(i, str))
+            return
+        elseif shard != context.owner
+            # no shard matches `context.owner` outside the owner phase
+            _request_from_owner!(str, i, sim, context, shard)
+            return
+        end
+    end
+
     # if condition is not met, return without executing measures
     cond = str.condition(i)
 
@@ -403,45 +377,119 @@ function trigger_strategy(str::IStrategy, i::Individual, sim::Simulation; staged
         return
     end
 
-    eq = event_queue(sim)
-    # generate one MeasureEvent for each associated measure and push it to the Simulation's event queue
+    # generate one MeasureEvent for each associated measure and push it to its queue
     for me in str |> measures
         ev = IMeasureEvent(i, measure(me)::IMeasure, condition(me), process_fn(me))
         # schedule for the current tick plus the measure's offset and added delay
         t = Int16(tick(sim) + offset(me) + delay(me)(i))
-        staged ? stage!(eq, ev, t) : enqueue!(eq, ev, t)
+        enqueue!(me.parallel ? _owner_queue(sim, shard) : event_queue(sim), ev, t)
     end
 end
 
 """
-    trigger_strategy(str::SStrategy, s::Setting, sim::Simulation; staged::Bool = false)
+    trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
 
-Enqueues an `SMeasureEvent` in the `Simulation` event queue for all `SMeasures` 
-of the provided `SStrategy` and the specified `Setting`.
+Enqueues an `SMeasureEvent` for all `SMeasures` of the provided `SStrategy` and the specified `Setting`:
+in the setting queue for entries of the parallel lane, otherwise in the `Simulation` event queue.
+Inside a phase of the parallel lane, it becomes a request to serial code.
 
 # Parameters
 
 - `str::SStrategy`: Strategy that is being triggered
 - `s::Setting`: Setting that the tiggered strategy is applied to
 - `sim::Simulation`: Simulation object
-- `staged::Bool = false`: stage events lock-free (via `stage!`) instead of `enqueue!`; set when triggered from a parallel loop
 """
-function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation; staged::Bool = false)
-    # if condition is not met, return without executing measures
-    cond = str.condition(s)
-
-    if !cond
+function trigger_strategy(str::SStrategy, s::Setting, sim::Simulation)
+    context = _event_context(sim)
+    if _in_slot(context)
+        push!(_parallel_lane(sim).serial_setting_requests[context.slot], _SStrategyRequest(s, str))
         return
     end
-    
-    eq = event_queue(sim)
-    # generate one MeasureEvent for each associated measure and push it to the Simulation's event queue
+
+    _foreach_setting_event(str, s, sim) do ev, t, queue
+        enqueue!(queue, ev, t)
+    end
+end
+
+"""
+    _foreach_setting_event(f, str::SStrategy, s::Setting, sim::Simulation)
+
+Calls `f(event, tick, queue)` for every measure of `str`, if the condition of `str` holds for `s`. `queue` is where the event belongs.
+"""
+@inline function _foreach_setting_event(f, str::SStrategy, s::Setting, sim::Simulation)
+    # if condition is not met, return without executing measures
+    str.condition(s) || return nothing
+
+    # generate one MeasureEvent for each associated measure
     for me in str |> measures
         ev = SMeasureEvent(s, measure(me)::SMeasure, condition(me), process_fn(me))
         # schedule for the current tick plus the measure's offset and added delay
-        t = Int16(tick(sim) + offset(me) + delay(me)(s))
-        staged ? stage!(eq, ev, t) : enqueue!(eq, ev, t)
+        f(ev, Int16(tick(sim) + offset(me) + delay(me)(s)), me.parallel ? _setting_queue(sim) : event_queue(sim))
     end
+    return nothing
+end
+
+###
+### THREADED TICK TRIGGERS
+###
+
+"""
+    _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
+
+Triggers `str` for every object in `objs`. From `TICK_TRIGGER_THREADING_MIN` objects on it
+uses all threads if `_can_thread_trigger` allows it, keeping the order of `objs`.
+"""
+function _trigger_all!(str::Strategy, objs::AbstractVector, sim::Simulation)
+    n = length(objs)
+    if n < TICK_TRIGGER_THREADING_MIN || !_can_thread_trigger(str)
+        for o in objs
+            trigger_strategy(str, o, sim)
+        end
+        return nothing
+    end
+    _foreach_chunk(sim, n, threaded = true) do range
+        for k in range
+            _trigger_in_chunk!(str, @inbounds(objs[k]), sim)
+        end
+    end
+    _merge_staged_setting_events!(sim)
+    return nothing
+end
+
+"""
+    _can_thread_trigger(str::Strategy)
+
+Returns whether `_trigger_all!` can use all threads for `str`.
+"""
+_can_thread_trigger(str::IStrategy) = _parallel_strategy(str)
+_can_thread_trigger(str::SStrategy) = str.parallel_trigger[]
+
+"""
+    _trigger_in_chunk!(str::Strategy, focal, sim::Simulation)
+
+Triggers `str` for `focal` in a chunk of a threaded tick trigger: an individual is requested from its owner, the events of a setting are staged.
+"""
+_trigger_in_chunk!(str::IStrategy, i::Individual, sim::Simulation) = trigger_strategy(str, i, sim)
+function _trigger_in_chunk!(str::SStrategy, s::Setting, sim::Simulation)
+    buffer = _parallel_lane(sim).staged_setting_events[_event_context(sim).slot]
+    _foreach_setting_event(str, s, sim) do ev, t, queue
+        push!(buffer, (ev, t, queue))
+    end
+end
+
+"""
+    _merge_staged_setting_events!(sim)
+
+Moves the setting events a threaded tick trigger staged into their queues, in slot order.
+"""
+function _merge_staged_setting_events!(sim)
+    for buffer in _parallel_lane(sim).staged_setting_events
+        for (event, t, queue) in buffer
+            enqueue!(queue, event, t)
+        end
+        empty!(buffer)
+    end
+    return nothing
 end
 
 ###

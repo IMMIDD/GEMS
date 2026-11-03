@@ -15,12 +15,19 @@ export is_disease_active
 """
     process_events!(simulation::Simulation)
 
-Executes the `process_measure` function for all measures in the 
-simulation's `EventQueue` for the current tick.
+Processes all events due at the current tick, in rounds until none are left: the serial lane, then
+the setting and owner phases of the parallel lane, then what those phases requested from serial code.
 """
 function process_events!(simulation::Simulation)
+    t = tick(simulation)
     _prepare_infecter_index!(simulation)
-    process_due!(event_queue(simulation), simulation, tick(simulation))
+    while _events_due(simulation, t) || _owner_requests_pending(simulation)
+        process_due!(event_queue(simulation), simulation, t)
+        _run_setting_phase!(simulation, t)
+        _run_owner_phase!(simulation, t)
+        _run_serial_requests!(simulation)
+    end
+    return nothing
 end
 
 """
@@ -372,8 +379,7 @@ function is_dormant(simulation::Simulation)
     current_t = tick(simulation)
 
     # wake up if an event is scheduled for today (or was missed)
-    eq = event_queue(simulation)
-    if !isempty(eq) && peektick(eq) <= current_t
+    if _events_due(simulation, current_t) || _owner_requests_pending(simulation)
         return false
     end
 
