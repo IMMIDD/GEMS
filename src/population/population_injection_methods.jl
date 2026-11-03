@@ -202,9 +202,11 @@ end
 
 Move `ind` to the setting of type `T` with id `new_id` (or out of the setting when
 `new_id == DEFAULT_SETTING_ID`), keeping the individual's id field and the setting's member
-list in sync via GEMS' `add!`/`remove!` (which also invalidate the contact-sampling caches).
+list in sync via GEMS' `add_member!`/`remove_member!` (which also invalidate the
+contact-sampling caches).
 Creating the target setting is covered by `_get_or_create_setting!`. Idempotent for replay
-(`reset!`): `remove!` is a no-op for non-members and `add!` is guarded against duplicates.
+(`reset!`): `remove_member!` is a no-op for non-members and `add_member!` is guarded against
+duplicates.
 """
 function _apply_setting_move!(cntnr::SettingsContainer, T::DataType, ind::Individual, new_id::Int32)
     old_id = setting_id(ind, T)
@@ -212,9 +214,9 @@ function _apply_setting_move!(cntnr::SettingsContainer, T::DataType, ind::Indivi
     old = _lookup_setting(cntnr, T, old_id)
     new = new_id == DEFAULT_SETTING_ID ? nothing : _get_or_create_setting!(cntnr, T, new_id)
     (old === nothing && new === nothing) && return nothing
-    old !== nothing && remove!(old, ind)
+    old !== nothing && remove_member!(old, ind)
     if new !== nothing
-        ind in individuals(new) || add!(new, ind)
+        ind in individuals(new) || add_member!(new, ind)
         activate!(new)
     end
     return nothing
@@ -228,9 +230,9 @@ Shared core: apply a batch of already-selected staged events to a `Population`.
 - attribute changes on existing individuals (`Event.ind_id` = individual id); extension
   columns (`ind_extension`) are written into the boxed extension via `setproperty!`
 - setting columns (`household`, `office`, `schoolclass`, `municipality`): when a
-  `SettingsContainer` (`cntnr`) is given, the membership is moved with GEMS' `add!`/
-  `remove!` (creating the target setting for a new, next-free id) instead of only writing
-  the individual's id field; without a container the id field is written as before
+  `SettingsContainer` (`cntnr`) is given, the membership is moved with GEMS' `add_member!`/
+  `remove_member!` (creating the target setting for a new, next-free id) instead of only
+  writing the individual's id field; without a container the id field is written as before
 - fields the population does not store (neither an `Individual` field nor an extension
   column) are skipped, with one warning per (injector, field)
 - deaths: events on `INJECTION_DEATH_FIELDS` mark the individual dead from `death_tick`
