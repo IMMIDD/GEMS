@@ -169,15 +169,15 @@ _TestTypeNames() = _TestTypeNames(Vector{String}(undef, typemax(Int8)), Threads.
 @with_kw mutable struct TestLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
-    id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
-    tick::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
-    test_result::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
-    infected::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
-    infection_id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
-    pathogen_id::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
-    test_type::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
+    id::Vector{ChunkedVector{Int32}} = _shard_local_vector(ChunkedVector{Int32})
+    tick::Vector{ChunkedVector{Int16}} = _shard_local_vector(ChunkedVector{Int16})
+    test_result::Vector{ChunkedVector{Bool}} = _shard_local_vector(ChunkedVector{Bool})
+    infected::Vector{ChunkedVector{Bool}} = _shard_local_vector(ChunkedVector{Bool})
+    infection_id::Vector{ChunkedVector{Int32}} = _shard_local_vector(ChunkedVector{Int32})
+    pathogen_id::Vector{ChunkedVector{Int8}} = _shard_local_vector(ChunkedVector{Int8})
+    test_type::Vector{ChunkedVector{Int8}} = _shard_local_vector(ChunkedVector{Int8})
     test_type_names::_TestTypeNames = _TestTypeNames()
-    reportable::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
+    reportable::Vector{ChunkedVector{Bool}} = _shard_local_vector(ChunkedVector{Bool})
 end
 
 # `slot` is the column the row goes to
@@ -324,14 +324,14 @@ Base.length(logger::PoolTestLogger) = sum(length, logger.tick)
 @with_kw mutable struct SeroprevalenceLogger <: EventLogger
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
-    id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
-    tick::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
-    test_result::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
-    infected::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
-    was_infected::Vector{Vector{Bool}} = _shard_local_vector(Vector{Bool})
-    infection_id::Vector{Vector{Int32}} = _shard_local_vector(Vector{Int32})
-    pathogen_id::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
-    test_type::Vector{Vector{Int8}} = _shard_local_vector(Vector{Int8})
+    id::Vector{ChunkedVector{Int32}} = _shard_local_vector(ChunkedVector{Int32})
+    tick::Vector{ChunkedVector{Int16}} = _shard_local_vector(ChunkedVector{Int16})
+    test_result::Vector{ChunkedVector{Bool}} = _shard_local_vector(ChunkedVector{Bool})
+    infected::Vector{ChunkedVector{Bool}} = _shard_local_vector(ChunkedVector{Bool})
+    was_infected::Vector{ChunkedVector{Bool}} = _shard_local_vector(ChunkedVector{Bool})
+    infection_id::Vector{ChunkedVector{Int32}} = _shard_local_vector(ChunkedVector{Int32})
+    pathogen_id::Vector{ChunkedVector{Int8}} = _shard_local_vector(ChunkedVector{Int8})
+    test_type::Vector{ChunkedVector{Int8}} = _shard_local_vector(ChunkedVector{Int8})
     test_type_names::_TestTypeNames = _TestTypeNames()
 end
 

@@ -281,7 +281,10 @@ function _process_owner_shard!(sim::S, shard::Int, t) where {S}
     requests = _parallel_lane(sim).owner_requests
     for producer in axes(requests, 1)
         column = @inbounds requests[producer, shard]
-        for r in column
+        for k in eachindex(column)
+            # people are scattered in memory, so fetch the next ones early
+            _prefetch_listed_ahead(j -> (column[j]).individual, length(column), k, activity_plans(sim))
+            r =  column[k]
             trigger_strategy(r.strategy::IStrategy{S}, r.individual, sim)
             _drain_individual_events!(queue, t, sim)
         end
