@@ -405,8 +405,9 @@ end
 Enforces GEMS' contiguous setting-id rule at staging: the settings container indexes settings
 by id without gaps (ids 1:N), so a staged value for a setting column (`household`, `office`,
 `schoolclass`, `municipality`) that is neither one of the base ids nor the default id
-("no setting") must extend the range one at a time — every id up to the maximum must be set,
-and every new id must be `max(id) + 1`. Anything else is a staging error.
+("no setting") must be either one of the new ids already staged (e.g. another individual
+joining a setting that was created by an earlier event) or the next free id
+(`max(base ids, staged ids) + 1`). Anything else is a staging error.
 """
 function _check_staged_setting_id!(injector::Injector, field::Symbol, value)
     base_counts = get(injector.schema.meta, :setting_base_count, nothing)
@@ -416,7 +417,8 @@ function _check_staged_setting_id!(injector::Injector, field::Symbol, value)
     v in 1:n_base && return nothing                       # existing setting (ids 1:N after GEMS' normalization)
     v == Main.GEMS.DEFAULT_SETTING_ID && return nothing   # "no setting" — always allowed
     # the new ids already staged for this field (each of them was validated when staged,
-    # so the range stays gap-free): only the maximum matters
+    # so the range stays gap-free): only the maximum matters. Any of them may be
+    # referenced again by later events, and the next new id is max + 1.
     fidx = injector.schema.field_to_index[field]
     max_new = 0
     for ev in injector.events
@@ -425,25 +427,50 @@ function _check_staged_setting_id!(injector::Injector, field::Symbol, value)
         val > n_base && (max_new = max(max_new, val))
     end
     next = (max_new == 0 ? Int32(n_base) : Int32(max_new)) + Int32(1)
-    v == next || throw(ArgumentError(
+    n_base < v <= next || throw(ArgumentError(
         "population injection: staged $(field) id $v is not a valid new setting id. GEMS indexes " *
         "settings by id without gaps (the base has $n_base $(field) setting(s), $(max_new == 0 ? 0 : max_new - n_base) " *
-        "new id(s) already staged), so every id up to the maximum must be set and every new id must " *
-        "be max(id) + 1; the next valid new id is $next."
+        "new id(s) already staged), so every id up to the maximum must be set: a staged new id must be " *
+        "one of the already staged new ids (< $next) or the next new id ($next)."
     ))
     return nothing
 end
 
 
 """
+    _check_staged_death_reason!(reason)
+
+Rejects positive death-reason codes: they are reserved for simulation-caused (pathogen)
+deads, so the injector may only stage non-infection codes (<= 0, cf. GEMS'
+`Individual.death_reason`, e.g. `GEMS.DEATH_REASON_NATURAL`) or `GEMS.DEFAULT_DEATH_REASON`.
+"""
+function _check_staged_death_reason!(reason)
+    Int32(reason) <= 0 && return nothing
+    throw(ArgumentError(
+        "population injection: staged death_reason $(reason) is not allowed — positive codes are " *
+        "reserved for simulation-caused (pathogen) deaths. Stage a non-infection code (<= 0) such as " *
+        "GEMS.DEATH_REASON_NATURAL, or GEMS.DEFAULT_DEATH_REASON when unspecified."
+    ))
+end
+
+"""
     stage_event!(injector::Injector, ind_id::Int, field::Symbol, new_value, timestamp::Int16)
 
-Stages an event in the injector.
+Stages a field change as an event in the injector.
+
+Deaths are staged via `stage_death!` instead — staging `:death` or `:death_reason` here
+is rejected (with a hint pointing to `stage_death!`), keeping `stage_event!` the single
+path for regular field changes.
 
 For setting columns (`household`, `office`, `schoolclass`, `municipality`) a value that is
-not one of the base ids is a *new setting* and must extend the contiguous id range one at a
-time (the next valid new id is `max(base ids, staged ids) + 1`); otherwise an `ArgumentError`
-is thrown at staging.
+not one of the base ids is a *new setting*: it must be either an already-staged new id
+(e.g. another individual joining the same newly created setting) or the next free id
+(`max(base ids, staged ids) + 1`, keeping the contiguous id range gap-free); otherwise an
+`ArgumentError` is thrown at staging.
+
+For `:death_reason` events, positive values are rejected at staging: they are reserved
+for simulation-caused (pathogen) deaths — stage a non-infection code (<= 0) such as
+`GEMS.DEATH_REASON_NATURAL`, or `GEMS.DEFAULT_DEATH_REASON` when unspecified.
 
 # Arguments
 - `injector::Injector`: The injector to stage the event in
@@ -456,6 +483,29 @@ is thrown at staging.
 - `Event`: The created event
 """
 function stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_value, timestamp::Integer)
+    # deaths and their reasons have a dedicated entry point (stage_death!); the manual
+    # stage_event! path for them is closed on purpose, with a hint to the correct call
+    if field === :death || field === :death_reason
+        throw(ArgumentError(
+            "population injection: $(field) cannot be staged via stage_event!. Stage deaths with " *
+            "PI.stage_death!(injector, ind_id, reason, timestamp) instead, e.g. " *
+            "PI.stage_death!(inj, $(ind_id), GEMS.DEATH_REASON_NATURAL, Int16($(timestamp))) — " *
+            "reason may be nothing for a death without a reason."
+        ))
+    end
+    return _stage_event!(injector, ind_id, field, new_value, timestamp)
+end
+
+
+"""
+    _stage_event!(injector, ind_id, field, new_value, timestamp)
+
+Internal staging without the death-field guard — used by `stage_death!` and
+`stage_new_individuals!`. For `:death` events the value is ignored (stored as a
+constant flag; the timestamp is the day of death); `:death_reason` values must be
+non-infection codes (<= 0).
+"""
+function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_value, timestamp::Integer)
     # Get types from schema meta information
     ind_id_type = injector.schema.meta[:ind_id_type]
 
@@ -474,6 +524,19 @@ function stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_va
     # Check if the field exists
     if !haskey(injector.schema.field_to_index, field)
         error("Field $field not found in injector schema")
+    end
+
+    # death reasons: only non-infection codes may be staged (positive codes are reserved
+    # for simulation-caused pathogen deaths)
+    field === :death_reason && _check_staged_death_reason!(new_value)
+
+    # death events: the value carries no meaning (the timestamp is the day of death) and
+    # is stored as a constant flag, bypassing the column's closed value set — no schema
+    # entry or update_schema! is needed
+    if field in (:death,)
+        event = Event{Int8}(converted_id, Int8(injector.schema.field_to_index[field]), INJECTION_DEATH_FLAG, converted_timestamp)
+        push!(injector.events, event)
+        return event
     end
 
     # Get the field index
@@ -523,6 +586,72 @@ function stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_va
 
         return event
     end
+end
+
+
+# Value stored for death events (`stage_death!`, or `stage_event!` on the `:death` column):
+# a constant marker — the engine never interprets a death event's value (the timestamp is
+# the day of death), so it bypasses the schema's closed value set.
+const INJECTION_DEATH_FLAG = Int8(1)
+
+
+"""
+    stage_death!(injector, ind_id, reason, timestamp)
+
+Stages the death of individual `ind_id` at `timestamp` (the day of death, same argument
+order as `stage_event!`): the `:death` event — whose value is a constant flag and needs
+no schema entry — and, when `reason` is not `nothing`, a `:death_reason` event with the
+same timestamp.
+
+`reason` must be a non-infection death code (<= 0; positive codes are reserved for
+simulation-caused pathogen deaths and are rejected), e.g.
+`GEMS.DEATH_REASON_NATURAL` or `GEMS.DEFAULT_DEATH_REASON`; `nothing` stages the death
+without a reason.
+
+The base population must declare a `:death` column, and a `:death_reason` column when a
+reason is staged — both with their default state for the alive population (e.g.
+`fill(GEMS.DEFAULT_TICK, n)` and `fill(Int8(GEMS.DEFAULT_DEATH_REASON), n)`) — so the
+schema knows them. A missing column is an `ArgumentError` pointing at adding the column
+and its default values to the base population and rebuilding the schema with
+`create_column_schema`. An already-declared `:death_reason` column keeps its closed value
+set (extend it via `update_schema!` for codes beyond the base values).
+
+# Arguments
+- `injector::Injector`: The injector to stage the event in
+- `ind_id::Int`: The id of the individual who dies
+- `reason::Union{Int8,Nothing}`: The death reason code, or `nothing` for none
+- `timestamp::Int16`: The day of death
+
+# Returns
+
+- `Event`: The staged `:death` event (the `:death_reason` event, if any, follows it)
+"""
+function stage_death!(injector::Injector, ind_id::Integer, reason::Union{Int8,Nothing}, timestamp::Integer)
+    # validate before staging anything, so an invalid reason leaves no partial state
+    reason !== nothing && _check_staged_death_reason!(reason)
+    # the death columns must be declared in the base population (with their default state),
+    # so the schema knows them — the injector does not add columns on its own
+    if !haskey(injector.schema.field_to_index, :death)
+        throw(ArgumentError(
+            "population injection: the injector schema has no :death column, so stage_death! cannot be " *
+            "used. Add a :death column to the base population DataFrame — default state: everyone alive, " *
+            "e.g. base[!, :death] = fill(GEMS.DEFAULT_TICK, nrow(base)) — and build the schema with " *
+            "PI.create_column_schema(base)."
+        ))
+    end
+    if reason !== nothing && !haskey(injector.schema.field_to_index, :death_reason)
+        throw(ArgumentError(
+            "population injection: the injector schema has no :death_reason column, so stage_death! with a " *
+            "reason cannot be used. Add a :death_reason column to the base population DataFrame — default " *
+            "state: GEMS.DEFAULT_DEATH_REASON, " *
+            "e.g. base[!, :death_reason] = fill(Int8(GEMS.DEFAULT_DEATH_REASON), nrow(base)) — and build the " *
+            "schema with PI.create_column_schema(base); or stage the death without a reason."
+        ))
+    end
+    ev = _stage_event!(injector, ind_id, :death, 1, timestamp)
+    reason === nothing && return ev
+    _stage_event!(injector, ind_id, :death_reason, reason, timestamp)
+    return ev
 end
 
 """
@@ -577,7 +706,9 @@ Reconstructs the population table at a given day of the staged-changes timeline.
 - `timestamp::Int16`: The day to create the snapshot for
 
 # Returns
-- `DataFrame`: The population table at the given day (new individuals are appended as rows)
+- `DataFrame`: The population table at the given day (new individuals are appended as rows).
+  Death events (cf. `stage_event!`) are written as the constant flag `1` into the
+  population's death column.
 """
 function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int16)
     # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
@@ -631,6 +762,16 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
         ind_id = Int(event.ind_id)  # row index into the snapshot DataFrame
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
+
+        # Death events carry no value to decode (the timestamp was the day of death) —
+        # write the constant flag into the column (created if the base table has none)
+        if field_symbol in (:death,)
+            if !(field_symbol in names(snapshot_df))
+                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            end
+            snapshot_df[ind_id, field_symbol] = INJECTION_DEATH_FLAG
+            continue
+        end
 
         # Decode the value from the event
         original_value = decode_value(injector, field_symbol, event.new_value)
@@ -694,6 +835,16 @@ function snapshot(injector::Injector, ind_id::Integer, base_population::DataFram
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
 
+        # Death events carry no value to decode (the timestamp was the day of death) —
+        # write the constant flag (into the column, created if the base table has none)
+        if field_symbol in (:death,)
+            if !(field_symbol in names(snapshot_df))
+                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            end
+            snapshot_df[field_symbol] = INJECTION_DEATH_FLAG
+            continue
+        end
+
         # Decode the value from the event
         original_value = decode_value(injector, field_symbol, event.new_value)
 
@@ -754,6 +905,16 @@ function snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::
         ind_id = Int(event.ind_id)
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
+
+        # Death events carry no value to decode (the timestamp was the day of death) —
+        # write the constant flag (into the column, created if the base table has none)
+        if field_symbol in (:death,)
+            if !(field_symbol in names(snapshot_df))
+                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            end
+            snapshot_df[ind_id, field_symbol] = INJECTION_DEATH_FLAG
+            continue
+        end
 
         # Decode the value from the event
         original_value = decode_value(injector, field_symbol, event.new_value)
@@ -817,6 +978,21 @@ function get_change_history(injector::Injector, ind_id::Integer, base_population
         # Get field from the event
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
+
+        # Death events carry no value to decode (the timestamp was the day of death) —
+        # the constant flag stands in for the value in the history table
+        if field_symbol in (:death,)
+            if !(field_symbol in names(snapshot_df))
+                snapshot_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            end
+            if !(field_symbol in names(tmp_df))
+                tmp_df[:, field_symbol] = INJECTION_DEATH_FLAG
+            end
+            tmp_df[!, field_symbol] .= INJECTION_DEATH_FLAG
+            tmp_df.timestamp .= event.timestamp
+            append!(snapshot_df, tmp_df)
+            continue
+        end
 
         # Decode the value from the event
         original_value = decode_value(injector, field_symbol, event.new_value)
@@ -886,7 +1062,7 @@ function stage_new_individuals!(injector::Injector, new_individuals::DataFrame, 
         i = convert(ind_id_type, new_ids[n])
         for (field, value) in pairs(row)
             field === :id && continue  # identity is assigned by the injector; an input id column is ignored
-            stage_event!(injector, i, field, value, converted_timestamp)
+            _stage_event!(injector, i, field, value, converted_timestamp)   # internal: born-dead newborns keep working
         end
     end
 
@@ -1008,7 +1184,7 @@ end
 
 # Export all public functions and types
 export Event, ColumnSchema, InjectorSchema, Injector
-export create_column_schema, stage_event!, stage_new_individual!, stage_new_individuals!
+export create_column_schema, stage_event!, stage_death!, stage_new_individual!, stage_new_individuals!
 export encode_value, decode_value, get_original_value, snapshot
 export save, minimal_encoding, update_schema!
 end # module PopulationInjection

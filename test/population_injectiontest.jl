@@ -91,6 +91,43 @@ end
     @test event2.timestamp == 200
 end
 
+# Test 2b: setting-id staging rules (new households / offices / school classes, ...)
+@testset "Setting ID Staging Rules" begin
+    # Base population: 40 individuals in 10 households (ids 1:10)
+    base_pop = DataFrame(
+        id = Int32.(1:40),
+        age = Int8.(repeat(18:21, inner = 10)[1:40]),
+        sex = Int8.(repeat([1, 2], inner = 20)[1:40]),
+        household = Int32.(repeat(1:10, inner = 4))
+    )
+    schema = PI.create_column_schema(base_pop)
+    inj = PI.Injector(schema)
+
+    # extend the schema so the new household ids (and the values of the negative tests
+    # below, which must be encodable for the setting-id rule to be reached) can be encoded
+    PI.update_schema!(inj.schema, :household, vcat(Int32.([-1, 0]), Int32.(11:15)))
+
+    # the first new household id (max base id + 1) is valid
+    PI.stage_event!(inj, 1, :household, Int32(11), Int16(1))
+    # the same new household id may be referenced again by later events
+    # (a second individual joins the newly formed household)
+    PI.stage_event!(inj, 2, :household, Int32(11), Int16(2))
+    # the next new household id is valid as well
+    PI.stage_event!(inj, 3, :household, Int32(12), Int16(3))
+
+    @test length(inj.events) == 3
+    @test PI.get_original_value(inj, inj.events[2]) == 11
+
+    # skipping a new id would leave a gap → staging error
+    @test_throws ArgumentError PI.stage_event!(inj, 4, :household, Int32(14), Int16(4))
+    # an id that is neither a base id nor the default "no setting" id → staging error
+    @test_throws ArgumentError PI.stage_event!(inj, 4, :household, Int32(0), Int16(4))
+    # the default id ("no household") is always allowed
+    PI.stage_event!(inj, 4, :household, Int32(GEMS.DEFAULT_SETTING_ID), Int16(4))
+    # existing base household ids remain valid
+    PI.stage_event!(inj, 5, :household, Int32(3), Int16(5))
+end
+
 # Test 3: Encoding and decoding functionality
 @testset "Encoding and Decoding" begin
     base_pop = generate_test_population()
@@ -746,9 +783,8 @@ end
         base[!, :death] = Int8.(fill(-1, 100))          # alive = DEFAULT_TICK (-1); schema built from THIS df
         pop = Population(base)
         schema = PI.create_column_schema(base)
-        PI.update_schema!(schema, :death, [Int8(1)])    # the staged flag value must be in the schema
         inj = PI.Injector(schema)
-        PI.stage_event!(inj, 3, :death, Int8(1), Int16(7)) # value may be a flag; the TIMESTAMP is the death day
+        PI.stage_death!(inj, 3, nothing, Int16(7))      # the TIMESTAMP is the death day; no reason
 
         sim = Simulation(population = pop, population_injection = inj,
                          stop_criterion = TimesUp(limit = 9))
@@ -766,15 +802,126 @@ end
         @test dl.pathogen_id[dl.id .== Int32(3)] == [GEMS.DEFAULT_PATHOGEN_ID]
     end
 
+    @testset "death injection with death reason" begin
+        # the death-reason column must exist in the schema's base DataFrame (like :death)
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        base[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
+        pop = Population(base)
+        schema = PI.create_column_schema(base)
+        PI.update_schema!(schema, :death_reason, [Int8(GEMS.DEATH_REASON_NATURAL)])  # new codes must be in the schema
+        inj = PI.Injector(schema)
+        # positive codes are reserved for simulation-caused (pathogen) deaths -> rejected at staging
+        @test_throws ArgumentError PI.stage_death!(inj, 3, Int8(1), Int16(7))
+        # ind 3: natural death; ind 7: death with the default (unspecified) reason
+        PI.stage_death!(inj, 3, GEMS.DEATH_REASON_NATURAL, Int16(7))
+        PI.stage_death!(inj, 7, nothing, Int16(7))
+
+        sim = Simulation(population = pop, population_injection = inj,
+                         stop_criterion = TimesUp(limit = 9))
+        for _ in 1:7; step!(sim); end
+        @test !dead(get_individual_by_id(population(sim), Int32(3)))
+        step!(sim)                                        # tick 7: deaths applied
+        ind3 = get_individual_by_id(population(sim), Int32(3))
+        ind7 = get_individual_by_id(population(sim), Int32(7))
+        @test dead(ind3) && dead(ind7)
+        # the staged reason is part of the death state; without one it stays at the default
+        @test ind3.death_reason == Int8(GEMS.DEATH_REASON_NATURAL)
+        @test ind7.death_reason == Int8(GEMS.DEFAULT_DEATH_REASON)
+        # the injector never attributes a death to a pathogen
+        @test killing_pathogen_id(ind3) === nothing
+        @test killing_pathogen_id(ind7) === nothing
+        # the DeathLogger records the reason (its `pathogen_id` column)
+        dl = dataframe(deathlogger(sim))
+        @test dl.pathogen_id[dl.id .== Int32(3)] == [Int8(GEMS.DEATH_REASON_NATURAL)]
+        @test dl.pathogen_id[dl.id .== Int32(7)] == [Int8(GEMS.DEFAULT_DEATH_REASON)]
+    end
+
+    @testset "stage_death! convenience" begin
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        base[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
+        pop = Population(base)
+        schema = PI.create_column_schema(base)
+        PI.update_schema!(schema, :death_reason, [Int8(GEMS.DEATH_REASON_NATURAL)])
+        inj = PI.Injector(schema)
+
+        # without a reason: only the :death event is staged (no :death schema entry needed)
+        ev = PI.stage_death!(inj, 3, nothing, Int16(7))
+        @test length(inj.events) == 1
+        @test ev.timestamp == Int16(7)
+        # with a reason: both events, same timestamp
+        PI.stage_death!(inj, 7, GEMS.DEATH_REASON_NATURAL, Int16(7))
+        @test length(inj.events) == 3
+        # positive codes are still rejected (and leave no partial state)
+        @test_throws ArgumentError PI.stage_death!(inj, 9, Int8(1), Int16(7))
+        # the manual stage_event! paths for deaths are closed, hinting at stage_death!
+        @test_throws ArgumentError PI.stage_event!(inj, 3, :death, Int8(1), Int16(7))
+        @test_throws ArgumentError PI.stage_event!(inj, 3, :death_reason, Int8(GEMS.DEATH_REASON_NATURAL), Int16(7))
+
+        sim = Simulation(population = pop, population_injection = inj,
+                         stop_criterion = TimesUp(limit = 9))
+        for _ in 1:7; step!(sim); end
+        step!(sim)                                        # tick 7: deaths applied
+        ind3 = get_individual_by_id(population(sim), Int32(3))
+        ind7 = get_individual_by_id(population(sim), Int32(7))
+        ind9 = get_individual_by_id(population(sim), Int32(9))
+        @test dead(ind3) && dead(ind7) && !dead(ind9)
+        @test ind3.death_reason == Int8(GEMS.DEFAULT_DEATH_REASON)
+        @test ind7.death_reason == Int8(GEMS.DEATH_REASON_NATURAL)
+        dl = dataframe(deathlogger(sim))
+        @test dl.pathogen_id[dl.id .== Int32(7)] == [Int8(GEMS.DEATH_REASON_NATURAL)]
+    end
+
+    @testset "stage_death! requires the declared death columns" begin
+        # no :death column in the base population -> rejected, hinting at the column, its default value, and the schema step
+        base = make_base()
+        schema = PI.create_column_schema(base)
+        inj = PI.Injector(schema)
+        ex = try
+            PI.stage_death!(inj, 3, nothing, Int16(7))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test occursin("has no :death column", ex.msg)
+        @test occursin("GEMS.DEFAULT_TICK", ex.msg) && occursin("create_column_schema", ex.msg)
+        ex = try
+            PI.stage_death!(inj, 3, GEMS.DEATH_REASON_NATURAL, Int16(7))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test isempty(inj.events)                                    # nothing staged on failure
+        # :death declared, but no :death_reason: a death without reason is fine, with a reason rejected
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        schema = PI.create_column_schema(base)
+        inj = PI.Injector(schema)
+        PI.stage_death!(inj, 3, nothing, Int16(7))
+        @test length(inj.events) == 1
+        ex = try
+            PI.stage_death!(inj, 7, GEMS.DEATH_REASON_NATURAL, Int16(7))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test occursin("has no :death_reason column", ex.msg)
+        @test occursin("GEMS.DEFAULT_DEATH_REASON", ex.msg) && occursin("create_column_schema", ex.msg)
+        @test length(inj.events) == 1                                # the failed staging left no partial state
+    end
+
     @testset "death with snapshot bake-in" begin
         # death at day 490, snapshot 500 -> dead from simulation tick 0, NOT in DeathLogger
         base = make_base()
         base[!, :death] = Int8.(fill(-1, 100))
         pop = Population(base)
         schema = PI.create_column_schema(base)
-        PI.update_schema!(schema, :death, [Int8(1)])
         inj = PI.Injector(schema)
-        PI.stage_event!(inj, 3, :death, Int8(1), Int16(490))
+        PI.stage_death!(inj, 3, nothing, Int16(490))
 
         sim = Simulation(population = pop, population_injection = inj,
                          population_snapshot = 500, stop_criterion = TimesUp(limit = 3))
@@ -793,10 +940,9 @@ end
         schema = PI.create_column_schema(base)
         PI.update_schema!(schema, :occupation, [Int16(20)])
         PI.update_schema!(schema, :age, [Int8(2)])
-        PI.update_schema!(schema, :death, [Int8(1)])
         inj = PI.Injector(schema)
         PI.stage_event!(inj, 1, :occupation, Int16(20), Int16(490))   # baked in
-        PI.stage_event!(inj, 3, :death, Int8(1), Int16(495))          # baked in (dead from tick 0)
+        PI.stage_death!(inj, 3, nothing, Int16(495))                  # baked in (dead from tick 0)
         PI.stage_new_individuals!(inj, DataFrame(id = Int32[101], sex = Int8[1], age = Int8[2],
                                                  occupation = Int16[20], household = Int32[1]), Int16(500))  # baked-in birth
         PI.stage_event!(inj, 2, :occupation, Int16(20), Int16(510))   # post-snapshot -> fires at sim tick 10

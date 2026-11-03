@@ -9,6 +9,9 @@
 ###   - the simulation clock always starts at tick 0
 ###   - an event on the death column marks the individual dead from the event's timestamp
 ###     (the decoded value is not interpreted as a tick)
+###   - a staged `:death_reason` event (GEMS' `Individual.death_reason` code: killing
+###     pathogen id > 0, or a negative non-infection code such as DEATH_REASON_NATURAL)
+###     is applied together with the individual's death
 ###
 
 # EXPORTS
@@ -20,6 +23,16 @@ export validate_injection_base!, reset_injection!
 # Staged column(s) encoding "this individual has died" (matches the `Individual.death` field).
 # Extend this tuple if the staged changes use a different column name (e.g. :is_dead).
 const INJECTION_DEATH_FIELDS = (:death,)
+
+# Value stored for death events — defined in the PI module (single source of truth);
+# the engine never interprets a death event's value (the timestamp is the day of death).
+const INJECTION_DEATH_FLAG = PopulationInjection.INJECTION_DEATH_FLAG
+
+# Staged column carrying the cause of death (matches the `Individual.death_reason` field).
+# Only non-infection codes may be staged (a negative code such as `DEATH_REASON_NATURAL`,
+# or `DEFAULT_DEATH_REASON` when unspecified): positive codes are reserved for
+# simulation-caused (pathogen) deaths and are rejected at staging (cf. `stage_event!`).
+const INJECTION_DEATH_REASON_FIELD = :death_reason
 
 
 """
@@ -130,16 +143,20 @@ end
 
 
 """
-    _realize_death!(ind, t)
+    _realize_death!(ind, t, reason=nothing)
 
 Mark `ind` dead with death tick `t` (simulation time). Mirrors the flag/mask effects of
 GEMS' `_process_death!` so the state is consistent even when the individual update loop
-does not run (dormant simulation). Idempotent. `death_reason` is intentionally
-left at `DEFAULT_DEATH_REASON` (non-disease death; grants no immunity, cf. `_EndedInfection`).
+does not run (dormant simulation). Idempotent. When `reason` is provided (a staged
+`death_reason` code — a non-infection code such as `DEATH_REASON_NATURAL`, positive
+pathogen codes never being stageable), it is written to `ind.death_reason`; otherwise
+`death_reason` is left as is (initially `DEFAULT_DEATH_REASON`), so the death is
+attributed to no pathogen (cf. `_EndedInfection`, `killing_pathogen_id`).
 """
-function _realize_death!(ind::Individual, t::Int16)
+function _realize_death!(ind::Individual, t::Int16, reason::Union{Int8,Nothing} = nothing)
     ind.death = t
     dead!(ind, true)
+    reason !== nothing && (ind.death_reason = reason)
     ind.active_pathogens_mask = 0
     ind.detected_mask = 0
     return nothing
@@ -236,7 +253,10 @@ Shared core: apply a batch of already-selected staged events to a `Population`.
 - fields the population does not store (neither an `Individual` field nor an extension
   column) are skipped, with one warning per (injector, field)
 - deaths: events on `INJECTION_DEATH_FIELDS` mark the individual dead from `death_tick`
-  (simulation time: `0` for the construction-time bake-in, the application tick otherwise)
+  (simulation time: `0` for the construction-time bake-in, the application tick otherwise);
+  a staged `:death_reason` event (GEMS' `Individual.death_reason` code) for the same
+  individual is applied together with the death, independent of the event order in the
+  batch; without a staged reason `death_reason` stays at `DEFAULT_DEATH_REASON`
 - new individuals from ids that do not exist yet (`:sex`/`:age` required; an individual
   that already exists is skipped, making re-application idempotent); staged extension
   fields of a new individual are realized on a zero-filled default extension; staged
@@ -259,24 +279,39 @@ function apply_injection_events!(pop::Population,
     death_ids = Int32[]
     births = IdDict{Int32, Dict{Symbol,Any}}()   # individual id -> collected fields
 
+    # staged death reasons per individual (the last occurrence in the batch wins; batches
+    # are applied in chronological order). Applied with the death so the reason is part of
+    # the death state, independent of the event order in the batch.
+    death_reasons = Dict{Int32, Int8}()
+    for ev in events
+        injector.schema.index_to_field[Int(ev.field) + 1] === INJECTION_DEATH_REASON_FIELD || continue
+        death_reasons[Int32(ev.ind_id)] = Int8(PopulationInjection.get_original_value(injector, ev))
+    end
+
     for ev in events
         field = injector.schema.index_to_field[Int(ev.field) + 1]
-        value = PopulationInjection.get_original_value(injector, ev)
         ind_id = Int32(ev.ind_id)
+        # the value is decoded lazily (only where used) - death events carry a constant
+        # flag that is deliberately not in the schema, so it must not be decoded
+        value = nothing
 
         ind = get_individual_by_id(pop, ind_id)
         if ind === nothing
-            # not present yet: accumulate fields, materialized below (birth or born-dead)
+            # not present yet: accumulate fields, materialized below (birth or born-dead).
+            # Death events keep their constant flag (nothing to decode; the `died`
+            # check below only needs the field to be present in props).
             ind_props = get(births, ind_id, Dict{Symbol, Any}())
             births[ind_id] = ind_props
-            ind_props[field] = value
+            ind_props[field] = field in INJECTION_DEATH_FIELDS ?
+                INJECTION_DEATH_FLAG : PopulationInjection.get_original_value(injector, ev)
         else
             if field in INJECTION_DEATH_FIELDS
-                _realize_death!(ind, death_tick)
+                _realize_death!(ind, death_tick, get(death_reasons, ind_id, nothing))
                 push!(death_ids, ind_id)
             elseif field === :id
                 continue                        # identity is immutable
             elseif field in individual_base_fieldnames()
+                value = PopulationInjection.get_original_value(injector, ev)
                 T = get(setting_fields(), field, nothing)
                 if T !== nothing && cntnr !== nothing
                     _apply_setting_move!(cntnr, T, ind, Int32(value))   # id field + membership stay in sync
@@ -287,6 +322,7 @@ function apply_injection_events!(pop::Population,
                 n_updates += 1
             elseif _is_extension_field(ind, field)
                 # extension columns (ind_extension) are stored per individual — inject them
+                value = PopulationInjection.get_original_value(injector, ev)
                 setproperty!(ind, field, value)     # Individual.setproperty! routes to the boxed extension
                 n_updates += 1
             else
@@ -353,7 +389,8 @@ end
 Per-tick hook (called at the top of `step!`). Returns immediately (O(1)) when no injector
 is attached or no staged change is due at the current tick; otherwise applies every event
 with `timestamp <= tick + offset` that has not been applied yet, exactly once.
-Deaths applied during the run are recorded exactly once in the `DeathLogger`.
+Deaths applied during the run are recorded exactly once in the `DeathLogger`, with the
+individual's `death_reason` (the staged `:death_reason` code if any).
 """
 function inject_population_changes!(simulation::Simulation)
     st = population_injection(simulation)
@@ -383,9 +420,13 @@ function inject_population_changes!(simulation::Simulation)
     st.cursor = end_idx
 
     # record run-time deaths exactly once; the engine's was_dead->dead transition check
-    # skips them (flag already set) so there is no double logging
+    # skips them (flag already set) so there is no double logging. The recorded reason is
+    # the individual's death_reason (the staged :death_reason code if any, applied by
+    # _realize_death!), mirroring GEMS' native death logging.
+    pop = population(simulation)
     for d in death_ids
-        log!(deathlogger(simulation), d, DEFAULT_PATHOGEN_ID, Int16(cur_tick))
+        ind = get_individual_by_id(pop, d)
+        log!(deathlogger(simulation), d, ind === nothing ? DEFAULT_PATHOGEN_ID : ind.death_reason, Int16(cur_tick))
     end
 
     @info "population injection: applied $n_updates attribute change(s), $(length(death_ids)) death(s) and $n_births birth(s) at tick $cur_tick"
