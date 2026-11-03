@@ -425,7 +425,9 @@ Encodes a value using the injector's schema.
 - `Any`: The encoded value
 
 # Throws
-- `Error`: If the value is not found in the encoding
+- `ErrorException`: for a closed-set column, if the value is not in the encoding (register
+  it via `update_schema!` first); for an identity-mapped column (`id`/`age`/`sex`/settings),
+  if the value is out of range for the column's element type
 """
 function encode_value(injector::Injector, field::Symbol, value)
     schema_entry = injector.schema.columns[field]
