@@ -62,9 +62,6 @@ schema = PI.create_column_schema(base)
 inj = PI.Injector(schema)
 ```
 
-!!! note "Why not `new_injector(pop)` here?"
-    `new_injector(pop)` builds the schema from `dataframe(population)` — that table only contains columns with a matching `Individual` field. `income` is *not* a field of `Individual`, so it is not in that table and there would be no `:income` column to stage. Whenever the staged changes use columns beyond `Individual`'s fields, build the schema manually: the canonical `dataframe(population)` plus your extra columns, passed to `PI.create_column_schema`.
-
 ## Float columns in the schema
 
 For integer columns, `PI.create_column_schema` encodes the distinct values into a compact integer map — a *closed* set of values that must be registered before staging — **except** the identity-mapped columns `:id`, `:age`, `:sex` and the settings (`:household`, `:office`, `:schoolclass`, `:municipality`): their value set is open and growing, so a staged value is stored as-is and any value of the column's element type is accepted, with no registration.
@@ -218,8 +215,7 @@ The re-based timeline of the two runs:
 | newborn (id `101`) | 10 | 11 steps | 6 steps |
 | `income`(5) → `2050.25` | 12 | 13 steps | 8 steps |
 
-!!! tip "Sanity check"
-    For run B, the baked-in state *is* `PI.snapshot(inj, base, Int16(5))` (day `5` inclusive): the income changes of days 2, 4 and 5 are part of the initial population, the day-6 job change is not, and the population has 100 individuals. After 6 steps, the observable state matches `PI.snapshot(inj, base, Int16(10))` — 101 individuals, the newborn with `occupation 20` and `income 3100.5f0`.
+
 
 ## Using it with a Simulation
 
