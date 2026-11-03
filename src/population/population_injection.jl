@@ -237,10 +237,102 @@ function minimal_encoding(data, float_tol::Real)
     end
 end
 
+
+# `id`, `age`, `sex` and the setting columns (the keys of `setting_fieldmap()`, e.g.
+# `:household`) are *identity-mapped*: their value set is open and growing (new ages, new
+# setting ids, …) rather than a closed categorical code table, so a staged value is stored
+# as-is in the column's own element type — it needs no `update_schema!` pre-registration and
+# encodes/decodes to itself. Every other column keeps the closed-set encoding above.
+function identity_fields()
+    return Set([:id, :age, :sex] ∪ Set(keys(Main.GEMS.setting_fieldmap())))
+end
+
+is_identity_field(field::Symbol) = field in identity_fields()
+
+# Identity encoding: forward and reverse maps are the identity over the base values and the
+# stored type is the column's own element type (the value set stays open).
+function identity_encoding(data)
+    T = eltype(data)
+    forward_map = Dict{T,T}()
+    reverse_map = Dict{T,T}()
+    for v in unique(data)
+        forward_map[v] = v
+        reverse_map[v] = v
+    end
+    return forward_map, reverse_map, T
+end
+
+# Convert a staged value into an identity column's type; an out-of-range value is an
+# `ErrorException` (matching the closed-set path's error type) naming the column.
+function _encode_identity!(min_type, value, field)
+    return try
+        convert(min_type, value)
+    catch e
+        if e isa InexactError
+            throw(ErrorException("Value $value is out of range for the identity-mapped $(field) column (type $(min_type))"))
+        end
+        rethrow()
+    end
+end
+
+# The required `Individual` fields the base table must carry as columns — their types are
+# read from the `Individual` struct itself, the single source of truth. The setting
+# columns (the keys of `setting_fieldmap()`, e.g. `:household`) are optional: they
+# default to `DEFAULT_SETTING_ID` (`-1`) on `Individual`, so an individual without a
+# setting is valid and no column is needed — but when present they must keep the
+# `Individual` field type.
+const REQUIRED_BASE_FIELDS = (:id, :age, :sex)
+
+"""
+    _check_required_base_columns!(df)
+
+Rejects a base table that lacks a required `Individual` field column or carries one with
+the wrong element type (`Population(df)` requires `id`/`age`/`sex`, and the `Simulation`
+hash-checks the live population against this table — the hash is dtype-sensitive, so a
+mistyped column would fail later with an opaque hash mismatch). Setting columns are
+optional, but a present one must keep the `Individual` field type.
+"""
+function _check_required_base_columns!(df)
+    G = Main.GEMS
+    required = [(c, fieldtype(G.Individual, c)) for c in REQUIRED_BASE_FIELDS]
+    optional = [(c, fieldtype(G.Individual, c)) for c in keys(G.setting_fieldmap())]
+    missing = [c for (c, _) in required if !(c in propertynames(df))]
+    mistyped = [(c, eltype(df[!, c]), T) for (c, T) in vcat(required, optional)
+                if c in propertynames(df) && eltype(df[!, c]) !== T]
+    if isempty(missing) && isempty(mistyped)
+        return nothing
+    end
+    problems = String[]
+    !isempty(missing) &&
+        push!(problems, "missing required column(s): $(join([":$(c)" for c in missing], ", "))")
+    !isempty(mistyped) &&
+        push!(problems, join([":$(c) is $(T) but must be $(want) to match Individual.$(c)"
+            for (c, T, want) in mistyped], "; "))
+    throw(ArgumentError(
+        "population injection: create_column_schema requires the base DataFrame to carry the " *
+        "required Individual fields with their exact types ($(join([":$(c)::$(T)" for (c, T) in required], ", "))). " *
+        "Setting columns ($(join([":$(c)" for (c, _) in optional], ", "))) are optional — they default to " *
+        "GEMS.DEFAULT_SETTING_ID on Individual — but when present they must keep the Individual field " *
+        "type ($(join([":$(c)::$(T)" for (c, T) in optional], ", "))). " *
+        "$(join(problems, "; ")). " *
+        "Add the missing columns (e.g. base[!, :age] = fill(Int8(0), nrow(base))) and convert " *
+        "mistyped ones (e.g. base[!, :id] = Int32.(base[:, :id])), or build the base with " *
+        "GEMS' dataframe(population) / new_injector(population)."
+    ))
+end
+
 """
     create_column_schema(df::DataFrame)
 
 Creates a schema for all columns in a DataFrame.
+
+The base table must carry the required `Individual` fields as columns with their exact
+types — `:id` (`Int32`), `:age` (`Int8`), `:sex` (`Int8`) — because `Population(df)`
+requires them and the `Simulation` hash-checks the live population against this table
+(the hash is dtype-sensitive). Missing or mistyped required columns are an
+`ArgumentError` naming each column, its required type, and the conversion to take.
+Setting columns (`:household`, `:office`, …) are optional, but a present one must keep
+the `Individual` field type or is rejected the same way.
 
 # Arguments
 - `df::DataFrame`: The base population table to create the schema for
@@ -249,6 +341,7 @@ Creates a schema for all columns in a DataFrame.
 - `InjectorSchema`: The created schema
 """
 function create_column_schema(df::DataFrame, float_tol=1e-6)
+    _check_required_base_columns!(df)
     num_individuals = nrow(df)
     # Determine individual id type based on number of individuals + 10% buffer
     ind_id_type = determine_ind_id_type(num_individuals)
@@ -282,7 +375,11 @@ function create_column_schema(df::DataFrame, float_tol=1e-6)
     # Process each column
     for col_name in field_names
         col_data = df[:, col_name]
-        forward_map, reverse_map, min_type = minimal_encoding(col_data, float_tol)
+        if is_identity_field(Symbol(col_name))
+            forward_map, reverse_map, min_type = identity_encoding(col_data)
+        else
+            forward_map, reverse_map, min_type = minimal_encoding(col_data, float_tol)
+        end
         # Compute stable hash for the column data
         col_hash = stable_hash(col_data)
         # Store hash in meta information per column
@@ -332,6 +429,9 @@ Encodes a value using the injector's schema.
 """
 function encode_value(injector::Injector, field::Symbol, value)
     schema_entry = injector.schema.columns[field]
+    if is_identity_field(field)
+        return _encode_identity!(schema_entry.min_type, value, field)
+    end
     forward_map = schema_entry.forward_map
     if injector.schema.columns[field].min_type <: AbstractFloat
         return convert(injector.schema.columns[field].min_type, value)
@@ -359,6 +459,9 @@ Updates the schema for a specific field with new values.
 - `Nothing`: Updates the schema in place
 """
 function update_schema!(schema::InjectorSchema, field::Symbol, new_values)
+    # Identity-mapped columns (id/age/sex/settings) have an open value set — staging new
+    # values is already legal, so there is nothing to register.
+    is_identity_field(field) && return nothing
     # Check if field exists in schema
     if !haskey(schema.columns, field)
         error("Field $field not found in schema")
@@ -542,6 +645,20 @@ function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_v
     # Get the field index
     field_index = injector.schema.field_to_index[field]
 
+    # Identity-mapped columns (id/age/sex/settings) have an open value set: the staged value
+    # is stored as-is in the column's own type — no closed value set to check, no
+    # `update_schema!` needed. Setting columns keep their contiguity rule.
+    if is_identity_field(field)
+        converted_value = _encode_identity!(injector.schema.columns[field].min_type, new_value, field)
+        if converted_value != new_value
+            @warn "Value $new_value was converted to $converted_value for encoding"
+        end
+        _check_staged_setting_id!(injector, field, converted_value)
+        event = Event{injector.schema.columns[field].min_type}(converted_id, field_index, converted_value, converted_timestamp)
+        push!(injector.events, event)
+        return event
+    end
+
     # if it is a float in the schema as well as in new_value then just create the event, as no encoding is needed.
     if injector.schema.columns[field].min_type <: AbstractFloat
         converted_value = convert(injector.schema.columns[field].min_type, new_value)
@@ -668,6 +785,9 @@ Decodes an encoded value back to its original form.
 - `Any`: The original value
 """
 function decode_value(injector::Injector, field::Symbol, encoded_value)
+    if is_identity_field(field)
+        return convert(injector.schema.columns[field].original_type, encoded_value)
+    end
     if injector.schema.columns[field].min_type <: AbstractFloat
         return convert(injector.schema.columns[field].original_type, encoded_value)
     else

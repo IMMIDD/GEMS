@@ -36,13 +36,14 @@ function generate_test_population()
     Random.seed!(1234)
     # Create a test DataFrame with various data types
     df = DataFrame(
-        id=1:100,
+        id=Int32.(1:100),
         name=string.("Person_", 1:100),
         age=Int8.(rand(18:80, 100)),
         salary=rand(30000.0:150000.0, 100),
         department=rand(["IT", "HR", "Finance", "Marketing", "Operations"], 100),
         active=rand([true, false], 100),
-        score=rand(0.0:100.0, 100)
+        score=rand(0.0:100.0, 100),
+        sex=Int8.(rand(1:2, 100))
     )
     return df
 end
@@ -218,7 +219,7 @@ end
 # Test 7: Edge cases and boundary conditions
 @testset "Edge Cases" begin
     # Test with empty DataFrame
-    empty_df = DataFrame(id=Int[], name=String[], age=Int[])
+    empty_df = DataFrame(id=Int32[], name=String[], age=Int8[], sex=Int8[])
     schema = PI.create_column_schema(empty_df)
     inj = PI.Injector(schema)
 
@@ -226,7 +227,7 @@ end
     @test inj isa PI.Injector
 
     # Test with single row
-    single_row_df = DataFrame(id=[1], name=["Test"], age=[25])
+    single_row_df = DataFrame(id=Int32[1], name=["Test"], age=Int8[25], sex=Int8[1])
     single_schema = PI.create_column_schema(single_row_df)
     single_inj = PI.Injector(single_schema)
 
@@ -234,7 +235,8 @@ end
     @test single_inj isa PI.Injector
 
     # Test with boolean values
-    bool_df = DataFrame(active=[true, false, true])
+    bool_df = DataFrame(id=Int32[1, 2, 3], age=Int8[30, 40, 50], sex=Int8[1, 2, 1],
+                        active=[true, false, true])
     bool_schema = PI.create_column_schema(bool_df)
     bool_inj = PI.Injector(bool_schema)
 
@@ -257,10 +259,49 @@ end
     @test haskey(inj.schema.field_to_index, :age)
 
     # Test index to field mapping
-    @test length(inj.schema.index_to_field) == 7
+    @test length(inj.schema.index_to_field) == 8
     @test inj.schema.index_to_field[1] == :id
     @test inj.schema.index_to_field[2] == :name
     @test inj.schema.index_to_field[3] == :age
+end
+
+@testset "create_column_schema enforces the required and setting columns" begin
+    # missing required columns - the error names the columns, their required types, and the fix
+    ex = try
+        PI.create_column_schema(DataFrame(id = Int32.(1:5), name = ["a", "b", "c", "d", "e"]))
+        nothing
+    catch e
+        e
+    end
+    @test ex isa ArgumentError
+    @test occursin(":age", ex.msg) && occursin(":sex", ex.msg)
+    @test occursin("Int8", ex.msg) && occursin("dataframe(population)", ex.msg)
+    # wrong element type - id must be Int32 (the hash is dtype-sensitive)
+    ex = try
+        PI.create_column_schema(DataFrame(id = 1:5, age = Int8.(20:24), sex = Int8.(1:5)))
+        nothing
+    catch e
+        e
+    end
+    @test ex isa ArgumentError
+    @test occursin(":id is Int64 but must be Int32", ex.msg)
+    # a present setting column must keep the Individual field type (Int32)
+    ex = try
+        PI.create_column_schema(DataFrame(id = Int32.(1:5), age = Int8.(20:24), sex = Int8.(1:5),
+                                         household = 1:5))
+        nothing
+    catch e
+        e
+    end
+    @test ex isa ArgumentError
+    @test occursin(":household is Int64 but must be Int32", ex.msg)
+    # setting columns are optional: no :household/office/schoolclass column is fine
+    schema = PI.create_column_schema(DataFrame(id = Int32.(1:5), age = Int8.(20:24), sex = Int8.(1:5)))
+    @test length(schema.index_to_field) == 3
+    # …and a present setting column with the correct type is accepted
+    schema = PI.create_column_schema(DataFrame(id = Int32.(1:5), age = Int8.(20:24), sex = Int8.(1:5),
+                                               household = Int32.(1:5)))
+    @test length(schema.index_to_field) == 4
 end
 
 # Test 10: Complete workflow test
@@ -440,12 +481,12 @@ end
         # Test snapshot at timestamp before stage_new_individuals! (Int16(250))
         # New individual should not appear in the snapshot since it wasn't created yet
         snapshot_before = PI.snapshot(inj, base_pop, Int16(250))
-        @test size(snapshot_before) == (100, 7)  # Original size
+        @test size(snapshot_before) == (100, 8)  # Original size
 
         # Test snapshot at timestamp after stage_new_individuals! (Int16(350))
         # New individual should appear in the snapshot with all its field values
         snapshot_after = PI.snapshot(inj, base_pop, Int16(350))
-        @test size(snapshot_after) == (101, 7)  # Size increased by 1
+        @test size(snapshot_after) == (101, 8)  # Size increased by 1
 
         # Verify the new individual's values are correctly reflected in the snapshot
         # The newly added individual should have all the values we set via stage_new_individuals!
@@ -462,7 +503,7 @@ end
 
         # Test intermediate snapshot at timestamp Int16(300) - exactly when the individual was added
         snapshot_at_addition = PI.snapshot(inj, base_pop, Int16(300))
-        @test size(snapshot_at_addition) == (101, 7)
+        @test size(snapshot_at_addition) == (101, 8)
         @test snapshot_at_addition[new_id[1], :name] == "Person_5"
     end
 
@@ -496,16 +537,16 @@ end
 
         # Snapshot before first new individual (Int16(350)) - should have original size
         snap_early = PI.snapshot(inj, base_pop, Int16(350))
-        @test size(snap_early) == (100, 7)
+        @test size(snap_early) == (100, 8)
 
         # Snapshot between the two new individuals (Int16(450)) - should have first individual only
         snap_middle = PI.snapshot(inj, base_pop, Int16(450))
-        @test size(snap_middle) == (id_1[1], 7)
+        @test size(snap_middle) == (id_1[1], 8)
         @test snap_middle[id_1[1], :name] == "Person_6"
 
         # Snapshot after both individuals added (Int16(550)) - should have both new individuals
         snap_late = PI.snapshot(inj, base_pop, Int16(550))
-        @test size(snap_late) == (id_2[1], 7)
+        @test size(snap_late) == (id_2[1], 8)
         @test snap_late[id_1[1], :name] == "Person_6"
         @test snap_late[id_2[1], :name] == "Person_7"
         @test snap_late[id_1[1], :age] == Int8.(40)[1]
@@ -527,7 +568,7 @@ end
 
         # Snapshot after individual addition - verify only specified fields are set
         snap = PI.snapshot(inj, base_pop, Int16(700))
-        @test size(snap) == (id_3[1], 7)
+        @test size(snap) == (id_3[1], 8)
         @test snap[id_3[1], :name] == "Person_8"
         @test snap[id_3[1], :age] == Int8.(50)[1]
 

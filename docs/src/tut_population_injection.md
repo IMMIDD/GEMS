@@ -67,7 +67,7 @@ inj = PI.Injector(schema)
 
 ## Float columns in the schema
 
-For integer columns, `PI.create_column_schema` encodes the distinct values into a compact integer map — a *closed* set of values that must be registered before staging.
+For integer columns, `PI.create_column_schema` encodes the distinct values into a compact integer map — a *closed* set of values that must be registered before staging — **except** the identity-mapped columns `:id`, `:age`, `:sex` and the settings (`:household`, `:office`, `:schoolclass`, `:municipality`): their value set is open and growing, so a staged value is stored as-is and any value of the column's element type is accepted, with no registration.
 
 Float columns behave differently: they are not value-encoded. The schema stores the minimal float type that keeps the base values accurate (`Float16` → `Float32` → `Float64`; here the values need `Float32`), and the value map stays empty. Such a column is initially *open*: staging accepts any float value, converted to that minimal type.
 
@@ -75,8 +75,9 @@ Float columns behave differently: they are not value-encoded. The schema stores 
 
 ```julia
 # every value that will be staged later must be in the schema beforehand
+# (the identity columns — age, sex, id, and the settings — need no registration:
+#  any in-type value is accepted, so the newborn's `age` and `household` stage as-is)
 PI.update_schema!(inj.schema, :occupation, Int16[20])   # the new job (day 6 + the newborn)
-PI.update_schema!(inj.schema, :age, Int8[0])            # the newborn's age
 PI.update_schema!(inj.schema, :income, Float32[         # all the income values to be staged
     4200.0, 1500.75, 2600.75, 2800.25, 3100.5, 2050.25])
 ```
@@ -254,7 +255,8 @@ PI.stage_death!(inj, 9, nothing, Int16(8))                      # dead from day 
 
 ## Constraints
 
-- **Schema values are closed:** a new value must be in the schema's forward map — extend it with `update_schema!` *before* staging.
+- **Required base columns:** `:id` (`Int32`), `:age` (`Int8`), and `:sex` (`Int8`) must be present in the base DataFrame — `create_column_schema` throws an `ArgumentError` naming the missing or mistyped columns and the required types (the live population is hash-checked against this base at `Simulation` construction, and the hash is dtype-sensitive). Setting columns (`:household`, `:office`, …) are optional: they default to `DEFAULT_SETTING_ID` on `Individual`, so an individual without a setting is valid — but a present setting column must keep the `Individual` field type (`Int32`) or is rejected the same way.
+- **Schema values are closed:** for most columns a new value must be in the schema's forward map — extend it with `update_schema!` *before* staging. The identity-mapped columns are the exception: `:id`, `:age`, `:sex`, and the settings (`:household`/`:office`/`:schoolclass`/`:municipality`) have an open value set and accept any value of their element type without registration (a staged new setting id still follows the contiguity rule below).
 - **Element types are part of the hash:** the hash is dtype-sensitive (Int32 vs Int64 differ). Build the schema from the canonical `dataframe(population)` — `new_injector(pop)` does this automatically.
 - **Setting moves:** updating `:household`/`:office`/`:schoolclass`/`:municipality` also moves the membership in the settings container (GEMS' `add_member!`/`remove_member!`), creating the target setting when the id is the next free one — GEMS indexes settings by id without gaps, so a staged new setting id must be `max(id) + 1` (staging any other new id is an error). Container hierarchies (`School`, `Workplace`, …) and their `contains`/`contained` links are not touched. A column is treated as a setting column only if its name matches an `Individual` field that GEMS maps to a setting type — the type-level `setting_id!` dispatch is the source of truth and the column name is only the join key (per the `dataframe(population)` convention of one column per field, same name); `setting_fieldmap()` exposes the mapping.
 - **Int16 bounds:** ticks, timestamps, and the snapshot are `Int16`-bounded.
