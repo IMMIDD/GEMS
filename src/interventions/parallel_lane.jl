@@ -299,15 +299,15 @@ end
 
 Triggers what the phases requested from serial code, in producer order.
 """
-function _run_serial_requests!(sim)
+function _run_serial_requests!(sim::S) where {S}
     parallel_lane = _parallel_lane(sim)
     for producer in eachindex(parallel_lane.serial_individual_requests)
         for r in parallel_lane.serial_individual_requests[producer]
-            trigger_strategy(r.strategy, r.individual, sim)
+            trigger_strategy(r.strategy::IStrategy{S}, r.individual, sim)
         end
         empty!(parallel_lane.serial_individual_requests[producer])
         for r in parallel_lane.serial_setting_requests[producer]
-            trigger_strategy(r.strategy, r.setting, sim)
+            trigger_strategy(r.strategy::SStrategy{S}, r.setting, sim)
         end
         empty!(parallel_lane.serial_setting_requests[producer])
     end
