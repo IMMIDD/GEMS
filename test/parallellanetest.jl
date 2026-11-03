@@ -34,13 +34,78 @@ end
         @test !entry_parallel(lane)
         add_measure!(lane, SelfIsolation(1), delay = i -> 0)
         @test !entry_parallel(lane)
-        add_measure!(lane, SelfIsolation(1), condition = i -> true, delay = i -> 0, parallel = true)
+        add_measure!(lane, SelfIsolation(1), condition = i -> true, delay = i -> 0, threadsafe = true)
         @test entry_parallel(lane)
 
         # vouching for its closures does not make an unsafe measure parallel
         closing = SStrategy("closing", lane_sim)
-        add_measure!(closing, CloseSetting(), delay = s -> 0, parallel = true)
+        add_measure!(closing, CloseSetting(), delay = s -> 0, threadsafe = true)
         @test !entry_parallel(closing)
+    end
+
+    @testset "Threadsafe Marks" begin
+        mark_sim = Simulation(pop_size = 100, seed = 7)
+        # a mark without a closure to cover changes nothing
+        no_closures = IStrategy("no closures", mark_sim, threadsafe = true)
+        add_measure!(no_closures, SelfIsolation(1), threadsafe = true)
+        @test GEMS._parallel_strategy(no_closures)
+        # a mark on one call does not cover the closures of another
+        marked = IStrategy("marked", mark_sim, condition = i -> true, threadsafe = true)
+        add_measure!(marked, SelfIsolation(1), condition = i -> true)
+        @test !GEMS._parallel_strategy(marked)
+    end
+
+    # the hint needs threads to promise a gain
+    if Threads.nthreads() > 1
+        @testset "Threadsafe Hint" begin
+            hint_sim(pop_size = GEMS.TICK_TRIGGER_THREADING_MIN + 1000) = Simulation(pop_size = pop_size, seed = 7)
+            hint_logged(sim) = (logger = Test.TestLogger(min_level = Logging.Info);
+                Logging.with_logger(() -> GEMS._hint_threadsafe_option(sim), logger); [l.message for l in logger.logs])
+
+            # an unmarked closure on a strategy that could run in the lane is named
+            sim = hint_sim()
+            held_back = IStrategy("held back", sim, condition = i -> true)
+            add_measure!(held_back, SelfIsolation(1))
+            add_tick_trigger!(sim, ITickTrigger(held_back))
+            messages = hint_logged(sim)
+            @test length(messages) == 1
+            @test occursin("held back", messages[1]) && occursin("threadsafe = true", messages[1])
+            @test !occursin('\n', messages[1]) && occursin("events run (like", messages[1])
+
+            # marked closures, and strategies without closures, are not
+            sim = hint_sim()
+            marked = IStrategy("marked", sim, condition = i -> true, threadsafe = true)
+            add_measure!(marked, SelfIsolation(1), condition = i -> true, threadsafe = true)
+            plain = IStrategy("plain", sim)
+            add_measure!(plain, SelfIsolation(1))
+            add_tick_trigger!(sim, ITickTrigger(marked))
+            @test isempty(hint_logged(sim))
+
+            # a measure that stays serial cannot gain from a mark on an individual strategy
+            sim = hint_sim()
+            unsafe = IStrategy("unsafe", sim, condition = i -> true)
+            add_measure!(unsafe, CustomIMeasure((i, s) -> nothing))
+            add_tick_trigger!(sim, ITickTrigger(unsafe))
+            @test isempty(hint_logged(sim))
+
+            # but a setting strategy's condition still gains on its threaded tick trigger
+            sim = hint_sim()
+            closing = SStrategy("closing", sim, condition = s -> true)
+            add_measure!(closing, CloseSetting())
+            add_tick_trigger!(sim, STickTrigger(Household, closing))
+            @test occursin("closing", only(hint_logged(sim)))
+
+            # no tick trigger, or a small population: nothing to gain
+            sim = hint_sim()
+            no_trigger = IStrategy("no trigger", sim, condition = i -> true)
+            add_measure!(no_trigger, SelfIsolation(1))
+            @test isempty(hint_logged(sim))
+            sim = hint_sim(100)
+            small = IStrategy("small", sim, condition = i -> true)
+            add_measure!(small, SelfIsolation(1))
+            add_tick_trigger!(sim, ITickTrigger(small))
+            @test isempty(hint_logged(sim))
+        end
     end
 
     @testset "Rounds" begin
@@ -127,7 +192,7 @@ end
         @testset "A Second Request Sees The First" begin
             (; sim, isolated, isolate, inds) = round_setup()
             always_positive = TestType("rounds", pathogen(sim), sim, sensitivity = 1.0, specificity = 0.0)
-            once = IStrategy("once", sim, condition = i -> !isolated(i), parallel = true)
+            once = IStrategy("once", sim, condition = i -> !isolated(i), threadsafe = true)
             add_measure!(once, GEMS.Test("once", always_positive, positive_followup = isolate))
             target = inds[1]
             GEMS._with_slot(sim, 1) do

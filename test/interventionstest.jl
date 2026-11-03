@@ -775,13 +775,13 @@ end
             add_measure!(no_closures, SelfIsolation(1))
             @test no_closures.parallel_trigger
             @test !IStrategy("condition", flag_sim, condition = i -> true).parallel_trigger
-            @test IStrategy("marked", flag_sim, condition = i -> true, parallel = true).parallel_trigger
+            @test IStrategy("marked", flag_sim, condition = i -> true, threadsafe = true).parallel_trigger
             # an entry condition runs at processing time, so it does not count
             entry_condition = IStrategy("entry condition", flag_sim)
             add_measure!(entry_condition, SelfIsolation(1), condition = i -> true)
             @test entry_condition.parallel_trigger
             marked_delay = IStrategy("marked delay", flag_sim)
-            add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0, parallel = true)
+            add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0, threadsafe = true)
             @test marked_delay.parallel_trigger
             # a later measure with an unmarked delay turns it off
             add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0)
@@ -807,7 +807,7 @@ end
             named_test_type(name) = TestType(name, pathogen(large_sim), large_sim)
             unmarked = IStrategy("unmarked", large_sim, condition = i -> isodd(id(i)))
             add_measure!(unmarked, GEMS.Test("unmarked", named_test_type("unmarked")))
-            marked = IStrategy("marked", large_sim, condition = i -> isodd(id(i)), parallel = true)
+            marked = IStrategy("marked", large_sim, condition = i -> isodd(id(i)), threadsafe = true)
             add_measure!(marked, GEMS.Test("marked", named_test_type("marked")))
             marked_ids = tested_ids(marked, "marked")
             @test !isempty(marked_ids)
@@ -828,7 +828,7 @@ end
             end
             setting_followup = IStrategy("setting follow-up", large_sim)
             unmarked_settings = SStrategy("unmarked", large_sim, condition = s -> isodd(id(s)))
-            marked_settings = SStrategy("marked", large_sim, condition = s -> isodd(id(s)), parallel = true)
+            marked_settings = SStrategy("marked", large_sim, condition = s -> isodd(id(s)), threadsafe = true)
             for str in (unmarked_settings, marked_settings)
                 add_measure!(str, FindMembers(setting_followup))
                 add_measure!(str, CloseSetting())

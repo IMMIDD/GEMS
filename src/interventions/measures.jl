@@ -124,7 +124,7 @@ s_measuretypes() = subtypes(SMeasure)
 """
     _parallel_safe(measure::Measure, vouched::Bool)
 
-Returns whether `measure` can run in the parallel lane; `vouched` is the `parallel = true` of its `add_measure!` call.
+Returns whether `measure` can run in the parallel lane; `vouched` is the `threadsafe = true` of its `add_measure!` call.
 """
 _parallel_safe(::Measure, ::Bool) = false
 

@@ -952,6 +952,7 @@ function (step!) until the stop criterion is met.
 """
 function run!(simulation::Simulation; with_progressbar::Bool = true)
     _printinfo("Running Simulation $(label(simulation))")
+    _hint_threadsafe_option(simulation)
 
     sc = stop_criterion(simulation)
     

@@ -70,7 +70,7 @@ strategy will be fired in each tick. If only the `interval` is given, the strate
 will be fired from tick 1 onwards in the specified interval.
 An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
 simulation-wide state), regardless of `switch_tick`/`interval`.
-For large populations, the strategy's condition and delays are evaluated on several threads only if it has none or they are marked `parallel = true`.
+For large populations, the strategy's condition and delays are evaluated on several threads only if it has none or they are marked `threadsafe = true`.
 
 # Parameters
 
@@ -135,7 +135,7 @@ strategy will be fired in each tick. If only the `interval` is given, the strate
 will be fired from tick 1 onwards in the specified interval.
 An optional `condition` predicate can be used to suppress firing entirely (e.g. based on
 simulation-wide state), regardless of `switch_tick`/`interval`.
-For many settings, the strategy's condition and delays are evaluated on several threads only if it has none or they are marked `parallel = true`.
+For many settings, the strategy's condition and delays are evaluated on several threads only if it has none or they are marked `threadsafe = true`.
 
 # Parameters
 
