@@ -438,7 +438,7 @@ end
         end
         assign_member_indices!(pop, cntnr)
         GEMS.repack_dirty_pools!(cntnr)
-        sim = Simulation()
+        sim = Simulation(seed = 1)
         sim.population = pop
         sim.settings = cntnr
         return sim, cntnr, activity_plans(pop), pop, inds, cs, yr
@@ -565,7 +565,7 @@ end
 
         # a built list leaves an empty cache empty
         @test csm.rate_cache === nothing
-        @test !isempty(trace(inds[1], sim, [SchoolYear]))
+        @test !isempty(trace(inds[1], sim, [SchoolYear]; to = 100))
         @test csm.rate_cache === nothing
         @test isempty(csm.bin_counts)
 
@@ -573,7 +573,7 @@ end
         rate = contact_rate(csm, yr, 1, frame, Int16(1))
         cache = csm.rate_cache
         @test cache !== nothing
-        trace(inds[1], sim, [SchoolYear])
+        trace(inds[1], sim, [SchoolYear]; to = 100)
         @test csm.rate_cache === cache
         @test contact_rate(csm, yr, 1, frame, Int16(1)) == rate
     end
