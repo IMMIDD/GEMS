@@ -325,14 +325,6 @@ function step!(simulation::Simulation)
     # merge per-thread staged trigger events into the queue before processing
     flush_staging!(event_queue(simulation))
 
-    # infect individuals in settings
-    if !dormant
-        spread_infections!(simulation)
-
-        # push pending infections to InfectionRegistry
-        flush_pending_infections!(simulation)
-    end
-
     # trigger tick triggers
     for tt in simulation |> tick_triggers
         if should_fire(tt, simulation)
@@ -345,6 +337,14 @@ function step!(simulation::Simulation)
     # update quarantine state
     if !dormant
         update_quarantines!(simulation)
+    end
+
+    # infect individuals in settings
+    if !dormant
+        spread_infections!(simulation)
+
+        # push pending infections to InfectionRegistry
+        flush_pending_infections!(simulation)
     end
 
     if !dormant
