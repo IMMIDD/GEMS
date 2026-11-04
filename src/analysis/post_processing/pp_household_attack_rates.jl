@@ -17,6 +17,7 @@ in `constants.jl`. If several infections introduce a pathogen into a household
 at the same first tick, the one with the lowest infection id counts.
 Members who died by the first introduction are not counted as contacts.
 Households left with no one to infect, like single-person ones, are excluded.
+If several members bring the pathogen in on the same tick, the one with the lowest infection id counts as the introducer.
 
 # Returns
 
