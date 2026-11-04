@@ -431,42 +431,118 @@ _contact_scratch() = get!(() -> Individual[], task_local_storage(), :gems_contac
 """
     _sample_past_contacts(ind::Individual, sim::Simulation, settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
 
-Re-draws `ind`'s contacts in its settings of the given `settingtypes` at every tick from `start_tick` to `end_tick` where
-`contact_filter(setting, tick)` holds, using today's memberships. Returns a `Dict` from each living contact's id to the last tick it was drawn.
+Re-draws `ind`'s contacts in each of its settings of the given `settingtypes`, at every tick from `start_tick` to `end_tick` before
+`ind`'s death where `contact_filter(setting, tick)` holds. They are a plausible set, not a replay of the run. Returns a `Dict` from each
+living contact's id to the last tick it was drawn.
 """
 function _sample_past_contacts(ind::Individual, sim::Simulation,
         settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
     last_contact = Dict{Int32, Int16}()
-    buf = sim.contact_buffers[Threads.threadid()]
-    for T in settingtypes
-        s = _primary_setting(ind, sim, T)
-        isnothing(s) && continue
-        _sample_past_contacts_in!(last_contact, buf, s.contact_sampling_method, s, ind, sim, start_tick, end_tick, contact_filter)
+    # a death applies before that tick's transmission
+    dead(ind) && (end_tick = min(end_tick, death(ind) - Int16(1)))
+    start_tick > end_tick && return last_contact
+    for T in settingtypes, sid in setting_ids(ind, T, sim)
+        s = settings(sim, T)[sid]
+        csm = contact_sampling_method(s)
+        # the default method of a container draws nobody
+        contact_rate_bound(csm) == 0 && continue
+        _sample_past_contacts_in!(last_contact, csm, s, ind, sim, start_tick, end_tick, contact_filter)
     end
     return last_contact
 end
 
 """
-    _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, buf::Vector{Individual}, csm::ContactSamplingMethod, s::Setting, ind::Individual, sim::Simulation, start_tick::Int16, end_tick::Int16, contact_filter)
+    _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, csm::ContactSamplingMethod, s::Setting, ind::Individual, sim::Simulation, start_tick::Int16, end_tick::Int16, contact_filter)
 
-Re-draws `ind`'s contacts in `s` for `_sample_past_contacts`, compiled per setting and sampling method type so the tick loop calls them statically.
+Re-draws `ind`'s contacts in `s` for `_sample_past_contacts`. A separate function, so that the tick loop knows the concrete types of `s` and `csm`.
 """
-function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, buf::Vector{Individual}, csm::ContactSamplingMethod,
+function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, csm::ContactSamplingMethod,
         s::Setting, ind::Individual, sim::Simulation, start_tick::Int16, end_tick::Int16, contact_filter)
-    members = individuals(s, sim)
+    members = _members_alive_at(s, start_tick, sim)
     length(members) < 2 && return last_contact
+    # the window ends before `ind`'s death, so `ind` is on the list
     pos = findfirst(m -> m === ind, members)
+    # a built list must not fill the cache this setting's method keeps for transmission
+    if members isa Vector{Individual}
+        csm = deepcopy(csm)
+        membership_changed!(csm, s)
+    end
+    plans = activity_plans(sim)
+    cntnr = settingscontainer(sim)
+    # scales are read once, today: if a schedule switches entries off, an entry off today counts as off for the whole window
+    s_host = _membership_scale(plans, ind, s, cntnr)
+    scale_bound = _scale_bound(s)
+    contacts = sim.contact_buffers[Threads.threadid()]
+    draws = sim.draw_buffers[Threads.threadid()]
 
     for t in start_tick:end_tick
         contact_filter(s, t) || continue
-        empty!(buf)
-        sample_contacts!(buf, csm, s, pos, members, t, true, rng(sim))
-        for c in buf
+        _draw_past_contacts_at!(contacts, draws, csm, s, pos, members, t, s_host, scale_bound, rng(sim), plans, cntnr)
+        for c in contacts
             dead(c) && continue
             last_contact[id(c)] = max(get(last_contact, id(c), t), t)
         end
     end
     return last_contact
+end
+
+# Whether `m` was still alive at tick `t`.
+@inline _alive_at(m::Individual, t::Int16) = !dead(m) || death(m) > t
+
+# The members of leaf `s` alive at tick `t`. A view if those are the living members, which the setting's
+# sampling method already counts; a new vector otherwise.
+function _members_alive_at(s::IndividualSetting, t::Int16, ::Simulation)
+    members = individuals(s)
+    alive = _alive(s)
+    # the dead follow the living
+    died_in_window = any(m -> _alive_at(m, t), view(members, (alive + 1):length(members)))
+    died_in_window || return view(members, 1:alive)
+    return [m for m in members if _alive_at(m, t)]
+end
+
+# The same for a container, keeping the first copy of anyone in two of its leaves.
+function _members_alive_at(c::ContainerSetting, t::Int16, sim::Simulation)
+    members = filter!(m -> _alive_at(m, t), individuals(c, sim))
+    pool = _pool(c)
+    (pool === nothing || pool.repeats > 0) && unique!(members)
+    return members
+end
+
+# One tick's re-drawn contacts, into `contacts`. Follows `sample_scaled_contacts!` with `replace = true` and no thinning,
+# except that it keeps contacts `can_be_contacted` would drop. A test holds the two together.
+function _draw_past_contacts_at!(contacts::Vector{Individual}, draws::Vector{Individual}, csm::ContactSamplingMethod,
+        s::Setting, pos::Int, members::AbstractVector{Individual}, t::Int16, s_host::Float32, scale_bound::Float32, rng::Xoshiro,
+        plans::ActivityPlanStore, cntnr::SettingsContainer)
+    empty!(contacts)
+    r = s_host * scale_bound
+    (r == 0 || length(members) <= 1) && return contacts
+
+    if _has_contact_rate(csm)
+        rate = _visit_rate(contact_rate(csm, s, pos, members, t), s_host, scale_bound, 1.0f0)
+        sample_k_contacts!(contacts, csm, s, pos, members, t, gems_rand(rng, Poisson(rate)), rng)
+        return _keep_by_scale!(contacts, scale_bound, plans, s, cntnr, rng)
+    end
+
+    # `r` calls, the last for the fraction beyond the whole ones
+    calls = floor(Int, r)
+    frac = r - calls
+    for call in 1:(calls + (frac > 0))
+        empty!(draws)
+        _sample_thinned!(draws, csm, s, pos, members, t, true, rng, call > calls ? frac : 1.0f0)
+        append!(contacts, _keep_by_scale!(draws, scale_bound, plans, s, cntnr, rng))
+    end
+    return contacts
+end
+
+# As `_thin_by_scale!`, without `can_be_contacted`: keeps each of `contacts` with its scale over `scale_bound`
+function _keep_by_scale!(contacts::Vector{Individual}, scale_bound::Float32,
+        plans::ActivityPlanStore, s::Setting, cntnr::SettingsContainer, rng::Xoshiro)
+    kept = 0
+    for c in contacts
+        p = _membership_scale(plans, c, s, cntnr) / scale_bound
+        (p >= 1 || gems_rand(rng) < p) && (contacts[kept += 1] = c)
+    end
+    return resize!(contacts, kept)
 end
 
 

@@ -28,11 +28,10 @@ add_measure!(my_str, TraceSourceContacts(siblings, lookback = 14))
 The above example traces the source of the index's infection and then everyone the source
 infected (the index's 'siblings'), triggering 'my\\_other\\_str' for each of them.
 
-With `resample_contacts = true`, non-infected contacts from the same window are traced as well.
-They are re-drawn from the index's settings of the given `settingtypes` (default: `Household`,
-`Office`, `SchoolClass`) using today's memberships, so they are a plausible set, not the contacts
-drawn during the run. A `contact_filter(setting, tick)` returning `false` skips re-drawing in that
-setting at that tick, e.g. to leave out a past school closure.
+With `resample_contacts = true`, non-infected contacts from the same window are traced as well. They are re-drawn in the index's settings of the given `settingtypes`
+(default: all built-in types except `GlobalSetting` and `Municipality`), from today's members and scales, so they are a
+plausible set, not the contacts drawn during the run. A `contact_filter(setting, tick)` returning `false` skips a setting
+at that tick, e.g. to leave out a past closure.
 
 The optional `max_contacts` caps how many contacts the index names; a random subset of that size is
 picked before the `success_rate` draws (default: no cap).
@@ -48,7 +47,7 @@ struct TraceSourceContacts{FU<:IStrategy} <: IMeasure
 
     function TraceSourceContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
             lookback::Integer = 14, resample_contacts::Bool = false,
-            settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
+            settingtypes::Vector{DataType} = DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite],
             contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
         if lookback < 1
             throw(ArgumentError("lookback parameter must be at least 1"))

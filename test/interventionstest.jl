@@ -455,7 +455,7 @@ end
 
         # resample_contacts defaults
         @test resample_contacts(trace_infectious) == false
-        @test settingtypes(trace_infectious) == [Household, Office, SchoolClass]
+        @test settingtypes(trace_infectious) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
 
         # one household of five; the index is infectious from tick 1 and infected no one
         pop4 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
@@ -596,6 +596,11 @@ end
         @test merge_infectees(Dict(4 => 1), [2, 3], [1, 2], [SchoolClass]) == Dict(2 => 1, 3 => 2)
         # an infectee listed twice (two pathogens) replaces one contact and keeps the later tick
         @test merge_infectees(Dict(4 => 2), [2, 2], [1, 3], [SchoolClass]) == Dict(2 => 3)
+        # listing the class before the year replaces a contact of the class, not one elsewhere in the year
+        @test merge_infectees(Dict(3 => 2, 5 => 1), [2], [4], [SchoolClass, SchoolYear]) == Dict(2 => 4, 5 => 1)
+        # an index in two classes shares its second class with the infectee too
+        fake_membership!(school_pop, school_inds[1], SchoolClass, 2)
+        @test merge_infectees(Dict(6 => 2, 9 => 1), [5], [4], [SchoolClass]) == Dict(5 => 4, 9 => 1)
     end
 
     @testset "Trace Source Contacts" begin
@@ -612,7 +617,7 @@ end
         @test follow_up(trace_source) === i_strategy5
         @test lookback(trace_source) == 14
         @test resample_contacts(trace_source) == false
-        @test settingtypes(trace_source) == [Household, Office, SchoolClass]
+        @test settingtypes(trace_source) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
         @test contact_filter(trace_source) isa GEMS.ContactFilterFn
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = 0)
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, success_rate = 2.0)

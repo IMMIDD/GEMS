@@ -36,12 +36,11 @@ Contacts are traced from the index's infectiousness onset until the previous tic
 newest infection has already ended, but at most `lookback` ticks back (default: 14). Infectees who have
 died since are not traced.
 
-With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn
-from the index's settings of the given `settingtypes` (default: `Household`, `Office`, `SchoolClass`)
-using today's memberships, so they are a plausible set, not the contacts drawn during the run.
+With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn in the index's settings of the given `settingtypes`
+(default: all built-in types except `GlobalSetting` and `Municipality`), from today's members and scales, so they are a
+plausible set, not the contacts drawn during the run. A `contact_filter(setting, tick)` returning `false` skips a setting
+at that tick, e.g. to leave out a past closure.
 Infectees the re-draw missed replace re-drawn contacts of a shared setting where possible, keeping the count.
-Past closures are unknown to GEMS; a `contact_filter(setting, tick)` returning `false` skips
-re-drawing in that setting at that tick, e.g. `(s, t) -> !(s isa SchoolClass && 30 <= t <= 44)`.
 
 The optional `max_contacts` caps how many contacts the index names; a random subset of that size is
 picked before the `success_rate` draws (default: no cap).
@@ -57,7 +56,7 @@ struct TraceInfectiousContacts{FU<:IStrategy} <: IMeasure
 
     function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
             lookback::Integer = 14, resample_contacts::Bool = false,
-            settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
+            settingtypes::Vector{DataType} = DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite],
             contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
         if lookback < 1
             throw(ArgumentError("lookback parameter must be at least 1"))
@@ -253,16 +252,29 @@ function _merge_infectees!(last_contact::Dict{Int32, Int16}, infectee_ids::Vecto
     pop = sim |> population
     for (iid, t) in zip(infectee_ids, infection_ticks)
         if !haskey(last_contact, iid)
-            infectee = get_individual_by_id(pop, iid)
-            for T in settingtypes
-                s = _primary_setting(ind, sim, T)
-                (isnothing(s) || _primary_setting(infectee, sim, T) !== s) && continue
-                pool = [id(m) for m in individuals(s, sim) if haskey(last_contact, id(m)) && !(id(m) in logged)]
-                isempty(pool) || delete!(last_contact, gems_rand(sim, pool))
-                break
+            s = _first_shared_setting(ind, get_individual_by_id(pop, iid), sim, settingtypes)
+            if !isnothing(s)
+                # a member of two of a container's leaves is listed twice
+                replaceable = unique!([id(m) for m in individuals(s, sim) if haskey(last_contact, id(m)) && !(id(m) in logged)])
+                isempty(replaceable) || delete!(last_contact, gems_rand(sim, replaceable))
             end
         end
         last_contact[iid] = max(get(last_contact, iid, t), t)
     end
     return last_contact
+end
+
+"""
+    _first_shared_setting(a::Individual, b::Individual, sim::Simulation, settingtypes::Vector{DataType})
+
+Returns the first setting of the given `settingtypes` that `a` and `b` both belong to, or `nothing`.
+"""
+function _first_shared_setting(a::Individual, b::Individual, sim::Simulation, settingtypes::Vector{DataType})
+    for T in settingtypes
+        b_ids = setting_ids(b, T, sim)
+        for sid in setting_ids(a, T, sim)
+            sid in b_ids && return settings(sim, T)[sid]
+        end
+    end
+    return nothing
 end

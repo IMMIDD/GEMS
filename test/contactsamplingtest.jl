@@ -420,3 +420,161 @@ end
         GEMS.ContactFilterFn((s, t) -> !(s isa SchoolClass)))
     @test all(in(Int32(2):Int32(4)), keys(latest))
 end
+
+@testset "Past Contacts with activity plans" begin
+    # two classes in one year: members 5 and 6 are in both, member 3 has scale 0, and member 10 sets the bound
+    function scaled_school(csm)
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [SchoolClass, SchoolYear])
+        inds = [Individual(id = Int32(j), age = 5j, sex = 1) for j in 1:10]
+        cs = [SchoolClass(id = Int32(1), individuals = inds[1:6], contained = Int32(1), contact_sampling_method = deepcopy(csm)),
+              SchoolClass(id = Int32(2), individuals = inds[5:10], contained = Int32(1), contact_sampling_method = deepcopy(csm))]
+        yr = SchoolYear(id = Int32(1), contains = Int32[1, 2], contact_sampling_method = deepcopy(csm))
+        for s in vcat(cs, [yr]); GEMS.add!(cntnr, s); end
+        GEMS.build_pools!(cntnr)
+        pop = Population(inds)
+        for (k, c) in enumerate(cs), m in individuals(c)
+            assign_settings!(pop, m, SchoolClass => k; scale = id(m) == 3 ? 0.0 : id(m) == 5 ? 0.5 : 0.25 * id(m))
+        end
+        assign_member_indices!(pop, cntnr)
+        GEMS.repack_dirty_pools!(cntnr)
+        sim = Simulation()
+        sim.population = pop
+        sim.settings = cntnr
+        return sim, cntnr, activity_plans(pop), pop, inds, cs, yr
+    end
+    age_based() = AgeBasedContactSampling(2.0, 10, ContactMatrix{Float64}(ones(10, 10) ./ 10, 10, 100), Float64[])
+    keep_all = GEMS.ContactFilterFn((s, t) -> true)
+    trace(ind, sim, types; from = 1, to = 5, filter = keep_all) =
+        GEMS._sample_past_contacts(ind, sim, DataType[types...], Int16(from), Int16(to), filter)
+
+    @testset "draws what transmission draws while nothing is closed" begin
+        for csm in (ContactparameterSampling(2.0), RandomSampling(), age_based())
+            sim, cntnr, plans, pop, inds, cs, yr = scaled_school(csm)
+            same_draws = true
+            same_rng = true
+            for s in (cs[1], cs[2], yr)
+                frame = GEMS.present_members(s, cntnr)
+                @test collect(GEMS._members_alive_at(s, Int16(0), sim)) == collect(frame)
+                bound = GEMS._scale_bound(s)
+                for (pos, host) in enumerate(frame), t in Int16(1):Int16(5)
+                    s_host = GEMS._membership_scale(plans, host, s, cntnr)
+                    r1 = Xoshiro(100 * pos + t)
+                    r2 = copy(r1)
+                    spread = GEMS.sample_scaled_contacts!(Individual[], Individual[], contact_sampling_method(s), s, pos, frame, t, true,
+                        r1, plans, cntnr, s_host, bound)
+                    traced = GEMS._draw_past_contacts_at!(Individual[], Individual[], contact_sampling_method(s), s, pos, frame, t,
+                        s_host, bound, r2, plans, cntnr)
+                    same_draws &= spread == traced
+                    same_rng &= r1 == r2
+                end
+            end
+            @test same_draws
+            @test same_rng
+        end
+    end
+
+    @testset "scales set the number of contacts" begin
+        for csm in (ContactparameterSampling(5.0), RandomSampling())
+            sim, cntnr, plans, pop, inds, cs, yr = scaled_school(csm)
+            # a host or a contact of scale 0 draws nobody and is never drawn
+            @test isempty(trace(inds[3], sim, [SchoolClass]; to = 200))
+            @test inds[3].id ∉ keys(trace(inds[1], sim, [SchoolClass]; to = 200))
+        end
+
+        # a contact of scale 0.5 is drawn half as often as one of scale 1, counted per draw as the result lists each once
+        sim, cntnr, plans, pop, inds, cs, yr = scaled_school(ContactparameterSampling(5.0))
+        s = cs[1]
+        members = GEMS._members_alive_at(s, Int16(0), sim)
+        counts = Dict(id(m) => 0 for m in members)
+        rng = Xoshiro(1)
+        contacts, draws = Individual[], Individual[]
+        s_host = GEMS._membership_scale(plans, inds[1], s, cntnr)
+        for _ in 1:40_000
+            GEMS._draw_past_contacts_at!(contacts, draws, contact_sampling_method(s), s, 1, members, Int16(1), s_host, GEMS._scale_bound(s), rng, plans, cntnr)
+            foreach(c -> counts[id(c)] += 1, contacts)
+        end
+        @test isapprox(counts[2] / counts[4], 0.5; atol = 0.03)
+        # a host of half the scale draws half as many, on average
+        half = sum(1:40_000) do _
+            length(GEMS._draw_past_contacts_at!(contacts, draws, contact_sampling_method(s), s, 1, members, Int16(1), s_host / 2, GEMS._scale_bound(s), rng, plans, cntnr))
+        end
+        @test isapprox(half / sum(values(counts)), 0.5; atol = 0.03)
+    end
+
+    @testset "which settings are re-drawn" begin
+        # two classes, and the year by default, which reaches someone only in the other class
+        sim, cntnr, plans, pop, inds, cs, yr = scaled_school(ContactparameterSampling(5.0))
+        @test Int32(9) ∉ keys(trace(inds[1], sim, [SchoolClass]; to = 100))
+        @test Int32(9) in keys(trace(inds[1], sim, DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]; to = 100))
+        # both classes of someone in two
+        @test all(in(keys(trace(inds[5], sim, [SchoolClass]; to = 200))), Int32[1, 2, 7, 8])
+
+        # a container with the default method of contact rate 0 is skipped
+        sim, cntnr, plans, pop, inds, cs, yr = scaled_school(ContactparameterSampling(5.0))
+        yr.contact_sampling_method = ContactparameterSampling(0)
+        @test Int32(9) ∉ keys(trace(inds[1], sim, DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]; to = 100))
+    end
+
+    @testset "today's closures and quarantines are ignored" begin
+        sim, cntnr, plans, pop, inds, cs, yr = scaled_school(ContactparameterSampling(5.0))
+        close!(cs[1])
+        GEMS.quarantined!(inds[2], true)
+        GEMS.home_quarantine!(inds[2])
+        # read while the pool waits for its repack, as during events after a death or closure
+        @test Int32(2) in keys(trace(inds[1], sim, [SchoolClass]; to = 200))
+        @test Int32(2) in keys(trace(inds[1], sim, [SchoolYear]; to = 200))
+    end
+
+    @testset "the dead" begin
+        sim, cntnr, plans, pop, inds, cs, yr = scaled_school(ContactparameterSampling(5.0))
+        kill(m, t) = (GEMS.dead!(m, true); m.death = Int16(t); mark_deceased!(cs[1], m, pop))
+
+        # alive members: the view of the living, which the setting's method already counts
+        @test GEMS._members_alive_at(cs[1], Int16(4), sim) isa SubArray
+
+        # who died by the window's start is out, who died in it is in, but cannot be traced
+        kill(inds[2], 3)
+        kill(inds[4], 8)
+        members = GEMS._members_alive_at(cs[1], Int16(5), sim)
+        @test members isa Vector{Individual}
+        @test inds[2] ∉ members
+        @test inds[4] in members
+        @test inds[2] ∉ GEMS._members_alive_at(yr, Int16(5), sim)
+        @test inds[4] in GEMS._members_alive_at(yr, Int16(5), sim)
+        traced = trace(inds[1], sim, [SchoolClass]; from = 5, to = 100)
+        @test Int32(4) ∉ keys(traced)
+        @test !isempty(traced)
+
+        # after everyone in it died before the window, the view is the list again
+        @test GEMS._members_alive_at(cs[1], Int16(8), sim) isa SubArray
+
+        # a dead index is on the list for a window before its death, and its re-draw stops the tick before it
+        kill(inds[6], 4)
+        @test inds[6] in GEMS._members_alive_at(cs[1], Int16(3), sim)
+        ticks = Int16[]
+        traced = trace(inds[6], sim, [SchoolClass]; from = 1, to = 10, filter = (s, t) -> (s === cs[1] && push!(ticks, t); true))
+        @test ticks == Int16[1, 2, 3]
+        @test !isempty(traced)
+    end
+
+    @testset "the sampling method's cache" begin
+        sim, cntnr, plans, pop, inds, cs, yr = scaled_school(age_based())
+        csm = contact_sampling_method(yr)
+        frame = GEMS.present_members(yr, cntnr)
+
+        # a built list leaves an empty cache empty
+        @test csm.rate_cache === nothing
+        @test !isempty(trace(inds[1], sim, [SchoolYear]))
+        @test csm.rate_cache === nothing
+        @test isempty(csm.bin_counts)
+
+        # and a filled one as it was
+        rate = contact_rate(csm, yr, 1, frame, Int16(1))
+        cache = csm.rate_cache
+        @test cache !== nothing
+        trace(inds[1], sim, [SchoolYear])
+        @test csm.rate_cache === cache
+        @test contact_rate(csm, yr, 1, frame, Int16(1)) == rate
+    end
+end
