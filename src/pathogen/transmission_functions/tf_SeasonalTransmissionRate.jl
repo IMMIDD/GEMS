@@ -87,13 +87,26 @@ function transmission_factor(
         tick::Int16,
         sim::Simulation,
         rng::Xoshiro)::Float64
-    days = _seasonal_tick_to_days(tick, sim.tickunit)
-    doy = Dates.dayofyear(sim.startdate + Dates.Day(days))
-    return 1.0 + modifier.amplitude * cos(2π * (doy - modifier.peak_day) / 365.0)
+    return _seasonal_factor(modifier, tick, sim)
 end
 
 transmission_factor(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_factor(modifier, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
+
+"""
+    max_transmission_factor_in_type(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Returns the seasonal factor at `tick`, as in every setting.
+"""
+max_transmission_factor_in_type(modifier::SinusoidalSeasonalModifier, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    _seasonal_factor(modifier, tick, sim)
+
+# The seasonal factor on the calendar day of `tick`.
+function _seasonal_factor(modifier::SinusoidalSeasonalModifier, tick::Int16, sim::Simulation)::Float64
+    days = _seasonal_tick_to_days(tick, sim.tickunit)
+    doy = Dates.dayofyear(sim.startdate + Dates.Day(days))
+    return 1.0 + modifier.amplitude * cos(2π * (doy - modifier.peak_day) / 365.0)
+end
 
 # Converts the current tick to whole calendar days based on the simulation tick unit.
 function _seasonal_tick_to_days(tick::Int16, tickunit::Char)::Int
@@ -195,3 +208,11 @@ end
 # Convenience wrapper without explicit RNG — uses the thread-local default
 transmission_probability(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, infectee::Individual, setting::Setting, tick::Int16, sim::Simulation) =
     transmission_probability(transFunc, pathogen_id, infecter, infectee, setting, tick, sim, Xoshiro())
+
+"""
+    max_transmission_probability_in_type(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting}
+
+Returns the `transmission_rate` times the modifier's `max_transmission_factor_in_type`.
+"""
+max_transmission_probability_in_type(transFunc::SinusoidalSeasonalTransmissionRate, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation) where {S<:Setting} =
+    transFunc.transmission_rate * max_transmission_factor_in_type(transFunc.modifier, pathogen_id, infecter, S, tick, sim)

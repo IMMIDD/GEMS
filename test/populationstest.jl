@@ -41,13 +41,15 @@
             path = joinpath(base_folder, testfile)
 
             csv_content = CSV.read(path, DataFrame)
-            population = individuals(Population(path))
+            pop = Population(path)
+            plans = GEMS.activity_plans(pop)
+            population = individuals(pop)
 
             id_map = Dict([(id(individual), individual) for individual in population])
             @test keys(id_map) == Set(range(0,num_indiv_in_file-1))
             for row in eachrow(csv_content)
                 @test age(id_map[row["id"]]) == row["age"]
-                @test household_id(id_map[row["id"]]) == row["household"]
+                @test household_id(id_map[row["id"]], plans) == row["household"]
             end
         end
         
@@ -59,14 +61,50 @@
             path = joinpath(base_folder, testfile)
 
             jld2_content = load(path, "data")
-            population = individuals(Population(path))
+            pop = Population(path)
+            plans = GEMS.activity_plans(pop)
+            population = individuals(pop)
 
             id_map = Dict([(id(individual), individual) for individual in population])
             @test keys(id_map) == Set(range(1,num_indiv_in_file))
             for row in eachrow(jld2_content)
                 @test age(id_map[row["id"]]) == row["age"]
-                @test household_id(id_map[row["id"]]) == row["household"]
+                @test household_id(id_map[row["id"]], plans) == row["household"]
             end
+        end
+    end
+
+    @testset "Saving and loading memberships" begin
+        df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
+                       household = Int32[1, 1, 2])
+        extra = DataFrame(id = Int32[1], setting_type = ["Household"], setting_id = Int32[2])
+        pop = Population(df; memberships = extra)
+        household_ids(p) = setting_ids(individuals(p)[1], Household, GEMS.activity_plans(p))
+
+        mktempdir() do dir
+            path = joinpath(dir, "pop.csv")
+            mpath = joinpath(dir, "extra.csv")
+
+            # the extras go where they are told to, and load back from there
+            GEMS.save(pop, path; membershipsfile = mpath)
+            @test household_ids(Population(path; memberships = mpath)) == Int32[1, 2]
+            # the population file alone carries the primaries only
+            @test household_ids(Population(path)) == Int32[1]
+            # a Simulation takes the table the way it takes a settings file
+            sim = Simulation(population = path, membershipsfile = mpath)
+            @test setting_ids(individuals(sim)[1], Household, sim) == Int32[1, 2]
+
+            # saving the extras nowhere would drop them, so it refuses before writing anything
+            @test_throws ArgumentError GEMS.save(pop, joinpath(dir, "lost.csv"))
+            @test !isfile(joinpath(dir, "lost.csv"))
+            # without extras there is nothing to lose
+            GEMS.save(Population(df), joinpath(dir, "plain.csv"))
+            @test household_ids(Population(joinpath(dir, "plain.csv"))) == Int32[1]
+
+            # a JLD2 file carries the table under its own key
+            jpath = joinpath(dir, "pop.jld2")
+            jldsave(jpath; data = dataframe(pop), memberships = memberships(pop))
+            @test household_ids(Population(jpath)) == Int32[1, 2]
         end
     end
 
@@ -76,6 +114,8 @@
 
         @test 0 == num_of_infected(pop)
         infect!(individuals(sim)[1], sim)
+        # deferred write path: the flags land on the host at the flush
+        GEMS.flush_pending_infections!(sim)
         @test 1 == num_of_infected(pop)
 
         run!(sim)
@@ -211,14 +251,17 @@
             )
 
             # Symbol-vector naming a core field
-            @test_throws ErrorException Population(df; ind_extension = [:household])
+            @test_throws ErrorException Population(df; ind_extension = [:education])
 
             # separate extension DataFrame with a core-field column
-            ext_df = DataFrame(id = Int32.(1:5), household = Int32.(11:15))
+            ext_df = DataFrame(id = Int32.(1:5), education = Int8.(1:5))
             @test_throws ErrorException Population(df; ind_extension = ext_df)
 
             # factory producing a struct whose field shadows a core field
             @test_throws ErrorException Population(df; ind_extension = ind -> AutoExtension((; sex = 1.0f0)))
+
+            # a membership column is read into the plan, so it cannot be an extension as well
+            @test_throws ErrorException Population(df; ind_extension = [:household])
 
             # a non-colliding name still works
             df_ok = DataFrame(
@@ -275,8 +318,8 @@
             result = dataframe(pop)
 
             # only base fields (no leftover columns from the source DataFrame)
-            base_names = Set([:id, :sex, :age,
-                              :education, :occupation, :household, :office, :schoolclass])
+            base_names = Set([:id, :sex, :age, :education, :occupation,
+                              :household, :office, :schoolclass, :municipality])
             @test Set(propertynames(result)) == base_names
         end
     end

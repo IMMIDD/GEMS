@@ -67,7 +67,7 @@
             "id_a",
             "id_b",
             "pathogen_id",
-            "progression_category",
+            "progression_id",
             "infectiousness_onset",
             "symptom_onset",
             "severeness_onset",
@@ -78,9 +78,7 @@
             "tick",
             "setting_id",
             "setting_type",
-            "lat",
-            "lon",
-            "ags",
+            "household_id",
             "source_infection_id",
         ]
 
@@ -97,10 +95,11 @@
 
             log!(
                 logger = il,
+                infection_id = Int32(1),
                 a = Int32(0),
                 b = Int32(0),
                 pathogen_id = Int8(0),
-                progression_category = Symbol(Asymptomatic),
+                progression_id = Int8(1),
                 tick = Int16(0),
                 infectiousness_onset = Int16(0),
                 symptom_onset = Int16(0),
@@ -111,9 +110,7 @@
                 recovery = Int16(0),
                 setting_id = Int32(0),
                 setting_type = 'h',
-                lat = Float32(0),
-                lon = Float32(0),
-                ags = Int32(0),
+                household_id = Int32(0),
                 source_infection_id = Int32(0)
             )
 
@@ -156,13 +153,15 @@
 
             # infect one agent
             infect!(infecter, t, first_pathogen(sim), sim = sim, rng = rng(sim))
-            
+            # infections only reach the logger on flush
+            GEMS.flush_pending_infections!(sim)
+
             # flatten logger internal arrays to a dataframe to check values
             df1 = dataframe(il)
             @test df1.tick[end] == t
             @test df1.id_a[end] == -1
             @test df1.id_b[end] == id(infecter)
-            @test df1.progression_category[end] == Symbol(Asymptomatic)
+            @test df1.progression_id[end] == GEMS.progression_index(first_pathogen(sim), Asymptomatic)
             @test df1.infectiousness_onset[end] >= t+3
             @test df1.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df1.severeness_onset[end] == GEMS.DEFAULT_TICK
@@ -172,9 +171,7 @@
             @test df1.recovery[end] >= t+10
             @test df1.setting_id[end] == GEMS.DEFAULT_SETTING_ID
             @test df1.setting_type[end] == '?'
-            @test df1.lat[end] === NaN32
-            @test df1.lon[end] === NaN32
-            @test df1.ags[end] == Int32(-1)
+            @test df1.household_id[end] == GEMS.DEFAULT_SETTING_ID
             @test df1.source_infection_id[end] == GEMS.DEFAULT_INFECTION_ID
 
             # infect another agent in a household setting
@@ -186,12 +183,13 @@
                 setting_id=id(h),
                 setting_type=settingchar(h),
                 source_infection_id = df1.infection_id[end])
+            GEMS.flush_pending_infections!(sim)
 
             df2 = dataframe(il)
             @test df2.tick[end] == t
             @test df2.id_a[end] == id(infecter)
             @test df2.id_b[end] == id(infectee)
-            @test df2.progression_category[end] == Symbol(Asymptomatic)
+            @test df2.progression_id[end] == GEMS.progression_index(first_pathogen(sim), Asymptomatic)
             @test df2.infectiousness_onset[end] >= t+3
             @test df2.symptom_onset[end] == GEMS.DEFAULT_TICK
             @test df2.severeness_onset[end] == GEMS.DEFAULT_TICK
@@ -201,20 +199,18 @@
             @test df2.recovery[end] >= t+10
             @test df2.setting_id[end] == id(h)
             @test df2.setting_type[end] == 'h'
-            @test df2.lat[end] === NaN32
-            @test df2.lon[end] === NaN32
-            @test df2.ags[end] == Int32(-1)
+            @test df2.household_id[end] == id(h)
             @test df2.source_infection_id[end] == df1.infection_id[end]
 
         end
 
         @testset "Infecter Index" begin
 
-            # minimal infection record; only a, b and tick matter for the index
-            function log_infection!(il, a, b, t)
-                log!(il, Int32(a), Int32(b), Int8(1), :Asymptomatic, Int16(t),
-                    Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
-                    Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
+            # minimal infection record; only a, b, tick, onset and recovery matter for the index
+            function log_infection!(il, a, b, t; onset = 0, recovery = 0)
+                log!(il, GEMS.reserve_infection_ids!(il, 1), Int32(a), Int32(b), Int8(1), Int8(1), Int16(t),
+                    Int16(onset), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(recovery),
+                    Int32(0), 'h', Int32(0), Int32(0))
             end
 
             query(il, a, t0, t1) = get_infections_between(il, Int32(a), Int16(t0), Int16(t1))
@@ -335,6 +331,57 @@
                 for a in 1:50
                     @test issorted([ticks[b] for b in query(il, a, 0, 30)])
                 end
+
+                # the ticks variant returns the same ids plus each infection's tick
+                for a in 1:50
+                    ids, link_ticks = GEMS._infections_with_ticks_between(il, Int32(a), Int16(0), Int16(30))
+                    @test ids == query(il, a, 0, 30)
+                    @test link_ticks == [ticks[b] for b in ids]
+                end
+            end
+
+            @testset "Infecter Of Infection Ids" begin
+                il = InfectionLogger()
+                seed = log_infection!(il, -1, 10, 0)
+                i1 = log_infection!(il, 5, 11, 0)
+                i2 = log_infection!(il, 7, 12, 1)
+
+                # backfilled on first use
+                @test GEMS._infecter_of(il, i1) == Int32(5)
+                @test GEMS._infecter_of(il, i2) == Int32(7)
+                @test GEMS._infecter_of(il, seed) == Int32(0)
+
+                # logged after the index exists, so this goes through register!/_merge_staged!
+                seed2 = log_infection!(il, -1, 13, 2)
+                i3 = log_infection!(il, 5, 14, 2)
+                @test GEMS._infecter_of(il, i3) == Int32(5)
+                @test GEMS._infecter_of(il, seed2) == Int32(0)
+
+                # unknown ids return 0
+                @test GEMS._infecter_of(il, Int32(0)) == Int32(0)
+                @test GEMS._infecter_of(il, Int32(1_000)) == Int32(0)
+            end
+
+            @testset "Last Infection" begin
+                il = InfectionLogger()
+                seed = log_infection!(il, -1, 10, 0, onset = 2, recovery = 9)
+                log_infection!(il, 5, 11, 0, onset = 1, recovery = 6)
+                second_11 = log_infection!(il, 7, 11, 8, onset = 10, recovery = 15)
+
+                # backfilled on first use; seeds are kept, the newest infection wins
+                @test GEMS._last_infection(il, Int32(10)) ==
+                    (infection_id = seed, infecter = Int32(0), exposure = Int16(0), infectiousness_onset = Int16(2), recovery = Int16(9))
+                @test GEMS._last_infection(il, Int32(11)) ==
+                    (infection_id = second_11, infecter = Int32(7), exposure = Int16(8), infectiousness_onset = Int16(10), recovery = Int16(15))
+
+                # logged after the index exists, so this goes through register!/_merge_staged!
+                i3 = log_infection!(il, 5, 14, 9, onset = 11, recovery = 20)
+                @test GEMS._last_infection(il, Int32(14)) ==
+                    (infection_id = i3, infecter = Int32(5), exposure = Int16(9), infectiousness_onset = Int16(11), recovery = Int16(20))
+
+                # individuals never infected have none
+                @test GEMS._last_infection(il, Int32(5)) === nothing
+                @test GEMS._last_infection(il, Int32(1_000)) === nothing
             end
 
             @testset "Untraced Runs Carry No Index" begin
@@ -367,7 +414,7 @@
     end
 
     @testset "VaccinationLogger" begin
-        attributes = ["id", "pathogen_id", "tick"]
+        attributes = ["id", "pathogen_id", "vaccine_id", "dose_number", "tick"]
 
         @testset "Creation and Basic Functionality" begin
             vl = VaccinationLogger()
@@ -378,7 +425,7 @@
                 @test sum(length, getproperty(vl, Symbol(attr))) == 0
             end
 
-            log!(vl, Int32(0), Int8(0), Int16(0))
+            log!(vl, Int32(0), Int8(0), Int8(0), Int8(0), Int16(0))
 
             # test that last_modified_tick was updated by the log! function
             @test vl.last_modified_tick[] == Int16(0)

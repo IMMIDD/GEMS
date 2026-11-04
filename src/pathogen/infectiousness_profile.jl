@@ -21,6 +21,11 @@ end
     return (state.infectiousness_onset >= 0 && state.infectiousness_onset <= tick < end_t) ? profile.level : Int8(0)
 end
 
+_draws_from_rng(::ConstantInfectiousness) = false
+
+@inline next_infectiousness_change(profile::ConstantInfectiousness, state::InfectionState, tick::Int16) =
+    next_tick_after(tick, state.infectiousness_onset, state.recovery)
+
 
 """
     StagedInfectiousness
@@ -74,6 +79,12 @@ Otherwise picks the profile field that matches the highest active disease stage 
     return _stage_value(state, tick, profile.asymptomatic, profile.presymptomatic,
         profile.symptomatic, profile.severe, profile.critical)
 end
+
+_draws_from_rng(::StagedInfectiousness) = false
+
+@inline next_infectiousness_change(profile::StagedInfectiousness, state::InfectionState, tick::Int16) =
+    next_tick_after(tick, state.infectiousness_onset, state.symptom_onset, state.severeness_onset,
+        state.severeness_offset, state.critical_onset, state.critical_offset, state.recovery)
 
 """
     _stage_value(state::InfectionState, tick::Int16, asym, presym, sym, sev, crit)
@@ -152,8 +163,7 @@ end
     # an infection that ends before the peak is capped at m = 1
     m = min((profile.time_to_peak + 0.5) / duration, 1.0)
 
-    # solve the beta shape parameters for a mode at `m`, holding `α + β` fixed so that the curve
-    # spans the whole window rather than keeping a fixed width in ticks
+    # beta shape parameters for a mode at `m`, with `α + β` fixed so the curve spans the whole window
     spread = profile.concentration - 2.0
     a = m * spread + 1.0
     b = (1.0 - m) * spread + 1.0
@@ -165,6 +175,14 @@ end
         profile.symptomatic_factor, profile.severe_factor, profile.critical_factor)
 
     return Int8(clamp(round(Int, profile.level * shape * factor), 0, 100))
+end
+
+_draws_from_rng(::BetaInfectiousness) = false
+
+# changes every tick while infectious
+@inline function next_infectiousness_change(profile::BetaInfectiousness, state::InfectionState, tick::Int16)
+    Int16(0) <= state.infectiousness_onset <= tick < state.recovery && return tick + Int16(1)
+    return next_tick_after(tick, state.infectiousness_onset, state.recovery)
 end
 
 

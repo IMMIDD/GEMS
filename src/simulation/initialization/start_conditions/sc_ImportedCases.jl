@@ -111,8 +111,7 @@ end
 Base.show(io::IO, c::ImportedCases) = write(io,
     "ImportedCases($(_label(c.count)) per import, $(_label(c.ticks)))")
 
-# compact display for whichever form a field holds; the fallback keeps a form that predates
-# its own label printable instead of throwing
+# compact display of whichever form a field holds; the fallback prints forms without their own label
 _label(x) = string(x)
 _label(t::Vector{Int16}) = "$(length(t)) tick$(length(t) == 1 ? "" : "s")"
 _label(c::Vector{Int}) = "$(sum(c)) in total"

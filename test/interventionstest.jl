@@ -22,6 +22,14 @@ function events_from_strategy(evs, str)
     return !isempty(evs) && all(e -> any(m -> m === e.measure, sm), evs)
 end
 
+# logs an infection without putting it into the infectee's cache, as if it had already ended
+function log_ended_infection!(sim, infectee, infecter, exposure, onset, recovery)
+    logger = GEMS.infectionlogger(sim)
+    log!(logger, GEMS.reserve_infection_ids!(logger, 1), Int32(infecter), id(infectee), Int8(1), Int8(1), Int16(exposure),
+        Int16(onset), Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(-1), Int16(recovery),
+        Int32(0), 'h', Int32(0), Int32(0))
+end
+
 @testset "Interventions" begin
     #setup of the simulation object:
     sim = Simulation()
@@ -34,7 +42,8 @@ end
     @test length(sim.strategies) == 2
 
     #define Individuals and settings
-    i = Individual(id=1, sex=0, age=31, household=1)
+    i = Individual(id=1, sex=0, age=31)
+    fake_membership!(population(sim), i, Household, 1)
     i2 = Individual(id=4, age=10, sex=1)
     indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
     indis2 = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
@@ -190,6 +199,82 @@ end
         @test events_from_strategy(evs, i_strategy2)
     end
 
+    @testset "Find Settings" begin
+        df = DataFrame(id = Int32.(1:3), age = Int8.(30:32), sex = Int8.(ones(3)),
+                       household = Int32[1, 2, 2], office = Int32[1, 1, 2])
+        pop = Population(df)
+        a = individuals(pop)[1]
+        # a also lives in household 2 and works in office 2
+        assign_settings!(pop, a, Household => 2, Office => 2)
+        sim4 = Simulation(population = pop)
+        fu = SStrategy("find_settings_fu", sim4)
+        add_measure!(fu, CloseSetting())
+        eq = GEMS.event_queue(sim4)
+        empty!(eq)
+
+        # FindSetting acts on the primary, or on the setting it is given
+        process_measure(sim4, a, FindSetting(Household, fu))
+        @test followup_focals(drain_events!(eq)) == [households(sim4)[1]]
+        process_measure(sim4, a, FindSetting(Household, fu), Int32(2))
+        @test followup_focals(drain_events!(eq)) == [households(sim4)[2]]
+
+        # FindSettingMembers likewise
+        i_fu = IStrategy("find_members_fu", sim4)
+        add_measure!(i_fu, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
+        process_measure(sim4, a, FindSettingMembers(Household, i_fu), Int32(2))
+        @test Set(followup_focals(drain_events!(eq))) == Set(individuals(households(sim4)[2]))
+
+        # FindSettings acts on every setting of the type; the queue, not the measure, orders them
+        fs = FindSettings(Office, fu)
+        @test settingtype(fs) === Office
+        @test follow_up(fs) === fu
+        process_measure(sim4, a, fs)
+        @test Set(id.(followup_focals(drain_events!(eq)))) == Set(Int32[1, 2])
+
+        # without a settings file the offices belong to no department: a clear error, and nothing to find
+        @test_throws ArgumentError getsetting(a, sim4, Department)
+        process_measure(sim4, a, FindSetting(Department, fu))
+        process_measure(sim4, a, FindSettingMembers(Department, i_fu))
+        @test isempty(eq)
+
+        # a container is found above each setting and handed over once
+        mktempdir() do dir
+            path = joinpath(dir, "pop.csv")
+            mpath = joinpath(dir, "extra.csv")
+            spath = joinpath(dir, "settings.jld2")
+            CSV.write(path, df)
+            CSV.write(mpath, DataFrame(id = Int32[1], setting_type = ["Office"], setting_id = Int32[2]))
+            # both offices in one department
+            jldsave(spath; data = Dict(
+                :Office => DataFrame(id = Int32[1, 2], contained = Int32[1, 1]),
+                :Department => DataFrame(id = Int32[1], contains = [Int32[1, 2]])))
+            sim5 = Simulation(population = path, membershipsfile = mpath, settingsfile = spath)
+            a5 = individuals(sim5)[1]
+            @test setting_ids(a5, Office, sim5) == Int32[1, 2]
+            @test setting_ids(a5, Department, sim5) == Int32[1]
+
+            dept_fu = SStrategy("find_departments_fu", sim5)
+            add_measure!(dept_fu, CloseSetting())
+            eq5 = GEMS.event_queue(sim5)
+            empty!(eq5)
+            process_measure(sim5, a5, FindSettings(Department, dept_fu))
+            @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
+
+            # FindSetting and FindSettingMembers reach the department through the offices below it
+            process_measure(sim5, a5, FindSetting(Department, dept_fu))
+            @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
+            i_fu5 = IStrategy("find_department_members_fu", sim5)
+            add_measure!(i_fu5, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
+            process_measure(sim5, a5, FindSettingMembers(Department, i_fu5))
+            @test Set(followup_focals(drain_events!(eq5))) == Set(individuals(sim5))
+            # the department belongs to no workplace: a clear error, and nothing to find
+            @test_throws ArgumentError getsetting(a5, sim5, Workplace)
+            process_measure(sim5, a5, FindSetting(Workplace, dept_fu))
+            process_measure(sim5, a5, FindSettingMembers(Workplace, i_fu5))
+            @test isempty(eq5)
+        end
+    end
+
     @testset "Testing" begin
 
         test = TestType("Test", id(first_pathogen(sim)), sim)
@@ -235,7 +320,8 @@ end
             test_measure5 = GEMS.Test()
         end
 
-        i_test_neg = Individual(id=201, sex=0, age=31, household=1)
+        i_test_neg = Individual(id=201, sex=0, age=31)
+        fake_membership!(population(sim), i_test_neg, Household, 1)
         eq = GEMS.event_queue(sim)
         empty!(eq)
         @test process_measure(sim, i_test_neg, test_measure3) === nothing   # negative result → negative follow-up
@@ -243,7 +329,8 @@ end
         @test followup_focals(evs) == [i_test_neg]
         @test events_from_strategy(evs, i_strategy)
 
-        i_test_pos = Individual(id=202, sex=0, age=31, household=1)
+        i_test_pos = Individual(id=202, sex=0, age=31)
+        fake_membership!(population(sim), i_test_pos, Household, 1)
         infect!(i_test_pos, Int16(0), first_pathogen(sim), rng = Xoshiro())
         empty!(eq)
         @test process_measure(sim, i_test_pos, test_measure2) === nothing
@@ -299,7 +386,8 @@ end
             s_test_measure5 = GEMS.Test()
         end
 
-        i_sero = Individual(id=203, sex=0, age=31, household=1)
+        i_sero = Individual(id=203, sex=0, age=31)
+        fake_membership!(population(sim), i_sero, Household, 1)
         infect!(i_sero, Int16(0), first_pathogen(sim), rng = Xoshiro())
         GEMS.push_immunity!(immunity_registry(sim, i_sero), i_sero, id(first_pathogen(sim)), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
         eq = GEMS.event_queue(sim)
@@ -332,11 +420,14 @@ end
         ind1 = first(individuals(sim3))
         ind2 = individuals(sim3)[2]
         pid3 = id(first_pathogen(sim3))
-        # seed a blank InfectionState (infectiousness_onset=-1) so earliest_infectiousness_onset returns -1
-        # then infect ind2 at tick=0; get_infections_between finds it in range [-1..0]
-        set_progression!(ind1, pid3)
-        infect!(ind2, Int16(0), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
-        
+        # ind1 is infectious from tick 1 and infects ind2 at tick 1; traced at tick 2
+        set_progression!(ind1, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)), pid3)
+        GEMS.increment!(sim3)
+        infect!(ind2, Int16(1), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
+        # the trace reads the infection log, which only fills at the flush
+        GEMS.flush_pending_infections!(sim3)
+        GEMS.increment!(sim3)
+
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
         eq3 = GEMS.event_queue(sim3)
         empty!(eq3)
@@ -344,6 +435,247 @@ end
         evs = drain_events!(eq3)
         @test followup_focals(evs) == [ind2]
         @test events_from_strategy(evs, i_strategy3)
+
+        # function-valued success_rate gets the days since the infection
+        seen_dt = Int[]
+        trace_fn = TraceInfectiousContacts(i_strategy3, success_rate = dt -> (push!(seen_dt, dt); 1.0))
+        @test success_rate(trace_fn) isa GEMS.TraceRateFn
+        empty!(eq3)
+        process_measure(sim3, ind1, trace_fn)
+        @test followup_focals(drain_events!(eq3)) == [ind2]
+        @test seen_dt == [tick(sim3) - 1]
+
+        # a zero rate traces no one
+        empty!(eq3)
+        process_measure(sim3, ind1, TraceInfectiousContacts(i_strategy3, success_rate = dt -> 0.0))
+        @test isempty(drain_events!(eq3))
+
+        # a rate outside 0-1 throws when the measure runs
+        @test_throws ArgumentError process_measure(sim3, ind1, TraceInfectiousContacts(i_strategy3, success_rate = dt -> 2.0))
+
+        # resample_contacts defaults
+        @test resample_contacts(trace_infectious) == false
+        @test settingtypes(trace_infectious) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
+
+        # one household of five; the index is infectious from tick 1 and infected no one
+        pop4 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
+        sim4 = Simulation(population=pop4, household_contacts=10.0)
+        i_strategy4 = IStrategy("i_strategy4", sim4)
+        add_measure!(i_strategy4, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
+        inds4 = individuals(sim4)
+        index4 = first(inds4)
+        set_progression!(index4, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)), id(first_pathogen(sim4)))
+        foreach(_ -> GEMS.increment!(sim4), 1:3)
+        eq4 = GEMS.event_queue(sim4)
+
+        # without resampling, only infectees are traced
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, settingtypes = DataType[Household]))
+        @test isempty(drain_events!(eq4))
+
+        # with resampling, re-drawn household members are traced once each, never the index
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
+        traced = followup_focals(drain_events!(eq4))
+        @test !isempty(traced)
+        @test allunique(traced)
+        @test index4 ∉ traced
+        @test all(c -> household_id(c, sim4) == household_id(index4, sim4), traced)
+
+        # re-draws stop at the previous tick, as this tick's transmission has not run yet
+        drawn = Int16[]
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16[1, 2]
+
+        # max_contacts caps the named contacts
+        @test max_contacts(trace_infectious) == typemax(Int)
+        @test_throws ArgumentError TraceInfectiousContacts(i_strategy4, max_contacts = -1)
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household], max_contacts = 1))
+        @test length(followup_focals(drain_events!(eq4))) == 1
+
+        # lookback defaults
+        @test lookback(trace_infectious) == 14
+        @test_throws ArgumentError TraceInfectiousContacts(i_strategy4, lookback = 0)
+
+        # a recovered index, infectious in ticks 1-6, infected one person at tick 2 and one at tick 5; it is now tick 10
+        pop6 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
+        sim6 = Simulation(population=pop6, household_contacts=10.0)
+        i_strategy6 = IStrategy("i_strategy6", sim6)
+        add_measure!(i_strategy6, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
+        recovered, early, late, never = individuals(sim6)[1:4]
+        log_ended_infection!(sim6, recovered, -1, 0, 1, 6)
+        log_ended_infection!(sim6, early, id(recovered), 2, 4, 9)
+        log_ended_infection!(sim6, late, id(recovered), 5, 7, 12)
+        foreach(_ -> GEMS.increment!(sim6), 1:10)
+        eq6 = GEMS.event_queue(sim6)
+
+        # the ended infectious period is traced, within the lookback
+        empty!(eq6)
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6))
+        @test Set(followup_focals(drain_events!(eq6))) == Set([early, late])
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, lookback = 6))
+        @test followup_focals(drain_events!(eq6)) == [late]
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, lookback = 3))
+        @test isempty(drain_events!(eq6))
+
+        # someone never infected traces no one
+        process_measure(sim6, never, TraceInfectiousContacts(i_strategy6, resample_contacts = true))
+        @test isempty(drain_events!(eq6))
+
+        # a recovered index re-draws contacts in its ended infectious period
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household]))
+        traced = followup_focals(drain_events!(eq6))
+        @test early in traced && late in traced
+        @test recovered ∉ traced
+        @test all(c -> household_id(c, sim6) == household_id(recovered, sim6), traced)
+
+        # an infection that ended this tick also re-draws only up to the previous tick
+        recovered_today = individuals(sim6)[5]
+        log_ended_infection!(sim6, recovered_today, -1, 3, 5, 10)
+        drawn = Int16[]
+        process_measure(sim6, recovered_today, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16.(5:9)
+
+        # a dead infectee is not traced and takes no max_contacts slot
+        empty!(eq6)
+        GEMS.dead!(early, true)
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6))
+        @test followup_focals(drain_events!(eq6)) == [late]
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, max_contacts = 1))
+        @test followup_focals(drain_events!(eq6)) == [late]
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household]))
+        @test early ∉ followup_focals(drain_events!(eq6))
+
+        # a contact_filter rejecting every tick re-draws nothing
+        empty!(eq4)
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true,
+            settingtypes = DataType[Household], contact_filter = (s, t) -> false))
+        @test isempty(drain_events!(eq4))
+        @test contact_filter(trace_infectious) isa GEMS.ContactFilterFn
+
+        # an index without an active infection has no window to re-draw in
+        empty!(eq4)
+        process_measure(sim4, inds4[2], TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
+        @test isempty(drain_events!(eq4))
+
+        # an index that became infectious this tick has nothing to trace yet
+        set_progression!(inds4[3], DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(3), recovery=Int16(20)), id(first_pathogen(sim4)))
+        process_measure(sim4, inds4[3], TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
+        @test isempty(drain_events!(eq4))
+
+        # infectees replace re-drawn contacts; two school years of two classes of four, the index is individual 1
+        school_inds = [Individual(id=i, sex=1, age=10) for i in 1:16]
+        scs = [SchoolClass(id=c, individuals=school_inds[4c-3:4c], contained=div(c - 1, 2) + 1, contact_sampling_method=ContactparameterSampling(1)) for c in 1:4]
+        sys = [SchoolYear(id=y, contains=[2y - 1, 2y], contained=1, contact_sampling_method=ContactparameterSampling(1)) for y in 1:2]
+        sc = SettingsContainer()
+        add_types!(sc, [SchoolClass, SchoolYear])
+        foreach(x -> add!(sc, x), scs)
+        foreach(x -> add!(sc, x), sys)
+        school_sim = Simulation()
+        school_pop = Population(school_inds)
+        foreach(i -> fake_membership!(school_pop, school_inds[i], SchoolClass, div(i - 1, 4) + 1), 1:16)
+        school_sim.population = school_pop
+        school_sim.settings = sc
+        merge_infectees(last, ids, ticks, types) = GEMS._merge_infectees!(Dict{Int32, Int16}(last), Int32.(ids), Int16.(ticks),
+            school_inds[1], school_sim, DataType[types...])
+
+        # a missed classmate replaces the re-drawn non-infectee of the class
+        @test merge_infectees(Dict(3 => 2, 9 => 1), [2], [4], [SchoolClass]) == Dict(2 => 4, 9 => 1)
+        # an infectee the re-draw found replaces no one and keeps the later tick
+        @test merge_infectees(Dict(2 => 3, 3 => 1), [2], [5], [SchoolClass]) == Dict(2 => 5, 3 => 1)
+        # an infectee sharing no listed setting is added on top
+        @test merge_infectees(Dict(3 => 2), [9], [4], [SchoolClass]) == Dict(3 => 2, 9 => 4)
+        # a container type: an infectee from the other class of the same year replaces a re-drawn year member
+        @test merge_infectees(Dict(3 => 2, 9 => 1), [5], [4], [SchoolYear]) == Dict(5 => 4, 9 => 1)
+        # no re-drawn non-infectee to replace: added on top
+        @test merge_infectees(Dict(2 => 1), [2, 3], [1, 2], [SchoolClass]) == Dict(2 => 1, 3 => 2)
+        # two missed infectees, one contact to replace: the second is added on top
+        @test merge_infectees(Dict(4 => 1), [2, 3], [1, 2], [SchoolClass]) == Dict(2 => 1, 3 => 2)
+        # an infectee listed twice (two pathogens) replaces one contact and keeps the later tick
+        @test merge_infectees(Dict(4 => 2), [2, 2], [1, 3], [SchoolClass]) == Dict(2 => 3)
+        # listing the class before the year replaces a contact of the class, not one elsewhere in the year
+        @test merge_infectees(Dict(3 => 2, 5 => 1), [2], [4], [SchoolClass, SchoolYear]) == Dict(2 => 4, 5 => 1)
+        # an index in two classes shares its second class with the infectee too
+        fake_membership!(school_pop, school_inds[1], SchoolClass, 2)
+        @test merge_infectees(Dict(6 => 2, 9 => 1), [5], [4], [SchoolClass]) == Dict(5 => 4, 9 => 1)
+    end
+
+    @testset "Trace Source Contacts" begin
+        # one household of five
+        pop5 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
+        sim5 = Simulation(population=pop5, household_contacts=10.0)
+        i_strategy5 = IStrategy("i_strategy5", sim5)
+        add_measure!(i_strategy5, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
+        source, index5, seeded, healthy = individuals(sim5)[1:4]
+        pat5 = first_pathogen(sim5)
+
+        trace_source = TraceSourceContacts(i_strategy5)
+        @test success_rate(trace_source) == 1.0
+        @test follow_up(trace_source) === i_strategy5
+        @test lookback(trace_source) == 14
+        @test resample_contacts(trace_source) == false
+        @test settingtypes(trace_source) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
+        @test contact_filter(trace_source) isa GEMS.ContactFilterFn
+        @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = 0)
+        @test_throws ArgumentError TraceSourceContacts(i_strategy5, success_rate = 2.0)
+
+        # the source infects the index at tick 0; the seeded infection has no source; traced at tick 1
+        infect!(index5, Int16(0), pat5, sim = sim5, infecter_id = id(source), rng = rng(sim5))
+        infect!(seeded, Int16(0), pat5, sim = sim5, rng = rng(sim5))
+        GEMS.flush_pending_infections!(sim5)
+        GEMS.increment!(sim5)
+        eq5 = GEMS.event_queue(sim5)
+
+        empty!(eq5)
+        process_measure(sim5, index5, trace_source)
+        @test followup_focals(drain_events!(eq5)) == [source]
+
+        # no source for a seeded infection, nothing to trace back for someone never infected
+        empty!(eq5)
+        process_measure(sim5, seeded, trace_source)
+        process_measure(sim5, healthy, trace_source)
+        @test isempty(drain_events!(eq5))
+
+        # with resampling, re-drawn household members are added, each once, never the index
+        empty!(eq5)
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household]))
+        traced = followup_focals(drain_events!(eq5))
+        @test source in traced
+        @test allunique(traced)
+        @test index5 ∉ traced
+        @test all(c -> household_id(c, sim5) == household_id(index5, sim5), traced)
+
+        # max_contacts caps the named contacts
+        @test max_contacts(trace_source) == typemax(Int)
+        @test_throws ArgumentError TraceSourceContacts(i_strategy5, max_contacts = -1)
+        empty!(eq5)
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household], max_contacts = 1))
+        @test length(followup_focals(drain_events!(eq5))) == 1
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, max_contacts = 0))
+        @test isempty(drain_events!(eq5))
+
+        # re-draws stop at the previous tick, also for an index that is not infectious yet
+        set_progression!(healthy, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(5), recovery=Int16(20)), id(pat5))
+        drawn = Int16[]
+        process_measure(sim5, healthy, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16[0]
+        empty!(eq5)
+
+        # a recovered index traces the source of its ended infection
+        recovered5 = individuals(sim5)[5]
+        log_ended_infection!(sim5, recovered5, id(source), 0, 2, 4)
+        process_measure(sim5, recovered5, trace_source)
+        @test followup_focals(drain_events!(eq5)) == [source]
+
+        # an infection older than the lookback is not traced
+        GEMS.increment!(sim5)
+        empty!(eq5)
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, lookback = 1))
+        @test isempty(drain_events!(eq5))
     end
 
     @testset "Custom I Measure" begin
@@ -398,13 +730,13 @@ end
             "CancelSelfIsolation",
             "FindSetting",
             "FindSettingMembers",
-            "GEMS.Test",
+            "Test",
             "TraceInfectiousContacts",
-            "GEMS.Test"
+            "Test"
         ]
 
         # the configured follow-up strategy (i_strategy) carries the expected measures
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
+        strategy_names = map(x -> string(nameof(typeof(measure(x)))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 
@@ -413,7 +745,7 @@ end
         @test process_measure(sim, gs, find_members3) === nothing
         @test isempty(drain_events!(eq))
 
-        strategy_names = map(x -> string(typeof(measure(x))), getfield(i_strategy, :measures))
+        strategy_names = map(x -> string(nameof(typeof(measure(x)))), getfield(i_strategy, :measures))
         @test length(strategy_names) == length(expected_strategies)
         @test all(name in strategy_names for name in expected_strategies)
 
@@ -746,7 +1078,7 @@ end
         GEMS.trigger(s_tick_trigger, sim)
         sim_settings = offices(sim)
         step!(sim)
-        @test all(h -> (length(h.individuals) <= 5 || !h.isopen), sim_settings)
+        @test all(h -> (length(individuals(h)) <= 5 || !h.isopen), sim_settings)
 
         #test other return cases of trigger function        
         sim = Simulation()
@@ -794,25 +1126,13 @@ end
         GEMS.trigger(s_tick_trigger, sim)
         sim_settings = offices(sim)
         step!(sim)
-        @test all(h -> (length(h.individuals) <= 5 || h.isopen), sim_settings)
+        @test all(h -> (length(individuals(h)) <= 5 || h.isopen), sim_settings)
 
+        # a condition that cannot return a Bool is rejected when the strategy or measure is built
         sim = Simulation()
-        i = Individual(id=1, age=10, sex=1)
-        i_measure_function = (i, sim) -> i.mandate_compliance = 0.4
-        custom_i_measure = CustomIMeasure(i_measure_function)
-        custom_i_strategy = IStrategy("custom i strategy", sim, condition=(_) -> nothing)
-        add_measure!(custom_i_strategy, custom_i_measure)
-        symptom_trigger = SymptomTrigger(custom_i_strategy)
-        add_symptom_trigger!(sim, symptom_trigger)
-        @test_throws ErrorException GEMS.trigger(symptom_trigger, i, sim)
-
-        s_measure_function = (s, simobj) -> (size(s) > 5 ? close!(s) : nothing)
-        custom_s_measure = CustomSMeasure(s_measure_function)
-        custom_s_strategy = SStrategy("custom s strategy", sim, condition=(_) -> nothing)
-        add_measure!(custom_s_strategy, custom_s_measure)
-        s_tick_trigger = STickTrigger(Office, custom_s_strategy)
-        add_tick_trigger!(sim, s_tick_trigger)
-        @test_throws ErrorException GEMS.trigger(s_tick_trigger, sim)
+        @test_throws ArgumentError IStrategy("custom i strategy", sim, condition=(_) -> nothing)
+        @test_throws ArgumentError SStrategy("custom s strategy", sim, condition=(_) -> nothing)
+        @test_throws ArgumentError add_measure!(IStrategy("measure condition", sim), SelfIsolation(14), condition=(_) -> nothing)
 
         #test should_fire function
         @testset "Testing should_fire" begin
@@ -858,9 +1178,8 @@ end
             future_trigger = ITickTrigger(strategy, switch_tick = Int16(10), condition = s -> true)
             @test should_fire(future_trigger, sim) == false
 
-            # a non-boolean-returning condition raises a clear error, same as strategy conditions
-            bad_trigger = ITickTrigger(strategy, condition = s -> nothing)
-            @test_throws ErrorException should_fire(bad_trigger, sim)
+            # a non-boolean-returning condition is rejected when the trigger is built, same as strategy conditions
+            @test_throws ArgumentError ITickTrigger(strategy, condition = s -> nothing)
 
             # STickTrigger supports the same trigger-level condition
             s_strategy = SStrategy("s_strategy", sim)
@@ -871,7 +1190,8 @@ end
 
     @testset "Test Measure Events" begin
         sim = Simulation()
-        i = Individual(id=1, sex=0, age=31, household=1)
+        i = Individual(id=1, sex=0, age=31)
+        fake_membership!(population(sim), i, Household, 1)
         indis = [Individual(id=j, age=18, sex=1) for j in range(0, 3)]
         rs = RandomSampling()
         gs = GlobalSetting(individuals=indis, contact_sampling_method=rs)
