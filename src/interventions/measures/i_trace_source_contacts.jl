@@ -50,8 +50,8 @@ struct TraceSourceContacts <: IMeasure
             lookback::Integer = 14, resample_contacts::Bool = false,
             settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
             contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
-        if lookback < 0
-            throw(ArgumentError("lookback parameter must not be negative"))
+        if lookback < 1
+            throw(ArgumentError("lookback parameter must be at least 1"))
         end
 
         if max_contacts < 0
@@ -142,8 +142,8 @@ end
 """
     process_measure(sim::Simulation, ind::Individual, measure::TraceSourceContacts)
 
-Detects the individual who infected the index individual, looking back from the current tick
-to just before the index became infectious. With `resample_contacts`, re-drawn contacts from
+Detects the individual who infected the index individual, looking back from the previous tick
+or from just before the index became infectious, whichever is earlier. With `resample_contacts`, re-drawn contacts from
 that window are added. The `follow_up` strategy is handed over to all detected contacts.
 
 # Parameters
@@ -178,7 +178,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceSourceC
 
     # the window ends where forward tracing of the index starts
     start_tick = max(Int16(0), now - lookback(measure))
-    end_tick = infectious_at - Int16(1)
+    end_tick = min(infectious_at - Int16(1), now - Int16(1))
 
     # get the living infecters of the index's infections from logger; seeds have none
     contact_ids = Int32[]

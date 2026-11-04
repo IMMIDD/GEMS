@@ -339,10 +339,11 @@ end
         ind1 = first(individuals(sim3))
         ind2 = individuals(sim3)[2]
         pid3 = id(first_pathogen(sim3))
-        # ind1 is infectious from tick 1 and infects ind2 at tick 1
+        # ind1 is infectious from tick 1 and infects ind2 at tick 1; traced at tick 2
         set_progression!(ind1, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)), pid3)
         GEMS.increment!(sim3)
         infect!(ind2, Int16(1), first_pathogen(sim3), sim = sim3, infecter_id = id(ind1), rng = rng(sim3))
+        GEMS.increment!(sim3)
 
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
         eq3 = GEMS.event_queue(sim3)
@@ -398,6 +399,12 @@ end
         @test index4 ∉ traced
         @test all(c -> household_id(c) == household_id(index4), traced)
 
+        # re-draws stop at the previous tick, as this tick's transmission has not run yet
+        drawn = Int16[]
+        process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16[1, 2]
+
         # max_contacts caps the named contacts
         @test max_contacts(trace_infectious) == typemax(Int)
         @test_throws ArgumentError TraceInfectiousContacts(i_strategy4, max_contacts = -1)
@@ -407,7 +414,7 @@ end
 
         # lookback defaults
         @test lookback(trace_infectious) == 14
-        @test_throws ArgumentError TraceInfectiousContacts(i_strategy4, lookback = -1)
+        @test_throws ArgumentError TraceInfectiousContacts(i_strategy4, lookback = 0)
 
         # a recovered index, infectious in ticks 1-6, infected one person at tick 2 and one at tick 5; it is now tick 10
         pop6 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
@@ -441,6 +448,14 @@ end
         @test recovered ∉ traced
         @test all(c -> household_id(c) == household_id(recovered), traced)
 
+        # an infection that ended this tick also re-draws only up to the previous tick
+        recovered_today = individuals(sim6)[5]
+        log_ended_infection!(sim6, recovered_today, -1, 3, 5, 10)
+        drawn = Int16[]
+        process_measure(sim6, recovered_today, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16.(5:9)
+
         # a contact_filter rejecting every tick re-draws nothing
         empty!(eq4)
         process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true,
@@ -451,6 +466,11 @@ end
         # an index without an active infection has no window to re-draw in
         empty!(eq4)
         process_measure(sim4, inds4[2], TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
+        @test isempty(drain_events!(eq4))
+
+        # an index that became infectious this tick has nothing to trace yet
+        set_progression!(inds4[3], DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(3), recovery=Int16(20)), id(first_pathogen(sim4)))
+        process_measure(sim4, inds4[3], TraceInfectiousContacts(i_strategy4, resample_contacts = true, settingtypes = DataType[Household]))
         @test isempty(drain_events!(eq4))
 
         # infectees replace re-drawn contacts; two school years of two classes of four, the index is individual 1
@@ -499,13 +519,14 @@ end
         @test resample_contacts(trace_source) == false
         @test settingtypes(trace_source) == [Household, Office, SchoolClass]
         @test contact_filter(trace_source) isa GEMS.ContactFilterFn
-        @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = -1)
+        @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = 0)
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, success_rate = 2.0)
 
-        # the source infects the index at tick 0; the seeded infection has no source
+        # the source infects the index at tick 0; the seeded infection has no source; traced at tick 1
         infect!(index5, Int16(0), pat5, sim = sim5, infecter_id = id(source), rng = rng(sim5))
         infect!(seeded, Int16(0), pat5, sim = sim5, rng = rng(sim5))
         GEMS.flush_pending_infections!(sim5)
+        GEMS.increment!(sim5)
         eq5 = GEMS.event_queue(sim5)
 
         empty!(eq5)
@@ -536,6 +557,14 @@ end
         process_measure(sim5, index5, TraceSourceContacts(i_strategy5, max_contacts = 0))
         @test isempty(drain_events!(eq5))
 
+        # re-draws stop at the previous tick, also for an index that is not infectious yet
+        set_progression!(healthy, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(5), recovery=Int16(20)), id(pat5))
+        drawn = Int16[]
+        process_measure(sim5, healthy, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16[0]
+        empty!(eq5)
+
         # a recovered index traces the source of its ended infection
         recovered5 = individuals(sim5)[5]
         log_ended_infection!(sim5, recovered5, id(source), 0, 2, 4)
@@ -545,7 +574,7 @@ end
         # an infection older than the lookback is not traced
         GEMS.increment!(sim5)
         empty!(eq5)
-        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, lookback = 0))
+        process_measure(sim5, index5, TraceSourceContacts(i_strategy5, lookback = 1))
         @test isempty(drain_events!(eq5))
     end
 

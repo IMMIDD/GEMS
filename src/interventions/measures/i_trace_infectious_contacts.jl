@@ -32,7 +32,7 @@ add_measure!(my_str, TraceInfectiousContacts(my_other_str, success_rate = dt -> 
 
 Here, the chance to trace an infection falls with the days since it happened.
 
-Contacts are traced from the index's infectiousness onset until now, or until its recovery if its
+Contacts are traced from the index's infectiousness onset until the previous tick, or until its recovery if its
 newest infection has already ended, but at most `lookback` ticks back (default: 14).
 
 With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn
@@ -58,8 +58,8 @@ struct TraceInfectiousContacts <: IMeasure
             lookback::Integer = 14, resample_contacts::Bool = false,
             settingtypes::Vector{DataType} = DataType[Household, Office, SchoolClass],
             contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
-        if lookback < 0
-            throw(ArgumentError("lookback parameter must not be negative"))
+        if lookback < 1
+            throw(ArgumentError("lookback parameter must be at least 1"))
         end
 
         if max_contacts < 0
@@ -174,13 +174,13 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
     onset = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
     if onset >= 0
         infectious_from = onset
-        end_tick = now
+        end_tick = now - Int16(1)
     else
         last = _last_infection(logger, ind |> id)
         # never infected, or never infectious
         (isnothing(last) || last.infectiousness_onset < 0) && return nothing
         infectious_from = last.infectiousness_onset
-        end_tick = min(last.recovery, now)
+        end_tick = min(last.recovery, now - Int16(1))
     end
     start_tick = max(infectious_from, now - lookback(measure))
     start_tick > end_tick && return nothing
