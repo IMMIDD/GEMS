@@ -10,6 +10,12 @@ const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
 const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
 
+# Tracing probability by days since the contact, for the `success_rate` of tracing measures.
+const TraceRateFn = FunctionWrapper{Float64, Tuple{Int}}
+
+# Whether contacts in a setting are re-drawn at a past tick, for the `contact_filter` of tracing measures.
+const ContactFilterFn = FunctionWrapper{Bool, Tuple{Setting, Int16}}
+
 # Per-measure process callbacks, built in `add_measure!` with the measure and `sim` captured. They take
 # only the focal object, as the abstract `Simulation` type as an argument would make the call dynamic.
 const IProcessFn = FunctionWrapper{Any, Tuple{Individual}}

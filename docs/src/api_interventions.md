@@ -76,6 +76,7 @@ Test
 TestAll
 TestType
 TraceInfectiousContacts
+TraceSourceContacts
 ```
 
 ### Functions
@@ -83,9 +84,15 @@ TraceInfectiousContacts
 ```@docs
 apply_pool_test
 apply_test
+contact_filter(::TraceInfectiousContacts)
+contact_filter(::TraceSourceContacts)
 duration(::SelfIsolation)
 follow_up
 i_measuretypes
+lookback(::TraceInfectiousContacts)
+lookback(::TraceSourceContacts)
+max_contacts(::TraceInfectiousContacts)
+max_contacts(::TraceSourceContacts)
 measure_logic
 name(::PoolTest)
 name(::TestAll)
@@ -98,14 +105,19 @@ positive_followup
 process_measure
 reportable(::Test)
 reportable(::TestAll)
+resample_contacts(::TraceInfectiousContacts)
+resample_contacts(::TraceSourceContacts)
 s_measuretypes
 sample_fraction(::FindMembers)
 sample_size(::FindMembers)
 sampling_method(::ChangeContactMethod)
 selectionfilter(::FindMembers)
 sensitivity(::TestType)
+settingtypes(::TraceInfectiousContacts)
+settingtypes(::TraceSourceContacts)
 specificity(::TestType)
 success_rate(::TraceInfectiousContacts)
+success_rate(::TraceSourceContacts)
 type
 ```
 

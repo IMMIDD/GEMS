@@ -424,6 +424,53 @@ _contact_scratch() = get!(() -> Individual[], task_local_storage(), :gems_contac
 
 
 ###
+### PAST CONTACTS
+### Re-draws an individual's contacts for contact tracing
+###
+
+"""
+    _sample_past_contacts(ind::Individual, sim::Simulation, settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
+
+Re-draws `ind`'s contacts in its settings of the given `settingtypes` at every tick from `start_tick` to `end_tick` where
+`contact_filter(setting, tick)` holds, using today's memberships. Returns a `Dict` from each living contact's id to the last tick it was drawn.
+"""
+function _sample_past_contacts(ind::Individual, sim::Simulation,
+        settingtypes::Vector{DataType}, start_tick::Int16, end_tick::Int16, contact_filter)
+    last_contact = Dict{Int32, Int16}()
+    buf = sim.contact_buffers[Threads.threadid()]
+    for T in settingtypes
+        s = _primary_setting(ind, sim, T)
+        isnothing(s) && continue
+        _sample_past_contacts_in!(last_contact, buf, s.contact_sampling_method, s, ind, sim, start_tick, end_tick, contact_filter)
+    end
+    return last_contact
+end
+
+"""
+    _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, buf::Vector{Individual}, csm::ContactSamplingMethod, s::Setting, ind::Individual, sim::Simulation, start_tick::Int16, end_tick::Int16, contact_filter)
+
+Re-draws `ind`'s contacts in `s` for `_sample_past_contacts`, compiled per setting and sampling method type so the tick loop calls them statically.
+"""
+function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, buf::Vector{Individual}, csm::ContactSamplingMethod,
+        s::Setting, ind::Individual, sim::Simulation, start_tick::Int16, end_tick::Int16, contact_filter)
+    members = individuals(s, sim)
+    length(members) < 2 && return last_contact
+    pos = findfirst(m -> m === ind, members)
+
+    for t in start_tick:end_tick
+        contact_filter(s, t) || continue
+        empty!(buf)
+        sample_contacts!(buf, csm, s, pos, members, t, true, rng(sim))
+        for c in buf
+            dead(c) && continue
+            last_contact[id(c)] = max(get(last_contact, id(c), t), t)
+        end
+    end
+    return last_contact
+end
+
+
+###
 ### INCLUDE SAMPLING METHODS
 ###
 

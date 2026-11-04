@@ -381,3 +381,42 @@ struct NoMethodSampler <: ContactSamplingMethod end
         @test_throws ArgumentError AgeBasedContactSampling(1.0, 10, ContactMatrix{Float64}(fill(-0.1, 10, 10), 10, 100), Float64[])
     end
 end
+
+@testset "Past Contacts" begin
+    # two school years of two classes; each class holds two individuals
+    cp = ContactparameterSampling(10)
+    inds = [Individual(id=i, sex=1, age=10) for i in 1:8]
+    scs = [SchoolClass(id=c, individuals=inds[2c-1:2c], contained=div(c - 1, 2) + 1, contact_sampling_method=cp) for c in 1:4]
+    sys = [SchoolYear(id=y, contains=[2y - 1, 2y], contained=1, contact_sampling_method=cp) for y in 1:2]
+    sc = SettingsContainer()
+    add_types!(sc, [SchoolClass, SchoolYear])
+    foreach(x -> add!(sc, x), scs)
+    foreach(x -> add!(sc, x), sys)
+    sim = Simulation()
+    pop = Population(inds)
+    foreach(i -> fake_membership!(pop, inds[i], SchoolClass, div(i - 1, 2) + 1), 1:8)
+    sim.population = pop
+    sim.settings = sc
+
+    keep_all = GEMS.ContactFilterFn((s, t) -> true)
+
+    # a container type draws from the whole school year, never the index or the other year
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolYear], Int16(1), Int16(3), keep_all)
+    @test !isempty(latest)
+    @test all(in(Int32(2):Int32(4)), keys(latest))
+    @test all(t -> 1 <= t <= 3, values(latest))
+
+    # a leaf type draws from the class only; a missing membership is skipped
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolClass, Household], Int16(1), Int16(3), keep_all)
+    @test collect(keys(latest)) == Int32[2]
+    @test latest[Int32(2)] == Int16(3)
+
+    # the filter skips settings at ticks it rejects
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolClass], Int16(1), Int16(3),
+        GEMS.ContactFilterFn((s, t) -> t != 3))
+    @test latest[Int32(2)] == Int16(2)
+
+    latest = GEMS._sample_past_contacts(inds[1], sim, DataType[SchoolClass, SchoolYear], Int16(1), Int16(3),
+        GEMS.ContactFilterFn((s, t) -> !(s isa SchoolClass)))
+    @test all(in(Int32(2):Int32(4)), keys(latest))
+end
