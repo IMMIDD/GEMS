@@ -74,3 +74,48 @@ function fake_membership!(pop::Population, ind::Individual, ::Type{T}, sid::Inte
     GEMS.plan_add!(GEMS.activity_plans(pop), ind, PlanEntry(T, Int32(sid), GEMS.DEFAULT_MEMBER_INDEX))
     return nothing
 end
+
+# makes the slots of a phase run serially in a random order, to check that the order does not matter
+const SHUFFLED_SLOTS = Ref(false)
+
+# adds a method for `Simulation` next to the one in `src`, and passes on to that one unless the phases are shuffled
+function GEMS._foreach_slot(f, sim::Simulation; owner_phase::Bool = false)
+    SHUFFLED_SLOTS[] || return invoke(GEMS._foreach_slot, Tuple{Any, Any}, f, sim; owner_phase)
+    for slot in GEMS.gems_shuffle!(GEMS.Xoshiro(Int(tick(sim))), collect(1:Threads.maxthreadid()))
+        GEMS._with_slot(() -> f(slot), sim, slot; owner_phase)
+    end
+    return nothing
+end
+
+"""
+    with_shuffled_slots(f)
+
+Calls `f()` with the slots of every phase running serially in a random order.
+"""
+function with_shuffled_slots(f)
+    SHUFFLED_SLOTS[] = true
+    try
+        return f()
+    finally
+        SHUFFLED_SLOTS[] = false
+    end
+end
+
+struct QueuedEvents
+    queues::Vector{GEMS.EventQueue}
+end
+
+"""
+    queued_events(sim::Simulation)
+
+Returns a view of all event queues of `sim`, for tests that inspect what a measure queued. Events come out queue by queue.
+"""
+queued_events(sim::Simulation) = QueuedEvents(GEMS.EventQueue[
+    GEMS.event_queue(sim),
+    GEMS._setting_queue(sim),
+    (GEMS._owner_queue(sim, s) for s in 1:Threads.maxthreadid())...
+])
+
+Base.isempty(q::QueuedEvents) = all(isempty, q.queues)
+Base.empty!(q::QueuedEvents) = (foreach(empty!, q.queues); q)
+GEMS.dequeue!(q::QueuedEvents) = GEMS.dequeue!(q.queues[findfirst(!isempty, q.queues)])

@@ -256,7 +256,8 @@ function apply_test!(ind::Individual, testtype::TestType, sim::Simulation, repor
         infected(ind, testtype.pathogen_id) ? infection_id(ind, sim, testtype.pathogen_id) : DEFAULT_INFECTION_ID,
         testtype |> pathogen_id,
         testtype |> name,
-        test_pos && reportable)
+        test_pos && reportable;
+        slot = _log_slot(sim))
  
     return test_pos
 end
@@ -357,7 +358,8 @@ function apply_test!(ind::Individual, testtype::SeroprevalenceTestType, sim::Sim
         was_infected,
         infected(ind, testtype.pathogen_id) ? infection_id(ind, sim, testtype.pathogen_id) : DEFAULT_INFECTION_ID,
         testtype |> pathogen_id,
-        testtype |> name)
+        testtype |> name;
+        slot = _log_slot(sim))
 
     return test_pos
 end

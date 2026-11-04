@@ -58,6 +58,7 @@ end
 ###
 ### SIMULATION STRUCT
 ###
+
 """
     Simulation
 
@@ -234,6 +235,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     hospitalization_triggers::Vector{ITrigger}
     # concrete EventQueue is defined after Simulation; event_queue(sim) narrows this back
     event_queue::AbstractEventQueue
+    # concrete _ParallelLane is defined after Simulation; _parallel_lane(sim) narrows this back
+    parallel_lane::AbstractParallelLane
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
     # vaccines register on their first dose
@@ -266,18 +269,13 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     # when each individual's next disease update is due, and what its last one found
     update_states::Vector{_UpdateState}
 
-    # THREAD-LOCAL BUFFERS
-    contact_buffers::Vector{Vector{Individual}}
-    # one sampler call's draws, for scaled hosts that call a sampler more than once
-    draw_buffers::Vector{Vector{Individual}}
-    # who each thread's part of the disease-update sweep found dead this tick
-    newly_dead::Vector{Vector{Individual}}
+    # BUFFERS
+    scratch_buffers::_ScratchBuffers
+    staging_buffers::_StagingBuffers
+
+    # STATE LOG COUNTS
     # what each thread counted for the state log
     state_log_counts::Vector{_StateLogCounts}
-    infection_buffers::Matrix{Vector{_PendingInfection}}
-    removal_buffers::Matrix{Vector{_EndedInfection}}
-    # per shard, the attempt that wins each contested (host, pathogen) this tick
-    deduplication_winners::Vector{Dict{Tuple{Int32, Int8}, _DeduplicationKey}}
 
     # inner default constructor
     function Simulation(
@@ -316,10 +314,10 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             pathogens,
             health_progression,
             health_profiles,
-            [InfectionRegistry(population.maxid, num_shards) for _ in 1:num_shards],
-            [ImmunityRegistry(population.maxid, num_shards) for _ in 1:num_shards],
-            [TestRegistry() for _ in 1:num_shards],
-            [HealthSchedule() for _ in 1:num_shards],
+            _shard_local_vector(InfectionRegistry, () -> InfectionRegistry(population.maxid, num_shards)),
+            _shard_local_vector(ImmunityRegistry, () -> ImmunityRegistry(population.maxid, num_shards)),
+            _shard_local_vector(TestRegistry),
+            _shard_local_vector(HealthSchedule),
 
             # logger
             InfectionLogger(minid = population.minid, maxid = population.maxid),
@@ -338,6 +336,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             [],
             [],
             EventQueue(),
+            _ParallelLane(seed),
             [],
             [],
             fill(VaccineProtection(), 127, MAX_PATHOGENS),
@@ -365,13 +364,11 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             fill(_UpdateState(), length(population.individuals)),
 
             # INITIALIZE BUFFERS
-            _thread_local_vector(Vector{Individual}), # contact_buffers
-            _thread_local_vector(Vector{Individual}), # draw_buffers
-            _thread_local_vector(Vector{Individual}), # newly_dead
-            _thread_local_vector(_StateLogCounts), # state_log_counts
-            _thread_local_matrix(Vector{_PendingInfection}, () -> sizehint!(Vector{_PendingInfection}(), matrix_size_hint)), # infection buffers matrix
-            _thread_local_matrix(Vector{_EndedInfection}, () -> sizehint!(Vector{_EndedInfection}(), matrix_size_hint)), # removal buffers matrix
-            _thread_local_vector(Dict{Tuple{Int32, Int8}, _DeduplicationKey}, () -> sizehint!(Dict{Tuple{Int32, Int8}, _DeduplicationKey}(), matrix_size_hint * num_shards)) # deduplication winners
+            _ScratchBuffers(matrix_size_hint * num_shards),
+            _StagingBuffers(matrix_size_hint),
+
+            # STATE LOG COUNTS
+            _thread_local_vector(_StateLogCounts)
         )
 
         # increase simulation counter
@@ -608,65 +605,6 @@ function _BUILD_Simulation(;
 
     return sim
 end
-
-"""
-    _thread_local_vector(T::Type, make = T)
-
-Returns a `Vector{T}` of `make()` results with one entry per thread id, each created on the thread that uses it.
-"""
-function _thread_local_vector(T::Type, make = T)
-    v = Vector{T}(undef, Threads.maxthreadid())
-    # objects allocated back to back share cache lines; each thread's own heap pages keep concurrent writes apart
-    Threads.@threads :static for _ in 1:Threads.nthreads()
-        v[Threads.threadid()] = make()
-    end
-    # slots of threads outside the default pool
-    for i in eachindex(v)
-        isassigned(v, i) || (v[i] = make())
-    end
-    return v
-end
-
-"""
-    _thread_local_matrix(T::Type, make = T)
-
-Returns a producer × shard `Matrix{T}` of `make()` results, each row created on the producing thread.
-"""
-function _thread_local_matrix(T::Type, make = T)
-    n = Threads.maxthreadid()
-    m = Matrix{T}(undef, n, n)
-    # see `_thread_local_vector`
-    Threads.@threads :static for _ in 1:Threads.nthreads()
-        p = Threads.threadid()
-        for s in 1:n
-            m[p, s] = make()
-        end
-    end
-    for i in eachindex(m)
-        isassigned(m, i) || (m[i] = make())
-    end
-    return m
-end
-
-"""
-    _thread_local_rngs(master::Xoshiro)
-
-Returns one `Xoshiro` per thread id, seeded from `master` in thread-id order, each created on the thread that uses it.
-"""
-function _thread_local_rngs(master::Xoshiro)
-    seeds = [gems_rand(master, UInt) for _ in 1:Threads.maxthreadid()]
-    v = Vector{Xoshiro}(undef, length(seeds))
-    # every draw writes the generator, so neighbours on one cache line would contend (see `_thread_local_vector`)
-    Threads.@threads :static for _ in 1:Threads.nthreads()
-        t = Threads.threadid()
-        v[t] = Xoshiro(seeds[t])
-    end
-    for i in eachindex(v)
-        isassigned(v, i) || (v[i] = Xoshiro(seeds[i]))
-    end
-    return v
-end
-
 
 ### DETERMINATION FUNCTIONS
 
@@ -2307,20 +2245,42 @@ end
 Returns the thread-local buffers for storing sampled contacts, used to eliminate array allocations.
 """
 function contact_buffers(simulation::Simulation)::Vector{Vector{Individual}}
-    return simulation.contact_buffers
+    return simulation.scratch_buffers.contact
 end
+
+"""
+    _member_filter_buffer(simulation::Simulation)
+
+Returns this thread's buffer for the filtered candidates of a sampled `FindMembers`.
+"""
+_member_filter_buffer(simulation::Simulation) = simulation.scratch_buffers.member_filter[Threads.threadid()]
+
+"""
+    _member_sample_buffer(simulation::Simulation)
+
+Returns this thread's buffer for the sampled members of a sampled `FindMembers`.
+"""
+_member_sample_buffer(simulation::Simulation) = simulation.scratch_buffers.member_sample[Threads.threadid()]
 
 # Frees the capacity the per-tick buffers grew to during a run
 function _release_tick_buffers!(simulation::Simulation)
     release!(buf) = sizehint!(buf, length(buf))
     foreach(release!, simulation.infectious_individuals)
-    foreach(release!, simulation.contact_buffers)
-    foreach(release!, simulation.draw_buffers)
-    foreach(release!, simulation.newly_dead)
+    foreach(release!, simulation.scratch_buffers.contact)
+    foreach(release!, simulation.scratch_buffers.draw)
+    foreach(release!, simulation.scratch_buffers.member_filter)
+    foreach(release!, simulation.scratch_buffers.member_sample)
+    foreach(release!, simulation.staging_buffers.newly_dead)
+    foreach(release!, simulation.staging_buffers.newly_symptomatic)
+    foreach(release!, _parallel_lane(simulation).owner_requests)
+    foreach(release!, _parallel_lane(simulation).next_owner_requests)
+    foreach(release!, _parallel_lane(simulation).serial_individual_requests)
+    foreach(release!, _parallel_lane(simulation).serial_setting_requests)
+    foreach(release!, _parallel_lane(simulation).staged_setting_events)
     foreach(t -> release!(t.in_care), simulation.state_log_counts)
-    foreach(release!, simulation.infection_buffers)
-    foreach(release!, simulation.removal_buffers)
-    foreach(release!, simulation.deduplication_winners)
+    foreach(release!, simulation.staging_buffers.infections)
+    foreach(release!, simulation.staging_buffers.removals)
+    foreach(release!, simulation.scratch_buffers.deduplication_winners)
     return nothing
 end
 
@@ -2879,7 +2839,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
         end
     end
     repack_dirty_pools!(settingscontainer(simulation))
-    foreach(empty!, simulation.newly_dead)
+    foreach(empty!, simulation.staging_buffers.newly_dead)
+    foreach(empty!, simulation.staging_buffers.newly_symptomatic)
     foreach(_reset!, simulation.state_log_counts)
     # measures may have changed sampling methods since the last scan
     _refresh_rate_bounds!(settingscontainer(simulation))
@@ -2897,7 +2858,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     simulation.statelogger = StateLogger()
     simulation.customlogger = CustomLogger()
 
-    simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
+    simulation.test_registries = _shard_local_vector(TestRegistry)
     # vaccines register again on their next first dose
     fill!(simulation.vaccine_protection, VaccineProtection())
     fill!(simulation.vaccine_registered, UInt128(0))
@@ -2908,6 +2869,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # Reset NPI triggers and strategies
     simulation.event_queue = EventQueue()
+    simulation.parallel_lane = _ParallelLane(simulation.seed)
     # clear the staged seeding schedule; initialize! rebuilds it from the start condition
     simulation.seeding_schedule = Dict{Int16, Vector{InfectionSeed}}()
     if reset_interventions
@@ -3009,7 +2971,7 @@ end
 """
     event_queue(simulation)
 
-Returns the simulation's intervention event queue.
+Returns the simulation's serial intervention event queue. Events of the parallel lane are not in it.
 """
 function event_queue(simulation::Simulation)
     # narrow the abstractly-typed field to the concrete EventQueue for type-stable access

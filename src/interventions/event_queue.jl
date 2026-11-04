@@ -37,10 +37,6 @@ mutable struct EventQueue <: AbstractEventQueue
     # total number of queued events (across both bucket arrays)
     count::Int
 
-    # Per-thread, lock-free staging buffers (one set per event type).
-    i_staging::Vector{Vector{Tuple{IMeasureEvent, Int16}}}
-    s_staging::Vector{Vector{Tuple{SMeasureEvent, Int16}}}
-
     # Recycled bucket vectors: retired buckets that were used are pushed here so their
     # allocated capacity can be reused for future tick slots
     i_free::Vector{Vector{IMeasureEvent}}
@@ -57,8 +53,6 @@ EventQueue() = EventQueue(
     Union{Nothing, Vector{SMeasureEvent}}[],
     0,
     0,
-    [Tuple{IMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
-    [Tuple{SMeasureEvent, Int16}[] for _ in 1:Threads.maxthreadid()],
     Vector{IMeasureEvent}[],
     Vector{SMeasureEvent}[]
 )
@@ -144,18 +138,23 @@ function peektick(eq::EventQueue)
 end
 
 """
+    _has_due(queue::EventQueue, t)
+
+Returns whether `queue` holds an event due at a tick `<= t`.
+"""
+_has_due(queue::EventQueue, t) = !isempty(queue) && peektick(queue) <= t
+
+"""
     _insert!(queue::EventQueue, event, tick::Int16)
 
 Inserts `event` into the bucket for `tick`, growing the bucket vector if needed and moving
 `head` back if the target tick is below the current head. `O(1)`. Dispatches on the event
-type (individual vs setting). Not thread-safe: callers (`enqueue!`, `flush_staging!`) run
-single-threaded.
+type (individual vs setting). Not thread-safe: a queue has one writer at a time.
 
 Extending the array fills any intermediate gap with `nothing` (no allocation). The bucket for
 `tick` is created here, on first insert, drawing from the free list before allocating so
-capacity grown by earlier ticks is reused rather than abandoned. `head` is pulled back when a
-staged event is flushed into a tick that `_advance_head!` has already passed (possible when
-`flush_staging!` runs after a partial drain of the current tick).
+capacity grown by earlier ticks is reused rather than abandoned. `head` is pulled back when an
+event is inserted into a tick that `_advance_head!` has already passed.
 """
 function _insert!(queue::EventQueue, event::IMeasureEvent, tick::Int16)
     idx = Int(tick) + 1
@@ -192,46 +191,10 @@ end
 """
     enqueue!(queue::EventQueue, event, tick::Int16)
 
-Adds a new `Event` to the `EventQueue` at the specified `tick`. `O(1)`.
-Not thread-safe; inside parallel loops use `stage!`.
+Adds a new `Event` to the `EventQueue` at the specified `tick`. `O(1)`. Not thread-safe.
 """
 function enqueue!(queue::EventQueue, event, tick::Int16)
     _insert!(queue, event, tick)
-    return nothing
-end
-
-"""
-    stage!(queue::EventQueue, event, tick::Int16)
-
-Variant of `enqueue!` for use inside parallel loops: appends `event` and its
-`tick` to the calling thread's staging buffer (selected by event type). Staged events
-become visible only once `flush_staging!` merges them into the queue. `O(1)`.
-"""
-stage!(queue::EventQueue, event::IMeasureEvent, tick::Int16) =
-    (push!(queue.i_staging[Threads.threadid()], (event, tick)); nothing)
-
-stage!(queue::EventQueue, event::SMeasureEvent, tick::Int16) =
-    (push!(queue.s_staging[Threads.threadid()], (event, tick)); nothing)
-
-"""
-    flush_staging!(queue::EventQueue)
-
-Merges all per-thread staging buffers (filled by `stage!`) into the tick buckets and empties
-them. Must be called single-threaded; takes no lock. Buffers are merged in thread-index order.
-"""
-function flush_staging!(queue::EventQueue)
-    for buf in queue.i_staging
-        for (event, tick) in buf
-            _insert!(queue, event, tick)
-        end
-        empty!(buf)
-    end
-    for buf in queue.s_staging
-        for (event, tick) in buf
-            _insert!(queue, event, tick)
-        end
-        empty!(buf)
-    end
     return nothing
 end
 
@@ -302,13 +265,31 @@ function Base.empty!(queue::EventQueue)
     for b in queue.s_buckets
         b !== nothing && empty!(b)
     end
-    for buf in queue.i_staging
-        empty!(buf)
-    end
-    for buf in queue.s_staging
-        empty!(buf)
-    end
     queue.head = 0
     queue.count = 0
     return queue
+end
+
+# used by the phases of the parallel lane
+
+"""
+    _drain_individual_events!(queue::EventQueue, t, sim)
+
+Processes the individual events scheduled for tick `t`, leaving the bucket in place as `_drain_bucket!` does.
+"""
+_drain_individual_events!(queue::EventQueue, t, sim) = _drain_bucket!(queue.i_buckets, Int(t) + 1, queue, sim)
+
+"""
+    _foreach_due_setting_bucket(f, queue::EventQueue, t)
+
+Calls `f(bucket)` for every due bucket of a queue that holds only setting events, then empties the bucket.
+"""
+function _foreach_due_setting_bucket(f, queue::EventQueue, t)
+    while _has_due(queue, t)
+        bucket = queue.s_buckets[queue.head + 1]::Vector{SMeasureEvent}
+        f(bucket)
+        queue.count -= length(bucket)
+        empty!(bucket)
+    end
+    return nothing
 end

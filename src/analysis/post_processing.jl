@@ -562,7 +562,7 @@ obtain personal characteristics about the testees.
 
 | Name           | Type     | Description                                        |
 | :------------- | :------- | :------------------------------------------------- |
-| `test_id`      | `Int32`  | Unique test id within the logger                   |
+| `test_id`      | `Int64`  | Unique test id within the logger                   |
 | `tick`         | `Int16`  | Tick of the test event                             |
 | `id`           | `Int32`  | Individual's id                                    |
 | `test_result`  | `Bool`   | Test result                                        |
@@ -623,7 +623,7 @@ It is based on the data logged by the `SeroprevalenceLogger`.
 
 | Name           | Type     | Description                                                    |
 | :------------- | :------- | :------------------------------------------------------------- |
-| `test_id`      | `Int32`  | Unique test ID within the logger                               |
+| `test_id`      | `Int64`  | Unique test ID within the logger                               |
 | `tick`         | `Int16`  | Tick at which the test was performed                           |
 | `id`           | `Int32`  | ID of the individual tested                                    |
 | `test_result`  | `Bool`   | Result of the test (`true` = positive, `false` = negative)     |

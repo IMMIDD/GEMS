@@ -269,7 +269,7 @@ end
             member, outsider = individuals(sim)[1], individuals(sim)[n]
             @test getsetting(member, sim, DeclaredSetting{:Gym}) === gyms[1]
             @test_throws ArgumentError getsetting(outsider, sim, DeclaredSetting{:Gym})
-            eq = GEMS.event_queue(sim)
+            eq = queued_events(sim)
             empty!(eq)
             fu = SStrategy("gym_followup", sim)
             add_measure!(fu, CloseSetting())
