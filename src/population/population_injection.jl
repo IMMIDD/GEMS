@@ -679,18 +679,19 @@ function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_v
 
         # Try to find the value in the forward map directly
         if !haskey(injector.schema.columns[field].forward_map, new_value)
-            # Try to convert to the original type
+            # Try to convert to the original type (only the conversion is guarded — the
+            # "could not be encoded" error below must not be swallowed by this catch)
             try
                 converted_value = convert(injector.schema.columns[field].original_type, new_value)
-                if !haskey(injector.schema.columns[field].forward_map, converted_value)
-                    error("Value $new_value could not be encoded for field $field")
-                end
-                if converted_value != new_value
-                    @warn "Value $new_value was converted to $converted_value for encoding"
-                    new_value = converted_value
-                end
             catch
                 error("Value $new_value could not be converted to a valid type for field $field")
+            end
+            if !haskey(injector.schema.columns[field].forward_map, converted_value)
+                error("Value $new_value could not be encoded for field $field")
+            end
+            if converted_value != new_value
+                @warn "Value $new_value was converted to $converted_value for encoding"
+                new_value = converted_value
             end
         end
         _check_staged_setting_id!(injector, field, new_value)
@@ -817,6 +818,25 @@ function get_original_value(injector::Injector, event::Event)
     return decode_value(injector, field_symbol, event.new_value)
 end
 
+# Verify that the columns of the provided base population table match the hashes stored in
+# the injector's schema meta (i.e. it is the day-0 table the injector was staged from)
+function verify_base_population_hashes(injector::Injector, base_population::DataFrame)
+    for field in names(base_population)
+        field_symbol = Symbol(field)
+        computed_hash = stable_hash(base_population[:, field])
+
+        if !haskey(injector.schema.meta[:hash], field_symbol)
+            error("No hash stored for column $field_symbol")
+        end
+
+        stored_hash = injector.schema.meta[:hash][field_symbol]
+        if computed_hash != stored_hash
+            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
+        end
+    end
+    return nothing
+end
+
 """
     snapshot(injector::Injector, base_population::DataFrame, timestamp::Int16)
 
@@ -833,21 +853,7 @@ Reconstructs the population table at a given day of the staged-changes timeline.
   population's death column.
 """
 function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int16)
-    # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
-    for field in names(base_population)
-        field_symbol = Symbol(field)
-        col_data = base_population[:, field]
-        computed_hash = stable_hash(col_data)
-
-        if !haskey(injector.schema.meta[:hash], field_symbol)
-            error("No hash stored for column $field_symbol")
-        end
-
-        stored_hash = injector.schema.meta[:hash][field_symbol]
-        if computed_hash != stored_hash
-            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
-        end
-    end
+    verify_base_population_hashes(injector, base_population)
 
     # Create a copy of the base population to avoid modifying it
     snapshot_df = deepcopy(base_population)
@@ -886,12 +892,14 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag into the column (created alive if the base table has none)
-        if field_symbol in (:death,)
+        # write the constant flag into the column (created alive if the base table has none);
+        # a missing :death_reason column is created the same way, filled with the alive default.
+        if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
-                snapshot_df[!, field_symbol] = Int8(-1)
+                snapshot_df[!, field_symbol] .= Int8(-1)
             end
-            snapshot_df[ind_id, field_symbol] = INJECTION_DEATH_FLAG
+            new_value = field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
+            snapshot_df[ind_id, field_symbol] = new_value
             continue
         end
 
@@ -922,24 +930,11 @@ Reconstructs the table for a specified individual at a given day of the staged-c
 - `DataFrame`: The population table at the given day for an individual
 """
 function snapshot(injector::Injector, ind_id::Integer, base_population::DataFrame, timestamp::Int16)
-    # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
-    for field in names(base_population)
-        field_symbol = Symbol(field)
-        col_data = base_population[:, field]
-        computed_hash = stable_hash(col_data)
+    verify_base_population_hashes(injector, base_population)
 
-        if !haskey(injector.schema.meta[:hash], field_symbol)
-            error("No hash stored for column $field_symbol")
-        end
-
-        stored_hash = injector.schema.meta[:hash][field_symbol]
-        if computed_hash != stored_hash
-            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
-        end
-    end
-
-    # Create a copy of the base individual to avoid modifying it
-    snapshot_df = deepcopy(base_population[ind_id, :])
+    # Create a copy of the base individual to avoid modifying it.
+    # Must be a 1-row DataFrame (not a DataFrameRow) so a missing death column can be added.
+    snapshot_df = DataFrame(deepcopy(base_population[ind_id, :]))
 
     # Find all events for the individual that occurred before or at the given timestamp
     relevant_events = filter(event -> event.ind_id == ind_id && event.timestamp <= timestamp, injector.events)
@@ -958,12 +953,14 @@ function snapshot(injector::Injector, ind_id::Integer, base_population::DataFram
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag (into the column, created alive if the base table has none)
-        if field_symbol in (:death,)
+        # write the constant flag (into the column, created alive if the base table has none);
+        # a missing :death_reason column is created the same way, filled with the alive default.
+        if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
-                snapshot_df[!, field_symbol] = Int8(-1)
+                snapshot_df[!, field_symbol] .= Int8(-1)
             end
-            snapshot_df[field_symbol] = INJECTION_DEATH_FLAG
+            new_value = field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
+            snapshot_df[1, field_symbol] = new_value
             continue
         end
 
@@ -971,45 +968,33 @@ function snapshot(injector::Injector, ind_id::Integer, base_population::DataFram
         original_value = decode_value(injector, field_symbol, event.new_value)
 
         # Update the snapshot dataframe
-        snapshot_df[field_symbol] = original_value
+        snapshot_df[1, field_symbol] = original_value
     end
 
     return snapshot_df
 end
 
 """
-    snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::DataFrame, timestamp::Int16)
+    snapshot(injector::Injector, ind_id::AbstractVector{<:Integer}, base_population::DataFrame, timestamp::Int16)
 
 Reconstructs the table for the specified individuals at a given day of the staged-changes timeline.
 
 # Arguments
 - `injector::Injector`: The injector containing the staged events
-- `ind_id::Vector{Int}`: The vector of individual ids the snapshot applies to
+- `ind_id::AbstractVector{<:Integer}`: The vector of individual ids the snapshot applies to
 - `base_population::DataFrame`: The base population table (day 0) to start from
 - `timestamp::Int16`: The day to create the snapshot for
 
 # Returns
 - `DataFrame`: The population table at the given day for an individual
 """
-function snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::DataFrame, timestamp::Int16)
-    # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
-    for field in names(base_population)
-        field_symbol = Symbol(field)
-        col_data = base_population[:, field]
-        computed_hash = stable_hash(col_data)
-
-        if !haskey(injector.schema.meta[:hash], field_symbol)
-            error("No hash stored for column $field_symbol")
-        end
-
-        stored_hash = injector.schema.meta[:hash][field_symbol]
-        if computed_hash != stored_hash
-            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
-        end
-    end
+function snapshot(injector::Injector, ind_id::AbstractVector{<:Integer}, base_population::DataFrame, timestamp::Int16)
+    verify_base_population_hashes(injector, base_population)
 
     # Create a copy of the base individuals to avoid modifying it
     snapshot_df = deepcopy(base_population[ind_id, :])
+    # The subframe is compact (rows 1..n), so map each individual id to its row position within it
+    ind_to_row = Dict(Int(i) => j for (j, i) in enumerate(ind_id))
 
     # Find all events for the individuals that occurred before or at the given timestamp
     relevant_events = filter(event -> event.ind_id ∈ ind_id && event.timestamp <= timestamp, injector.events)
@@ -1023,18 +1008,20 @@ function snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::
 
     # Now process all events
     for event in sorted_events
-        # Get field and index from the event
-        ind_id = Int(event.ind_id)
+        # Get field and row position from the event (the id must be mapped into the compact subframe)
+        row = ind_to_row[Int(event.ind_id)]
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag into the column (created alive if the base table has none)
-        if field_symbol in (:death,)
+        # write the constant flag into the column (created alive if the base table has none);
+        # a missing :death_reason column is created the same way, filled with the alive default.
+        if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
-                snapshot_df[!, field_symbol] = Int8(-1)
+                snapshot_df[!, field_symbol] .= Int8(-1)
             end
-            snapshot_df[ind_id, field_symbol] = INJECTION_DEATH_FLAG
+            new_value = field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
+            snapshot_df[row, field_symbol] = new_value
             continue
         end
 
@@ -1042,7 +1029,7 @@ function snapshot(injector::Injector, ind_id::Vector{Integer}, base_population::
         original_value = decode_value(injector, field_symbol, event.new_value)
 
         # Update the snapshot dataframe
-        snapshot_df[ind_id, field_symbol] = original_value
+        snapshot_df[row, field_symbol] = original_value
     end
 
     return snapshot_df
@@ -1062,21 +1049,7 @@ Reconstructs the table for the specified individuals at each changepoint.
 - `DataFrame`: The individual table with a row for each time point of change
 """
 function get_change_history(injector::Injector, ind_id::Integer, base_population::DataFrame)
-    # Verify that the hash of the provided dataframe coincides with the one stored in meta.schema
-    for field in names(base_population)
-        field_symbol = Symbol(field)
-        col_data = base_population[:, field]
-        computed_hash = stable_hash(col_data)
-
-        if !haskey(injector.schema.meta[:hash], field_symbol)
-            error("No hash stored for column $field_symbol")
-        end
-
-        stored_hash = injector.schema.meta[:hash][field_symbol]
-        if computed_hash != stored_hash
-            error("Hash mismatch for column $field_symbol: computed=$computed_hash, stored=$stored_hash")
-        end
-    end
+    verify_base_population_hashes(injector, base_population)
 
     # Create a copy of the base individual to avoid modifying it. Must be DataFrame() otherwise cannot add column
     snapshot_df = DataFrame(deepcopy(base_population[ind_id, :]))
@@ -1102,15 +1075,16 @@ function get_change_history(injector::Injector, ind_id::Integer, base_population
         field_symbol = injector.schema.index_to_field[field_index+1]
 
         # Death events carry no value to decode (the timestamp was the day of death) —
-        # the constant flag stands in for the value in the history table (the base row stays alive)
-        if field_symbol in (:death,)
+        # the constant flag stands in for the value in the history table (the base row stays alive);
+        # a missing :death_reason column is created the same way, filled with the alive default.
+        if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
-                snapshot_df[!, field_symbol] = Int8(-1)
+                snapshot_df[!, field_symbol] .= Int8(-1)
             end
             if !hasproperty(tmp_df, field_symbol)
-                tmp_df[!, field_symbol] = Int8(-1)
+                tmp_df[!, field_symbol] .= Int8(-1)
             end
-            tmp_df[!, field_symbol] .= INJECTION_DEATH_FLAG
+            tmp_df[!, field_symbol] .= field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
             tmp_df.timestamp .= event.timestamp
             append!(snapshot_df, tmp_df)
             continue

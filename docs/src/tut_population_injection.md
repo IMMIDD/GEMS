@@ -2,7 +2,7 @@
 
 So far, the population was fixed before the run started. With **population injection**, the population can also *change during the run*: individuals can change attributes (e.g., their job), new individuals are born, and individuals die — all from a schedule you create before the run.
 
-The schedule is held by an **injector** (`GEMS.PopulationInjection.Injector`): staging a change into the injector is called **staging**, and the simulation **injects** the staged changes into the live population tick by tick. This page is the tutorial and reference for the feature; the docstrings of its API are collected on the [Population Injection](@id api_population_injection) page.
+The schedule is held by an **injector** (`GEMS.PopulationInjection.Injector`): staging a change into the injector is called **staging**, and the simulation **injects** the staged changes into the live population tick by tick. This page is the tutorial and reference for the feature; the docstrings of its API are collected on the [Population Injection](api_population_injection.md) page.
 
 In the example below, the population carries an extra column `income` of type `Float32` that GEMS itself does not store. We stage changes at several different days, inspect the resulting state without running, and then run the *same injector* twice — with `population_snapshot = 0` and `population_snapshot = 5` — to see how the staged timeline re-bases onto the simulation clock.
 
@@ -38,7 +38,7 @@ In the example below, the population carries an extra column `income` of type `F
 
 ## Setting up the base population and the injector
 
-As in the [3 - Creating Populations](@id tut_pops) tutorial, we generate a synthetic population from a dataframe — 100 individuals, two per household:
+As in the [3 - Creating Populations](tut_pops.md) tutorial, we generate a synthetic population from a dataframe — 100 individuals, two per household:
 
 ```julia
 using GEMS, DataFrames
@@ -257,4 +257,4 @@ PI.stage_death!(inj, 9, nothing, Int16(8))                      # dead from day 
 - **Setting moves:** updating `:household`/`:office`/`:schoolclass`/`:municipality` also moves the membership in the settings container (GEMS' `add_member!`/`remove_member!`), creating the target setting when the id is the next free one — GEMS indexes settings by id without gaps, so a staged new setting id must be `max(id) + 1` (staging any other new id is an error). Container hierarchies (`School`, `Workplace`, …) and their `contains`/`contained` links are not touched. A column is treated as a setting column only if its name matches an `Individual` field that GEMS maps to a setting type — the type-level `setting_id!` dispatch is the source of truth and the column name is only the join key (per the `dataframe(population)` convention of one column per field, same name); `setting_fieldmap()` exposes the mapping.
 - **Int16 bounds:** ticks, timestamps, and the snapshot are `Int16`-bounded.
 
-The docstrings of all the types and functions are collected on the [Population Injection](@id api_population_injection) page.
+The docstrings of all the types and functions are collected on the [Population Injection](api_population_injection.md) page.

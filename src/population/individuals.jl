@@ -867,8 +867,10 @@ end
 
 Transparent write access for both core and extension fields, with the same type-coercion
 behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
-`setfield!`). Non-core names are forwarded to the boxed `extensions` value; for an
-`AutoExtension` the wrapped NamedTuple is replaced via `merge`.
+`setfield!`). Non-core names are forwarded to the boxed `extensions` value: for an
+`AutoExtension` the wrapped NamedTuple is replaced via `merge`; for a custom struct
+extension the struct is rebuilt with the updated field and swapped into the slot
+(supporting immutable structs).
 """
 @inline function Base.setproperty!(ind::Individual, name::Symbol, val)
     if hasfield(Individual, name)
@@ -880,7 +882,11 @@ behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)`
         return setfield!(ext, :data,
             merge(nt, NamedTuple{(name,)}((convert(fieldtype(typeof(nt), name), val),))))
     else
-        return setfield!(ext, name, convert(fieldtype(typeof(ext), name), val))
+        # custom (struct) extension: rebuild it with the updated field and swap it into
+        # the extensions slot — works for mutable and immutable structs alike
+        T = typeof(ext)
+        vals = map(f -> f === name ? convert(fieldtype(T, f), val) : getfield(ext, f), fieldnames(T))
+        return setfield!(ind, :extensions, T(vals...))
     end
 end
 

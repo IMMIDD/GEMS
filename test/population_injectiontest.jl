@@ -726,6 +726,425 @@ end
 
 
 ###
+### UNIT COVERAGE — type helpers, internal staging paths, change history, stable_hash
+###
+
+@testset "determine_minimal_type boundaries" begin
+    @test PI.determine_minimal_type(0) == Int8
+    @test PI.determine_minimal_type(1) == Int8
+    @test PI.determine_minimal_type(255) == Int8                 # Int8 boundary
+    @test PI.determine_minimal_type(256) == Int16
+    @test PI.determine_minimal_type(65535) == Int16              # Int16 boundary
+    @test PI.determine_minimal_type(65536) == Int32
+    @test PI.determine_minimal_type(4_294_967_295) == Int32      # Int32 boundary
+    @test PI.determine_minimal_type(4_294_967_296) == Int64
+    @test PI.determine_minimal_type(typemax(Int)) == Int64
+end
+
+@testset "determine_ind_id_type (10% buffer)" begin
+    @test PI.determine_ind_id_type(1) == Int8                    # ceil(1.1) = 2
+    @test PI.determine_ind_id_type(100) == Int8                  # 110
+    @test PI.determine_ind_id_type(231) == Int8                  # ceil(254.1) = 255 — fits
+    @test PI.determine_ind_id_type(232) == Int16                 # ceil(255.2) = 256 — overflows
+    @test PI.determine_ind_id_type(59_000) == Int16              # ~64_900
+    @test PI.determine_ind_id_type(60_000) == Int32              # ~66_000
+    @test PI.determine_ind_id_type(3_000_000_000) == Int32       # 3.3e9
+    @test PI.determine_ind_id_type(5_000_000_000) == Int64       # 5.5e9
+end
+
+@testset "_check_staged_death_reason!" begin
+    # non-infection codes (<= 0) are accepted and return nothing
+    @test PI._check_staged_death_reason!(GEMS.DEFAULT_DEATH_REASON) === nothing
+    @test PI._check_staged_death_reason!(GEMS.DEATH_REASON_NATURAL) === nothing
+    @test PI._check_staged_death_reason!(Int8(0)) === nothing
+    @test PI._check_staged_death_reason!(Int16(-10)) === nothing
+    @test PI._check_staged_death_reason!(Int32(-2)) === nothing
+
+    # positive codes are reserved for pathogen deaths → ArgumentError with a helpful message
+    for bad in (Int8(1), Int16(5), Int32(1234), Int(42))
+        ex = try
+            PI._check_staged_death_reason!(bad)
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test occursin("staged death_reason $bad", ex.msg)
+        @test occursin("positive codes are reserved", ex.msg)
+        @test occursin("GEMS.DEATH_REASON_NATURAL", ex.msg)
+    end
+end
+
+@testset "_stage_event! paths, warnings and errors" begin
+    # base WITH the death columns so the :death / :death_reason paths can be exercised
+    base = generate_test_population()
+    base[!, :death] = Int8.(fill(-1, 100))
+    base[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
+    schema = PI.create_column_schema(base)
+    PI.update_schema!(schema, :death_reason, [Int8(GEMS.DEATH_REASON_NATURAL)])
+    inj = PI.Injector(schema)
+
+    @testset "return value: the staged event, stored in injector.events" begin
+        ev = PI._stage_event!(inj, 1, :age, Int8(99), Int16(10))
+        @test ev isa PI.Event
+        @test ev.ind_id == 1
+        @test ev.field == inj.schema.field_to_index[:age]
+        @test ev.timestamp == Int16(10)
+        @test ev.new_value == Int8(99)                          # identity field: stored as-is
+        @test length(inj.events) == 1
+        @test inj.events[1] === ev                              # the returned event is the stored one
+
+        # the public wrapper delegates and returns the same event object
+        ev2 = PI.stage_event!(inj, 2, :age, Int8(88), Int16(11))
+        @test inj.events[2] === ev2
+        @test ev2.new_value == Int8(88)
+    end
+
+    @testset "encoding branches" begin
+        # closed value set: decode round-trips the staged value
+        ev = PI.stage_event!(inj, 1, :department, "HR", Int16(12))
+        @test ev.field == inj.schema.field_to_index[:department]
+        @test PI.get_original_value(inj, ev) == "HR"
+
+        # float column: no encoding, stored as-is
+        ev = PI.stage_event!(inj, 1, :salary, Float64(60000.0), Int16(13))
+        @test ev.new_value == Float64(60000.0)
+
+        # float conversion warning: NaN != NaN, so the "converted" warning fires
+        col = WarnCollector(String[])
+        with_logger(col) do
+            ev = PI.stage_event!(inj, 1, :score, Float64(NaN), Int16(14))
+        end
+        @test isnan(ev.new_value)
+        @test count(m -> occursin("was converted to NaN for encoding", m), col.messages) == 1
+    end
+
+    @testset "death and death_reason via the internal path" begin
+        # :death: the value is ignored (the timestamp is the day of death) and stored as the flag
+        ev = PI._stage_event!(inj, 1, :death, "ignored-value", Int16(5))
+        @test ev isa PI.Event{Int8}
+        @test ev.new_value == PI.INJECTION_DEATH_FLAG
+        @test ev.ind_id == 1
+        @test ev.field == inj.schema.field_to_index[:death]
+        @test ev.timestamp == Int16(5)
+
+        # the public stage_event! guards the death fields and leaves no state behind
+        n = length(inj.events)
+        ex = try
+            PI.stage_event!(inj, 1, :death, 5, Int16(3))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test occursin("cannot be staged via stage_event!", ex.msg)
+        @test occursin("stage_death!", ex.msg)
+        @test occursin("1", ex.msg) && occursin("3", ex.msg)    # ind_id / timestamp echoed in the hint
+        ex = try
+            PI.stage_event!(inj, 1, :death_reason, Int8(-2), Int16(3))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test occursin("death_reason cannot be staged via stage_event!", ex.msg)
+        @test length(inj.events) == n                            # the guards throw before staging
+
+        # :death_reason: positive codes rejected, non-infection codes staged, unknown codes unencodable
+        ex = try
+            PI._stage_event!(inj, 1, :death_reason, Int8(5), Int16(6))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test occursin("death_reason", ex.msg)
+        ev = PI._stage_event!(inj, 1, :death_reason, Int8(GEMS.DEATH_REASON_NATURAL), Int16(6))
+        @test PI.get_original_value(inj, ev) == GEMS.DEATH_REASON_NATURAL
+        ex = try
+            PI._stage_event!(inj, 1, :death_reason, Int8(-7), Int16(6))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ErrorException
+        @test occursin("could not be encoded", ex.msg)
+    end
+
+    @testset "field, value and range errors" begin
+        # unknown field
+        ex = try
+            PI._stage_event!(inj, 1, :nonexistent, 1, Int16(5))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ErrorException
+        @test occursin("Field nonexistent not found in injector schema", ex.msg)
+
+        # a value that cannot be converted to the column's type at all
+        ex = try
+            PI._stage_event!(inj, 1, :department, 5, Int16(5))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ErrorException
+        @test occursin("could not be converted to a valid type", ex.msg)
+
+        # an identity-field value out of range for the column's element type (Int8 age)
+        ex = try
+            PI._stage_event!(inj, 1, :age, 300, Int16(5))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ErrorException
+        @test occursin("out of range for the identity-mapped age column", ex.msg)
+
+        # ind_id / timestamp outside the schema types: convert() throws before the defensive
+        # conversion warnings are ever reachable (the public wrapper shares this path via _stage_event!)
+        @test_throws InexactError PI._stage_event!(inj, 300, :age, Int8(30), Int16(5))   # ind_id_type Int8
+        @test_throws InexactError PI._stage_event!(inj, 1, :age, Int8(30), 40000)        # Int16 timestamp
+    end
+end
+
+@testset "get_change_history" begin
+    base = generate_test_population()
+    schema = PI.create_column_schema(base)
+    inj = PI.Injector(schema)
+
+    @testset "no events: single base row at day 0" begin
+        h = PI.get_change_history(inj, 5, base)
+        @test h isa DataFrame
+        @test size(h) == (1, 9)                     # 8 base columns + :timestamp
+        @test h[1, :timestamp] == 0
+        @test h[1, :age] == base[5, :age]
+        @test h[1, :name] == base[5, :name]
+    end
+
+    @testset "one row per changepoint, values accumulate" begin
+        PI.stage_event!(inj, 1, :age, Int8(42), Int16(10))
+        PI.stage_event!(inj, 1, :department, "HR", Int16(20))
+        PI.stage_event!(inj, 7, :age, Int8(43), Int16(15))   # other individual: excluded
+
+        h = PI.get_change_history(inj, 1, base)
+        @test size(h) == (3, 9)                     # base row + 2 changepoints
+        @test h[:, :timestamp] == [0, 10, 20]
+        @test h[1, :age] == base[1, :age] && h[1, :department] == base[1, :department]
+        @test h[2, :age] == Int8(42) && h[2, :department] == base[1, :department]         # first change only
+        @test h[3, :age] == Int8(42) && h[3, :department] == "HR"                         # both changes
+
+        h7 = PI.get_change_history(inj, 7, base)
+        @test size(h7) == (2, 9)
+        @test h7[2, :age] == Int8(43)
+    end
+
+    @testset "death changepoint: flag row followed by the reason row" begin
+        base_d = generate_test_population()
+        base_d[!, :death] = Int8.(fill(-1, 100))
+        base_d[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
+        schema_d = PI.create_column_schema(base_d)
+        PI.update_schema!(schema_d, :death_reason, [Int8(GEMS.DEATH_REASON_NATURAL)])
+        inj_d = PI.Injector(schema_d)
+        PI.stage_event!(inj_d, 1, :age, Int8(44), Int16(5))
+        PI.stage_death!(inj_d, 1, GEMS.DEATH_REASON_NATURAL, Int16(10))
+
+        h = PI.get_change_history(inj_d, 1, base_d)
+        @test size(h) == (4, 11)                    # base + age + death + death_reason
+        @test h[:, :timestamp] == [0, 5, 10, 10]
+        @test h[1, :death] == Int8(-1)              # base row: alive
+        @test h[3, :death] == 1                     # death row: the flag
+        @test h[3, :death_reason] == Int8(GEMS.DEFAULT_DEATH_REASON)   # reason not yet staged
+        @test h[4, :death] == 1                     # the flag carries into the reason row
+        @test h[4, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL)
+    end
+
+    @testset "hash verification" begin
+        bad = copy(base)
+        bad[5, :age] = Int8(12)
+        ex = try
+            PI.get_change_history(inj, 1, bad)
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ErrorException
+        @test occursin("Hash mismatch", ex.msg)
+    end
+end
+
+@testset "stage_new_individuals! ids, bookkeeping and error paths" begin
+    base = generate_test_population()
+
+    @testset "assigned ids continue the counter; schema meta is updated" begin
+        inj = PI.Injector(PI.create_column_schema(base))
+        @test inj.schema.meta[:current_individuals] == 100
+
+        ids1 = PI.stage_new_individuals!(inj,
+            DataFrame(name = ["Person_1", "Person_2"], age = [Int8(25), Int8(26)]), Int16(10))
+        @test ids1 == [101, 102]
+        @test inj.schema.meta[:current_individuals] == 102
+
+        ids2 = PI.stage_new_individuals!(inj,
+            DataFrame(name = ["Person_3"], age = [Int8(27)]), Int16(20))
+        @test ids2 == [103]
+        @test inj.schema.meta[:current_individuals] == 103
+
+        @test length(inj.events) == 6                           # 3 individuals * 2 fields
+        @test all(ev.ind_id ∈ (101, 102, 103) for ev in inj.events)
+    end
+
+    @testset "an id column in the input is ignored" begin
+        inj = PI.Injector(PI.create_column_schema(base))
+        ids = PI.stage_new_individuals!(inj,
+            DataFrame(id = Int32[999], name = ["Person_1"], age = [Int8(25)]), Int16(5))
+        @test ids == [101]
+        @test length(inj.events) == 2                           # only name and age staged
+        @test all(ev.field != inj.schema.field_to_index[:id] for ev in inj.events)
+    end
+
+    @testset "error paths" begin
+        inj = PI.Injector(PI.create_column_schema(base))
+
+        # assigned ids overflow the schema's id type (base of 100 → Int8): convert() throws
+        # before the defensive conversion warning is ever reachable
+        @test_throws InexactError PI.stage_new_individuals!(inj,
+            DataFrame(name = repeat(["Person_1"], inner = 200),
+                      age = repeat(Int8[25], inner = 200)), Int16(5))
+
+        # timestamp outside Int16
+        @test_throws InexactError PI.stage_new_individuals!(inj,
+            DataFrame(name = ["Person_1"], age = [Int8(25)]), 40000)
+
+        # a value that cannot be encoded for a closed value set
+        ex = try
+            PI.stage_new_individuals!(inj,
+                DataFrame(name = ["Person_1"], age = [Int8(25)], department = ["UnknownDept"]), Int16(5))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ErrorException
+        @test occursin("could not be encoded", ex.msg)
+    end
+end
+
+@testset "stable_hash branches" begin
+    @testset "isbits fast path" begin
+        for v in (Int8[1, 2, 3], Int16[5, 6], Int32[-1, 0, 7], Int64[9],
+                  UInt64[0, 1], Float32[0.5, 1.5], Float64[NaN], Bool[true, false],
+                  Int8[7], Int16[5])                       # incl. 1- and 2-byte tail remainders
+            h = PI.stable_hash(v)
+            @test h isa UInt64
+            @test h == PI.stable_hash(copy(v))             # deterministic across instances
+        end
+        @test PI.stable_hash(Int8[1, 2, 3]) != PI.stable_hash(Int8[3, 2, 1])   # order matters
+        @test PI.stable_hash(Int8[1, 2, 3]) != PI.stable_hash(Int8[1, 2])      # length matters
+    end
+
+    @testset "column branch (vector of vectors)" begin
+        cols1 = [Int8[1, 2, 3], Int16[4, 5]]
+        cols2 = [Int16[4, 5], Int8[1, 2, 3]]              # same columns, swapped
+        h = PI.stable_hash(cols1)
+        @test h isa UInt64
+        @test h == PI.stable_hash(copy(cols1))
+        @test PI.stable_hash(cols1) != PI.stable_hash(cols2)                 # order matters
+        @test PI.stable_hash(cols1) != PI.stable_hash([Int8[1, 2, 3], Int16[4]])  # content matters
+
+        # an empty outer vector is deterministic as well (no columns to combine)
+        empty_h = PI.stable_hash(Vector{AbstractVector{Int}}[])
+        @test empty_h isa UInt64
+        @test empty_h == PI.stable_hash(Vector{AbstractVector{Int}}[])
+    end
+
+    @testset "fallback branch (element-wise)" begin
+        mixed1 = Vector{Any}([1, "a", [1.5]])
+        mixed2 = Vector{Any}(["a", 1, [1.5]])
+        @test PI.stable_hash(mixed1) isa UInt64
+        @test PI.stable_hash(mixed1) == PI.stable_hash(Vector{Any}([1, "a", [1.5]]))
+        @test PI.stable_hash(mixed1) != PI.stable_hash(mixed2)              # order matters
+
+        strings = String["ab", "cd"]
+        @test PI.stable_hash(strings) == PI.stable_hash(String["ab", "cd"])
+        @test PI.stable_hash(strings) != PI.stable_hash(String["cd", "ab"])
+    end
+
+    @testset "scalars and strings" begin
+        @test PI.stable_hash(5) isa UInt64
+        @test PI.stable_hash(5) == PI.stable_hash(5)
+        @test PI.stable_hash(5) != PI.stable_hash(6)
+        @test PI.stable_hash(3.14) == PI.stable_hash(3.14)
+        @test PI.stable_hash(3.14) != PI.stable_hash(3.15)
+        # strings are hashed as code units: identical to hashing the byte vector
+        @test PI.stable_hash("ab") == PI.stable_hash(codeunits("ab"))
+        @test PI.stable_hash("a") != PI.stable_hash("b")
+        @test PI.stable_hash("") isa UInt64
+    end
+end
+
+@testset "determine_minimal_float_type" begin
+    @test PI.determine_minimal_float_type([Float64(1.5)], 1e-6) == Float16   # exactly representable
+    @test PI.determine_minimal_float_type([Float64(0.1)], 1e-6) == Float32   # not exact in Float16
+    # NaN can never pass isapprox, so even Float64 is "insufficient" → error
+    ex = try
+        PI.determine_minimal_float_type([Float64(NaN)], 1e-6)
+        nothing
+    catch e
+        e
+    end
+    @test ex isa ErrorException
+    @test occursin("Required precision higher than Float64", ex.msg)
+end
+
+@testset "_encode_identity! rethrows non-Inexact conversion errors" begin
+    @test_throws MethodError PI._encode_identity!(Int8, "abc", :age)
+end
+
+@testset "update_schema! on an unknown field" begin
+    schema = PI.create_column_schema(generate_test_population())
+    ex = try
+        PI.update_schema!(schema, :nonexistent, [1, 2])
+        nothing
+    catch e
+        e
+    end
+    @test ex isa ErrorException
+    @test occursin("Field nonexistent not found in schema", ex.msg)
+end
+
+@testset "_stage_event!: value in neither the value set nor a convertible type" begin
+    base = generate_test_population()
+    inj = PI.Injector(PI.create_column_schema(base))
+    ex = try
+        PI.stage_event!(inj, 1, :department, :HR, Int16(7))   # Symbol for a String column
+        nothing
+    catch e
+        e
+    end
+    @test ex isa ErrorException
+    @test occursin("could not be converted to a valid type", ex.msg)
+    @test isempty(inj.events)                                  # the failed staging leaves no state
+end
+
+@testset "verify_base_population_hashes: column without a stored hash" begin
+    base = generate_test_population()
+    inj = PI.Injector(PI.create_column_schema(base))
+    PI.stage_event!(inj, 1, :age, Int8(42), Int16(5))
+    extra = copy(base)
+    extra[!, :ghost] = Int8.(1:100)
+    ex = try
+        PI.snapshot(inj, extra, Int16(5))
+        nothing
+    catch e
+        e
+    end
+    @test ex isa ErrorException
+    @test occursin("No hash stored for column ghost", ex.msg)
+end
+
+
+###
 ### PART 2 — GEMS INTEGRATION
 ###
 
@@ -816,6 +1235,54 @@ end
         @test df_ref[1, :occupation] == occupation(get_individual_by_id(population(sim), Int32(1)))
         @test df_ref[101, :age] == age(get_individual_by_id(population(sim), Int32(101)))
         @test df_ref[101, :occupation] == occupation(get_individual_by_id(population(sim), Int32(101)))
+    end
+
+    @testset "snapshot overloads: full, single, and vector" begin
+        base = make_base()
+        schema = PI.create_column_schema(base)
+        PI.update_schema!(schema, :occupation, [Int16(20)])
+        inj = PI.Injector(schema)
+        PI.stage_event!(inj, 1, :occupation, Int16(20), Int16(490))
+        PI.stage_event!(inj, 1, :age, Int8(99), Int16(495))
+        PI.stage_event!(inj, 2, :occupation, Int16(20), Int16(510))   # day 510: must not apply at day 500
+        PI.stage_new_individuals!(inj, DataFrame(id = Int32[101], sex = Int8[1], age = Int8[0],
+                                                 occupation = Int16[20], household = Int32[1]), Int16(500))
+
+        # full population: events before day 500 applied, new individual appended
+        s = PI.snapshot(inj, base, Int16(500))
+        @test size(s) == (101, 8)
+        @test s[1, :occupation] == Int16(20)
+        @test s[1, :age] == Int8(99)
+        @test s[2, :occupation] != Int16(20)                            # event at day 510 not yet due
+        @test s[3, :occupation] == base[3, :occupation]                 # untouched row kept
+        @test s[101, :age] == Int8(0)                                   # new individual appended
+
+        # single individual: one-row frame with the same updates
+        s1 = PI.snapshot(inj, 1, base, Int16(500))
+        @test ncol(s1) == 8
+        @test s1[1, :occupation] == Int16(20)
+        @test s1[1, :age] == Int8(99)
+        @test s1[1, :sex] == base[1, :sex]
+
+        # vector: row order follows ind_id, values match the full-population snapshot
+        sv = PI.snapshot(inj, [1, 2], base, Int16(500))
+        @test size(sv) == (2, 8)
+        @test sv == s[1:2, :]
+
+        # vector overload with no events for the selected individuals: early-return copy
+        @test PI.snapshot(inj, [3, 4], base, Int16(500)) == base[3:4, :]
+
+        # single individual with no events: base row
+        s3 = PI.snapshot(inj, 3, base, Int16(500))
+        @test s3[1, :occupation] == base[3, :occupation]
+
+        # hash verification fires in all overloads when the base table was modified
+        bad = copy(base)
+        bad[5, :age] = Int8(12)
+        @test_throws ErrorException PI.snapshot(inj, bad, Int16(500))
+        @test_throws ErrorException PI.snapshot(inj, 1, bad, Int16(500))
+        @test_throws ErrorException PI.snapshot(inj, [1, 2], bad, Int16(500))
+        @test_throws ErrorException PI.get_change_history(inj, 1, bad)
     end
 
     @testset "death injection" begin
@@ -975,12 +1442,118 @@ end
         @test s[5, :death] == Int8(-1)                               # not dead: base value kept
 
         s1 = PI.snapshot(inj, 3, base, Int16(8))
-        @test s1[:death] == 1
+        @test s1[1, :death] == 1
+
+        sv = PI.snapshot(inj, [3, 9], base, Int16(8))                  # vector overload, both dead
+        @test size(sv) == (2, 10)
+        @test sv[1, :death] == 1
+        @test sv[2, :death] == 1
+        @test sv[1, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL)
+        @test sv[2, :death_reason] == Int8(GEMS.DEFAULT_DEATH_REASON)
 
         h = PI.get_change_history(inj, 3, base)
         @test h[1, :death] == Int8(-1)                               # base row (day 0): alive
         @test h[end, :death] == 1                                    # death event row: the flag
         @test h[end, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL)
+    end
+
+    @testset "snapshot creates the :death column when the passed table lacks it" begin
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        death_reasons = fill(Int8(GEMS.DEFAULT_DEATH_REASON), 100)
+        death_reasons[97:100] .= GEMS.DEATH_REASON_NATURAL   # widen the closed value set
+        base[!, :death_reason] = death_reasons
+        schema = PI.create_column_schema(base)
+        inj = PI.Injector(schema)
+        PI.stage_death!(inj, 3, nothing, Int16(5))
+        PI.stage_death!(inj, 9, nothing, Int16(8))
+        PI.stage_death!(inj, 7, GEMS.DEATH_REASON_NATURAL, Int16(8))
+
+        # the hash check only validates the columns that ARE present, so a table without the
+        # death columns passes; the death branch must then create the column on the fly
+        # NOTE: this build's setdiff mishandles symbol/string mixed inputs, filter manually
+        base_nondeath = base[:, [x for x in names(base) if x != "death" && x != "death_reason"]]
+        @test !hasproperty(base_nondeath, :death)
+
+        s = PI.snapshot(inj, base_nondeath, Int16(8))
+        @test hasproperty(s, :death)
+        @test hasproperty(s, :death_reason)                          # created next to :death
+        @test s[3, :death] == 1
+        @test s[9, :death] == 1
+        @test s[5, :death] == Int8(-1)                               # alive: the created default
+        @test s[7, :death] == 1
+        @test s[7, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL) # staged reason survives
+        @test s[5, :death_reason] == Int8(GEMS.DEFAULT_DEATH_REASON) # alive: the created default
+
+        s1 = PI.snapshot(inj, 3, base_nondeath, Int16(8))
+        @test s1[1, :death] == 1
+
+        sv = PI.snapshot(inj, [3, 9], base_nondeath, Int16(8))
+        @test sv[1, :death] == 1 && sv[2, :death] == 1
+
+        h = PI.get_change_history(inj, 3, base_nondeath)
+        @test h[1, :death] == Int8(-1)
+        @test h[end, :death] == 1
+    end
+
+    @testset "staged :id change on an existing individual is skipped" begin
+        base = make_base()
+        pop = Population(base)
+        inj = GEMS.new_injector(pop)
+        PI.stage_event!(inj, 1, :id, Int32(500), Int16(5))          # identity is immutable at application
+
+        sim = Simulation(population = pop, population_injection = inj, stop_criterion = TimesUp(limit = 9))
+        for _ in 1:6; step!(sim); end
+        ind1 = get_individual_by_id(population(sim), Int32(1))
+        @test ind1 !== nothing && id(ind1) == Int32(1)              # id untouched
+        @test get_individual_by_id(population(sim), Int32(500)) === nothing   # no renumbering side effects
+        @test length(individuals(sim)) == 100                       # no birth/death side effects
+    end
+
+    @testset "born-dead newborn: realized at birth and in the death logger" begin
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        base[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
+        schema = PI.create_column_schema(base)
+        PI.update_schema!(schema, :death_reason, [Int8(GEMS.DEATH_REASON_NATURAL)])
+        inj = PI.Injector(schema)
+        PI.stage_new_individuals!(inj, DataFrame(
+            id = Int32[101], sex = Int8[1], age = Int8[0],
+            occupation = Int16[2], household = Int32[1],
+            death = Int8[1], death_reason = Int8[GEMS.DEATH_REASON_NATURAL]), Int16(5))
+
+        sim = Simulation(population = Population(base), population_injection = inj,
+                         stop_criterion = TimesUp(limit = 9))
+        for _ in 1:6; step!(sim); end                               # the day-5 birth fires at tick 5
+        ind101 = get_individual_by_id(population(sim), Int32(101))
+        @test ind101 !== nothing && dead(ind101)
+        @test ind101.death == Int16(5)
+        @test ind101.death_reason == Int8(GEMS.DEATH_REASON_NATURAL)
+        dl = dataframe(deathlogger(sim))
+        @test any(dl.id .== Int32(101))                             # born-dead: still a run-time death
+    end
+
+    @testset "birth with extension field on a struct extension type" begin
+        struct InjectionExt
+            income::Float64
+        end
+        base = make_base()
+        base[!, :income] = Float64.(1000.0 .* (1:100))
+        # values beyond Float16 precision, so the schema keeps Float32 (the staged 3100.5 must survive)
+        pop = Population(base, ind_extension = ind -> InjectionExt(10000.0 .* (ind.id % 3 + 1) + 0.5))
+        @test individuals(pop)[1].extensions isa InjectionExt
+
+        inj = GEMS.new_injector(pop)
+        PI.stage_new_individuals!(inj, DataFrame(
+            sex = Int8[1], age = Int8[0], household = Int32[1],
+            income = Float64[3100.5]), Int16(2))
+
+        sim = Simulation(population = pop, population_injection = inj, stop_criterion = TimesUp(limit = 5))
+        for _ in 1:6; step!(sim); end                               # the day-2 birth fires at tick 2
+        ind101 = get_individual_by_id(population(sim), Int32(101))
+        @test ind101 !== nothing
+        @test ind101.extensions isa InjectionExt                    # default-constructed at birth
+        @test ind101.extensions.income == 3100.5                    # staged value injected
     end
 
     @testset "death with snapshot bake-in" begin
@@ -1140,6 +1713,29 @@ end
             for _ in 1:14; step!(sim2); end
         end
         @test count(m -> occursin("field :income is not stored on this population", m), col.messages) == 1
+    end
+
+    @testset "unstored field on a NEW individual: warns at birth" begin
+        base = make_ext_base()
+        pop = Population(DataFrame(    # the population WITHOUT the income extension
+            id = base.id, sex = base.sex, age = base.age,
+            occupation = base.occupation, household = base.household))
+        schema = PI.create_column_schema(base)
+        inj = PI.Injector(schema)
+        PI.stage_new_individuals!(inj, DataFrame(
+            sex = Int8[1], age = Int8[0], household = Int32[1],
+            income = Float32[3100.5]), Int16(2))
+
+        col = WarnCollector(String[])
+        with_logger(col) do
+            # the internal apply is called directly: no construction-time warning precedes
+            # it (the Simulation ctor would warn once already), so the birth path is what
+            # surfaces the unstored field
+            GEMS.apply_injection_events!(pop, inj, inj.events, Int16(2), nothing)
+        end
+        @test count(m -> occursin("field :income is not stored on this population", m)
+                   && occursin("individual 101", m), col.messages) == 1
+        @test get_individual_by_id(pop, Int32(101)) !== nothing       # the birth itself still happens
     end
 end
 
