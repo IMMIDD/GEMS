@@ -456,6 +456,16 @@ end
             contact_filter = (s, t) -> (push!(drawn, t); true)))
         @test drawn == Int16.(5:9)
 
+        # a dead infectee is not traced and takes no max_contacts slot
+        empty!(eq6)
+        GEMS.dead!(early, true)
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6))
+        @test followup_focals(drain_events!(eq6)) == [late]
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, max_contacts = 1))
+        @test followup_focals(drain_events!(eq6)) == [late]
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household]))
+        @test early ∉ followup_focals(drain_events!(eq6))
+
         # a contact_filter rejecting every tick re-draws nothing
         empty!(eq4)
         process_measure(sim4, index4, TraceInfectiousContacts(i_strategy4, resample_contacts = true,

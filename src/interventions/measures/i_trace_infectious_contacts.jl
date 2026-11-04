@@ -33,7 +33,8 @@ add_measure!(my_str, TraceInfectiousContacts(my_other_str, success_rate = dt -> 
 Here, the chance to trace an infection falls with the days since it happened.
 
 Contacts are traced from the index's infectiousness onset until the previous tick, or until its recovery if its
-newest infection has already ended, but at most `lookback` ticks back (default: 14).
+newest infection has already ended, but at most `lookback` ticks back (default: 14). Infectees who have
+died since are not traced.
 
 With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn
 from the index's settings of the given `settingtypes` (default: `Household`, `Office`, `SchoolClass`)
@@ -169,6 +170,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
     now = sim |> tick
     logger = sim |> infectionlogger
     sr = measure |> success_rate
+    pop = sim |> population
 
     # the infectious period of the active infection, else of the newest one, which has ended
     onset = earliest_infectiousness_onset(ind, infection_registry(sim, ind))
@@ -187,6 +189,11 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
 
     # get infectee IDs and infection ticks from logger
     infectee_ids, infection_ticks = _infections_with_ticks_between(logger, ind |> id, start_tick, end_tick)
+
+    # the dead cannot be traced, so they take no `max_contacts` slot and replace no re-drawn contact
+    alive = [!dead(get_individual_by_id(pop, iid)) for iid in infectee_ids]
+    keepat!(infectee_ids, alive)
+    keepat!(infection_ticks, alive)
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) tracing $(infectee_ids |> length) infectious contacts between tick $start_tick and $end_tick: $infectee_ids at tick $now"
 
@@ -207,7 +214,6 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
 
     # filter by success_rate (one draw per infectee, in order) and trigger the follow-up
     fu = measure |> follow_up
-    pop = sim |> population
     for (iid, t) in zip(infectee_ids, infection_ticks)
         gems_rand(sim) < _trace_probability(sr, Int(now - t)) || continue
         trigger_strategy(fu, get_individual_by_id(pop, iid), sim)
