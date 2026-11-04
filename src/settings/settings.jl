@@ -1088,12 +1088,8 @@ _leaf_type(::Type{T}) where {T<:ContainerSetting} = _leaf_type(contains_type(T))
 Returns the individuals associated with the given setting, as a view of wherever they are stored.
 """
 function individuals(setting::IndividualSetting)
-    v = setting.individuals
-    # a view in both cases, so the return type is concrete
-    v === nothing || return view(v, 1:length(v))
-    # a pooled leaf holds no members itself unless an edit detached them
-    lo = Int(setting.pool_offset)
-    return view((setting.pool::HierarchicalSettingPool).members, lo:(lo + Int(setting.pool_length) - 1))
+    members, offset, len = _member_storage(setting)
+    return view(members, Int(offset):(Int(offset) + Int(len) - 1))
 end
 
 individuals(s::FlatSetting) = view(s.flat_pool.members, _flat_range(s))

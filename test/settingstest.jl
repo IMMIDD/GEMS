@@ -1701,12 +1701,16 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             newcomer = Individual(id = Int32(43), age = 10, sex = 1)
             add_member!(cs[1], newcomer, pop)
 
-            # every offset in the hierarchy is stale until the repack, so reading would
+            # the containers' offsets are stale until the repack, so reading them would
             # silently return the wrong members
             err = try; GEMS.present_members(sch, sc); nothing; catch e; e; end
             @test err isa ErrorException
             @test occursin("repack_dirty_pools!", sprint(showerror, err))
-            @test (try; GEMS.present_members(cs[1], sc); false; catch; true; end)
+            @test occursin("present_individuals", sprint(showerror, err))
+
+            # the leaves are exact: the edited one reads its own vector, the others their slice
+            stale = [ids(@inferred GEMS.present_members(c, sc)) for c in cs]
+            @test stale[1] == [1, 2, 3, 43]
 
             # the member vector itself is correct throughout, so anything reading it
             # directly - `individuals`, and `present_individuals!` through it - still works
@@ -1714,7 +1718,36 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test newcomer in individuals(cs[1])
 
             GEMS.repack_dirty_pools!(sc)
-            @test ids(GEMS.present_members(cs[1], sc)) == [1, 2, 3, 43]
+            @test [ids(GEMS.present_members(c, sc)) for c in cs] == stale
+
+            # a death swaps members within the slice, so a stale leaf still reads exactly
+            GEMS.mark_deceased!(cs[2], individuals(cs[2])[1], pop)
+            stale = ids(GEMS.present_members(cs[2], sc))
+            GEMS.repack_dirty_pools!(sc)
+            @test ids(GEMS.present_members(cs[2], sc)) == stale
+            @test length(stale) == 2
+
+            # reads a leaf while its pool waits for a repack, and whether it reads the same after the repack
+            stays_exact(s) = (before = ids(GEMS.present_members(s, sc)); GEMS.repack_dirty_pools!(sc);
+                before == ids(GEMS.present_members(s, sc)))
+
+            # a death in a leaf that an edit gave its own vector swaps within that vector
+            add_member!(cs[3], Individual(id = Int32(44), age = 10, sex = 1), pop)
+            GEMS.mark_deceased!(cs[3], individuals(cs[3])[1], pop)
+            @test length(GEMS.present_members(cs[3], sc)) == 3
+            @test stays_exact(cs[3])
+
+            # removing a member from a leaf with dead members
+            remove_member!(cs[2], individuals(cs[2])[1], pop)
+            @test length(GEMS.present_members(cs[2], sc)) == 1
+            @test stays_exact(cs[2])
+
+            # a closed leaf is empty, while container positions still error
+            close!(cs[1])
+            @test isempty(GEMS.present_members(cs[1], sc))
+            err = try; GEMS.container_frame_index(sc, ys[1], cs[2], 1); nothing; catch e; e; end
+            @test occursin("repack_dirty_pools!", sprint(showerror, err))
+            @test stays_exact(cs[1])
         end
 
         @testset "Sparse setting ids" begin

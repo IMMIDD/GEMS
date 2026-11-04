@@ -332,14 +332,6 @@ function step!(simulation::Simulation)
     fire_hospitalization_triggers!(simulation)
     fire_symptom_triggers!(simulation)
 
-    # infect individuals in settings
-    if !dormant
-        spread_infections!(simulation)
-
-        # push pending infections to InfectionRegistry
-        flush_pending_infections!(simulation)
-    end
-
     # trigger tick triggers
     for tt in simulation |> tick_triggers
         if should_fire(tt, simulation)
@@ -352,6 +344,14 @@ function step!(simulation::Simulation)
     # update quarantine state
     if !dormant
         update_quarantines!(simulation)
+    end
+
+    # infect individuals in settings
+    if !dormant
+        spread_infections!(simulation)
+
+        # push pending infections to InfectionRegistry
+        flush_pending_infections!(simulation)
     end
 
     if !dormant
@@ -492,8 +492,11 @@ function flush_pending_infections!(sim::Simulation)
                 _deduplication_key(p) == best[(p.host_id, p.pathogen_id)] || continue
                 ind = p.host
                 infected(ind, p.pathogen_id) && continue
-                # a first infection makes the host exposed, which the state log counts
-                infected(ind) || (counts.exposed += 1)
+                # a first infection makes the host exposed, and isolated if quarantined, which the state log counts
+                if !infected(ind)
+                    counts.exposed += 1
+                    isquarantined(ind) && _count_isolated!(counts, ind, plans)
+                end
                 _commit_infection!(sim, ind, p, next_id, infections, logger, shard_id)
                 next_id += Int32(1)
             end

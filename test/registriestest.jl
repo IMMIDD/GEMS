@@ -287,6 +287,46 @@ import GEMS: push_infection!, remove_infection!, remove_infections!,
             @test !natural_immunity_pending(empty, Int16(0))
         end
 
+        @testset "ImmunityState previous dose" begin
+            @test sizeof(ImmunityState) == 12
+
+            # the 6-arg form converts and has no previous dose
+            s6 = ImmunityState(0, 3, 7, 1, 1, 2)
+            @test s6 == ImmunityState(Int32(0), Int16(3), Int16(7), Int8(1), Int8(1), Int8(2), 0x00)
+            @test previous_dose_interval(s6) == GEMS.NO_IMMUNITY_TICK
+            # a UInt8 last argument is the interval, not the deprecated level form
+            s7 = ImmunityState(0, 3, 7, 1, 1, 2, 0x05)
+            @test s7.pathogen_id == Int8(1) && s7.dose_number == Int8(2) && s7.prev_dose_interval == 0x05
+
+            # the encoding covers the Int16 range at ~4% resolution
+            decoded(e) = previous_dose_interval(ImmunityState(0, 0, 0, 1, 1, 2, GEMS._encode_dose_interval(e)))
+            @test all(e -> abs(decoded(e) - e) <= 0.03 * (1 + e) + 1, 0:typemax(Int16))
+            @test GEMS._encode_dose_interval(typemax(Int16)) == UInt8(241)
+            @test GEMS._encode_dose_interval(-1) == 0x00
+            @test GEMS._encode_dose_interval(Int(typemax(Int16)) + 1) == 0x00
+
+            reg = ImmunityRegistry()
+            i = Individual(id=1, sex=0, age=30)
+            push_immunity!(reg, i, Int8(1), GEMS.IMMUNITY_SOURCE_VACCINE, Int16(0), Int8(1))
+            @test previous_dose_interval(i.immunity_cache[1]) == GEMS.NO_IMMUNITY_TICK
+            push_immunity!(reg, i, Int8(1), GEMS.IMMUNITY_SOURCE_VACCINE, Int16(180), Int8(2))
+            @test abs(previous_dose_interval(i.immunity_cache[1]) - 180) <= 8
+            # a natural infection keeps it, and the dose count is unchanged
+            push_immunity!(reg, i, Int8(1), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(200), Int8(0))
+            @test abs(previous_dose_interval(i.immunity_cache[1]) - 180) <= 8
+            @test number_of_vaccinations(i, reg, Int8(1)) == Int8(2)
+            # a dose before the recorded one stores no interval
+            push_immunity!(reg, i, Int8(1), GEMS.IMMUNITY_SOURCE_VACCINE, Int16(-50), Int8(1))
+            @test previous_dose_interval(i.immunity_cache[1]) == GEMS.NO_IMMUNITY_TICK
+
+            # the overflow path records it too
+            push_immunity!(reg, i, Int8(2), GEMS.IMMUNITY_SOURCE_VACCINE, Int16(0), Int8(1))
+            push_immunity!(reg, i, Int8(2), GEMS.IMMUNITY_SOURCE_VACCINE, Int16(30), Int8(1))
+            @test abs(previous_dose_interval(reg.states[i.immunity_head]) - 30) <= 2
+            push_immunity!(reg, i, Int8(2), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(40), Int8(0))
+            @test abs(previous_dose_interval(reg.states[i.immunity_head]) - 30) <= 2
+        end
+
     end
 
 

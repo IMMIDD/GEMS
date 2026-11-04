@@ -62,7 +62,7 @@ Returns one `Xoshiro` per slot, derived from `seed` and the slot, each created o
 function _slot_rngs(seed::Int64)
     v = Vector{Xoshiro}(undef, Threads.maxthreadid())
     Threads.@threads :static for s in eachindex(v)
-        v[s] = _rekey!(Xoshiro(0), _mix(UInt64(4), seed, s))
+        v[s] = _rekey!(Xoshiro(0), _mix(UInt64(5), seed, s))
     end
     return v
 end
