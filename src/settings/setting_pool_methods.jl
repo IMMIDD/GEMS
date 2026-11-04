@@ -29,16 +29,9 @@ function present_members(s::FlatSetting, ::SettingsContainer)::MemberView
 end
 
 function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
-    v = s.individuals
-    if v === nothing
-        # a slice of the pool, which deaths only reorder within, so it stays exact until the repack
-        pool = _pool(s)::HierarchicalSettingPool
-        members, offset, len = pool.members, s.pool_offset, s.pool_length - Int32(_deceased(s))
-    else
-        # its own vector: not pooled yet, or a member edit moved the members there until the repack
-        members, offset, len = v, Int32(1), Int32(_alive(s))
-    end
-    return is_open(s) ? MemberView(members, offset, len) : MemberView(members, Int32(1), Int32(0))
+    # deaths only reorder members within their storage, so this stays exact until the repack
+    members, offset, len = _member_storage(s)
+    return is_open(s) ? MemberView(members, offset, len - Int32(_deceased(s))) : MemberView(members, Int32(1), Int32(0))
 end
 
 function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
@@ -972,6 +965,17 @@ end
 # The setting's pool, or `nothing` when unpooled. `hasfield` folds on a concrete type, so
 # this compiles to a field load or a constant.
 @inline _pool(s::T) where {T<:Setting} = hasfield(T, :pool) ? s.pool : nothing
+
+# Where a leaf's members are: its own vector if it has one (not pooled yet, or detached by an edit until the
+# repack), otherwise its slice of the pool. Returns the vector, the first member's index in it, and the count.
+@inline function _member_storage(s::IndividualSetting)::Tuple{Vector{Individual}, Int32, Int32}
+    v = s.individuals
+    if v === nothing
+        return (_pool(s)::HierarchicalSettingPool).members, s.pool_offset, s.pool_length
+    else
+        return v, Int32(1), Int32(length(v))
+    end
+end
 
 # how many members at the end of the setting's list have died; none for a type without the field
 @inline _deceased(s::T) where {T<:Setting} = hasfield(T, :deceased) ? Int(s.deceased) : 0
