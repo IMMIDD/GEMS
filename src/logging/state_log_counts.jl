@@ -65,3 +65,10 @@ end
     counts.missed_offices += _open_memberships(plans, indiv, offs, offices_open)
     return nothing
 end
+
+# Counts someone first infected while quarantined, whom `_count_quarantined!` found uninfected earlier in the tick.
+@inline function _count_isolated!(counts::_StateLogCounts, indiv::Individual, plans::ActivityPlanStore)
+    is_student(indiv, plans) && (counts.isolated_students += 1)
+    is_working(indiv, plans) && (counts.isolated_workers += 1)
+    return nothing
+end

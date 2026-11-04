@@ -1712,6 +1712,12 @@ import GEMS: increment!, infected!
         isolate = IStrategy("isolate", sim)
         add_measure!(isolate, SelfIsolation(7))
         add_measure!(isolate, FindSetting(SchoolClass, close_class))
+        # quarantining the whole household lets uninfected members be infected at home while quarantined
+        isolate_member = IStrategy("isolate member", sim)
+        add_measure!(isolate_member, SelfIsolation(7))
+        quarantine_household = SStrategy("quarantine household", sim)
+        add_measure!(quarantine_household, FindMembers(isolate_member))
+        add_measure!(isolate, FindSetting(Household, quarantine_household))
         # household members are tested whether infected or not, so some positives are false
         test_household = SStrategy("test household", sim)
         add_measure!(test_household, TestAll("household", pcr, nothing, nothing))
@@ -1748,11 +1754,13 @@ import GEMS: increment!, infected!
 
         sl = statelogger(sim)
         mismatches = 0
-        seen = Dict(k => 0 for k in (:detected, :quarantined, :unable_to_attend_students, :hospitalized))
+        seen = Dict(k => 0 for k in (:detected, :quarantined, :unable_to_attend_students, :hospitalized, :infected_in_quarantine))
         false_positive = false
         while !GEMS.evaluate(sim, GEMS.stop_criterion(sim))
             logged = length(sl.tick)
+            quarantined_uninfected = filter(i -> GEMS.isquarantined(i) && !GEMS.infected(i), individuals(sim))
             step!(sim)
+            seen[:infected_in_quarantine] += count(i -> GEMS.isquarantined(i) && GEMS.infected(i), quarantined_uninfected)
             # a dormant tick copies the last row instead of counting
             length(sl.tick) > logged && sl.tick[end] == tick(sim) - 1 || continue
             c = scanned(sim)
