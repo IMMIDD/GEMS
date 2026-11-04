@@ -1708,7 +1708,8 @@ import GEMS: increment!, infected!
     @testset "State log counts match a full scan" begin
         # The state log counts where the disease update, the infection flush and tests already
         # read the individuals. Each tick it must equal a scan of everyone active or quarantined.
-        sim = Simulation(pop_size = 20_000, seed = 7)
+        # quarantining households keeps the outbreak small, so it starts large enough to reach hospitals
+        sim = Simulation(pop_size = 20_000, seed = 7, infected_fraction = 0.01)
         pcr = TestType("PCR", id(first_pathogen(sim)), sim, sensitivity = 0.9, specificity = 0.9)
         close_class = SStrategy("close class", sim)
         add_measure!(close_class, CloseSetting())
@@ -1778,7 +1779,7 @@ import GEMS: increment!, infected!
         end
         @test mismatches == 0
         # the scenario reached every count it is meant to check
-        @test all(>(0), values(seen))
+        @test isempty([k for (k, v) in seen if v == 0])
         @test false_positive
     end
 
