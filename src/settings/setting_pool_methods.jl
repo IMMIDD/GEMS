@@ -20,26 +20,30 @@ leaves of one container appears once here and twice there.
 
 The result aliases real member storage, so writing to it edits membership - see the note on
 `ContactSamplingMethod`.
+
+A leaf can be read while its pool waits for `repack_dirty_pools!`, for example in an intervention on a
+tick with deaths; a container then throws.
 """
 function present_members(s::FlatSetting, ::SettingsContainer)::MemberView
     return MemberView(s.flat_pool.members, s.offset, is_open(s) ? Int32(_alive(s)) : Int32(0))
 end
 
 function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
-    pool = _pool(s)
-    if pool === nothing
-        # hierarchy leaf not pooled yet: its own vector already holds exactly the members
-        v = s.individuals::Vector{Individual}
-        return is_open(s) ? MemberView(v, Int32(1), Int32(_alive(s))) : MemberView(v, Int32(1), Int32(0))
+    v = s.individuals
+    if v === nothing
+        # a slice of the pool, which deaths only reorder within, so it stays exact until the repack
+        pool = _pool(s)::HierarchicalSettingPool
+        members, offset, len = pool.members, s.pool_offset, s.pool_length - Int32(_deceased(s))
+    else
+        # its own vector: not pooled yet, or a member edit moved the members there until the repack
+        members, offset, len = v, Int32(1), Int32(_alive(s))
     end
-    _check_clean(s, pool)
-    return is_open(s) ? MemberView(pool.members, s.pool_offset, s.pool_length - Int32(_deceased(s))) :
-                        MemberView(pool.members, Int32(1), Int32(0))
+    return is_open(s) ? MemberView(members, offset, len) : MemberView(members, Int32(1), Int32(0))
 end
 
 function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     pool = _pool(s)::HierarchicalSettingPool
-    _check_clean(s, pool)
+    _check_clean(s, pool, _STALE_CONTAINER_HINT)
     is_open(s) || return MemberView(pool.members, Int32(1), Int32(0))
 
     # the frame is stored as runs if a member repeats, or something below is closed or has dead members
@@ -50,13 +54,17 @@ function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     return MemberView(pool.members, r.starts, r.prefix, s.pool_length)
 end
 
-# Edits, deaths, scale changes and opening or closing leave the pool's offsets and frames stale until it is
-# repacked, so reads error until then. `present_individuals` reads the member vectors and still works.
-@inline function _check_clean(s::Setting, pool::HierarchicalSettingPool)
+const _STALE_CONTAINER_HINT = " To read a container's members before then, use " *
+    "`unique(present_individuals(setting, sim))`, which allocates and whose order and positions can differ from the frame's."
+
+# Edits, deaths, scale changes and opening or closing leave the containers' frames stale until the pool is
+# repacked, so container reads error until then. Leaves and `present_individuals` still read correctly.
+@inline function _check_clean(s::Setting, pool::HierarchicalSettingPool, hint::String = "")
     isempty(pool.blocks.dirty) || error(
-        "$(typeof(s)) belongs to a setting pool with pending member edits or closures. Call " *
-        "`repack_dirty_pools!` after editing membership, marking members deceased, or opening or closing settings, and " *
-        "before reading members.")
+        "$(typeof(s)) belongs to a setting pool with changes not yet repacked: deaths, member edits, scale changes " *
+        "or opened or closed settings. Call `repack_dirty_pools!` before reading frames. The simulation repacks when " *
+        "transmission starts, which it skips on ticks with nothing to spread, so interventions and tick triggers can " *
+        "meet a pool waiting for it." * hint)
     return nothing
 end
 
