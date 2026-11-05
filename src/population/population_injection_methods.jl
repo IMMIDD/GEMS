@@ -8,7 +8,8 @@
 ###                             event timestamp t > t0   -> applied at simulation tick t - t0
 ###   - the simulation clock always starts at tick 0
 ###   - an event on the death column marks the individual dead from the event's timestamp
-###     (the decoded value is not interpreted as a tick)
+###     (the value is not interpreted as a tick — it only distinguishes the dead flag from
+###     the alive marker, which records the alive default and marks nobody dead)
 ###   - a staged `:death_reason` event (GEMS' `Individual.death_reason` code: killing
 ###     pathogen id > 0, or a negative non-infection code such as DEATH_REASON_NATURAL)
 ###     is applied together with the individual's death
@@ -24,9 +25,11 @@ export validate_injection_base!, reset_injection!
 # Extend this tuple if the staged changes use a different column name (e.g. :is_dead).
 const INJECTION_DEATH_FIELDS = (:death,)
 
-# Value stored for death events — defined in the PI module (single source of truth);
-# the engine never interprets a death event's value (the timestamp is the day of death).
+# Values stored on death events — defined in the PI module (single source of truth);
+# the engine realizes a death only for INJECTION_DEATH_FLAG and skips events carrying the
+# alive marker INJECTION_ALIVE_DEATH_TICK (the timestamp is the day of death).
 const INJECTION_DEATH_FLAG = PopulationInjection.INJECTION_DEATH_FLAG
+const INJECTION_ALIVE_DEATH_TICK = PopulationInjection.INJECTION_ALIVE_DEATH_TICK
 
 # Staged column carrying the cause of death (matches the `Individual.death_reason` field).
 # Only non-infection codes may be staged (a negative code such as `DEATH_REASON_NATURAL`,
@@ -252,11 +255,13 @@ Shared core: apply a batch of already-selected staged events to a `Population`.
   writing the individual's id field; without a container the id field is written as before
 - fields the population does not store (neither an `Individual` field nor an extension
   column) are skipped, with one warning per (injector, field)
-- deaths: events on `INJECTION_DEATH_FIELDS` mark the individual dead from `death_tick`
-  (simulation time: `0` for the construction-time bake-in, the application tick otherwise);
-  a staged `:death_reason` event (GEMS' `Individual.death_reason` code) for the same
-  individual is applied together with the death, independent of the event order in the
-  batch; without a staged reason `death_reason` stays at `DEFAULT_DEATH_REASON`
+- deaths: events on `INJECTION_DEATH_FIELDS` carrying `INJECTION_DEATH_FLAG` mark the
+  individual dead from `death_tick` (simulation time: `0` for the construction-time
+  bake-in, the application tick otherwise); events carrying the alive marker
+  `INJECTION_ALIVE_DEATH_TICK` are recorded lineage only and mark nobody dead. A staged
+  `:death_reason` event (GEMS' `Individual.death_reason` code) for the same individual is
+  applied together with the death, independent of the event order in the batch; without a
+  staged reason `death_reason` stays at `DEFAULT_DEATH_REASON`
 - new individuals from ids that do not exist yet (`:sex`/`:age` required; an individual
   that already exists is skipped, making re-application idempotent); staged extension
   fields of a new individual are realized on a zero-filled default extension; staged
@@ -298,14 +303,16 @@ function apply_injection_events!(pop::Population,
         ind = get_individual_by_id(pop, ind_id)
         if ind === nothing
             # not present yet: accumulate fields, materialized below (birth or born-dead).
-            # Death events keep their constant flag (nothing to decode; the `died`
-            # check below only needs the field to be present in props).
+            # Death events keep their alive/dead marker (nothing to decode; the `died`
+            # check below reads the marker, so an alive one keeps the newborn alive).
             ind_props = get(births, ind_id, Dict{Symbol, Any}())
             births[ind_id] = ind_props
             ind_props[field] = field in INJECTION_DEATH_FIELDS ?
-                INJECTION_DEATH_FLAG : PopulationInjection.get_original_value(injector, ev)
+                Int8(ev.new_value) : PopulationInjection.get_original_value(injector, ev)
         else
             if field in INJECTION_DEATH_FIELDS
+                # an alive-marker event records the alive default: it marks nobody dead
+                Int8(ev.new_value) == INJECTION_ALIVE_DEATH_TICK && continue
                 _realize_death!(ind, death_tick, get(death_reasons, ind_id, nothing))
                 push!(death_ids, ind_id)
             elseif field === :id
@@ -339,7 +346,9 @@ function apply_injection_events!(pop::Population,
         haskey(props, :age) ||
             throw(ArgumentError("population injection: new individual with id $ind_id is missing required field :age"))
         ind = Individual(id = ind_id, sex = convert(Int8, props[:sex]), age = convert(Int8, props[:age]))
-        died = any(f -> f in INJECTION_DEATH_FIELDS, keys(props))
+        # died iff a death event carried the dead flag; an alive-marker event keeps the
+        # newborn alive (the newborn's default)
+        died = any(f -> f in INJECTION_DEATH_FIELDS && props[f] == INJECTION_DEATH_FLAG, keys(props))
         ext_type = nothing
         for (f, v) in props
             (f === :id || f === :sex || f === :age) && continue

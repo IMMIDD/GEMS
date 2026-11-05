@@ -445,6 +445,7 @@ end
         new_individuals = DataFrame(
             name=["Person_1"],  # Use existing name from base population
             age=[Int8.(25)[1]],
+            sex=[Int8(1)],      # :sex and :age are required for new individuals
             salary=[Float64(50000.0)],
             department=["IT"],  # Use existing department
             active=[true],
@@ -454,7 +455,7 @@ end
         new_id = PI.stage_new_individuals!(inj, new_individuals, Int16(300))
 
         @test isa(collect(new_id), Vector{Int})
-        @test length(inj.events) == 6  # One event per field (excluding id)
+        @test length(inj.events) == 7  # One event per field (excluding id)
     end
 
     # Test 11.12: Snapshot functionality with stage_new_individuals!
@@ -471,6 +472,7 @@ end
         new_individuals = DataFrame(
             name=["Person_5"],
             age=[Int8.(35)[1]],
+            sex=[Int8(1)],
             salary=[Float64(90000.0)],
             department=["Finance"],
             active=[true],
@@ -517,6 +519,7 @@ end
         new_individuals_1 = DataFrame(
             name=["Person_6"],
             age=[Int8.(40)[1]],
+            sex=[Int8(1)],
             salary=[Float64(55000.0)],
             department=["IT"],
             active=[false],
@@ -528,6 +531,7 @@ end
         new_individuals_2 = DataFrame(
             name=["Person_7"],
             age=[Int8.(45)[1]],
+            sex=[Int8(2)],
             salary=[Float64(65000.0)],
             department=["HR"],
             active=[true],
@@ -559,10 +563,11 @@ end
         PI.update_schema!(schema, :age, Int8.(0:115))
         inj = PI.Injector(schema)
 
-        # Add an individual with only some fields specified
+        # Add an individual with only some fields specified (:sex/:age required, the rest optional)
         partial_individual = DataFrame(
             name=["Person_8"],
-            age=[Int8.(50)[1]]
+            age=[Int8.(50)[1]],
+            sex=[Int8(1)]
         )
         id_3 = PI.stage_new_individuals!(inj, partial_individual, Int16(600))
 
@@ -584,12 +589,13 @@ end
 
         partial_individual = DataFrame(
             name=["Person_1"],
-            age=[Int8.(40)[1]]
+            age=[Int8.(40)[1]],
+            sex=[Int8(1)]
         )
 
         new_id = PI.stage_new_individuals!(inj, partial_individual, Int16(700))
 
-        @test length(inj.events) == 2  # Only two events created
+        @test length(inj.events) == 3  # Only three events created
     end
 
     # Test 11.7: Type-specific value handling
@@ -601,6 +607,7 @@ end
         individual = DataFrame(
             name=["Person_6"],  # Use existing name
             age=[Int8.(18)[1]],  # Minimum valid age
+            sex=[Int8(2)],
             salary=[Float64(30000.0)],  # Minimum salary
             department=["Operations"],  # String value from base population
             active=[false],  # Boolean false
@@ -612,7 +619,7 @@ end
         @test isa(new_id, Vector{Int})
 
         # Verify the events can be decoded correctly
-        for event in inj.events[end-5:end]
+        for event in inj.events[end-6:end]
             original_value = PI.get_original_value(inj, event)
             field = inj.schema.index_to_field[event.field+1]
             expected_value = individual[!, field][1]
@@ -635,6 +642,7 @@ end
             new_individuals = DataFrame(
                 name=["Person_$(i + 6)"],  # Use existing names from base population
                 age=[Int8.(20 + i)[1]],
+                sex=[Int8(1)],
                 salary=[Float64(40000.0 * (i + 1))],
                 department=["HR"],  # Use existing department
                 active=[true],
@@ -645,7 +653,7 @@ end
         end
 
         # Verify total events created
-        @test length(inj.events) == 30  # 5 individuals * 6 fields
+        @test length(inj.events) == 35  # 5 individuals * 7 fields
     end
 
     # Test 11.9: Return value consistency
@@ -657,6 +665,7 @@ end
         individuals = DataFrame(
             name=["Person_7", "Person_7"],  # Use existing name - two rows
             age=[Int8.(25)[1], Int8.(25)[1]],
+            sex=[Int8(1), Int8(2)],
             salary=[Float64(50000.0), Float64(50000.0)],
             department=["Finance", "Finance"],
             active=[true, true],
@@ -687,6 +696,7 @@ end
         individual = DataFrame(
             name=["Person_8"],  # Use existing name from base population
             age=[Int8.(28)[1]],
+            sex=[Int8(1)],
             salary=[Float64(70000.0)],
             department=["Marketing"],
             active=[false],
@@ -709,6 +719,7 @@ end
             individual_special = DataFrame(
                 name=["Person_9"],  # Use existing name from base population
                 age=[Int8.(25)[1]],
+                sex=[Int8(1)],
                 salary=[Float64(50000.0)],
                 department=["Operations"],
                 active=[true],
@@ -820,13 +831,24 @@ end
     end
 
     @testset "death and death_reason via the internal path" begin
-        # :death: the value is ignored (the timestamp is the day of death) and stored as the flag
+        # :death: non-alive values are stored as the dead flag (the timestamp is the day of death)
         ev = PI._stage_event!(inj, 1, :death, "ignored-value", Int16(5))
         @test ev isa PI.Event{Int8}
         @test ev.new_value == PI.INJECTION_DEATH_FLAG
         @test ev.ind_id == 1
         @test ev.field == inj.schema.field_to_index[:death]
         @test ev.timestamp == Int16(5)
+
+        # alive values are RECORDED as the alive marker (never skipped, never a death) ...
+        for alive_val in (Int16(-1), Int8(-1), -1, missing, false)
+            n0 = length(inj.events)
+            ev_alive = PI._stage_event!(inj, 1, :death, alive_val, Int16(6))
+            @test ev_alive isa PI.Event{Int8}
+            @test ev_alive.new_value == PI.INJECTION_ALIVE_DEATH_TICK
+            @test length(inj.events) == n0 + 1
+        end
+        # ... while real death days (>= 0) record the dead flag
+        @test PI._stage_event!(inj, 1, :death, Int16(0), Int16(6)).new_value == PI.INJECTION_DEATH_FLAG
 
         # the public stage_event! guards the death fields and leaves no state behind
         n = length(inj.events)
@@ -902,10 +924,21 @@ end
         @test ex isa ErrorException
         @test occursin("out of range for the identity-mapped age column", ex.msg)
 
-        # ind_id / timestamp outside the schema types: convert() throws before the defensive
-        # conversion warnings are ever reachable (the public wrapper shares this path via _stage_event!)
+        # ind_id outside the schema type: convert() throws before the defensive conversion
+        # warning is ever reachable (the public wrapper shares this path via _stage_event!)
         @test_throws InexactError PI._stage_event!(inj, 300, :age, Int8(30), Int16(5))   # ind_id_type Int8
-        @test_throws InexactError PI._stage_event!(inj, 1, :age, Int8(30), 40000)        # Int16 timestamp
+        # timestamps that are not exact Int16 days: descriptive staging errors
+        for bad_ts in (40000, -40000, 1.5, missing, "day5")
+            ex = try
+                PI._stage_event!(inj, 1, :age, Int8(30), bad_ts)
+                nothing
+            catch e
+                e
+            end
+            @test ex isa ArgumentError
+            @test occursin("Int16", ex.msg)
+        end
+        @test PI._stage_event!(inj, 1, :age, Int8(30), Int16(7)).timestamp == Int16(7)   # exact value: fine
     end
 end
 
@@ -982,25 +1015,26 @@ end
         @test inj.schema.meta[:current_individuals] == 100
 
         ids1 = PI.stage_new_individuals!(inj,
-            DataFrame(name = ["Person_1", "Person_2"], age = [Int8(25), Int8(26)]), Int16(10))
+            DataFrame(name = ["Person_1", "Person_2"], age = [Int8(25), Int8(26)],
+                      sex = [Int8(1), Int8(2)]), Int16(10))
         @test ids1 == [101, 102]
         @test inj.schema.meta[:current_individuals] == 102
 
         ids2 = PI.stage_new_individuals!(inj,
-            DataFrame(name = ["Person_3"], age = [Int8(27)]), Int16(20))
+            DataFrame(name = ["Person_3"], age = [Int8(27)], sex = [Int8(1)]), Int16(20))
         @test ids2 == [103]
         @test inj.schema.meta[:current_individuals] == 103
 
-        @test length(inj.events) == 6                           # 3 individuals * 2 fields
+        @test length(inj.events) == 9                           # 3 individuals * 3 fields
         @test all(ev.ind_id ∈ (101, 102, 103) for ev in inj.events)
     end
 
     @testset "an id column in the input is ignored" begin
         inj = PI.Injector(PI.create_column_schema(base))
         ids = PI.stage_new_individuals!(inj,
-            DataFrame(id = Int32[999], name = ["Person_1"], age = [Int8(25)]), Int16(5))
+            DataFrame(id = Int32[999], name = ["Person_1"], age = [Int8(25)], sex = [Int8(1)]), Int16(5))
         @test ids == [101]
-        @test length(inj.events) == 2                           # only name and age staged
+        @test length(inj.events) == 3                           # only name, age and sex staged
         @test all(ev.field != inj.schema.field_to_index[:id] for ev in inj.events)
     end
 
@@ -1011,16 +1045,25 @@ end
         # before the defensive conversion warning is ever reachable
         @test_throws InexactError PI.stage_new_individuals!(inj,
             DataFrame(name = repeat(["Person_1"], inner = 200),
-                      age = repeat(Int8[25], inner = 200)), Int16(5))
+                      age = repeat(Int8[25], inner = 200),
+                      sex = repeat(Int8[1], inner = 200)), Int16(5))
 
-        # timestamp outside Int16
-        @test_throws InexactError PI.stage_new_individuals!(inj,
-            DataFrame(name = ["Person_1"], age = [Int8(25)]), 40000)
+        # timestamp outside Int16: descriptive staging error, nothing recorded
+        ex_ts = try
+            PI.stage_new_individuals!(inj,
+                DataFrame(name = ["Person_1"], age = [Int8(25)], sex = [Int8(1)]), 40000)
+            nothing
+        catch e
+            e
+        end
+        @test ex_ts isa ArgumentError
+        @test occursin("Int16", ex_ts.msg)
 
         # a value that cannot be encoded for a closed value set
         ex = try
             PI.stage_new_individuals!(inj,
-                DataFrame(name = ["Person_1"], age = [Int8(25)], department = ["UnknownDept"]), Int16(5))
+                DataFrame(name = ["Person_1"], age = [Int8(25)], sex = [Int8(1)],
+                          department = ["UnknownDept"]), Int16(5))
             nothing
         catch e
             e
@@ -1534,8 +1577,9 @@ end
     end
 
     @testset "new individual with alive death values: alive by default" begin
-        # a row carrying the death columns' alive defaults verbatim (DEFAULT_TICK / -1) must
-        # NOT stage a death: new individuals are alive with the alive death reason
+        # a row carrying the death columns' alive defaults verbatim (DEFAULT_TICK / -1) is
+        # recorded as an alive marker and must NOT realize a death: new individuals are
+        # alive with the alive death reason
         base = make_base()
         base[!, :death] = Int8.(fill(-1, 100))
         base[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
@@ -1546,8 +1590,10 @@ end
             occupation = Int16[2], household = Int32[1],
             death = Int8[-1], death_reason = Int8[GEMS.DEFAULT_DEATH_REASON]), Int16(5))
 
-        # the alive death sentinel staged no :death event
-        @test !any(inj.schema.index_to_field[Int(e.field) + 1] === :death for e in inj.events)
+        # the alive death value IS recorded — as an alive-marker event that realizes no death
+        death_events = [e for e in inj.events if inj.schema.index_to_field[Int(e.field) + 1] === :death]
+        @test length(death_events) == 1
+        @test only(death_events).new_value == PI.INJECTION_ALIVE_DEATH_TICK
 
         sim = Simulation(population = Population(base), population_injection = inj,
                          stop_criterion = TimesUp(limit = 9))
@@ -1558,6 +1604,51 @@ end
         @test ind101.death_reason == GEMS.DEFAULT_DEATH_REASON
         dl = dataframe(deathlogger(sim))
         @test !any(dl.id .== Int32(101))                            # alive: not in the death logger
+
+        # the snapshot pads the newborn row with the death columns' alive defaults, not missing
+        sn = PI.snapshot(inj, base, Int16(5))
+        @test sn[101, :death] == GEMS.DEFAULT_TICK
+        @test sn[101, :death_reason] == GEMS.DEFAULT_DEATH_REASON
+    end
+
+    @testset "stage_new_individuals! requires :sex and :age at staging" begin
+        base = make_base()
+        schema = PI.create_column_schema(base)
+        inj = PI.Injector(schema)
+        for (df, req) in ((DataFrame(id = Int32[101], sex = Int8[1], occupation = Int16[1]), ":age"),
+                          (DataFrame(id = Int32[101], age = Int8[0], occupation = Int16[1]), ":sex"),
+                          (DataFrame(id = Int32[101], sex = Int8[1], age = [missing]), ":age"))
+            ex = try
+                PI.stage_new_individuals!(inj, df, Int16(5))
+                nothing
+            catch e
+                e
+            end
+            @test ex isa ArgumentError
+            @test occursin(req, ex.msg)
+        end
+        @test isempty(inj.events)                                 # validated before staging anything
+        @test inj.schema.meta[:current_individuals] == 100        # id counter untouched
+    end
+
+    @testset "alive marker on an existing individual: no-op, later death still fires" begin
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        schema = PI.create_column_schema(base)
+        inj = PI.Injector(schema)
+        PI._stage_event!(inj, 3, :death, Int8(-1), Int16(3))        # recorded alive marker
+        PI.stage_death!(inj, 3, nothing, Int16(7))                  # a real death after it
+
+        sim = Simulation(population = Population(base), population_injection = inj,
+                         stop_criterion = TimesUp(limit = 9))
+        for _ in 1:7; step!(sim); end                               # day-3 marker long applied
+        ind3 = get_individual_by_id(population(sim), Int32(3))
+        @test ind3 !== nothing && !dead(ind3)                       # the marker marks nobody dead
+        step!(sim)                                                  # tick 7: the death applies
+        @test dead(ind3)
+        @test ind3.death == Int16(7)
+        dl = dataframe(deathlogger(sim))
+        @test sum(dl.id .== Int32(3)) == 1                          # logged exactly once
     end
 
     @testset "birth with extension field on a struct extension type" begin
@@ -1666,9 +1757,19 @@ end
                       household = Int32.(1:5), office = Int32.(1:5),
                       schoolclass = Int32.(fill(-1, 5)))))
         @test_throws ArgumentError Simulation(population = pop, population_injection = inj)
-        # birth without :sex/:age (force bake-in so the error surfaces at construction)
+        # birth without :sex/:age is rejected at staging, recording nothing
         inj2 = PI.Injector(PI.create_column_schema(dataframe(pop)))
-        PI.stage_new_individuals!(inj2, DataFrame(id = Int32[200], occupation = Int16[1]), Int16(1))
+        ex = try
+            PI.stage_new_individuals!(inj2, DataFrame(id = Int32[200], occupation = Int16[1]), Int16(1))
+            nothing
+        catch e
+            e
+        end
+        @test ex isa ArgumentError
+        @test occursin(":sex", ex.msg)
+        @test isempty(inj2.events)
+        # application still guards directly staged events (bake-in surfaces at construction)
+        PI._stage_event!(inj2, 101, :occupation, Int16(1), Int16(1))
         @test_throws ArgumentError Simulation(population = pop, population_injection = inj2,
                                               population_snapshot = 1)
     end

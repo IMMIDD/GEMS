@@ -54,9 +54,6 @@ struct ColumnSchema{T}
     hash::UInt64
 end
 
-get_element_type(::ColumnSchema{T}) where {T} = T
-get_element_type(::Event{T}) where {T} = T
-
 # Define the injector schema struct as mutable
 """
     InjectorSchema
@@ -603,7 +600,10 @@ for simulation-caused (pathogen) deaths — stage a non-infection code (<= 0) su
 # Returns
 - `Event`: The created event
 """
-function stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_value, timestamp::Integer)
+# timestamp is untyped on purpose: values that are not exact Int16 days (out of range,
+# fractional, missing, strings) must reach the descriptive staging error in _stage_event!
+# rather than dying in an unhelpful MethodError at dispatch.
+function stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_value, timestamp)
     # deaths and their reasons have a dedicated entry point (stage_death!); the manual
     # stage_event! path for them is closed on purpose, with a hint to the correct call
     if field === :death || field === :death_reason
@@ -622,13 +622,14 @@ end
     _stage_event!(injector, ind_id, field, new_value, timestamp)
 
 Internal staging without the death-field guard — used by `stage_death!` and
-`stage_new_individuals!`. For `:death` events the value only distinguishes alive from
-dead: the alive sentinel (`DEFAULT_TICK`, `missing`, or `false`) stages nothing and
-returns `nothing` — individuals are alive by default and only an explicit death value
-is realized; any other value stages the death as a constant flag (the timestamp is the
-day of death). `:death_reason` values must be non-infection codes (<= 0).
+`stage_new_individuals!`. A `:death` event is always recorded; its value only
+distinguishes alive from dead: alive values (`DEFAULT_TICK`, `missing`, `false`) are
+stored as the alive marker `INJECTION_ALIVE_DEATH_TICK` (the engine skips them — new
+individuals are alive by default), any other value as the dead `INJECTION_DEATH_FLAG`
+(the timestamp is the day of death). `:death_reason` values must be non-infection codes
+(<= 0).
 """
-function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_value, timestamp::Integer)
+function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_value, timestamp)
     # Get types from schema meta information
     ind_id_type = injector.schema.meta[:ind_id_type]
 
@@ -638,10 +639,16 @@ function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_v
         @warn "Individual id $ind_id was converted to $converted_id to fit within the individual id type $ind_id_type"
     end
 
-    # Convert timestamp to Int16 with warning if conversion is needed
-    converted_timestamp = convert(Int16, timestamp)
-    if converted_timestamp != timestamp
-        @warn "Timestamp $timestamp was converted to $converted_timestamp to fit within Int16"
+    # The staged timestamp must be an exact Int16 day: reject it with a descriptive staging
+    # error instead of the raw InexactError/MethodError from convert() (an exact conversion
+    # always equals the input, so there is nothing to warn about — it either fits or fails)
+    converted_timestamp = try
+        convert(Int16, timestamp)
+    catch
+        throw(ArgumentError(
+            "population injection: timestamp $(timestamp) is not an exact Int16 value " *
+            "($(typemin(Int16)):$(typemax(Int16))) — stage whole days that fit Int16."
+        ))
     end
 
     # Check if the field exists
@@ -653,14 +660,15 @@ function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_v
     # for simulation-caused pathogen deaths)
     field === :death_reason && _check_staged_death_reason!(new_value)
 
-    # death events: the value only tells "alive" from "dead" — the column's alive sentinel
-    # (the default state carried verbatim by rows staged via stage_new_individuals!) stages
-    # nothing: new individuals are alive by default. A real death is stored as a constant
-    # flag (the timestamp is the day of death), bypassing the column's closed value set —
-    # no schema entry or update_schema! is needed
+    # death events: the staged value only tells "alive" from "dead" and is stored as a
+    # marker, never as a raw value — alive values (the default state carried verbatim by
+    # rows staged via stage_new_individuals!) are recorded as INJECTION_ALIVE_DEATH_TICK
+    # so the event stream mirrors the rows, while real deaths carry INJECTION_DEATH_FLAG
+    # (the timestamp is the day of death). Both bypass the column's closed value set — no
+    # schema entry or update_schema! is needed; the engine realizes a death only for the flag.
     if field in (:death,)
-        _staged_death_is_alive(new_value) && return nothing
-        event = Event{Int8}(converted_id, Int8(injector.schema.field_to_index[field]), INJECTION_DEATH_FLAG, converted_timestamp)
+        death_value = _staged_death_is_alive(new_value) ? INJECTION_ALIVE_DEATH_TICK : INJECTION_DEATH_FLAG
+        event = Event{Int8}(converted_id, Int8(injector.schema.field_to_index[field]), death_value, converted_timestamp)
         push!(injector.events, event)
         return event
     end
@@ -730,16 +738,39 @@ function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_v
 end
 
 
-# Value stored for death events (`stage_death!`, or `stage_event!` on the `:death` column):
-# a constant marker — the engine never interprets a death event's value (the timestamp is
-# the day of death), so it bypasses the schema's closed value set.
+# Value stored for death events that state a death (`stage_death!`, or `stage_event!` on
+# the `:death` column with a death value) — a constant marker (the timestamp is the day
+# of death), so the event bypasses the schema's closed value set. Alive values are
+# recorded as `INJECTION_ALIVE_DEATH_TICK` instead; the engine realizes a death only for
+# this flag and skips the alive marker.
 const INJECTION_DEATH_FLAG = Int8(1)
 
 # The `:death` column's alive sentinel — the value that means "no death scheduled"
-# (mirrors GEMS' `DEFAULT_TICK`). Staging `:death` with it is a no-op (see
-# `_staged_death_is_alive`), so rows carrying the base population's alive default
-# verbatim never turn into deaths.
-const INJECTION_ALIVE_DEATH_TICK = Int16(-1)
+# (mirrors GEMS' `DEFAULT_TICK`). Staging `:death` with an alive value (see
+# `_staged_death_is_alive`) records an event carrying this marker: the event stream
+# mirrors the staged rows, but the engine marks nobody dead from it. Used both as the
+# event value and as the alive fill for snapshot rows padded for new individuals.
+const INJECTION_ALIVE_DEATH_TICK = Int8(-1)
+
+
+"""
+    _pad_alive_death_columns!(extra_rows::DataFrame, snapshot_df::DataFrame)
+
+Fill the death columns of rows a snapshot padded in for new individuals with their alive
+defaults instead of `missing`: alive is a known state (the `Individual` field defaults),
+not an open question — `:death` gets the alive sentinel (`INJECTION_ALIVE_DEATH_TICK`,
+mirroring GEMS' `DEFAULT_TICK`), `:death_reason` -1 (mirroring GEMS'
+`DEFAULT_DEATH_REASON`), each in the base column's element type. Columns the base table
+does not declare are skipped.
+"""
+function _pad_alive_death_columns!(extra_rows::DataFrame, snapshot_df::DataFrame)
+    for (col, alive) in ((:death, INJECTION_ALIVE_DEATH_TICK), (:death_reason, Int8(-1)))
+        hasproperty(snapshot_df, col) || continue
+        col_type = nonmissingtype(eltype(snapshot_df[!, col]))
+        extra_rows[!, col] = fill(convert(col_type, alive), nrow(extra_rows))
+    end
+    return extra_rows
+end
 
 
 """
@@ -773,7 +804,7 @@ set (extend it via `update_schema!` for codes beyond the base values).
 
 - `Event`: The staged `:death` event (the `:death_reason` event, if any, follows it)
 """
-function stage_death!(injector::Injector, ind_id::Integer, reason::Union{Int8,Nothing}, timestamp::Integer)
+function stage_death!(injector::Injector, ind_id::Integer, reason::Union{Int8,Nothing}, timestamp)
     # validate before staging anything, so an invalid reason leaves no partial state
     reason !== nothing && _check_staged_death_reason!(reason)
     # the death columns must be declared in the base population (with their default state),
@@ -876,8 +907,9 @@ Reconstructs the population table at a given day of the staged-changes timeline.
 
 # Returns
 - `DataFrame`: The population table at the given day (new individuals are appended as rows).
-  Death events (cf. `stage_event!`) are written as the constant flag `1` into the
-  population's death column.
+  Death events (cf. `stage_event!`) are written into the death column as their marker
+  (`1` dead, `-1` alive); appended rows carry the death columns' alive defaults (`-1`),
+  never `missing` — a newborn without a death event is alive.
 """
 function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int16)
     verify_base_population_hashes(injector, base_population)
@@ -908,6 +940,9 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
         extra_rows = DataFrame(fill(missing, num_new_individuals, ncol(snapshot_df)), names(snapshot_df))
         # add individual IDs for units to be added
         extra_rows.id = collect((current_num_rows+1):max_ind_id)
+        # padded rows are individuals added by the staged timeline: their death columns
+        # carry the alive defaults (a known state), not `missing`
+        _pad_alive_death_columns!(extra_rows, snapshot_df)
         append!(snapshot_df, extra_rows)
     end
 
@@ -918,14 +953,15 @@ function snapshot(injector::Injector, base_population::DataFrame, timestamp::Int
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
 
-        # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag into the column (created alive if the base table has none);
-        # a missing :death_reason column is created the same way, filled with the alive default.
+        # Death events carry no value to decode (the timestamp was the day of death) — write
+        # the event's alive/dead marker into the column (created alive if the base table has
+        # none); a missing :death_reason column is created the same way, filled with the
+        # alive default.
         if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
                 snapshot_df[!, field_symbol] .= Int8(-1)
             end
-            new_value = field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
+            new_value = field_symbol === :death ? event.new_value : decode_value(injector, field_symbol, event.new_value)
             snapshot_df[ind_id, field_symbol] = new_value
             continue
         end
@@ -979,14 +1015,15 @@ function snapshot(injector::Injector, ind_id::Integer, base_population::DataFram
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
 
-        # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag (into the column, created alive if the base table has none);
-        # a missing :death_reason column is created the same way, filled with the alive default.
+        # Death events carry no value to decode (the timestamp was the day of death) — write
+        # the event's alive/dead marker (into the column, created alive if the base table has
+        # none); a missing :death_reason column is created the same way, filled with the
+        # alive default.
         if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
                 snapshot_df[!, field_symbol] .= Int8(-1)
             end
-            new_value = field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
+            new_value = field_symbol === :death ? event.new_value : decode_value(injector, field_symbol, event.new_value)
             snapshot_df[1, field_symbol] = new_value
             continue
         end
@@ -1040,14 +1077,15 @@ function snapshot(injector::Injector, ind_id::AbstractVector{<:Integer}, base_po
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
 
-        # Death events carry no value to decode (the timestamp was the day of death) —
-        # write the constant flag into the column (created alive if the base table has none);
-        # a missing :death_reason column is created the same way, filled with the alive default.
+        # Death events carry no value to decode (the timestamp was the day of death) — write
+        # the event's alive/dead marker into the column (created alive if the base table has
+        # none); a missing :death_reason column is created the same way, filled with the
+        # alive default.
         if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
                 snapshot_df[!, field_symbol] .= Int8(-1)
             end
-            new_value = field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
+            new_value = field_symbol === :death ? event.new_value : decode_value(injector, field_symbol, event.new_value)
             snapshot_df[row, field_symbol] = new_value
             continue
         end
@@ -1101,9 +1139,10 @@ function get_change_history(injector::Injector, ind_id::Integer, base_population
         field_index = event.field
         field_symbol = injector.schema.index_to_field[field_index+1]
 
-        # Death events carry no value to decode (the timestamp was the day of death) —
-        # the constant flag stands in for the value in the history table (the base row stays alive);
-        # a missing :death_reason column is created the same way, filled with the alive default.
+        # Death events carry no value to decode (the timestamp was the day of death) — the
+        # event's alive/dead marker stands in for the value in the history table (the base
+        # row stays alive); a missing :death_reason column is created the same way, filled
+        # with the alive default.
         if field_symbol in (:death, :death_reason)
             if !hasproperty(snapshot_df, field_symbol)
                 snapshot_df[!, field_symbol] .= Int8(-1)
@@ -1111,7 +1150,7 @@ function get_change_history(injector::Injector, ind_id::Integer, base_population
             if !hasproperty(tmp_df, field_symbol)
                 tmp_df[!, field_symbol] .= Int8(-1)
             end
-            tmp_df[!, field_symbol] .= field_symbol === :death ? INJECTION_DEATH_FLAG : decode_value(injector, field_symbol, event.new_value)
+            tmp_df[!, field_symbol] .= field_symbol === :death ? event.new_value : decode_value(injector, field_symbol, event.new_value)
             tmp_df.timestamp .= event.timestamp
             append!(snapshot_df, tmp_df)
             continue
@@ -1157,17 +1196,33 @@ Stages one or more new individuals in the injector: each DataFrame row correspon
 one individual (same convention as GEMS' `Population(df)`). The injector assigns the
 new individuals' ids (continuing its individual counter); an `id` column in
 `new_individuals` is ignored. All other columns are staged as events at `timestamp`.
+`:sex` and `:age` are **required** — a table without them (or with `missing` values
+there) throws an `ArgumentError` before anything is staged. `timestamp` must be an
+exact Int16 day; anything else throws an `ArgumentError` at staging.
 
 New individuals are **alive by default**: a `death` column carrying the alive sentinel
-(`GEMS.DEFAULT_TICK`, i.e. -1) or `missing` stages no death — only an explicit death
-value realizes a (born-)dead individual. Likewise, a `death_reason` of
-`GEMS.DEFAULT_DEATH_REASON` keeps the alive default.
+(`GEMS.DEFAULT_TICK`, i.e. -1) or `missing` is recorded as an alive-marker event that
+realizes no death — only an explicit death value makes a (born-)dead individual.
+Likewise, a `death_reason` of `GEMS.DEFAULT_DEATH_REASON` keeps the alive default.
 
 # Returns
 
 - `Vector{Int}`: the assigned individual ids
 """
-function stage_new_individuals!(injector::Injector, new_individuals::DataFrame, timestamp::Integer)
+function stage_new_individuals!(injector::Injector, new_individuals::DataFrame, timestamp)
+    # Validate before recording anything: new individuals require :sex and :age (the same
+    # requirement apply_injection_events! enforces at application — failing here keeps a
+    # malformed row from half-staging and surfacing mid-run)
+    for req in (:sex, :age)
+        if !hasproperty(new_individuals, req) || any(ismissing, new_individuals[!, req])
+            throw(ArgumentError(
+                "population injection: stage_new_individuals! requires a non-missing :$(req) " *
+                "column for every new individual (checked before staging, so nothing was " *
+                "recorded). Add :$(req) to the new-individuals table."
+            ))
+        end
+    end
+
     # Get types from schema meta information
     ind_id_type = injector.schema.meta[:ind_id_type]
     current_individuals = injector.schema.meta[:current_individuals]
@@ -1180,10 +1235,14 @@ function stage_new_individuals!(injector::Injector, new_individuals::DataFrame, 
         @warn "Individual id $(maximum(new_ids)) was converted to $converted_id to fit within the individual id type $ind_id_type"
     end
 
-    # Convert timestamp to Int16 with warning if conversion is needed
-    converted_timestamp = convert(Int16, timestamp)
-    if converted_timestamp != timestamp
-        @warn "Timestamp $timestamp was converted to $converted_timestamp to fit within Int16"
+    # The staged timestamp must be an exact Int16 day (same descriptive error as _stage_event!)
+    converted_timestamp = try
+        convert(Int16, timestamp)
+    catch
+        throw(ArgumentError(
+            "population injection: timestamp $(timestamp) is not an exact Int16 value " *
+            "($(typemin(Int16)):$(typemax(Int16))) — stage whole days that fit Int16."
+        ))
     end
 
     foreach(enumerate(eachrow(new_individuals))) do (n, row)
@@ -1213,7 +1272,7 @@ assigned by the injector (continuing its individual counter).
 
 - `Int`: the assigned individual id
 """
-function stage_new_individual!(injector::Injector, props, timestamp::Integer)::Int
+function stage_new_individual!(injector::Injector, props, timestamp)::Int
     df = DataFrame([String(k) => Any[v] for (k, v) in pairs(props)]...)
     return Int(first(stage_new_individuals!(injector, df, timestamp)))
 end
