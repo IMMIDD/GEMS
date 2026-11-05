@@ -559,6 +559,22 @@ function _check_staged_death_reason!(reason)
 end
 
 """
+    _staged_death_is_alive(new_value)
+
+Whether a staged `:death` value is the *alive* default rather than an explicit death.
+The `:death` column's default state is "no death scheduled" (`GEMS.DEFAULT_TICK`, -1,
+mirrored by `INJECTION_ALIVE_DEATH_TICK`); tables that carry this default verbatim
+(e.g. rows passed to `stage_new_individuals!`) must not turn into deaths. `missing` and
+`false` are treated as alive as well; any other value (a death day, or the constant
+passed by `stage_death!`) means death.
+"""
+function _staged_death_is_alive(new_value)::Bool
+    ismissing(new_value) && return true
+    new_value isa Bool && return !new_value
+    return new_value isa Real && new_value == INJECTION_ALIVE_DEATH_TICK
+end
+
+"""
     stage_event!(injector::Injector, ind_id::Int, field::Symbol, new_value, timestamp::Int16)
 
 Stages a field change as an event in the injector.
@@ -606,9 +622,11 @@ end
     _stage_event!(injector, ind_id, field, new_value, timestamp)
 
 Internal staging without the death-field guard — used by `stage_death!` and
-`stage_new_individuals!`. For `:death` events the value is ignored (stored as a
-constant flag; the timestamp is the day of death); `:death_reason` values must be
-non-infection codes (<= 0).
+`stage_new_individuals!`. For `:death` events the value only distinguishes alive from
+dead: the alive sentinel (`DEFAULT_TICK`, `missing`, or `false`) stages nothing and
+returns `nothing` — individuals are alive by default and only an explicit death value
+is realized; any other value stages the death as a constant flag (the timestamp is the
+day of death). `:death_reason` values must be non-infection codes (<= 0).
 """
 function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_value, timestamp::Integer)
     # Get types from schema meta information
@@ -635,10 +653,13 @@ function _stage_event!(injector::Injector, ind_id::Integer, field::Symbol, new_v
     # for simulation-caused pathogen deaths)
     field === :death_reason && _check_staged_death_reason!(new_value)
 
-    # death events: the value carries no meaning (the timestamp is the day of death) and
-    # is stored as a constant flag, bypassing the column's closed value set — no schema
-    # entry or update_schema! is needed
+    # death events: the value only tells "alive" from "dead" — the column's alive sentinel
+    # (the default state carried verbatim by rows staged via stage_new_individuals!) stages
+    # nothing: new individuals are alive by default. A real death is stored as a constant
+    # flag (the timestamp is the day of death), bypassing the column's closed value set —
+    # no schema entry or update_schema! is needed
     if field in (:death,)
+        _staged_death_is_alive(new_value) && return nothing
         event = Event{Int8}(converted_id, Int8(injector.schema.field_to_index[field]), INJECTION_DEATH_FLAG, converted_timestamp)
         push!(injector.events, event)
         return event
@@ -713,6 +734,12 @@ end
 # a constant marker — the engine never interprets a death event's value (the timestamp is
 # the day of death), so it bypasses the schema's closed value set.
 const INJECTION_DEATH_FLAG = Int8(1)
+
+# The `:death` column's alive sentinel — the value that means "no death scheduled"
+# (mirrors GEMS' `DEFAULT_TICK`). Staging `:death` with it is a no-op (see
+# `_staged_death_is_alive`), so rows carrying the base population's alive default
+# verbatim never turn into deaths.
+const INJECTION_ALIVE_DEATH_TICK = Int16(-1)
 
 
 """
@@ -1131,6 +1158,11 @@ one individual (same convention as GEMS' `Population(df)`). The injector assigns
 new individuals' ids (continuing its individual counter); an `id` column in
 `new_individuals` is ignored. All other columns are staged as events at `timestamp`.
 
+New individuals are **alive by default**: a `death` column carrying the alive sentinel
+(`GEMS.DEFAULT_TICK`, i.e. -1) or `missing` stages no death — only an explicit death
+value realizes a (born-)dead individual. Likewise, a `death_reason` of
+`GEMS.DEFAULT_DEATH_REASON` keeps the alive default.
+
 # Returns
 
 - `Vector{Int}`: the assigned individual ids
@@ -1158,7 +1190,7 @@ function stage_new_individuals!(injector::Injector, new_individuals::DataFrame, 
         i = convert(ind_id_type, new_ids[n])
         for (field, value) in pairs(row)
             field === :id && continue  # identity is assigned by the injector; an input id column is ignored
-            _stage_event!(injector, i, field, value, converted_timestamp)   # internal: born-dead newborns keep working
+            _stage_event!(injector, i, field, value, converted_timestamp)   # internal: alive death values are no-ops; explicit ones keep born-dead newborns working
         end
     end
 

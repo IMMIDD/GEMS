@@ -1533,6 +1533,33 @@ end
         @test any(dl.id .== Int32(101))                             # born-dead: still a run-time death
     end
 
+    @testset "new individual with alive death values: alive by default" begin
+        # a row carrying the death columns' alive defaults verbatim (DEFAULT_TICK / -1) must
+        # NOT stage a death: new individuals are alive with the alive death reason
+        base = make_base()
+        base[!, :death] = Int8.(fill(-1, 100))
+        base[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
+        schema = PI.create_column_schema(base)
+        inj = PI.Injector(schema)
+        PI.stage_new_individuals!(inj, DataFrame(
+            id = Int32[101], sex = Int8[1], age = Int8[0],
+            occupation = Int16[2], household = Int32[1],
+            death = Int8[-1], death_reason = Int8[GEMS.DEFAULT_DEATH_REASON]), Int16(5))
+
+        # the alive death sentinel staged no :death event
+        @test !any(inj.schema.index_to_field[Int(e.field) + 1] === :death for e in inj.events)
+
+        sim = Simulation(population = Population(base), population_injection = inj,
+                         stop_criterion = TimesUp(limit = 9))
+        for _ in 1:6; step!(sim); end                               # the day-5 birth fires at tick 5
+        ind101 = get_individual_by_id(population(sim), Int32(101))
+        @test ind101 !== nothing && !dead(ind101)
+        @test ind101.death == GEMS.DEFAULT_TICK
+        @test ind101.death_reason == GEMS.DEFAULT_DEATH_REASON
+        dl = dataframe(deathlogger(sim))
+        @test !any(dl.id .== Int32(101))                            # alive: not in the death logger
+    end
+
     @testset "birth with extension field on a struct extension type" begin
         struct InjectionExt
             income::Float64
