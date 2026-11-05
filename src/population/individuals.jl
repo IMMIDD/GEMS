@@ -28,7 +28,7 @@ export is_icu, isicu, icu
 export is_ventilated, isventilated, ventilated
 export is_homebound, ishomebound, homebound
 export is_recovered, isrecovered, recovered
-export is_dead, isdead, dead, death
+export is_dead, isdead, dead, death, death_reason, killing_pathogen_id
 export is_detected, isdetected, detected
 export active_pathogens_mask
 export number_of_infections
@@ -109,7 +109,7 @@ A type to represent individuals that act as agents inside the simulation.
 - Bookkeeping
     - `number_of_infections::Int8`: Lifetime infection count
     - `disease_flags::UInt8`: Bitpacked disease-state flags (`infected`/`infectious`/`symptomatic`/`severe`/`critical`/`dead`), accessed via the `is_*`/`*!` accessors
-    - `killing_pathogen_id::Int8`: Pathogen credited for the host death (set when death is scheduled, read by the death logger)
+    - `death_reason::Int8`: Cause of the host death: killing pathogen id (> 0), or a negative non-infection reason (set when death is scheduled, read by the death logger)
 
 - Interventions
     - `detected_mask::UInt32`: Bitmask of pathogens for which an infection is detected
@@ -160,7 +160,7 @@ A type to represent individuals that act as agents inside the simulation.
     # BOOKKEEPING
     number_of_infections::Int8 = 0                  # off 36,  1B,  line 0
     disease_flags::DiseaseFlags = DiseaseFlags()    # off 37,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 38,  1B,  line 0
+    death_reason::Int8 = DEFAULT_DEATH_REASON       # off 38,  1B,  line 0
     #                                                 off 39,  1B free (alignment)
 
     # INTERVENTIONS
@@ -590,6 +590,22 @@ Returns the tick the individual is scheduled to die at, `DEFAULT_TICK` if none.
 death(individual::Individual)::Int16 = individual.death
 
 """
+    death_reason(individual::Individual)
+
+Returns the cause of the individual's (scheduled) death: the killing pathogen id (> 0),
+a negative non-infection reason, or `DEFAULT_DEATH_REASON` if none.
+"""
+death_reason(individual::Individual)::Int8 = individual.death_reason
+
+"""
+    killing_pathogen_id(individual::Individual)
+
+Returns the id of the pathogen credited for the individual's death, `nothing` if the
+individual did not die (or is not scheduled to die) of an infection.
+"""
+killing_pathogen_id(individual::Individual) = individual.death_reason > 0 ? individual.death_reason : nothing
+
+"""
     is_detected(individual::Individual)
  
 Returns `true` if the individual has been detected for any currently active pathogen.
@@ -851,8 +867,10 @@ end
 
 Transparent write access for both core and extension fields, with the same type-coercion
 behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)` before
-`setfield!`). Non-core names are forwarded to the boxed `extensions` value; for an
-`AutoExtension` the wrapped NamedTuple is replaced via `merge`.
+`setfield!`). Non-core names are forwarded to the boxed `extensions` value: for an
+`AutoExtension` the wrapped NamedTuple is replaced via `merge`; for a custom struct
+extension the struct is rebuilt with the updated field and swapped into the slot
+(supporting immutable structs).
 """
 @inline function Base.setproperty!(ind::Individual, name::Symbol, val)
     if hasfield(Individual, name)
@@ -864,7 +882,11 @@ behaviour as Julia's default `setproperty!` (i.e. `convert(fieldtype(...), val)`
         return setfield!(ext, :data,
             merge(nt, NamedTuple{(name,)}((convert(fieldtype(typeof(nt), name), val),))))
     else
-        return setfield!(ext, name, convert(fieldtype(typeof(ext), name), val))
+        # custom (struct) extension: rebuild it with the updated field and swap it into
+        # the extensions slot — works for mutable and immutable structs alike
+        T = typeof(ext)
+        vals = map(f -> f === name ? convert(fieldtype(T, f), val) : getfield(ext, f), fieldnames(T))
+        return setfield!(ind, :extensions, T(vals...))
     end
 end
 

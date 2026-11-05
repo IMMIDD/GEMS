@@ -154,7 +154,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 push_infection!(reg_d, i_d, Int8(2), Int32(6),
                     DiseaseProgression(exposure=Int16(1), infectiousness_onset=Int16(2), recovery=Int16(30)))
                 i_d.death = Int16(5)
-                i_d.killing_pathogen_id = Int8(2)
+                i_d.death_reason = Int8(2)
                 buf_d = _EndedInfection[]
                 progress_disease!(i_d, reg_d, pths, buf_d, Int16(10), 1)
                 @test isdead(i_d)
@@ -338,7 +338,7 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
                 if GEMS.tick(s) == Int16(1)
                     infect_now!(s, ind)
                     ind.death = Int16(5)
-                    ind.killing_pathogen_id = Int8(1)
+                    ind.death_reason = Int8(1)
                 end
                 run_tick!(s, ind)
             end

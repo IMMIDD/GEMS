@@ -336,6 +336,9 @@ end
 Increments the simulation status by one tick and executes all events that shall be handled during this tick.
 """
 function step!(simulation::Simulation)
+    # inject staged population changes due at this tick (O(1) no-op when no injector is attached or none are due)
+    inject_population_changes!(simulation)
+
     dormant = is_dormant(simulation)
 
     # realize scheduled care
@@ -710,7 +713,7 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
         progress_disease!(indiv, infection_registry(sim, id(indiv)), sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, sim.seed)
 
         if !was_dead && dead(indiv)
-            log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
+            log!(deathlogger(sim), id(indiv), indiv.death_reason, tick)
             _close_care_at_death!(indiv, healthlogger(sim), tick)
         end
     end
