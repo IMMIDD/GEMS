@@ -58,8 +58,8 @@ Adds a new `Event` to the `EventQueue` at the specified `tick`.
 """
 function enqueue!(queue::EventQueue, event::Event, tick::Int16)
     lock(queue.lock) do
-        # add event to the sorted event queue
-        i = searchsortedfirst(queue.pq, tick; by=last)
+        # add event behind all events of the same tick (FIFO within a tick)
+        i = searchsortedlast(queue.pq, tick; by=last) + 1
         insert!(queue.pq, i, event => tick)
     end
 
