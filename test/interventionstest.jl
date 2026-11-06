@@ -960,7 +960,7 @@ end
             @test peek(eq) === dequeue!(eq)
             @test length(eq) == 1
 
-            # within a single tick bucket, peek matches the next dequeue! (LIFO order)
+            # within a single tick bucket, peek matches the next dequeue! (FIFO order)
             enqueue!(eq, s_measure_event, Int16(5))
             @test peektick(eq) == Int16(5)
             @test peek(eq) === dequeue!(eq)
@@ -1042,6 +1042,28 @@ end
                 @test dequeue!(eq) === i_measure_event
                 @test isempty(eq)
             end
+
+            # events of one type and tick are dequeued in insertion order
+            empty!(eq)
+            enqueue!(eq, i_measure_event, Int16(2))
+            enqueue!(eq, i_measure_event3, Int16(2))
+            @test peek(eq) === i_measure_event
+            @test dequeue!(eq) === i_measure_event
+            @test dequeue!(eq) === i_measure_event3
+
+            # same-tick follow-ups run after the events already queued for that tick
+            order = Symbol[]
+            fifo_followup = IStrategy("fifo followup", sim)
+            add_measure!(fifo_followup, CustomIMeasure((ind, simobj) -> (push!(order, :followup); nothing)))
+            ev_first = IMeasureEvent(i, CustomIMeasure((ind, simobj) -> (push!(order, :first); GEMS.trigger_strategy(fifo_followup, ind, simobj))), condition, sim)
+            ev_second = IMeasureEvent(i, CustomIMeasure((ind, simobj) -> (push!(order, :second); nothing)), condition, sim)
+            sim_eq = event_queue(sim)
+            empty!(sim_eq)
+            enqueue!(sim_eq, ev_first, Int16(tick(sim)))
+            enqueue!(sim_eq, ev_second, Int16(tick(sim)))
+            GEMS.process_due!(sim_eq, sim, tick(sim))
+            @test order == [:first, :second, :followup]
+            @test isempty(sim_eq)
         end
     end
 
