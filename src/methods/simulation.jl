@@ -342,8 +342,13 @@ function is_dormant(simulation::Simulation)
     # wake up if a trigger fires today
     for tt in simulation.tick_triggers
         if should_fire(tt, current_t)
-            return false 
+            return false
         end
+    end
+
+    # wake up if infections were logged after the last state snapshot (e.g. in stepmod)
+    if infectionlogger(simulation).last_modified_tick[] >= current_t - 1
+        return false
     end
 
     # wake up if disease or quarantines are active
