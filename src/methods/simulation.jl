@@ -283,17 +283,6 @@ function step!(simulation::Simulation)
         end
     end
 
-    # infect individuals in settings
-    if !dormant
-        for type in settingtypes_sorted(settingscontainer(simulation))
-            Threads.@threads :static for stng in settings(simulation, type)
-                if isactive(stng)
-                    spread_infection!(stng, simulation, pathogen(simulation))
-                end
-            end
-        end
-    end
-
     # trigger tick triggers
     for tt in simulation |> tick_triggers
         if should_fire(tt, tick(simulation))
@@ -307,6 +296,17 @@ function step!(simulation::Simulation)
     if !dormant
         Threads.@threads :static for i in simulation |> population |> individuals
             quarantined!(i, is_quarantined(i, tick(simulation)))
+        end
+    end
+
+    # infect individuals in settings
+    if !dormant
+        for type in settingtypes_sorted(settingscontainer(simulation))
+            Threads.@threads :static for stng in settings(simulation, type)
+                if isactive(stng)
+                    spread_infection!(stng, simulation, pathogen(simulation))
+                end
+            end
         end
     end
 
