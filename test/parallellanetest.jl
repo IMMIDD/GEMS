@@ -36,6 +36,14 @@ end
         @test !GEMS._parallel_safe(CustomSMeasure((st, s) -> nothing), true)
         @test GEMS._parallel_safe(CustomIMeasure((i, s) -> nothing, threadsafe = true), false)
         @test GEMS._parallel_safe(CustomSMeasure((st, s) -> nothing, threadsafe = true), false)
+        for Trace in (TraceInfectiousContacts, TraceSourceContacts)
+            @test GEMS._parallel_safe(Trace(lane_followup, success_rate = 0.5, resample_contacts = true), false)
+            @test !GEMS._parallel_safe(Trace(lane_followup, success_rate = dt -> 0.5), false)
+            # the filter only runs when resampling
+            @test GEMS._parallel_safe(Trace(lane_followup, contact_filter = (s, t) -> true), false)
+            @test !GEMS._parallel_safe(Trace(lane_followup, resample_contacts = true, contact_filter = (s, t) -> true), false)
+            @test GEMS._parallel_safe(Trace(lane_followup, success_rate = dt -> 0.5, contact_filter = (s, t) -> true), true)
+        end
 
         entry_parallel(str) = last(measures(str)).parallel
         lane = IStrategy("lane", lane_sim)
@@ -284,6 +292,41 @@ end
             foreach(i -> GEMS.trigger_strategy(dose, i, sim), inds)
             failure = try GEMS.process_events!(sim); nothing catch e; e end
             @test occursin("registered with other peaks", sprint(showerror, failure))
+        end
+
+        @testset "Tracing Runs In The Owner Phase" begin
+            # a short run, so the infection log has infecters with infectees
+            function traced_sim()
+                sim = Simulation(pop_size = 1000, seed = 11)
+                foreach(_ -> step!(sim), 1:20)
+                isolate = IStrategy("isolate", sim)
+                add_measure!(isolate, SelfIsolation(2))
+                infections = dataframe(infectionlogger(sim))
+                index = argmax(countmap(filter(>(0), infections.id_a)))
+                return (; sim, isolate, infections, index, isolated = i -> isquarantined(i, tick(sim)))
+            end
+
+            # forward: every living infectee of the index
+            (; sim, isolate, infections, index, isolated) = traced_sim()
+            trace = IStrategy("trace", sim)
+            add_measure!(trace, TraceInfectiousContacts(isolate, lookback = 100))
+            @test GEMS._parallel_strategy(trace)
+            GEMS.trigger_strategy(trace, get_individual_by_id(population(sim), index), sim)
+            @test isempty(GEMS.event_queue(sim))
+            GEMS.process_events!(sim)
+            infectees = [get_individual_by_id(population(sim), i) for i in infections.id_b[infections.id_a .== index]]
+            @test !isempty(infectees) && all(i -> dead(i) || isolated(i), infectees)
+
+            # backward: the index, found from one of its infectees
+            (; sim, isolate, infections, index, isolated) = traced_sim()
+            source = IStrategy("source", sim)
+            add_measure!(source, TraceSourceContacts(isolate, lookback = 100))
+            @test GEMS._parallel_strategy(source)
+            infectee = first(infections.id_b[infections.id_a .== index])
+            GEMS.trigger_strategy(source, get_individual_by_id(population(sim), infectee), sim)
+            GEMS.process_events!(sim)
+            found = get_individual_by_id(population(sim), index)
+            @test dead(found) || isolated(found)
         end
 
         @testset "Setting Lookups Return Through Serial Code In The Tick" begin

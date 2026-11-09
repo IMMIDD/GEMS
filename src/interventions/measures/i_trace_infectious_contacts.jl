@@ -52,12 +52,13 @@ struct TraceInfectiousContacts{FU<:IStrategy} <: IMeasure
     resample_contacts::Bool
     settingtypes::Vector{DataType}
     contact_filter::ContactFilterFn
+    has_contact_filter::Bool
     max_contacts::Int
 
     function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
             lookback::Integer = 14, resample_contacts::Bool = false,
             settingtypes::Vector{DataType} = DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite],
-            contact_filter::Function = (setting, tick) -> true, max_contacts::Integer = typemax(Int))
+            contact_filter::Function = _any_contact, max_contacts::Integer = typemax(Int))
         if lookback < 1
             throw(ArgumentError("lookback parameter must be at least 1"))
         end
@@ -67,14 +68,14 @@ struct TraceInfectiousContacts{FU<:IStrategy} <: IMeasure
         end
 
         if success_rate isa Function
-            return(new{typeof(follow_up)}(TraceRateFn(success_rate), follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
+            return(new{typeof(follow_up)}(TraceRateFn(success_rate), follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), contact_filter !== _any_contact, max_contacts))
         end
 
         if !(0 <= success_rate <= 1)
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
 
-        return(new{typeof(follow_up)}(success_rate, follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
+        return(new{typeof(follow_up)}(success_rate, follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), contact_filter !== _any_contact, max_contacts))
     end
 end
 
@@ -142,6 +143,10 @@ function max_contacts(tic::TraceInfectiousContacts)
     return(tic.max_contacts)
 end
 
+
+# a `success_rate` function, or a `contact_filter` when resampling, is a user closure, so it needs the entry's mark
+_parallel_safe(tic::TraceInfectiousContacts, threadsafe::Bool) =
+    threadsafe || (success_rate(tic) isa Float64 && !(resample_contacts(tic) && tic.has_contact_filter))
 
 ###
 ### PROCESS MEASURE
