@@ -21,6 +21,10 @@ end
         @test GEMS._parallel_safe(SelfIsolation(1), false)
         @test GEMS._parallel_safe(CancelSelfIsolation(), false)
         @test GEMS._parallel_safe(FindMembers(lane_followup), false)
+        lane_setting_followup = SStrategy("setting follow up", lane_sim)
+        @test GEMS._parallel_safe(FindSetting(Household, lane_setting_followup), false)
+        @test GEMS._parallel_safe(FindSettings(Household, lane_setting_followup), false)
+        @test GEMS._parallel_safe(FindSettingMembers(Household, lane_followup), false)
         @test !GEMS._parallel_safe(FindMembers(lane_followup, sample_size = 1), true)
         @test !GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), true)
         @test !GEMS._parallel_safe(CloseSetting(), true)
@@ -216,6 +220,35 @@ end
             @test hop_measure.visited == id.(hops)
             @test isempty(queued_events(sim))
             @test !GEMS._owner_requests_pending(sim)
+        end
+
+        # needs a household spread over two shards
+        if slots > 1
+            @testset "Member Lookups Reach Other Shards In The Tick" begin
+                (; sim, isolate, isolated) = round_setup()
+                lookup = IStrategy("lookup", sim)
+                add_measure!(lookup, FindSettingMembers(Household, isolate))
+                @test GEMS._parallel_strategy(lookup)
+                home = households(sim)[findfirst(h -> length(unique(shard.(individuals(h)))) > 1, households(sim))]
+                GEMS.trigger_strategy(lookup, first(individuals(home)), sim)
+                @test isempty(GEMS.event_queue(sim))
+                GEMS.process_events!(sim)
+                @test all(isolated, individuals(home))
+                @test isempty(queued_events(sim))
+                @test !GEMS._owner_requests_pending(sim)
+            end
+        end
+
+        @testset "Setting Lookups Return Through Serial Code In The Tick" begin
+            (; inds, sim, members, isolated) = round_setup()
+            lookup = IStrategy("lookup", sim)
+            add_measure!(lookup, FindSetting(Household, members))
+            target = inds[1]
+            GEMS.trigger_strategy(lookup, target, sim)
+            @test isempty(GEMS.event_queue(sim))
+            GEMS.process_events!(sim)
+            @test all(isolated, individuals(household(target, sim)))
+            @test isempty(queued_events(sim))
         end
 
         @testset "Setting Chunks Reach All Members" begin
