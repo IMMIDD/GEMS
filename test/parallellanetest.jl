@@ -25,6 +25,8 @@ end
         @test GEMS._parallel_safe(FindSetting(Household, lane_setting_followup), false)
         @test GEMS._parallel_safe(FindSettings(Household, lane_setting_followup), false)
         @test GEMS._parallel_safe(FindSettingMembers(Household, lane_followup), false)
+        @test GEMS._parallel_safe(PoolTest("lane", lane_type), false)
+        @test GEMS._parallel_safe(IsOpen(positive_followup = lane_setting_followup), false)
         @test !GEMS._parallel_safe(FindMembers(lane_followup, sample_size = 1), true)
         @test !GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), true)
         @test !GEMS._parallel_safe(CloseSetting(), true)
@@ -257,6 +259,28 @@ end
             foreach(h -> GEMS.trigger_strategy(members, h, sim), homes)
             GEMS.process_events!(sim)
             @test all(h -> all(isolated, individuals(h)), homes)
+        end
+
+        @testset "Pool Tests Log Every Setting" begin
+            (; sim) = round_setup()
+            pool = SStrategy("pool", sim)
+            add_measure!(pool, PoolTest("pool", TestType("pool", pathogen(sim), sim)))
+            homes = households(sim)[1:slots + 1]
+            foreach(h -> GEMS.trigger_strategy(pool, h, sim), homes)
+            @test isempty(GEMS.event_queue(sim))
+            GEMS.process_events!(sim)
+            @test sort(dataframe(pooltestlogger(sim)).setting_id) == id.(homes)
+        end
+
+        @testset "An Open Check Sees The Close Listed Before It" begin
+            (; sim, members, isolated) = round_setup()
+            check = SStrategy("check", sim)
+            add_measure!(check, CloseSetting())
+            add_measure!(check, IsOpen(negative_followup = members))
+            home = households(sim)[1]
+            GEMS.trigger_strategy(check, home, sim)
+            GEMS.process_events!(sim)
+            @test all(isolated, individuals(home))
         end
 
         @testset "is_dormant Wakes For The Parallel Lane" begin

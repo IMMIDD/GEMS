@@ -315,7 +315,8 @@ function apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation;
         Int16(no_of_ind),
         Int16(no_of_inf),
         testtype |> pathogen_id,
-        testtype |> name)
+        testtype |> name;
+        slot = _log_slot(sim))
 
     return test_pos
 end

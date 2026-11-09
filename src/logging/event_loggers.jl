@@ -275,6 +275,7 @@ Base.length(logger::TestLogger) = sum(length, logger.tick)
     test_type::Vector{Vector{String}} = _shard_local_vector(Vector{String})
 end
 
+# `slot` is the column the row goes to
 function log!(
         poollogger::PoolTestLogger,
         setting_id::Int32,
@@ -284,19 +285,20 @@ function log!(
         no_of_individuals::Int16,
         no_of_infected::Int16,
         pathogen_id::Int8,
-        test_type::String
+        test_type::String;
+        slot::Int = Threads.threadid()
     )
-    tid = Threads.threadid()
-    push!(poollogger.setting_id[tid], setting_id)
-    push!(poollogger.setting_type[tid], setting_type)
-    push!(poollogger.tick[tid], tick)
-    push!(poollogger.test_result[tid], test_result)
-    push!(poollogger.no_of_individuals[tid], no_of_individuals)
-    push!(poollogger.no_of_infected[tid], no_of_infected)
-    push!(poollogger.pathogen_id[tid], pathogen_id)
-    push!(poollogger.test_type[tid], test_type)
+    push!(poollogger.setting_id[slot], setting_id)
+    push!(poollogger.setting_type[slot], setting_type)
+    push!(poollogger.tick[slot], tick)
+    push!(poollogger.test_result[slot], test_result)
+    push!(poollogger.no_of_individuals[slot], no_of_individuals)
+    push!(poollogger.no_of_infected[slot], no_of_infected)
+    push!(poollogger.pathogen_id[slot], pathogen_id)
+    push!(poollogger.test_type[slot], test_type)
 
-    Threads.atomic_xchg!(poollogger.last_modified_tick, tick)
+    # written only on change
+    poollogger.last_modified_tick[] == tick || Threads.atomic_xchg!(poollogger.last_modified_tick, tick)
 end
 
 function save(poollogger::PoolTestLogger, path::AbstractString)

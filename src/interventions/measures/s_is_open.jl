@@ -69,6 +69,8 @@ function negative_followup(t::IsOpen)
 end
 
 
+_parallel_safe(::IsOpen, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###
