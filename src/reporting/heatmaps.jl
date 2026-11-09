@@ -8,34 +8,25 @@ Returns a color scheme for the `gemsheatmap()` function assuming
 that the input data is a vector of R0 values.
 """
 function r0_cgrad(outvals)
-
     minval, maxval = minimum(outvals), maximum(outvals)
 
     # if all values are above 1
-    if (minval >= 1)
-        return cgrad([:red, :purple], [0.0, 1.0])
-    end
+    if (minval >= 1) return cgrad([:red, :purple], [0.0, 1.0]) end
 
     # if all values are below 1
-    if (maxval <= 1)
-        return cgrad([:white, :yellow], [0.0, 1.0])
-    end
+    if (maxval <= 1) return cgrad([:white, :yellow], [0.0, 1.0]) end
 
-    # if values cross R0 = 1: color stops at fixed R values
-    stops = [
-        (minval, :blue),
-        (0.89, :lightblue),
-        (1.0, :white),
-        (1.3, :orange),
-        (maxval, :red)
-    ]
+    # orange always follows white: at R = 1.3, or halfway between 1 and the maximum if that is lower
+    orange = maxval > 1.3 ? 1.3 : (1.0 + maxval) / 2
 
-    # keep the end points, and only the inner stops that lie within the data range
-    # (otherwise the positions leave [0, 1] or are out of order, which shifts all colors)
+    stops = [(minval, :blue), (0.89, :lightblue), (1.0, :white), (orange, :orange), (maxval, :red)]
+
+    # drop inner stops outside the data range (keeps white exactly at R = 1)
     stops = [s for (i, s) in enumerate(stops) if i == 1 || i == length(stops) || minval < s[1] < maxval]
 
     return cgrad(last.(stops), (first.(stops) .- minval) ./ (maxval - minval))
 end
+
 
 """
     gemsheatmap(xvals::Vector{<:Any}, yvals::Vector{<:Any}, outvals::Vector{<:Any};
