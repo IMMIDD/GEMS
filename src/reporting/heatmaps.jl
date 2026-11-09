@@ -9,39 +9,32 @@ that the input data is a vector of R0 values.
 """
 function r0_cgrad(outvals)
 
-    
+    minval, maxval = minimum(outvals), maximum(outvals)
+
     # if all values are above 1
-    if (minimum(outvals) >= 1)
+    if (minval >= 1)
         return cgrad([:red, :purple], [0.0, 1.0])
     end
 
-    # if all values are below 0
-    if (maximum(outvals) <= 1)
+    # if all values are below 1
+    if (maxval <= 1)
         return cgrad([:white, :yellow], [0.0, 1.0])
     end
 
-    # if values cross, R0 = 1
-    colors = [
-        :blue,  # 0.0
-        :lightblue,  # 0.99
-        :white, # 1.0
-        :orange,    # 1.01
-        :red  # max
+    # if values cross R0 = 1: color stops at fixed R values
+    stops = [
+        (minval, :blue),
+        (0.89, :lightblue),
+        (1.0, :white),
+        (1.3, :orange),
+        (maxval, :red)
     ]
 
-    minval, maxval = minimum(outvals), maximum(outvals)
+    # keep the end points, and only the inner stops that lie within the data range
+    # (otherwise the positions leave [0, 1] or are out of order, which shifts all colors)
+    stops = [s for (i, s) in enumerate(stops) if i == 1 || i == length(stops) || minval < s[1] < maxval]
 
-    norm_positions = [
-        0.0,
-        (0.89-minval) / (maxval-minval), # R0 = 0.85
-        (1-minval) / (maxval-minval),    # R0 = 1.00
-        (1.3-minval) / (maxval-minval), # R0 = 1.3
-        1.0
-    ]
-
-    c = cgrad(colors, norm_positions)
-
-    return c
+    return cgrad(last.(stops), (first.(stops) .- minval) ./ (maxval - minval))
 end
 
 """
