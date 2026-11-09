@@ -435,8 +435,8 @@ stretches the decay. Both accept optional per-stage arguments; see the pathogen 
 
 #### `immunity_profile`
 Defines how immunity acquired through recovery or vaccination builds up, combines, and wanes over time.
-This section is optional; if omitted, the pathogen uses `FullImmunity` (sterilising immunity from the
-moment of recovery or vaccination onwards, never waning).
+This section is optional; if omitted, the pathogen uses `FullImmunity` (immunity that never wanes: full
+protection from the moment of recovery, and the vaccine's own peak from the moment of vaccination).
 
 ```toml
 [Pathogens.Covid19.immunity_profile]
@@ -449,6 +449,12 @@ The `type` argument specifies the `ImmunityProfile` that conditions the dispatch
 `calculate_immunity(...)` function when running GEMS. The subsequent `[.parameters]` section holds the
 arguments passed to the `ImmunityProfile` struct upon initialization, and can be omitted entirely for
 profiles that take no arguments (such as `FullImmunity` and `NoImmunity`).
+
+`ExponentialWaning` and `SigmoidalWaning` take `natural_peak` (protection against infection at recovery,
+default `100`), `halflife` (default `180`) and `floor` (default `0`), plus `severity_natural_peak`,
+`severity_halflife` and `severity_floor` for protection against severe disease (defaults: their infection
+counterparts). `SigmoidalWaning` also takes `hill` (default `3`). Their `vaccine_buildup_duration` is deprecated;
+vaccines set their own `buildup_duration`. See [Immunity & Waning](@ref immunity-waning) for what they mean.
 
 ### HealthProgression
 

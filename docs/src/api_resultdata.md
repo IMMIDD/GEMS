@@ -108,6 +108,7 @@ total_infections(::ResultData)
 total_mem_size(::ResultData)
 total_quarantines(::ResultData)
 total_tests(::ResultData)
+vaccinations(::ResultData)
 word_size(::ResultData)
 ```
 

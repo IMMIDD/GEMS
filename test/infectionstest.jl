@@ -379,6 +379,225 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
         end
     end
 
+    @testset "Severity Protection" begin
+        pid = Int8(1)
+        mild = Mild(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1, symptom_onset_to_recovery = 5)
+        severe = Severe(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+            symptom_onset_to_severeness_onset = 1, severeness_onset_to_severeness_offset = 3, severeness_offset_to_recovery = 2)
+        # every case starts out in the severe category `assigned`
+        severe_pathogen(profile; progressions = [mild, severe], assigned = Severe) = Pathogen(id = 1, name = "S",
+            progressions = progressions, progression_assignment = RandomProgressionAssignment(DataType[assigned]), immunity_profile = profile)
+        sim_with(profile; kwargs...) = Simulation(pop_size = 200, infected_fraction = 0.0, pathogens = (severe_pathogen(profile; kwargs...),))
+        # category after protection, for a case that `assign` gave category `pc`
+        function protect(s, ind, t, pc = Severe; in_sim = true)
+            p = first_pathogen(s)
+            return GEMS._averts_severe_disease(p, pc, ind, in_sim ? s : nothing, Int16(t)) ? GEMS._downgrade_target(p.progressions) : pc
+        end
+
+        @testset "Downgrade" begin
+            s = sim_with(FullImmunity())
+            a, b, c, d = individuals(s)[1:4]
+            # no record, or no protection beyond protection against infection: the case stays severe
+            @test protect(s, a, 10) === Severe
+            vaccinate!(b, s, Vaccine(id=1, name="Plain", target_pathogen_id=pid, peak=50), Int16(0))
+            @test all(t -> protect(s, b, t) === Severe, 1:200)
+            # full protection against severe disease and none against infection: always mild
+            vaccinate!(c, s, Vaccine(id=2, name="Severity only", target_pathogen_id=pid, peak=0, severity_peak=100), Int16(0))
+            @test all(t -> protect(s, c, t) === Mild, 1:200)
+            # non-severe categories, and infections outside a simulation, are left alone
+            @test protect(s, c, 5, Mild) === Mild
+            @test protect(s, c, 5; in_sim = false) === Severe
+            # the same host and tick draw the same
+            vaccinate!(d, s, Vaccine(id=3, name="Half", target_pathogen_id=pid, peak=50, severity_peak=75), Int16(0))
+            @test all(t -> protect(s, d, t) === protect(s, d, t), 1:50)
+
+            # profiles without severity protection of their own never downgrade
+            s2 = sim_with(NoImmunity())
+            e = individuals(s2)[1]
+            vaccinate!(e, s2, Vaccine(id=1, name="V", target_pathogen_id=pid), Int16(0))
+            @test all(t -> protect(s2, e, t) === Severe, 1:50)
+
+            # without a category to downgrade to, a severity_peak has no effect and warns at the first dose
+            s3 = sim_with(FullImmunity(); progressions = [severe])
+            f = individuals(s3)[1]
+            @test_logs (:warn, r"no category with severity_tier") vaccinate!(f, s3,
+                Vaccine(id=1, name="Severity only", target_pathogen_id=pid, peak=0, severity_peak=100), Int16(0))
+            @test all(t -> protect(s3, f, t) === Severe, 1:50)
+
+            # without a :mild category, severe cases turn :asymptomatic
+            asymp = Asymptomatic(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_recovery = 5)
+            s5 = sim_with(FullImmunity(); progressions = [asymp, severe])
+            h = individuals(s5)[1]
+            vaccinate!(h, s5, Vaccine(id=1, name="Severity only", target_pathogen_id=pid, peak=0, severity_peak=100), Int16(0))
+            @test all(t -> protect(s5, h, t) === Asymptomatic, 1:50)
+
+            # legacy categories have tiers too: Hospitalized turns Symptomatic
+            hospitalized = Hospitalized(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+                symptom_onset_to_severeness_onset = 1, severeness_onset_to_hospital_admission = 1,
+                hospital_admission_to_hospital_discharge = 3, hospital_discharge_to_severeness_offset = 1, severeness_offset_to_recovery = 2)
+            symptomatic = Symptomatic(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1, symptom_onset_to_recovery = 5)
+            s4 = sim_with(FullImmunity(); progressions = [symptomatic, hospitalized], assigned = Hospitalized)
+            g = individuals(s4)[1]
+            vaccinate!(g, s4, Vaccine(id=1, name="Severity only", target_pathogen_id=pid, peak=0, severity_peak=100), Int16(0))
+            @test all(t -> protect(s4, g, t, Hospitalized) === Symptomatic, 1:50)
+        end
+
+        @testset "Profiles" begin
+            # once the severity curve has fallen below the infection curve, nothing is left to downgrade
+            s = sim_with(ExponentialWaning(halflife = 400, severity_halflife = 100))
+            a = individuals(s)[1]
+            vaccinate!(a, s, Vaccine(id=1, name="Crossing", target_pathogen_id=pid, peak=70, severity_peak=95), Int16(-200))
+            @test severity_immunity_level(a, s, pid, Int16(0)) < immunity_level(a, s, pid, Int16(0))
+            @test all(t -> protect(s, a, t) === Severe, 0:200)
+
+            # natural and vaccine protection against severe disease combine as 1-(1-p)(1-q) before the draw
+            s2 = sim_with(ExponentialWaning(natural_peak = 0, severity_natural_peak = 50, halflife = 1e9))
+            b = individuals(s2)[1]
+            push_immunity!(GEMS.immunity_registry(s2, b), b, pid, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+            vaccinate!(b, s2, Vaccine(id=1, name="Severity only", target_pathogen_id=pid, peak=0, severity_peak=50), Int16(0))
+            @test immunity_level(b, s2, pid, Int16(1)) == 0 && severity_immunity_level(b, s2, pid, Int16(1)) == 75
+            @test isapprox(count(t -> protect(s2, b, t) === Mild, 1:20000) / 20000, 0.75; atol = 0.015)
+
+            # profiles without calculate_severity_immunity never downgrade, also when immunity doesn't act on infection
+            for profile in (SeverityOnlyImmunity(), HalfImmunity())
+                s3 = sim_with(profile)
+                c = individuals(s3)[1]
+                push_immunity!(GEMS.immunity_registry(s3, c), c, pid, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+                @test all(t -> protect(s3, c, t) === Severe, 1:50)
+            end
+
+            # a seeded infection of a host fully protected against infection is not downgraded by default
+            s4 = sim_with(FullImmunity())
+            d = individuals(s4)[1]
+            push_immunity!(GEMS.immunity_registry(s4, d), d, pid, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
+            @test all(t -> protect(s4, d, t) === Severe, 1:50)
+        end
+
+        @testset "Assignments and categories" begin
+            # the downgrade follows any assignment, and a downgraded case gets the course of its new category
+            struct AlwaysSevereAssignment <: ProgressionAssignmentFunction end
+            GEMS.assign(::Individual, ::AlwaysSevereAssignment, ::Xoshiro) = Severe
+            age_based = AgeBasedProgressionAssignment(age_groups = ["0-"], progression_categories = ["Mild", "Severe"],
+                stratification_matrix = [[0.0, 1.0]])
+            vac = Vaccine(id=1, name="Severity only", target_pathogen_id=pid, peak=0, severity_peak=100)
+            for paf in (age_based, AlwaysSevereAssignment())
+                s = Simulation(pop_size = 200, infected_fraction = 0.0,
+                    pathogens = (Pathogen(id = 1, name = "S", progressions = [mild, severe], progression_assignment = paf),))
+                a, b = individuals(s)[1:2]
+                vaccinate!(a, s, vac, Int16(0))
+                foreach(i -> infect!(i, Int16(5), first_pathogen(s); sim = s, rng = Xoshiro(5)), (a, b))
+                df = GEMS.dataframe(GEMS.infectionlogger(s))
+                ra = only(eachrow(filter(r -> r.id_b == id(a), df)))
+                rb = only(eachrow(filter(r -> r.id_b == id(b), df)))
+                @test ra.progression_category == :Mild && ra.severeness_onset < 0
+                @test rb.progression_category == :Severe
+            end
+
+            # user-defined categories take part through their severity_tier; undeclared ones are left alone
+            struct WrappedSevere <: ProgressionCategory
+                inner::Severe
+            end
+            struct UntieredSevere <: ProgressionCategory
+                inner::Severe
+            end
+            GEMS.severity_tier(::Type{WrappedSevere}) = :critical
+            GEMS.calculate_progression(i::Individual, t::Int16, dp::Union{WrappedSevere, UntieredSevere}, rng::Xoshiro) =
+                GEMS.calculate_progression(i, t, dp.inner, rng)
+            s = sim_with(FullImmunity(); progressions = [mild, WrappedSevere(severe), UntieredSevere(severe)], assigned = WrappedSevere)
+            c = individuals(s)[1]
+            vaccinate!(c, s, vac, Int16(0))
+            @test all(t -> protect(s, c, t, WrappedSevere) === Mild, 1:50)
+            @test all(t -> protect(s, c, t, UntieredSevere) === UntieredSevere, 1:50)
+        end
+
+        @testset "Measured VE per exposure" begin
+            # infection VE is P_inf = 0.5 and VE against severe disease is P_sev = 0.9: p = 0.8 would give 0.9,
+            # p = P_sev 0.95 and p = P_sev - P_inf 0.7
+            s = sim_with(FullImmunity())
+            p = first_pathogen(s)
+            hosts = individuals(s)[1:8]
+            foreach(h -> vaccinate!(h, s, Vaccine(id=1, name="V", target_pathogen_id=pid, peak=50, severity_peak=90), Int16(0)), hosts)
+            base_rate = 0.5
+            draws = Xoshiro(42)
+            exposures = infected = severe_cases = 0
+            for h in hosts, t in 1:15000
+                exposures += 1
+                rand(draws) < base_rate * susceptibility_factor(GEMS.immunity_profile(p), immunity_level(h, s, pid, Int16(t))) || continue
+                infected += 1
+                protect(s, h, t) === Severe && (severe_cases += 1)
+            end
+            # unprotected, every exposure infects with base_rate and every case is severe
+            @test isapprox(1 - infected / (exposures * base_rate), 0.5; atol = 0.01)
+            @test isapprox(1 - severe_cases / (exposures * base_rate), 0.9; atol = 0.01)
+        end
+
+        @testset "End to end" begin
+            # half the population is protected against severe disease only: their cases turn mild in a threaded run
+            p = Pathogen(id = 1, name = "S", progressions = [mild, severe],
+                progression_assignment = RandomProgressionAssignment([Severe]),
+                transmission_function = ConstantTransmissionRate(transmission_rate = 0.3))
+            s = Simulation(pop_size = 1000, pathogens = (p,), start_condition = InfectedFraction(fraction = 0.02, pathogen = "S"),
+                stop_criterion = TimesUp(limit = 60), seed = 3)
+            protected = Set(id(i) for i in individuals(s)[1:2:end])
+            vac = Vaccine(id=1, name="Severity only", target_pathogen_id=pid, peak=0, severity_peak=100)
+            foreach(i -> id(i) in protected && vaccinate!(i, s, vac, Int16(0)), individuals(s))
+            run!(s)
+            df = filter(r -> r.tick > 0, GEMS.dataframe(GEMS.infectionlogger(s)))
+            @test nrow(df) > 0
+            @test all(r -> r.progression_category == (r.id_b in protected ? :Mild : :Severe), eachrow(df))
+            @test any(==(:Mild), df.progression_category) && any(==(:Severe), df.progression_category)
+        end
+
+        @testset "Flu season" begin
+            # last season's vaccine and natural immunity protect more against severe disease than against
+            # infection, so protected hosts have fewer severe cases among their infections
+            profile = ExponentialWaning(natural_peak = 60, severity_natural_peak = 90, halflife = 180)
+            p = Pathogen(id = 1, name = "S", progressions = [mild, severe], immunity_profile = profile,
+                progression_assignment = RandomProgressionAssignment([Mild, Severe]),
+                transmission_function = ConstantTransmissionRate(transmission_rate = 0.3))
+            s = Simulation(pop_size = 2000, pathogens = (p,), start_condition = InfectedFraction(fraction = 0.02, pathogen = "S"),
+                stop_criterion = TimesUp(limit = 120), seed = 5)
+            protected = Set(id(i) for i in individuals(s)[1:2:end])
+            vac = Vaccine(id=1, name="Flu", target_pathogen_id=pid, peak=40, severity_peak=80)
+            foreach(i -> id(i) in protected && vaccinate!(i, s, vac, Int16(-120)), individuals(s))
+            run!(s)
+            df = filter(r -> r.tick > 0, GEMS.dataframe(GEMS.infectionlogger(s)))
+            severe_share(rows) = count(==(:Severe), rows.progression_category) / nrow(rows)
+            prot = filter(r -> r.id_b in protected, df)
+            unprot = filter(r -> !(r.id_b in protected), df)
+            @test nrow(prot) > 100 && nrow(unprot) > 100
+            @test severe_share(prot) < severe_share(unprot) - 0.05
+        end
+
+        @testset "Two products and a booster" begin
+            # a booster keeps the primary product's protection against severe disease during its buildup
+            primary = Vaccine(id=1, name="Primary", target_pathogen_id=pid, peak=50, severity_peak=80)
+            booster = Vaccine(id=2, name="Booster", target_pathogen_id=pid, peak=60, severity_peak=95, buildup_duration=14)
+            s = sim_with(ExponentialWaning(halflife = 200))
+            a, b = individuals(s)[1:2]
+            foreach(i -> vaccinate!(i, s, primary, Int16(-100)), (a, b))
+            vaccinate!(b, s, booster, Int16(0))
+            @test all(t -> severity_immunity_level(b, s, pid, Int16(t)) >= severity_immunity_level(a, s, pid, Int16(t)), 0:60)
+            @test severity_immunity_level(b, s, pid, Int16(14)) == 95
+
+            # both products downgrade in a threaded run; unprotected cases stay severe
+            p = Pathogen(id = 1, name = "S", progressions = [mild, severe],
+                progression_assignment = RandomProgressionAssignment([Severe]), immunity_profile = ExponentialWaning(halflife = 200),
+                transmission_function = ConstantTransmissionRate(transmission_rate = 0.3))
+            s2 = Simulation(pop_size = 1000, pathogens = (p,), start_condition = InfectedFraction(fraction = 0.02, pathogen = "S"),
+                stop_criterion = TimesUp(limit = 60), seed = 7)
+            primed = Set(id(i) for i in individuals(s2)[1:2:end])
+            boosted = Set(id(i) for i in individuals(s2)[1:4:end])
+            foreach(i -> id(i) in primed && vaccinate!(i, s2, primary, Int16(-100)), individuals(s2))
+            foreach(i -> id(i) in boosted && vaccinate!(i, s2, booster, Int16(-10)), individuals(s2))
+            run!(s2)
+            df = filter(r -> r.tick > 0, GEMS.dataframe(GEMS.infectionlogger(s2)))
+            @test all(r -> r.progression_category == :Severe, eachrow(filter(r -> !(r.id_b in primed), df)))
+            @test any(==(:Mild), filter(r -> r.id_b in boosted, df).progression_category)
+            @test any(==(:Mild), filter(r -> r.id_b in setdiff(primed, boosted), df).progression_category)
+        end
+    end
+
     @testset "Infection Dynamics" begin
 
         @testset "Try to Infect" begin

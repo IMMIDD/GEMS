@@ -15,6 +15,7 @@ for a subset of households. You can change the desired subset size
 through the optional `hh_samples` argument. Its default can be found
 in `constants.jl`. Members who died by the first introduction are not counted as contacts.
 Households left with no one to infect, like single-person ones, are excluded.
+If several members bring the pathogen in on the same tick, the one with the lowest infection id counts as the introducer.
 
 # Returns
 
@@ -58,14 +59,15 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
 
     infs.home_chain, infs.started_chain = _home_chains(infs.infection_id, infs.source_infection_id, infs.setting_type)
 
-    # generate dataframe of households
+    # household of each infectee, read directly instead of joining a table over the whole population
     sim = simulation(postProcessor)
-    hh_sizes = _household_sizes(individuals(sim), households(sim))
+    infectee_households = households(sim)[disallowmissing(infs.household_b)]
+    infs.hh_id = id.(infectee_households)
+    infs.hh_size = Int16.(size.(infectee_households))
     deaths = deathsDF(postProcessor)
     death_households = coalesce.(deaths.household, Int32(0))
 
     return infs |>
-        x -> leftjoin(x, hh_sizes, on = [:id_b => :ind_id]) |>
         x -> DataFrames.select(x, :tick, :id_b, :hh_id, :home_chain, :started_chain, :hh_size, :pathogen_id) |>
         x -> x[x.started_chain, :] |>
         x -> groupby(x, [:hh_id, :pathogen_id]) |>
@@ -80,20 +82,6 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         x -> transform(x, [:chain_size, :hh_size, :dead] => ByRow((c, h, d) -> c / (h - d - 1)) => :hh_attack_rate) |>
         x -> sort(x, :first_introduction) |>
         x -> DataFrames.select(x, :pathogen_id, :first_introduction, :hh_id, :hh_size, :chain_size, :hh_attack_rate)
-end
-
-# Each individual's id, household id and household size, looking each household up once.
-function _household_sizes(inds::Vector{Individual}, hhs::Vector{Household})
-    ind_id = Vector{Int32}(undef, length(inds))
-    hh_id = Vector{Int32}(undef, length(inds))
-    hh_size = Vector{Int16}(undef, length(inds))
-    for (k, ind) in enumerate(inds)
-        hh = hhs[household_id(ind)]
-        ind_id[k] = id(ind)
-        hh_id[k] = id(hh)
-        hh_size[k] = Int16(size(hh))
-    end
-    return DataFrame(ind_id = ind_id, hh_id = hh_id, hh_size = hh_size)
 end
 
 # Per introduction into household `hh_ids[k]`, the members other than the introducer who died at or before it.

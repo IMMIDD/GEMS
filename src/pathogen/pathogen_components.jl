@@ -7,6 +7,7 @@ export progression_assignments
 export health_progressions
 export calculate_infectiousness
 export calculate_immunity
+export calculate_severity_immunity
 export immunity_is_stable
 export susceptibility_factor
 
@@ -77,7 +78,8 @@ include.(
 
 # includde infectiousness
 include(_basefolder() * "/src/pathogen/infectiousness_profile.jl")
-include(_basefolder() * "/src/pathogen/immunity_profile.jl")
+include(_basefolder() * "/src/pathogen/immunity/waning_immunity.jl")
+include(_basefolder() * "/src/pathogen/immunity/immunity_profile.jl")
 
 
 
@@ -130,6 +132,14 @@ methods; falls through to the four-argument `calculate_progression`.
 """
 calculate_progression(individual::Individual, tick::Int16, dp::ProgressionCategory, immunities::ImmunityRegistry, pathogen_id::Int8, rng::Xoshiro) =
     calculate_progression(individual, tick, dp, rng)
+
+"""
+    severity_tier(::Type{<:ProgressionCategory})::Union{Symbol, Nothing}
+
+How severe a category's cases are: `:asymptomatic`, `:mild`, `:severe` or `:critical`. Protection against severe disease turns
+`:severe` and `:critical` cases into the pathogen's first `:mild` category, else its first `:asymptomatic` one. Defaults to `nothing`.
+"""
+severity_tier(::Type{<:ProgressionCategory}) = nothing
 
 
 
@@ -205,25 +215,45 @@ function calculate_infectiousness(profile::InfectiousnessProfile, state::Infecti
 end
 
 """
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+
+Returns the immunity level (0-100) of `state` at `tick`, given the peaks and buildup of the vaccine recorded in
+`state` (only meaningful if `state` has a vaccine record). Called on every read from any thread, so it must be
+cheap and deterministic and must not yield or read other levels. `rng` draws the same numbers on every read for
+this host and pathogen; re-key it per acquisition with `immunity_rng!`. Falls back to the deprecated 5-arg method.
+"""
+@inline calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_immunity(profile, state, individual, tick, rng)
+
+"""
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
-Returns the immunity level (0-100) of `state` at `tick`; called on every read from any thread, so it must be
-cheap and deterministic and must not yield or read other levels. `rng` draws the same numbers on every read for
-this host and pathogen; re-key it per acquisition with `immunity_rng!`.
+Deprecated to implement: profiles that only implement this form ignore vaccine peaks and buildup. Calling it on a
+built-in profile gives the level with the default vaccine values.
 """
 function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
-    error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)).")
+    error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)); implement " *
+        "calculate_immunity(profile, state, vaccine_protection, individual, tick, rng).")
 end
 
 """
     calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
 
-For profiles that don't draw: passes a fresh, unkeyed `Xoshiro()`, so draws differ from reads
-during a simulation.
+For profiles that don't draw: passes the default vaccine values and a fresh, unkeyed `Xoshiro()`, so draws differ
+from reads during a simulation.
 """
 @inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
-    return calculate_immunity(profile, state, individual, tick, Xoshiro())
+    return calculate_immunity(profile, state, VaccineProtection(), individual, tick, Xoshiro())
 end
+
+"""
+    calculate_severity_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Union{Int8, Nothing}
+
+Returns the protection against severe disease (0-100) of `state` at `tick`, per exposure against unprotected hosts, so
+it includes the severe cases that protection against infection prevents; otherwise as `calculate_immunity`. Defaults
+to `nothing`: protection as against infection, and a vaccine's `severity_peak` has no effect.
+"""
+calculate_severity_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Nothing = nothing
 
 """
     immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool
@@ -241,6 +271,22 @@ elsewhere than on transmission: `1.0` leaves the level readable by the rest of t
 (e.g. a progression assignment that attenuates severity) without affecting transmission.
 """
 susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64 = 1.0 - level / 100.0
+
+# probability that an infected host's severe case turns mild: the share of severe cases that protection against
+# severe disease prevents beyond those that protection against infection already prevented
+@inline function _severity_downgrade_probability(profile::ImmunityProfile, infection_level::Int8, severity_level::Int8)::Float64
+    p_inf = 1.0 - susceptibility_factor(profile, infection_level)
+    p_sev = severity_level / 100.0
+    p_sev <= p_inf && return 0.0
+    return (p_sev - p_inf) / (1.0 - p_inf)
+end
+
+# whether `profile` has its own 6-arg method of `f` (`calculate_immunity` or `calculate_severity_immunity`), not only
+# the `ImmunityProfile` fallback
+function _has_own_method(f, profile::ImmunityProfile)::Bool
+    args = (ImmunityState, VaccineProtection, Individual, Int16, Xoshiro)
+    return which(f, Tuple{typeof(profile), args...}) !== which(f, Tuple{ImmunityProfile, args...})
+end
 
 
 """

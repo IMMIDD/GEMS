@@ -60,7 +60,7 @@ module GEMS
     include("registries/immunity_registry.jl") 
     include("registries/test_registry.jl")
     include("pathogen/pathogens.jl") 
-    include("pathogen/vaccines.jl")
+    include("pathogen/immunity/vaccines.jl")
     include("population/age_groups.jl")
     include("settings/ags.jl")
     include("contacts/contact_matrix.jl")

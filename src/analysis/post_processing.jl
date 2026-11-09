@@ -5,7 +5,7 @@ and combine them into specific output variables
 =#
 export PostProcessor, SerialOnly
 export simulation, infectionsDF, sim_infectionsDF, populationDF
-export deathsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
+export deathsDF, vaccinationsDF, testsDF, pooltestsDF, serotestsDF, compartmentsDF
 
 """
     PostProcessor
@@ -17,8 +17,8 @@ A type to provide data processing features supplying reports, plots, or other da
 - `simulation::Simulation`: Simulation object
 - `infectionsDF::DataFrame`: Infections (joined with popuation to get information on infeter and infectee)
 - `populationDF::DataFrame`: Population dataframe with one row per individual
-- `vaccinationsDF::DataFrame`: Output of the vaccination logger 
 - `deathsDF::DataFrame`: Output of the death logger
+- `vaccinationsDF::DataFrame`: Output of the vaccination logger
 - `testsDF::DataFrame`: Output of the test logger
 - `pooltestsDF::DataFrame`: Output of the pool test logger
 - `serotestsDF::DataFrame`: Output of the seroprevalence test logger
@@ -32,6 +32,7 @@ mutable struct PostProcessor
     infectionsDF::DataFrame
     populationDF::DataFrame
     deathsDF::DataFrame
+    vaccinationsDF::DataFrame
     testsDF::DataFrame
     pooltestsDF::DataFrame
     serotestsDF::DataFrame
@@ -70,7 +71,11 @@ mutable struct PostProcessor
             infections.symptom_onset, symptom_onset_source)
 
         # add tests
-        leftjoin!(infections, detection_ticks(tests), on = :infection_id)
+        detections = detection_ticks(tests)
+        detection_rows = _matching_rows(infections.infection_id, detections.infection_id)
+        for name in names(detections, Not(:infection_id))
+            infections[!, name] = _gather(detections[!, name], detection_rows)
+        end
 
         # add population data of the infecter (_a) and the infectee (_b)
         for (id_col, suffix) in ((:id_a, "_a"), (:id_b, "_b"))
@@ -95,14 +100,27 @@ mutable struct PostProcessor
         insertcols!(infections, columnindex(infections, :recovery) + 1, :removed => removed)
 
         # join deaths with additional info from population DF
-        leftjoin!(deaths, pop, on = :id)
+        death_population_rows = _matching_rows(deaths.id, pop.id)
+        for name in names(pop, Not(:id))
+            deaths[!, name] = _gather(pop[!, name], death_population_rows)
+        end
 
         # region of each death, for regional rates that don't go via the infection rows
-        transform!(deaths,
-            :household => ByRow(h -> ismissing(h) ? missing : ags(sim_households[h]::Household)) => :household_ags)
+        deaths.household_ags = _ags_of_households(deaths.household, household_ags)
+
+        # join vaccinations with additional info from population DF
+        vaccinations = dataframe(vaccinationlogger(simulation))
+        vaccination_rows = _matching_rows(vaccinations.id, pop.id)
+        for name in names(pop, Not(:id))
+            vaccinations[!, name] = _gather(pop[!, name], vaccination_rows)
+        end
+        vaccinations.household_ags = _ags_of_households(vaccinations.household, household_ags)
 
         # join tests with population data
-        leftjoin!(tests, pop, on = :id)
+        test_population_rows = _matching_rows(tests.id, pop.id)
+        for name in names(pop, Not(:id))
+            tests[!, name] = _gather(pop[!, name], test_population_rows)
+        end
         
         pooltests = dataframe(pooltestlogger(simulation))
 
@@ -117,7 +135,7 @@ mutable struct PostProcessor
             :detected => :detected_cnt,
             :dead => :dead_cnt)
 
-        new(simulation, infections, pop, deaths, tests, pooltests, serotests, quarantines, compartments, Dict{String, Any}())
+        new(simulation, infections, pop, deaths, vaccinations, tests, pooltests, serotests, quarantines, compartments, Dict{String, Any}())
     end
 
 
@@ -451,6 +469,33 @@ function deathsDF(postProcessor::PostProcessor)
     return postProcessor.deathsDF
 end
 
+"""
+    vaccinationsDF(postProcessor::PostProcessor)
+
+Returns the internal flat vaccinations `DataFrame`, one row per dose.
+
+# Columns
+
+| Name            | Type    | Description                                            |
+| :-------------- | :------ | :----------------------------------------------------- |
+| `tick`          | `Int16` | Tick of the dose                                       |
+| `id`            | `Int32` | Individual's id                                        |
+| `pathogen_id`   | `Int8`  | Pathogen the vaccine targets                           |
+| `vaccine_id`    | `Int8`  | Vaccine identifier                                     |
+| `dose_number`   | `Int8`  | Individual's dose count against the pathogen           |
+| `sex`           | `Int8`  | Individual's sex                                       |
+| `age`           | `Int8`  | Individual's age                                       |
+| `education`     | `Int8`  | Individual's education level                           |
+| `occupation`    | `Int16` | Individual's occupation group                          |
+| `household`     | `Int32` | Individual's associated household                      |
+| `office`        | `Int32` | Individual's associated office                         |
+| `schoolclass`   | `Int32` | Individual's associated schoolclass                    |
+| `household_ags` | `AGS`   | Individual's household community identification number |
+"""
+function vaccinationsDF(postProcessor::PostProcessor)
+    return postProcessor.vaccinationsDF
+end
+
 
 """
     testsDF(postProcessor::PostProcessor)
@@ -636,6 +681,7 @@ function Base.show(io::IO, pp::PostProcessor)
     println(io, "\u2514 Infections dataframe: $(nrow(pp.infectionsDF)) rows, $(ncol(pp.infectionsDF)) columns")
     println(io, "\u2514 Population dataframe: $(nrow(pp.populationDF)) rows, $(ncol(pp.populationDF)) columns")
     println(io, "\u2514 Deaths dataframe: $(nrow(pp.deathsDF)) rows, $(ncol(pp.deathsDF)) columns")
+    println(io, "\u2514 Vaccinations dataframe: $(nrow(pp.vaccinationsDF)) rows, $(ncol(pp.vaccinationsDF)) columns")
     println(io, "\u2514 Tests dataframe: $(nrow(pp.testsDF)) rows, $(ncol(pp.testsDF)) columns")
     println(io, "\u2514 Pooltests dataframe: $(nrow(pp.pooltestsDF)) rows, $(ncol(pp.pooltestsDF)) columns")
     println(io, "\u2514 Serotests dataframe: $(nrow(pp.serotestsDF)) rows, $(ncol(pp.serotestsDF)) columns")

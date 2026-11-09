@@ -31,8 +31,6 @@ and computationally intensive (memory & runtime) option.
         - `setting_sizes::Dict{Any, Any}`: Dictionary containing the setting sizes distributions for all included settingtypes
         - `region_info::Dataframe`: Municipality population size and area (if geolocalized model is used)
         - `pathogens::Vector{Pathogen}`: Array of all pathogen parameters in this simulation
-        - `vaccine::Vaccine`: Vaccine parameter [CURRENTLY DEACTIVATED]
-        - `vaccination_strategy::VaccineScheduler`: Vaccination strategy used in this model [CURRENTLY DEACTIVATED]
         - `tick_unit::String`: Unit of time that one tick corresponds to
         - `start_condition::StartCondition`: Initial setup of the simulation
         - `prior_immunity::Vector{AbstractPriorImmunity}`: Immunity some individuals acquired before the start
@@ -194,17 +192,20 @@ mutable struct DefaultResultData <: ResultDataStyle
                 Dict(
                     "infections" => () -> pP |> infectionsDF,
                     "deaths" => () -> pP |> deathsDF,
+                    "vaccinations" => () -> pP |> vaccinationsDF,
                     "tests" => () -> pP |> testsDF,
                     "effectiveR" => () -> pP |> effectiveR,
                     "compartment_periods" => () -> pP |> compartment_periods,
                     "aggregated_compartment_periods" => () -> pP |> aggregated_compartment_periods,
                     "tick_cases" => () -> pP |> tick_cases,
                     "tick_deaths" => () -> pP |> tick_deaths,
+                    "tick_vaccinations" => () -> pP |> tick_vaccinations,
                     "tick_serial_intervals" => () -> pP |> _tick_serial_intervals,
                     "tick_generation_times" => () -> pP |> _tick_generation_times,
                     "cumulative_cases" => () -> pP |> cumulative_cases,
                     "compartment_fill" => () -> pP |> compartment_fill,
                     "cumulative_deaths" => () -> pP |> cumulative_deaths,
+                    "cumulative_vaccinations" => () -> pP |> cumulative_vaccinations,
                     "age_incidence" => () -> age_incidence(pP, 7, 100_000),
                     "population_pyramid" => () -> pP |> population_pyramid,
                     "cumulative_disease_progressions" => () -> pP |> cumulative_disease_progressions,

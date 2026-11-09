@@ -17,9 +17,9 @@ export evaluate
 export initialize!, reinitialize!
 export reset!
 export tickunit
-export infectionlogger, deathlogger, healthlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
+export infectionlogger, deathlogger, vaccinationlogger, healthlogger, testlogger, quarantinelogger, pooltestlogger, seroprevalencelogger, customlogger, customlogger!
 export statelogger, states
-export infections, tests, deaths, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
+export infections, tests, deaths, vaccinations, quarantines, pooltests, seroprevalencetests, customlogs, populationDF
 export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!, hospitalization_triggers, add_hospitalization_trigger!
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
@@ -165,6 +165,7 @@ sim = Simulation(params)
 - Logger
     - `infectionlogger::InfectionLogger`: A logger tracking all infections    
     - `deathlogger::DeathLogger`: A logger specifically for the deaths of individuals
+    - `vaccinationlogger::VaccinationLogger`: A logger tracking all vaccinations
     - `testlogger::TestLogger`: A logger tracking all individual tests
     - `pooltestlogger::PoolTestLogger`: A logger tracking all pool tests
     - `seroprevalencelogger::SeroprevalenceLogger`: A logger tracking all seroprevalence tests
@@ -177,6 +178,8 @@ sim = Simulation(params)
     - `event_queue::EventQueue`: Event Queue to apply intervention measures
     - `strategies::Vector{Strategy}`: List of all registered intervention strategies
     - `testtypes::Vector{AbstractTestType}`: List of all `TestTypes` (e.g. Antigen- or PCR-Test)
+    - `vaccine_protection::Matrix{VaccineProtection}`: Protection of each registered vaccine, by vaccine id and pathogen id
+    - `vaccine_registered::Vector{UInt128}`: Per pathogen id, one bit per registered vaccine id
 - Runtime Modifiers
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
@@ -213,6 +216,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     # logger
     infectionlogger::InfectionLogger
     deathlogger::DeathLogger
+    vaccinationlogger::VaccinationLogger
     healthlogger::HealthLogger
     testlogger::TestLogger
     pooltestlogger::PoolTestLogger
@@ -229,6 +233,9 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     event_queue::AbstractEventQueue
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
+    # vaccines register on their first dose
+    vaccine_protection::Matrix{VaccineProtection}
+    vaccine_registered::Vector{UInt128}
 
     # recurring seeding bucketed by tick
     seeding_schedule::Dict{Int16, Vector{InfectionSeed}}
@@ -297,6 +304,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             # logger
             InfectionLogger(minid = population.minid, maxid = population.maxid),
             DeathLogger(),
+            VaccinationLogger(),
             HealthLogger(),
             TestLogger(),
             PoolTestLogger(),
@@ -312,6 +320,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             EventQueue(),
             [],
             [],
+            fill(VaccineProtection(), 127, MAX_PATHOGENS),
+            zeros(UInt128, MAX_PATHOGENS),
 
             # recurring seeding schedule (populated by initialize!)
             Dict{Int16, Vector{InfectionSeed}}(),
@@ -1422,7 +1432,7 @@ The `params` dictionary must contain a `type` key with the name of the immunity 
 The `parameters` key is optional, as profiles like `FullImmunity` take no arguments.
 """
 function create_immunity_profile(params::Dict)
-    im_type = GEMS.get_subtype(params["type"], ImmunityProfile)
+    im_type = GEMS.get_subtype(params["type"], ImmunityProfile; nested = true)
     kw_args = Dict(Symbol(k) => v for (k, v) in get(params, "parameters", Dict()))
     return try
         im_type(;kw_args...)
@@ -2181,6 +2191,12 @@ function immunity_registry(simulation::Simulation, individual::Individual)::Immu
     return immunity_registry(simulation, id(individual))
 end
 
+# the protection registered for `vaccine_id` against `pathogen_id`; the default for ids that can't be registered
+@inline function _vaccine_protection(simulation::Simulation, pathogen_id::Int8, vaccine_id::Int8)::VaccineProtection
+    vaccine_id >= 1 || return VaccineProtection()
+    return @inbounds simulation.vaccine_protection[vaccine_id, pathogen_id]
+end
+
 """
     test_registry(simulation, ind_id::Int32)::TestRegistry
 
@@ -2302,6 +2318,22 @@ end
 Calls the `dataframe()` function on the internal simulation's `DeathLogger`.
 """
 deaths(simulation::Simulation) = simulation |> deathlogger |> dataframe
+
+"""
+    vaccinationlogger(simulation)
+
+Returns the `VaccinationLogger` of the simulation.
+"""
+function vaccinationlogger(simulation::Simulation)::VaccinationLogger
+    return simulation.vaccinationlogger
+end
+
+"""
+    vaccinations(simulation::Simulation)
+
+Calls the `dataframe()` function on the internal simulation's `VaccinationLogger`.
+"""
+vaccinations(simulation::Simulation) = simulation |> vaccinationlogger |> dataframe
 
 """
     healthlogger(simulation)
@@ -2471,6 +2503,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     pop = population(simulation)
     simulation.infectionlogger = InfectionLogger(minid = pop.minid, maxid = pop.maxid)
     simulation.deathlogger = DeathLogger()
+    simulation.vaccinationlogger = VaccinationLogger()
     simulation.healthlogger = HealthLogger()
     simulation.testlogger = TestLogger()
     simulation.pooltestlogger = PoolTestLogger()
@@ -2480,6 +2513,9 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     simulation.customlogger = CustomLogger()
 
     simulation.test_registries = [TestRegistry() for _ in 1:Threads.maxthreadid()]
+    # vaccines register again on their next first dose
+    fill!(simulation.vaccine_protection, VaccineProtection())
+    fill!(simulation.vaccine_registered, UInt128(0))
 
     # before initialize! below, which infects and schedules care again. Must stay paired with the
     # per-individual reset! above; clearing one alone leaves the two disagreeing
@@ -2633,6 +2669,34 @@ Returns the test types registered in the simulation.
 """
 function testtypes(simulation::Simulation)
     return(simulation.testtypes)
+end
+
+# stores a vaccine's protection at its first dose and checks every later dose against it
+function _register_vaccine!(simulation::Simulation, vaccine::Vaccine)
+    vid, pid = id(vaccine), target_pathogen_id(vaccine)
+    vid >= 1 || throw(ArgumentError("Vaccine '$(name(vaccine))' has id $vid; vaccine ids must be at least 1."))
+    any(p -> id(p) == pid, pathogens(simulation)) ||
+        throw(ArgumentError("Vaccine '$(name(vaccine))' targets pathogen $pid, which is not in the simulation."))
+    entry = VaccineProtection(vaccine)
+    bit = UInt128(1) << (vid - 1)
+    if simulation.vaccine_registered[pid] & bit != 0
+        simulation.vaccine_protection[vid, pid] == entry || throw(ArgumentError(
+            "Vaccine id $vid for pathogen $pid was registered with other peaks or buildup; " *
+            "vaccine values are frozen at the first dose and ids must be unique per pathogen."))
+        return nothing
+    end
+    simulation.vaccine_protection[vid, pid] = entry
+    simulation.vaccine_registered[pid] |= bit
+
+    if entry.severity_peak > entry.peak
+        pathogen = get_pathogen(simulation, pid)
+        isnothing(_downgrade_target(pathogen.progressions)) &&
+            @warn "Vaccine '$(name(vaccine))' sets a severity_peak above its peak, but pathogen $pid has no category with severity_tier :mild or :asymptomatic to turn severe cases into, so the severity_peak has no effect."
+        profile = immunity_profile(pathogen)
+        _has_own_method(calculate_severity_immunity, profile) ||
+            @warn "Vaccine '$(name(vaccine))' sets a severity_peak above its peak, but the immunity profile $(nameof(typeof(profile))) of pathogen $pid has no calculate_severity_immunity, so it protects against severe disease only as against infection."
+    end
+    return nothing
 end
 
 """

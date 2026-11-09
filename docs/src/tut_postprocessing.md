@@ -6,7 +6,7 @@ This tutorial teaches you how to access the data and customize how data is being
 ## Internal Loggers
 
 Accessing a simulation's internal loggers is easy.
-They can be accessed via `infectionlogger(sim)`,  `deathlogger(sim)`,  `healthlogger(sim)`,  `testlogger(sim)`,  `pooltestlogger(sim)`,  `quarantinelogger(sim)`,  or `customlogger(sim)`.
+They can be accessed via `infectionlogger(sim)`,  `deathlogger(sim)`,  `vaccinationlogger(sim)`,  `healthlogger(sim)`,  `testlogger(sim)`,  `pooltestlogger(sim)`,  `quarantinelogger(sim)`,  or `customlogger(sim)`.
 Here's the data that is being logged for all infections:
 
 ```julia
