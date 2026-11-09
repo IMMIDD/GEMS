@@ -721,7 +721,7 @@ function test_available!(sim, tc)
     else
         tc.count += 1
     end
-    tc.count < 50 ? true : false
+    tc.count <= 50 ? true : false
 end
 
 # SCENARIO: simulation with 50 tests per day
