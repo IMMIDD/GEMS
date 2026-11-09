@@ -21,6 +21,24 @@ struct _SStrategyRequest
     strategy::SStrategy
 end
 
+# A `TestAll` event run in the lane, until the serial step triggers its follow-up. `testtype` and `reportable` are
+# copied so that owners read them without a runtime lookup on the abstractly typed `measure`.
+mutable struct _PendingTestAll
+    const setting::Setting
+    const measure::TestAll
+    const testtype::TestType
+    const reportable::Bool
+    @atomic positive::Bool
+end
+
+_PendingTestAll(s::Setting, measure::TestAll) = _PendingTestAll(s, measure, type(measure), reportable(measure), false)
+
+# A member of a pending `TestAll`, for their owner to test.
+struct _TestAllRequest
+    individual::Individual
+    pending::_PendingTestAll
+end
+
 # What a thread is working as during event processing.
 mutable struct _EventContext
     # the shard whose owner phase this thread runs, otherwise 0
@@ -52,6 +70,10 @@ mutable struct _ParallelLane <: AbstractParallelLane
     serial_setting_requests::Vector{Vector{_SStrategyRequest}}
     # setting events from a threaded tick trigger, by slot
     staged_setting_events::Vector{_StagedSettingEvents}
+    # pending `TestAll` events, by producer
+    pending_test_alls::Vector{Vector{_PendingTestAll}}
+    # `TestAll` members to test, by producer and owning shard
+    test_all_requests::Matrix{Vector{_TestAllRequest}}
 end
 
 """
@@ -76,7 +98,9 @@ _ParallelLane(seed::Int64) = _ParallelLane(
     _shard_local_matrix(Vector{_IStrategyRequest}),
     _shard_local_vector(Vector{_IStrategyRequest}),
     _shard_local_vector(Vector{_SStrategyRequest}),
-    _shard_local_vector(_StagedSettingEvents)
+    _shard_local_vector(_StagedSettingEvents),
+    _shard_local_vector(Vector{_PendingTestAll}),
+    _shard_local_matrix(Vector{_TestAllRequest})
 )
 
 ###
@@ -246,9 +270,35 @@ function _run_setting_phase!(sim, t)
     _foreach_due_setting_bucket(_setting_queue(sim), t) do bucket
         _foreach_chunk(sim, length(bucket)) do range
             for k in range
-                process_event(@inbounds(bucket[k]), sim)
+                _process_setting_event(@inbounds(bucket[k]), sim)
             end
         end
+    end
+    return nothing
+end
+
+"""
+    _process_setting_event(e::SMeasureEvent, sim::Simulation)
+
+Runs a setting event in the setting phase: as `process_event`, unless its measure has its own method here.
+"""
+_process_setting_event(e::SMeasureEvent, sim::Simulation) = _process_setting_event(e, e.measure, sim)
+_process_setting_event(e::SMeasureEvent, ::SMeasure, sim::Simulation) = process_event(e, sim)
+
+# As `process_event`, but the members go to their owners for testing; the serial step triggers the follow-up.
+function _process_setting_event(e::SMeasureEvent, measure::TestAll, sim::Simulation)
+    e.condition(e.setting) || return nothing
+    parallel_lane = _parallel_lane(sim)
+    context = _event_context(sim)
+    pending = _PendingTestAll(e.setting, measure)
+    # an empty setting still needs it, for the negative follow-up
+    push!(parallel_lane.pending_test_alls[context.slot], pending)
+    members = individuals(e.setting, sim)
+    for i in members
+        push!(parallel_lane.test_all_requests[context.slot, _owner_shard(id(i))], _TestAllRequest(i, pending))
+    end
+    if !isempty(members)
+        context.has_owner_requests = true
     end
     return nothing
 end
@@ -274,8 +324,10 @@ function _run_owner_phase!(sim, t)
     return nothing
 end
 
-# Processes the due events of `shard`, then its requests, so that a second request for the same person sees the effect of the first.
+# Tests the `TestAll` members of `shard` first, so its events see the results, then processes its due events and requests.
+# Each request is drained before the next, so a second request for the same person sees the effect of the first.
 function _process_owner_shard!(sim::S, shard::Int, t) where {S}
+    _process_test_all_requests!(sim, shard)
     queue = _owner_queue(sim, shard)
     process_due!(queue, sim, t)
     requests = _parallel_lane(sim).owner_requests
@@ -295,11 +347,37 @@ function _process_owner_shard!(sim::S, shard::Int, t) where {S}
 end
 
 """
+    _process_test_all_requests!(sim::Simulation, shard::Int)
+
+Tests the requested `TestAll` members of `shard` in producer order and marks the pending events that have a positive test.
+"""
+function _process_test_all_requests!(sim::Simulation, shard::Int)
+    requests = _parallel_lane(sim).test_all_requests
+    for producer in axes(requests, 1)
+        column = @inbounds requests[producer, shard]
+        for k in eachindex(column)
+            # people are scattered in memory, so fetch the next ones early
+            _prefetch_individual_ahead(j -> (column[j]).individual, length(column), k)
+            r = column[k]
+            apply_test!(r.individual, r.pending.testtype, sim, r.pending.reportable) && _mark_positive!(r.pending)
+        end
+        empty!(column)
+    end
+    return nothing
+end
+
+# Marks `pending` as having a positive test. Reads first, as many members of one setting can be positive.
+_mark_positive!(pending::_PendingTestAll) =
+    (@atomic :monotonic pending.positive) || (@atomic :monotonic pending.positive = true)
+
+"""
     _run_serial_requests!(sim)
 
-Triggers what the phases requested from serial code, in producer order.
+Triggers the follow-ups of pending `TestAll` events, then what the phases requested from serial code, in producer order.
 """
 function _run_serial_requests!(sim::S) where {S}
+    # after the owner phase, so every `TestAll` member is tested
+    _trigger_test_all_followups!(sim)
     parallel_lane = _parallel_lane(sim)
     for producer in eachindex(parallel_lane.serial_individual_requests)
         column = parallel_lane.serial_individual_requests[producer]
@@ -314,6 +392,22 @@ function _run_serial_requests!(sim::S) where {S}
             trigger_strategy(r.strategy::SStrategy{S}, r.setting, sim)
         end
         empty!(parallel_lane.serial_setting_requests[producer])
+    end
+    return nothing
+end
+
+"""
+    _trigger_test_all_followups!(sim::Simulation)
+
+Triggers the follow-up of every pending `TestAll`, in producer, then position order.
+"""
+function _trigger_test_all_followups!(sim::Simulation)
+    for pending_events in _parallel_lane(sim).pending_test_alls
+        for pending in pending_events
+            positive = @atomic :monotonic pending.positive
+            apply_followup!(sim, pending.setting, positive ? positive_followup(pending.measure) : negative_followup(pending.measure))
+        end
+        empty!(pending_events)
     end
     return nothing
 end

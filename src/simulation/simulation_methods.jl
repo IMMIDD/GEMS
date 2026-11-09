@@ -808,6 +808,12 @@ const ID_MAP_PREFETCH_DISTANCE = 16
     return nothing
 end
 
+# As `_prefetch_listed_ahead`, for loops that do not read plans: prefetches only the `Individual`.
+@inline function _prefetch_individual_ahead(individual_at::F, n::Int, k::Int) where {F}
+    k + LISTED_PREFETCH_DISTANCE <= n && _prefetch(pointer_from_objref(individual_at(k + LISTED_PREFETCH_DISTANCE)), sizeof(Individual))
+    return nothing
+end
+
 # While a loop works on item `k` of `n`, prefetches the `id_map` entry of the id `ID_MAP_PREFETCH_DISTANCE` ahead.
 @inline function _prefetch_id_map_ahead(id_at::F, n::Int, k::Int, population::Population) where {F}
     if k + ID_MAP_PREFETCH_DISTANCE <= n

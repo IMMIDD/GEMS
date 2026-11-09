@@ -27,6 +27,7 @@ end
         @test GEMS._parallel_safe(FindSettingMembers(Household, lane_followup), false)
         @test GEMS._parallel_safe(PoolTest("lane", lane_type), false)
         @test GEMS._parallel_safe(IsOpen(positive_followup = lane_setting_followup), false)
+        @test GEMS._parallel_safe(TestAll("lane", lane_type), false)
         @test GEMS._parallel_safe(Vaccinate(Vaccine(id = 1, name = "lane", target_pathogen_id = id(pathogen(lane_sim)))), false)
         @test GEMS._parallel_safe(FindMembers(lane_followup, sample_size = 1), false)
         @test !GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), false)
@@ -376,6 +377,68 @@ end
             @test all(h -> count(isolated, individuals(h)) == 1, homes)
         end
 
+        @testset "TestAll Tests Members On Their Owners" begin
+            (; sim, members, isolated, parallel_lane) = round_setup()
+            always_positive = TestType("always", pathogen(sim), sim, sensitivity = 1.0, specificity = 0.0)
+            test_all = SStrategy("test all", sim)
+            add_measure!(test_all, TestAll("always", always_positive, positive_followup = members))
+            homes = households(sim)[1:slots + 1]
+            # each home twice, so its members are tested twice in the tick
+            foreach(h -> foreach(_ -> GEMS.trigger_strategy(test_all, h, sim), 1:2), homes)
+            @test isempty(GEMS.event_queue(sim))
+            @test length(GEMS._setting_queue(sim)) == 2 * length(homes)
+            GEMS.process_events!(sim)
+            people = vcat(individuals.(homes)...)
+            # an owner's slot is the log column of their tests
+            @test length(testlogger(sim)) == 2 * length(people)
+            @test all(i -> count(==(id(i)), testlogger(sim).id[shard(i)]) == 2, people)
+            # the follow-up ran after the owners tested, so it saw the positives
+            @test all(isolated, people)
+            @test all(isempty, parallel_lane.test_all_requests) && all(isempty, parallel_lane.pending_test_alls)
+        end
+
+        @testset "TestAll Gives The Same Results In The Lane And In Serial Code" begin
+            function tested_homes(marked)
+                (; sim, members, isolated) = round_setup()
+                exact = TestType("exact", pathogen(sim), sim, sensitivity = 1.0, specificity = 1.0)
+                negatives = Int32[]
+                noted = SStrategy("noted", sim)
+                add_measure!(noted, CustomSMeasure((st, s) -> push!(negatives, id(st))))
+                measure = TestAll("exact", exact, positive_followup = members, negative_followup = noted)
+                test_all = SStrategy("test all", sim)
+                if marked
+                    add_measure!(test_all, measure)
+                else
+                    # an unmarked condition keeps the entry in the serial lane
+                    add_measure!(test_all, measure, condition = s -> true)
+                end
+                @test last(measures(test_all)).parallel == marked
+                # an empty setting gets the negative follow-up
+                homes = [households(sim); Household(id = typemax(Int32))]
+                foreach(h -> GEMS.trigger_strategy(test_all, h, sim), homes)
+                GEMS.process_events!(sim)
+                people = vcat(individuals.(homes)...)
+                tests = dataframe(testlogger(sim))
+                return (rows = Set(zip(tests.id, tests.test_result)), negatives = sort(negatives),
+                    isolated = isolated.(people), detected = is_detected.(people))
+            end
+            lane, serial = tested_homes(true), tested_homes(false)
+            @test any(last, lane.rows)
+            @test typemax(Int32) in lane.negatives && length(lane.negatives) > 1
+            @test lane == serial
+        end
+
+        @testset "A TestAll Event Outside The Setting Phase Tests Directly" begin
+            (; sim) = round_setup()
+            test_all = SStrategy("test all", sim)
+            add_measure!(test_all, TestAll("by hand", TestType("by hand", pathogen(sim), sim)))
+            home = households(sim)[1]
+            GEMS.trigger_strategy(test_all, home, sim)
+            GEMS.process_event(GEMS.dequeue!(queued_events(sim)), sim)
+            @test sort(dataframe(testlogger(sim)).id) == sort(id.(individuals(home)))
+            @test all(isempty, GEMS._parallel_lane(sim).pending_test_alls)
+        end
+
         @testset "Pool Tests Log Every Setting" begin
             (; sim) = round_setup()
             pool = SStrategy("pool", sim)
@@ -425,10 +488,13 @@ end
             (; isolate, inds, sim, members, custom) = round_setup()
             GEMS.trigger_strategy(isolate, inds[1], sim)
             GEMS.trigger_strategy(members, households(sim)[1], sim)
+            test_all = GEMS.SMeasureEvent(households(sim)[1], TestAll("reset", TestType("reset", pathogen(sim), sim)),
+                GEMS.SPredicate(s -> true), sim)
             GEMS._with_slot(sim, 1) do
                 GEMS.trigger_strategy(isolate, inds[2], sim)
                 GEMS.trigger_strategy(custom, inds[2], sim)
                 GEMS.trigger_strategy(members, households(sim)[1], sim)
+                GEMS._process_setting_event(test_all, sim)
             end
             GEMS.reset!(sim)
             lane_state = GEMS._parallel_lane(sim)
@@ -437,6 +503,7 @@ end
             @test all(isempty, lane_state.serial_individual_requests)
             @test all(isempty, lane_state.serial_setting_requests)
             @test all(isempty, lane_state.staged_setting_events)
+            @test all(isempty, lane_state.pending_test_alls) && all(isempty, lane_state.test_all_requests)
             @test !GEMS._owner_requests_pending(sim)
         end
 
@@ -452,6 +519,9 @@ end
                 add_measure!(lane_members, FindMembers(screen))
                 add_tick_trigger!(lane_sim, ITickTrigger(screen, interval = Int16(5)))
                 add_tick_trigger!(lane_sim, STickTrigger(Household, lane_members, switch_tick = Int16(2), interval = Int16(5)))
+                lane_test_all = SStrategy("test all", lane_sim)
+                add_measure!(lane_test_all, TestAll("test all", lane_type, positive_followup = lane_members))
+                add_tick_trigger!(lane_sim, STickTrigger(Household, lane_test_all, switch_tick = Int16(3), interval = Int16(5)))
                 for _ in 1:15
                     step!(lane_sim)
                 end
