@@ -101,15 +101,15 @@ In large simulations, interventions can take most of the run time. GEMS therefor
 
 **Your own functions need a promise**
 
-GEMS cannot check what a function you pass does. So a measure whose strategy or entry uses your functions runs serially, unless you mark them with `threadsafe = true` in the call that passes them:
+GEMS cannot check what a function you pass does, so it calls your functions on several threads only if you mark them with `threadsafe = true` in the call that passes them:
 
-- a strategy's `condition`: on `IStrategy` or `SStrategy`,
-- an entry's `condition` and `delay`, and functions passed to the measure (a `selectionfilter`, or a tracing `success_rate` or `contact_filter`): on `add_measure!`,
-- a custom measure's logic: on `CustomIMeasure` or `CustomSMeasure`.
+- a strategy's `condition`, on `IStrategy` or `SStrategy`,
+- an entry's `condition` and `delay`, and functions passed to the measure (a `selectionfilter`, or a tracing `success_rate` or `contact_filter`), on `add_measure!`,
+- a custom measure's logic, on `CustomIMeasure` or `CustomSMeasure`.
 
-A mark covers only the functions in its own call.
+A mark covers only the functions in its own call. Without a mark, GEMS calls the function serially, and the measure that uses it runs serially too. A strategy's condition is the exception: it is checked serially, but the strategy's measures can still run on several threads.
 
-With `threadsafe = true` you promise that the function only reads the individual or setting it is given and state that does not change while interventions run (such as age or the settings a person belongs to), draws random numbers with `gems_rand(sim)`, and changes nothing shared. Counters, other people's state and capacity limits break that promise; leave such functions unmarked, and their measures run serially as before. A wrong promise raises no error and results in a race condition.
+With `threadsafe = true` you promise that the function only reads the individual or setting it is given and state that does not change while interventions run (such as age or the settings a person belongs to), draws random numbers with `gems_rand(sim)`, and changes nothing shared. Counters, other people's state and capacity limits break that promise; leave such functions unmarked, and GEMS calls them serially as before. A wrong promise raises no error and results in a race condition.
 
 ```julia
 adults = IStrategy("adult screening", sim, condition = i -> age(i) >= 18, threadsafe = true)

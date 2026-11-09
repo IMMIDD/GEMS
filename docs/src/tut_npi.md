@@ -715,7 +715,7 @@ end
 # helper function to add up daily tests
 # returns true until test capacity for the day (50) is used up
 function test_available!(sim, tc)
-    if tick(sim) > tc.tick
+    if tick(sim) != tc.tick
         tc.tick = tick(sim)
         tc.count = 1
     else
