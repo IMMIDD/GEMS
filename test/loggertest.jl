@@ -210,10 +210,10 @@
 
         @testset "Infecter Index" begin
 
-            # minimal infection record; only a, b and tick matter for the index
-            function log_infection!(il, a, b, t)
+            # minimal infection record; only a, b, tick, onset and recovery matter for the index
+            function log_infection!(il, a, b, t; onset = 0, recovery = 0)
                 log!(il, Int32(a), Int32(b), Int8(1), :Asymptomatic, Int16(t),
-                    Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0),
+                    Int16(onset), Int16(0), Int16(0), Int16(0), Int16(0), Int16(0), Int16(recovery),
                     Int32(0), 'h', Float32(0), Float32(0), Int32(0), Int32(0))
             end
 
@@ -335,6 +335,57 @@
                 for a in 1:50
                     @test issorted([ticks[b] for b in query(il, a, 0, 30)])
                 end
+
+                # the ticks variant returns the same ids plus each infection's tick
+                for a in 1:50
+                    ids, link_ticks = GEMS._infections_with_ticks_between(il, Int32(a), Int16(0), Int16(30))
+                    @test ids == query(il, a, 0, 30)
+                    @test link_ticks == [ticks[b] for b in ids]
+                end
+            end
+
+            @testset "Infecter Of Infection Ids" begin
+                il = InfectionLogger()
+                seed = log_infection!(il, -1, 10, 0)
+                i1 = log_infection!(il, 5, 11, 0)
+                i2 = log_infection!(il, 7, 12, 1)
+
+                # backfilled on first use
+                @test GEMS._infecter_of(il, i1) == Int32(5)
+                @test GEMS._infecter_of(il, i2) == Int32(7)
+                @test GEMS._infecter_of(il, seed) == Int32(0)
+
+                # logged after the index exists, so this goes through register!/_merge_staged!
+                seed2 = log_infection!(il, -1, 13, 2)
+                i3 = log_infection!(il, 5, 14, 2)
+                @test GEMS._infecter_of(il, i3) == Int32(5)
+                @test GEMS._infecter_of(il, seed2) == Int32(0)
+
+                # unknown ids return 0
+                @test GEMS._infecter_of(il, Int32(0)) == Int32(0)
+                @test GEMS._infecter_of(il, Int32(1_000)) == Int32(0)
+            end
+
+            @testset "Last Infection" begin
+                il = InfectionLogger()
+                seed = log_infection!(il, -1, 10, 0, onset = 2, recovery = 9)
+                log_infection!(il, 5, 11, 0, onset = 1, recovery = 6)
+                second_11 = log_infection!(il, 7, 11, 8, onset = 10, recovery = 15)
+
+                # backfilled on first use; seeds are kept, the newest infection wins
+                @test GEMS._last_infection(il, Int32(10)) ==
+                    (infection_id = seed, infecter = Int32(0), exposure = Int16(0), infectiousness_onset = Int16(2), recovery = Int16(9))
+                @test GEMS._last_infection(il, Int32(11)) ==
+                    (infection_id = second_11, infecter = Int32(7), exposure = Int16(8), infectiousness_onset = Int16(10), recovery = Int16(15))
+
+                # logged after the index exists, so this goes through register!/_merge_staged!
+                i3 = log_infection!(il, 5, 14, 9, onset = 11, recovery = 20)
+                @test GEMS._last_infection(il, Int32(14)) ==
+                    (infection_id = i3, infecter = Int32(5), exposure = Int16(9), infectiousness_onset = Int16(11), recovery = Int16(20))
+
+                # individuals never infected have none
+                @test GEMS._last_infection(il, Int32(5)) === nothing
+                @test GEMS._last_infection(il, Int32(1_000)) === nothing
             end
 
             @testset "Untraced Runs Carry No Index" begin
