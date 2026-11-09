@@ -10,21 +10,24 @@
     tick::Vector{Vector{Int16}} = _shard_local_vector(Vector{Int16})
 end
 
+# `slot` is the column the row goes to
 function log!(
         vacclogger::VaccinationLogger,
         id::Int32,
         pathogen_id::Int8,
         vaccine_id::Int8,
         dose_number::Int8,
-        tick::Int16,
+        tick::Int16;
+        slot::Int = Threads.threadid()
     )
-    tid = Threads.threadid()
-    push!(vacclogger.id[tid], id)
-    push!(vacclogger.pathogen_id[tid], pathogen_id)
-    push!(vacclogger.vaccine_id[tid], vaccine_id)
-    push!(vacclogger.dose_number[tid], dose_number)
-    push!(vacclogger.tick[tid], tick)
-    Threads.atomic_xchg!(vacclogger.last_modified_tick, tick)
+    push!(vacclogger.id[slot], id)
+    push!(vacclogger.pathogen_id[slot], pathogen_id)
+    push!(vacclogger.vaccine_id[slot], vaccine_id)
+    push!(vacclogger.dose_number[slot], dose_number)
+    push!(vacclogger.tick[slot], tick)
+
+    # written only on change
+    vacclogger.last_modified_tick[] == tick || Threads.atomic_xchg!(vacclogger.last_modified_tick, tick)
 end
 
 # deprecated: logs the vaccination without vaccine id and dose number, so it never counts as a first dose

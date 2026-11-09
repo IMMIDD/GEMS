@@ -182,8 +182,7 @@ sim = Simulation(params)
     - `event_queue::EventQueue`: Event Queue to apply intervention measures
     - `strategies::Vector{Strategy}`: List of all registered intervention strategies
     - `testtypes::Vector{AbstractTestType}`: List of all `TestTypes` (e.g. Antigen- or PCR-Test)
-    - `vaccine_protection::Matrix{VaccineProtection}`: Protection of each registered vaccine, by vaccine id and pathogen id
-    - `vaccine_registered::Vector{UInt128}`: Per pathogen id, one bit per registered vaccine id
+    - `vaccine_table::_VaccineTable`: Protection of each registered vaccine, by vaccine id and pathogen id
 - Runtime Modifiers
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
@@ -240,8 +239,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
     strategies::Vector{Strategy}
     testtypes::Vector{AbstractTestType}
     # vaccines register on their first dose
-    vaccine_protection::Matrix{VaccineProtection}
-    vaccine_registered::Vector{UInt128}
+    vaccine_table::_VaccineTable
 
     # recurring seeding bucketed by tick
     seeding_schedule::Dict{Int16, Vector{InfectionSeed}}
@@ -339,8 +337,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             _ParallelLane(seed),
             [],
             [],
-            fill(VaccineProtection(), 127, MAX_PATHOGENS),
-            zeros(UInt128, MAX_PATHOGENS),
+            _VaccineTable(),
 
             # recurring seeding schedule (populated by initialize!)
             Dict{Int16, Vector{InfectionSeed}}(),
@@ -2525,7 +2522,7 @@ end
 # the protection registered for `vaccine_id` against `pathogen_id`; the default for ids that can't be registered
 @inline function _vaccine_protection(simulation::Simulation, pathogen_id::Int8, vaccine_id::Int8)::VaccineProtection
     vaccine_id >= 1 || return VaccineProtection()
-    return @inbounds simulation.vaccine_protection[vaccine_id, pathogen_id]
+    return @inbounds simulation.vaccine_table.protection[vaccine_id, pathogen_id]
 end
 
 """
@@ -2860,8 +2857,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     simulation.test_registries = _shard_local_vector(TestRegistry)
     # vaccines register again on their next first dose
-    fill!(simulation.vaccine_protection, VaccineProtection())
-    fill!(simulation.vaccine_registered, UInt128(0))
+    fill!(simulation.vaccine_table.protection, VaccineProtection())
+    foreach(registered -> registered[] = UInt128(0), simulation.vaccine_table.registered)
 
     # before initialize! below, which infects and schedules care again. Must stay paired with the
     # per-individual reset! above; clearing one alone leaves the two disagreeing
@@ -3025,15 +3022,21 @@ function _register_vaccine!(simulation::Simulation, vaccine::Vaccine)
     any(p -> id(p) == pid, pathogens(simulation)) ||
         throw(ArgumentError("Vaccine '$(name(vaccine))' targets pathogen $pid, which is not in the simulation."))
     entry = VaccineProtection(vaccine)
+    table = simulation.vaccine_table
     bit = UInt128(1) << (vid - 1)
-    if simulation.vaccine_registered[pid] & bit != 0
-        simulation.vaccine_protection[vid, pid] == entry || throw(ArgumentError(
+    first_dose = table.registered[pid][] & bit == 0 && lock(table.lock) do
+        # another thread may have registered it since the test above
+        table.registered[pid][] & bit == 0 || return false
+        table.protection[vid, pid] = entry
+        Threads.atomic_or!(table.registered[pid], bit)
+        return true
+    end
+    if !first_dose
+        table.protection[vid, pid] == entry || throw(ArgumentError(
             "Vaccine id $vid for pathogen $pid was registered with other peaks or buildup; " *
             "vaccine values are frozen at the first dose and ids must be unique per pathogen."))
         return nothing
     end
-    simulation.vaccine_protection[vid, pid] = entry
-    simulation.vaccine_registered[pid] |= bit
 
     if entry.severity_peak > entry.peak
         pathogen = get_pathogen(simulation, pid)

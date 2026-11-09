@@ -27,6 +27,7 @@ end
         @test GEMS._parallel_safe(FindSettingMembers(Household, lane_followup), false)
         @test GEMS._parallel_safe(PoolTest("lane", lane_type), false)
         @test GEMS._parallel_safe(IsOpen(positive_followup = lane_setting_followup), false)
+        @test GEMS._parallel_safe(Vaccinate(Vaccine(id = 1, name = "lane", target_pathogen_id = id(pathogen(lane_sim)))), false)
         @test GEMS._parallel_safe(FindMembers(lane_followup, sample_size = 1), false)
         @test !GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), false)
         @test GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), true)
@@ -247,6 +248,32 @@ end
                 @test isempty(queued_events(sim))
                 @test !GEMS._owner_requests_pending(sim)
             end
+        end
+
+        @testset "Doses On Every Shard Register Each Vaccine Once" begin
+            (; sim, inds) = round_setup()
+            pid = id(pathogen(sim))
+            dose = IStrategy("dose", sim)
+            add_measure!(dose, Vaccinate(Vaccine(id = 1, name = "first", target_pathogen_id = pid, peak = 70)))
+            add_measure!(dose, Vaccinate(Vaccine(id = 2, name = "second", target_pathogen_id = pid, peak = 60)))
+            @test GEMS._parallel_strategy(dose)
+            foreach(i -> GEMS.trigger_strategy(dose, i, sim), inds)
+            @test isempty(GEMS.event_queue(sim))
+            GEMS.process_events!(sim)
+            @test sim.vaccine_table.registered[pid][] == 0b11
+            @test [sim.vaccine_table.protection[v, pid].peak for v in 1:2] == [70, 60]
+            @test nrow(dataframe(vaccinationlogger(sim))) == 2 * length(inds)
+        end
+
+        @testset "Conflicting First Doses In One Phase Throw" begin
+            (; sim, inds) = round_setup()
+            pid = id(pathogen(sim))
+            dose = IStrategy("dose", sim)
+            add_measure!(dose, Vaccinate(Vaccine(id = 1, name = "one", target_pathogen_id = pid, peak = 70)))
+            add_measure!(dose, Vaccinate(Vaccine(id = 1, name = "other", target_pathogen_id = pid, peak = 60)))
+            foreach(i -> GEMS.trigger_strategy(dose, i, sim), inds)
+            failure = try GEMS.process_events!(sim); nothing catch e; e end
+            @test occursin("registered with other peaks", sprint(showerror, failure))
         end
 
         @testset "Setting Lookups Return Through Serial Code In The Tick" begin

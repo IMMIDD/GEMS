@@ -961,7 +961,8 @@ function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, t
     registry = immunity_registry(sim, individual)
     pid = target_pathogen_id(vaccine)
     push_immunity!(registry, individual, pid, IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
-    log!(vaccinationlogger(sim), id(individual), pid, id(vaccine), number_of_vaccinations(individual, registry, pid), tick)
+    log!(vaccinationlogger(sim), id(individual), pid, id(vaccine), number_of_vaccinations(individual, registry, pid), tick;
+        slot = _log_slot(sim))
     return nothing
 end
 
