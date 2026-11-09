@@ -27,8 +27,9 @@ end
         @test GEMS._parallel_safe(FindSettingMembers(Household, lane_followup), false)
         @test GEMS._parallel_safe(PoolTest("lane", lane_type), false)
         @test GEMS._parallel_safe(IsOpen(positive_followup = lane_setting_followup), false)
-        @test !GEMS._parallel_safe(FindMembers(lane_followup, sample_size = 1), true)
-        @test !GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), true)
+        @test GEMS._parallel_safe(FindMembers(lane_followup, sample_size = 1), false)
+        @test !GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), false)
+        @test GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), true)
         @test !GEMS._parallel_safe(CloseSetting(), true)
         @test !GEMS._parallel_safe(CustomIMeasure((i, s) -> nothing), true)
 
@@ -100,6 +101,13 @@ end
             add_measure!(closing, CloseSetting())
             add_tick_trigger!(sim, STickTrigger(Household, closing))
             @test occursin("closing", only(hint_logged(sim)))
+
+            # an unmarked filter is named too
+            sim = hint_sim()
+            filtered = SStrategy("filtered", sim)
+            add_measure!(filtered, FindMembers(IStrategy("found", sim), selectionfilter = i -> true))
+            add_tick_trigger!(sim, STickTrigger(Household, filtered))
+            @test occursin("filtered", only(hint_logged(sim)))
 
             # no tick trigger, or a small population: nothing to gain
             sim = hint_sim()
@@ -259,6 +267,17 @@ end
             foreach(h -> GEMS.trigger_strategy(members, h, sim), homes)
             GEMS.process_events!(sim)
             @test all(h -> all(isolated, individuals(h)), homes)
+        end
+
+        @testset "Sampled And Marked Filtered Members Run In The Setting Phase" begin
+            (; sim, isolate, isolated) = round_setup()
+            sample = SStrategy("sample", sim)
+            add_measure!(sample, FindMembers(isolate, sample_size = 1, selectionfilter = i -> true), threadsafe = true)
+            homes = households(sim)[1:slots + 1]
+            foreach(h -> GEMS.trigger_strategy(sample, h, sim), homes)
+            @test isempty(GEMS.event_queue(sim))
+            GEMS.process_events!(sim)
+            @test all(h -> count(isolated, individuals(h)) == 1, homes)
         end
 
         @testset "Pool Tests Log Every Setting" begin

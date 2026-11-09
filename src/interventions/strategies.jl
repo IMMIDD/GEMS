@@ -297,7 +297,7 @@ Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
 - `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed.
 - `delay::Function = x -> 0` *(optional)*: Single-argument function that must resolve to an integer. The delay will extend the offset.
 - `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure.
-- `threadsafe::Bool = false` *(optional)*: Promises that `delay` and `condition` only read the focal object and state that does not change while events run, and write nothing shared, so large tick triggers can evaluate `delay` on several threads and the measure can run in the parallel lane. Covers only the closures in this call.
+- `threadsafe::Bool = false` *(optional)*: Promises that `delay`, `condition` and a `selectionfilter` of `measure` only read the object they are given and state that does not change while events run, and write nothing shared, so large tick triggers can evaluate `delay` on several threads and the measure can run in the parallel lane. Covers only the closures in this call.
 
 # Examples
 
@@ -404,7 +404,8 @@ function _hint_threadsafe_option(sim::Simulation)
     @info "Strategies $(join(held_back, ", ")) run serially because of closures not marked `threadsafe = true`. \
         If a closure only reads its focal individual or setting and state that does not change while events run \
         (like `i -> age(i) >= 65`), and neither reads nor writes other people's state, counters or capacity limits, \
-        add `threadsafe = true` to the call that passes it (`IStrategy`, `SStrategy` or `add_measure!`), \
+        add `threadsafe = true` to the call that passes it (`IStrategy`, `SStrategy` or `add_measure!`, \
+        which also covers a `selectionfilter` of the measure it adds), \
         so large interventions can use all threads. A mark covers only the closures in its own call. \
         A wrong promise causes races that silently change results. See `?add_measure!`." maxlog = 1
     return nothing
