@@ -6,6 +6,7 @@ export CustomIMeasure, measure_logic
 
 """
     CustomIMeasure <: IMeasure
+    CustomIMeasure(measure_logic::Function; threadsafe::Bool = false)
 
 Intervention struct to apply custom logic to an indivudal when this measure is executed.
 The field `measure_logic` must contain a two-argument function where the first argument
@@ -25,9 +26,18 @@ function changing an individual's `mandate_compliance` attribute to 80%. This co
 for example, be used to model changing risk perceptions over time. While the above
 example does not require the `Simulation` object, it is still being passed,
 to make the whole simulation state available at all times.
+
+`threadsafe = true` lets large interventions run the measure on several threads. It promises that `measure_logic`
+only changes the individual it is given (like `vaccinate!(i, sim, vaccine, tick(sim))` or its quarantine), draws
+random numbers with `gems_rand(sim)`, and triggers strategies only after its own changes. It must not change other
+individuals, settings, activity plans or shared counters, or infect anyone. A wrong promise causes races that
+silently change results.
 """
 struct CustomIMeasure <: IMeasure 
     measure_logic::Function
+    threadsafe::Bool
+
+    CustomIMeasure(measure_logic::Function; threadsafe::Bool = false) = new(measure_logic, threadsafe)
 end
 
 """
@@ -38,6 +48,8 @@ Returns the `measure_logic` (function) attribute from a `CustomIMeasure` struct.
 function measure_logic(measure::CustomIMeasure)
     return(measure.measure_logic)
 end
+
+_parallel_safe(m::CustomIMeasure, ::Bool) = m.threadsafe
 
 ###
 ### PROCESS MEASURE

@@ -33,6 +33,9 @@ end
         @test GEMS._parallel_safe(FindMembers(lane_followup, selectionfilter = i -> true), true)
         @test !GEMS._parallel_safe(CloseSetting(), true)
         @test !GEMS._parallel_safe(CustomIMeasure((i, s) -> nothing), true)
+        @test !GEMS._parallel_safe(CustomSMeasure((st, s) -> nothing), true)
+        @test GEMS._parallel_safe(CustomIMeasure((i, s) -> nothing, threadsafe = true), false)
+        @test GEMS._parallel_safe(CustomSMeasure((st, s) -> nothing, threadsafe = true), false)
 
         entry_parallel(str) = last(measures(str)).parallel
         lane = IStrategy("lane", lane_sim)
@@ -95,6 +98,13 @@ end
             add_measure!(unsafe, CustomIMeasure((i, s) -> nothing))
             add_tick_trigger!(sim, ITickTrigger(unsafe))
             @test isempty(hint_logged(sim))
+
+            # a marked custom measure can run in the lane, so the unmarked condition is named
+            sim = hint_sim()
+            custom = IStrategy("marked custom", sim, condition = i -> true)
+            add_measure!(custom, CustomIMeasure((i, s) -> nothing, threadsafe = true))
+            add_tick_trigger!(sim, ITickTrigger(custom))
+            @test occursin("marked custom", only(hint_logged(sim)))
 
             # but a setting strategy's condition still gains on its threaded tick trigger
             sim = hint_sim()
@@ -286,6 +296,22 @@ end
             GEMS.process_events!(sim)
             @test all(isolated, individuals(household(target, sim)))
             @test isempty(queued_events(sim))
+        end
+
+        @testset "Marked Custom Measures Run In The Lane" begin
+            (; sim, inds, isolate, isolated) = round_setup()
+            seen = zeros(Int, length(inds))
+            own = IStrategy("own", sim)
+            add_measure!(own, CustomIMeasure((i, s) -> seen[id(i)] += 1, threadsafe = true))
+            screen = SStrategy("screen", sim)
+            add_measure!(screen, CustomSMeasure((st, s) -> foreach(i -> GEMS.trigger_strategy(isolate, i, s), individuals(st)), threadsafe = true))
+            foreach(i -> GEMS.trigger_strategy(own, i, sim), inds)
+            homes = households(sim)[1:slots + 1]
+            foreach(h -> GEMS.trigger_strategy(screen, h, sim), homes)
+            @test isempty(GEMS.event_queue(sim))
+            GEMS.process_events!(sim)
+            @test all(==(1), seen)
+            @test all(h -> all(isolated, individuals(h)), homes)
         end
 
         @testset "Setting Chunks Reach All Members" begin
