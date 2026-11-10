@@ -438,7 +438,7 @@ end
         end
         assign_member_indices!(pop, cntnr)
         GEMS.repack_dirty_pools!(cntnr)
-        sim = Simulation(seed = 1)
+        sim = Simulation(pop_size = 100, seed = 1)
         sim.population = pop
         sim.settings = cntnr
         return sim, cntnr, activity_plans(pop), pop, inds, cs, yr
