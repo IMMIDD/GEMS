@@ -97,8 +97,8 @@ end
 
 ActivityPlanStore() = ActivityPlanStore(PlanEntry[], BitVector(), Vector{Int32}[], false, Float32[])
 
-Base.length(store::ActivityPlanStore) = length(store.entries)
-Base.isempty(store::ActivityPlanStore) = isempty(store.entries)
+Base.length(plans::ActivityPlanStore) = length(plans.entries)
+Base.isempty(plans::ActivityPlanStore) = isempty(plans.entries)
 
 """
     activity_plans(pop::Population)
@@ -111,19 +111,19 @@ function activity_plans(pop::Population)
 end
 
 # member indices are meaningless before the settings exist
-@inline function _check_indexed(store::ActivityPlanStore)
-    store.indexed || error(
+@inline function _check_indexed(plans::ActivityPlanStore)
+    plans.indexed || error(
         "activity plans carry no member indices yet. Call `assign_member_indices!` after the " *
         "settings are built and pooled.")
     return nothing
 end
 
 """
-    plan_entries(store::ActivityPlanStore, individual::Individual)
+    plan_entries(plans::ActivityPlanStore, individual::Individual)
 
 Returns the individual's plan as a view into the store, which writing to would edit.
 """
-@inline plan_entries(store::ActivityPlanStore, individual::Individual) = view(store.entries, plan_slots(store, individual))
+@inline plan_entries(plans::ActivityPlanStore, individual::Individual) = view(plans.entries, plan_slots(plans, individual))
 
 """
     plan_length(individual::Individual)
@@ -133,50 +133,50 @@ Returns how many settings the individual belongs to.
 @inline plan_length(individual::Individual)::Int = Int(individual.plan_count)
 
 """
-    entry_active(store::ActivityPlanStore, slot::Int)
+    entry_active(plans::ActivityPlanStore, slot::Int)
 
 Returns whether the entry at `slot` applies this tick. One that does not counts as scale 0 on
 both ends of a contact: its individual draws no contacts in that setting, and contacts drawn to
 them there are rejected. They keep their place among the setting's members, so a draw can still
 land on them.
 """
-@inline entry_active(store::ActivityPlanStore, slot::Int)::Bool = @inbounds store.active[slot]
+@inline entry_active(plans::ActivityPlanStore, slot::Int)::Bool = @inbounds plans.active[slot]
 
 """
-    entry_active!(store::ActivityPlanStore, individual::Individual, slot::Int, val::Bool)
+    entry_active!(plans::ActivityPlanStore, individual::Individual, slot::Int, val::Bool)
 
 Sets whether the entry at `slot`, which must be one of `individual`'s, applies this tick.
 """
-function entry_active!(store::ActivityPlanStore, individual::Individual, slot::Int, val::Bool)
+function entry_active!(plans::ActivityPlanStore, individual::Individual, slot::Int, val::Bool)
     off = Int(individual.plan_offset)
     off <= slot < off + plan_length(individual) || throw(ArgumentError(
         "slot $slot does not hold one of individual $(id(individual))'s plan entries"))
-    @inbounds store.active[slot] = val
+    @inbounds plans.active[slot] = val
     # an inactive entry has scale 0, which the unscaled fast path must not skip
-    _refresh_plan_scaled!(store, individual)
+    _refresh_plan_scaled!(plans, individual)
     return nothing
 end
 
 # The entry's scale this tick: its own while it applies, 0 while it does not. Float32, as Float16
 # arithmetic is emulated in software.
-@inline _effective_scale(store::ActivityPlanStore, slot::Int)::Float32 =
-    entry_active(store, slot) ? Float32(entry_scale(@inbounds store.entries[slot])) : 0.0f0
+@inline _effective_scale(plans::ActivityPlanStore, slot::Int)::Float32 =
+    entry_active(plans, slot) ? Float32(entry_scale(@inbounds plans.entries[slot])) : 0.0f0
 
 # Raises the scale bound of setting type index `t` to `scale`; nothing lowers one. Serial only, as
 # it may append.
-@inline function _raise_scale_bound!(store::ActivityPlanStore, t::UInt8, scale::Float32)
-    b = store.scale_bounds
+@inline function _raise_scale_bound!(plans::ActivityPlanStore, t::UInt8, scale::Float32)
+    b = plans.scale_bounds
     length(b) < t && append!(b, fill(1.0f0, Int(t) - length(b)))
     @inbounds b[t] = max(b[t], scale)
     return nothing
 end
 
-@inline _raise_scale_bound!(store::ActivityPlanStore, entry::PlanEntry) =
-    _raise_scale_bound!(store, setting_type_of(entry), Float32(entry_scale(entry)))
+@inline _raise_scale_bound!(plans::ActivityPlanStore, entry::PlanEntry) =
+    _raise_scale_bound!(plans, setting_type_of(entry), Float32(entry_scale(entry)))
 
 # The largest scale any entry of setting type index `t` holds, at least 1.
-@inline _type_scale_bound(store::ActivityPlanStore, t::UInt8)::Float32 =
-    Int(t) <= length(store.scale_bounds) ? @inbounds(store.scale_bounds[t]) : 1.0f0
+@inline _type_scale_bound(plans::ActivityPlanStore, t::UInt8)::Float32 =
+    Int(t) <= length(plans.scale_bounds) ? @inbounds(plans.scale_bounds[t]) : 1.0f0
 
 ###
 ### MEMBERSHIP MASK
@@ -202,24 +202,24 @@ costs only a scan.
 
 # A type's entries form one contiguous run, returned block-relative as `(start, len)`. When
 # `len` is 0, `start` is where the run would begin, so inserts read it too.
-@inline function _plan_type_run(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+@inline function _plan_type_run(plans::ActivityPlanStore, individual::Individual, tidx::UInt8)
     (_mask_slot(tidx) == 0 || !_mask_locates_entries(individual)) &&
-        return _plan_type_run_scan(store, individual, tidx)
+        return _plan_type_run_scan(plans, individual, tidx)
     mask = individual.membership_mask
     bit = _membership_bit(tidx)
     return (count_ones(mask & (bit - UInt16(1))), mask & bit == 0 ? 0 : 1)
 end
 
-function _plan_type_run_scan(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
+function _plan_type_run_scan(plans::ActivityPlanStore, individual::Individual, tidx::UInt8)
     off = Int(individual.plan_offset)
     n = Int(individual.plan_count)
     @inbounds for k in 0:(n - 1)
-        t = store.entries[off + k].setting_type
+        t = plans.entries[off + k].setting_type
         t < tidx && continue
         # types ascend, so a higher one means the run is empty
         t > tidx && return (k, 0)
         j = k + 1
-        while j < n && store.entries[off + j].setting_type == tidx
+        while j < n && plans.entries[off + j].setting_type == tidx
             j += 1
         end
         return (k, j - k)
@@ -228,58 +228,58 @@ function _plan_type_run_scan(store::ActivityPlanStore, individual::Individual, t
 end
 
 """
-    plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
+    plan_slot(plans::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
 
-Returns the index in `store.entries` of the individual's primary entry of type `T`, or `0`.
+Returns the index in `plans.entries` of the individual's primary entry of type `T`, or `0`.
 A repeated type's entries sit together and the first is the primary: a repeat joins behind it
 unless added with `primary = true`, and `set_primary!` moves one to the front.
 """
-@inline function plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
-    start, len = _plan_type_run(store, individual, setting_type_index(T))
+@inline function plan_slot(plans::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
+    start, len = _plan_type_run(plans, individual, setting_type_index(T))
     return len == 0 ? 0 : Int(individual.plan_offset) + start
 end
 
 """
-    plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting}
+    plan_slot(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting}
 
 As above, but for one particular setting rather than any of its type. Searches the whole run,
 so a repeated type's later entries are reachable too.
 """
-@inline plan_slot(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting} =
-    _entry_slot(store, individual, setting_type_index(T), sid)
+@inline plan_slot(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting} =
+    _entry_slot(plans, individual, setting_type_index(T), sid)
 
 # the slot of the entry for setting `sid` of type index `tidx`, or 0
-@inline function _entry_slot(store::ActivityPlanStore, individual::Individual, tidx::UInt8, sid::Int32)
-    start, len = _plan_type_run(store, individual, tidx)
+@inline function _entry_slot(plans::ActivityPlanStore, individual::Individual, tidx::UInt8, sid::Int32)
+    start, len = _plan_type_run(plans, individual, tidx)
     off = Int(individual.plan_offset)
     @inbounds for k in start:(start + len - 1)
-        store.entries[off + k].setting_id == sid && return off + k
+        plans.entries[off + k].setting_id == sid && return off + k
     end
     return 0
 end
 
 """
-    plan_slots(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
+    plan_slots(plans::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
 
-Returns every slot in `store.entries` holding an entry of type `T`, empty when there are none.
+Returns every slot in `plans.entries` holding an entry of type `T`, empty when there are none.
 """
-@inline function plan_slots(store::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
-    start, len = _plan_type_run(store, individual, setting_type_index(T))
+@inline function plan_slots(plans::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
+    start, len = _plan_type_run(plans, individual, setting_type_index(T))
     s = Int(individual.plan_offset) + start
     return s:(s + len - 1)
 end
 
 # As `plan_slots` for a type, by type index.
-@inline function _type_slots(store::ActivityPlanStore, individual::Individual, tidx::UInt8)
-    start, len = _plan_type_run(store, individual, tidx)
+@inline function _type_slots(plans::ActivityPlanStore, individual::Individual, tidx::UInt8)
+    start, len = _plan_type_run(plans, individual, tidx)
     s = Int(individual.plan_offset) + start
     return s:(s + len - 1)
 end
 
 """
-    plan_slots(store::ActivityPlanStore, individual::Individual)
+    plan_slots(plans::ActivityPlanStore, individual::Individual)
 
-Returns every slot in `store.entries` holding one of the individual's entries, empty when there are none.
+Returns every slot in `plans.entries` holding one of the individual's entries, empty when there are none.
 """
 @inline function plan_slots(::ActivityPlanStore, individual::Individual)
     off = Int(individual.plan_offset)
@@ -288,10 +288,10 @@ end
 
 # The largest id of a setting of type index `t` in any plan, 0 if none. Reads live blocks only,
 # since freed ones can hold stale ids.
-function _max_setting_id(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
+function _max_setting_id(plans::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
     m = Int32(0)
-    @inbounds for ind in inds, k in _type_slots(store, ind, t)
-        m = max(m, setting_id(store.entries[k]))
+    @inbounds for ind in inds, k in _type_slots(plans, ind, t)
+        m = max(m, setting_id(plans.entries[k]))
     end
     return m
 end
@@ -399,8 +399,8 @@ Builds every individual's plan from the membership columns of `df`, which hold e
 primary, plus one entry per row of the optional `memberships` table (see `memberships`).
 """
 function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing, DataFrame} = nothing)
-    store = ActivityPlanStore()
-    pop.activity_plans = store
+    plans = ActivityPlanStore()
+    pop.activity_plans = plans
 
     cols = propertynames(df)
     types = [T for T in membership_setting_types(Individual) if membership_column(T) in cols]
@@ -411,7 +411,7 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
     column_tidx = UInt8[setting_type_index(T) for T in types]
     rows = memberships === nothing ? _no_membership_rows() :
         _membership_rows(pop, memberships, column_tidx, column_ids)
-    isempty(types) && isempty(rows.ind) && return store
+    isempty(types) && isempty(rows.ind) && return plans
     # what every block is built from
     source = (column_ids = column_ids, column_tidx = column_tidx, rows = _grouped_rows(rows))
 
@@ -424,21 +424,21 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
     end
     starts[1] = 1
     cumsum!(starts, starts)
-    resize!(store.entries, starts[end] - 1)
+    resize!(plans.entries, starts[end] - 1)
 
     # table rows are added after, serially, so their errors surface in individual order
     deferred = [Tuple{Int, Int, Int, UInt16}[] for _ in chunks]
     Threads.@threads for c in eachindex(chunks)
-        @inbounds _fill_blocks!(store, inds, source, chunks[c], starts[c], deferred[c])
+        @inbounds _fill_blocks!(plans, inds, source, chunks[c], starts[c], deferred[c])
     end
     for c in eachindex(chunks), (i, off, at, mask) in deferred[c]
-        _add_table_rows!(store, inds[i], source.rows, i, off, at, mask)
+        _add_table_rows!(plans, inds[i], source.rows, i, off, at, mask)
     end
 
     # nothing gates entries yet, so every one applies
-    resize!(store.active, length(store.entries))
-    fill!(store.active, true)
-    return store
+    resize!(plans.active, length(plans.entries))
+    fill!(plans.active, true)
+    return plans
 end
 
 _int32_column(col::Vector{Int32}) = col
@@ -475,13 +475,13 @@ end
 end
 
 # Writes individual `i`'s population-row entries from slot `at`; returns (next slot, membership mask).
-@inline function _write_population_entries!(store::ActivityPlanStore, source, i::Int, at::Int)
+@inline function _write_population_entries!(plans::ActivityPlanStore, source, i::Int, at::Int)
     mask = UInt16(0)
     @inbounds for k in eachindex(source.column_ids)
         sid = source.column_ids[k][i]
         sid == DEFAULT_SETTING_ID && continue
         t = source.column_tidx[k]
-        store.entries[at] = PlanEntry(sid, DEFAULT_MEMBER_INDEX, Float16(1.0), t)
+        plans.entries[at] = PlanEntry(sid, DEFAULT_MEMBER_INDEX, Float16(1.0), t)
         at += 1
         _mask_slot(t) != 0 && (mask |= _membership_bit(t))
     end
@@ -499,13 +499,13 @@ end
 
 # Fills the blocks of the individuals in `r` from slot `at`. Those with table rows get only their
 # population-row entries and go to `deferred` as (individual, block start, next slot, mask).
-function _fill_blocks!(store::ActivityPlanStore, inds::Vector{Individual}, source, r::UnitRange{Int},
+function _fill_blocks!(plans::ActivityPlanStore, inds::Vector{Individual}, source, r::UnitRange{Int},
                        at::Int, deferred::Vector{Tuple{Int, Int, Int, UInt16}})
     rows = source.rows
     q = searchsortedfirst(rows.ind, first(r))
     @inbounds for i in r
         off = at
-        at, mask = _write_population_entries!(store, source, i, at)
+        at, mask = _write_population_entries!(plans, source, i, at)
         own = _rows_of(rows.ind, i, q)
         q = last(own) + 1
         if isempty(own)
@@ -521,23 +521,23 @@ end
 
 # Adds individual `i`'s table rows to its block, whose population-row entries fill `off:(at - 1)`,
 # then sorts and checks it.
-function _add_table_rows!(store::ActivityPlanStore, ind::Individual, rows, i::Int, off::Int, at::Int, mask::UInt16)
+function _add_table_rows!(plans::ActivityPlanStore, ind::Individual, rows, i::Int, off::Int, at::Int, mask::UInt16)
     population_end = at
     for r in searchsorted(rows.ind, i)
         t = rows.tidx[r]
         if rows.rescales[r]
             # the population row's entry is the first of its type, so this finds it
-            k = off - 1 + findfirst(e -> setting_type_of(e) == t, view(store.entries, off:(at - 1)))
-            store.entries[k] = _with_scale(store.entries[k], rows.scale[r])
+            k = off - 1 + findfirst(e -> setting_type_of(e) == t, view(plans.entries, off:(at - 1)))
+            plans.entries[k] = _with_scale(plans.entries[k], rows.scale[r])
             continue
         end
-        store.entries[at] = PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(rows.scale[r]), t)
+        plans.entries[at] = PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(rows.scale[r]), t)
         at += 1
         _mask_slot(t) != 0 && (mask |= _membership_bit(t))
     end
 
     n = at - off
-    block = view(store.entries, off:(at - 1))
+    block = view(plans.entries, off:(at - 1))
     if at > population_end
         n <= typemax(Int8) || throw(ArgumentError(
             "individual $(id(ind)) would hold $n plan entries; the cap is $(typemax(Int8))"))
@@ -545,7 +545,7 @@ function _add_table_rows!(store::ActivityPlanStore, ind::Individual, rows, i::In
         sort!(block; alg = InsertionSort, by = setting_type_of)
         _check_repeated_entries(block, ind)
     end
-    foreach(e -> _raise_scale_bound!(store, e), block)
+    foreach(e -> _raise_scale_bound!(plans, e), block)
     # every entry starts active, so its own scale is the one that counts
     _set_plan!(ind, off, n, mask, any(e -> entry_scale(e) != 1, block))
     return nothing
@@ -710,42 +710,42 @@ _addition_individuals(a::_PlanAdditions) = 1:(length(a.offsets) - 1)
 @inline _addition_scale(a::_PlanAdditions, k::Int) = @inbounds a.scales[k]
 
 """
-    _merge_additions!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions; chunks)
+    _merge_additions!(plans::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions; chunks)
 
 Rebuilds the store with each individual's new entries behind its existing ones of their type, so
 every primary stays, and returns the bytes allocated. Throws before writing anything if an
 individual would hold a setting twice or more entries than the cap; freed blocks are dropped.
 """
-function _merge_additions!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions;
+function _merge_additions!(plans::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions;
                            chunks::Vector{UnitRange{Int}} = _thread_chunks(eachindex(inds)))
     # built settings would not hold the new entries' individuals
-    store.indexed && throw(ArgumentError("the settings are already built; entries can only be merged before"))
-    starts = _merged_starts(store, inds, additions, chunks)
+    plans.indexed && throw(ArgumentError("the settings are already built; entries can only be merged before"))
+    starts = _merged_starts(plans, inds, additions, chunks)
     entries = Vector{PlanEntry}(undef, starts[end] - 1)
     # staged as Bools when some entry is inactive; threads can't share a BitVector's words
-    staged = all(store.active) ? nothing : Vector{Bool}(undef, length(entries))
+    staged = all(plans.active) ? nothing : Vector{Bool}(undef, length(entries))
     Threads.@threads for c in eachindex(chunks)
-        @inbounds _merge_chunk!(entries, staged, store, inds, additions, chunks[c], starts[c])
+        @inbounds _merge_chunk!(entries, staged, plans, inds, additions, chunks[c], starts[c])
     end
-    store.entries = entries
-    store.active = staged === nothing ? trues(length(entries)) : BitVector(staged)
-    empty!(store.free)
-    _raise_scale_bound!(store, additions.tidx, _max_addition_scale(additions))
-    return sizeof(entries) + (staged === nothing ? 0 : sizeof(staged)) + Base.summarysize(store.active)
+    plans.entries = entries
+    plans.active = staged === nothing ? trues(length(entries)) : BitVector(staged)
+    empty!(plans.free)
+    _raise_scale_bound!(plans, additions.tidx, _max_addition_scale(additions))
+    return sizeof(entries) + (staged === nothing ? 0 : sizeof(staged)) + Base.summarysize(plans.active)
 end
 
 # Each chunk's first slot in the merged entries, then one past the last. Throws for the first
 # individual whose new entries can't be merged.
-function _merged_starts(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions,
+function _merged_starts(plans::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions,
                         chunks::Vector{UnitRange{Int}})
     starts = zeros(Int, length(chunks) + 1)
     first_bad = zeros(Int, length(chunks))
     Threads.@threads for c in eachindex(chunks)
-        @inbounds starts[c + 1], first_bad[c] = _merged_count(store, inds, additions, chunks[c])
+        @inbounds starts[c + 1], first_bad[c] = _merged_count(plans, inds, additions, chunks[c])
     end
     # thrown here, as an exception in a threaded loop arrives wrapped
     for i in first_bad
-        i == 0 || throw(ArgumentError(_addition_problem(store, inds[i], additions, i)))
+        i == 0 || throw(ArgumentError(_addition_problem(plans, inds[i], additions, i)))
     end
     starts[1] = 1
     cumsum!(starts, starts)
@@ -757,10 +757,10 @@ end
 
 # Plan entries the individuals in `r` hold after the merge, and the first of them whose new
 # entries can't be merged, or 0.
-function _merged_count(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions, r::UnitRange{Int})
+function _merged_count(plans::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions, r::UnitRange{Int})
     m = 0
     @inbounds for i in r
-        _addition_problem(store, inds[i], additions, i) === nothing || return m, i
+        _addition_problem(plans, inds[i], additions, i) === nothing || return m, i
         m += plan_length(inds[i])
         for k in _addition_rows(additions, i)
             additions.sids[k] == DEFAULT_SETTING_ID || (m += 1)
@@ -771,13 +771,13 @@ end
 
 # Why individual `i`'s new entries can't be merged, or `nothing`: a setting it would hold twice,
 # or more entries than the cap.
-function _addition_problem(store::ActivityPlanStore, ind::Individual, additions::_PlanAdditions, i::Int)
+function _addition_problem(plans::ActivityPlanStore, ind::Individual, additions::_PlanAdditions, i::Int)
     rows = _addition_rows(additions, i)
     n = plan_length(ind)
     @inbounds for k in rows
         sid = additions.sids[k]
         sid == DEFAULT_SETTING_ID && continue
-        repeated = _entry_slot(store, ind, additions.tidx, sid) != 0 || sid in view(additions.sids, first(rows):(k - 1))
+        repeated = _entry_slot(plans, ind, additions.tidx, sid) != 0 || sid in view(additions.sids, first(rows):(k - 1))
         repeated && return "individual $(id(ind)) would hold $(setting_type_from_index(additions.tidx)) $sid twice"
         n += 1
     end
@@ -787,16 +787,16 @@ end
 
 # Writes the merged blocks of the individuals in `r` from slot `at`: old entries up to the end of
 # the type's run, the new ones, then the rest.
-function _merge_chunk!(entries::Vector{PlanEntry}, staged::Union{Nothing, Vector{Bool}}, store::ActivityPlanStore,
+function _merge_chunk!(entries::Vector{PlanEntry}, staged::Union{Nothing, Vector{Bool}}, plans::ActivityPlanStore,
                        inds::Vector{Individual}, additions::_PlanAdditions, r::UnitRange{Int}, at::Int)
     @inbounds for i in r
         ind = inds[i]
         old, n = Int(ind.plan_offset), plan_length(ind)
-        start, len = _plan_type_run(store, ind, additions.tidx)
+        start, len = _plan_type_run(plans, ind, additions.tidx)
         off = at
-        at = _copy_entries!(entries, staged, store, old, 0:(start + len - 1), at)
+        at = _copy_entries!(entries, staged, plans, old, 0:(start + len - 1), at)
         at, mask, scaled = _write_additions!(entries, staged, additions, i, at, ind.membership_mask, ind.plan_scaled)
-        at = _copy_entries!(entries, staged, store, old, (start + len):(n - 1), at)
+        at = _copy_entries!(entries, staged, plans, old, (start + len):(n - 1), at)
         _set_plan!(ind, off, at - off, mask, scaled)
     end
     return nothing
@@ -822,11 +822,11 @@ end
 
 # Copies the old entries at block positions `ks` of the block at `old`, with their flags if
 # staged, to slot `at`; returns the next slot.
-@inline function _copy_entries!(entries::Vector{PlanEntry}, staged::Union{Nothing, Vector{Bool}}, store::ActivityPlanStore,
+@inline function _copy_entries!(entries::Vector{PlanEntry}, staged::Union{Nothing, Vector{Bool}}, plans::ActivityPlanStore,
                                 old::Int, ks::UnitRange{Int}, at::Int)
     @inbounds for k in ks
-        entries[at] = store.entries[old + k]
-        staged === nothing || (staged[at] = store.active[old + k])
+        entries[at] = plans.entries[old + k]
+        staged === nothing || (staged[at] = plans.active[old + k])
         at += 1
     end
     return at
@@ -930,37 +930,37 @@ end
 ###
 
 """
-    plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry; primary::Bool = false)
+    plan_add!(plans::ActivityPlanStore, individual::Individual, entry::PlanEntry; primary::Bool = false)
 
 Inserts an entry, keeping the individual's block sorted by setting type. A repeated type joins
 behind its kind, or in front of it as the new primary if `primary`. Throws if the individual
 already holds an entry for that setting.
 """
-function plan_add!(store::ActivityPlanStore, individual::Individual, entry::PlanEntry; primary::Bool = false)
+function plan_add!(plans::ActivityPlanStore, individual::Individual, entry::PlanEntry; primary::Bool = false)
     tidx = setting_type_of(entry)
     # a second entry for one setting would put the individual in its member list twice
-    _entry_slot(store, individual, tidx, setting_id(entry)) == 0 || throw(ArgumentError(
+    _entry_slot(plans, individual, tidx, setting_id(entry)) == 0 || throw(ArgumentError(
         "individual $(id(individual)) already holds an entry for $(setting_type_from_index(tidx)) $(setting_id(entry))"))
     n = Int(individual.plan_count)
     n < typemax(Int8) || throw(ArgumentError(
         "individual $(id(individual)) already holds $n plan entries; the cap is $(typemax(Int8))"))
 
-    start, len = _plan_type_run(store, individual, tidx)
+    start, len = _plan_type_run(plans, individual, tidx)
     pos = primary ? start : start + len
     old = Int(individual.plan_offset)
-    new = _alloc_block!(store, n + 1)
+    new = _alloc_block!(plans, n + 1)
 
     for k in 0:(pos - 1)
-        _move_entry!(store, new + k, old + k)
+        _move_entry!(plans, new + k, old + k)
     end
-    @inbounds store.entries[new + pos] = entry
-    _raise_scale_bound!(store, entry)
-    @inbounds store.active[new + pos] = true
+    @inbounds plans.entries[new + pos] = entry
+    _raise_scale_bound!(plans, entry)
+    @inbounds plans.active[new + pos] = true
     for k in pos:(n - 1)
-        _move_entry!(store, new + k + 1, old + k)
+        _move_entry!(plans, new + k + 1, old + k)
     end
 
-    _free_block!(store, old, n)
+    _free_block!(plans, old, n)
     individual.plan_offset = Int32(new)
     individual.plan_count = Int8(n + 1)
     _mask_slot(tidx) != 0 && (individual.membership_mask |= _membership_bit(tidx))
@@ -969,84 +969,84 @@ function plan_add!(store::ActivityPlanStore, individual::Individual, entry::Plan
 end
 
 """
-    plan_remove!(store::ActivityPlanStore, individual::Individual, slot::Int)
+    plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::Int)
 
 Drops the entry at `slot`, closing the gap so the block stays sorted by setting type.
 """
-function plan_remove!(store::ActivityPlanStore, individual::Individual, slot::Int)
+function plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::Int)
     old = Int(individual.plan_offset)
     n = Int(individual.plan_count)
     (n > 0 && old <= slot <= old + n - 1) || return false
 
-    tidx = @inbounds setting_type_of(store.entries[slot])
+    tidx = @inbounds setting_type_of(plans.entries[slot])
     # an inactive entry made the individual scaled too
-    scaled = _effective_scale(store, slot) != 1
+    scaled = _effective_scale(plans, slot) != 1
     pos = slot - old
 
     if n == 1
-        _free_block!(store, old, 1)
+        _free_block!(plans, old, 1)
         individual.plan_offset = Int32(0)
     else
-        new = _alloc_block!(store, n - 1)
+        new = _alloc_block!(plans, n - 1)
         for k in 0:(pos - 1)
-            _move_entry!(store, new + k, old + k)
+            _move_entry!(plans, new + k, old + k)
         end
         for k in (pos + 1):(n - 1)
-            _move_entry!(store, new + k - 1, old + k)
+            _move_entry!(plans, new + k - 1, old + k)
         end
-        _free_block!(store, old, n)
+        _free_block!(plans, old, n)
         individual.plan_offset = Int32(new)
     end
 
     individual.plan_count = Int8(n - 1)
     # the bit means "holds at least one of this type", so it only clears once the last one goes
     # the mask is not updated yet, so scan the block
-    if _mask_slot(tidx) != 0 && _plan_type_run_scan(store, individual, tidx)[2] == 0
+    if _mask_slot(tidx) != 0 && _plan_type_run_scan(plans, individual, tidx)[2] == 0
         individual.membership_mask &= ~_membership_bit(tidx)
     end
-    scaled && _refresh_plan_scaled!(store, individual)
+    scaled && _refresh_plan_scaled!(plans, individual)
     return true
 end
 
 """
-    plan_set_member_index!(store::ActivityPlanStore, slot::Int, idx::Integer)
+    plan_set_member_index!(plans::ActivityPlanStore, slot::Int, idx::Integer)
 
 Repoints one entry at a new position in its setting's member list.
 """
-@inline function plan_set_member_index!(store::ActivityPlanStore, slot::Int, idx::Integer)
-    @inbounds store.entries[slot] = _with_member_index(store.entries[slot], idx)
+@inline function plan_set_member_index!(plans::ActivityPlanStore, slot::Int, idx::Integer)
+    @inbounds plans.entries[slot] = _with_member_index(plans.entries[slot], idx)
     return nothing
 end
 
 """
-    plan_set_setting_id!(store::ActivityPlanStore, slot::Int, sid::Int32)
+    plan_set_setting_id!(plans::ActivityPlanStore, slot::Int, sid::Int32)
 
 Repoints one entry at a renumbered setting.
 """
-@inline function plan_set_setting_id!(store::ActivityPlanStore, slot::Int, sid::Int32)
-    @inbounds store.entries[slot] = _with_setting_id(store.entries[slot], sid)
+@inline function plan_set_setting_id!(plans::ActivityPlanStore, slot::Int, sid::Int32)
+    @inbounds plans.entries[slot] = _with_setting_id(plans.entries[slot], sid)
     return nothing
 end
 
 """
-    set_primary!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+    set_primary!(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
 
 Makes setting `sid` the individual's primary setting of type `T` by moving its entry to the
 front of its kind. Member indices and active flags travel with their entries; no setting's
 member list changes.
 """
-function set_primary!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
-    slot = plan_slot(store, individual, T, Int32(sid))
+function set_primary!(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
+    slot = plan_slot(plans, individual, T, Int32(sid))
     slot == 0 && throw(ArgumentError("individual $(id(individual)) holds no entry for $T $sid"))
-    front = plan_slot(store, individual, T)
-    e = @inbounds store.entries[slot]
-    a = @inbounds store.active[slot]
+    front = plan_slot(plans, individual, T)
+    e = @inbounds plans.entries[slot]
+    a = @inbounds plans.active[slot]
     # the entries ahead of it move back by one, so the rest keep their order
     for k in slot:-1:(front + 1)
-        _move_entry!(store, k, k - 1)
+        _move_entry!(plans, k, k - 1)
     end
-    @inbounds store.entries[front] = e
-    @inbounds store.active[front] = a
+    @inbounds plans.entries[front] = e
+    @inbounds plans.active[front] = a
     return nothing
 end
 
@@ -1059,16 +1059,16 @@ set_primary!(pop::Population, individual::Individual, ::Type{T}, sid::Integer) w
     set_primary!(activity_plans(pop), individual, T, sid)
 
 """
-    set_scale!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+    set_scale!(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
 
 Sets the scale of the individual's entry for setting `sid` of type `T`. Only before the settings
 are built; afterwards use the `Simulation` method, which also updates the setting's scale bound.
 """
-function set_scale!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+function set_scale!(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
     # once built, the setting's bound would go stale
-    store.indexed && throw(ArgumentError(
+    plans.indexed && throw(ArgumentError(
         "the settings are already built; use `set_scale!` with the simulation, which also updates the setting"))
-    _set_entry_scale!(store, individual, T, sid, scale)
+    _set_entry_scale!(plans, individual, T, sid, scale)
     return nothing
 end
 
@@ -1080,50 +1080,50 @@ Convenience for callers holding a `Population` rather than the store.
 set_scale!(pop::Population, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting} =
     set_scale!(activity_plans(pop), individual, T, sid, scale)
 
-function _set_entry_scale!(store::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
-    slot = plan_slot(store, individual, T, Int32(sid))
+function _set_entry_scale!(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
+    slot = plan_slot(plans, individual, T, Int32(sid))
     slot == 0 && throw(ArgumentError("individual $(id(individual)) holds no entry for $T $sid"))
-    @inbounds store.entries[slot] = _with_scale(store.entries[slot], scale)
-    _raise_scale_bound!(store, @inbounds store.entries[slot])
-    _refresh_plan_scaled!(store, individual)
+    @inbounds plans.entries[slot] = _with_scale(plans.entries[slot], scale)
+    _raise_scale_bound!(plans, @inbounds plans.entries[slot])
+    _refresh_plan_scaled!(plans, individual)
     return nothing
 end
 
-function _refresh_plan_scaled!(store::ActivityPlanStore, individual::Individual)
-    individual.plan_scaled = any(k -> _effective_scale(store, k) != 1, plan_slots(store, individual))
+function _refresh_plan_scaled!(plans::ActivityPlanStore, individual::Individual)
+    individual.plan_scaled = any(k -> _effective_scale(plans, k) != 1, plan_slots(plans, individual))
     return nothing
 end
 
 # copies the entry at slot `from`, with its active flag, to slot `to`
-@inline function _move_entry!(store::ActivityPlanStore, to::Int, from::Int)
-    @inbounds store.entries[to] = store.entries[from]
-    @inbounds store.active[to] = store.active[from]
+@inline function _move_entry!(plans::ActivityPlanStore, to::Int, from::Int)
+    @inbounds plans.entries[to] = plans.entries[from]
+    @inbounds plans.active[to] = plans.active[from]
     return nothing
 end
 
 # takes a block of `n` entries, reusing a freed one if available
-function _alloc_block!(store::ActivityPlanStore, n::Int)
-    if n <= length(store.free) && !isempty(store.free[n])
-        return Int(pop!(store.free[n]))
+function _alloc_block!(plans::ActivityPlanStore, n::Int)
+    if n <= length(plans.free) && !isempty(plans.free[n])
+        return Int(pop!(plans.free[n]))
     end
-    off = length(store.entries) + 1
-    resize!(store.entries, off + n - 1)
-    resize!(store.active, off + n - 1)
+    off = length(plans.entries) + 1
+    resize!(plans.entries, off + n - 1)
+    resize!(plans.active, off + n - 1)
     return off
 end
 
-function _free_block!(store::ActivityPlanStore, off::Int, n::Int)
+function _free_block!(plans::ActivityPlanStore, off::Int, n::Int)
     n == 0 && return nothing
-    n > length(store.free) && _grow_free!(store, n)
-    push!(store.free[n], Int32(off))
+    n > length(plans.free) && _grow_free!(plans, n)
+    push!(plans.free[n], Int32(off))
     return nothing
 end
 
-function _grow_free!(store::ActivityPlanStore, n::Int)
-    old = length(store.free)
-    resize!(store.free, n)
+function _grow_free!(plans::ActivityPlanStore, n::Int)
+    old = length(plans.free)
+    resize!(plans.free, n)
     for k in (old + 1):n
-        store.free[k] = Int32[]
+        plans.free[k] = Int32[]
     end
     return nothing
 end

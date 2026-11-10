@@ -1132,11 +1132,11 @@ end
 # Warns when the population already holds entries of a declared type a layer creates new settings
 # of, as a saved population that had the layer applied would.
 function _warn_reapplied_layers(pop::Population, layers)
-    store = activity_plans(pop)
+    plans = activity_plans(pop)
     for layer in layers
         T = _layer_type(layer)
         (T <: DeclaredSetting && layer.assignment isa NewSettingsAssignment) || continue
-        any(ind -> _plan_type_run(store, ind, setting_type_index(T))[2] > 0, individuals(pop)) && @warn "The population " *
+        any(ind -> _plan_type_run(plans, ind, setting_type_index(T))[2] > 0, individuals(pop)) && @warn "The population " *
             "already holds $(setting_type_name(T)) entries and a setting layer adds more; if it was saved with the " *
             "layer applied, run it with a config without the layer"
     end

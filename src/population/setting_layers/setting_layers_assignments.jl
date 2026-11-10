@@ -15,13 +15,13 @@
 """
     _LayerContext{C}
 
-What an assignment reads while placing a layer's participants: the plans (`store`), the
+What an assignment reads while placing a layer's participants: the plans (`plans`), the
 individuals (`inds`), the layer's setting type index (`tidx`), home coordinates (`coords`,
 `nothing` without), the stream setting sizes are drawn from (`size_rng`), and an id new
 settings' ids must stay above besides those in the plans (`id_floor`).
 """
 struct _LayerContext{C}
-    store::ActivityPlanStore
+    plans::ActivityPlanStore
     inds::Vector{Individual}
     tidx::UInt8
     coords::C
@@ -89,7 +89,7 @@ function _members_in_round(additions::_PlanAdditions, r::Int)
 end
 
 # The first id after every setting of the layer's type in the plans, and after `ctx.id_floor`.
-_first_new_id(ctx::_LayerContext) = max(Int(_max_setting_id(ctx.store, ctx.inds, ctx.tidx)), ctx.id_floor) + 1
+_first_new_id(ctx::_LayerContext) = max(Int(_max_setting_id(ctx.plans, ctx.inds, ctx.tidx)), ctx.id_floor) + 1
 
 """
     _write_labels!(additions::_PlanAdditions, labels::Vector{Int32}, rows, first_id::Int)
@@ -208,7 +208,7 @@ function _sort_by_age(order::Vector{Int32}, members::Vector{Int32}, inds::Vector
 end
 
 function _partition(a::GroupedSettings, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
-    gids = Int32[_setting_id(ctx.inds[i], a.by, ctx.store) for i in members]
+    gids = Int32[_setting_id(ctx.inds[i], a.by, ctx.plans) for i in members]
     starts, positions = _group_members(gids)
     order = _shuffled_positions(rng, length(starts) - 1)
     return _fill_groups(starts, positions, order, a.size, ctx.size_rng)
@@ -284,8 +284,8 @@ end
 # Refills `held` with the ids of the layer's type the individual at position `i` holds.
 function _held_ids!(held::Vector{Int32}, ctx::_LayerContext, i::Int)
     empty!(held)
-    for k in _type_slots(ctx.store, ctx.inds[i], ctx.tidx)
-        push!(held, setting_id(ctx.store.entries[k]))
+    for k in _type_slots(ctx.plans, ctx.inds[i], ctx.tidx)
+        push!(held, setting_id(ctx.plans.entries[k]))
     end
     return held
 end
@@ -301,10 +301,10 @@ struct _JoinCandidates
     cumulative::Vector{Int}
 end
 
-function _JoinCandidates(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
-    counts = zeros(Int, _max_setting_id(store, inds, t))
-    @inbounds for ind in inds, k in _type_slots(store, ind, t)
-        sid = setting_id(store.entries[k])
+function _JoinCandidates(plans::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
+    counts = zeros(Int, _max_setting_id(plans, inds, t))
+    @inbounds for ind in inds, k in _type_slots(plans, ind, t)
+        sid = setting_id(plans.entries[k])
         sid >= 1 && (counts[sid] += 1)
     end
     ids = Int32.(findall(>(0), counts))
@@ -313,7 +313,7 @@ end
 
 # `JoinNearby`'s methods are in setting_layers_spatial.jl.
 
-_join_state(::JoinExisting, ctx::_LayerContext) = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx)
+_join_state(::JoinExisting, ctx::_LayerContext) = _JoinCandidates(ctx.plans, ctx.inds, ctx.tidx)
 
 function _choose(::JoinExisting, ::Int, held::Vector{Int32}, c::_JoinCandidates, ::_LayerContext, rng::Xoshiro)
     isempty(c.ids) && return Int32(0)
@@ -361,34 +361,34 @@ struct _ViaGroups
 end
 
 # The slots of `ind`'s settings of type `tidx` that a `JoinVia` offers to the members of their `via` setting.
-function _via_slots(a::JoinVia, store::ActivityPlanStore, ind::Individual, tidx::UInt8)
-    r = _type_slots(store, ind, tidx)
+function _via_slots(a::JoinVia, plans::ActivityPlanStore, ind::Individual, tidx::UInt8)
+    r = _type_slots(plans, ind, tidx)
     return a.primary_only && !isempty(r) ? (first(r):first(r)) : r
 end
 
 function _join_state(a::JoinVia, ctx::_LayerContext)
-    store, inds = ctx.store, ctx.inds
-    starts = zeros(Int, Int(_max_setting_id(store, inds, a.via)) + 1)
+    plans, inds = ctx.plans, ctx.inds
+    starts = zeros(Int, Int(_max_setting_id(plans, inds, a.via)) + 1)
     # counting sort by group: count each group's held settings, then place them
     for ind in inds
-        g = _setting_id(ind, a.via, store)
-        g >= 1 && (starts[g + 1] += length(_via_slots(a, store, ind, ctx.tidx)))
+        g = _setting_id(ind, a.via, plans)
+        g >= 1 && (starts[g + 1] += length(_via_slots(a, plans, ind, ctx.tidx)))
     end
     starts[1] = 1
     cumsum!(starts, starts)
     ids, next = Vector{Int32}(undef, starts[end] - 1), starts[1:(end - 1)] .- 1
     for ind in inds
-        g = _setting_id(ind, a.via, store)
+        g = _setting_id(ind, a.via, plans)
         g >= 1 || continue
-        for k in _via_slots(a, store, ind, ctx.tidx)
-            ids[next[g] += 1] = setting_id(store.entries[k])
+        for k in _via_slots(a, plans, ind, ctx.tidx)
+            ids[next[g] += 1] = setting_id(plans.entries[k])
         end
     end
     return _ViaGroups(starts, ids)
 end
 
 function _choose(a::JoinVia, i::Int, held::Vector{Int32}, groups::_ViaGroups, ctx::_LayerContext, rng::Xoshiro)
-    g = _setting_id(ctx.inds[i], a.via, ctx.store)
+    g = _setting_id(ctx.inds[i], a.via, ctx.plans)
     g >= 1 || return Int32(0)
     group = view(groups.ids, groups.starts[g]:(groups.starts[g + 1] - 1))
     # a group's list is short, so count the settings not yet held and pick one of them

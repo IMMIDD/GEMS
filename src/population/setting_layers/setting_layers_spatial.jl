@@ -39,8 +39,8 @@ end
 _finite(v) = !ismissing(v) && isfinite(v)
 
 # The individual's home in km, NaN if their household has no coordinates.
-function _home(coords::_HomeCoordinates, ind::Individual, store::ActivityPlanStore)
-    h = household_id(ind, store)
+function _home(coords::_HomeCoordinates, ind::Individual, plans::ActivityPlanStore)
+    h = household_id(ind, plans)
     1 <= h <= length(coords.x) || return NaN32, NaN32
     return @inbounds coords.x[h], coords.y[h]
 end
@@ -76,7 +76,7 @@ function _displaced_homes(spread, members::Vector{Int32}, ctx::_LayerContext{_Ho
     points = Vector{NTuple{2, Float32}}(undef, length(members))
     x0, x1, y0, y1 = Inf32, -Inf32, Inf32, -Inf32
     for (k, i) in enumerate(members)
-        hx, hy = _home(ctx.coords, ctx.inds[i], ctx.store)
+        hx, hy = _home(ctx.coords, ctx.inds[i], ctx.plans)
         # drawn for everyone, so the draws do not depend on who has coordinates
         dx, dy = _draw_displacement(rng, spread)
         points[k] = (hx + Float32(dx), hy + Float32(dy))
@@ -164,7 +164,7 @@ struct _NearbyState
 end
 
 function _join_state(::JoinNearby, ctx::_LayerContext{_HomeCoordinates})
-    c = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx)
+    c = _JoinCandidates(ctx.plans, ctx.inds, ctx.tidx)
     return _NearbyState(_CentroidGrid(c, ctx), c, Int32[], Int[])
 end
 
@@ -200,10 +200,10 @@ function _centroids(c::_JoinCandidates, ctx::_LayerContext{_HomeCoordinates})
     position = zeros(Int32, isempty(c.ids) ? 0 : Int(last(c.ids)))
     position[c.ids] .= Int32(1):Int32(length(c.ids))
     @inbounds for ind in ctx.inds
-        hx, hy = _home(ctx.coords, ind, ctx.store)
+        hx, hy = _home(ctx.coords, ind, ctx.plans)
         isfinite(hx) || continue
-        for k in _type_slots(ctx.store, ind, ctx.tidx)
-            sid = setting_id(ctx.store.entries[k])
+        for k in _type_slots(ctx.plans, ind, ctx.tidx)
+            sid = setting_id(ctx.plans.entries[k])
             # as in `_JoinCandidates`, which counts ids from 1 only
             sid >= 1 || continue
             j = position[sid]
@@ -223,7 +223,7 @@ _cell_coords(x0, y0, cell, x, y) =
 _cell_coords(g::_CentroidGrid, x, y) = _cell_coords(g.x0, g.y0, g.cell, x, y)
 
 function _choose(a::JoinNearby, i::Int, held::Vector{Int32}, s::_NearbyState, ctx::_LayerContext{_HomeCoordinates}, rng::Xoshiro)
-    hx, hy = _home(ctx.coords, ctx.inds[i], ctx.store)
+    hx, hy = _home(ctx.coords, ctx.inds[i], ctx.plans)
     # drawn for everyone, so the draws do not depend on who has coordinates
     dx, dy = _draw_displacement(rng, a.spread)
     if isfinite(hx)
