@@ -1,7 +1,7 @@
 ###
 ### SETTING POOL METHODS
 ###
-export build_pools!, repack_dirty_pools!, present_members
+export build_pools!, repack_dirty_pools!, present_members, container_frame_index
 
 ###
 ### PRESENT MEMBERS
@@ -59,6 +59,35 @@ const _STALE_CONTAINER_HINT = " To read a container's members before then, use "
         "transmission starts, which it skips on ticks with nothing to spread, so interventions and tick triggers can " *
         "meet a pool waiting for it." * hint)
     return nothing
+end
+
+###
+### CONTAINER FRAME INDEX
+###
+
+"""
+    container_frame_index(cntnr::SettingsContainer, container::ContainerSetting, leaf::IndividualSetting, leaf_index::Integer)
+
+Returns the position in `container`'s frame of the member at `leaf_index` of `leaf`, or
+`DEFAULT_MEMBER_INDEX` when they are not in it. Reads the frame `present_members` hands out, so
+a member below a closed setting, and the dropped copy of a member in two leaves, have no
+position here.
+"""
+function container_frame_index(::SettingsContainer, container::ContainerSetting,
+                               leaf::IndividualSetting, leaf_index::Integer)::Int32
+    pool = _pool(container)::HierarchicalSettingPool
+    _check_clean(container, pool)
+    (is_open(container) && is_open(leaf)) || return DEFAULT_MEMBER_INDEX
+
+    # the member's absolute position in the hierarchy pool
+    p = Int(leaf.pool_offset) + Int(leaf_index) - 1
+    runs = container.pool_runs
+    if runs === nothing
+        k = p - Int(container.pool_offset) + 1
+        return 1 <= k <= container.pool_length ? Int32(k) : DEFAULT_MEMBER_INDEX
+    end
+    k = _run_index(runs.starts, runs.prefix, Int(container.pool_length), p)
+    return k == 0 ? DEFAULT_MEMBER_INDEX : Int32(k)
 end
 
 ###

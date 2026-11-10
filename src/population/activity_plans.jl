@@ -6,7 +6,7 @@
 # EXPORTS
 export PlanEntry, ActivityPlanStore
 export member_index, entry_scale, setting_type_of
-export plan_entries, plan_length, entry_active, entry_active!, container_frame_index
+export plan_entries, plan_length, entry_active, entry_active!
 export build_plans!, assign_settings!, assign_member_indices!, activity_plans, set_primary!, set_scale!
 export check_pool_entries
 export membership_column, memberships
@@ -303,35 +303,6 @@ end
 # no membership type matched: a setting type GEMS does not ship, looked up at runtime
 @inline _unroll_entry_settings(use::U, cntnr::SettingsContainer, e::PlanEntry) where {U} =
     use(settings(cntnr, setting_type_from_index(setting_type_of(e))))
-
-###
-### CONTAINER FRAME INDEX
-###
-
-"""
-    container_frame_index(cntnr::SettingsContainer, container::ContainerSetting, leaf::IndividualSetting, leaf_index::Integer)
-
-Returns the position in `container`'s frame of the member at `leaf_index` of `leaf`, or
-`DEFAULT_MEMBER_INDEX` when they are not in it. Reads the frame `present_members` hands out, so
-a member below a closed setting, and the dropped copy of a member in two leaves, have no
-position here.
-"""
-function container_frame_index(::SettingsContainer, container::ContainerSetting,
-                               leaf::IndividualSetting, leaf_index::Integer)::Int32
-    pool = _pool(container)::HierarchicalSettingPool
-    _check_clean(container, pool)
-    (is_open(container) && is_open(leaf)) || return DEFAULT_MEMBER_INDEX
-
-    # the member's absolute position in the hierarchy pool
-    p = Int(leaf.pool_offset) + Int(leaf_index) - 1
-    runs = container.pool_runs
-    if runs === nothing
-        k = p - Int(container.pool_offset) + 1
-        return 1 <= k <= container.pool_length ? Int32(k) : DEFAULT_MEMBER_INDEX
-    end
-    k = _run_index(runs.starts, runs.prefix, Int(container.pool_length), p)
-    return k == 0 ? DEFAULT_MEMBER_INDEX : Int32(k)
-end
 
 ###
 ### MEMBERSHIP SCALE
