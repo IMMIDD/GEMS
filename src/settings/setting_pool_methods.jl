@@ -175,6 +175,7 @@ function build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK
         pool.slack = Float64(slack)
     end
     _check_contiguous_ids(cntnr)
+    _check_parent_links!(cntnr)
     types = [L for L in settingtypes_sorted(cntnr) if is_pooled_leaf(L) && !isempty(get(cntnr.settings, L, ()))]
     # the hierarchies share no settings, so their pools build in parallel
     tasks = [Threads.@spawn _build_pool!(cntnr, L, Float64(slack)) for L in types]
@@ -195,6 +196,42 @@ function _check_contiguous_ids(cntnr::SettingsContainer)
             id(s) == i || error("$T ids must be 1..$(length(stngs)) to build a setting pool; " *
                                 "entry $i has id $(id(s)). Run `new_setting_ids!` first.")
         end
+    end
+    return nothing
+end
+
+# A setting has one parent, so a parent's `contains` and a child's `contained` must agree. A side left
+# unset is filled from the other; a child under two parents, or two sides that disagree, throws.
+function _check_parent_links!(cntnr::SettingsContainer)
+    for C in settingtypes_sorted(cntnr)
+        C <: ContainerSetting || continue
+        K = contains_type(C)
+        parents = get(cntnr.settings, C, ())
+        kids = get(cntnr.settings, K, ())
+        # ids are 1..n by now, so a child's id is its index
+        parent = zeros(Int32, length(kids))
+        for p in parents, k in p.contains
+            1 <= k <= length(kids) || error("$C $(id(p)) contains $K $k, which does not exist")
+            parent[k] == 0 || parent[k] == id(p) ||
+                error("$K $k is in $C $(parent[k]) and $C $(id(p)); a setting has one parent")
+            parent[k] = id(p)
+        end
+        filled = 0
+        for (k, kid) in enumerate(kids)
+            c = kid.contained
+            if c == DEFAULT_SETTING_ID
+                parent[k] == 0 && continue
+                kid.contained = parent[k]
+            elseif parent[k] == 0
+                1 <= c <= length(parents) || error("$K $k names $C $c as its parent, which does not exist")
+                push!(parents[c].contains, Int32(k))
+            else
+                c == parent[k] && continue
+                error("$K $k names $C $c as its parent, but $C $(parent[k]) contains it")
+            end
+            filled += 1
+        end
+        filled > 0 && @warn "Filled $filled one-sided links between $K and $C settings from the other side"
     end
     return nothing
 end
@@ -299,8 +336,7 @@ function _leaf_ranges(pos, cntnr::SettingsContainer, cs::Vector{C}) where {C<:Co
     return rs
 end
 
-# Lowest and highest layout position `s` covers, `(typemax(Int), 0)` for none. A leaf under two
-# parents spans both.
+# Lowest and highest layout position `s` covers, `(typemax(Int), 0)` for none.
 function _leaf_span(pos, ::SettingsContainer, s::IndividualSetting)
     p = Int(pos[id(s)])
     return (p, p)
@@ -1034,6 +1070,8 @@ _container_depth(::Type{C}) where {C<:ContainerSetting} = 1 + _container_depth(c
 @inline _open_up_to(::HierarchicalSettingPool, ::C, ::Type{C}) where {C<:ContainerSetting} = true
 function _open_up_to(pool::HierarchicalSettingPool, s::S, ::Type{C}) where {S<:Setting, C<:ContainerSetting}
     is_open(s) || return false
+    # a setting under no parent is under no `C` either
+    _has_container(s) || return false
     P = contained_type(S)
     lv = pool.container_groups[_container_depth(P)]::ContainerLevel{P}
     return _open_up_to(pool, @inbounds(lv.containers[s.contained]), C)

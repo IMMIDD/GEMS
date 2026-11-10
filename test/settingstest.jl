@@ -1467,6 +1467,41 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test all(c -> c.individuals === nothing && parent(individuals(c)) === sc.pools[SchoolClass].members, cs)
         end
 
+        @testset "Parent links" begin
+            # two classes, two years and a school, with the class links set by the caller
+            school(class_parent, year_contains) = begin
+                sc = SettingsContainer()
+                add_types!(sc, [SchoolClass, SchoolYear, School])
+                inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:4]
+                cs = [SchoolClass(id = Int32(k), individuals = inds[(2k - 1):2k], contained = class_parent[k]) for k in 1:2]
+                ys = [SchoolYear(id = Int32(y), contains = copy(year_contains[y]), contained = Int32(1)) for y in 1:2]
+                sch = School(id = Int32(1), contains = Int32[1, 2])
+                for x in vcat(cs, ys, [sch]); GEMS.add!(sc, x); end
+                (sc, cs, ys)
+            end
+            u = GEMS.DEFAULT_SETTING_ID
+
+            # an unset side is filled from the other
+            sc, cs, ys = school(Int32[u, 2], [Int32[1], Int32[2]])
+            @test_logs (:warn, r"Filled 1 one-sided") GEMS.build_pools!(sc)
+            @test cs[1].contained == 1
+            sc, cs, ys = school(Int32[1, 2], [Int32[1], Int32[]])
+            @test_logs (:warn, r"Filled 1 one-sided") GEMS.build_pools!(sc)
+            @test ys[2].contains == Int32[2]
+
+            # a class under two years, or two sides that disagree, cannot be built
+            sc, _, _ = school(Int32[1, 1], [Int32[1, 2], Int32[2]])
+            @test_throws ErrorException GEMS.build_pools!(sc)
+            sc, _, _ = school(Int32[2, 2], [Int32[1], Int32[2]])
+            @test_throws ErrorException GEMS.build_pools!(sc)
+
+            # a class under no year is not open up to a year
+            sc, cs, _ = school(Int32[u, 2], [Int32[], Int32[2]])
+            GEMS.build_pools!(sc)
+            @test !GEMS._open_up_to(sc.pools[SchoolClass], cs[1], SchoolYear)
+            @test GEMS._open_up_to(sc.pools[SchoolClass], cs[2], SchoolYear)
+        end
+
         @testset "Removing a member" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
             victim = individuals(cs[1])[2]
