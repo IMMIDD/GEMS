@@ -785,6 +785,8 @@ function _assign_contact_sampling_method!(setting::Setting, csm::ContactSampling
     return setting.contact_sampling_method
 end
 
+# helpers: storage in setting_pool_methods.jl, plan entries in activity_plans.jl, scale bounds and
+# Simulation wrappers in setting_methods.jl
 """
     add_member!(setting::IndividualSetting, individual::Individual, pop::Population; primary::Bool = false, scale::Real = 1.0)
 
