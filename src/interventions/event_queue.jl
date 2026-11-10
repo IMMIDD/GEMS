@@ -13,7 +13,7 @@ current one, and the queue is drained in tick order. Individual events (`IMeasur
 and setting events (`SMeasureEvent`) are kept in separate, concretely-typed bucket vectors
 (`i_buckets`/`s_buckets`). `buckets[t + 1]` holds every event scheduled for tick `t`
 (ticks are 0-based). `enqueue!` is an `O(1)` `push!` into the relevant bucket; draining a
-tick pops over its buckets, setting events before individual events (each LIFO).
+tick walks over its buckets, setting events before individual events (each FIFO).
 
 A slot that has never been written to holds `nothing`; extending the outer array to reach a
 new tick fills any intermediate gap with `nothing` instead of allocating placeholder vectors
@@ -127,9 +127,9 @@ function Base.peek(eq::EventQueue)
     # setting events drain before individual events within a tick
     s_bucket = idx <= length(eq.s_buckets) ? eq.s_buckets[idx] : nothing
     if s_bucket !== nothing && !isempty(s_bucket)
-        return last(s_bucket)
+        return first(s_bucket)
     end
-    return last(eq.i_buckets[idx])
+    return first(eq.i_buckets[idx])
 end
 
 """
@@ -239,16 +239,16 @@ end
     dequeue!(queue::EventQueue)
 
 Removes and returns the next `Event` of the `EventQueue`. Within a tick, setting events are
-drained before individual events (each LIFO within its own bucket).
+drained before individual events (each FIFO within its own bucket).
 """
 function dequeue!(queue::EventQueue)
     _advance_head!(queue)
     idx = queue.head + 1
     s_bucket = idx <= length(queue.s_buckets) ? queue.s_buckets[idx] : nothing
     if s_bucket !== nothing && !isempty(s_bucket)
-        event = pop!(s_bucket)
+        event = popfirst!(s_bucket)
     else
-        event = pop!(queue.i_buckets[idx])
+        event = popfirst!(queue.i_buckets[idx])
     end
     queue.count -= 1
     return event
@@ -258,7 +258,7 @@ end
     process_due!(queue::EventQueue, sim, t)
 
 Drains and processes every event scheduled for a tick `<= t`, in tick order (setting events
-before individual events within a tick, each LIFO). Used by `process_events!` instead of
+before individual events within a tick, each FIFO). Used by `process_events!` instead of
 `dequeue!`: draining the concretely-typed buckets directly keeps `process_event` statically
 dispatched and avoids boxing each event into a `Union{IMeasureEvent, SMeasureEvent}` return.
 Re-entrantly scheduled events (follow-ups) are picked up by the surrounding loop. Buckets are
@@ -282,10 +282,14 @@ end
     idx <= length(buckets) || return nothing
     b = buckets[idx]
     (b === nothing || isempty(b)) && return nothing
-    while !isempty(b)
-        process_event(pop!(b), sim)
+    # FIFO: same-tick follow-ups pushed during processing are reached by the length check
+    i = 1
+    while i <= length(b)
+        process_event(b[i], sim)
         queue.count -= 1
+        i += 1
     end
+    empty!(b)
     return nothing
 end
 
