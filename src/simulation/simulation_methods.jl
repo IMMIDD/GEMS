@@ -769,6 +769,36 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     return _UpdateState(_next_update(indiv, infection_registry(sim, id(indiv)), sim.pathogens, tick), indiv)
 end
 
+"""
+    update_individuals!(sim::Simulation)
+
+Updates every active individual that has an update due and collects the infectious ones per thread for the transmission phase.
+"""
+function update_individuals!(sim::Simulation)
+    t = tick(sim)
+    inds = individuals(population(sim))
+    active = sim.active_individuals
+    states = sim.update_states
+    foreach(empty!, sim.infectious_individuals)
+    foreach(_reset!, sim.state_log_counts)
+    due(j) = @inbounds(active[j] && states[j].next_update <= t)
+    Threads.@threads :static for k in eachindex(inds)
+        _prefetch_flagged_ahead(due, inds, k)
+        @inbounds active[k] || continue
+        # only the pointer; an individual with nothing due is not read
+        i = @inbounds inds[k]
+        if due(k)
+            @inbounds states[k] = update_individual!(i, t, sim)
+            @inbounds active[k] = _stays_active(i)
+        end
+        s = @inbounds states[k]
+        # the transmission phase goes through exactly these
+        s.infectious && push!(sim.infectious_individuals[Threads.threadid()], i)
+        _count_for_state_log!(sim.state_log_counts[Threads.threadid()], i, s)
+    end
+    return nothing
+end
+
 # Prefetching for the loops over individuals: each one is a cache miss unless fetched ahead.
 
 # How many list positions ahead `_prefetch_listed_ahead` fetches individuals and their plan entries
@@ -806,36 +836,6 @@ const FLAGGED_PREFETCH_DISTANCE = 256
 @inline function _prefetch_flagged_ahead(flagged::F, inds::Vector{Individual}, k::Int) where {F}
     j = k + FLAGGED_PREFETCH_DISTANCE
     j <= length(inds) && flagged(j) && _prefetch(pointer_from_objref(@inbounds inds[j]), sizeof(Individual))
-    return nothing
-end
-
-"""
-    update_individuals!(sim::Simulation)
-
-Updates every active individual that has an update due and collects the infectious ones per thread for the transmission phase.
-"""
-function update_individuals!(sim::Simulation)
-    t = tick(sim)
-    inds = individuals(population(sim))
-    active = sim.active_individuals
-    states = sim.update_states
-    foreach(empty!, sim.infectious_individuals)
-    foreach(_reset!, sim.state_log_counts)
-    due(j) = @inbounds(active[j] && states[j].next_update <= t)
-    Threads.@threads :static for k in eachindex(inds)
-        _prefetch_flagged_ahead(due, inds, k)
-        @inbounds active[k] || continue
-        # only the pointer; an individual with nothing due is not read
-        i = @inbounds inds[k]
-        if due(k)
-            @inbounds states[k] = update_individual!(i, t, sim)
-            @inbounds active[k] = _stays_active(i)
-        end
-        s = @inbounds states[k]
-        # the transmission phase goes through exactly these
-        s.infectious && push!(sim.infectious_individuals[Threads.threadid()], i)
-        _count_for_state_log!(sim.state_log_counts[Threads.threadid()], i, s)
-    end
     return nothing
 end
 
