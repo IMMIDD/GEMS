@@ -405,6 +405,10 @@ function create_column_schema(df::DataFrame, float_tol=1e-6)
         setting_counts[f] = count(v -> v != Main.GEMS.DEFAULT_SETTING_ID, vals)
     end
     !isempty(setting_counts) && (schema.meta[:setting_base_count] = setting_counts)
+    # running maximum of the new setting ids staged per setting column (updated by
+    # `_check_staged_setting_id!`); lets the staging check stay O(1) instead of scanning
+    # and decoding every staged event
+    !isempty(setting_counts) && (schema.meta[:setting_max_new] = Dict{Symbol, Int32}())
     return schema
 end
 
@@ -510,6 +514,10 @@ by id without gaps (ids 1:N), so a staged value for a setting column (`household
 ("no setting") must be either one of the new ids already staged (e.g. another individual
 joining a setting that was created by an earlier event) or the next free id
 (`max(base ids, staged ids) + 1`). Anything else is a staging error.
+
+The running maximum of the staged new ids is kept in `schema.meta[:setting_max_new]`
+(updated on every successful staging), so the check is O(1) per staged event; the
+full-event scan only runs once as a fallback for injectors saved before the cache existed.
 """
 function _check_staged_setting_id!(injector::Injector, field::Symbol, value)
     base_counts = get(injector.schema.meta, :setting_base_count, nothing)
@@ -520,13 +528,18 @@ function _check_staged_setting_id!(injector::Injector, field::Symbol, value)
     v == Main.GEMS.DEFAULT_SETTING_ID && return nothing   # "no setting" — always allowed
     # the new ids already staged for this field (each of them was validated when staged,
     # so the range stays gap-free): only the maximum matters. Any of them may be
-    # referenced again by later events, and the next new id is max + 1.
-    fidx = injector.schema.field_to_index[field]
-    max_new = 0
-    for ev in injector.events
-        ev.field == fidx || continue
-        val = Int32(get_original_value(injector, ev))
-        val > n_base && (max_new = max(max_new, val))
+    # referenced again by later events, and the next new id is max + 1. The running max is
+    # cached in the schema meta (updated below on every successful staging); the event
+    # scan is only the fallback for injectors saved before the cache existed.
+    cached = get(injector.schema.meta, :setting_max_new, nothing)
+    max_new = cached === nothing ? 0 : get(cached, field, 0)
+    if cached === nothing
+        fidx = injector.schema.field_to_index[field]
+        for ev in injector.events
+            ev.field == fidx || continue
+            val = Int32(get_original_value(injector, ev))
+            val > n_base && (max_new = max(max_new, val))
+        end
     end
     next = (max_new == 0 ? Int32(n_base) : Int32(max_new)) + Int32(1)
     n_base < v <= next || throw(ArgumentError(
@@ -535,6 +548,12 @@ function _check_staged_setting_id!(injector::Injector, field::Symbol, value)
         "new id(s) already staged), so every id up to the maximum must be set: a staged new id must be " *
         "one of the already staged new ids (< $next) or the next new id ($next)."
     ))
+    # cache the new running maximum for the subsequent staging checks
+    if cached === nothing
+        cached = Dict{Symbol, Int32}()
+        injector.schema.meta[:setting_max_new] = cached
+    end
+    cached[field] = max(Int32(max_new), v)
     return nothing
 end
 

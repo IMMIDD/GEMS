@@ -127,6 +127,38 @@ end
     PI.stage_event!(inj, 4, :household, Int32(GEMS.DEFAULT_SETTING_ID), Int16(4))
     # existing base household ids remain valid
     PI.stage_event!(inj, 5, :household, Int32(3), Int16(5))
+
+    # the running max of the staged new ids is cached in the schema meta (O(1) checks)
+    @test inj.schema.meta[:setting_max_new][:household] == Int32(12)
+    # with the cache in place the rule is unchanged: staged new ids and the next new id pass
+    PI.stage_event!(inj, 6, :household, Int32(11), Int16(6))
+    PI.stage_event!(inj, 7, :household, Int32(13), Int16(7))
+    @test inj.schema.meta[:setting_max_new][:household] == Int32(13)
+    @test_throws ArgumentError PI.stage_event!(inj, 8, :household, Int32(15), Int16(8))
+end
+
+# Test 2c: pre-cache saved injectors fall back to the event scan, then re-cache
+@testset "Setting ID check without the meta cache (legacy saved injector)" begin
+    base_pop = DataFrame(
+        id = Int32.(1:20),
+        age = Int8.(repeat(18:21, inner = 5)[1:20]),
+        sex = Int8.(repeat([1, 2], inner = 10)[1:20]),
+        household = Int32.(repeat(1:5, inner = 4))
+    )
+    schema = PI.create_column_schema(base_pop)
+    inj = PI.Injector(schema)
+    PI.update_schema!(inj.schema, :household, vcat(Int32.([-1, 0]), Int32.(6:8)))
+    PI.stage_event!(inj, 1, :household, Int32(6), Int16(1))
+    PI.stage_event!(inj, 2, :household, Int32(7), Int16(2))
+
+    # simulate an injector saved before the setting_max_new cache existed
+    delete!(inj.schema.meta, :setting_max_new)
+    # the fallback event scan reconstructs the max: staged new ids and the next new id pass
+    PI.stage_event!(inj, 3, :household, Int32(7), Int16(3))
+    PI.stage_event!(inj, 4, :household, Int32(8), Int16(4))
+    # ...and the cache is populated again for subsequent checks
+    @test inj.schema.meta[:setting_max_new][:household] == Int32(8)
+    @test_throws ArgumentError PI.stage_event!(inj, 5, :household, Int32(10), Int16(5))
 end
 
 # Test 3: Encoding and decoding functionality
