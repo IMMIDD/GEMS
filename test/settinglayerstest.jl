@@ -66,7 +66,7 @@ merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), 
 struct OneSettingTest <: NewSettingsAssignment end
 GEMS._partition(::OneSettingTest, members, ctx, rng) = ones(Int32, length(members))
 struct LowestIdTest <: JoinAssignment end
-GEMS._join_state(::LowestIdTest, ctx) = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx).ids
+GEMS._join_state(::LowestIdTest, ctx) = _JoinCandidates(ctx.plans, ctx.inds, ctx.tidx).ids
 function GEMS._choose(::LowestIdTest, i, held, ids, ctx, rng)
     k = findfirst(!in(held), ids)
     return k === nothing ? Int32(0) : ids[k]
