@@ -286,6 +286,16 @@ Returns every slot in `store.entries` holding one of the individual's entries, e
     return off:(off + plan_length(individual) - 1)
 end
 
+# The largest id of a setting of type index `t` in any plan, 0 if none. Reads live blocks only,
+# since freed ones can hold stale ids.
+function _max_setting_id(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
+    m = Int32(0)
+    @inbounds for ind in inds, k in _type_slots(store, ind, t)
+        m = max(m, setting_id(store.entries[k]))
+    end
+    return m
+end
+
 # Calls `use` with the entry's setting as its concrete type.
 @inline _with_entry_setting(use::U, cntnr::SettingsContainer, e::PlanEntry) where {U} =
     _with_entry_settings(v -> use(v[setting_id(e)]), cntnr, e)
@@ -541,6 +551,79 @@ function _add_table_rows!(store::ActivityPlanStore, ind::Individual, rows, i::In
     return nothing
 end
 
+# Resolves the membership table to per-row (individual index, type index, setting id, primary, scale,
+# whether the row only scales the population row's entry). Errors on the first invalid row.
+function _membership_rows(pop::Population, table::DataFrame, column_tidx::Vector{UInt8}, column_ids::Vector{Vector{Int32}})
+    for c in (:id, :setting_type, :setting_id)
+        c in propertynames(table) || throw(ArgumentError("the membership table has no `$c` column"))
+    end
+    n = nrow(table)
+    ind = Vector{Int}(undef, n)
+    tidx = Vector{UInt8}(undef, n)
+    sid = Vector{Int32}(undef, n)
+    primary = :primary in propertynames(table) ? BitVector(Bool.(table.primary)) : falses(n)
+    has_scale = :scale in propertynames(table)
+    scale = has_scale ? Float64.(table.scale) : ones(n)
+    rescales = falses(n)
+    resolved = Dict{String, UInt8}()
+    primaries = Set{Tuple{Int, UInt8}}()
+    rescaled = Set{Tuple{Int, UInt8}}()
+
+    for r in 1:n
+        pid = table.id[r]
+        k = Int(pid) - Int(pop.minid) + 1
+        (1 <= k <= length(pop.id_map) && pop.id_map[k] > 0) || throw(ArgumentError(
+            "membership row $r names individual $pid, who is not in the population"))
+        ind[r] = Int(pop.id_map[k])
+
+        name = string(table.setting_type[r])
+        tidx[r] = get!(resolved, name) do
+            T = _resolve_setting_type(name)
+            T === nothing && throw(ArgumentError(
+                "membership row $r names setting type \"$name\", which does not exist"))
+            _holds_entries(T) || throw(ArgumentError(
+                "membership row $r names $T, whose settings hold no members directly"))
+            setting_type_index(T)
+        end
+
+        s = Int32(table.setting_id[r])
+        s > 0 || throw(ArgumentError("membership row $r has setting id $s; ids start at 1"))
+        sid[r] = s
+        0 <= scale[r] <= floatmax(Float16) || throw(ArgumentError(
+            "membership row $r has scale $(scale[r]); scales lie in [0, $(floatmax(Float16))]"))
+
+        w = findfirst(==(tidx[r]), column_tidx)
+        # with a scale column, a row naming the population row's own setting only scales it
+        if has_scale && w !== nothing && column_ids[w][ind[r]] == s
+            (ind[r], tidx[r]) in rescaled && throw(ArgumentError(
+                "membership row $r scales individual $pid's $name $s a second time"))
+            push!(rescaled, (ind[r], tidx[r]))
+            rescales[r] = true
+            continue
+        end
+
+        primary[r] || continue
+        (w === nothing || column_ids[w][ind[r]] == DEFAULT_SETTING_ID) || throw(ArgumentError(
+            "membership row $r makes $name $s the primary of individual $pid, whose population row already names one"))
+        (ind[r], tidx[r]) in primaries && throw(ArgumentError(
+            "membership row $r is a second primary $name for individual $pid"))
+        push!(primaries, (ind[r], tidx[r]))
+    end
+    return (ind = ind, tidx = tidx, sid = sid, primary = primary, scale = scale, rescales = rescales)
+end
+
+# A setting named twice would put the individual in its member list twice.
+function _check_repeated_entries(block, ind::Individual)
+    for a in eachindex(block), b in (a + 1):lastindex(block)
+        x = block[a]
+        y = block[b]
+        (setting_type_of(x) == setting_type_of(y) && setting_id(x) == setting_id(y)) || continue
+        throw(ArgumentError(
+            "individual $(id(ind)) is given $(setting_type_from_index(setting_type_of(x))) $(setting_id(x)) twice"))
+    end
+    return nothing
+end
+
 """
     assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false, scale::Real = 1.0)
 
@@ -557,6 +640,43 @@ function assign_settings!(pop::Population, individual::Individual, memberships::
         plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX, scale); primary = primary)
     end
     return pop
+end
+
+###
+### MEMBERSHIP TABLE
+###
+
+"""
+    memberships(pop::Population)
+
+Returns the memberships `dataframe(pop)` leaves out, one row per plan entry: `id`,
+`setting_type` (the type's name), `setting_id` and `scale`, in individual then plan order. That
+is every entry after the first of its type, every entry of a type without a membership column,
+and every scaled entry. Loading both tables back rebuilds the same plans.
+"""
+function memberships(pop::Population)
+    plans = activity_plans(pop)
+    column_tidx = map(setting_type_index, membership_setting_types(Individual))
+    ids = Int32[]
+    types = String[]
+    sids = Int32[]
+    scales = Float32[]
+    names = Dict{UInt8, String}()
+    for ind in individuals(pop)
+        prev = 0x00
+        for e in plan_entries(plans, ind)
+            t = setting_type_of(e)
+            # the population row holds only the first entry of each of its types, at scale 1; the rest go in the table
+            if t == prev || !(t in column_tidx) || entry_scale(e) != 1
+                push!(ids, id(ind))
+                push!(types, get!(() -> setting_type_name(setting_type_from_index(t)), names, t))
+                push!(sids, setting_id(e))
+                push!(scales, entry_scale(e))
+            end
+            prev = t
+        end
+    end
+    return DataFrame(id = ids, setting_type = types, setting_id = sids, scale = scales)
 end
 
 ###
@@ -721,126 +841,6 @@ function _max_addition_scale(a::_PlanAdditions)
         a.sids[k] == DEFAULT_SETTING_ID || (m = max(m, Float32(a.scales[k])))
     end
     return m
-end
-
-# The largest id of a setting of type index `t` in any plan, 0 if none. Reads live blocks only,
-# since freed ones can hold stale ids.
-function _max_setting_id(store::ActivityPlanStore, inds::Vector{Individual}, t::UInt8)
-    m = Int32(0)
-    @inbounds for ind in inds, k in _type_slots(store, ind, t)
-        m = max(m, setting_id(store.entries[k]))
-    end
-    return m
-end
-
-###
-### MEMBERSHIP TABLE
-###
-
-"""
-    memberships(pop::Population)
-
-Returns the memberships `dataframe(pop)` leaves out, one row per plan entry: `id`,
-`setting_type` (the type's name), `setting_id` and `scale`, in individual then plan order. That
-is every entry after the first of its type, every entry of a type without a membership column,
-and every scaled entry. Loading both tables back rebuilds the same plans.
-"""
-function memberships(pop::Population)
-    plans = activity_plans(pop)
-    column_tidx = map(setting_type_index, membership_setting_types(Individual))
-    ids = Int32[]
-    types = String[]
-    sids = Int32[]
-    scales = Float32[]
-    names = Dict{UInt8, String}()
-    for ind in individuals(pop)
-        prev = 0x00
-        for e in plan_entries(plans, ind)
-            t = setting_type_of(e)
-            # the population row holds only the first entry of each of its types, at scale 1; the rest go in the table
-            if t == prev || !(t in column_tidx) || entry_scale(e) != 1
-                push!(ids, id(ind))
-                push!(types, get!(() -> setting_type_name(setting_type_from_index(t)), names, t))
-                push!(sids, setting_id(e))
-                push!(scales, entry_scale(e))
-            end
-            prev = t
-        end
-    end
-    return DataFrame(id = ids, setting_type = types, setting_id = sids, scale = scales)
-end
-
-# Resolves the membership table to per-row (individual index, type index, setting id, primary, scale,
-# whether the row only scales the population row's entry). Errors on the first invalid row.
-function _membership_rows(pop::Population, table::DataFrame, column_tidx::Vector{UInt8}, column_ids::Vector{Vector{Int32}})
-    for c in (:id, :setting_type, :setting_id)
-        c in propertynames(table) || throw(ArgumentError("the membership table has no `$c` column"))
-    end
-    n = nrow(table)
-    ind = Vector{Int}(undef, n)
-    tidx = Vector{UInt8}(undef, n)
-    sid = Vector{Int32}(undef, n)
-    primary = :primary in propertynames(table) ? BitVector(Bool.(table.primary)) : falses(n)
-    has_scale = :scale in propertynames(table)
-    scale = has_scale ? Float64.(table.scale) : ones(n)
-    rescales = falses(n)
-    resolved = Dict{String, UInt8}()
-    primaries = Set{Tuple{Int, UInt8}}()
-    rescaled = Set{Tuple{Int, UInt8}}()
-
-    for r in 1:n
-        pid = table.id[r]
-        k = Int(pid) - Int(pop.minid) + 1
-        (1 <= k <= length(pop.id_map) && pop.id_map[k] > 0) || throw(ArgumentError(
-            "membership row $r names individual $pid, who is not in the population"))
-        ind[r] = Int(pop.id_map[k])
-
-        name = string(table.setting_type[r])
-        tidx[r] = get!(resolved, name) do
-            T = _resolve_setting_type(name)
-            T === nothing && throw(ArgumentError(
-                "membership row $r names setting type \"$name\", which does not exist"))
-            _holds_entries(T) || throw(ArgumentError(
-                "membership row $r names $T, whose settings hold no members directly"))
-            setting_type_index(T)
-        end
-
-        s = Int32(table.setting_id[r])
-        s > 0 || throw(ArgumentError("membership row $r has setting id $s; ids start at 1"))
-        sid[r] = s
-        0 <= scale[r] <= floatmax(Float16) || throw(ArgumentError(
-            "membership row $r has scale $(scale[r]); scales lie in [0, $(floatmax(Float16))]"))
-
-        w = findfirst(==(tidx[r]), column_tidx)
-        # with a scale column, a row naming the population row's own setting only scales it
-        if has_scale && w !== nothing && column_ids[w][ind[r]] == s
-            (ind[r], tidx[r]) in rescaled && throw(ArgumentError(
-                "membership row $r scales individual $pid's $name $s a second time"))
-            push!(rescaled, (ind[r], tidx[r]))
-            rescales[r] = true
-            continue
-        end
-
-        primary[r] || continue
-        (w === nothing || column_ids[w][ind[r]] == DEFAULT_SETTING_ID) || throw(ArgumentError(
-            "membership row $r makes $name $s the primary of individual $pid, whose population row already names one"))
-        (ind[r], tidx[r]) in primaries && throw(ArgumentError(
-            "membership row $r is a second primary $name for individual $pid"))
-        push!(primaries, (ind[r], tidx[r]))
-    end
-    return (ind = ind, tidx = tidx, sid = sid, primary = primary, scale = scale, rescales = rescales)
-end
-
-# A setting named twice would put the individual in its member list twice.
-function _check_repeated_entries(block, ind::Individual)
-    for a in eachindex(block), b in (a + 1):lastindex(block)
-        x = block[a]
-        y = block[b]
-        (setting_type_of(x) == setting_type_of(y) && setting_id(x) == setting_id(y)) || continue
-        throw(ArgumentError(
-            "individual $(id(ind)) is given $(setting_type_from_index(setting_type_of(x))) $(setting_id(x)) twice"))
-    end
-    return nothing
 end
 
 ###
