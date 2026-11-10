@@ -615,6 +615,17 @@ function remove_empty_settings!(sim::Simulation)
     new_setting_ids!(settingscontainer(sim))
 end 
 
+"""
+    contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
+
+Sets the setting's `ContactSamplingMethod` and raises the simulation's contact rate bound for its type to match.
+"""
+function contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
+    _assign_contact_sampling_method!(setting, csm)
+    _raise_rate_bound!(settingscontainer(sim), setting)
+    return setting.contact_sampling_method
+end
+
 
 ###
 ### SCALE BOUNDS
@@ -662,6 +673,22 @@ add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation;
     add_member!(setting, individual, population(sim); primary = primary, scale = scale)
 
 """
+    remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Removes a member, taking the population from the simulation.
+"""
+remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    remove_member!(setting, individual, population(sim))
+
+"""
+    mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Marks a member deceased, taking the population from the simulation.
+"""
+mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    mark_deceased!(setting, individual, population(sim))
+
+"""
     set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
 
 Makes setting `sid` the individual's primary setting of type `T`, taking the population from
@@ -687,30 +714,3 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
     !deceased && stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
     return nothing
 end
-
-"""
-    contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
-
-Sets the setting's `ContactSamplingMethod` and raises the simulation's contact rate bound for its type to match.
-"""
-function contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
-    _assign_contact_sampling_method!(setting, csm)
-    _raise_rate_bound!(settingscontainer(sim), setting)
-    return setting.contact_sampling_method
-end
-
-"""
-    remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
-
-Removes a member, taking the population from the simulation.
-"""
-remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
-    remove_member!(setting, individual, population(sim))
-
-"""
-    mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation)
-
-Marks a member deceased, taking the population from the simulation.
-"""
-mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
-    mark_deceased!(setting, individual, population(sim))
