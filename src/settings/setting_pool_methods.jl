@@ -176,6 +176,7 @@ function build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK
     end
     _check_contiguous_ids(cntnr)
     _check_parent_links!(cntnr)
+    _check_setting_fields(cntnr)
     types = [L for L in settingtypes_sorted(cntnr) if is_pooled_leaf(L) && !isempty(get(cntnr.settings, L, ()))]
     # the hierarchies share no settings, so their pools build in parallel
     tasks = [Threads.@spawn _build_pool!(cntnr, L, Float64(slack)) for L in types]
@@ -232,6 +233,21 @@ function _check_parent_links!(cntnr::SettingsContainer)
             filled += 1
         end
         filled > 0 && @warn "Filled $filled one-sided links between $K and $C settings from the other side"
+    end
+    return nothing
+end
+
+# The fields GEMS reads and writes on a user-defined setting type.
+const REQUIRED_SETTING_FIELDS = (:id, :individuals, :contact_sampling_method, :ags, :isopen, :deceased)
+
+# Errors if a user-defined setting type with settings lacks any of `REQUIRED_SETTING_FIELDS`.
+function _check_setting_fields(cntnr::SettingsContainer)
+    for T in settingtypes_sorted(cntnr)
+        (_holds_entries(T) && !(T in BUILTIN_SETTING_TYPES_SET) && !(T <: DeclaredSetting)) || continue
+        isempty(get(cntnr.settings, T, ())) && continue
+        missing_fields = [f for f in REQUIRED_SETTING_FIELDS if !hasfield(T, f)]
+        isempty(missing_fields) || error("setting type $T lacks the field(s) " *
+            join(("`$f`" for f in missing_fields), ", ") * " that GEMS needs; see the custom setting types docs")
     end
     return nothing
 end

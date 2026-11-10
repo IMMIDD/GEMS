@@ -8,6 +8,7 @@ import GEMS: try_to_infect!, spread_infections!, update_individual!, get_contain
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
     isopen::Bool = true
+    deceased::Int32 = 0
 end
 
 @testset "Infections" begin

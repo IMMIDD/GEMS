@@ -790,16 +790,15 @@ using GEMS
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(contactparameter = 1.0)
     ags::AGS = AGS()
     isopen::Bool = true
+    deceased::Int32 = 0
     # fields of your own
     opening_hours::Int8 = 12
 end
 ```
 
-GEMS writes these fields itself: it renumbers `id` when it builds the settings, sets `isopen` when a measure opens or closes a setting, and changes `individuals` when someone joins or leaves.
+GEMS writes these fields itself: it renumbers `id` when it builds the settings, sets `isopen` when a measure opens or closes a setting, changes `individuals` when someone joins or leaves, and counts members who died in `deceased`, which keeps them out of the contacts.
 Post-processing reads `ags` to locate infections.
-Two more fields are optional.
-Members can only have a contact `scale` above `1` if the struct has a `scale_bound::Float32` field.
-With a `deceased::Int32` field, members who die are moved out of the way; without it, they stay in the list and can still be drawn as contacts.
+One more field is optional: members can only have a contact `scale` above `1` if the struct has a `scale_bound::Float32` field.
 
 You don't need to register a struct type.
 A config section or a memberships file that names `Gym` finds it, and so does `assign_settings!` or a `SettingLayer` that uses it.

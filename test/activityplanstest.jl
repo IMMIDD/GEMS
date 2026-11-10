@@ -28,6 +28,7 @@ struct MaskTestContainer <: ContainerSetting end
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
     isopen::Bool = true
+    deceased::Int32 = 0
 end
 @with_kw mutable struct NameFoundSetting <: IndividualSetting
     id::Int32
@@ -35,8 +36,21 @@ end
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
     isopen::Bool = true
+    deceased::Int32 = 0
 end
 struct NeverUsedSetting <: IndividualSetting end
+# a custom type without the `deceased` field GEMS needs, and one with only an id and a sampling method (`add!` reads it)
+@with_kw mutable struct NoDeceasedSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+end
+@with_kw mutable struct IdOnlySetting <: IndividualSetting
+    id::Int32
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+end
 # a second type of the same name, as another package could define it
 module PlanTestOther
     using GEMS
@@ -236,6 +250,18 @@ end
             imported = import_resultdata(joinpath(dir, "resultdata.jld2"))
             @test setting_type_names(imported)["R"] == "RoundTripSetting"
             @test setting_type_names(imported)["N"] == "NameFoundSetting"
+        end
+    end
+
+    @testset "Custom setting types need the fields GEMS uses" begin
+        for (T, c, missing_fields) in ((NoDeceasedSetting, 'δ', "`deceased`"), (IdOnlySetting, 'ι', "`individuals`, `ags`, `isopen`, `deceased`"))
+            # own chars, since the default letters may be taken by types other tests registered
+            register_setting_type!(T; char = c)
+            sc = SettingsContainer()
+            add_types!(sc, [T])
+            GEMS.add!(sc, T(id = Int32(1)))
+            err = try GEMS.build_pools!(sc); nothing catch e; e end
+            @test err isa ErrorException && occursin(missing_fields, err.msg)
         end
     end
 
