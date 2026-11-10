@@ -6,7 +6,6 @@ export Setting, Geolocated, IndividualSetting, ContainerSetting
 export GlobalSetting, Household, Municipality, DeclaredSetting, Setting
 export SchoolComplex, School, SchoolYear, SchoolClass
 export Department, Office, WorkplaceSite, Workplace
-export settingchar, settingstring, setting_type_names
 export ContactSamplingMethod, contact_sampling_method, contact_sampling_method!
 export add!, remove!
 export add_member!, remove_member!, mark_deceased!
@@ -739,102 +738,6 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
     deceased::Int32 = 0
 
 end
-###
-### SETTING UTILS
-###
-# The log chars of the built-in types, and those `register_setting_type!` recorded for the others.
-const BUILTIN_SETTING_CHARS = ('h', 'm', 's', 'w', 'g', 'c', 'x', 'y', 'd', 'o', 'p')
-const SETTING_TYPE_CHARS = Dict{DataType, Char}()
-
-"""
-    settingchar(setting::Setting)
-
-Returns a character that represents the type of setting, or `'?'` for a type that isn't
-registered. The infection log also marks seed infections with `'?'`.
-"""
-function settingchar(setting::Setting)::Char
-    # a registered custom type's char, '?' for an unregistered one
-    return get(SETTING_TYPE_CHARS, typeof(setting), '?')
-end
-function settingchar(household::Household)::Char
-    return 'h'
-end
-function settingchar(municipality::Municipality)::Char
-    return 'm'
-end
-function settingchar(school::School)::Char
-    return 's'
-end
-function settingchar(workplace::Workplace)::Char
-    return 'w'
-end
-function settingchar(globalsetting::GlobalSetting)::Char
-    return 'g'
-end
-function settingchar(sc::SchoolClass)::Char
-    return 'c'
-end
-function settingchar(globalsetting::SchoolComplex)::Char
-    return 'x'
-end
-function settingchar(globalsetting::SchoolYear)::Char
-    return 'y'
-end
-function settingchar(department::Department)::Char
-    return 'd'
-end
-function settingchar(office::Office)::Char
-    return 'o'
-end
-function settingchar(workplaceSite::WorkplaceSite)::Char
-    return 'p'
-end
-"""
-    settingstring(c::Char)
-
-Returns a string that represents the type of setting based on a char that is returned from
-the function `settingchar`, or `"Unknown"` for a char no registered type has.
-"""
-function settingstring(c::Char)::String
-    if c == 'h'
-        return "Household"
-    elseif c == 's'
-        return "School"
-    elseif c == 'c'
-        return "Schoolclass"
-    elseif c == 'x'
-        return "Schoolcomplex"
-    elseif c == 'y'
-        return "Schoolyear"
-    elseif c == 'w'
-        return "Workplace"
-    elseif c == 'p'
-        return "WorkplaceSite"
-    elseif c == 'd'
-        return "Department"
-    elseif c == 'o'
-        return "Office"
-    elseif c == 'm'
-        return "Municipality"
-    elseif c == 'g'
-        return "GlobalSetting"
-    else
-        # a custom type's char, as `register_setting_type!` recorded it
-        for (T, tc) in SETTING_TYPE_CHARS
-            tc == c && return setting_type_name(T)
-        end
-        return "Unknown"
-    end
-end
-
-"""
-    setting_type_names()
-
-Returns every registered setting type's log char, as a string, mapped to its name as `settingstring`
-gives it. String keys keep the map hashable and exportable with the results.
-"""
-setting_type_names() = Dict{String, String}(string(c) => settingstring(c)
-    for c in Iterators.flatten((BUILTIN_SETTING_CHARS, values(SETTING_TYPE_CHARS))))
 
 ###
 ### GENERAL SETTING INTERFACE
