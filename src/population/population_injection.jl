@@ -1136,56 +1136,94 @@ function get_change_history(injector::Injector, ind_id::Integer, base_population
     verify_base_population_hashes(injector, base_population)
 
     # Create a copy of the base individual to avoid modifying it. Must be DataFrame() otherwise cannot add column
-    snapshot_df = DataFrame(deepcopy(base_population[ind_id, :]))
-    insertcols!(snapshot_df, 1, :timestamp => 0) #add timestamp column in first position
+    # newly added are not in original dataframe and separately handled
+    original_ind =  ind_id ∈ base_population.id
+    if original_ind
+        snapshot_df = DataFrame(deepcopy(base_population[ind_id, :]))
+        insertcols!(snapshot_df, 1, :timestamp => 0) # add timestamp column in first position
+    end
 
     # Find all events that occurred before or at the given timestamp
     relevant_events = filter(event -> event.ind_id == ind_id, injector.events)
 
-    if isempty(relevant_events)
+    if isempty(relevant_events) & original_ind
         return snapshot_df
+    elseif isempty(relevant_events)
+        @warn "No individual with specified ID contained in logger."
+        return
     end
 
     # Process events in chronological order
     sorted_events = sort(relevant_events, by=event -> event.timestamp)
 
+    # if not in original dataframe, must be newly added (newborn or immigration)
+    if !original_ind
+        creation = DataFrame(sorted_events)
+        creation_date = minimum(creation.timestamp)
+        creation_id = findall(creation.timestamp .== creation_date)
+
+        snapshot_df = DataFrame(
+            timestamp = creation_date,
+            id = creation.ind_id[1]
+        )
+    
+        # loop over staged events
+        for event in sorted_events[creation_id]
+            # Get field from the event
+            field_index = event.field
+            field_symbol = injector.schema.index_to_field[field_index+1]
+
+            if field_symbol in (:death, :death_reason)
+                if !hasproperty(snapshot_df, field_symbol)
+                    snapshot_df[!, field_symbol] .= Int8(-1)
+                end
+                snapshot_df[!, field_symbol] .= field_symbol === :death ? event.new_value : decode_value(injector, field_symbol, event.new_value)
+                snapshot_df.timestamp .= event.timestamp
+                continue
+            end
+
+            # Decode the value from the event
+            original_value = decode_value(injector, field_symbol, event.new_value)
+
+            # Update the snapshot dataframe
+            snapshot_df[!, field_symbol] .= original_value
+        end
+        sorted_events = sorted_events[Not(creation_id)]
+    end
+
     # should always update latest row. Initiate with original row
     tmp_df = copy(snapshot_df)
 
-    # Now process all events
-    for event in sorted_events
-        # Get field from the event
-        field_index = event.field
-        field_symbol = injector.schema.index_to_field[field_index+1]
+    # loop over days, since we return only integer timestamps
+    for events_this_day in groupby(DataFrame(sorted_events), :timestamp)
 
-        # Death events carry no value to decode (the timestamp was the day of death) — the
-        # event's alive/dead marker stands in for the value in the history table (the base
-        # row stays alive); a missing :death_reason column is created the same way, filled
-        # with the alive default.
-        if field_symbol in (:death, :death_reason)
-            if !hasproperty(snapshot_df, field_symbol)
-                snapshot_df[!, field_symbol] .= Int8(-1)
+        tmp_df.timestamp .= events_this_day.timestamp[1]
+
+        # Now process all events
+        for event in eachrow(events_this_day)
+            # Get field from the event
+            field_index = event.field
+            field_symbol = injector.schema.index_to_field[field_index+1]
+
+            if field_symbol in (:death, :death_reason)
+                if !hasproperty(snapshot_df, field_symbol)
+                    snapshot_df[!, field_symbol] .= Int8(-1)
+                end
+                if !hasproperty(tmp_df, field_symbol)
+                    tmp_df[!, field_symbol] .= Int8(-1)
+                end
+                tmp_df[!, field_symbol] .= field_symbol === :death ? event.new_value : decode_value(injector, field_symbol, event.new_value)
+            else
+                # Decode the value from the event
+                original_value = decode_value(injector, field_symbol, event.new_value)
+                # Update the snapshot dataframe
+                tmp_df[!, field_symbol] .= original_value
             end
-            if !hasproperty(tmp_df, field_symbol)
-                tmp_df[!, field_symbol] .= Int8(-1)
-            end
-            tmp_df[!, field_symbol] .= field_symbol === :death ? event.new_value : decode_value(injector, field_symbol, event.new_value)
-            tmp_df.timestamp .= event.timestamp
-            append!(snapshot_df, tmp_df)
-            continue
         end
-
-        # Decode the value from the event
-        original_value = decode_value(injector, field_symbol, event.new_value)
-
-       # Update the snapshot dataframe
-        tmp_df[!, field_symbol] .= original_value
-        tmp_df.timestamp .= event.timestamp
         append!(snapshot_df, tmp_df)
     end
     return snapshot_df
 end
-
 """
     save(injector, path)
 
