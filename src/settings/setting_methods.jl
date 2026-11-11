@@ -552,9 +552,13 @@ close!(setting::IndividualSetting, simulation::Simulation) = close!(setting)
 
 Removes all settings that have no individuals associated with them.
 In the end update all ids to ensure that they are still correspond to the
-entry in the settings container.
+entry in the settings container. Throws once the settings are built into pools.
 """
 function remove_empty_settings!(sim::Simulation)
+    cntnr = settingscontainer(sim)
+    # plan entries and pool layouts keep the old ids
+    (isempty(cntnr.pools) && isempty(cntnr.flat_pools)) || throw(ArgumentError(
+        "the settings are built already, and their members' plans name them by id; leave empty settings out of the population instead"))
     # Create a dictionary with the types as keys and the indices of the settings that should be removed as values
     rem_dict = Dict()
 

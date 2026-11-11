@@ -1371,21 +1371,16 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test GEMS.validate_plans(pop, cntnr)
         end
 
-        @testset "Removing an empty setting strands its slots" begin
+        @testset "Removing empty settings refuses built ones" begin
+            # renumbering would leave the plans and pools on the old ids
             sim = Simulation(pop_size = 200, seed = 1234)
             pop, cntnr = population(sim), GEMS.settingscontainer(sim)
-            hs = GEMS.settings(cntnr, Household)
-            pool = hs[1].flat_pool
-            emptied = hs[inner_index(hs)]
-            cap = Int(emptied.cap)
+            emptied = GEMS.settings(cntnr, Household)[1]
             while emptied.len > 0
                 remove_member!(emptied, individuals(emptied)[1], pop)
             end
-            remove_empty_settings!(sim)
-            @test !any(h -> h === emptied, GEMS.settings(cntnr, Household))
-            @test pool.dead == cap
-            # every slot of the pool is still either a setting's or stranded
-            @test GEMS._check_flat_ranges(GEMS.settings(cntnr, Household)) === nothing
+            @test_throws ArgumentError remove_empty_settings!(sim)
+            @test any(h -> h === emptied, GEMS.settings(cntnr, Household))
         end
 
         @testset "Deaths and closures stay inside the range" begin
