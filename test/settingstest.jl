@@ -1555,20 +1555,20 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test isempty(GEMS.present_members(cs[2], sc))
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
 
-            # closing the empty class takes nobody out, so the frame stays one span
-            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
+            # closing a class takes nobody out of the frames above it, so they stay one span
+            close!(cs[3])
             @test contiguous(GEMS.present_members(sch, sc))
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
-            open!(cs[2])
+            open!(cs[3])
 
-            # closing a middle class forces two runs with an empty leaf inside the first
-            close!(cs[3]); GEMS.repack_dirty_pools!(sc)
+            # a death in a middle class forces two runs with the empty class inside the first
+            GEMS._add_deceased!(cs[3], 1); GEMS.repack_dirty_pools!(sc)
             f = GEMS.present_members(sch, sc)
             @test !contiguous(f)
-            @test ids(f) == [1, 2, 3, 7, 8, 9]
+            @test ids(f) == [1, 2, 3, 4, 5, 7, 8, 9]
             # every index, not just the ends: a bad prefix shows up in the middle
-            @test [id(f[i]) for i in eachindex(f)] == [1, 2, 3, 7, 8, 9]
-            open!(cs[3])
+            @test [id(f[i]) for i in eachindex(f)] == [1, 2, 3, 4, 5, 7, 8, 9]
+            GEMS._add_deceased!(cs[3], -1); GEMS.repack_dirty_pools!(sc)
 
             # a container whose leaves are all empty is empty, not malformed
             for c in cs; while !isempty(individuals(c)); remove_member!(c, individuals(c)[1], pop); end; end
@@ -1777,11 +1777,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test length(GEMS.present_members(cs[2], sc)) == 1
             @test stays_exact(cs[2])
 
-            # a closed leaf is empty, while container positions still error
+            # a closed leaf is empty
             close!(cs[1])
             @test isempty(GEMS.present_members(cs[1], sc))
-            err = try; GEMS.container_frame_index(sc, ys[1], cs[2], 1); nothing; catch e; e; end
-            @test occursin("repack_dirty_pools!", sprint(showerror, err))
             @test stays_exact(cs[1])
         end
 
@@ -1798,22 +1796,50 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         end
 
         @testset "Closed descendants" begin
-            sc, cs, ys, sch, _, pop, plans = make_school()
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            scale(k, c) = GEMS._membership_scale(plans, inds[k], c, sc)
             close!(ys[2])
-            # a closure reshapes frames, so like a member edit it is unreadable until the repack
-            @test (try; GEMS.present_members(sch, sc); false; catch; true; end)
-            GEMS.repack_dirty_pools!(sc)
-            @test ids(GEMS.present_members(sch, sc)) == collect(1:6)
-            @test isempty(GEMS.present_members(ys[2], sc))
-            open!(ys[2]); GEMS.repack_dirty_pools!(sc)
+            # a closure reshapes no frame, so it needs no repack
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
             @test contiguous(GEMS.present_members(sch, sc))
+            @test isempty(GEMS.present_members(ys[2], sc))
+            # but the closed year's members no longer attend the school, which silences them on both sides
+            @test all(k -> scale(k, sch) == 0.0f0, 7:9)
+            @test all(k -> scale(k, sch) == 1.0f0, 1:6)
+            @test sch.closed_below == 1 && ys[1].closed_below == 0
+            open!(ys[2])
+            @test sch.closed_below == 0
+            @test all(k -> scale(k, sch) == 1.0f0, 1:9)
 
-            # a closed leaf in the middle leaves two runs, and must not leak its members
-            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
-            f = GEMS.present_members(sch, sc)
-            @test ids(f) == [1, 2, 3, 7, 8, 9]
-            @test !contiguous(f)
+            # a closed class counts in every container above it, and only there
+            close!(cs[2])
+            @test ys[1].closed_below == 1 && sch.closed_below == 1 && ys[2].closed_below == 0
+            @test all(k -> scale(k, sch) == 0.0f0 && scale(k, ys[1]) == 0.0f0, 4:6)
+            @test scale(1, ys[1]) == 1.0f0 && scale(7, ys[2]) == 1.0f0
+            close!(ys[1])
+            @test sch.closed_below == 2
+            open!(cs[2]); open!(ys[1])
+            @test sch.closed_below == 0 && ys[1].closed_below == 0
+        end
+
+        @testset "Closure counts" begin
+            sc, cs, ys, sch, inds, pop, plans = make_school()
+            close!(cs[3])
+            # a rebuild recounts the closures it finds rather than adding to the count
+            GEMS.build_pools!(sc)
+            @test ys[2].closed_below == 1 && sch.closed_below == 1
+            open!(cs[3])
+            @test ys[2].closed_below == 0 && sch.closed_below == 0
+
+            # the count stops at a year that sits under no school
+            orphan = SettingsContainer()
+            add_types!(orphan, [SchoolClass, SchoolYear])
+            c = SchoolClass(id = Int32(1), individuals = [Individual(id = Int32(1), age = 10, sex = 1)], contained = Int32(1))
+            y = SchoolYear(id = Int32(1), contains = Int32[1])
+            GEMS.add!(orphan, c); GEMS.add!(orphan, y)
+            GEMS.build_pools!(orphan)
+            close!(c)
+            @test y.closed_below == 1
         end
 
         @testset "Repeated members" begin
@@ -1859,22 +1885,24 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(sch, sc)) == collect(1:9)
         end
 
-        @testset "Promoting a repeat" begin
+        @testset "A closed class with a repeated member" begin
             sc, cs, ys, sch, inds, pop, plans = make_school()
             add_member!(cs[1], inds[4], pop)
             GEMS.repack_dirty_pools!(sc)
+            scale(k) = GEMS._membership_scale(plans, inds[k], ys[1], sc)
 
-            # dropping the class the kept copy sits in must not drop the member
-            close!(cs[1]); GEMS.repack_dirty_pools!(sc)
-            @test ids(GEMS.present_members(ys[1], sc)) == [4, 5, 6]
-            @test ids(GEMS.present_members(sch, sc)) == [4, 5, 6, 7, 8, 9]
+            # closing the class the kept copy sits in reshapes nothing, and the member still attends
+            close!(cs[1])
+            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+            @test scale(4) == 1.0f0
+            @test all(k -> scale(k) == 0.0f0, 1:3)
             open!(cs[1])
 
-            # the other way round the kept copy is the one that survives
-            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
-            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4]
-            open!(cs[2]); GEMS.repack_dirty_pools!(sc)
-            @test ids(GEMS.present_members(ys[1], sc)) == [1, 2, 3, 4, 5, 6]
+            # the other way round as well
+            close!(cs[2])
+            @test scale(4) == 1.0f0
+            @test all(k -> scale(k) == 0.0f0, 5:6)
+            open!(cs[2])
         end
 
         @testset "Deceased members" begin
@@ -1894,8 +1922,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.present_members(ys[2], sc)) == [7, 8]
             @test contiguous(GEMS.present_members(ys[2], sc))
 
-            close!(cs[2]); GEMS.repack_dirty_pools!(sc)
-            @test sort(ids(GEMS.present_members(sch, sc))) == [1, 3, 7, 8]
+            # a closure takes nobody out of the frame, unlike a death
+            close!(cs[2])
+            @test sort(ids(GEMS.present_members(sch, sc))) == [1, 3, 4, 5, 6, 7, 8]
             @test GEMS.validate_plans(pop, sc)
         end
 
@@ -1948,11 +1977,14 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test sum(length(p.blocks.dirty) for p in values(cntnr.pools)) >= 100
             repack_dirty_pools!(cntnr)
 
-            # every container holds what its leaves hold; `present_individuals` walks the leaves
-            # rather than reading the frames the repack wrote
+            # every open container holds the living members of its leaves, closed ones included, walked
+            # here through the leaves rather than read from the frames the repack wrote
+            living(s::IndividualSetting) = collect(view(individuals(s), 1:GEMS._alive(s)))
+            living(c::ContainerSetting) = reduce(vcat, (living(k) for k in settings(sim, GEMS.contains_type(typeof(c)))[c.contains]);
+                                                 init = Individual[])
             for T in (SchoolYear, School, SchoolComplex, Department, Workplace, WorkplaceSite)
                 @test all(c -> sort(unique(ids(GEMS.present_members(c, cntnr)))) ==
-                               sort(unique(ids(present_individuals(c, sim)))), settings(sim, T))
+                               (is_open(c) ? sort(unique(ids(living(c)))) : Int32[]), settings(sim, T))
             end
             @test GEMS.validate_plans(pop, cntnr)
         end

@@ -385,11 +385,13 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 
     # if closed, no contacts can happen here
     isopen::Bool = true
+    # how many settings below this one are closed
+    closed_below::Int32 = 0
 
     # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed or deceased
+    # set when a member sits in two leaves below or someone below has died
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -441,11 +443,13 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     ags::AGS = AGS()
     # if closed, no contacts can happen here
     isopen::Bool = true
+    # how many settings below this one are closed
+    closed_below::Int32 = 0
 
     # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed or deceased
+    # set when a member sits in two leaves below or someone below has died
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -495,11 +499,13 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 
     # if closed, no contacts can happen here
     isopen::Bool = true
+    # how many settings below this one are closed
+    closed_below::Int32 = 0
 
     # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed or deceased
+    # set when a member sits in two leaves below or someone below has died
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -551,11 +557,13 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 
     # if closed, no contacts can happen here
     isopen::Bool = true
+    # how many settings below this one are closed
+    closed_below::Int32 = 0
 
     # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed or deceased
+    # set when a member sits in two leaves below or someone below has died
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -605,11 +613,13 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     ags::AGS = AGS()
     # if closed, no contacts can happen here
     isopen::Bool = true
+    # how many settings below this one are closed
+    closed_below::Int32 = 0
 
     # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed or deceased
+    # set when a member sits in two leaves below or someone below has died
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span
@@ -662,11 +672,13 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     
     # if closed, no contacts can happen here
     isopen::Bool = true
+    # how many settings below this one are closed
+    closed_below::Int32 = 0
 
     # position of this setting's members in its hierarchy's HierarchicalSettingPool (0 = not pooled)
     pool_offset::Int32 = 0
     pool_length::Int32 = 0
-    # set when a member sits in two leaves below or something below is closed or deceased
+    # set when a member sits in two leaves below or someone below has died
     pool_runs::Union{Nothing, MemberRuns} = nothing
     pool::Union{Nothing, HierarchicalSettingPool} = nothing
     # upper bound on the scales of the members below, refreshed with the span

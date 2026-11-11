@@ -841,29 +841,24 @@ end
         for x in vcat(cs, [sy]); GEMS.add!(cntnr, x); end
         GEMS.build_pools!(cntnr)
 
-        # the derived index must agree with the member's actual position in the frame
+        # the derived index must agree with the member's actual position in the frame, closed classes included
         function check_all()
             frame = GEMS.present_members(sy, cntnr)
             for c in cs, (k, ind) in enumerate(individuals(c))
                 idx = container_frame_index(cntnr, sy, c, k)
-                if GEMS.is_open(c)
-                    @test idx != GEMS.DEFAULT_MEMBER_INDEX
-                    @test frame[idx] === ind
-                else
-                    @test idx == GEMS.DEFAULT_MEMBER_INDEX
-                end
+                @test idx != GEMS.DEFAULT_MEMBER_INDEX
+                @test frame[idx] === ind
             end
         end
 
         # nothing closed: one unbroken span
         check_all()
-        # a closed edge leaves one run; like a member edit, it shows after the repack
-        close!(cs[1]); GEMS.repack_dirty_pools!(cntnr)
+        # closed classes stay in the year's frame, which needs no repack for it
+        close!(cs[1])
         check_all()
-        # a closed middle leaves two
-        open!(cs[1]); close!(cs[2]); GEMS.repack_dirty_pools!(cntnr)
+        open!(cs[1]); close!(cs[2])
         check_all()
-        open!(cs[2]); GEMS.repack_dirty_pools!(cntnr)
+        open!(cs[2])
 
         # a closed container holds nobody
         close!(sy); GEMS.repack_dirty_pools!(cntnr)
@@ -902,13 +897,13 @@ end
         # the dropped copy has no position, which is what gives it one turn and not two
         @test container_frame_index(cntnr, sy, cs[2], 1) == GEMS.DEFAULT_MEMBER_INDEX
 
-        # closing the class the kept copy is in hands the position to the other
-        close!(cs[1]); GEMS.repack_dirty_pools!(cntnr)
-        frame = GEMS.present_members(sy, cntnr)
-        promoted = container_frame_index(cntnr, sy, cs[2], 1)
-        @test promoted != GEMS.DEFAULT_MEMBER_INDEX
-        @test frame[promoted] === inds[4]
-        @test container_frame_index(cntnr, sy, cs[1], 4) == GEMS.DEFAULT_MEMBER_INDEX
+        # closing the class the kept copy is in moves nothing, and the member still attends the year
+        # through the other class, while someone only in the closed class does not
+        close!(cs[1])
+        @test container_frame_index(cntnr, sy, cs[1], 4) == kept
+        @test container_frame_index(cntnr, sy, cs[2], 1) == GEMS.DEFAULT_MEMBER_INDEX
+        @test GEMS._membership_scale(plans, inds[4], sy, cntnr) == 1.0f0
+        @test GEMS._membership_scale(plans, inds[1], sy, cntnr) == 0.0f0
         open!(cs[1])
     end
 

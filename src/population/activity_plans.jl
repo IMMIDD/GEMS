@@ -321,30 +321,33 @@ end
 ###
 
 # nobody holds an entry for the GlobalSetting
-@inline _membership_scale(::ActivityPlanStore, ::Individual, ::GlobalSetting, ::SettingsContainer) = 1.0f0
+@inline _membership_scale(::ActivityPlanStore, ::Individual, ::GlobalSetting, ::SettingsContainer; ignore_closures::Bool = false) = 1.0f0
 
 @inline function _membership_scale(plans::ActivityPlanStore, individual::Individual, s::T,
-                                   ::SettingsContainer) where {T<:IndividualSetting}
+                                   ::SettingsContainer; ignore_closures::Bool = false) where {T<:IndividualSetting}
     individual.plan_scaled || return 1.0f0
     return _effective_scale(plans, plan_slot(plans, individual, T, id(s)))
 end
 
-# A container has no entry: the scales of the individual's open leaves below it, summed and capped at
-# the larger of 1 and the largest.
+# A container has no entry: the scales of the individual's leaves below it that are open up to it,
+# summed and capped at the larger of 1 and the largest. Tracing replays past days and passes `ignore_closures`.
 function _membership_scale(plans::ActivityPlanStore, individual::Individual, c::C,
-                           cntnr::SettingsContainer) where {C<:ContainerSetting}
-    individual.plan_scaled || return 1.0f0
+                           cntnr::SettingsContainer; ignore_closures::Bool = false) where {C<:ContainerSetting}
     L = _leaf_type(C)
+    # only a closure below `c` makes a leaf's openness matter
+    check_open = !ignore_closures && _closed_below(c) > 0
+    check_open || individual.plan_scaled || return 1.0f0
     slots = plan_slots(plans, individual, L)
     # a single leaf entry is the one that put the individual in c's frame
-    length(slots) == 1 && return _effective_scale(plans, first(slots))
+    !check_open && length(slots) == 1 && return _effective_scale(plans, first(slots))
     leaves = settings(cntnr, L)
     pool = _pool(c)::HierarchicalSettingPool
     # a closed container frames none of its leaves
-    pool.closed != 0 && !is_open(c) && return 0.0f0
+    !ignore_closures && pool.closed != 0 && !is_open(c) && return 0.0f0
     return _capped_scale_sum(plans, slots) do k
         e = @inbounds plans.entries[k]
-        _in_container_frame(c, pool, leaves[setting_id(e)], member_index(e))
+        leaf = leaves[setting_id(e)]
+        _in_container_frame(c, leaf, member_index(e)) && (!check_open || _open_up_to(pool, leaf, C))
     end
 end
 

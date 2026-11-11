@@ -469,8 +469,9 @@ function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, csm::Contac
     end
     plans = activity_plans(sim)
     cntnr = settingscontainer(sim)
-    # scales are read once, today: if a schedule switches entries off, an entry off today counts as off for the whole window
-    s_host = _membership_scale(plans, ind, s, cntnr)
+    # scales are read once, today, and closures are ignored: if a schedule switches entries off, an entry off
+    # today counts as off for the whole window
+    s_host = _membership_scale(plans, ind, s, cntnr; ignore_closures = true)
     scale_bound = _scale_bound(s)
     contacts = sim.contact_buffers[Threads.threadid()]
     draws = sim.draw_buffers[Threads.threadid()]
@@ -539,7 +540,7 @@ function _keep_by_scale!(contacts::Vector{Individual}, scale_bound::Float32,
         plans::ActivityPlanStore, s::Setting, cntnr::SettingsContainer, rng::Xoshiro)
     kept = 0
     for c in contacts
-        p = _membership_scale(plans, c, s, cntnr) / scale_bound
+        p = _membership_scale(plans, c, s, cntnr; ignore_closures = true) / scale_bound
         (p >= 1 || gems_rand(rng) < p) && (contacts[kept += 1] = c)
     end
     return resize!(contacts, kept)

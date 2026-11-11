@@ -520,9 +520,7 @@ function open!(setting::Setting)
     setting.isopen = true
     pool = _pool(setting)
     if pool !== nothing
-        _count_closed!(pool, -1)
-        # the containers above now hold different members, so their block is repacked
-        _mark_dirty!(pool, setting)
+        _count_closed!(pool, setting, -1)
     end
     return nothing
 end
@@ -553,9 +551,7 @@ function close!(setting::Setting)
     setting.isopen = false
     pool = _pool(setting)
     if pool !== nothing
-        _count_closed!(pool, +1)
-        # the containers above now hold different members, so their block is repacked
-        _mark_dirty!(pool, setting)
+        _count_closed!(pool, setting, +1)
     end
     return nothing
 end

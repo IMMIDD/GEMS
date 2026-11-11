@@ -17,7 +17,7 @@ const MemberSlice = SubArray{Individual, 1, Vector{Individual}, Tuple{UnitRange{
     MemberRuns
 
 A container's frame when it is not one span: a member sits in two of its leaves at once, or
-something below it is closed or holds deceased members. The frame skips those positions.
+something below it holds deceased members. The frame skips those positions.
 
 # Fields
 
@@ -25,8 +25,8 @@ something below it is closed or holds deceased members. The frame skips those po
     and has `prefix[r]` frame members before it; the last run ends at the frame's length. This
     is the encoding `MemberView` indexes with.
 - `groups::Vector{Int32}`: The pool positions of each repeated member, one group after another,
-    ascending within a group. The same refresh reads them to keep the first copy still present
-    when a closure or death takes out another.
+    ascending within a group. The same refresh reads them to keep the first copy still in the
+    frame when a death takes out another.
 - `bounds::Vector{Int32}`: Group `g` is `groups[bounds[g]:(bounds[g + 1] - 1)]`.
 """
 struct MemberRuns
@@ -43,8 +43,8 @@ const NO_RUNS = Int32[]
     MemberView
 
 A setting's present members, as a window onto its hierarchy's pool. Usually one unbroken span,
-described by `offset` and `len`. A container with closed descendants, deceased members or a member in
-two of its leaves needs several runs, and then `starts`/`prefix` describe them and indexing
+described by `offset` and `len`. A container with deceased members or a member in two of its
+leaves needs several runs, and then `starts`/`prefix` describe them and indexing
 binary-searches `prefix`.
 
 The result aliases real member storage, so writing to it edits membership.
@@ -205,8 +205,7 @@ Keeping that layout means repacking after edits; settings no container holds use
 
 - `members::Vector{Individual}`: Every member of every leaf, plus block slack and any space
     stranded by a relocation. Only the spans a leaf or container names are meaningful.
-- `closed::Int`: How many settings in this hierarchy are currently closed. Zero is the
-    common case and lets a repack skip looking for leaves a closure removes.
+- `closed::Int`: How many settings in this hierarchy are currently closed.
 - `deceased::Int`: Deceased members across its leaves. Zero lets a repack skip narrowing the
     frames.
 - `repeats::Int`: Memberships beyond an individual's first within one block. Only a repeated

@@ -12,8 +12,8 @@ export build_pools!, repack_dirty_pools!, present_members, container_frame_index
 
 The setting's present members, as an indexable view. Nothing is copied and nothing is built
 per tick: an open leaf and an all-open container are both a contiguous slice of the
-hierarchy pool, and only a container with closed descendants, deceased members or a repeated
-member needs run indexing.
+hierarchy pool, and only a container with deceased members or a repeated member needs run
+indexing. Members of closed settings stay in the frames of the containers above.
 
 Equal element for element to `present_individuals(setting, sim)`, except that a member in two
 leaves of one container appears once here and twice there.
@@ -39,7 +39,7 @@ function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     _check_clean(s, pool, _STALE_CONTAINER_HINT)
     is_open(s) || return MemberView(pool.members, Int32(1), Int32(0))
 
-    # the frame is stored as runs if a member repeats, or something below is closed or has dead members
+    # the frame is stored as runs if a member repeats or something below has dead members
     r = s.pool_runs
     # zero or one run is a plain slice
     (r === nothing || length(r.starts) <= 1) &&
@@ -50,12 +50,12 @@ end
 const _STALE_CONTAINER_HINT = " To read a container's members before then, use " *
     "`unique(present_individuals(setting, sim))`, which allocates and whose order and positions can differ from the frame's."
 
-# Edits, deaths, scale changes and opening or closing leave the containers' frames stale until the pool is
+# Edits, deaths and scale changes leave the containers' frames stale until the pool is
 # repacked, so container reads error until then. Leaves and `present_individuals` still read correctly.
 @inline function _check_clean(s::Setting, pool::HierarchicalSettingPool, hint::String = "")
     isempty(pool.blocks.dirty) || error(
-        "$(typeof(s)) belongs to a setting pool with changes not yet repacked: deaths, member edits, scale changes " *
-        "or opened or closed settings. Call `repack_dirty_pools!` before reading frames. The simulation repacks when " *
+        "$(typeof(s)) belongs to a setting pool with changes not yet repacked: deaths, member edits or scale " *
+        "changes. Call `repack_dirty_pools!` before reading frames. The simulation repacks when " *
         "transmission starts, which it skips on ticks with nothing to spread, so interventions and tick triggers can " *
         "meet a pool waiting for it." * hint)
     return nothing
@@ -70,14 +70,14 @@ end
 
 Returns the position in `container`'s frame of the member at `leaf_index` of `leaf`, or
 `DEFAULT_MEMBER_INDEX` when they are not in it. Reads the frame `present_members` hands out, so
-a member below a closed setting, and the dropped copy of a member in two leaves, have no
-position here.
+the dropped copy of a member in two leaves has no position here. Closures below `container` are
+left to `_membership_scale`.
 """
 function container_frame_index(::SettingsContainer, container::ContainerSetting,
                                leaf::IndividualSetting, leaf_index::Integer)::Int32
     pool = _pool(container)::HierarchicalSettingPool
     _check_clean(container, pool)
-    (is_open(container) && is_open(leaf)) || return DEFAULT_MEMBER_INDEX
+    is_open(container) || return DEFAULT_MEMBER_INDEX
 
     # the member's absolute position in the hierarchy pool
     p = Int(leaf.pool_offset) + Int(leaf_index) - 1
@@ -92,7 +92,7 @@ end
 
 ###
 ### MEMBER RUNS
-### Run arithmetic shared by the closed case and the repeated-member case, both of which turn
+### Run arithmetic shared by the deceased case and the repeated-member case, both of which turn
 ### a container's span into several runs.
 ###
 
@@ -140,8 +140,7 @@ function _drop_skips(starts::Vector{Int32}, prefix::Vector{Int32}, total::Int,
     return out_starts, out_prefix, kept
 end
 
-# Which repeats to drop given the open runs. The first copy still present is kept, so closing its leaf
-# keeps the member through the next copy.
+# Which repeats to drop given the frame's runs: every copy but the first one still in them.
 function _repeat_skips(r::MemberRuns, starts::Vector{Int32}, prefix::Vector{Int32}, total::Int)
     skips = Int32[]
     @inbounds for g in 1:(length(r.bounds) - 1)
@@ -288,6 +287,12 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
         c.pool = pool
         c.pool_offset, c.pool_length, c.pool_runs = Int32(0), Int32(0), nothing
         hasfield(typeof(c), :scale_bound) && (c.scale_bound = 1.0f0)
+        hasfield(typeof(c), :closed_below) && (c.closed_below = Int32(0))
+    end
+    # closures made before the build count too
+    foreach(l -> is_open(l) || _count_closed_above!(pool, l, 1), leaves)
+    for g in pool.container_groups, c in g.containers
+        is_open(c) || _count_closed_above!(pool, c, 1)
     end
     # counted once here; the edits keep it exact
     pool.repeats = _count_repeats(pool, leaves)
@@ -410,8 +415,8 @@ end
 
 ###
 ### PENDING CHANGES
-### What the next repack has to catch up on: the blocks edits, deaths, closures and scale changes
-### left stale, and how many settings are closed.
+### What the next repack has to catch up on: the blocks edits, deaths and scale changes left stale,
+### and how many settings are closed.
 ###
 
 # Queue a leaf's block. Idempotent, so k edits on one block cost one repack.
@@ -442,10 +447,21 @@ function _clear_dirty!(bl::PoolBlocks)
     return nothing
 end
 
-# `open!` and `close!` keep this in step; they only call it on a real state change.
-function _count_closed!(pool::HierarchicalSettingPool, delta::Int)
+# `open!` and `close!` keep the pool's count and every `closed_below` above `s` in step; they only call it on a
+# real state change.
+function _count_closed!(pool::HierarchicalSettingPool, s::Setting, delta::Int)
     pool.closed += delta
+    _count_closed_above!(pool, s, delta)
     return nothing
+end
+
+# Adds `delta` to `closed_below` of every container above `s`, stopping at a setting without a parent.
+function _count_closed_above!(pool::HierarchicalSettingPool, s::S, delta::Int) where {S<:Setting}
+    _has_container(s) || return nothing
+    P = contained_type(S)
+    parent = @inbounds (pool.container_groups[_container_depth(P)]::ContainerLevel{P}).containers[s.contained]
+    parent.closed_below += Int32(delta)
+    return _count_closed_above!(pool, parent, delta)
 end
 
 # Whether every setting of the hierarchy with leaf type `L` is open. `false` if `L` has no pool
@@ -468,8 +484,7 @@ end
 """
     repack_dirty_pools!(cntnr::SettingsContainer)
 
-Repack every pool left stale by a member edit, a death, a scale change, or a setting opened or closed,
-and compact every flat pool that moved settings have left a third stranded.
+Repack every pool left stale by a member edit, a death or a scale change, and compact every flat pool that moved settings have left a third stranded.
 Must run between such a change and the next read of `present_members`, so every reader of frames
 calls it first; `spread_infections!` does once per tick.
 Cheap when nothing changed. The dirty blocks of a pool are repacked in parallel.
@@ -747,18 +762,18 @@ end
     # a member in two leaves below sits in the span twice, and only the first copy counts
     runs, kept = pool.repeats == 0 ? (nothing, Int(len)) :
         _dup_runs(pool.members, Int(lo.pool_offset), Int(len), buf.dup_table)
-    if (pool.closed != 0 || pool.deceased != 0) && !_all_present(pool, leaves, r, C)
-        # a closure or death below takes members out of the frame
-        _set_present_frame!(c, r, pool, leaves, buf, runs)
+    if pool.deceased != 0 && !_all_present(leaves, r)
+        # a death below takes members out of the frame
+        _set_present_frame!(c, r, leaves, buf, runs)
     else
         c.pool_offset, c.pool_length, c.pool_runs = lo.pool_offset, Int32(kept), runs
     end
     return nothing
 end
 
-# Sets a container's frame to the living members of leaves open up to it; `present_members` handles
-# closures at and above it. `dup` is `_dup_runs`' frame, or `nothing` without repeats.
-function _set_present_frame!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingPool, leaves::Vector{T},
+# Sets a container's frame to the living members of its leaves. `dup` is `_dup_runs`' frame, or `nothing`
+# without repeats.
+function _set_present_frame!(c::C, r::UnitRange{Int}, leaves::Vector{T},
                              buf::RepackBuffer, dup::Union{Nothing, MemberRuns}) where {C<:ContainerSetting, T<:IndividualSetting}
     # built in the buffer, so a frame that stays one run allocates nothing
     starts = empty!(buf.run_starts); prefix = empty!(buf.run_prefix)
@@ -768,7 +783,7 @@ function _set_present_frame!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingP
         l = leaves[j]
         # deceased members sit at the end of the leaf, past its living ones
         n = Int(l.pool_length) - _deceased(l)
-        (n > 0 && _open_up_to(pool, l, C)) || continue
+        n > 0 || continue
         lo = Int(l.pool_offset)
         # a leaf that starts where the previous run ends extends it
         if lo != run_end
@@ -795,12 +810,11 @@ function _set_present_frame!(c::C, r::UnitRange{Int}, pool::HierarchicalSettingP
     return nothing
 end
 
-# Whether every leaf with members in the range is present in the frame of its ancestor of type `C`.
-function _all_present(pool::HierarchicalSettingPool, leaves::Vector{T}, r::UnitRange{Int},
-                      ::Type{C}) where {C<:ContainerSetting, T<:IndividualSetting}
+# Whether no leaf in the range holds deceased members.
+function _all_present(leaves::Vector{T}, r::UnitRange{Int}) where {T<:IndividualSetting}
     @inbounds for j in r
         l = leaves[j]
-        (l.pool_length == 0 || (_deceased(l) == 0 && _open_up_to(pool, l, C))) || return false
+        (l.pool_length == 0 || _deceased(l) == 0) || return false
     end
     return true
 end
@@ -1067,6 +1081,9 @@ end
 # whether the member at position `idx` is deceased
 @inline _is_deceased(s::IndividualSetting, idx::Integer) = _deceased(s) > 0 && idx > _alive(s)
 
+# how many settings below `c` are closed; none for a type without the field
+@inline _closed_below(c::C) where {C<:ContainerSetting} = hasfield(C, :closed_below) ? Int(c.closed_below) : 0
+
 # Whether `s` sits under a container: its type has a parent level and its `contained` id is set.
 # `hasfield` folds on a concrete type, so a type without a parent compiles to `false`.
 @inline _has_container(s::S) where {S<:Setting} = hasfield(S, :contained) && s.contained != DEFAULT_SETTING_ID
@@ -1093,7 +1110,7 @@ function _open_up_to(pool::HierarchicalSettingPool, s::S, ::Type{C}) where {S<:S
     return _open_up_to(pool, @inbounds(lv.containers[s.contained]), C)
 end
 
-# Whether the member at `idx` of `leaf` is in `c`'s frame: alive, in a leaf below `c` and open up to it.
-# `c`'s own closure is not checked.
-@inline _in_container_frame(c::C, pool::HierarchicalSettingPool, leaf::IndividualSetting, idx::Integer) where {C<:ContainerSetting} =
-    Int(leaf.pool_leaf) in _leaf_range(c) && (pool.closed == 0 || _open_up_to(pool, leaf, C)) && !_is_deceased(leaf, idx)
+# Whether the member at `idx` of `leaf` is in `c`'s frame: alive and in a leaf below `c`. Closures are left to
+# `_membership_scale`.
+@inline _in_container_frame(c::C, leaf::IndividualSetting, idx::Integer) where {C<:ContainerSetting} =
+    Int(leaf.pool_leaf) in _leaf_range(c) && !_is_deceased(leaf, idx)
