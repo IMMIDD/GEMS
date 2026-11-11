@@ -200,6 +200,7 @@ Create an individual with the provided properties. Properties must *have at leas
 `id`, `sex`, `age`.
 """
 function Individual(properties::Dict)::Individual
+    _check_no_memberships(keys(properties))
     ind = Individual(id=properties["id"], sex=properties["sex"], age=properties["age"])
 
     # set every field that is provided by properties
@@ -220,7 +221,18 @@ Create an individual with the provided properties. Properties must *have at leas
 `id`, `sex`, `age`.
 """
 function Individual(properties::DataFrameRow)::Individual
-    return Individual(; (Symbol(k) => v for (k, v) in pairs(properties))...)
+    _check_no_memberships(names(properties))
+    # derived state, as the Dict constructor leaves it out too
+    return Individual(; (Symbol(k) => v for (k, v) in pairs(properties) if !(Symbol(k) in _INDIVIDUAL_DERIVED_FIELDS))...)
+end
+
+# Throws if `cols` name membership columns: an `Individual` holds no settings, a `Population` builds them.
+function _check_no_memberships(cols)
+    reserved = map(membership_column, membership_setting_types(Individual))
+    found = [String(c) for c in cols if Symbol(c) in reserved]
+    isempty(found) || throw(ArgumentError(
+        "`$(join(found, "`, `"))` name settings, which an individual does not hold; build a `Population` from the table to keep them"))
+    return nothing
 end
 
 

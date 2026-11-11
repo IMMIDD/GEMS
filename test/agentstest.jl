@@ -605,6 +605,9 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
         # fields absent from dict keep their defaults
         @test education(i) == -1
         @test occupation(i) == -1
+
+        # a membership key used to set a field; now only a `Population` builds memberships
+        @test_throws ArgumentError Individual(Dict("id" => 3, "sex" => 1, "age" => 30, "household" => 3))
     end
 
     @testset "DataFrameRow Constructor" begin
@@ -625,6 +628,12 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
         i2 = Individual(df[2, :])
         @test id(i2) == Int32(2)
         @test occupation(i2) == Int8(2)
+
+        # a row of `dataframe(pop)` carries membership columns, which only a `Population` turns into settings
+        pop = Population(DataFrame(id = Int32[1], age = Int8[30], sex = Int8[1], household = Int32[1]))
+        @test_throws ArgumentError Individual(dataframe(pop)[1, :])
+        # derived columns are left out, as the Dict constructor does
+        @test Individual(hcat(df, DataFrame(plan_count = Int8[3, 3]))[1, :]).plan_count == 0
     end
 
     @testset "show" begin
