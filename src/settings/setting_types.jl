@@ -211,6 +211,26 @@ function setting_type_from_index(idx::Integer)
     return EXTRA_SETTING_TYPES[extra]
 end
 
+# `T`'s rank among `cntnr`'s types, which orders same-tick infections whatever was registered before.
+@inline function _type_rank(cntnr::SettingsContainer, ::Type{T})::UInt8 where {T<:Setting}
+    t = setting_type_index(T)
+    return t <= _N_BUILTIN_SETTING_TYPES ? t : @inbounds cntnr.type_ranks[t]
+end
+
+# Ranks `cntnr`'s types after one is added: built-ins keep their index, the others follow in name order.
+function _rank_types!(cntnr::SettingsContainer)
+    others = sort!([T for T in keys(cntnr.settings) if T <: Setting && !(T in BUILTIN_SETTING_TYPES_SET)];
+                   by = setting_type_name)
+    ranks = cntnr.type_ranks
+    isempty(others) && return ranks
+    n = maximum(T -> Int(setting_type_index(T)), others)
+    length(ranks) < n && append!(ranks, zeros(UInt8, n - length(ranks)))
+    for (k, T) in enumerate(others)
+        ranks[setting_type_index(T)] = _N_BUILTIN_SETTING_TYPES + UInt8(k)
+    end
+    return ranks
+end
+
 """
     setting_type_name(::Type{T}) where {T<:Setting}
 

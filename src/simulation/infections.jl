@@ -114,7 +114,7 @@ function _spread_in!(setting::Setting, frame_pos::Int, ind::Individual, sim::Sim
     end
 
     # every contact passed `can_be_contacted` when it was sampled
-    type_rank = setting_type_index(typeof(setting))
+    type_rank = _type_rank(cntnr, typeof(setting))
     for c in contacts
         _try_to_infect!(ind, c, sim, setting, bounds, thin, Int32(frame_pos), type_rank)
     end
@@ -396,7 +396,7 @@ is staged for `flush_pending_infections!`, which assigns its id and logs it; ret
 - `setting_type::Char`: Setting type as char (e.g. 'h' for `Household`)
 - `source_infection_id::Int32`: Current infection ID of the infecting individual
 - `infecter_position::Int32`: Infecting individual's index in the setting's `living_members`
-- `type_rank::UInt8`: Index of the setting's type. With the setting id and `infecter_position`, it picks
+- `type_rank::UInt8`: Rank of the setting's type among the container's types. With the setting id and `infecter_position`, it picks
   which infection is kept when an individual is infected twice in one tick
 """
 function infect!(infectee::Individual,

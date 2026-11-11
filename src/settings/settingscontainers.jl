@@ -30,6 +30,8 @@ mutable struct SettingsContainer
     flat_pools::Dict{DataType, FlatSettingPool}
     # per setting type index, at least the `contact_rate_bound` of each setting's method; Inf until scanned
     rate_bounds::Vector{Float64}
+    # per setting type index, its rank among this container's types: built-ins by index, then the rest by name
+    type_ranks::Vector{UInt8}
 end
 
 
@@ -44,7 +46,7 @@ Return a empty container object.
 """
 function SettingsContainer()
     return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
-        Dict{DataType, FlatSettingPool}(), Float64[])
+        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[])
 end
 
 
@@ -62,6 +64,7 @@ function add_type!(container::SettingsContainer, settingtype::DataType)
     end
     if !haskey(container.settings, settingtype)
         container.settings[settingtype] = Vector{settingtype}()
+        settingtype <: Setting && _rank_types!(container)
     end
 end
 

@@ -265,6 +265,22 @@ end
         end
     end
 
+    @testset "Custom setting types are ranked by name in each container" begin
+        # registered against name order, with own chars since the default letters may be taken
+        zed = declare_setting_type!("RankZed"; char = 'ζ')
+        alpha = declare_setting_type!("RankAlpha"; char = 'α')
+        n = GEMS._N_BUILTIN_SETTING_TYPES
+        both = SettingsContainer()
+        add_types!(both, [Household, zed, alpha])
+        @test GEMS._type_rank(both, Household) == setting_type_index(Household)
+        @test GEMS._type_rank(both, alpha) == n + 1
+        @test GEMS._type_rank(both, zed) == n + 2
+        # another container ranks only its own types
+        one = SettingsContainer()
+        add_types!(one, [zed])
+        @test GEMS._type_rank(one, zed) == n + 1
+    end
+
     @testset "Declared setting types" begin
         # a config section declares a type no struct defines, with its own sampling method
         cfg = TOML.parsefile(joinpath(pkgdir(GEMS), "data", "DefaultConf.toml"))
