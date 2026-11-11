@@ -1902,16 +1902,57 @@ import GEMS: increment!, infected!
         @test GEMS._deceased(gs) == length(dead_inds)
         @test GEMS.validate_plans(population(sim), cntnr)
 
-        # a reset brings them back, the GlobalSetting in population order
+        # a reset brings them back, every setting in population order
         reset!(sim)
+        pop_order = i -> GEMS._individual_index(population(sim), id(i))
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
             s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
             @test d in GEMS.living_members(s, cntnr)
+            @test issorted(individuals(s); by = pop_order)
         end
         @test length(GEMS.living_members(gs, cntnr)) == length(inds)
         @test isempty(gs.moved_positions)
         @test GEMS._check_global_positions(population(sim), cntnr) === nothing
         @test GEMS.validate_plans(population(sim), cntnr)
+    end
+
+    @testset "A run after reset! repeats the first run" begin
+        sim = Simulation(pop_size = 2000, seed = 3, global_setting = true)
+        run!(sim)
+        first_run = dataframe(infectionlogger(sim))
+        # deaths reorder the settings, which the reset has to undo
+        @test length(deathlogger(sim)) > 0
+        reset!(sim)
+        run!(sim)
+        @test dataframe(infectionlogger(sim)) == first_run
+    end
+
+    @testset "reset! sorts settings edited after construction" begin
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+        sim = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+            settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+            infected_fraction = 0.0, seed = 2)
+        cntnr = settingscontainer(sim)
+        plans = GEMS.activity_plans(sim)
+        pop_order = i -> GEMS._individual_index(population(sim), id(i))
+        # the first member of one class joins another class of its year, at the end, so the year
+        # holds them twice and the class is out of population order
+        classes, years = settings(sim, SchoolClass), settings(sim, SchoolYear)
+        y = years[findfirst(y -> length(y.contains) > 1, years)]
+        c1, c2 = classes[y.contains[1]], classes[y.contains[2]]
+        h = individuals(c1)[1]
+        @test pop_order(h) < pop_order(last(individuals(c2)))
+        add_member!(c2, h, sim)
+        @test !issorted(individuals(c2); by = pop_order)
+
+        reset!(sim)
+        @test issorted(individuals(c2); by = pop_order)
+        @test plans.membership_edits == 0
+        @test GEMS.validate_plans(population(sim), cntnr)
+        # the year's frame follows the sorted class: a full repack changes nothing
+        frame = copy(GEMS.living_members(y, cntnr))
+        GEMS._repack_all!(cntnr.pools[SchoolClass])
+        @test GEMS.living_members(y, cntnr) == frame
     end
 
     @testset "GlobalSetting deaths move members only within it" begin

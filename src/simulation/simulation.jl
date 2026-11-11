@@ -2882,12 +2882,11 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # the dead are alive again, so they return to their settings' frames
     plans = activity_plans(simulation)
     gs = get(settingscontainer(simulation).settings, GlobalSetting, nothing)
-    (gs === nothing || isempty(gs)) || _restore_population_order!(gs[1], population(simulation))
-    foreach_setting_vector(settingscontainer(simulation)) do vec
-        for s in vec
-            s isa IndividualSetting && _clear_deceased!(s, plans)
-        end
+    if !(gs === nothing || isempty(gs))
+        _restore_population_order!(gs[1], population(simulation))
+        _clear_deceased!(gs[1], plans)
     end
+    _restore_member_order!(simulation)
     repack_dirty_pools!(settingscontainer(simulation))
     foreach(empty!, simulation.newly_dead)
     # a run stopped mid-tick may leave staged infections and recoveries behind
@@ -2939,6 +2938,47 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # Initialize the simulation's start condition
     initialize!(simulation)
+end
+
+# Puts the leaves a run reordered back in population order for `reset!`: those with deaths, and every
+# leaf after membership edits. Split like `apply_deaths!`, so no two tasks share a pool.
+function _restore_member_order!(sim::Simulation)
+    cntnr = settingscontainer(sim)
+    plans = activity_plans(sim)
+    edited = plans.membership_edits > 0
+    parts = Tuple{DataType, Int, Int}[]
+    for T in settingtypes(cntnr)
+        (T <: IndividualSetting && T !== GlobalSetting) || continue
+        n = hasfield(T, :pool) ? 1 : Threads.nthreads()
+        append!(parts, ((T, p, n) for p in 0:(n - 1)))
+    end
+    Threads.@threads :dynamic for (T, part, n) in parts
+        _restore_member_order!(sim, settings(cntnr, T), part, n, edited)
+    end
+    plans.membership_edits = 0
+    return nothing
+end
+
+# The leaves of one type with `id % n == part`.
+function _restore_member_order!(sim::Simulation, stngs::Vector{T}, part::Int, n::Int, edited::Bool) where {T<:IndividualSetting}
+    plans = activity_plans(sim)
+    pop = population(sim)
+    keys, perm, buf = Int32[], Int[], Individual[]
+    for s in stngs
+        id(s) % n == part || continue
+        dead = _deceased(s) > 0
+        (dead || edited) || continue
+        moved = _sort_members!(s, plans, pop, keys, perm, buf)
+        if dead
+            # also dirties the pool, refreshes the scale bound and notifies the sampling method
+            _clear_deceased!(s, plans)
+        elseif moved
+            pool = _pool(s)
+            pool === nothing || _mark_dirty!(pool, s)
+            membership_changed!(contact_sampling_method(s), s)
+        end
+    end
+    return nothing
 end
 
 """

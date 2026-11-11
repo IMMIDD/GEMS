@@ -906,6 +906,34 @@ function _swap_members!(s::T, i::Int, j::Int, plans) where {T<:IndividualSetting
     return nothing
 end
 
+# Puts the members back in population order, as the constructor built them, and repoints the entries
+# of those that moved. Returns whether any moved. `keys`, `perm` and `buf` are scratch.
+function _sort_members!(s::T, plans, pop::Population, keys::Vector{Int32}, perm::Vector{Int},
+                        buf::Vector{Individual}) where {T<:IndividualSetting}
+    v = individuals(s)
+    m = length(v)
+    resize!(keys, m)
+    @inbounds for k in 1:m
+        keys[k] = Int32(_individual_index(pop, id(v[k])))
+    end
+    issorted(keys) && return false
+    resize!(perm, m)
+    # QuickSort needs no scratch buffer; the keys are unique, so stability doesn't matter
+    sortperm!(perm, keys; alg = QuickSort)
+    resize!(buf, m)
+    copyto!(buf, v)
+    sid = id(s)
+    @inbounds for k in 1:m
+        j = perm[k]
+        j == k && continue
+        member = buf[j]
+        v[k] = member
+        slot = plan_slot(plans, member, T, sid)
+        slot == 0 || plan_set_member_index!(plans, slot, k)
+    end
+    return true
+end
+
 # returns the deceased to the setting's frame, for a simulation that is reset
 function _clear_deceased!(s::IndividualSetting, plans)
     _deceased(s) == 0 && return nothing

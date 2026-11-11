@@ -93,9 +93,11 @@ mutable struct ActivityPlanStore <: AbstractActivityPlanStore
     indexed::Bool
     # per setting type index, at least 1 and every scale an entry of that type holds
     scale_bounds::Vector{Float32}
+    # entries added or removed since `reset!` last put the settings back in population order
+    membership_edits::Int
 end
 
-ActivityPlanStore() = ActivityPlanStore(PlanEntry[], BitVector(), Vector{Int32}[], false, Float32[])
+ActivityPlanStore() = ActivityPlanStore(PlanEntry[], BitVector(), Vector{Int32}[], false, Float32[], 0)
 
 Base.length(plans::ActivityPlanStore) = length(plans.entries)
 Base.isempty(plans::ActivityPlanStore) = isempty(plans.entries)
@@ -968,6 +970,8 @@ function plan_add!(plans::ActivityPlanStore, individual::Individual, entry::Plan
     individual.plan_count = Int8(n + 1)
     _mask_slot(tidx) != 0 && (individual.membership_mask |= _membership_bit(tidx))
     entry_scale(entry) != 1 && (individual.plan_scaled = true)
+    # before indexing, no setting holds the members yet
+    plans.indexed && (plans.membership_edits += 1)
     return nothing
 end
 
@@ -1008,6 +1012,7 @@ function plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::In
         individual.membership_mask &= ~_membership_bit(tidx)
     end
     scaled && _refresh_plan_scaled!(plans, individual)
+    plans.indexed && (plans.membership_edits += 1)
     return true
 end
 
