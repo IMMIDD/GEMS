@@ -254,15 +254,15 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
     end
 
     blocks = _build_blocks(length(leaves), ranges, slack)
-    groups = Any[]
+    levels = Any[]
     for (k, C) in enumerate(container_chain(L))
         ptr, idx = _block_containers(ranges[k], blocks, C)
-        push!(groups, ContainerLevel(settings(cntnr, C), ranges[k], ptr, idx))
+        push!(levels, ContainerLevel(settings(cntnr, C), ranges[k], ptr, idx))
     end
 
-    closed = count(!is_open, leaves) + sum(g -> count(!is_open, g.containers), groups; init = 0)
+    closed = count(!is_open, leaves) + sum(lv -> count(!is_open, lv.containers), levels; init = 0)
     deceased = sum(_deceased, leaves; init = 0)
-    pool = HierarchicalSettingPool(leaves, Tuple(groups), blocks, closed, deceased)
+    pool = HierarchicalSettingPool(leaves, Tuple(levels), blocks, closed, deceased)
 
     # detach first, or a rebuilt leaf reads its old offsets from the new, empty pool
     for (i, l) in enumerate(leaves)
@@ -271,7 +271,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
         l.pool_leaf = Int32(i)
     end
     # every frame starts empty; the repack fills those of containers with leaves, the rest stay empty
-    for g in pool.container_groups, c in g.containers
+    for lv in pool.container_levels, c in lv.containers
         c.pool = pool
         c.pool_offset, c.pool_length, c.pool_runs = Int32(0), Int32(0), nothing
         hasfield(typeof(c), :scale_bound) && (c.scale_bound = 1.0f0)
@@ -279,7 +279,7 @@ function _build_pool!(cntnr::SettingsContainer, ::Type{L}, slack::Float64) where
     end
     # closures made before the build count too
     foreach(l -> is_open(l) || _count_closed_above!(pool, l, 1), leaves)
-    for g in pool.container_groups, c in g.containers
+    for lv in pool.container_levels, c in lv.containers
         is_open(c) || _count_closed_above!(pool, c, 1)
     end
     # counted once here; the edits keep it exact
@@ -447,7 +447,7 @@ end
 function _count_closed_above!(pool::HierarchicalSettingPool, s::S, delta::Int) where {S<:Setting}
     _has_container(s) || return nothing
     P = contained_type(S)
-    parent = @inbounds (pool.container_groups[_container_depth(P)]::ContainerLevel{P}).containers[s.contained]
+    parent = @inbounds (pool.container_levels[_container_depth(P)]::ContainerLevel{P}).containers[s.contained]
     parent.closed_below += Int32(delta)
     return _count_closed_above!(pool, parent, delta)
 end
@@ -562,7 +562,7 @@ function _foreach_block!(work::F, pool::HierarchicalSettingPool, blocks::Abstrac
     nt = min(Threads.nthreads(), length(blocks))
     if nt <= 1
         # a single task runs inline, off the scheduler
-        _claim_blocks!(work, pool, pool.leaves, blocks, next, pool.buffer, pool.container_groups...)
+        _claim_blocks!(work, pool, pool.leaves, blocks, next, pool.buffer, pool.container_levels...)
     else
         buffers = pool.task_buffers
         length(buffers) < nt && resize!(buffers, nt)
@@ -570,7 +570,7 @@ function _foreach_block!(work::F, pool::HierarchicalSettingPool, blocks::Abstrac
         Threads.@threads :dynamic for t in 1:nt
             # made by the task that uses it, so no two tasks write to one cache line
             isassigned(buffers, t) || (buffers[t] = RepackBuffer())
-            _claim_blocks!(work, pool, pool.leaves, blocks, next, buffers[t], pool.container_groups...)
+            _claim_blocks!(work, pool, pool.leaves, blocks, next, buffers[t], pool.container_levels...)
         end
     end
     return nothing
@@ -1076,11 +1076,11 @@ end
 
 # c's leaves, as the range of its pool's leaves `_build_pool!` recorded for it
 @inline function _leaf_range(c::C) where {C<:ContainerSetting}
-    level = (_pool(c)::HierarchicalSettingPool).container_groups[_container_depth(C)]::ContainerLevel{C}
+    level = (_pool(c)::HierarchicalSettingPool).container_levels[_container_depth(C)]::ContainerLevel{C}
     return @inbounds level.ranges[id(c)]
 end
 
-# levels above the leaf type, which is C's position in `container_groups`
+# levels above the leaf type, which is C's position in `container_levels`
 _container_depth(::Type{T}) where {T<:IndividualSetting} = 0
 _container_depth(::Type{C}) where {C<:ContainerSetting} = 1 + _container_depth(contains_type(C))
 
@@ -1092,7 +1092,7 @@ function _open_up_to(pool::HierarchicalSettingPool, s::S, ::Type{C}) where {S<:S
     # a setting under no parent is under no `C` either
     _has_container(s) || return false
     P = contained_type(S)
-    lv = pool.container_groups[_container_depth(P)]::ContainerLevel{P}
+    lv = pool.container_levels[_container_depth(P)]::ContainerLevel{P}
     return _open_up_to(pool, @inbounds(lv.containers[s.contained]), C)
 end
 

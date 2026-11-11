@@ -209,7 +209,7 @@ Keeping that layout means repacking after edits; settings no container holds use
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
     `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
     typed vector of the pool's one leaf type, which the repack functions reach behind a barrier.
-- `container_groups::Tuple`: One `ContainerLevel` per container type, so each level's vectors
+- `container_levels::Tuple`: One `ContainerLevel` per container type, so each level's vectors
     stay concretely typed and a splat over the tuple specialises per level.
 - `blocks::PoolBlocks`: The leaves cut into independently repackable blocks.
 - `buffer::RepackBuffer` *(internal)*: What a repack on one task and `_count_repeats` work in.
@@ -222,15 +222,15 @@ mutable struct HierarchicalSettingPool
     deceased::Int
     repeats::Int
     leaves::Vector
-    container_groups::Tuple
+    container_levels::Tuple
     blocks::PoolBlocks
     buffer::RepackBuffer
     task_buffers::Vector{RepackBuffer}
 end
 
 # An empty pool over `leaves`, filled by the first repack.
-HierarchicalSettingPool(leaves::Vector, groups::Tuple, blocks::PoolBlocks, closed::Int, deceased::Int) =
-    HierarchicalSettingPool(Individual[], closed, deceased, 0, leaves, groups, blocks, RepackBuffer(), RepackBuffer[])
+HierarchicalSettingPool(leaves::Vector, levels::Tuple, blocks::PoolBlocks, closed::Int, deceased::Int) =
+    HierarchicalSettingPool(Individual[], closed, deceased, 0, leaves, levels, blocks, RepackBuffer(), RepackBuffer[])
 
 ###
 ### THE FLAT POOL
