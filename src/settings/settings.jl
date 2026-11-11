@@ -820,12 +820,11 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
     _check_scale_field(typeof(setting), Float16(scale))
     _check_plan_room(individual)
     _store_member!(setting, individual, plans)
-    plan_add!(plans, individual,
-              PlanEntry(typeof(setting), id(setting), length(individuals(setting)), scale); primary = primary)
+    entry = PlanEntry(typeof(setting), id(setting), length(individuals(setting)), scale)
+    plan_add!(plans, individual, entry; primary = primary)
     # a newcomer joins the living members, ahead of the deceased
     _deceased(setting) > 0 && _swap_members!(setting, length(individuals(setting)), _alive(setting), plans)
-    # the bound must use the scale as rounded into the entry's Float16
-    stored = Float32(Float16(scale))
+    stored = Float32(entry_scale(entry))
     stored > _scale_bound(setting) && _set_scale_bound!(setting, stored)
     membership_changed!(contact_sampling_method(setting), setting, individual, 1)
     return nothing
@@ -1115,12 +1114,11 @@ function construct_and_add_settings!(
 
     # chunks of the ids; settings per chunk, counted in parallel, give each chunk the position of
     # its first setting
-    nchunks = min(n, 8 * Threads.nthreads())
-    step = cld(n, nchunks)
-    nsettings = zeros(Int, nchunks + 1)
-    Threads.@threads for c in 1:nchunks
+    chunks = _thread_chunks(1:n)
+    nsettings = zeros(Int, length(chunks) + 1)
+    Threads.@threads for c in eachindex(chunks)
         m = 0
-        @inbounds for k in ((c - 1) * step + 1):min(c * step, n)
+        @inbounds for k in chunks[c]
             starts[k + 1] > starts[k] && (m += 1)
         end
         @inbounds nsettings[c + 1] = m
@@ -1131,9 +1129,9 @@ function construct_and_add_settings!(
     cumsum!(nsettings, nsettings)
     resize!(container_vec, nsettings[end] - 1)
 
-    Threads.@threads for c in 1:nchunks
+    Threads.@threads for c in eachindex(chunks)
         @inbounds _construct_settings_chunk!(container_vec, members, starts, ids, settingtype, member_scales, sampling, flat,
-            ((c - 1) * step + 1):min(c * step, n), nsettings[c])
+            chunks[c], nsettings[c])
     end
     return nothing
 end

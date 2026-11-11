@@ -728,11 +728,11 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
     plans = activity_plans(sim)
     _set_entry_scale!(plans, individual, T, sid, scale)
     s = settings(sim, T)[sid]
-    # raising a scale can only raise the bound; lowering one may free it, so recount
-    # the bound must use the scale as rounded into the entry's Float16
-    stored = Float32(Float16(scale))
+    e = plans.entries[plan_slot(plans, individual, T, Int32(sid))]
+    stored = Float32(entry_scale(e))
     # a deceased member's scale does not count
-    deceased = _is_deceased(s, member_index(plans.entries[plan_slot(plans, individual, T, Int32(sid))]))
+    deceased = _is_deceased(s, member_index(e))
+    # raising a scale can only raise the bound; lowering one may free it, so recount
     !deceased && stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
     return nothing
 end
