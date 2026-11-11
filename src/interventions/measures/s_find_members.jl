@@ -192,17 +192,17 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
     # no sampling: trigger the follow-up for every (filtered) member without materializing a list
     if sample_size(measure) < 0 && sample_fraction(measure) >= 1
         if has_filter(measure)
-            apply_followup!(sim, individuals(s), fu, keep = selectionfilter(measure))
+            apply_followup!(sim, individuals(s, sim), fu, keep = selectionfilter(measure))
         else
-            apply_followup!(sim, individuals(s), fu)
+            apply_followup!(sim, individuals(s, sim), fu)
         end
         return nothing
     end
 
     # sampling: collect the candidates first, reusing the filter buffer when a filter is set
-    members = individuals(s)
+    members = individuals(s, sim)
     if has_filter(measure)
-        members = _filter_members!(empty!(measure.filter_buffer), individuals(s), selectionfilter(measure))
+        members = _filter_members!(empty!(measure.filter_buffer), members, selectionfilter(measure))
     end
 
     n = sample_size(measure) >= 0 ? sample_size(measure) : Int64(ceil(length(members) * sample_fraction(measure)))

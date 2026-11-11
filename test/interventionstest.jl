@@ -272,6 +272,15 @@ end
             process_measure(sim5, a5, FindSetting(Workplace, dept_fu))
             process_measure(sim5, a5, FindSettingMembers(Workplace, i_fu5))
             @test isempty(eq5)
+
+            # measures on the department itself see a5, a member of both offices, once
+            dept = settings(sim5, Department)[1]
+            process_measure(sim5, dept, FindMembers(i_fu5))
+            @test sort(id.(followup_focals(drain_events!(eq5)))) == id.(individuals(sim5))
+            process_measure(sim5, dept, FindMembers(i_fu5, sample_size = 2, selectionfilter = i -> true))
+            @test length(followup_focals(drain_events!(eq5))) == 2
+            GEMS.apply_pool_test!(dept, TestType("PCR", id(first_pathogen(sim5)), sim5), sim5)
+            @test only(GEMS.dataframe(GEMS.pooltestlogger(sim5)).no_of_individuals) == 3
         end
     end
 
