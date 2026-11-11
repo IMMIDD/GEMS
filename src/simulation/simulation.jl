@@ -2887,6 +2887,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
         _clear_deceased!(gs[1], plans)
     end
     _restore_member_order!(simulation)
+    # open every setting, as the constructor built them
+    foreach_setting_vector(vec -> foreach(open!, vec), settingscontainer(simulation))
     repack_dirty_pools!(settingscontainer(simulation))
     foreach(empty!, simulation.newly_dead)
     # a run stopped mid-tick may leave staged infections and recoveries behind

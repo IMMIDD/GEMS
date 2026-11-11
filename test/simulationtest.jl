@@ -1927,7 +1927,7 @@ import GEMS: increment!, infected!
         @test dataframe(infectionlogger(sim)) == first_run
     end
 
-    @testset "reset! sorts settings edited after construction" begin
+    @testset "reset! sorts settings edited after construction and reopens closed ones" begin
         BASE_FOLDER = dirname(dirname(pathof(GEMS)))
         sim = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
             settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
@@ -1944,8 +1944,15 @@ import GEMS: increment!, infected!
         @test pop_order(h) < pop_order(last(individuals(c2)))
         add_member!(c2, h, sim)
         @test !issorted(individuals(c2); by = pop_order)
+        # closing the year closes its classes too
+        close!(y, sim)
+        close!(households(sim)[1])
+        @test !is_open(c1) && cntnr.pools[SchoolClass].closed > 0
 
         reset!(sim)
+        @test all(is_open, classes) && all(is_open, years) && is_open(households(sim)[1])
+        @test cntnr.pools[SchoolClass].closed == 0
+        @test all(s -> GEMS._closed_below(s) == 0, years)
         @test issorted(individuals(c2); by = pop_order)
         @test plans.membership_edits == 0
         @test GEMS.validate_plans(population(sim), cntnr)
