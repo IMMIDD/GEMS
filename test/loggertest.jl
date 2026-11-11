@@ -391,7 +391,8 @@
             end
 
             @testset "Reset Drops The Index" begin
-                sim = Simulation(pop_size = 1000, seed = 7)
+                # a high rate, so the run has an infecter whatever the seed and thread count give
+                sim = Simulation(pop_size = 1000, seed = 7, transmission_rate = 0.5)
                 run!(sim, with_progressbar = false)
 
                 il = infectionlogger(sim)
