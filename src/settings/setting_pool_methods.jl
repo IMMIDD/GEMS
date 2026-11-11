@@ -10,17 +10,8 @@ export build_pools!, repack_dirty_pools!, living_members, container_frame_index
 """
     living_members(setting::Setting, cntnr::SettingsContainer)
 
-The setting's living members, the ones its contacts are drawn from, as an indexable view. Nothing is copied and nothing is built
-per tick: an open leaf and an all-open container are both a contiguous slice of the
-hierarchy pool, and only a container with deceased members or a repeated member needs run
-indexing. A closed setting keeps its members here, as do the containers above it; who attends today is
-`attending_members`'s question.
-
-The result aliases real member storage, so writing to it edits membership - see the note on
-`ContactSamplingMethod`.
-
-A leaf can be read while its pool waits for `repack_dirty_pools!`, for example in an intervention on a
-tick with deaths; a container then throws.
+The setting's living members, the ones its contacts are drawn from, as a `MemberView`. A closed setting
+keeps its members; who attends today is `attending_members`'s question.
 """
 function living_members(s::FlatSetting, ::SettingsContainer)::MemberView
     return MemberView(s.flat_pool.members, s.offset, Int32(_alive(s)))
@@ -159,11 +150,9 @@ end
 """
     build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK)
 
-Move each pooled hierarchy's leaf members into one `HierarchicalSettingPool` and repoint the leaves at
-their slices. Relocates storage rather than duplicating it. Idempotent per container.
-
-`slack` is each block's headroom as a fraction of its length; zero packs blocks exact-fit. The
-flat pools take it too, as the room a setting gets when it outgrows its slots.
+Moves each pooled hierarchy's leaf members into one `HierarchicalSettingPool` and repoints the leaves at their slices;
+idempotent. `slack` is each block's headroom as a fraction of its length, and the room a flat setting gets when it
+outgrows its slots.
 """
 function build_pools!(cntnr::SettingsContainer; slack::Real = DEFAULT_POOL_SLACK)
     slack >= 0 || throw(ArgumentError("pool slack must not be negative, got $slack"))
@@ -481,13 +470,8 @@ end
 """
     repack_dirty_pools!(cntnr::SettingsContainer)
 
-Repack every pool left stale by a member edit, a death or a scale change, and compact every flat pool that moved settings have left a third stranded.
-Must run between such a change and the next read of `living_members`, so every reader of frames
-calls it first; `spread_infections!` does once per tick.
-Cheap when nothing changed. The dirty blocks of a pool are repacked in parallel.
-
-Invalidates any member view handed out before, since members move and a pool may be replaced.
-That is safe because it runs outside the transmission phase, the only place views are held.
+Repacks every pool left stale by a member edit, a death or a scale change, its dirty blocks in parallel, and compacts flat
+pools where moved settings stranded more than a third of the slots. Invalidates member views handed out before.
 """
 function repack_dirty_pools!(cntnr::SettingsContainer)
     for (T, pool) in cntnr.flat_pools

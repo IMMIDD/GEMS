@@ -42,12 +42,9 @@ const NO_RUNS = Int32[]
 """
     MemberView
 
-A setting's living members, as a window onto its hierarchy's pool. Usually one unbroken span,
-described by `offset` and `len`. A container with deceased members or a member in two of its
-leaves needs several runs, and then `starts`/`prefix` describe them and indexing
-binary-searches `prefix`.
-
-The result aliases real member storage, so writing to it edits membership.
+A setting's living members as a window onto its pool: one span (`offset`, `len`), or several runs (`starts`, `prefix`)
+for a container with deceased or repeated members. It aliases the pool's storage, so writing to it edits membership, and
+it stays valid until the next membership edit, death or `repack_dirty_pools!`; a container read from a stale pool throws.
 """
 struct MemberView <: AbstractVector{Individual}
     members::Vector{Individual}
@@ -172,9 +169,7 @@ nblocks(bl::PoolBlocks) = length(bl.first_leaf) - 1
 """
     ContainerLevel
 
-One container type's settings, and everything a repack needs to find them. `C` is left
-unconstrained because `ContainerSetting` is defined in settings.jl, which this file precedes;
-in practice it is always a `ContainerSetting`.
+One container type's settings, and everything a repack needs to find them.
 
 # Fields
 

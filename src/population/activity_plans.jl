@@ -136,10 +136,7 @@ Returns how many settings the individual belongs to.
 """
     entry_active(plans::ActivityPlanStore, slot::Int)
 
-Returns whether the entry at `slot` applies this tick. One that does not counts as scale 0 on
-both ends of a contact: its individual draws no contacts in that setting, and contacts drawn to
-them there are rejected. They keep their place among the setting's members, so a draw can still
-land on them.
+Returns whether the entry at `slot` applies this tick; an inactive entry counts as scale 0 at both ends of a contact.
 """
 @inline entry_active(plans::ActivityPlanStore, slot::Int)::Bool = @inbounds plans.active[slot]
 
@@ -193,15 +190,7 @@ end
     return slot == 0 ? UInt16(0) : UInt16(1) << (slot - 0x01)
 end
 
-"""
-    _mask_locates_entries(individual::Individual)
-
-Whether an entry's position can be counted off the mask. False when a type repeats or one has no
-mask slot, since the bit count then falls short of `plan_count`.
-
-Conservative: counting is still right for types below the repeat, but rejecting the whole block
-costs only a scan.
-"""
+# Whether entries can be located by counting mask bits: false when a type repeats or has no mask slot.
 @inline _mask_locates_entries(individual::Individual) =
     count_ones(individual.membership_mask) == plan_length(individual)
 
@@ -247,8 +236,8 @@ end
 """
     plan_slot(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting}
 
-As above, but for one particular setting rather than any of its type. Searches the whole run,
-so a repeated type's later entries are reachable too.
+Returns the slot of the individual's entry for setting `sid` of type `T`, or 0; searches the type's whole run, so later
+entries of a repeated type are found too.
 """
 @inline plan_slot(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Int32) where {T<:Setting} =
     _entry_slot(plans, individual, setting_type_index(T), sid)
