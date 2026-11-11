@@ -256,9 +256,8 @@ end
     end
 
     @testset "Custom setting types need the fields GEMS uses" begin
-        for (T, c, missing_fields) in ((NoDeceasedSetting, 'δ', "`deceased`"), (IdOnlySetting, 'ι', "`individuals`, `ags`, `isopen`, `deceased`"))
-            # own chars, since the default letters may be taken by types other tests registered
-            register_setting_type!(T; char = c)
+        # default chars, whichever types other tests registered: clashes only count within one container
+        for (T, missing_fields) in ((NoDeceasedSetting, "`deceased`"), (IdOnlySetting, "`individuals`, `ags`, `isopen`, `deceased`"))
             sc = SettingsContainer()
             add_types!(sc, [T])
             GEMS.add!(sc, T(id = Int32(1)))
@@ -268,7 +267,7 @@ end
     end
 
     @testset "Custom setting types are ranked by name in each container" begin
-        # registered against name order, with own chars since the default letters may be taken
+        # registered against name order, with own chars since both names start with R
         zed = declare_setting_type!("RankZed"; char = 'ζ')
         alpha = declare_setting_type!("RankAlpha"; char = 'α')
         n = GEMS._N_BUILTIN_SETTING_TYPES
@@ -284,7 +283,7 @@ end
     end
 
     @testset "Custom entries are visited in name order" begin
-        # registered against name order, so the global index would visit Zed first
+        # registered against name order, so the global index would visit Zed first; own chars, since both start with V
         zed = declare_setting_type!("VisitZed"; char = 'ž')
         alpha = declare_setting_type!("VisitAlpha"; char = 'â')
         df = DataFrame(id = Int32.(1:2), sex = Int8.(zeros(2)), age = Int8.(fill(30, 2)), household = Int32[1, 1])
@@ -296,6 +295,30 @@ end
             push!(order, typeof(s))
         end
         @test order == [Household, alpha, zed]
+    end
+
+    @testset "Runs do not depend on the types registered before" begin
+        # one population under two pairs of names, registered in opposite orders, with the same chars
+        declare_setting_type!("PairOneA"; char = 'ǎ'); declare_setting_type!("PairOneB"; char = 'ƀ')
+        declare_setting_type!("PairTwoB"; char = 'ƀ'); declare_setting_type!("PairTwoA"; char = 'ǎ')
+        n = 60
+        df = DataFrame(id = Int32.(1:n), sex = Int8.(zeros(n)), age = Int8.(fill(30, n)), household = Int32.(1:n))
+        function run_pair(a, b)
+            table = DataFrame(id = Int32[1:n; 1:n], setting_type = [fill(a, n); fill(b, n)],
+                              setting_id = Int32[cld.(1:n, 30); mod.(1:n, 2) .+ 1])
+            sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.1, seed = 7)
+            for T in (DeclaredSetting{Symbol(a)}, DeclaredSetting{Symbol(b)}), s in settings(sim, T)
+                contact_sampling_method!(sim, s, ContactparameterSampling(2.0))
+            end
+            # an unrelated type registered between building and running
+            declare_setting_type!("PairLater" * a)
+            run!(sim)
+            return dataframe(infectionlogger(sim))
+        end
+        first_run = run_pair("PairOneA", "PairOneB")
+        second_run = run_pair("PairTwoA", "PairTwoB")
+        @test nrow(first_run) > 6
+        @test first_run == second_run
     end
 
     @testset "Setting chars are chosen per simulation" begin
