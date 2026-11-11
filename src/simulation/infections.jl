@@ -225,28 +225,7 @@ function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
 end
 
 # `can_infect` without the open check, which needs only the setting's type.
-function _can_infect(ind::Individual, setting_type::Type{S})::Bool where {S<:Setting}
-    if !infectious(ind)
-        return false
-    end
-
-    if is_hospitalized(ind)
-        return false
-    end
-
-    # homebound hosts cannot leave the household
-    if is_homebound(ind) && (setting_type !== Household)
-        return false
-    end
-
-    if isquarantined(ind)
-        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (setting_type !== Household)
-            return false
-        end
-    end
-
-    return true
-end
+_can_infect(ind::Individual, ::Type{S}) where {S<:Setting} = infectious(ind) && !_kept_home(ind, S)
 
 """
     can_be_contacted(ind::Individual, setting::Setting)::Bool
@@ -255,27 +234,13 @@ Whether `ind` can be contacted, and so infected, in `setting`: alive, not hospit
 home neither by being homebound nor by household quarantine.
 """
 function can_be_contacted(ind::Individual, setting::Setting)::Bool
-    if dead(ind)
-        return false
-    end
-
-    if is_hospitalized(ind)
-        return false
-    end
-
-    # homebound hosts cannot leave the household
-    if is_homebound(ind) && (typeof(setting) != Household)
-        return false
-    end
-
-    if isquarantined(ind)
-        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
-            return false
-        end
-    end
-
-    return true
+    return !dead(ind) && !_kept_home(ind, typeof(setting))
 end
+
+# Whether `ind` stays out of settings of type `S`: in hospital, or kept home, which still allows the household.
+@inline _kept_home(ind::Individual, ::Type{S}) where {S<:Setting} =
+    is_hospitalized(ind) || (S !== Household && (is_homebound(ind) ||
+        (isquarantined(ind) && quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE)))
 
 
 ###
