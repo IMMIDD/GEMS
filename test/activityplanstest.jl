@@ -893,6 +893,8 @@ end
             dept = settings(sim, Department)[1]
             @test count(m -> m === ind, living_members(dept, cntnr)) == 1
             @test length(living_members(dept, cntnr)) == 3
+            # and measures, which read the members through the simulation, see them once too
+            @test count(m -> m === ind, individuals(dept, sim)) == 1
 
             @test validate_plans(population(sim), cntnr)
             step!(sim)

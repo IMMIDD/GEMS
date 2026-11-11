@@ -376,6 +376,20 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
         @test abcs.rate_cache !== nothing
     end
 
+    @testset "Container members come once" begin
+        # without a pool there is no count of repeats, so the year always drops them
+        rs = RandomSampling()
+        inds = [Individual(id = Int32(j), age = 10, sex = 1) for j in 1:4]
+        sc = SettingsContainer()
+        add_types!(sc, [SchoolClass, SchoolYear])
+        add!(sc, SchoolClass(id = Int32(1), individuals = inds[1:2], contained = Int32(1), contact_sampling_method = rs))
+        add!(sc, SchoolClass(id = Int32(2), individuals = inds[2:4], contained = Int32(1), contact_sampling_method = rs))
+        add!(sc, SchoolYear(id = Int32(1), contains = Int32[1, 2], contact_sampling_method = rs))
+        sim = Simulation()
+        sim.settings = sc
+        @test individuals(settings(sc, SchoolYear)[1], sim) == inds
+    end
+
     @testset "Open and Closing" begin
         rs = RandomSampling()
 

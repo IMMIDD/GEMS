@@ -150,10 +150,9 @@ function individuals(setting::IndividualSetting, simulation::Simulation)
 end
 
 """
-    individuals(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+    individuals(setting::ContainerSetting, simulation::Simulation)
 
-Returns the individuals associated with a given ContainerSetting by recursively getting the individuals of
-all contained settings using the `individuals!` function.
+Returns the members of all settings the container holds, each once, in the order of its leaves.
 """
 function individuals(setting::ContainerSetting, simulation::Simulation)
     indivs = Vector{Individual}()
@@ -161,6 +160,9 @@ function individuals(setting::ContainerSetting, simulation::Simulation)
     for s in setting.contains
         individuals!(indivs, stngs[s], simulation)
     end
+    # someone in two of its leaves comes twice; a container without a pool has no count of them
+    pool = _pool(setting)
+    (pool === nothing || pool.repeats > 0) && unique!(indivs)
     return indivs
 end
 
@@ -589,7 +591,9 @@ function contact_sampling_method!(sim::Simulation, setting::Setting, csm::Contac
     _assign_contact_sampling_method!(setting, csm)
     cntnr = settingscontainer(sim)
     _raise_rate_bound!(cntnr, setting)
-    cntnr.type_methods_changed[setting_type_index(typeof(setting))] = true
+    # a setting outside the container has no stored method to restore
+    t = setting_type_index(typeof(setting))
+    t <= length(cntnr.type_methods_changed) && (cntnr.type_methods_changed[t] = true)
     return setting.contact_sampling_method
 end
 
