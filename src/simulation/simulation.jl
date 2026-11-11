@@ -2864,11 +2864,9 @@ end
 """
     reset!(simulation::Simulation; reset_interventions::Bool = false)
 
-Resets the simulation model to its initial state according to its start condition.
-This resets all individuals, loggers, the event queue, tick, and RNGs, and
-re-applies the start condition.
-If `reset_interventions` is true (default `false`), all intervention triggers and strategies
-are also cleared.
+Returns the simulation to the state its constructor built and applies the start condition again; memberships,
+scales and primaries changed after construction are kept. With `reset_interventions`, also clears all
+intervention triggers and strategies.
 """
 function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # reset individual to initial state
