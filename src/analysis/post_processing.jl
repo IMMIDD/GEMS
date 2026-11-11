@@ -305,10 +305,10 @@ end
 # the pathogens of a simulation, sorted by id
 _sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
 
-# The AGS of each row's household, `missing` without one. A column without `missing` values is a plain `Vector{AGS}`.
+# The AGS of each row's household, `missing` without one (`missing` or an id below 1). A column without `missing` values is a plain `Vector{AGS}`.
 function _ags_of_households(households::AbstractVector, household_ags::Vector{AGS})
     n = length(households)
-    out = (n == 0 || any(ismissing, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)
+    out = (n == 0 || any(h -> ismissing(h) || h < 1, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)
     _fill_ags!(out, households, household_ags)
     return out
 end
@@ -316,7 +316,7 @@ end
 function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vector{AGS})
     Threads.@threads for k in eachindex(households)
         h = households[k]
-        out[k] = ismissing(h) ? missing : household_ags[h]
+        out[k] = (ismissing(h) || h < 1) ? missing : household_ags[h]
     end
     return out
 end

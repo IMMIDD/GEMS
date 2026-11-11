@@ -7,6 +7,7 @@ export household_secondary_attack_rates, household_secondary_attack_rate
 Returns household secondary attack rate counts per pathogen and household size, like a household transmission study
 with perfect ascertainment (every infection is a case, at its infection tick). An infection in a household where no one
 is infected is an index case; household cases within `coprimary_days` of it are co-primaries, later ones within `window` are secondary.
+Members are the people whose primary household it is.
 
 # Parameters
 
@@ -39,11 +40,11 @@ function household_secondary_attack_rates(postProcessor::PostProcessor; window::
     sim = simulation(postProcessor)
     infs = infectionsDF(postProcessor)
     deaths = deathsDF(postProcessor)
-    hh_sizes = map(hh -> Int16(size(hh)), households(sim))
+    hh_sizes = _primary_household_sizes(populationDF(postProcessor).household, length(households(sim)))
 
     # `tick(sim)` is one past the last simulated tick
     return _household_sar_counts(_sorted_pathogen_ids(postProcessor), infs.pathogen_id, infs.household_b, infs.id_b,
-        infs.infection_id, infs.tick, infs.removed, infs.setting_type, hh_sizes,
+        infs.infection_id, infs.tick, infs.removed, infs.setting_type, infs.setting_id, hh_sizes,
         coalesce.(deaths.household, Int32(0)), deaths.id, deaths.tick;
         window = window, coprimary_days = coprimary_days, last_tick = tick(sim) - 1, index_ticks = index_ticks,
         exclude_prior = exclude_prior)
@@ -76,7 +77,7 @@ end
 # Episode counts per pathogen in `pathogens` and household size from the infection columns; `hh_sizes` is indexed by household id.
 function _household_sar_counts(pathogens::Vector{Int8}, pathogen_ids::AbstractVector, households::AbstractVector,
         ids::AbstractVector, infection_ids::AbstractVector, ticks::AbstractVector, removed::AbstractVector,
-        setting_types::AbstractVector, hh_sizes::Vector{Int16}, death_households::Vector{Int32},
+        setting_types::AbstractVector, setting_ids::AbstractVector, hh_sizes::Vector{Int16}, death_households::Vector{Int32},
         death_ids::AbstractVector, death_ticks::AbstractVector;
         window::Int, coprimary_days::Int, last_tick::Integer, index_ticks, exclude_prior::Bool)
 
@@ -148,7 +149,7 @@ function _household_sar_counts(pathogens::Vector{Int8}, pathogen_ids::AbstractVe
                         r = order[m]
                         (ticks[r] <= t0 + coprimary_days || ids[r] in excluded || ids[r] in seen) && continue
                         push!(seen, ids[r])
-                        setting_types[r] == 'h' && (home += 1)
+                        setting_types[r] == 'h' && setting_ids[r] == h && (home += 1)
                     end
 
                     key = (Int8(p), hh_sizes[h])
@@ -184,13 +185,13 @@ end
 function _rows_by_household(households::AbstractVector, n_households::Int)
     offsets = zeros(Int32, n_households + 2)
     for h in households
-        ismissing(h) && continue
+        (ismissing(h) || h < 1) && continue
         offsets[h + 2] += 1
     end
     cumsum!(offsets, offsets)
     order = Vector{Int32}(undef, offsets[end])
     for (r, h) in enumerate(households)
-        ismissing(h) && continue
+        (ismissing(h) || h < 1) && continue
         offsets[h + 1] += 1
         order[offsets[h + 1]] = r
     end
