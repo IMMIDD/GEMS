@@ -206,15 +206,15 @@ end
         foreach(ind -> assign_settings!(pop, ind, RoundTripSetting => 1), individuals(pop)[1:3])
         @test GEMS.setting_type_name(RoundTripSetting) == "RoundTripSetting"
         @test settingchar(RoundTripSetting(id = 1)) == 'R'
-        @test settingstring('R') == "RoundTripSetting"
-        @test setting_type_names()["R"] == "RoundTripSetting"
-        @test setting_type_names()["h"] == "Household"
+        cntnr = SettingsContainer()
+        add_type!(cntnr, RoundTripSetting)
+        @test settingstring('R', cntnr) == "RoundTripSetting"
+        @test setting_type_names(cntnr)["R"] == "RoundTripSetting"
+        @test setting_type_names(cntnr)["h"] == "Household"
 
-        # taken or reserved chars, a second char and a taken name are refused
-        @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = 'R')
+        # reserved chars and a taken name are refused; clashes between custom types are checked per simulation
         @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = 'h')
         @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = '?')
-        @test_throws ArgumentError register_setting_type!(RoundTripSetting; char = 'Q')
         @test_throws ArgumentError register_setting_type!(PlanTestOther.RoundTripSetting; char = 'Ω')
 
         # saving and loading carry it by name and rebuild the same plans
@@ -241,8 +241,10 @@ end
         @test !(NeverUsedSetting in settingtypes(settingscontainer(sim)))
         @test_throws ErrorException setting_type_index(NeverUsedSetting)
 
-        # results carry the names, so an imported ResultData labels custom types by itself
-        sim = Simulation(population = Population(df), infected_fraction = 0.0)
+        # results carry the names of their simulation's types, so an imported ResultData labels them by itself
+        both = DataFrame(id = Int32[1, 2, 3], setting_type = ["RoundTripSetting", "NameFoundSetting", "NameFoundSetting"],
+                         setting_id = Int32[1, 1, 1])
+        sim = Simulation(population = Population(df; memberships = both), infected_fraction = 0.0)
         run!(sim)
         rd = ResultData(sim; style = "EssentialResultData")
         mktempdir() do dir
@@ -294,6 +296,33 @@ end
             push!(order, typeof(s))
         end
         @test order == [Household, alpha, zed]
+    end
+
+    @testset "Setting chars are chosen per simulation" begin
+        garden = declare_setting_type!("CharGarden")
+        gym = declare_setting_type!("CharGym")
+        # both ask for 'C': fine in separate simulations, not in one
+        a = SettingsContainer(); add_type!(a, garden)
+        b = SettingsContainer(); add_type!(b, gym)
+        @test settingstring('C', a) == "CharGarden"
+        @test settingstring('C', b) == "CharGym"
+        @test_throws ArgumentError add_types!(SettingsContainer(), [garden, gym])
+        # a later simulation may ask for another char, and earlier ones keep theirs
+        declare_setting_type!("CharGarden"; char = 'Ŋ')
+        c = SettingsContainer(); add_types!(c, [garden, gym])
+        @test settingchar(garden(id = Int32(1)), c) == 'Ŋ'
+        @test settingchar(garden(id = Int32(1)), a) == 'C'
+        @test settingstring('C', c) == "CharGym"
+
+        # a saved infection log names the types of the simulation that wrote it
+        df = DataFrame(id = Int32.(1:2), sex = Int8.(zeros(2)), age = Int8.(fill(30, 2)), household = Int32[1, 1])
+        table = DataFrame(id = Int32[1, 2], setting_type = ["CharGym", "CharGym"], setting_id = Int32[1, 1])
+        sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.0, seed = 1)
+        mktempdir() do dir
+            path = joinpath(dir, "infections.jld2")
+            save_JLD2(GEMS.infectionlogger(sim), path; setting_type_names = setting_type_names(settingscontainer(sim)))
+            @test load(path, "setting_type_names")["C"] == "CharGym"
+        end
     end
 
     @testset "Declared setting types" begin
@@ -365,11 +394,10 @@ end
             @test length(individuals(settings(again, DeclaredSetting{:Gym})[1])) == n - 1
         end
 
-        # declaring is idempotent, and refuses a second char or a name another type has
+        # declaring is idempotent, and refuses a name another type has
         @test declare_setting_type!("Gym") === DeclaredSetting{:Gym}
         # a SettingModifier resolves declared setting types by name
         @test SettingModifier(factors = Dict("Gym" => 2.0), default_factor = 1.0).factors[DeclaredSetting{:Gym}] == 2.0
-        @test_throws ArgumentError declare_setting_type!("Gym"; char = 'Y')
         @test_throws ArgumentError declare_setting_type!("Household")
         @test_throws ArgumentError declare_setting_type!("NeverUsedSetting")
         # a char on a section of a built-in type, and a char that is not one character, are refused

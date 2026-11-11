@@ -288,11 +288,11 @@ function save(poollogger::PoolTestLogger, path::AbstractString)
     CSV.write(path, dataframe(poollogger))
 end
 
-function save_JLD2(poollogger::PoolTestLogger, path::AbstractString)
+function save_JLD2(poollogger::PoolTestLogger, path::AbstractString; setting_type_names::Dict{String, String} = Dict{String, String}())
     jldopen(path,"w") do file
         file["setting_id"] = vcat(poollogger.setting_id...)
         file["setting_type"] = vcat(poollogger.setting_type...)
-        file["setting_type_names"] = setting_type_names()
+        file["setting_type_names"] = setting_type_names
         file["tick"] = vcat(poollogger.tick...)
         file["test_result"] = vcat(poollogger.test_result...)
         file["no_of_individuals"] = vcat(poollogger.no_of_individuals...)

@@ -338,7 +338,7 @@ function _setting_ags(setting_types::AbstractVector{Char}, setting_ids::Abstract
     for T in settingtypes(cntnr)
         stngs = settings(cntnr, T)
         isempty(stngs) && continue
-        c = settingchar(first(stngs))
+        c = settingchar(first(stngs), cntnr)
         isascii(c) ? (ascii_ids[codepoint(c) + 1] = _ags_ids(stngs)) : (other_ids[c] = _ags_ids(stngs))
     end
     out = Vector{Int32}(undef, length(setting_ids))

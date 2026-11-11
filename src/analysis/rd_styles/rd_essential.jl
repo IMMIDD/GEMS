@@ -15,7 +15,7 @@ mutable struct EssentialResultData <: ResultDataStyle
                     "config_file" => () -> pP |> simulation |> configfile,
                     "config_file_val" => () -> isfile(pP |> simulation |> configfile) ? TOML.parsefile(pP |> simulation |> configfile) : Dict(), #TODO potentially adapt for no config file
                     "population_file" => () -> pP |> simulation |> populationfile,
-                    "setting_type_names" => () -> setting_type_names()
+                    "setting_type_names" => () -> setting_type_names(pP |> simulation |> settingscontainer)
                 ),
             "sim_data" =>
                 Dict(

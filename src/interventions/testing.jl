@@ -308,7 +308,7 @@ function apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation;
     log!(
         sim |> pooltestlogger,
         setting |> id,
-        setting |> settingchar,
+        settingchar(setting, settingscontainer(sim)),
         sim |> tick,
         test_pos,
         Int16(no_of_ind),

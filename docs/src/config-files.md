@@ -580,7 +580,7 @@ If a Julia struct of that name exists (see [Custom Setting Types](@ref custom-se
 ```
 The optional `char` is the single character that marks the setting type in the infection log.
 It defaults to the upper-case first letter of the name.
-If another setting type already uses that character, GEMS throws an error and asks you to set a different `char`.
+If another setting type of the same simulation uses that character, GEMS throws an error and asks you to set a different `char`.
 GEMS warns about a declared type that no individual belongs to once the simulation is set up, as that is usually a typo or a missing memberships file.
 
 #### [`layer`](@id config-layer)

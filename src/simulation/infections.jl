@@ -336,7 +336,7 @@ function _try_to_infect!(infecter::Individual,
             rng(sim),
             id(infecter),
             id(setting),
-            settingchar(setting),
+            settingchar(setting, settingscontainer(sim)),
             infection_id(infecter, sim, id(pathogen)),
             infecter_position,
             type_rank)

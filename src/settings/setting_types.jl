@@ -7,15 +7,16 @@ export setting_type_index, setting_type_from_index, register_setting_type!, decl
 ###
 ### SETTING UTILS
 ###
-# The log chars of the built-in types, and those `register_setting_type!` recorded for the others.
+# The log chars of the built-in types, and the char each other type asks for. A simulation's settings
+# container copies a custom type's char when it adds the type.
 const BUILTIN_SETTING_CHARS = ('h', 'm', 's', 'w', 'g', 'c', 'x', 'y', 'd', 'o', 'p')
 const SETTING_TYPE_CHARS = Dict{DataType, Char}()
 
 """
     settingchar(setting::Setting)
 
-Returns a character that represents the type of setting, or `'?'` for a type that isn't
-registered. The infection log also marks seed infections with `'?'`.
+Returns a character that represents the type of setting, for a custom type the char it asks for, or `'?'`
+for a type that isn't registered. The infection log also marks seed infections with `'?'`.
 """
 function settingchar(setting::Setting)::Char
     # a registered custom type's char, '?' for an unregistered one
@@ -54,11 +55,24 @@ end
 function settingchar(workplaceSite::WorkplaceSite)::Char
     return 'p'
 end
+
+"""
+    settingchar(setting::Setting, cntnr::SettingsContainer)
+
+Returns the char `setting`'s type is logged with in the simulation `cntnr` belongs to.
+"""
+@inline function settingchar(setting::T, cntnr::SettingsContainer)::Char where {T<:Setting}
+    t = setting_type_index(T)
+    t <= _N_BUILTIN_SETTING_TYPES && return settingchar(setting)
+    return t <= length(cntnr.type_chars) ? cntnr.type_chars[t] : '?'
+end
+
 """
     settingstring(c::Char)
 
 Returns a string that represents the type of setting based on a char that is returned from
-the function `settingchar`, or `"Unknown"` for a char no registered type has.
+the function `settingchar`, or `"Unknown"` for a char no registered type has, or several
+custom types ask for (`settingstring(c, cntnr)` tells those apart).
 """
 function settingstring(c::Char)::String
     if c == 'h'
@@ -84,22 +98,29 @@ function settingstring(c::Char)::String
     elseif c == 'g'
         return "GlobalSetting"
     else
-        # a custom type's char, as `register_setting_type!` recorded it
-        for (T, tc) in SETTING_TYPE_CHARS
-            tc == c && return setting_type_name(T)
-        end
-        return "Unknown"
+        # a custom type's char
+        found = [T for (T, tc) in SETTING_TYPE_CHARS if tc == c]
+        return length(found) == 1 ? setting_type_name(only(found)) : "Unknown"
     end
 end
 
 """
-    setting_type_names()
+    settingstring(c::Char, cntnr::SettingsContainer)
 
-Returns every registered setting type's log char, as a string, mapped to its name as `settingstring`
-gives it. String keys keep the map hashable and exportable with the results.
+Returns the name of the setting type logged as `c` in the simulation `cntnr` belongs to, or `"Unknown"`.
 """
-setting_type_names() = Dict{String, String}(string(c) => settingstring(c)
-    for c in Iterators.flatten((BUILTIN_SETTING_CHARS, values(SETTING_TYPE_CHARS))))
+settingstring(c::Char, cntnr::SettingsContainer)::String = get(cntnr.type_names, string(c), "Unknown")
+
+"""
+    setting_type_names(cntnr::SettingsContainer)
+
+Returns the log char of each of `cntnr`'s setting types, as a string, mapped to the type's name as
+`settingstring` gives it. String keys keep the map hashable and exportable with the results.
+"""
+setting_type_names(cntnr::SettingsContainer) = copy(cntnr.type_names)
+
+# The built-in types' chars mapped to their names, which every settings container starts with.
+_builtin_type_names() = Dict{String, String}(string(c) => settingstring(c) for c in BUILTIN_SETTING_CHARS)
 
 ###
 ### DENSE SETTING-TYPE INDEX
@@ -154,24 +175,27 @@ const SETTING_TYPE_LOCK = ReentrantLock()
 """
     register_setting_type!(::Type{T}; char::Union{Nothing, Char} = nothing) where {T<:Setting}
 
-Assigns `T` a dense setting-type index and the char its infections are logged with, by default
-the upper-case first letter of its name, and returns the index. Types register on first use, so
-this is only needed to pick the char.
+Assigns `T` a dense setting-type index and returns it. `char` sets the char `T` asks to be logged with,
+by default the upper-case first letter of its name; a simulation's settings container copies it when it
+adds `T`. Types register on first use, so this is only needed to pick the char.
 """
 function register_setting_type!(::Type{T}; char::Union{Nothing, Char} = nothing) where {T<:Setting}
     T in BUILTIN_SETTING_TYPES_SET && return setting_type_index(T)
     return lock(SETTING_TYPE_LOCK) do
         idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
         if idx != 0
-            (char === nothing || char == SETTING_TYPE_CHARS[T]) || throw(ArgumentError(
-                "$T is already registered with char '$(SETTING_TYPE_CHARS[T])'"))
+            # a later simulation may ask for another char; containers that hold `T` keep theirs
+            if char !== nothing && char != SETTING_TYPE_CHARS[T]
+                _check_setting_char(char, setting_type_name(T))
+                SETTING_TYPE_CHARS[T] = char
+            end
             return idx
         end
         name = setting_type_name(T)
         other = _registered_setting_type(name)
         other === nothing || throw(ArgumentError(
             "cannot register $T: $other is already registered as setting type \"$name\""))
-        c = char === nothing ? uppercase(first(name)) : char
+        c = char === nothing ? _default_setting_char(name) : char
         _check_setting_char(c, name)
         length(EXTRA_SETTING_TYPES) < typemax(UInt8) - Int(_N_BUILTIN_SETTING_TYPES) ||
             error("no dense setting-type index left for $T; at most $(typemax(UInt8)) setting types are supported")
@@ -185,16 +209,18 @@ function register_setting_type!(::Type{T}; char::Union{Nothing, Char} = nothing)
     end
 end
 
-# Refuses a char another setting type is logged with, and '?', which marks seeds and
-# unregistered types.
+# Refuses '?', which marks seeds and unregistered types, and the built-in types' chars. Clashes between
+# custom types are checked per simulation, in `_add_type_char!`.
 function _check_setting_char(c::Char, name::AbstractString)
     c == '?' && throw(ArgumentError(
         "'?' marks seeds and unregistered types; give setting type \"$name\" another `char`"))
-    holder = get(setting_type_names(), string(c), nothing)
-    holder === nothing || throw(ArgumentError(
-        "setting type \"$name\" would be logged as '$c', which $holder already is; give it another `char`"))
+    c in BUILTIN_SETTING_CHARS && throw(ArgumentError(
+        "setting type \"$name\" would be logged as '$c', which $(settingstring(c)) is; give it another `char`"))
     return nothing
 end
+
+# the char a custom type asks for unless it is given one
+_default_setting_char(name::AbstractString) = uppercase(first(name))
 
 function setting_type_index(::Type{T}) where {T<:Setting}
     idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
@@ -231,6 +257,20 @@ function _rank_types!(cntnr::SettingsContainer)
         ranks[setting_type_index(T)] = _N_BUILTIN_SETTING_TYPES + UInt8(k)
     end
     return ranks
+end
+
+# Gives `cntnr` the char custom type `T` asks for now. Two of the container's types cannot share one.
+function _add_type_char!(cntnr::SettingsContainer, ::Type{T}) where {T<:Setting}
+    c = SETTING_TYPE_CHARS[T]
+    name = setting_type_name(T)
+    holder = get(cntnr.type_names, string(c), name)
+    holder == name || throw(ArgumentError(
+        "setting types \"$holder\" and \"$name\" would both be logged as '$c'; give one of them another `char`"))
+    t = Int(setting_type_index(T))
+    length(cntnr.type_chars) < t && append!(cntnr.type_chars, fill('?', t - length(cntnr.type_chars)))
+    cntnr.type_chars[t] = c
+    cntnr.type_names[string(c)] = name
+    return nothing
 end
 
 """

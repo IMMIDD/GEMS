@@ -1261,12 +1261,17 @@ function determine_setting_types!(configfile_params::Dict)
     for name in sort!(collect(keys(sections)))
         section = sections[name]
         section isa Dict || continue
-        char = _config_char(section, name)
+        # this config's char, or the default, so an earlier simulation in the session does not decide it
+        char = something(_config_char(section, name), _default_setting_char(name))
         T = _registered_setting_type(name)
         if T !== nothing
-            # a type registered before keeps its char; a built-in's is fixed
-            (char === nothing || get(SETTING_TYPE_CHARS, T, nothing) == char) || throw(ArgumentError(
-                "[Settings.$name] sets char '$char', but $T is already registered with another char"))
+            if T in BUILTIN_SETTING_TYPES_SET
+                # a built-in's char is fixed
+                _config_char(section, name) === nothing || throw(ArgumentError(
+                    "[Settings.$name] sets a char, but the built-in $T's char is fixed"))
+            else
+                register_setting_type!(T; char = char)
+            end
             T <: DeclaredSetting && push!(declared, T)
             continue
         end

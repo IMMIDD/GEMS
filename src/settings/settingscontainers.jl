@@ -34,6 +34,10 @@ mutable struct SettingsContainer
     type_ranks::Vector{UInt8}
     # the indices of this container's types other than the built-ins, in rank order
     ranked_types::Vector{UInt8}
+    # per setting type index, the char a custom type is logged with in this simulation
+    type_chars::Vector{Char}
+    # every log char of this container's types, as a string, mapped to the type's name
+    type_names::Dict{String, String}
 end
 
 
@@ -48,7 +52,7 @@ Return a empty container object.
 """
 function SettingsContainer()
     return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
-        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[], UInt8[])
+        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[], UInt8[], Char[], _builtin_type_names())
 end
 
 
@@ -66,7 +70,10 @@ function add_type!(container::SettingsContainer, settingtype::DataType)
     end
     if !haskey(container.settings, settingtype)
         container.settings[settingtype] = Vector{settingtype}()
-        settingtype <: Setting && _rank_types!(container)
+        if settingtype <: Setting
+            settingtype in BUILTIN_SETTING_TYPES_SET || _add_type_char!(container, settingtype)
+            _rank_types!(container)
+        end
     end
 end
 
