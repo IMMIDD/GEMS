@@ -954,12 +954,14 @@ _check_plan_room(individual::Individual) = plan_length(individual) < MAX_PLAN_EN
 """
     plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::Int)
 
-Drops the entry at `slot`, closing the gap so the block stays sorted by setting type.
+Drops the entry at `slot`, closing the gap so the block stays sorted by setting type. Throws if `slot` does not hold
+one of the individual's entries.
 """
 function plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::Int)
     old = Int(individual.plan_offset)
     n = Int(individual.plan_count)
-    (n > 0 && old <= slot <= old + n - 1) || return false
+    (n > 0 && old <= slot <= old + n - 1) || throw(ArgumentError(
+        "slot $slot does not hold one of individual $(id(individual))'s plan entries"))
 
     tidx = @inbounds setting_type_of(plans.entries[slot])
     # an inactive entry made the individual scaled too
@@ -989,7 +991,7 @@ function plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::In
     end
     scaled && _refresh_plan_scaled!(plans, individual)
     plans.indexed && (plans.membership_edits += 1)
-    return true
+    return nothing
 end
 
 """

@@ -202,7 +202,7 @@ end
             @test GEMS._plan_type_run(store, i, tidx) == GEMS._plan_type_run_scan(store, i, tidx)
         end
         # without it, the mask locates every entry again
-        @test plan_remove!(store, i, plan_slot(store, i, nomask))
+        plan_remove!(store, i, plan_slot(store, i, nomask))
         @test GEMS._mask_locates_entries(i)
         @test setting_id(store.entries[plan_slot(store, i, Office)]) == Int32(20)
     end
@@ -528,7 +528,7 @@ end
 
         # removing one of a repeated type must not clear the type's bit
         kept = first_hh == Int32(10) ? Int32(11) : Int32(10)
-        @test plan_remove!(store, i, plan_slot(store, i, Household))
+        plan_remove!(store, i, plan_slot(store, i, Household))
         @test plan_slot(store, i, Household) != 0
         @test setting_id(store.entries[plan_slot(store, i, Household)]) == kept
         @test i.membership_mask & GEMS._membership_bit(setting_type_index(Household)) != 0
@@ -542,7 +542,7 @@ end
         end
 
         # the last entry of the type clears the bit
-        @test plan_remove!(store, i, plan_slot(store, i, Household))
+        plan_remove!(store, i, plan_slot(store, i, Household))
         @test plan_slot(store, i, Household) == 0
         @test i.membership_mask & GEMS._membership_bit(setting_type_index(Household)) == 0
     end
@@ -632,7 +632,7 @@ end
             plan_add!(store, i, PlanEntry(T, Int32(sid), Int32(1)))
         end
 
-        @test plan_remove!(store, i, plan_slot(store, i, Office))
+        plan_remove!(store, i, plan_slot(store, i, Office))
         @test plan_length(i) == 3
         @test plan_slot(store, i, Office) == 0
         @test i.membership_mask & GEMS._membership_bit(setting_type_index(Office)) == 0
@@ -653,7 +653,7 @@ end
         # a slot outside the individual's block is rejected
         j = Individual(id = 2, sex = 0, age = 30)
         plan_add!(store, j, PlanEntry(Household, Int32(1), Int32(1)))
-        @test !plan_remove!(store, j, plan_slot(store, j, Household) + 5)
+        @test_throws ArgumentError plan_remove!(store, j, plan_slot(store, j, Household) + 5)
     end
 
     @testset "Freed blocks are reused" begin
