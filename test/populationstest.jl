@@ -31,6 +31,21 @@
         @test occursin("3", output)
     end
 
+    @testset "Individuals of another population" begin
+        df = DataFrame(id = Int32.(1:4), age = Int8[30, 31, 32, 33], sex = Int8[1, 1, 1, 1],
+                       household = Int32[1, 1, 2, 2], office = Int32[1, 1, 1, 1])
+        pop = Population(df; memberships = DataFrame(id = Int32[3], setting_type = ["Office"], setting_id = Int32[2]))
+        # their plan entries point into `pop`'s store
+        @test_throws ArgumentError Population(individuals(pop)[1:2])
+        @test_throws ArgumentError add!(Population(empty = true), individuals(pop)[1])
+
+        # keeping some of them goes through both tables
+        keep = Int32[2, 3]
+        sub = Population(filter(r -> r.id in keep, dataframe(pop)); memberships = filter(r -> r.id in keep, memberships(pop)))
+        @test id.(individuals(sub)) == keep
+        @test [setting_ids(i, Office, GEMS.activity_plans(sub)) for i in individuals(sub)] == [Int32[1], Int32[1, 2]]
+    end
+
     @testset "Loading" begin
         @testset "CSV-Loading" begin
 

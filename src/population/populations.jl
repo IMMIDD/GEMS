@@ -50,9 +50,11 @@ mutable struct Population
     @doc """
         Population(individuals::Vector{Individual})
 
-    Creates a `Population` object from a vector of `Individual`s.
+    Creates a `Population` object from a vector of `Individual`s that belong to no other population's settings. To keep
+    some of a population, filter both `dataframe(pop)` and `memberships(pop)` to the kept ids and pass them to `Population(df; memberships)`.
     """
     function Population(individuals::Vector{Individual})
+        foreach(_check_unplanned, individuals)
         # Create the Population object
         pop = new(individuals, Dict("populationfile" => "Not available."), -1, -1, -1, Int32[], ActivityPlanStore())
         maxage(pop)
@@ -435,18 +437,25 @@ Base.first(population::Population) = population |> individuals |> first
 """
     add!(population::Population, individual::Individual)
 
-Appends specified individual to a population.
+Appends an individual that belongs to no other population's settings.
 """
 function add!(population::Population, individual::Individual)
+    _check_unplanned(individual)
     push!(population.individuals, individual)
 end
+
+# Throws if `individual` holds plan entries, which point into another population's store.
+_check_unplanned(individual::Individual) = individual.plan_count == 0 || throw(ArgumentError(
+    "individual $(id(individual)) belongs to settings of another population; to keep some of a population, " *
+    "pass `dataframe(pop)` and `memberships(pop)`, filtered to the kept ids, to `Population(df; memberships)`"))
 
 """
     remove!(population::Population, individual::Individual)
 
-Remove a specified individual from a population.
+Removes an individual from a population. Deprecated: it leaves the id map, plans and settings as they were.
 """
 function remove!(population::Population, individual::Individual)
+    Base.depwarn("`remove!(::Population, ::Individual)` is deprecated; build a new population from the kept rows of `dataframe(pop)` and `memberships(pop)`.", :remove!)
     setdiff!(population.individuals, [individual])
 end
 
