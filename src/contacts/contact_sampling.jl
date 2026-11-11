@@ -210,7 +210,7 @@ end
 ###
 
 """
-    sample_scaled_contacts!(contacts, draws, csm, setting, idx, present, tick, replace, rng, plans, cntnr,
+    sample_scaled_contacts!(contacts, draws, csm, setting, idx, members, tick, replace, rng, plans, cntnr,
         s_host, scale_bound; oversample = 1.0f0, thin = 1.0f0, drawn = DEFAULT_CONTACT_DRAW)
 
 Samples the host's contacts in `setting` into `contacts`, scaled by the host's and each contact's
@@ -222,8 +222,8 @@ scale there. Draws nothing extra while every scale involved is 1.
 - `draws::Vector{Individual}`: Scratch buffer for when the sampler has to be called more than once
 - `csm::ContactSamplingMethod`: The setting's sampling method
 - `setting::Setting`: Setting the host meets its contacts in
-- `idx::Int`: The host's position in `present`
-- `present::AbstractVector{Individual}`: Everyone present in `setting`, the host included
+- `idx::Int`: The host's position in `members`
+- `members::AbstractVector{Individual}`: The setting's living members, the host included
 - `tick::Int16`: Current tick
 - `replace::Bool`: Whether contacts are drawn with replacement
 - `rng::Xoshiro`: Random number generator
@@ -238,21 +238,21 @@ scale there. Draws nothing extra while every scale involved is 1.
   Drawing any ahead needs a method with `contact_rate` and `replace`
 """
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
-        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, members::AbstractVector{Individual},
         tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
         s_host::Float32, scale_bound::Float32; oversample::Float32 = 1.0f0, thin::Float32 = 1.0f0,
         drawn::_ContactDraw = DEFAULT_CONTACT_DRAW)
     r = s_host * scale_bound
     empty!(contacts)
     # a lone member could only meet itself
-    (r == 0 || length(present) <= 1) && return contacts
+    (r == 0 || length(members) <= 1) && return contacts
 
     # a method with a contact rate: one count for the whole visit, at the visit's rate
     if replace && _has_contact_rate(csm)
         # a Poisson count, or the contacts drawn before the visit thinned to it
-        rate = _visit_rate(contact_rate(csm, setting, idx, present, tick), s_host, scale_bound, thin)
+        rate = _visit_rate(contact_rate(csm, setting, idx, members, tick), s_host, scale_bound, thin)
         k = _drawn_ahead(drawn) ? _thinned_count(drawn.n, rate / drawn.rate_bound, rng) : gems_rand(rng, Poisson(rate))
-        sample_k_contacts!(contacts, csm, setting, idx, present, tick, k, rng)
+        sample_k_contacts!(contacts, csm, setting, idx, members, tick, k, rng)
         # each kept by its contact's scale
         return _thin_by_scale!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
@@ -262,16 +262,16 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
 
     # scales up to 1: one call, thinned by `r * thin`, then by each contact's scale
     if r <= 1
-        _sample_thinned!(contacts, csm, setting, idx, present, tick, replace, rng, r * thin)
+        _sample_thinned!(contacts, csm, setting, idx, members, tick, replace, rng, r * thin)
         return _thin_by_scale!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
 
     # above 1 without replacement: calls merged so a contact is met once, see `_sample_unique_scaled!`
     replace ||
-        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, scale_bound, thin)
+        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, members, tick, rng, plans, cntnr, r, oversample, scale_bound, thin)
 
     # above 1 with replacement: `r` calls, see `_sample_repeated_scaled!`
-    return _sample_repeated_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, scale_bound, thin)
+    return _sample_repeated_scaled!(contacts, draws, csm, setting, idx, members, tick, rng, plans, cntnr, r, scale_bound, thin)
 end
 
 # A visit's contact rate, see the section header. Monotone in each factor, also after rounding, so
@@ -292,7 +292,7 @@ end
 # met too rarely, a bias that `oversample` times the calls shrinks. Whole calls collect in `contacts`,
 # the fractional last one in `draws`.
 function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
-        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, members::AbstractVector{Individual},
         tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
         r::Float32, oversample::Float32, scale_bound::Float32, thin::Float32)
     total = r * oversample
@@ -301,11 +301,11 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
     unit = 1.0f0 / oversample
     for _ in 1:calls
         empty!(draws)
-        sample_contacts!(draws, csm, setting, idx, present, tick, false, rng)
+        sample_contacts!(draws, csm, setting, idx, members, tick, false, rng)
         append!(contacts, draws)
     end
     empty!(draws)
-    frac > 0 && sample_contacts!(draws, csm, setting, idx, present, tick, false, rng)
+    frac > 0 && sample_contacts!(draws, csm, setting, idx, members, tick, false, rng)
     # QuickSort needs no scratch buffer
     sort!(contacts; by = id, alg = QuickSort)
     sort!(draws; by = id, alg = QuickSort)
@@ -345,7 +345,7 @@ end
 
 # With replacement: `r` calls, the last for the fraction beyond the whole ones, each thinned on its own
 function _sample_repeated_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
-        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, members::AbstractVector{Individual},
         tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
         r::Float32, scale_bound::Float32, thin::Float32)
     calls = floor(Int, r)
@@ -354,7 +354,7 @@ function _sample_repeated_scaled!(contacts::Vector{Individual}, draws::Vector{In
     for call in 1:(calls + (frac > 0))
         f = call > calls ? frac : 1.0f0
         empty!(draws)
-        _sample_thinned!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
+        _sample_thinned!(draws, csm, setting, idx, members, tick, true, rng, f * thin)
         append!(contacts, _thin_by_scale!(draws, scale_bound, plans, setting, cntnr, rng))
     end
     return contacts

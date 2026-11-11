@@ -4,7 +4,7 @@
 export build_pools!, repack_dirty_pools!, living_members, container_frame_index
 
 ###
-### PRESENT MEMBERS
+### LIVING MEMBERS
 ###
 
 """
