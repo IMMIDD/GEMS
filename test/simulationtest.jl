@@ -1995,6 +1995,20 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         @test run_with_change!(sim) == first_run
     end
 
+    @testset "A transmission bound below the probability says how to fix it" begin
+        # an infecter who is infectious by tick 2, and someone still uninfected then
+        p = Pathogen(id = 1, name = "BoundCheck", progressions = [Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 30)],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.5))
+        sim = Simulation(pop_size = 200, pathogens = (p,), infected_fraction = 0.0)
+        a = individuals(sim)[1]
+        infect!(a, tick(sim), p; sim = sim, rng = rng(sim))
+        GEMS.flush_pending_infections!(sim)
+        step!(sim); step!(sim)
+        b = first(i for i in individuals(sim) if !infected(i))
+        err = try GEMS._infection_probability(a, b, sim, p, households(sim)[1], 1e-9); nothing catch e; e end
+        @test err isa ErrorException && occursin("transmission_prethinning = false", err.msg)
+    end
+
     @testset "Calibration parameters survive reset!" begin
         function run_with(x)
             s = Simulation(pop_size = 1000, seed = 4)

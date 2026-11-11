@@ -359,7 +359,10 @@ function _infection_probability(infecter::Individual, infectee::Individual, sim:
         rng(sim)
     ))
     infection_probability > bound * (1 + 1e-9) &&
-        error("the transmission bound of $(typeof(transmission_function(pathogen))) is $bound, below its probability $infection_probability")
+        error("the transmission bound of $(typeof(transmission_function(pathogen))) is $bound, below its probability $infection_probability. " *
+            "Either a `max_effective_transmission_probability` or `susceptibility_bound` method returns too little, or an " *
+            "`effective_transmission_probability` or `susceptibility_factor` method was defined after the Simulation was built; " *
+            "define such methods before building it, or build it with `transmission_prethinning = false`")
     return infection_probability
 end
 
