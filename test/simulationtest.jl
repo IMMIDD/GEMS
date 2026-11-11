@@ -1962,6 +1962,51 @@ import GEMS: increment!, infected!
         @test GEMS.living_members(y, cntnr) == frame
     end
 
+    @testset "reset! restores contact methods changed during a run" begin
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+        abcs = AgeBasedContactSampling(contactparameter = 1.5, interval = 5,
+            contact_matrix_file = joinpath(BASE_FOLDER, "test/testdata/contact_matrix.txt"))
+        sim = Simulation(pop_size = 2000, seed = 3, global_setting = true, global_setting_contacts = abcs)
+        cntnr = settingscontainer(sim)
+        bounds = copy(cntnr.rate_bounds)
+        # changes ten households' methods mid-run, as a `ChangeContactMethod` measure would
+        function run_with_change!(sim)
+            foreach(_ -> step!(sim), 1:5)
+            foreach(h -> contact_sampling_method!(sim, h, ContactparameterSampling(4.0)), households(sim)[1:10])
+            run!(sim)
+            return dataframe(infectionlogger(sim))
+        end
+        first_run = run_with_change!(sim)
+        @test length(deathlogger(sim)) > 0
+
+        reset!(sim)
+        stored = GEMS._stored_type_method(cntnr, Household)
+        @test all(h -> contact_sampling_method(h) == stored, households(sim))
+        @test cntnr.rate_bounds == bounds
+        @test run_with_change!(sim) == first_run
+    end
+
+    @testset "Calibration parameters survive reset!" begin
+        function run_with(x)
+            s = Simulation(pop_size = 1000, seed = 4)
+            GEMS.assign_values_to_parameters!(s; x = [x], arg = ["households"])
+            reset!(s)
+            run!(s)
+            return dataframe(infectionlogger(s))
+        end
+        sim = Simulation(pop_size = 1000, seed = 4)
+        GEMS.assign_values_to_parameters!(sim; x = [10.0], arg = ["households"])
+        # the type's bound covers the new rate, so a run needs no reset! first
+        run!(sim)
+        reset!(sim)
+        @test all(h -> contact_sampling_method(h).contactparameter == 10.0, households(sim))
+        # a later, lower value draws as in a simulation that never saw the higher one
+        GEMS.assign_values_to_parameters!(sim; x = [2.0], arg = ["households"])
+        reset!(sim)
+        run!(sim)
+        @test dataframe(infectionlogger(sim)) == run_with(2.0)
+    end
+
     @testset "GlobalSetting deaths move members only within it" begin
         inds = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:5]
         pop = Population(inds)

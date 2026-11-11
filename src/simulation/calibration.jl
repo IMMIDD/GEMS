@@ -34,12 +34,12 @@ function assign_values_to_parameters!(sim; x, arg)
         end
         if instances isa AbstractVector && eltype(instances) <: Setting
             if !isempty(instances)
-                csm_type = typeof(first(instances).contact_sampling_method)
-                new_csm  = csm_type(value)
-                # assign rate to all settings of specified type
-                for s in instances
-                    contact_sampling_method!(sim, s, new_csm)
-                end
+                T = typeof(first(instances))
+                # the type's own method, which a measure in the last run may have swapped on some settings
+                stored = _stored_type_method(settingscontainer(sim), T)
+                csm_type = typeof(something(stored, first(instances).contact_sampling_method))
+                # assign rate to all settings of specified type, and keep it through `reset!`
+                _set_type_contact_sampling_method!(sim, T, csm_type(value))
             end
             continue
         end

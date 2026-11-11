@@ -38,6 +38,10 @@ mutable struct SettingsContainer
     type_chars::Vector{Char}
     # every log char of this container's types, as a string, mapped to the type's name
     type_names::Dict{String, String}
+    # per setting type index, the method `reset!` gives the type's settings, without cached member data
+    type_methods::Vector{Union{Nothing, ContactSamplingMethod}}
+    # per setting type index, whether one of its settings got another method since the last `reset!`
+    type_methods_changed::BitVector
 end
 
 
@@ -52,7 +56,8 @@ Return a empty container object.
 """
 function SettingsContainer()
     return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
-        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[], UInt8[], Char[], _builtin_type_names())
+        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[], UInt8[], Char[], _builtin_type_names(),
+        Union{Nothing, ContactSamplingMethod}[], BitVector())
 end
 
 
@@ -67,6 +72,8 @@ function add_type!(container::SettingsContainer, settingtype::DataType)
         # an unscanned type falls back to sampling each visit
         t = Int(register_setting_type!(settingtype))
         length(container.rate_bounds) < t && append!(container.rate_bounds, fill(Inf, t - length(container.rate_bounds)))
+        length(container.type_methods) < t && append!(container.type_methods, fill(nothing, t - length(container.type_methods)))
+        length(container.type_methods_changed) < t && append!(container.type_methods_changed, falses(t - length(container.type_methods_changed)))
     end
     if !haskey(container.settings, settingtype)
         container.settings[settingtype] = Vector{settingtype}()

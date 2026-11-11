@@ -587,8 +587,50 @@ Sets the setting's `ContactSamplingMethod` and raises the simulation's contact r
 """
 function contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
     _assign_contact_sampling_method!(setting, csm)
-    _raise_rate_bound!(settingscontainer(sim), setting)
+    cntnr = settingscontainer(sim)
+    _raise_rate_bound!(cntnr, setting)
+    cntnr.type_methods_changed[setting_type_index(typeof(setting))] = true
     return setting.contact_sampling_method
+end
+
+# Gives every setting of type `T` a copy of `csm` and makes it the method `reset!` restores.
+function _set_type_contact_sampling_method!(sim::Simulation, ::Type{T}, csm::ContactSamplingMethod) where {T<:Setting}
+    cntnr = settingscontainer(sim)
+    t = setting_type_index(T)
+    stored = deepcopy(csm)
+    cntnr.type_methods[t] = stored
+    cntnr.type_methods_changed[t] = false
+    _set_contact_sampling_method!(settings(cntnr, T), stored, T)
+    # every setting of the type now holds it, so its bound is exact
+    cntnr.rate_bounds[t] = contact_rate_bound(csm)
+    return nothing
+end
+
+# The method `reset!` gives settings of type `T`, or `nothing` if none is stored.
+_stored_type_method(cntnr::SettingsContainer, ::Type{T}) where {T<:Setting} = cntnr.type_methods[setting_type_index(T)]
+
+# Stores a copy of each type's method, which the constructor gave all settings of the type, for `reset!`.
+function _store_type_methods!(cntnr::SettingsContainer)
+    for (T, stngs) in cntnr.settings
+        isempty(stngs) && continue
+        csm = deepcopy(contact_sampling_method(first(stngs)))
+        # drop what the copy cached about the first setting's members
+        membership_changed!(csm, first(stngs))
+        cntnr.type_methods[setting_type_index(T)] = csm
+    end
+    return nothing
+end
+
+# Gives the settings of each type whose method changed since the last `reset!` the stored one again.
+function _restore_type_methods!(cntnr::SettingsContainer)
+    for (t, changed) in enumerate(cntnr.type_methods_changed)
+        csm = cntnr.type_methods[t]
+        (changed && csm !== nothing) || continue
+        T = setting_type_from_index(UInt8(t))
+        _set_contact_sampling_method!(settings(cntnr, T), csm, T)
+    end
+    fill!(cntnr.type_methods_changed, false)
+    return nothing
 end
 
 

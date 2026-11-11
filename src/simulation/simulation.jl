@@ -597,6 +597,7 @@ function _BUILD_Simulation(;
     _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
     _check_global_positions(sim.population, settingscontainer(sim))
     _refresh_rate_bounds!(settingscontainer(sim))
+    _store_type_methods!(settingscontainer(sim))
 
     # update label
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
@@ -2895,7 +2896,7 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     foreach(empty!, simulation.infection_buffers)
     foreach(empty!, simulation.removal_buffers)
     foreach(_reset!, simulation.state_log_counts)
-    # measures may have changed sampling methods since the last scan
+    _restore_type_methods!(settingscontainer(simulation))
     _refresh_rate_bounds!(settingscontainer(simulation))
 
     # Reset all loggers
