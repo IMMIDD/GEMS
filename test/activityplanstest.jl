@@ -301,6 +301,19 @@ end
         @test_throws ArgumentError set_scale!(unbuilt, individuals(unbuilt)[1], UnboundSetting, 1, 2.0)
     end
 
+    @testset "add_member! refuses a full plan before storing" begin
+        n = Int(typemax(Int8))
+        df = DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[30, 30], household = Int32[1, 2], office = Int32[1, n])
+        # person 1 fills their plan: a household and offices 1 to n - 1
+        extra = DataFrame(id = fill(Int32(1), n - 2), setting_type = fill("Office", n - 2), setting_id = Int32.(2:(n - 1)))
+        sim = Simulation(population = Population(df; memberships = extra), infected_fraction = 0.0)
+        a, b = individuals(sim)
+        @test GEMS.plan_length(a) == n
+        last_office = settings(sim, Office)[n]
+        @test_throws ArgumentError add_member!(last_office, a, sim)
+        @test individuals(last_office) == [b]
+    end
+
     @testset "Custom setting types are ranked by name in each container" begin
         # registered against name order, with own chars since both names start with R
         zed = declare_setting_type!("RankZed"; char = 'ζ')

@@ -947,9 +947,8 @@ function plan_add!(plans::ActivityPlanStore, individual::Individual, entry::Plan
     # a second entry for one setting would put the individual in its member list twice
     _entry_slot(plans, individual, tidx, setting_id(entry)) == 0 || throw(ArgumentError(
         "individual $(id(individual)) already holds an entry for $(setting_type_from_index(tidx)) $(setting_id(entry))"))
+    _check_plan_room(individual)
     n = Int(individual.plan_count)
-    n < typemax(Int8) || throw(ArgumentError(
-        "individual $(id(individual)) already holds $n plan entries; the cap is $(typemax(Int8))"))
 
     start, len = _plan_type_run(plans, individual, tidx)
     pos = primary ? start : start + len
@@ -975,6 +974,10 @@ function plan_add!(plans::ActivityPlanStore, individual::Individual, entry::Plan
     plans.indexed && (plans.membership_edits += 1)
     return nothing
 end
+
+# Throws if `individual` holds as many entries as a plan can.
+_check_plan_room(individual::Individual) = individual.plan_count < typemax(Int8) || throw(ArgumentError(
+    "individual $(id(individual)) already holds $(individual.plan_count) plan entries; the cap is $(typemax(Int8))"))
 
 """
     plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::Int)

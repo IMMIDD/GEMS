@@ -818,6 +818,7 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
     plan_slot(plans, individual, typeof(setting), id(setting)) == 0 || throw(ArgumentError(
         "individual $(id(individual)) is already a member of $(typeof(setting)) $(id(setting))"))
     _check_scale_field(typeof(setting), Float16(scale))
+    _check_plan_room(individual)
     _store_member!(setting, individual, plans)
     plan_add!(plans, individual,
               PlanEntry(typeof(setting), id(setting), length(individuals(setting)), scale); primary = primary)
