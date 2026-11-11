@@ -2873,6 +2873,8 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # the dead are alive again, so they return to their settings' frames
     plans = activity_plans(simulation)
+    gs = get(settingscontainer(simulation).settings, GlobalSetting, nothing)
+    (gs === nothing || isempty(gs)) || _restore_population_order!(gs[1], population(simulation))
     foreach_setting_vector(settingscontainer(simulation)) do vec
         for s in vec
             s isa IndividualSetting && _clear_deceased!(s, plans)

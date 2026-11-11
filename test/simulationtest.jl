@@ -1868,27 +1868,61 @@ import GEMS: increment!, infected!
     end
 
     @testset "The dead leave their settings' contacts" begin
-        sim = Simulation(seed = 1)
-        run!(sim)
-        dead_inds = filter(dead, individuals(sim))
-        @test !isempty(dead_inds)
+        sim = Simulation(pop_size = 500, seed = 1, global_setting = true)
         cntnr = settingscontainer(sim)
-        repack_dirty_pools!(cntnr)
         plans = GEMS.activity_plans(sim)
+        gs = settings(sim, GlobalSetting)[1]
+        inds = individuals(sim)
+        dead_inds = inds[[3, 17, 250, 499, 500]]
+        foreach(d -> GEMS.mark_deceased!(d, sim), dead_inds)
+        repack_dirty_pools!(cntnr)
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
             s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
             # still a member, but never drawn
             @test d in individuals(s)
             @test !(d in GEMS.present_members(s, cntnr))
         end
+        # the GlobalSetting leaves them out too, and finds everyone alive where they now sit
+        @test length(GEMS.present_members(gs, cntnr)) == length(inds) - length(dead_inds)
+        @test !any(in(GEMS.present_members(gs, cntnr)), dead_inds)
+        @test all(i -> individuals(gs)[GEMS._global_position(i, sim)] === i, setdiff(inds, dead_inds))
+        # marking someone twice changes nothing
+        before = copy(individuals(gs))
+        GEMS.mark_deceased!(dead_inds[1], sim)
+        @test individuals(gs) == before
+        @test GEMS._deceased(gs) == length(dead_inds)
         @test GEMS.validate_plans(population(sim), cntnr)
 
-        # a reset brings them back
+        # a reset brings them back, the GlobalSetting in population order
         reset!(sim)
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
             s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
             @test d in GEMS.present_members(s, cntnr)
         end
+        @test length(GEMS.present_members(gs, cntnr)) == length(inds)
+        @test isempty(gs.moved_positions)
+        @test GEMS._check_global_positions(population(sim), cntnr) === nothing
         @test GEMS.validate_plans(population(sim), cntnr)
+    end
+
+    @testset "GlobalSetting deaths move members only within it" begin
+        inds = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:5]
+        pop = Population(inds)
+        gs = GlobalSetting(individuals = copy(inds), contact_sampling_method = RandomSampling())
+        pos(k) = GEMS._global_position(gs, inds[k], pop)
+        # 5 moves to 1, 4 to 2, 3 dies in place, then 5 dies and 4 moves a second time, to 1
+        for k in (1, 2, 3, 5)
+            GEMS.mark_deceased!(gs, inds[k], pop)
+        end
+        @test GEMS._deceased(gs) == 4
+        @test pos(4) == 1
+        @test individuals(gs)[1] === inds[4]
+        @test gs.moved_positions == Dict(Int32(4) => Int32(1))
+        GEMS.mark_deceased!(gs, inds[5], pop)
+        @test GEMS._deceased(gs) == 4
+
+        GEMS._restore_population_order!(gs, pop)
+        @test individuals(gs) == inds
+        @test isempty(gs.moved_positions)
     end
 end

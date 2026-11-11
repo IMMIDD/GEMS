@@ -82,14 +82,15 @@ function _visit_global(visit::V, ind::Individual, sim::Simulation, draw::D) wher
     return nothing
 end
 
-# `ind`'s position in the GlobalSetting, which equals its population index. 0 without a GlobalSetting
-# or for someone added to the population after it was built.
+# `ind`'s position in the GlobalSetting. 0 without a GlobalSetting or for someone added to the population
+# after it was built.
 function _global_position(ind::Individual, sim::Simulation)::Int
     # not `settings(sim, GlobalSetting)`, which allocates when there is none
     gs = get(settingscontainer(sim).settings, GlobalSetting, nothing)
     (gs === nothing || isempty(gs)) && return 0
-    k = _individual_index(population(sim), id(ind))
-    return k <= length(individuals(@inbounds (gs::Vector{GlobalSetting})[1])) ? k : 0
+    g = @inbounds (gs::Vector{GlobalSetting})[1]
+    k = _global_position(g, ind, population(sim))
+    return k <= length(individuals(g)) ? k : 0
 end
 
 # Samples `ind`'s contacts in `setting` and tries each pathogen they shed on them. `frame_pos` is `ind`'s

@@ -848,6 +848,9 @@ function mark_deceased!(individual::Individual, sim::Simulation)
     for e in plan_entries(activity_plans(sim), individual)
         _with_entry_setting(s -> mark_deceased!(s, individual, sim), settingscontainer(sim), e)
     end
+    # nobody holds a plan entry for the GlobalSetting
+    gs = get(settingscontainer(sim).settings, GlobalSetting, nothing)
+    (gs === nothing || isempty(gs)) || mark_deceased!(gs[1], individual, sim)
     return nothing
 end
 
@@ -859,12 +862,19 @@ function apply_deaths!(sim::Simulation)
     # (type, part, parts): a flat type split by setting id, a pooled type whole
     parts = Tuple{DataType, Int, Int}[]
     for T in settingtypes(cntnr)
-        (T <: IndividualSetting && hasfield(T, :deceased)) || continue
+        (T <: IndividualSetting && T !== GlobalSetting && hasfield(T, :deceased)) || continue
         n = hasfield(T, :pool) ? 1 : Threads.nthreads()
         append!(parts, ((T, p, n) for p in 0:(n - 1)))
     end
     Threads.@threads :dynamic for (T, part, n) in parts
         _apply_deaths!(sim, settings(cntnr, T), part, n)
+    end
+    # nobody holds a plan entry for the GlobalSetting, so it is marked here, by one thread
+    gs = get(cntnr.settings, GlobalSetting, nothing)
+    if gs !== nothing && !isempty(gs)
+        for buf in sim.newly_dead, ind in buf
+            mark_deceased!(gs[1], ind, sim)
+        end
     end
     foreach(empty!, sim.newly_dead)
     return nothing

@@ -70,6 +70,8 @@ There should only be one `GlobalSetting` instance in any simulation.
     conditions
 - `flat_pool`, `offset`, `len`, `cap` *(internal)*: The members are `flat_pool.members[offset:(offset + len - 1)]`,
     in `cap` slots of that pool.
+- `deceased`, `moved_positions` *(internal)*: How many members at the end have died, and where living
+    members moved by those deaths now sit.
 """
 mutable struct GlobalSetting <: IndividualSetting
     id::Int32 # ONLY ONE GLOBALSETTING SHOULD EXIST!!!
@@ -83,12 +85,16 @@ mutable struct GlobalSetting <: IndividualSetting
 
     # if closed, no contacts can happen here
     isopen::Bool
+    # members at the end of `individuals` who have died
+    deceased::Int32
+    # living members a death swapped away from their population index: id => position
+    moved_positions::Dict{Int32, Int32}
 end
 
 function GlobalSetting(; id = GLOBAL_SETTING_ID, individuals = nothing, flat_pool = nothing, offset = 1, len = 0,
-        cap = len, contact_sampling_method::ContactSamplingMethod, ags = AGS(), isopen = true)
+        cap = len, contact_sampling_method::ContactSamplingMethod, ags = AGS(), isopen = true, deceased = 0)
     flat_pool, offset, len, cap = _flat_storage(individuals, flat_pool, offset, len, cap)
-    return GlobalSetting(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen)
+    return GlobalSetting(id, offset, len, cap, flat_pool, contact_sampling_method, ags, isopen, deceased, Dict{Int32, Int32}())
 end
 
 ###
@@ -915,6 +921,43 @@ add_member!(::GlobalSetting, ::Individual, ::Population; primary::Bool = false, 
 remove_member!(::GlobalSetting, ::Individual, ::Population) =
     throw(ArgumentError("GlobalSetting always holds the entire population; membership cannot be edited"))
 
+# `individual`'s position in the GlobalSetting: its population index, unless a death moved it.
+@inline function _global_position(gs::GlobalSetting, individual::Individual, pop::Population)::Int
+    k = _individual_index(pop, id(individual))
+    return isempty(gs.moved_positions) ? k : Int(get(gs.moved_positions, id(individual), k))
+end
+
+# Swaps the dead member with the last living one, as in other settings, and records where the moved member
+# now sits. Nobody holds a plan entry here, so the position comes from `_global_position`.
+function mark_deceased!(gs::GlobalSetting, individual::Individual, pop::Population)
+    v = individuals(gs)
+    i = _global_position(gs, individual, pop)
+    # a member not in its slot has already died
+    (1 <= i <= _alive(gs) && v[i] === individual) || return nothing
+    j = _alive(gs)
+    if i != j
+        moved = v[j]
+        v[i], v[j] = moved, individual
+        gs.moved_positions[id(moved)] = Int32(i)
+    end
+    delete!(gs.moved_positions, id(individual))
+    _add_deceased!(gs, 1)
+    membership_changed!(contact_sampling_method(gs), gs, individual, -1)
+    return nothing
+end
+
+# Puts every member back at its population index, for a simulation that is reset. Runs before the
+# deceased count is cleared.
+function _restore_population_order!(gs::GlobalSetting, pop::Population)
+    (_deceased(gs) == 0 && isempty(gs.moved_positions)) && return nothing
+    v = individuals(gs)
+    for m in copy(v)
+        v[_individual_index(pop, id(m))] = m
+    end
+    empty!(gs.moved_positions)
+    return nothing
+end
+
 
 """
     contains(setting::ContainerSetting)
@@ -1189,7 +1232,8 @@ function _build_global_setting!(settings, inds::Vector{Individual}, default_samp
 end
 
 # Errors unless the GlobalSetting holds each member at its position in the population, which
-# `_global_position` relies on. Its members never move, so the Simulation constructor checks once.
+# `_global_position` relies on. Only deaths move members later, recorded in `moved_positions`, so the
+# Simulation constructor checks once.
 function _check_global_positions(pop::Population, cntnr)
     gs = get(cntnr.settings, GlobalSetting, nothing)
     (gs === nothing || isempty(gs)) && return nothing
