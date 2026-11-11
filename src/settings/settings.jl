@@ -1224,9 +1224,12 @@ end
 
 Creates all settings defined by the attributes of the individuals inside a given population.
 Return a dictionary with all known concrete setting types as keys and a vector of created
-settings.
+settings. Throws if the population's settings were built before, as by another `Simulation`.
 """
 function settings_from_population(population::Population, global_setting::Bool = false)::Tuple{SettingsContainer, Dict}
+    # the plans hold the first build's member positions, which a second build would overwrite
+    activity_plans(population).indexed && throw(ArgumentError(
+        "the settings of this population were built already, e.g. by another Simulation; build a new Population for each Simulation"))
     # Set keys for every concrete type of Setting
     settings = SettingsContainer()
     renaming = Dict()

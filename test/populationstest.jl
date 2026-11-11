@@ -46,6 +46,13 @@
         @test [setting_ids(i, Office, GEMS.activity_plans(sub)) for i in individuals(sub)] == [Int32[1], Int32[1, 2]]
     end
 
+    @testset "A population builds one simulation" begin
+        # a second build would overwrite the member positions the first simulation reads
+        pop = Population(n = 200, avg_household_size = 3, avg_office_size = 5, avg_school_size = 20)
+        Simulation(population = pop)
+        @test_throws ArgumentError Simulation(population = pop)
+    end
+
     @testset "Loading" begin
         @testset "CSV-Loading" begin
 
