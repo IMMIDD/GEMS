@@ -387,12 +387,12 @@ membership_column(::Type{SchoolClass}) = :schoolclass
 membership_column(::Type{Municipality}) = :municipality
 
 """
-    build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing, DataFrame} = nothing)
+    build_plans!(pop::Population, df::DataFrame, membership_table::Union{Nothing, DataFrame} = nothing)
 
 Builds every individual's plan from the membership columns of `df`, which hold each type's
-primary, plus one entry per row of the optional `memberships` table (see `memberships`).
+primary, plus one entry per row of the optional `membership_table` (see `memberships`).
 """
-function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing, DataFrame} = nothing)
+function build_plans!(pop::Population, df::DataFrame, membership_table::Union{Nothing, DataFrame} = nothing)
     plans = ActivityPlanStore()
     pop.activity_plans = plans
 
@@ -403,8 +403,8 @@ function build_plans!(pop::Population, df::DataFrame, memberships::Union{Nothing
     # no copy when a column is already Int32
     column_ids = Vector{Int32}[_int32_column(df[!, membership_column(T)]) for T in types]
     column_tidx = UInt8[setting_type_index(T) for T in types]
-    rows = memberships === nothing ? _no_membership_rows() :
-        _membership_rows(pop, memberships, column_tidx, column_ids)
+    rows = membership_table === nothing ? _no_membership_rows() :
+        _membership_rows(pop, membership_table, column_tidx, column_ids)
     isempty(types) && isempty(rows.ind) && return plans
     # what every block is built from
     source = (column_ids = column_ids, column_tidx = column_tidx, rows = _grouped_rows(rows))
@@ -619,18 +619,18 @@ function _check_repeated_entries(block, ind::Individual)
 end
 
 """
-    assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false, scale::Real = 1.0)
+    assign_settings!(pop::Population, individual::Individual, type_ids::Pair...; primary::Bool = false, scale::Real = 1.0)
 
 Gives `individual` one plan entry at `scale` per `setting type => setting id` pair, as a
 population file's membership columns would, each as the primary of its type if `primary`. Only
 before the settings are built; afterwards use `add_member!`, which edits the setting too.
 """
-function assign_settings!(pop::Population, individual::Individual, memberships::Pair...; primary::Bool = false, scale::Real = 1.0)
+function assign_settings!(pop::Population, individual::Individual, type_ids::Pair...; primary::Bool = false, scale::Real = 1.0)
     plans = activity_plans(pop)
     # once indexed, an entry with no matching setting member would go unnoticed
     plans.indexed && throw(ArgumentError(
         "the settings are already built; use `add_member!`, which also edits the setting"))
-    for (T, sid) in memberships
+    for (T, sid) in type_ids
         plan_add!(plans, individual, PlanEntry(T, Int32(sid), DEFAULT_MEMBER_INDEX, scale); primary = primary)
     end
     return pop
