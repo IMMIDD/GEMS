@@ -13,7 +13,8 @@ export build_pools!, repack_dirty_pools!, living_members, container_frame_index
 The setting's living members, the ones its contacts are drawn from, as an indexable view. Nothing is copied and nothing is built
 per tick: an open leaf and an all-open container are both a contiguous slice of the
 hierarchy pool, and only a container with deceased members or a repeated member needs run
-indexing. Members of closed settings stay in the frames of the containers above.
+indexing. A closed setting keeps its members here, as do the containers above it; who attends today is
+`attending_members`'s question.
 
 The result aliases real member storage, so writing to it edits membership - see the note on
 `ContactSamplingMethod`.
@@ -22,19 +23,18 @@ A leaf can be read while its pool waits for `repack_dirty_pools!`, for example i
 tick with deaths; a container then throws.
 """
 function living_members(s::FlatSetting, ::SettingsContainer)::MemberView
-    return MemberView(s.flat_pool.members, s.offset, is_open(s) ? Int32(_alive(s)) : Int32(0))
+    return MemberView(s.flat_pool.members, s.offset, Int32(_alive(s)))
 end
 
 function living_members(s::IndividualSetting, ::SettingsContainer)::MemberView
     # deaths only reorder members within their storage, so this stays exact until the repack
     members, offset, len = _member_storage(s)
-    return is_open(s) ? MemberView(members, offset, len - Int32(_deceased(s))) : MemberView(members, Int32(1), Int32(0))
+    return MemberView(members, offset, len - Int32(_deceased(s)))
 end
 
 function living_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     pool = _pool(s)::HierarchicalSettingPool
     _check_clean(s, pool, _STALE_CONTAINER_HINT)
-    is_open(s) || return MemberView(pool.members, Int32(1), Int32(0))
 
     # the frame is stored as runs if a member repeats or something below has dead members
     r = s.pool_runs

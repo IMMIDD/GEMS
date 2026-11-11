@@ -58,7 +58,7 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
     cnt = 1
     cntnr = settingscontainer(simulation)
-    # a run can end on settings opened or closed, whose pools are unreadable until repacked
+    # a run can end with deaths or member edits not yet repacked
     repack_dirty_pools!(cntnr)
     plans = activity_plans(simulation)
     # own RNG and buffers: post processing steps may run concurrently
@@ -87,6 +87,8 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             cnt > CONTACT_SAMPLES && break
 
             s = stngs[sidx]::T
+            # nobody in a closed setting answers
+            is_open(s) || continue
 
             if s !== last_s
                 frame = living_members(s, cntnr)
@@ -101,6 +103,8 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             can_be_contacted(ind, s) || continue
 
             s_host = _membership_scale(plans, ind, s, cntnr)
+            # nor does anyone who does not attend: a scale of 0, or no leaf open up to a container
+            s_host > 0 || continue
             # the closure gets its own copy, as capturing `frame`, which the loop reassigns, would box it
             members = frame
             _with_sampling_method(s.contact_sampling_method) do csm

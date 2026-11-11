@@ -1339,6 +1339,21 @@ end
         @test all(==(-1), GEMS.contact_samples(sim, Household, true).b_id)
     end
 
+    @testset "Contact survey asks only who attends" begin
+        n = 20
+        df = DataFrame(id = Int32.(1:n), sex = Int8.(zeros(n)), age = Int8.(fill(30, n)),
+                       household = Int32.(cld.(1:n, 2)))
+        sim = Simulation(population = Population(df), household_contacts = RandomSampling(), seed = 1)
+        @test nrow(GEMS.contact_samples(sim, Household, false)) > 0
+        # closed households keep their members, but nobody in them answers
+        foreach(close!, households(sim))
+        @test nrow(GEMS.contact_samples(sim, Household, true)) == 0
+        foreach(open!, households(sim))
+        # nor does anyone with scale 0, who would otherwise be logged without contacts
+        foreach(ind -> set_scale!(sim, ind, Household, household_id(ind, sim), 0.0), individuals(sim))
+        @test nrow(GEMS.contact_samples(sim, Household, true)) == 0
+    end
+
     @testset "Gate: scales act on both ends" begin
         n = 1000
         df = DataFrame(id = Int32.(1:2n), sex = Int8.(zeros(2n)), age = Int8.(fill(30, 2n)),

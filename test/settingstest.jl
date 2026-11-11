@@ -1372,8 +1372,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test all(x -> individuals(hs[x]) == before[x], setdiff(eachindex(hs), [k]))
             @test GEMS.validate_plans(pop, cntnr)
 
+            # a closed household keeps its members in view; who attends is `attending_members`'s question
             close!(h)
-            @test isempty(GEMS.living_members(h, cntnr))
+            @test length(GEMS.living_members(h, cntnr)) == GEMS._alive(h)
         end
 
         @testset "Callers accept the view" begin
@@ -1777,9 +1778,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test length(GEMS.living_members(cs[2], sc)) == 1
             @test stays_exact(cs[2])
 
-            # a closed leaf is empty
+            # a closed leaf keeps its living members in view
             close!(cs[1])
-            @test isempty(GEMS.living_members(cs[1], sc))
+            @test length(GEMS.living_members(cs[1], sc)) == GEMS._alive(cs[1])
             @test stays_exact(cs[1])
         end
 
@@ -1802,7 +1803,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             # a closure reshapes no frame, so it needs no repack
             @test ids(GEMS.living_members(sch, sc)) == collect(1:9)
             @test contiguous(GEMS.living_members(sch, sc))
-            @test isempty(GEMS.living_members(ys[2], sc))
+            @test ids(GEMS.living_members(ys[2], sc)) == collect(7:9)
             # but the closed year's members no longer attend the school, which silences them on both sides
             @test all(k -> scale(k, sch) == 0.0f0, 7:9)
             @test all(k -> scale(k, sch) == 1.0f0, 1:6)
@@ -1977,14 +1978,14 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test sum(length(p.blocks.dirty) for p in values(cntnr.pools)) >= 100
             repack_dirty_pools!(cntnr)
 
-            # every open container holds the living members of its leaves, closed ones included, walked
+            # every container holds the living members of its leaves, closed ones included, walked
             # here through the leaves rather than read from the frames the repack wrote
             living(s::IndividualSetting) = collect(view(individuals(s), 1:GEMS._alive(s)))
             living(c::ContainerSetting) = reduce(vcat, (living(k) for k in settings(sim, GEMS.contains_type(typeof(c)))[c.contains]);
                                                  init = Individual[])
             for T in (SchoolYear, School, SchoolComplex, Department, Workplace, WorkplaceSite)
                 @test all(c -> sort(unique(ids(GEMS.living_members(c, cntnr)))) ==
-                               (is_open(c) ? sort(unique(ids(living(c)))) : Int32[]), settings(sim, T))
+                               sort(unique(ids(living(c)))), settings(sim, T))
             end
             @test GEMS.validate_plans(pop, cntnr)
         end
