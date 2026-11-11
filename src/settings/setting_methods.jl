@@ -646,6 +646,13 @@ end
 
 @inline _scale_bound(s::T) where {T<:Setting} = hasfield(T, :scale_bound) ? s.scale_bound : 1.0f0
 
+# Throws if `scale` is above 1 for a type without `scale_bound`, whose contact draws could not cover it.
+function _check_scale_field(::Type{T}, scale::Real) where {T<:Setting}
+    (scale <= 1 || hasfield(T, :scale_bound)) && return nothing
+    throw(ArgumentError("$T has no `scale_bound` field, so its members cannot have scales above 1 (got $scale); " *
+        "add `scale_bound::Float32 = 1` to the struct"))
+end
+
 # recounts a leaf's bound from its members
 function _refresh_scale_bound!(plans::ActivityPlanStore, s::T) where {T<:IndividualSetting}
     hasfield(T, :scale_bound) || return nothing
@@ -721,7 +728,7 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
     # the bound must use the scale as rounded into the entry's Float16
     stored = Float32(Float16(scale))
     # a deceased member's scale does not count
-    deceased = _is_deceased(s, member_index(plans.entries[plan_slot(plans, individual, T, sid)]))
+    deceased = _is_deceased(s, member_index(plans.entries[plan_slot(plans, individual, T, Int32(sid))]))
     !deceased && stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
     return nothing
 end

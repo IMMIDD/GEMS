@@ -51,6 +51,15 @@ end
     id::Int32
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
 end
+# a custom type without `scale_bound`, whose members cannot have scales above 1
+@with_kw mutable struct UnboundSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+    deceased::Int32 = 0
+end
 # a second type of the same name, as another package could define it
 module PlanTestOther
     using GEMS
@@ -264,6 +273,32 @@ end
             err = try GEMS.build_pools!(sc); nothing catch e; e end
             @test err isa ErrorException && occursin(missing_fields, err.msg)
         end
+    end
+
+    @testset "Scales above 1 need a `scale_bound` field" begin
+        df = DataFrame(id = Int32.(1:3), sex = Int8.(zeros(3)), age = Int8.(fill(30, 3)), household = Int32[1, 1, 2])
+        scaled = DataFrame(id = Int32[1, 2], setting_type = ["UnboundSetting", "UnboundSetting"], setting_id = Int32[1, 1], scale = [1.0, 2.0])
+        # building the settings, by the simulation or by hand
+        @test_throws ArgumentError Simulation(population = Population(df; memberships = scaled), infected_fraction = 0.0)
+        pop = Population(df; memberships = scaled)
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [UnboundSetting])
+        GEMS.add!(cntnr, UnboundSetting(id = Int32(1), individuals = individuals(pop)[1:2]))
+        @test_throws ArgumentError assign_member_indices!(pop, cntnr)
+
+        # scales up to 1 build; raising one, or adding a member above 1, throws
+        sim = Simulation(population = Population(df; memberships = DataFrame(id = Int32[1, 2],
+            setting_type = ["UnboundSetting", "UnboundSetting"], setting_id = Int32[1, 1], scale = [1.0, 0.5])), infected_fraction = 0.0)
+        u = settings(sim, UnboundSetting)[1]
+        a, _, c = individuals(sim)
+        @test_throws ArgumentError set_scale!(sim, a, UnboundSetting, 1, 2.0)
+        @test_throws ArgumentError add_member!(u, c, sim; scale = 3.0)
+        @test length(individuals(u)) == 2
+        set_scale!(sim, a, UnboundSetting, 1, 0.5)
+        # and before the settings exist
+        unbuilt = Population(df)
+        assign_settings!(unbuilt, individuals(unbuilt)[1], UnboundSetting => 1)
+        @test_throws ArgumentError set_scale!(unbuilt, individuals(unbuilt)[1], UnboundSetting, 1, 2.0)
     end
 
     @testset "Custom setting types are ranked by name in each container" begin

@@ -817,6 +817,7 @@ function add_member!(setting::IndividualSetting, individual::Individual, pop::Po
     # checked before the member list is touched, so a refusal leaves both sides as they were
     plan_slot(plans, individual, typeof(setting), id(setting)) == 0 || throw(ArgumentError(
         "individual $(id(individual)) is already a member of $(typeof(setting)) $(id(setting))"))
+    _check_scale_field(typeof(setting), Float16(scale))
     _store_member!(setting, individual, plans)
     plan_add!(plans, individual,
               PlanEntry(typeof(setting), id(setting), length(individuals(setting)), scale); primary = primary)
@@ -1353,6 +1354,11 @@ function _settings_for_type!(
     # the members' scales by position, needed only for a scale bound above 1
     member_scales = hasfield(T, :scale_bound) && _type_scale_bound(plans, setting_type_index(T)) > 1 ?
         Vector{Float16}(undef, valid_count) : nothing
+    if !hasfield(T, :scale_bound) && _type_scale_bound(plans, setting_type_index(T)) > 1
+        for part in slots, slot in part
+            _check_scale_field(T, entry_scale(@inbounds plans.entries[slot]))
+        end
+    end
     _place_members!(members, starts, ids, parts, owners, slots, member_scales, plans, inds)
 
     add_type!(settings, T)

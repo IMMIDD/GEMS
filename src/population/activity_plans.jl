@@ -895,6 +895,7 @@ function _assign_member_indices!(plans::ActivityPlanStore, cntnr::SettingsContai
             plan_set_member_index!(plans, slot, k)
             bound = max(bound, Float32(entry_scale(@inbounds plans.entries[slot])))
         end
+        _check_scale_field(T, bound)
         hasfield(T, :scale_bound) && (s.scale_bound = bound)
     end
     return nothing
@@ -1091,6 +1092,7 @@ set_scale!(pop::Population, individual::Individual, ::Type{T}, sid::Integer, sca
 function _set_entry_scale!(plans::ActivityPlanStore, individual::Individual, ::Type{T}, sid::Integer, scale::Real) where {T<:Setting}
     slot = plan_slot(plans, individual, T, Int32(sid))
     slot == 0 && throw(ArgumentError("individual $(id(individual)) holds no entry for $T $sid"))
+    _check_scale_field(T, Float16(scale))
     @inbounds plans.entries[slot] = _with_scale(plans.entries[slot], scale)
     _raise_scale_bound!(plans, @inbounds plans.entries[slot])
     _refresh_plan_scaled!(plans, individual)
