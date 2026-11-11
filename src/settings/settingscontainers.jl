@@ -32,6 +32,8 @@ mutable struct SettingsContainer
     rate_bounds::Vector{Float64}
     # per setting type index, its rank among this container's types: built-ins by index, then the rest by name
     type_ranks::Vector{UInt8}
+    # the indices of this container's types other than the built-ins, in rank order
+    ranked_types::Vector{UInt8}
 end
 
 
@@ -46,7 +48,7 @@ Return a empty container object.
 """
 function SettingsContainer()
     return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
-        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[])
+        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[], UInt8[])
 end
 
 

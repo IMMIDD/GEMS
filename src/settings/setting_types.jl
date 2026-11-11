@@ -217,10 +217,12 @@ end
     return t <= _N_BUILTIN_SETTING_TYPES ? t : @inbounds cntnr.type_ranks[t]
 end
 
-# Ranks `cntnr`'s types after one is added: built-ins keep their index, the others follow in name order.
+# Ranks `cntnr`'s types after one is added: built-ins keep their index, the others follow in name order,
+# which `ranked_types` lists.
 function _rank_types!(cntnr::SettingsContainer)
     others = sort!([T for T in keys(cntnr.settings) if T <: Setting && !(T in BUILTIN_SETTING_TYPES_SET)];
                    by = setting_type_name)
+    cntnr.ranked_types = UInt8[setting_type_index(T) for T in others]
     ranks = cntnr.type_ranks
     isempty(others) && return ranks
     n = maximum(T -> Int(setting_type_index(T)), others)

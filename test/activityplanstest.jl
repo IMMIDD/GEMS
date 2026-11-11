@@ -281,6 +281,21 @@ end
         @test GEMS._type_rank(one, zed) == n + 1
     end
 
+    @testset "Custom entries are visited in name order" begin
+        # registered against name order, so the global index would visit Zed first
+        zed = declare_setting_type!("VisitZed"; char = 'ž')
+        alpha = declare_setting_type!("VisitAlpha"; char = 'â')
+        df = DataFrame(id = Int32.(1:2), sex = Int8.(zeros(2)), age = Int8.(fill(30, 2)), household = Int32[1, 1])
+        table = DataFrame(id = Int32[1, 1, 2, 2], setting_type = ["VisitZed", "VisitAlpha", "VisitZed", "VisitAlpha"],
+                          setting_id = Int32[1, 1, 1, 1])
+        sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.0, seed = 1)
+        order = DataType[]
+        GEMS._foreach_spread_setting(individuals(sim)[1], sim, GEMS._draw_at_visit) do s, pos, drawn
+            push!(order, typeof(s))
+        end
+        @test order == [Household, alpha, zed]
+    end
+
     @testset "Declared setting types" begin
         # a config section declares a type no struct defines, with its own sampling method
         cfg = TOML.parsefile(joinpath(pkgdir(GEMS), "data", "DefaultConf.toml"))

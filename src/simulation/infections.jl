@@ -32,11 +32,27 @@ end
 # its setting is loaded, and a level that drew nobody is skipped; `_draw_at_visit` skips none.
 function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, draw::D) where {V, D}
     plans = activity_plans(sim)
-    for slot in plan_slots(plans, ind)
-        e = @inbounds plans.entries[slot]
-        _with_entry_settings(leaves -> _visit_entry(visit, leaves, e, slot, ind, sim, draw), settingscontainer(sim), e)
+    slots = plan_slots(plans, ind)
+    # entries sort by type index, so the built-ins come first and any custom types after them
+    for slot in slots
+        setting_type_of(@inbounds plans.entries[slot]) > _N_BUILTIN_SETTING_TYPES && break
+        _visit_slot(visit, slot, ind, sim, draw)
+    end
+    # custom types in rank order, which does not depend on when they were registered
+    has_custom = !isempty(slots) && setting_type_of(@inbounds plans.entries[last(slots)]) > _N_BUILTIN_SETTING_TYPES
+    if has_custom
+        for t in settingscontainer(sim).ranked_types, slot in _type_slots(plans, ind, t)
+            _visit_slot(visit, slot, ind, sim, draw)
+        end
     end
     _visit_global(visit, ind, sim, draw)
+    return nothing
+end
+
+# Visits the setting of the entry at `slot`.
+@inline function _visit_slot(visit::V, slot::Int, ind::Individual, sim::Simulation, draw::D) where {V, D}
+    e = @inbounds activity_plans(sim).entries[slot]
+    _with_entry_settings(leaves -> _visit_entry(visit, leaves, e, slot, ind, sim, draw), settingscontainer(sim), e)
     return nothing
 end
 
