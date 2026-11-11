@@ -878,20 +878,16 @@ function _finish_indexing!(plans::ActivityPlanStore, cntnr::SettingsContainer)
 end
 
 # function barrier: with `T` static, `settings(cntnr, T)` is a typed vector. The lookup is the
-# one `check_pool_entries` makes, so a pooled member without an entry is caught here.
+# one `check_pool_entries` makes, so a member without an entry is caught here.
 function _assign_member_indices!(plans::ActivityPlanStore, cntnr::SettingsContainer,
                                  ::Type{T}) where {T<:IndividualSetting}
-    pooled = haskey(cntnr.pools, T)
     for s in settings(cntnr, T)
         sid = id(s)
         members = individuals(s)
         bound = 1.0f0
         for k in eachindex(members)
             slot = plan_slot(plans, members[k], T, sid)
-            if slot == 0
-                pooled && _missing_entry_error(members[k], s)
-                continue
-            end
+            slot == 0 && _missing_entry_error(members[k], s)
             plan_set_member_index!(plans, slot, k)
             bound = max(bound, Float32(entry_scale(@inbounds plans.entries[slot])))
         end

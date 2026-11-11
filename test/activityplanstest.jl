@@ -327,6 +327,17 @@ end
         @test GEMS.validate_plans(population(sim), settingscontainer(sim))
     end
 
+    @testset "Indexing requires an entry for every member" begin
+        # a hand-built household listing someone without an entry for it
+        pop = Population(DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[30, 30], household = Int32[1, 1]))
+        a, b = individuals(pop)
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [Household])
+        GEMS.add!(cntnr, Household(id = Int32(1), contact_sampling_method = RandomSampling(), individuals = [a, b]))
+        GEMS.add!(cntnr, Household(id = Int32(2), contact_sampling_method = RandomSampling(), individuals = [a]))
+        @test_throws ErrorException assign_member_indices!(pop, cntnr)
+    end
+
     @testset "Custom setting types are ranked by name in each container" begin
         # registered against name order, with own chars since both names start with R
         zed = declare_setting_type!("RankZed"; char = 'ζ')
