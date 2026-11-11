@@ -321,6 +321,15 @@ function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vect
     return out
 end
 
+# Per household id, how many people have it as their primary household
+function _primary_household_sizes(households::AbstractVector, n_households::Int)
+    sizes = zeros(Int16, n_households)
+    for h in households
+        (ismissing(h) || h < 1) || (sizes[h] += Int16(1))
+    end
+    return sizes
+end
+
 # Each row's household coordinates, NaN for a seed, which has no setting to be located at
 function _household_coordinates(household_ids::AbstractVector, setting_ids::AbstractVector, households::Vector{Household})
     lat_of, lon_of = map(lat, households), map(lon, households)

@@ -205,6 +205,24 @@ import GEMS: _mean_contacts_per_age_group,
         @test dead == [1, 1, 0]
     end
 
+    @testset "Household attack rates on primary households" begin
+        # A (household 1) infected at work infects B at home in B's household 2, X at home, and X infects Y
+        inf_ids = Int32[1, 2, 3, 4]
+        sources = Int32[-1, 1, 1, 3]
+        types = ['o', 'h', 'h', 'h']
+        hh = Int32[1, 2, 1, 1]
+        chain, started = GEMS._home_chains(inf_ids, sources, types, hh)
+        # B starts household 2's chain; X and Y, three generations deep, stay in A's
+        @test chain == Int32[2, 0, 1, 0]
+        @test started == [true, true, false, false]
+        # without its source in the rows, B starts a chain all the same
+        @test GEMS._home_chains(inf_ids[2:4], sources[2:4], types[2:4], hh[2:4])[2] == [true, true, false]
+
+        # sizes count primary members only; someone without a household is skipped
+        @test GEMS._primary_household_sizes(Int32[1, 1, 2, -1], 2) == Int16[2, 1]
+        @test GEMS._unique_households(Int32[2, -1, 1, 2]) == Int32[2, 1]
+    end
+
     @testset "Household SAR" begin
         # household 1 has 5 members, member 5 died at 8. Index id 1 and co-primary id 2 at 10, secondaries id 3 at 11
         # (home) and id 4 at 24, the window's last tick. Id 1 again at 25, while id 4 is still infected, is no index;

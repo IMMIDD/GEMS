@@ -17,7 +17,7 @@ in `constants.jl`. If several infections introduce a pathogen into a household
 at the same first tick, the one with the lowest infection id counts.
 Members who died by the first introduction are not counted as contacts.
 Households left with no one to infect, like single-person ones, are excluded.
-If several members bring the pathogen in on the same tick, the one with the lowest infection id counts as the introducer.
+Members are the people whose primary household it is; an infection at home by anyone else brings the pathogen in.
 
 # Returns
 
@@ -51,7 +51,7 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
     # and take only the rows of the sampled households
     infs = postProcessor |> infectionsDF |>
         x -> DataFrames.select(x, :tick, :id_b, :household_b, :infection_id, :source_infection_id, :setting_type, :pathogen_id, copycols = false) |>
-        x -> x[findall(h -> !ismissing(h) && selected[h], hh_col), :] |>
+        x -> x[findall(h -> !ismissing(h) && h > 0 && selected[h], hh_col), :] |>
         x -> sort(x, :infection_id)
 
     # return an empty DataFrame if there are no infections
@@ -59,12 +59,11 @@ function household_attack_rates(postProcessor::PostProcessor; hh_samples::Int64 
         return DataFrame(pathogen_id = Int8[], first_introduction = Int16[], hh_id = Int32[], hh_size = Int16[], chain_size = Int32[], hh_attack_rate = Float64[])
     end
 
-    infs.home_chain, infs.started_chain = _home_chains(infs.infection_id, infs.source_infection_id, infs.setting_type)
+    infs.home_chain, infs.started_chain = _home_chains(infs.infection_id, infs.source_infection_id, infs.setting_type, infs.household_b)
 
-    # `household_b` is the infectee's primary household, so only the sampled households are looked up
-    hhs = households(simulation(postProcessor))
+    # `household_b` is the infectee's primary household; its size counts the people whose primary it is
     infs.hh_id = Int32.(infs.household_b)
-    infs.hh_size = _household_sizes(infs.hh_id, hhs)
+    infs.hh_size = _primary_household_sizes(populationDF(postProcessor).household, length(households(simulation(postProcessor))))[infs.hh_id]
     deaths = deathsDF(postProcessor)
     death_households = coalesce.(deaths.household, Int32(0))
 
@@ -101,14 +100,15 @@ function _dead_before_introduction(hh_ids::AbstractVector, first_ticks::Abstract
 end
 
 # Per infection, the size of the household chain it started, and whether it started one (was not infected
-# at home). Rows are sorted by infection id, so a source's row comes before its infectees' and every chain is
+# at home by someone of its primary household). Rows are sorted by infection id, so a source's row comes before its infectees' and every chain is
 # complete by the time it is added to its source.
-function _home_chains(inf_ids::AbstractVector, source_ids::AbstractVector, setting_types::AbstractVector)
+function _home_chains(inf_ids::AbstractVector, source_ids::AbstractVector, setting_types::AbstractVector, households::AbstractVector)
     source_rows = _matching_rows(source_ids, inf_ids)
     home_chain = zeros(Int32, length(inf_ids))
     started_chain = fill(true, length(inf_ids))
     for j in length(inf_ids):-1:1
-        (setting_types[j] == 'h' && source_rows[j] != 0) || continue
+        # a home infection continues its source's chain if both have one primary household
+        (setting_types[j] == 'h' && source_rows[j] != 0 && households[source_rows[j]] == households[j]) || continue
         started_chain[j] = false
         home_chain[source_rows[j]] += 1 + home_chain[j]
     end
@@ -120,12 +120,9 @@ function _unique_households(col::AbstractVector)
     seen = falses(maximum(skipmissing(col); init = 0))
     households = eltype(col)[]
     for h in col
-        (ismissing(h) || seen[h]) && continue
+        (ismissing(h) || h < 1 || seen[h]) && continue
         seen[h] = true
         push!(households, h)
     end
     return households
 end
-
-# The size of each household in `hh_ids`, in a function of its own, so the loop knows the column's type
-_household_sizes(hh_ids::AbstractVector, hhs::Vector{Household}) = Int16[size(hhs[h]) for h in hh_ids]
