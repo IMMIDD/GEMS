@@ -171,7 +171,8 @@
             @test df1.recovery[end] >= t+10
             @test df1.setting_id[end] == GEMS.DEFAULT_SETTING_ID
             @test df1.setting_type[end] == '?'
-            @test df1.household_id[end] == GEMS.DEFAULT_SETTING_ID
+            # a seed has no setting, but logs the household it had
+            @test df1.household_id[end] == household_id(infecter, sim)
             @test df1.source_infection_id[end] == GEMS.DEFAULT_INFECTION_ID
 
             # infect another agent in a household setting

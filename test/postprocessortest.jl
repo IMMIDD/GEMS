@@ -165,6 +165,21 @@ import GEMS: _mean_contacts_per_age_group,
         end
     end
 
+    @testset "Infection-time households" begin
+        # person 1 lives in households 1 and 2, with 1 their primary when infected
+        df = DataFrame(id = Int32.(1:3), age = Int8.(fill(30, 3)), sex = Int8.(ones(3)), household = Int32[1, 2, 2])
+        table = DataFrame(id = Int32[1], setting_type = ["Household"], setting_id = Int32[2])
+        sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.0)
+        a = individuals(sim)[1]
+        infect!(a, tick(sim), first_pathogen(sim); sim = sim, rng = rng(sim))
+        GEMS.flush_pending_infections!(sim)
+        set_primary!(sim, a, Household, 2)
+        infs = infectionsDF(PostProcessor(sim))
+        # the seed keeps the household it had then, and stays without a location
+        @test only(infs.household_b) == 1
+        @test isnan(only(infs.lat))
+    end
+
     @testset "show" begin
         @test !isempty(@capture_out show(pp))
     end

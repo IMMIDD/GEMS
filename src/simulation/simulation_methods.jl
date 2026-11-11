@@ -525,8 +525,8 @@ function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfecti
         recovery(p.dp),
         p.setting_id,
         p.setting_type,
-        # an infection in a setting is located at the host's household; a seed has no location
-        p.setting_id == DEFAULT_SETTING_ID ? DEFAULT_SETTING_ID : household_id(ind, activity_plans(sim)),
+        # the host's household at infection, also for a seed
+        household_id(ind, activity_plans(sim)),
         p.source_infection_id
     )
     state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)

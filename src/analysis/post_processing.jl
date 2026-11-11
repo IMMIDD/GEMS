@@ -71,9 +71,10 @@ mutable struct PostProcessor
         infections = dataframe(infectionlogger(simulation))
 
         # the logger keeps the infectee's household; locate the infection there, with its setting's AGS
-        lats, lons = _household_coordinates(infections.household_id, households(simulation))
+        lats, lons = _household_coordinates(infections.household_id, infections.setting_id, households(simulation))
         infection_ags = _setting_ags(infections.setting_type, infections.setting_id, settingscontainer(simulation))
         insertcols!(infections, :household_id, :lat => lats, :lon => lons, :ags => infection_ags; after = true)
+        infection_households = infections.household_id
         DataFrames.select!(infections, Not(:household_id))
 
         # the logger stores the progression index; resolve it here, where pathogens are known
@@ -101,7 +102,8 @@ mutable struct PostProcessor
         rows_b = _matching_rows(infections.id_b, pop.id)
         infections.age_a = _gather(pop.age, rows_a)
         infections.age_b = _gather(pop.age, rows_b)
-        infections.household_b = _gather(pop.household, rows_b)
+        # the household at infection
+        infections.household_b = infection_households
 
         sim_households = households(simulation)
 
@@ -319,13 +321,13 @@ function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vect
     return out
 end
 
-# Each row's household coordinates, NaN for a seed, which logs no household
-function _household_coordinates(household_ids::AbstractVector, households::Vector{Household})
+# Each row's household coordinates, NaN for a seed, which has no setting to be located at
+function _household_coordinates(household_ids::AbstractVector, setting_ids::AbstractVector, households::Vector{Household})
     lat_of, lon_of = map(lat, households), map(lon, households)
     lats, lons = similar(lat_of, length(household_ids)), similar(lon_of, length(household_ids))
     Threads.@threads for k in eachindex(household_ids)
         h = household_ids[k]
-        lats[k], lons[k] = h == DEFAULT_SETTING_ID ? (NaN32, NaN32) : (lat_of[h], lon_of[h])
+        lats[k], lons[k] = (h == DEFAULT_SETTING_ID || setting_ids[k] == DEFAULT_SETTING_ID) ? (NaN32, NaN32) : (lat_of[h], lon_of[h])
     end
     return lats, lons
 end
