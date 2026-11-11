@@ -1,5 +1,12 @@
 import GEMS: increment!, infected!
 
+# a custom start condition that infects the first individual and leaves the infection staged
+struct InfectFirstCondition <: GEMS.StartCondition
+    pathogen::String
+end
+GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
+    infect!(individuals(sim)[1], tick(sim), first_pathogen(sim); sim = sim, rng = rng(sim))
+
 @testset "Simulation" begin
 
     # global parameters
@@ -1173,6 +1180,8 @@ import GEMS: increment!, infected!
             start_condition = ImportedCases(ticks = [3, 3], count = [2, 4]))
         @test length(seeding_schedule(dupsim)[Int16(3)]) == 2
         @test sort([s.count for s in seeding_schedule(dupsim)[Int16(3)]]) == [2, 4]
+        # a custom start condition's infections are flushed by the end of the constructor
+        @test infected(individuals(Simulation(pop_size = 100, start_condition = InfectFirstCondition("")))[1])
 
         # OFFSET
         # a fixed offset shifts the whole schedule

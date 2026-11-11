@@ -2859,6 +2859,8 @@ Initializes the simulation model with its prior immunity and its start condition
 function initialize!(simulation::Simulation)
     _apply_prior_immunity!(simulation)
     initialize!(simulation, start_condition(simulation))
+    # a custom start condition may leave its infections staged
+    flush_pending_infections!(simulation)
 end
 
 """
