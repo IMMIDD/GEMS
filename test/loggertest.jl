@@ -204,6 +204,14 @@
 
         end
 
+        @testset "Infection Ids Stop Before They Wrap" begin
+            il = InfectionLogger()
+            il.last_infection_id = typemax(Int32) - Int32(2)
+            @test GEMS.reserve_infection_ids!(il, 2) == typemax(Int32) - Int32(1)
+            @test_throws OverflowError GEMS.reserve_infection_ids!(il, 1)
+            @test il.last_infection_id == typemax(Int32)
+        end
+
         @testset "Infecter Index" begin
 
             # minimal infection record; only a, b, tick, onset and recovery matter for the index

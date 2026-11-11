@@ -135,9 +135,11 @@ end
 
 Reserves `n` consecutive infection ids and returns the first. Call it from a serial point;
 the ids are then handed out without any cross-thread coordination. Reserving more than are
-used leaves gaps, so `last_infection_id` is an upper bound on the infection count.
+used leaves gaps, so `last_infection_id` is an upper bound on the infection count. Throws before the ids pass `typemax(Int32)`.
 """
 function reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+    n > typemax(Int32) - logger.last_infection_id && throw(OverflowError(
+        "infection ids would pass $(typemax(Int32)); the run has staged more infections than an `Int32` id can count"))
     first_id = logger.last_infection_id + Int32(1)
     logger.last_infection_id += Int32(n)
     return first_id
