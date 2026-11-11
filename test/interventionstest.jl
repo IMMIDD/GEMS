@@ -491,7 +491,20 @@ end
 
         # resample_contacts defaults
         @test resample_contacts(trace_infectious) == false
-        @test settingtypes(trace_infectious) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
+        @test first(settingtypes(trace_infectious)) === Household
+        @test !any(in((GlobalSetting, Municipality)), settingtypes(trace_infectious))
+
+        # by default, every type the simulation has, layers' and declared ones included, Household first
+        GEMS.declare_setting_type!("TraceClub")
+        mktempdir() do dir
+            path, mpath, spath = joinpath(dir, "pop.csv"), joinpath(dir, "extra.csv"), joinpath(dir, "settings.jld2")
+            CSV.write(path, DataFrame(id = Int32.(1:2), age = Int8[30, 31], sex = Int8[1, 1], household = Int32[1, 1], office = Int32[1, 1]))
+            CSV.write(mpath, DataFrame(id = Int32[1], setting_type = ["TraceClub"], setting_id = Int32[1]))
+            jldsave(spath; data = Dict(:Office => DataFrame(id = Int32[1], contained = Int32[1]),
+                :Department => DataFrame(id = Int32[1], contains = [Int32[1]])))
+            sim_t = Simulation(population = path, membershipsfile = mpath, settingsfile = spath)
+            @test settingtypes(TraceInfectiousContacts(IStrategy("club", sim_t))) == DataType[Household, Office, Department, GEMS.DeclaredSetting{:TraceClub}]
+        end
 
         # one household of five; the index is infectious from tick 1 and infected no one
         pop4 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
@@ -653,7 +666,7 @@ end
         @test follow_up(trace_source) === i_strategy5
         @test lookback(trace_source) == 14
         @test resample_contacts(trace_source) == false
-        @test settingtypes(trace_source) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
+        @test first(settingtypes(trace_source)) === Household
         @test contact_filter(trace_source) isa GEMS.ContactFilterFn
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = 0)
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, success_rate = 2.0)
