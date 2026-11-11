@@ -52,6 +52,24 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             # Delete the file
             rm("temp.jld2")
         end
+        @testset "State columns are ignored" begin
+            # settings start open and without deceased members, whatever the file says
+            sydf = DataFrame(id=[1, 2], contains=[[1, 2], [3, 4]], isopen=[false, true])
+            scdf = DataFrame(id=[1, 2, 3, 4], contained=Int32.([1, 1, 2, 2]), isopen=[false, true, false, true],
+                             deceased=Int32.([1, 0, 0, 0]))
+            sc = SettingsContainer()
+            add_types!(sc, [SchoolYear, SchoolClass])
+            for i in 1:4
+                add!(sc, SchoolClass(id=i, individuals=[Individual(id=i, age=1, sex=1)], contact_sampling_method=rs))
+            end
+            mktempdir() do dir
+                path = joinpath(dir, "settings.jld2")
+                JLD2.save(path, "data", Dict(:SchoolYear => sydf, :SchoolClass => scdf))
+                settings_from_jld2!(path, sc)
+            end
+            @test all(is_open, settings(sc, SchoolClass)) && all(is_open, settings(sc, SchoolYear))
+            @test all(c -> GEMS._deceased(c) == 0, settings(sc, SchoolClass))
+        end
         @testset "Faulty Settingfile: Empty Container" begin
             scdf = DataFrame(id=[1, 2, 3, 4], contained=Int32.([1, 1, 2, 2]))
             sydf = DataFrame(id=[1, 2], contains=[[1, 2], [3, 4]], contained=Int32.([2, 2]))

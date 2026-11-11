@@ -491,6 +491,9 @@ end
 _unflatten_settings(offsets::AbstractVector{<:Integer}, values::AbstractVector) =
     [values[offsets[i]:offsets[i+1]-1] for i in 1:length(offsets)-1]
 
+# State columns the loader ignores in a settings file, so every setting starts in the same state.
+const _SETTINGS_FILE_STATE_FIELDS = (:isopen, :deceased, :scale_bound, :closed_below, :contact_sampling_method)
+
 # Adds what `_read_settings_jld2` read to `cntnr`, renaming ids through `d`.
 function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
     # Default sampling method
@@ -519,7 +522,7 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
             valid_cols = Symbol[]
             for col in names(df)
                 symcol = Symbol(col)
-                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len, :cap)
+                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len, :cap) && symcol ∉ _SETTINGS_FILE_STATE_FIELDS
                     push!(valid_cols, symcol)
                 end
             end
@@ -535,7 +538,8 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
 
             # Add the container settings from the dataframe
             for nt in Tables.namedtupleiterator(df)
-                push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
+                fields = (k => v for (k, v) in pairs(nt) if k ∉ _SETTINGS_FILE_STATE_FIELDS)
+                push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, fields...))
             end
 
             # Sort the vector of settings by ID
