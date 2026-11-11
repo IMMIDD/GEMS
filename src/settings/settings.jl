@@ -370,9 +370,10 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `living_members` hands back this span
-    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
-- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed or deceased, `nothing` when the span already covers each present member once.
+    instead of collecting them; refreshed by every repack.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or a member below has
+    died, `nothing` when the span covers each living member once.
+- `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolYear <: ContainerSetting
@@ -429,9 +430,10 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `living_members` hands back this span
-    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
-- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed or deceased, `nothing` when the span already covers each present member once.
+    instead of collecting them; refreshed by every repack.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or a member below has
+    died, `nothing` when the span covers each living member once.
+- `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct School <: ContainerSetting
@@ -485,9 +487,10 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `living_members` hands back this span
-    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
-- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed or deceased, `nothing` when the span already covers each present member once.
+    instead of collecting them; refreshed by every repack.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or a member below has
+    died, `nothing` when the span covers each living member once.
+- `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct SchoolComplex <: ContainerSetting
@@ -543,9 +546,10 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `living_members` hands back this span
-    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
-- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed or deceased, `nothing` when the span already covers each present member once.
+    instead of collecting them; refreshed by every repack.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or a member below has
+    died, `nothing` when the span covers each living member once.
+- `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct WorkplaceSite <: ContainerSetting
@@ -599,9 +603,10 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `living_members` hands back this span
-    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
-- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed or deceased, `nothing` when the span already covers each present member once.
+    instead of collecting them; refreshed by every repack.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or a member below has
+    died, `nothing` when the span covers each living member once.
+- `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Workplace <: ContainerSetting
@@ -655,9 +660,10 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
     members. A container stores no members itself, so `living_members` hands back this span
-    instead of collecting them; it is set at build time and holds until an edit leaves a gap.
-- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
-    below is closed or deceased, `nothing` when the span already covers each present member once.
+    instead of collecting them; refreshed by every repack.
+- `pool_runs` *(internal)*: The frame when a member sits in two leaves below or a member below has
+    died, `nothing` when the span covers each living member once.
+- `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
 @with_kw mutable struct Department <: ContainerSetting

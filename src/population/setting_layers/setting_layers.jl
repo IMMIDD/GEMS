@@ -395,10 +395,9 @@ it applied and recorded.
 - `seed`: seeds the layers' draws, together with each layer's name
 - `household_coordinates`: a table with each household's `id`, `lon` and `lat`, needed by
   `SpatialSettings` and `JoinNearby`
-- `id_floors`: internal; per setting type, an id the new settings' ids must stay above
 
-New entries go behind the ones an individual already holds of their type, so they become the
-primary only for those who held none: an `Office` layer makes `is_working` true for them.
+New entries go behind those an individual already holds of the type, so they become the primary only for
+individuals who held none: an `Office` layer makes `is_working` true for them.
 """
 function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing,
                              id_floors::AbstractDict = Dict{DataType, Int}())
@@ -451,9 +450,8 @@ function _rescale_held_entries!(plans::ActivityPlanStore, inds::Vector{Individua
     added(i) = count(k -> additions.sids[k] != DEFAULT_SETTING_ID, _addition_rows(additions, i))
     # the merge puts the layer's entries behind the earlier ones of their type
     function held(ind, t, n)
-        start, len = _plan_type_run(plans, ind, t)
-        lo = Int(ind.plan_offset) + start
-        return lo:(lo + len - 1 - (t == additions.tidx ? n : 0))
+        r = _type_slots(plans, ind, t)
+        return t == additions.tidx ? (first(r):(last(r) - n)) : r
     end
     rescaled(slot, factor) = Float64(entry_scale(plans.entries[slot])) * factor
     for i in _addition_individuals(additions)

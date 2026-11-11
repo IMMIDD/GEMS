@@ -226,7 +226,7 @@ _default_setting_char(name::AbstractString) = uppercase(first(name))
 
 function setting_type_index(::Type{T}) where {T<:Setting}
     idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
-    idx == 0 && error("$T has no setting-type index; register it with `add_type!` first")
+    idx == 0 && error("$T has no setting-type index; register it with `register_setting_type!` first")
     return idx
 end
 
