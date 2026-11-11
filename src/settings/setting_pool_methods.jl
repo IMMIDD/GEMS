@@ -114,14 +114,16 @@ function _drop_skips(starts::Vector{Int32}, prefix::Vector{Int32}, total::Int,
         while k <= length(skips) && Int(skips[k]) < stop
             s = Int(skips[k])
             if s > pos
-                push!(out_starts, Int32(pos)); push!(out_prefix, Int32(kept))
+                push!(out_starts, Int32(pos))
+                push!(out_prefix, Int32(kept))
                 kept += s - pos
             end
             pos = s + 1
             k += 1
         end
         if pos < stop
-            push!(out_starts, Int32(pos)); push!(out_prefix, Int32(kept))
+            push!(out_starts, Int32(pos))
+            push!(out_prefix, Int32(kept))
             kept += stop - pos
         end
     end
@@ -757,7 +759,8 @@ end
 function _set_present_frame!(c::C, r::UnitRange{Int}, leaves::Vector{T},
                              buf::RepackBuffer, dup::Union{Nothing, MemberRuns}) where {C<:ContainerSetting, T<:IndividualSetting}
     # built in the buffer, so a frame that stays one run allocates nothing
-    starts = empty!(buf.run_starts); prefix = empty!(buf.run_prefix)
+    starts = empty!(buf.run_starts)
+    prefix = empty!(buf.run_prefix)
     total = 0
     run_end = -1
     @inbounds for j in r
@@ -811,7 +814,9 @@ end
 function _start_scan!(t::DupTable, n::Int)
     want = n == 0 ? 0 : nextpow(2, 2n)
     if length(t.keys) < want
-        resize!(t.keys, want); resize!(t.pos, want); resize!(t.gen, want)
+        resize!(t.keys, want)
+        resize!(t.pos, want)
+        resize!(t.gen, want)
         fill!(t.gen, Int32(0))
         t.epoch = Int32(0)
     end

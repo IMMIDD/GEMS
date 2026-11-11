@@ -155,13 +155,13 @@ A type to represent individuals that act as agents inside the simulation.
     plan_offset::Int32 = 0                          # off 20,  4B,  line 0
     plan_count::Int8 = 0                            # off 24,  1B,  line 0
     plan_scaled::Bool = false                       # off 25,  1B,  line 0
+    membership_mask::UInt16 = 0                     # off 26,  2B,  line 0
 
     # BOOKKEEPING
-    number_of_infections::Int8 = 0                  # off 26,  1B,  line 0
-    disease_flags::DiseaseFlags = DiseaseFlags()    # off 27,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 28,  1B,  line 0
-    #                                                 off 29,  1B free (alignment)
-    membership_mask::UInt16 = 0                     # off 30,  2B,  line 0
+    number_of_infections::Int8 = 0                  # off 28,  1B,  line 0
+    disease_flags::DiseaseFlags = DiseaseFlags()    # off 29,  1B,  line 0
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 30,  1B,  line 0
+    #                                                 off 31,  1B free (alignment)
 
     # INTERVENTIONS
     detected_mask::UInt32 = 0                       # off 32,  4B,  line 0
