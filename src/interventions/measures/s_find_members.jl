@@ -15,7 +15,7 @@ measure effecively allows to switch between `SStrategy` and `IStrategy`.
 # Optional Arguments
 - `sample_size::Int64`: Limiting the number of individuals to an integer maximum
 - `sample_fraction::Float64`: Limiting the number of individuals to a fraction of the overall assigned members. Must be between (0-1)
-- `selectionfilter::Function`: Filters individuals based on their characteristics
+- `selectionfilter::Function`: Filters individuals based on their characteristics; may take the simulation as a second argument
 
 # Example
 
@@ -94,8 +94,11 @@ struct FindMembers{FU<:IStrategy} <: SMeasure
             throw(ArgumentError("Please provide either a sample_size or a sample_fraction. Both don't go together."))
         end
 
+        keep = _bind_sim(selectionfilter, Individual, follow_up.sim)
+        _check_condition(keep, Individual, "FindMembers")
+
         return(
-            new{typeof(follow_up)}(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all, Individual[], Individual[])
+            new{typeof(follow_up)}(follow_up, sample_size, sample_fraction, IPredicate(keep), selectionfilter !== _select_all, Individual[], Individual[])
         )
     end
 

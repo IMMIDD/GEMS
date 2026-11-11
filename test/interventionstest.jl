@@ -123,6 +123,33 @@ end
         @test occursin("2:", output_measures)
     end
 
+    @testset "Conditions may take the simulation" begin
+        df = DataFrame(id = Int32.(1:2), age = Int8[30, 31], sex = Int8[1, 1], household = Int32[1, 2])
+        pop = Population(df)
+        assign_settings!(pop, individuals(pop)[1], Office => 1)
+        sim_c = Simulation(population = pop)
+        worker, other = individuals(sim_c)
+
+        # 2-arg accessors like `is_working` are bound to the simulation
+        str = IStrategy("workers", sim_c, condition = is_working)
+        @test GEMS.condition(str)(worker) && !GEMS.condition(str)(other)
+        add_measure!(str, SelfIsolation(1), condition = is_working, delay = (i, sim) -> is_working(i, sim) ? 2 : 0)
+        entry = measures(str)[end]
+        @test entry.condition(worker) && !entry.condition(other)
+        @test entry.delay(worker) == 2 && entry.delay(other) == 0
+        fm = FindMembers(str, selectionfilter = is_working)
+        @test GEMS.selectionfilter(fm)(worker) && !GEMS.selectionfilter(fm)(other)
+        s_str = SStrategy("busy", sim_c, condition = (s, sim) -> !isempty(individuals(s, sim)))
+        @test GEMS.condition(s_str)(households(sim_c)[1])
+        # a method for one setting type is enough for a setting condition
+        @test SStrategy("households only", sim_c, condition = (h::Household) -> true) isa SStrategy
+
+        # one that cannot take the focal object fails at setup, not mid-run
+        @test_throws ArgumentError IStrategy("bad", sim_c, condition = (h::Household) -> true)
+        @test_throws ArgumentError add_measure!(str, SelfIsolation(1), delay = (h::Household) -> 1)
+        @test_throws ArgumentError FindMembers(str, selectionfilter = (h::Household) -> true)
+    end
+
     @testset "SelfIsolation Measure" begin
         self_isolation = SelfIsolation(14)
         add_measure!(i_strategy, self_isolation)
