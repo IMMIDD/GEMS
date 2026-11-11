@@ -152,6 +152,8 @@ const EXTRA_SETTING_TYPE_INDEX = Dict{DataType, UInt8}()
 const EXTRA_SETTING_TYPES = DataType[]
 
 const MEMBERSHIP_MASK_BITS = 8 * sizeof(fieldtype(Individual, :membership_mask))
+# the most entries one plan holds, set by the width of `plan_count`
+const MAX_PLAN_ENTRIES = Int(typemax(fieldtype(Individual, :plan_count)))
 
 # Whether a type's settings can sit in a plan; only those get a membership-mask bit.
 _holds_entries(::Type{T}) where {T<:Setting} = T <: IndividualSetting && T !== GlobalSetting

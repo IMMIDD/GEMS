@@ -871,7 +871,7 @@ function Base.show(io::IO, individual::Individual)
         "Is Dead" => is_dead(individual),
 
         # the plan itself lives on the population, so only its extent is visible from here
-        "Plan Entries" => individual.plan_count,
+        "Plan Entries" => plan_length(individual),
 
         "Number of Infections" => individual.number_of_infections,
         

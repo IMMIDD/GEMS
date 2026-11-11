@@ -264,7 +264,7 @@ function _check_layer(layer::SettingLayer)
     end
     participation_ok || throw(ArgumentError("`participation` must be a probability in [0, 1], rows of " *
         "probabilities, or a function of an individual returning one; got $(p isa _ParticipationTable ? _describe(p) : repr(p))"))
-    n, cap = layer.entries, typemax(Int8)
+    n, cap = layer.entries, MAX_PLAN_ENTRIES
     if n isa Int
         entries_ok = 0 <= n <= cap
     else
@@ -610,8 +610,8 @@ end
 function _check_room(counts::Vector{UInt8}, inds::Vector{Individual})
     for (i, ind) in enumerate(inds)
         n = plan_length(ind) + counts[i]
-        n <= typemax(Int8) || throw(ArgumentError(
-            "the layer would give individual $(id(ind)) $n plan entries; the cap is $(typemax(Int8))"))
+        n <= MAX_PLAN_ENTRIES || throw(ArgumentError(
+            "the layer would give individual $(id(ind)) $n plan entries; the cap is $MAX_PLAN_ENTRIES"))
     end
     return nothing
 end

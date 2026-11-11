@@ -187,7 +187,11 @@ end
 ### scanning the block.
 ###
 
-@inline _membership_bit(tidx::UInt8) = UInt16(1) << (_mask_slot(tidx) - 0x01)
+# 0 for a type without a mask slot
+@inline function _membership_bit(tidx::UInt8)
+    slot = _mask_slot(tidx)
+    return slot == 0 ? UInt16(0) : UInt16(1) << (slot - 0x01)
+end
 
 """
     _mask_locates_entries(individual::Individual)
@@ -199,7 +203,7 @@ Conservative: counting is still right for types below the repeat, but rejecting 
 costs only a scan.
 """
 @inline _mask_locates_entries(individual::Individual) =
-    count_ones(individual.membership_mask) == individual.plan_count
+    count_ones(individual.membership_mask) == plan_length(individual)
 
 # A type's entries form one contiguous run, returned block-relative as `(start, len)`. When
 # `len` is 0, `start` is where the run would begin, so inserts read it too.
@@ -213,7 +217,7 @@ end
 
 function _plan_type_run_scan(plans::ActivityPlanStore, individual::Individual, tidx::UInt8)
     off = Int(individual.plan_offset)
-    n = Int(individual.plan_count)
+    n = plan_length(individual)
     @inbounds for k in 0:(n - 1)
         t = plans.entries[off + k].setting_type
         t < tidx && continue
@@ -264,13 +268,10 @@ end
 
 Returns every slot in `plans.entries` holding an entry of type `T`, empty when there are none.
 """
-@inline function plan_slots(plans::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting}
-    start, len = _plan_type_run(plans, individual, setting_type_index(T))
-    s = Int(individual.plan_offset) + start
-    return s:(s + len - 1)
-end
+@inline plan_slots(plans::ActivityPlanStore, individual::Individual, ::Type{T}) where {T<:Setting} =
+    _type_slots(plans, individual, setting_type_index(T))
 
-# As `plan_slots` for a type, by type index.
+# The slots of the individual's entries of type index `tidx`.
 @inline function _type_slots(plans::ActivityPlanStore, individual::Individual, tidx::UInt8)
     start, len = _plan_type_run(plans, individual, tidx)
     s = Int(individual.plan_offset) + start
@@ -487,7 +488,7 @@ end
         t = source.column_tidx[k]
         plans.entries[at] = PlanEntry(sid, DEFAULT_MEMBER_INDEX, Float16(1.0), t)
         at += 1
-        _mask_slot(t) != 0 && (mask |= _membership_bit(t))
+        mask |= _membership_bit(t)
     end
     return at, mask
 end
@@ -537,14 +538,14 @@ function _add_table_rows!(plans::ActivityPlanStore, ind::Individual, rows, i::In
         end
         plans.entries[at] = PlanEntry(rows.sid[r], DEFAULT_MEMBER_INDEX, Float16(rows.scale[r]), t)
         at += 1
-        _mask_slot(t) != 0 && (mask |= _membership_bit(t))
+        mask |= _membership_bit(t)
     end
 
     n = at - off
     block = view(plans.entries, off:(at - 1))
     if at > population_end
-        n <= typemax(Int8) || throw(ArgumentError(
-            "individual $(id(ind)) would hold $n plan entries; the cap is $(typemax(Int8))"))
+        n <= MAX_PLAN_ENTRIES || throw(ArgumentError(
+            "individual $(id(ind)) would hold $n plan entries; the cap is $MAX_PLAN_ENTRIES"))
         # stable, so each type keeps its primary first and the rest in file order
         sort!(block; alg = InsertionSort, by = setting_type_of)
         _check_repeated_entries(block, ind)
@@ -785,7 +786,7 @@ function _addition_problem(plans::ActivityPlanStore, ind::Individual, additions:
         repeated && return "individual $(id(ind)) would hold $(setting_type_from_index(additions.tidx)) $sid twice"
         n += 1
     end
-    n <= typemax(Int8) || return "individual $(id(ind)) would hold $n plan entries; the cap is $(typemax(Int8))"
+    n <= MAX_PLAN_ENTRIES || return "individual $(id(ind)) would hold $n plan entries; the cap is $MAX_PLAN_ENTRIES"
     return nothing
 end
 
@@ -817,7 +818,7 @@ end
         s = _addition_scale(additions, k)
         entries[at] = PlanEntry(sid, DEFAULT_MEMBER_INDEX, s, t)
         staged === nothing || (staged[at] = true)
-        _mask_slot(t) != 0 && (mask |= _membership_bit(t))
+        mask |= _membership_bit(t)
         scaled |= s != 1
         at += 1
     end
@@ -950,7 +951,7 @@ function plan_add!(plans::ActivityPlanStore, individual::Individual, entry::Plan
     _free_block!(plans, old, n)
     individual.plan_offset = Int32(new)
     individual.plan_count = Int8(n + 1)
-    _mask_slot(tidx) != 0 && (individual.membership_mask |= _membership_bit(tidx))
+    individual.membership_mask |= _membership_bit(tidx)
     entry_scale(entry) != 1 && (individual.plan_scaled = true)
     # before indexing, no setting holds the members yet
     plans.indexed && (plans.membership_edits += 1)
@@ -958,8 +959,8 @@ function plan_add!(plans::ActivityPlanStore, individual::Individual, entry::Plan
 end
 
 # Throws if `individual` holds as many entries as a plan can.
-_check_plan_room(individual::Individual) = individual.plan_count < typemax(Int8) || throw(ArgumentError(
-    "individual $(id(individual)) already holds $(individual.plan_count) plan entries; the cap is $(typemax(Int8))"))
+_check_plan_room(individual::Individual) = plan_length(individual) < MAX_PLAN_ENTRIES || throw(ArgumentError(
+    "individual $(id(individual)) already holds $(plan_length(individual)) plan entries; the cap is $MAX_PLAN_ENTRIES"))
 
 """
     plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::Int)

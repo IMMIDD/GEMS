@@ -445,7 +445,7 @@ function add!(population::Population, individual::Individual)
 end
 
 # Throws if `individual` holds plan entries, which point into another population's store.
-_check_unplanned(individual::Individual) = individual.plan_count == 0 || throw(ArgumentError(
+_check_unplanned(individual::Individual) = plan_length(individual) == 0 || throw(ArgumentError(
     "individual $(id(individual)) belongs to settings of another population; to keep some of a population, " *
     "pass `dataframe(pop)` and `memberships(pop)`, filtered to the kept ids, to `Population(df; memberships)`"))
 
