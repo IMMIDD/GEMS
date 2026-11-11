@@ -169,7 +169,7 @@ Returns the membership-mask slot of the setting type with index `tidx`, or `0` i
 """
 @inline _mask_slot(tidx::UInt8) = @inbounds MASK_SLOTS[tidx]
 
-# guards the registry's writes; a type first used inside a threaded phase registers there
+# guards the registry's writes
 const SETTING_TYPE_LOCK = ReentrantLock()
 
 """
