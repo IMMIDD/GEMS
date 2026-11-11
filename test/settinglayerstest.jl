@@ -243,8 +243,7 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # workers (1-6) get a second office, 7 and 8 their first ones, the rest none
         rows = [i <= 6 ? [10 + i] : [-1] for i in 1:12]
         rows[7], rows[8] = [20], [21, 22]
-        bytes = merge_into!(pop, hand_additions(Office, rows))
-        @test bytes >= sizeof(store.entries)
+        merge_into!(pop, hand_additions(Office, rows))
         @test plans_well_formed(pop)
         @test [_setting_id(i, office, store) for i in inds[1:6]] == primaries[1:6]
         @test all(plan_slot(store, inds[i], Office, Int32(10 + i)) != 0 for i in 1:6)

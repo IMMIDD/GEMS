@@ -1892,7 +1892,8 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         gs = settings(sim, GlobalSetting)[1]
         inds = individuals(sim)
         dead_inds = inds[[3, 17, 250, 499, 500]]
-        foreach(d -> GEMS.mark_deceased!(d, sim), dead_inds)
+        append!(sim.newly_dead[1], dead_inds)
+        GEMS.apply_deaths!(sim)
         repack_dirty_pools!(cntnr)
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
             s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
@@ -1906,7 +1907,8 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         @test all(i -> individuals(gs)[GEMS._global_position(i, sim)] === i, setdiff(inds, dead_inds))
         # marking someone twice changes nothing
         before = copy(individuals(gs))
-        GEMS.mark_deceased!(dead_inds[1], sim)
+        push!(sim.newly_dead[1], dead_inds[1])
+        GEMS.apply_deaths!(sim)
         @test individuals(gs) == before
         @test GEMS._deceased(gs) == length(dead_inds)
         @test GEMS.validate_plans(population(sim), cntnr)

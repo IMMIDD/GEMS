@@ -880,7 +880,6 @@ Takes a member out of the setting's contacts but keeps the membership. Does noth
 are not a member or have already been marked.
 """
 function mark_deceased!(setting::T, individual::Individual, pop::Population) where {T<:IndividualSetting}
-    hasfield(T, :deceased) || return nothing
     plans = activity_plans(pop)
     _check_indexed(plans)
     slot = plan_slot(plans, individual, T, id(setting))

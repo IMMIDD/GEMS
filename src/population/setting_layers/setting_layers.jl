@@ -408,12 +408,11 @@ function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Int
     isempty(layers) && return pop
     names = _layer_names(layers, _layer_records(pop))
     coords = _layer_coordinates(layers, household_coordinates)
-    bytes = 0
     for (layer, name) in zip(layers, names)
-        bytes += _apply_layer!(pop, layer, name, seed, coords, get(id_floors, _layer_type(layer), 0))
+        _apply_layer!(pop, layer, name, seed, coords, get(id_floors, _layer_type(layer), 0))
     end
     added = sum(r -> r["entries"], last(_layer_records(pop), length(layers)))
-    @info "Setting layers added $added plan entries; merging them allocated $(round(bytes / 2^20; digits = 1)) MiB"
+    @info "Setting layers added $added plan entries"
     return pop
 end
 
@@ -425,7 +424,7 @@ function _layer_coordinates(layers, table)
     return _HomeCoordinates(table)
 end
 
-# Generates one layer, merges it into the plans and records it; returns the bytes the merge allocated.
+# Generates one layer, merges it into the plans and records it.
 function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed::Integer, coords, id_floor::Int)
     plans, inds = activity_plans(pop), individuals(pop)
     streams = _LayerStreams(seed, name)
@@ -438,10 +437,10 @@ function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed:
         "$(setting_type_name(_layer_type(layer))) was left that their individual did not already hold"
     added, ids = _added_entries(additions)
     # a layer that adds nothing leaves the plans as they are
-    bytes = added == 0 ? 0 : _merge_additions!(plans, inds, additions)
+    added == 0 || _merge_additions!(plans, inds, additions)
     added == 0 || _rescale_held_entries!(plans, inds, additions, layer.rescale)
     push!(_layer_records!(pop), _layer_record(layer, name, seed, added, ids, shortfall))
-    return bytes
+    return nothing
 end
 
 # Multiplies each entry of a `rescale` type that an individual held before the layer by its factor,

@@ -8,7 +8,6 @@ export PlanEntry, ActivityPlanStore
 export member_index, entry_scale, setting_type_of
 export plan_entries, plan_length, entry_active, entry_active!
 export build_plans!, assign_settings!, assign_member_indices!, activity_plans, set_primary!, set_scale!
-export check_pool_entries
 export membership_column, memberships
 
 ###
@@ -718,7 +717,7 @@ _addition_individuals(a::_PlanAdditions) = 1:(length(a.offsets) - 1)
     _merge_additions!(plans::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions; chunks)
 
 Rebuilds the store with each individual's new entries behind its existing ones of their type, so
-every primary stays, and returns the bytes allocated. Throws before writing anything if an
+every primary stays. Throws before writing anything if an
 individual would hold a setting twice or more entries than the cap; freed blocks are dropped.
 """
 function _merge_additions!(plans::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions;
@@ -736,7 +735,7 @@ function _merge_additions!(plans::ActivityPlanStore, inds::Vector{Individual}, a
     plans.active = staged === nothing ? trues(length(entries)) : BitVector(staged)
     empty!(plans.free)
     _raise_scale_bound!(plans, additions.tidx, _max_addition_scale(additions))
-    return sizeof(entries) + (staged === nothing ? 0 : sizeof(staged)) + Base.summarysize(plans.active)
+    return plans
 end
 
 # Each chunk's first slot in the merged entries, then one past the last. Throws for the first
@@ -877,8 +876,8 @@ function _finish_indexing!(plans::ActivityPlanStore, cntnr::SettingsContainer)
     return plans
 end
 
-# function barrier: with `T` static, `settings(cntnr, T)` is a typed vector. The lookup is the
-# one `check_pool_entries` makes, so a member without an entry is caught here.
+# function barrier: with `T` static, `settings(cntnr, T)` is a typed vector. A member without an
+# entry is caught here.
 function _assign_member_indices!(plans::ActivityPlanStore, cntnr::SettingsContainer,
                                  ::Type{T}) where {T<:IndividualSetting}
     for s in settings(cntnr, T)
@@ -900,19 +899,6 @@ end
 ###
 ### VALIDATION
 ###
-
-"""
-    check_pool_entries(pop::Population, cntnr::SettingsContainer)
-
-Errors unless every member of every pooled leaf holds a plan entry for it.
-"""
-function check_pool_entries(pop::Population, cntnr::SettingsContainer)
-    plans = activity_plans(pop)
-    for T in keys(cntnr.pools)
-        _check_member_entries(plans, cntnr, T)
-    end
-    return true
-end
 
 # function barrier: with `T` static, `settings(cntnr, T)` is a typed vector
 function _check_member_entries(plans::ActivityPlanStore, cntnr::SettingsContainer,
