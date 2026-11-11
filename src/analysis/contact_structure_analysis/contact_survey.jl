@@ -68,7 +68,7 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
 
     # batches are sorted, so consecutive samples usually hit the same setting; reuse its member view
     last_s = nothing
-    present_inds = present_members(@inbounds(stngs[1]), cntnr)
+    frame = living_members(@inbounds(stngs[1]), cntnr)
 
     # reusable batch buffer
     batch = Vector{Int}(undef, CONTACT_SAMPLES)
@@ -89,20 +89,20 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             s = stngs[sidx]::T
 
             if s !== last_s
-                present_inds = present_members(s, cntnr)
+                frame = living_members(s, cntnr)
                 last_s = s
             end
 
-            isempty(present_inds) && continue
+            isempty(frame) && continue
 
-            ind_index = gems_rand(survey_rng, 1:length(present_inds))
-            ind = present_inds[ind_index]
+            ind_index = gems_rand(survey_rng, 1:length(frame))
+            ind = frame[ind_index]
             # the dead, hospitalized and quarantined answer no survey, as they are never contacted
             can_be_contacted(ind, s) || continue
 
             s_host = _membership_scale(plans, ind, s, cntnr)
-            # the closure gets its own copy, as capturing `present_inds`, which the loop reassigns, would box it
-            members = present_inds
+            # the closure gets its own copy, as capturing `frame`, which the loop reassigns, would box it
+            members = frame
             _with_sampling_method(s.contact_sampling_method) do csm
                 sample_scaled_contacts!(contacts, draws, csm, s, ind_index, members,
                     tick(simulation), true, survey_rng, plans, cntnr, s_host, _scale_bound(s))

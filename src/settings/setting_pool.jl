@@ -42,7 +42,7 @@ const NO_RUNS = Int32[]
 """
     MemberView
 
-A setting's present members, as a window onto its hierarchy's pool. Usually one unbroken span,
+A setting's living members, as a window onto its hierarchy's pool. Usually one unbroken span,
 described by `offset` and `len`. A container with deceased members or a member in two of its
 leaves needs several runs, and then `starts`/`prefix` describe them and indexing
 binary-searches `prefix`.

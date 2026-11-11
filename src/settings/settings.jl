@@ -42,7 +42,7 @@ abstract type ContainerSetting <: Setting end
 
 Supertype for all contact sampling methods. This type is intended to be extended by providing different sampling methods suitable for the structure of the simulation model.
 
-Implement `sample_contacts!` for your subtype. Its `present_inds` argument is a view of the
+Implement `sample_contacts!` for your subtype. Its `members` argument is a view of the
 setting's real members, not a scratch buffer: writing to it edits membership. Read only, and
 write results into `indivs`.
 
@@ -369,7 +369,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
-    members. A container stores no members itself, so `present_members` hands back this span
+    members. A container stores no members itself, so `living_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
     below is closed or deceased, `nothing` when the span already covers each present member once.
@@ -428,7 +428,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
-    members. A container stores no members itself, so `present_members` hands back this span
+    members. A container stores no members itself, so `living_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
     below is closed or deceased, `nothing` when the span already covers each present member once.
@@ -484,7 +484,7 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
-    members. A container stores no members itself, so `present_members` hands back this span
+    members. A container stores no members itself, so `living_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
     below is closed or deceased, `nothing` when the span already covers each present member once.
@@ -542,7 +542,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
-    members. A container stores no members itself, so `present_members` hands back this span
+    members. A container stores no members itself, so `living_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
     below is closed or deceased, `nothing` when the span already covers each present member once.
@@ -598,7 +598,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
-    members. A container stores no members itself, so `present_members` hands back this span
+    members. A container stores no members itself, so `living_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
     below is closed or deceased, `nothing` when the span already covers each present member once.
@@ -654,7 +654,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 - `pool` *(internal)*: The hierarchy's shared member storage, holding the members of every
     leaf below this container.
 - `pool_offset`, `pool_length` *(internal)*: The span of that pool covering this container's
-    members. A container stores no members itself, so `present_members` hands back this span
+    members. A container stores no members itself, so `living_members` hands back this span
     instead of collecting them; it is set at build time and holds until an edit leaves a gap.
 - `pool_runs` *(internal)*: The frame when a member sits in two leaves below or something
     below is closed or deceased, `nothing` when the span already covers each present member once.

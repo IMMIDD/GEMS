@@ -1,22 +1,19 @@
 ###
 ### SETTING POOL METHODS
 ###
-export build_pools!, repack_dirty_pools!, present_members, container_frame_index
+export build_pools!, repack_dirty_pools!, living_members, container_frame_index
 
 ###
 ### PRESENT MEMBERS
 ###
 
 """
-    present_members(setting::Setting, cntnr::SettingsContainer)
+    living_members(setting::Setting, cntnr::SettingsContainer)
 
-The setting's present members, as an indexable view. Nothing is copied and nothing is built
+The setting's living members, the ones its contacts are drawn from, as an indexable view. Nothing is copied and nothing is built
 per tick: an open leaf and an all-open container are both a contiguous slice of the
 hierarchy pool, and only a container with deceased members or a repeated member needs run
 indexing. Members of closed settings stay in the frames of the containers above.
-
-Equal element for element to `present_individuals(setting, sim)`, except that a member in two
-leaves of one container appears once here and twice there.
 
 The result aliases real member storage, so writing to it edits membership - see the note on
 `ContactSamplingMethod`.
@@ -24,17 +21,17 @@ The result aliases real member storage, so writing to it edits membership - see 
 A leaf can be read while its pool waits for `repack_dirty_pools!`, for example in an intervention on a
 tick with deaths; a container then throws.
 """
-function present_members(s::FlatSetting, ::SettingsContainer)::MemberView
+function living_members(s::FlatSetting, ::SettingsContainer)::MemberView
     return MemberView(s.flat_pool.members, s.offset, is_open(s) ? Int32(_alive(s)) : Int32(0))
 end
 
-function present_members(s::IndividualSetting, ::SettingsContainer)::MemberView
+function living_members(s::IndividualSetting, ::SettingsContainer)::MemberView
     # deaths only reorder members within their storage, so this stays exact until the repack
     members, offset, len = _member_storage(s)
     return is_open(s) ? MemberView(members, offset, len - Int32(_deceased(s))) : MemberView(members, Int32(1), Int32(0))
 end
 
-function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
+function living_members(s::ContainerSetting, ::SettingsContainer)::MemberView
     pool = _pool(s)::HierarchicalSettingPool
     _check_clean(s, pool, _STALE_CONTAINER_HINT)
     is_open(s) || return MemberView(pool.members, Int32(1), Int32(0))
@@ -48,10 +45,10 @@ function present_members(s::ContainerSetting, ::SettingsContainer)::MemberView
 end
 
 const _STALE_CONTAINER_HINT = " To read a container's members before then, use " *
-    "`unique(present_individuals(setting, sim))`, which allocates and whose order and positions can differ from the frame's."
+    "`attending_members(setting, sim)`, which walks the leaves, allocates and lists only who attends today."
 
 # Edits, deaths and scale changes leave the containers' frames stale until the pool is
-# repacked, so container reads error until then. Leaves and `present_individuals` still read correctly.
+# repacked, so container reads error until then. Leaves and `attending_members` still read correctly.
 @inline function _check_clean(s::Setting, pool::HierarchicalSettingPool, hint::String = "")
     isempty(pool.blocks.dirty) || error(
         "$(typeof(s)) belongs to a setting pool with changes not yet repacked: deaths, member edits or scale " *
@@ -69,7 +66,7 @@ end
     container_frame_index(cntnr::SettingsContainer, container::ContainerSetting, leaf::IndividualSetting, leaf_index::Integer)
 
 Returns the position in `container`'s frame of the member at `leaf_index` of `leaf`, or
-`DEFAULT_MEMBER_INDEX` when they are not in it. Reads the frame `present_members` hands out, so
+`DEFAULT_MEMBER_INDEX` when they are not in it. Reads the frame `living_members` hands out, so
 the dropped copy of a member in two leaves has no position here. Closures below `container` are
 left to `_membership_scale`.
 """
@@ -485,7 +482,7 @@ end
     repack_dirty_pools!(cntnr::SettingsContainer)
 
 Repack every pool left stale by a member edit, a death or a scale change, and compact every flat pool that moved settings have left a third stranded.
-Must run between such a change and the next read of `present_members`, so every reader of frames
+Must run between such a change and the next read of `living_members`, so every reader of frames
 calls it first; `spread_infections!` does once per tick.
 Cheap when nothing changed. The dirty blocks of a pool are repacked in parallel.
 

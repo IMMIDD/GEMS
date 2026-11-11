@@ -43,6 +43,7 @@ add_types!
 ags(::ContainerSetting, ::Simulation)
 ags(::IndividualSetting, ::Simulation)
 ags(::IndividualSetting)
+attending_members
 avg_individuals
 close!
 contact_sampling_method!
@@ -70,7 +71,6 @@ min_individuals(::Vector{Setting}, ::Simulation)
 min_max_avg_individuals(::Vector{Setting}, ::Simulation)
 new_setting_ids!(::SettingsContainer, ::Dict)
 open!
-present_individuals!
 register_setting_type!
 schoolclass(::Individual, ::Simulation)
 sample_individuals

@@ -48,7 +48,7 @@ function _visit_entry(visit::V, leaves::AbstractVector{S}, e::PlanEntry, slot::I
     any(_needs_visit, draws) || return nothing
     leaf = leaves[setting_id(e)]
     leaf_index = member_index(e)
-    # the dead are not in `present_members`
+    # the dead are not in `living_members`
     _is_deceased(leaf, leaf_index) && return nothing
     _visit_up(visit, leaf, leaf_index, leaf, leaf_index, draws, settingscontainer(sim))
     return nothing
@@ -94,7 +94,7 @@ function _global_position(ind::Individual, sim::Simulation)::Int
 end
 
 # Samples `ind`'s contacts in `setting` and tries each pathogen they shed on them. `frame_pos` is `ind`'s
-# index in `present_members`, `drawn` the contacts drawn before the visit (see `_contact_draw`).
+# index in `living_members`, `drawn` the contacts drawn before the visit (see `_contact_draw`).
 function _spread_in!(setting::Setting, frame_pos::Int, ind::Individual, sim::Simulation, drawn)
     current_tick = tick(sim)
     can_infect(ind, setting, current_tick) || return nothing
@@ -109,7 +109,7 @@ function _spread_in!(setting::Setting, frame_pos::Int, ind::Individual, sim::Sim
     contacts = sim.contact_buffers[Threads.threadid()]
     _with_sampling_method(setting.contact_sampling_method) do csm
         sample_scaled_contacts!(contacts, sim.draw_buffers[Threads.threadid()], csm, setting, frame_pos,
-            present_members(setting, cntnr), current_tick, true, rng(sim), plans, cntnr,
+            living_members(setting, cntnr), current_tick, true, rng(sim), plans, cntnr,
             s_host, _scale_bound(setting); thin = thin, drawn = drawn)
     end
 
@@ -395,7 +395,7 @@ is staged for `flush_pending_infections!`, which assigns its id and logs it; ret
 - `setting_id::Int32`: ID of the setting the infection happens in
 - `setting_type::Char`: Setting type as char (e.g. 'h' for `Household`)
 - `source_infection_id::Int32`: Current infection ID of the infecting individual
-- `infecter_position::Int32`: Infecting individual's index in the setting's `present_members`
+- `infecter_position::Int32`: Infecting individual's index in the setting's `living_members`
 - `type_rank::UInt8`: Index of the setting's type. With the setting id and `infecter_position`, it picks
   which infection is kept when an individual is infected twice in one tick
 """

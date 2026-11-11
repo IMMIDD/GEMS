@@ -8,7 +8,7 @@ export membership_changed!
 ###
 
 """
-    sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Fallback: determines which keyword-based method a user defined (mutating or non-mutating) and routes the internal positional call accordingly.
 A sampler written against `Vector{Individual}` still works, via a deprecated path that copies.
@@ -18,21 +18,21 @@ function sample_contacts!(
     csm::ContactSamplingMethod,
     setting::Setting,
     individual_index::Int,
-    present_inds::AbstractVector{Individual},
+    members::AbstractVector{Individual},
     tick::Int16,
     replace::Bool,
     rng::Xoshiro
 )
     # probe with the type the setting actually supplied
-    P = typeof(present_inds)
+    P = typeof(members)
 
     # mutating keyword method
     if _user_method(sample_contacts!, Tuple{Vector{Individual}, typeof(csm), Setting, Int, P, Int16}, 2)
-        return sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
+        return sample_contacts!(indivs, csm, setting, individual_index, members, tick; replace=replace, rng=rng)
 
     # non-mutating keyword method
     elseif _user_method(sample_contacts, Tuple{typeof(csm), Setting, Int, P, Int16}, 1)
-        new_contacts = sample_contacts(csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
+        new_contacts = sample_contacts(csm, setting, individual_index, members, tick; replace=replace, rng=rng)
         append!(indivs, new_contacts)
         return indivs
 
@@ -40,8 +40,8 @@ function sample_contacts!(
     elseif P !== Vector{Individual} && (
             _user_method(sample_contacts!, Tuple{Vector{Individual}, typeof(csm), Setting, Int, Vector{Individual}, Int16}, 2) ||
             _user_method(sample_contacts, Tuple{typeof(csm), Setting, Int, Vector{Individual}, Int16}, 1))
-        @warn "$(typeof(csm)) types present_inds as Vector{Individual}. Widen it to AbstractVector{Individual} to avoid a copy per call." maxlog=1
-        return sample_contacts!(indivs, csm, setting, individual_index, collect(present_inds), tick, replace, rng)
+        @warn "$(typeof(csm)) types members as Vector{Individual}. Widen it to AbstractVector{Individual} to avoid a copy per call." maxlog=1
+        return sample_contacts!(indivs, csm, setting, individual_index, collect(members), tick, replace, rng)
 
     # if they defined neither, throw error
     else
@@ -54,7 +54,7 @@ end
         csm::ContactSamplingMethod,
         setting::Setting,
         individual_index::Int,
-        present_inds::AbstractVector{Individual},
+        members::AbstractVector{Individual},
         tick::Int16,
         replace::Bool,
         rng::Xoshiro
@@ -66,13 +66,13 @@ function sample_contacts(
     csm::ContactSamplingMethod,
     setting::Setting,
     individual_index::Int,
-    present_inds::AbstractVector{Individual},
+    members::AbstractVector{Individual},
     tick::Int16,
     replace::Bool,
     rng::Xoshiro
 )
     indivs = Vector{Individual}()
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    sample_contacts!(indivs, csm, setting, individual_index, members, tick, replace, rng)
     return indivs
 end
 
@@ -81,7 +81,7 @@ end
         csm::ContactSamplingMethod,
         setting::Setting,
         individual_index::Int,
-        present_inds::AbstractVector{Individual},
+        members::AbstractVector{Individual},
         tick::Int16;
         replace::Bool = true,
         rng::Xoshiro = Xoshiro()
@@ -93,22 +93,22 @@ function sample_contacts(
     csm::ContactSamplingMethod,
     setting::Setting,
     individual_index::Int,
-    present_inds::AbstractVector{Individual},
+    members::AbstractVector{Individual},
     tick::Int16;
     replace::Bool = true,
     rng::Xoshiro = Xoshiro()
 )
-    return sample_contacts(csm, setting, individual_index, present_inds, tick, replace, rng)
+    return sample_contacts(csm, setting, individual_index, members, tick, replace, rng)
 end
 
 """
-    contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+    contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64
 
 The mean number of contacts `sample_contacts!` returns with `replace = true`. Defining it promises
 that number is Poisson and its contacts are independent of each other and of their number, which
 lets the simulation draw the number before it touches the setting.
 """
-function contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+function contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64
     error("$(typeof(csm)) defines no contact_rate. Was it set without `contact_sampling_method!(sim, setting, csm)`?")
 end
 
@@ -121,16 +121,16 @@ meaning `csm` defines no `contact_rate`.
 contact_rate_bound(csm::ContactSamplingMethod)::Float64 = Inf
 
 """
-    sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+    sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
 
 Appends exactly `k` contacts to `indivs`, each drawn as one of `sample_contacts!`'s with `replace = true`.
 Defaults to keeping the first `k` of repeated `sample_contacts!` calls, which `contact_rate`'s promise makes
 exact; define it to skip the discarded draws.
 """
 function sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting,
-        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+        individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
     k > 0 || return indivs
-    rate = contact_rate(csm, setting, individual_index, present_inds, tick)
+    rate = contact_rate(csm, setting, individual_index, members, tick)
     rate > 0 || error("$(typeof(csm)) has contact_rate 0 here, so it cannot draw $k contacts")
     # a method that keeps returning nobody has a wrong contact_rate
     limit = ceil(Int, 100 * k / rate) + 100
@@ -138,7 +138,7 @@ function sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMeth
     calls = 0
     while k > 0
         (calls += 1) > limit && error("$(typeof(csm)) returns fewer contacts than its contact_rate")
-        sample_contacts!(empty!(draws), csm, setting, individual_index, present_inds, tick, true, rng)
+        sample_contacts!(empty!(draws), csm, setting, individual_index, members, tick, true, rng)
         n = min(k, length(draws))
         append!(indivs, view(draws, 1:n))
         k -= n
@@ -362,8 +362,8 @@ end
 
 # Samples as `sample_contacts!` does, then keeps each contact with probability `p`
 function _sample_thinned!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int,
-        present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+        members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+    sample_contacts!(indivs, csm, setting, individual_index, members, tick, replace, rng)
     return _thin_uniformly!(indivs, p, rng)
 end
 

@@ -809,8 +809,8 @@ end
 
             # the department spans both offices; the second copy is dropped from its frame
             dept = settings(sim, Department)[1]
-            @test count(m -> m === ind, present_members(dept, cntnr)) == 1
-            @test length(present_members(dept, cntnr)) == 3
+            @test count(m -> m === ind, living_members(dept, cntnr)) == 1
+            @test length(living_members(dept, cntnr)) == 3
 
             @test validate_plans(population(sim), cntnr)
             step!(sim)
@@ -843,7 +843,7 @@ end
 
         # the derived index must agree with the member's actual position in the frame, closed classes included
         function check_all()
-            frame = GEMS.present_members(sy, cntnr)
+            frame = GEMS.living_members(sy, cntnr)
             for c in cs, (k, ind) in enumerate(individuals(c))
                 idx = container_frame_index(cntnr, sy, c, k)
                 @test idx != GEMS.DEFAULT_MEMBER_INDEX
@@ -889,7 +889,7 @@ end
         # inds[4] now sits in cs[1] and cs[2], so the year holds one of the two copies
         add_member!(cs[1], inds[4], pop)
         GEMS.repack_dirty_pools!(cntnr)
-        frame = GEMS.present_members(sy, cntnr)
+        frame = GEMS.living_members(sy, cntnr)
 
         kept = container_frame_index(cntnr, sy, cs[1], 4)
         @test kept != GEMS.DEFAULT_MEMBER_INDEX
@@ -1145,7 +1145,7 @@ end
         csm = ContactparameterSampling(20.0)
         hh = Household(id = Int32(1), contact_sampling_method = csm,
                        individuals = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:10])
-        present = GEMS.present_members(hh, cntnr)
+        present = GEMS.living_members(hh, cntnr)
         draws = Individual[]
         sampled(s, p, rng, s_host, bound; replace = true, oversample = 1) = GEMS.sample_scaled_contacts!(Individual[], draws,
             contact_sampling_method(s), s, 1, p, Int16(1), replace, rng, plans, cntnr, Float32(s_host), Float32(bound);
@@ -1170,7 +1170,7 @@ end
         # in a pair the other member is the only candidate, so its own scale shows directly
         pair = [Individual(id = Int32(11), age = 30, sex = 1), Individual(id = Int32(12), age = 30, sex = 1)]
         hh2 = Household(id = Int32(2), contact_sampling_method = RandomSampling(), individuals = pair)
-        p2 = GEMS.present_members(hh2, cntnr)
+        p2 = GEMS.living_members(hh2, cntnr)
         plan_add!(plans, pair[2], PlanEntry(Household, Int32(2), Int32(2), 0.5))
         @test isapprox(mean_contacts(hh2, p2, 1, 1), 0.5; atol = 0.03)
         @test isapprox(mean_contacts(hh2, p2, 0.5, 1), 0.25; atol = 0.03)
@@ -1180,7 +1180,7 @@ end
         # without replacement several draws merge: nobody twice, and a pair at scale <= 1 meets at its scaled rate
         hh4 = Household(id = Int32(4), contact_sampling_method = ContactparameterSampling(3.0),
                         individuals = [Individual(id = Int32(20 + j), age = 30, sex = 1) for j in 1:10])
-        p4 = GEMS.present_members(hh4, cntnr)
+        p4 = GEMS.living_members(hh4, cntnr)
         target = p4[2]
         plan_add!(plans, target, PlanEntry(Household, Int32(4), Int32(2), 0.5))
         hits = 0
@@ -1197,7 +1197,7 @@ end
         # a pair above 1 caps when drawn repeatedly, and oversampling shrinks that bias
         hh5 = Household(id = Int32(5), contact_sampling_method = RandomSampling(),
                         individuals = [Individual(id = Int32(40 + j), age = 30, sex = 1) for j in 1:4])
-        p5 = GEMS.present_members(hh5, cntnr)
+        p5 = GEMS.living_members(hh5, cntnr)
         plan_add!(plans, p5[2], PlanEntry(Household, Int32(5), Int32(2), 1.2))
         meets(oversample) = count(_ -> p5[2] in sampled(hh5, p5, rng, 2, 2; replace = false, oversample = oversample), 1:n) / n
         # four calls draw it m ~ Binomial(4, 1/3) times, each worth 0.6 and capped at 1
@@ -1207,7 +1207,7 @@ end
         # a lone member could only meet itself, so no sampler is asked, not even one that would throw
         alone = Individual(id = Int32(13), age = 30, sex = 1)
         hh3 = Household(id = Int32(3), contact_sampling_method = RandomSampling(), individuals = [alone])
-        p3 = GEMS.present_members(hh3, cntnr)
+        p3 = GEMS.living_members(hh3, cntnr)
         @test_throws ArgumentError sample_contacts!(Individual[], RandomSampling(), hh3, 1, p3, Int16(1), true, Xoshiro(1))
         r3 = Xoshiro(5); r3_before = copy(r3)
         @test isempty(sampled(hh3, p3, r3, 1, 1))
@@ -1238,7 +1238,7 @@ end
         end
         r1 = Xoshiro(3); r2 = copy(r1)
         same = true
-        for s in (cs[1], cs[2], yr), c in GEMS.present_members(s, cntnr), _ in 1:20
+        for s in (cs[1], cs[2], yr), c in GEMS.living_members(s, cntnr), _ in 1:20
             sc = GEMS._membership_scale(plans, c, s, cntnr)
             # the setting's bound, and a bound equal to the contact's own scale
             for bound in unique((GEMS._scale_bound(s), sc))
@@ -1274,7 +1274,7 @@ end
         # contacts thin by `thin` whether the host draws once, several times, or against a raised bound
         hh = Household(id = Int32(1), contact_sampling_method = ContactparameterSampling(20.0),
                        individuals = [Individual(id = Int32(20 + j), age = 30, sex = 1) for j in 1:10])
-        present = GEMS.present_members(hh, empty_cntnr)
+        present = GEMS.living_members(hh, empty_cntnr)
         n = 4000
         mean_contacts(args...) = sum(_ -> length(sampled(args...)), 1:n) / n
         @test isapprox(mean_contacts(hh, present, 0.5, 1, 0.3), 3.0; atol = 0.15)
@@ -1284,7 +1284,7 @@ end
         # thinning acts per draw: five single draws give Binomial(5, 0.2), not one thinned call
         hh_r = Household(id = Int32(2), contact_sampling_method = RandomSampling(),
                          individuals = [Individual(id = Int32(40 + j), age = 30, sex = 1) for j in 1:10])
-        p_r = GEMS.present_members(hh_r, empty_cntnr)
+        p_r = GEMS.living_members(hh_r, empty_cntnr)
         counts = [length(sampled(hh_r, p_r, 5, 1, 0.2)) for _ in 1:20_000]
         @test isapprox(mean(counts), 1.0; atol = 0.03)
         @test isapprox(var(counts), 0.8; atol = 0.05)
@@ -1294,7 +1294,7 @@ end
         n = 20_000
         hh4 = Household(id = Int32(4), contact_sampling_method = ContactparameterSampling(3.0),
                         individuals = [Individual(id = Int32(60 + j), age = 30, sex = 1) for j in 1:10])
-        p4 = GEMS.present_members(hh4, empty_cntnr)
+        p4 = GEMS.living_members(hh4, empty_cntnr)
         plan_add!(scaled, p4[2], PlanEntry(Household, Int32(4), Int32(2), 0.5))
         hits = count(_ -> p4[2] in sampled(hh4, p4, 1.5, 1.5, 0.4; replace = false, store = scaled), 1:n)
         @test isapprox(hits / n, 0.4 * 0.75 * 3 / 9; atol = 0.012)
@@ -1302,7 +1302,7 @@ end
         # capped: four calls draw it m ~ Binomial(4, 1/3) times at 0.6 each, capped at 1, then thinned
         hh5 = Household(id = Int32(5), contact_sampling_method = RandomSampling(),
                         individuals = [Individual(id = Int32(80 + j), age = 30, sex = 1) for j in 1:4])
-        p5 = GEMS.present_members(hh5, empty_cntnr)
+        p5 = GEMS.living_members(hh5, empty_cntnr)
         plan_add!(scaled, p5[2], PlanEntry(Household, Int32(5), Int32(2), 1.2))
         meets = count(_ -> p5[2] in sampled(hh5, p5, 2, 2, 0.5; replace = false, store = scaled), 1:n)
         @test isapprox(meets / n, 0.5 * (0.6 * 32 + 33) / 81; atol = 0.02)

@@ -909,7 +909,7 @@ end
                 t = tick(sim)
                 found = Visit[]
                 GEMS.foreach_setting_vector(cntnr) do stngs
-                    for s in stngs, (k, ind) in enumerate(GEMS.present_members(s, cntnr))
+                    for s in stngs, (k, ind) in enumerate(GEMS.living_members(s, cntnr))
                         (GEMS.infectious(ind) && GEMS.can_infect(ind, s, t)) || continue
                         scale = GEMS._membership_scale(plans, ind, s, cntnr)
                         scale > 0 && push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), k, scale))
@@ -929,7 +929,7 @@ end
                     GEMS._foreach_spread_setting(ind, sim, GEMS._draw_at_visit) do s, pos, drawn
                         scale = GEMS._membership_scale(GEMS.activity_plans(sim), ind, s, cntnr)
                         (scale > 0 && GEMS.can_infect(ind, s, t)) || return
-                        GEMS.present_members(s, cntnr)[pos] === ind || (misplaced[] += 1)
+                        GEMS.living_members(s, cntnr)[pos] === ind || (misplaced[] += 1)
                         push!(found, (id(ind), GEMS.setting_type_index(typeof(s)), id(s), pos, scale))
                     end
                 end
@@ -1270,7 +1270,7 @@ end
             GEMS._foreach_spread_setting(h, sim, each_level) do s, pos, drawn
                 scale = GEMS._membership_scale(plans, h, s, cntnr)
                 isinf(drawn.rate_bound) && return
-                present = GEMS.present_members(s, cntnr)
+                present = GEMS.living_members(s, cntnr)
                 (scale > 0 && GEMS.can_infect(h, s, t) && length(present) > 1) || return
                 _, thin = GEMS._transmission_bounds(h, s, t, sim)
                 rate = GEMS._visit_rate(GEMS.contact_rate(s.contact_sampling_method, s, pos, present, t),

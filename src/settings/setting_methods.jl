@@ -1,5 +1,5 @@
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, individuals_in_ags, ags
-export geolocation, lat, lon, present_individuals, is_open, open!, close!
+export geolocation, lat, lon, attending_members, is_open, open!, close!
 export sample_individuals
 
 
@@ -226,72 +226,41 @@ end
 
 
 """
-    present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
+    attending_members!(indivs::Vector{Individual}, setting::Setting, simulation::Simulation)
 
-Pushes the individuals present in a given IndividualSetting, i.e., only those in open settings to the provided `indivs` vector. 
-
-# Parameters
-
-- `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
-- `setting::IndividualSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
+Appends the members who attend `setting` today: in settings open at every level, alive, not kept
+away (`can_be_contacted`) and with an effective scale above 0. Someone in two leaves below a container
+is appended once.
 """
-function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
-    if is_open(setting)
-        append!(indivs, view(individuals(setting), 1:_alive(setting)))
-    end
+function attending_members!(indivs::Vector{Individual}, setting::Setting, simulation::Simulation)
+    found = _append_attending!(Individual[], setting, setting, simulation)
+    setting isa ContainerSetting && unique!(found)
+    return append!(indivs, found)
 end
 
 """
-    present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+    attending_members(setting::Setting, simulation::Simulation)
 
-Pushes the individuals present in a given ContainerSetting, i.e., only those in open contained settings to the provided `indivs` vector.  
-
-# Parameters
-
-- `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
-- `setting::ContainerSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
+Returns the members who attend `setting` today, as `attending_members!` collects them.
 """
-function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
-    # Check that setting and all containers are open
-    if setting |> is_open
-        stngs = settings(simulation, contains_type(typeof(setting)))
-        for s in setting |> contains
-            present_individuals!(indivs, stngs[s], simulation)
-        end
+attending_members(setting::Setting, simulation::Simulation) = attending_members!(Individual[], setting, simulation)
+
+# Walks the leaves below `s`, skipping closed settings; `top` is the setting asked about.
+function _append_attending!(indivs::Vector{Individual}, s::IndividualSetting, top::Setting, simulation::Simulation)
+    is_open(s) || return indivs
+    plans, cntnr = activity_plans(simulation), settingscontainer(simulation)
+    for m in view(individuals(s), 1:_alive(s))
+        can_be_contacted(m, top) && _membership_scale(plans, m, s, cntnr) > 0 && push!(indivs, m)
     end
-end
-
-"""
-    present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
-
-Pushes the individuals present in a given IndividualSetting, i.e., only those in open settings to the provided `indivs` vector. 
-
-# Parameters
-
-- `setting::IndividualSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
-"""
-function present_individuals(setting::IndividualSetting, simulation::Simulation)
-    indivs = Vector{Individual}()
-    present_individuals!(indivs, setting, simulation)
     return indivs
 end
 
-"""
-    present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
-
-Pushes the individuals present in a given ContainerSetting, i.e., only those in open contained settings to the provided `indivs` vector.  
-
-# Parameters
-
-- `setting::ContainerSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
-"""
-function present_individuals(setting::ContainerSetting, simulation::Simulation)
-    indivs = Vector{Individual}()
-    present_individuals!(indivs, setting, simulation)
+function _append_attending!(indivs::Vector{Individual}, c::ContainerSetting, top::Setting, simulation::Simulation)
+    is_open(c) || return indivs
+    stngs = settings(simulation, contains_type(typeof(c)))
+    for k in c.contains
+        _append_attending!(indivs, stngs[k], top, simulation)
+    end
     return indivs
 end
 

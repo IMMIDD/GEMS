@@ -1880,11 +1880,11 @@ import GEMS: increment!, infected!
             s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
             # still a member, but never drawn
             @test d in individuals(s)
-            @test !(d in GEMS.present_members(s, cntnr))
+            @test !(d in GEMS.living_members(s, cntnr))
         end
         # the GlobalSetting leaves them out too, and finds everyone alive where they now sit
-        @test length(GEMS.present_members(gs, cntnr)) == length(inds) - length(dead_inds)
-        @test !any(in(GEMS.present_members(gs, cntnr)), dead_inds)
+        @test length(GEMS.living_members(gs, cntnr)) == length(inds) - length(dead_inds)
+        @test !any(in(GEMS.living_members(gs, cntnr)), dead_inds)
         @test all(i -> individuals(gs)[GEMS._global_position(i, sim)] === i, setdiff(inds, dead_inds))
         # marking someone twice changes nothing
         before = copy(individuals(gs))
@@ -1897,9 +1897,9 @@ import GEMS: increment!, infected!
         reset!(sim)
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
             s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
-            @test d in GEMS.present_members(s, cntnr)
+            @test d in GEMS.living_members(s, cntnr)
         end
-        @test length(GEMS.present_members(gs, cntnr)) == length(inds)
+        @test length(GEMS.living_members(gs, cntnr)) == length(inds)
         @test isempty(gs.moved_positions)
         @test GEMS._check_global_positions(population(sim), cntnr) === nothing
         @test GEMS.validate_plans(population(sim), cntnr)
