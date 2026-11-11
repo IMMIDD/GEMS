@@ -1377,14 +1377,12 @@ function _settings_for_type!(
         type_renaming = Dict{Int32, Int32}()
         renaming[T] = type_renaming
 
-        # ascending old ids, and every new id is <= its old one, so a rename never collides
-        # with an id the individual still holds
+        # every slot is found under the old ids first: a new id may equal an old one a member still holds
+        slots = [Int[plan_slot(plans, individual, T, setting.id) for individual in individuals(setting)] for setting in setting_vec]
         for (i, setting) in enumerate(setting_vec)
-            old_id = setting.id
-            type_renaming[old_id] = i
+            type_renaming[setting.id] = i
             setting.id = i
-            for individual in individuals(setting)
-                slot = plan_slot(plans, individual, T, old_id)
+            for slot in slots[i]
                 slot != 0 && plan_set_setting_id!(plans, slot, Int32(i))
             end
         end

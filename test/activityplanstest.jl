@@ -314,6 +314,19 @@ end
         @test individuals(last_office) == [b]
     end
 
+    @testset "Renamed setting ids keep each entry on its setting" begin
+        # ids 0 and 1 become 1 and 2; person 2 holds both, so renaming 0 to 1 must not hit their old id 1
+        df = DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[30, 30], household = Int32[1, 0])
+        table = DataFrame(id = Int32[2], setting_type = ["Household"], setting_id = Int32[1])
+        sim = @test_logs (:warn, r"not continuous") match_mode = :any Simulation(population = Population(df; memberships = table), infected_fraction = 0.0)
+        a, b = individuals(sim)
+        plans = GEMS.activity_plans(sim)
+        @test setting_ids(a, Household, plans) == Int32[2]
+        @test setting_ids(b, Household, plans) == Int32[1, 2]
+        @test individuals(households(sim)[1]) == [b]
+        @test GEMS.validate_plans(population(sim), settingscontainer(sim))
+    end
+
     @testset "Custom setting types are ranked by name in each container" begin
         # registered against name order, with own chars since both names start with R
         zed = declare_setting_type!("RankZed"; char = 'ζ')
