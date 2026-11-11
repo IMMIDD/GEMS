@@ -514,6 +514,15 @@ import GEMS: increment!, infected!
             @test length(symptom_triggers(sim)) == 0
             @test length(strategies(sim)) == 0
 
+            # a reset sim starts from the RNG streams a fresh one starts from, with no staged work left
+            fresh = Simulation(pop_size = 100, seed = 5)
+            streams = copy.(fresh.rngs)
+            step!(fresh)
+            push!(fresh.removal_buffers[1], GEMS._EndedInfection(individuals(fresh)[1], Int32(1), Int16(0), Int8(1), false))
+            reset!(fresh)
+            @test fresh.rngs == streams
+            @test all(isempty, fresh.removal_buffers) && all(isempty, fresh.infection_buffers)
+
             # reinitialize! is an alias for reset! kept for backwards compatibility.
             # It must behave identically to reset! in both modes.
             sim2 = Simulation(pop_size=100)

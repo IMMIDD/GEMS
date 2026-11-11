@@ -603,6 +603,9 @@ function _BUILD_Simulation(;
 
     sim.prior_immunity = prior
 
+    # the population build drew from the RNGs; reseed as `reset!` does, so both start from the same streams
+    sim.rngs = _thread_local_rngs(Xoshiro(sim.seed))
+
     # initialize simulation
     initialize!(sim)
 
@@ -2863,7 +2866,7 @@ end
 Resets the simulation model to its initial state according to its start condition.
 This resets all individuals, loggers, the event queue, tick, and RNGs, and
 re-applies the start condition.
-If `reset_interventions` is true (default), all intervention triggers and strategies
+If `reset_interventions` is true (default `false`), all intervention triggers and strategies
 are also cleared.
 """
 function reset!(simulation::Simulation; reset_interventions::Bool = false)
@@ -2887,6 +2890,9 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
     end
     repack_dirty_pools!(settingscontainer(simulation))
     foreach(empty!, simulation.newly_dead)
+    # a run stopped mid-tick may leave staged infections and recoveries behind
+    foreach(empty!, simulation.infection_buffers)
+    foreach(empty!, simulation.removal_buffers)
     foreach(_reset!, simulation.state_log_counts)
     # measures may have changed sampling methods since the last scan
     _refresh_rate_bounds!(settingscontainer(simulation))
