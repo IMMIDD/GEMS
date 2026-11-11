@@ -537,7 +537,9 @@ end
         kill(inds[2], 3)
         kill(inds[4], 8)
         members = GEMS._members_alive_at(cs[1], Int16(5), sim)
-        @test members isa Vector{Individual}
+        # the latest death sits first in the dead tail, so the list is still a prefix view
+        @test members isa SubArray
+        @test length(members) == 5
         @test inds[2] ∉ members
         @test inds[4] in members
         @test inds[2] ∉ GEMS._members_alive_at(yr, Int16(5), sim)
@@ -556,6 +558,12 @@ end
         traced = trace(inds[6], sim, [SchoolClass]; from = 1, to = 10, filter = (s, t) -> (s === cs[1] && push!(ticks, t); true))
         @test ticks == Int16[1, 2, 3]
         @test !isempty(traced)
+
+        # a newcomer swapped into the first dead slot breaks the death order, so the list is built
+        add_member!(cs[1], Individual(id = Int32(11), age = 30, sex = 1), pop)
+        members = GEMS._members_alive_at(cs[1], Int16(3), sim)
+        @test members isa Vector{Individual}
+        @test inds[4] in members && inds[6] in members && inds[2] ∉ members
     end
 
     @testset "the sampling method's cache" begin

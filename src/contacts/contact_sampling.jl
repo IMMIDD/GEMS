@@ -462,8 +462,8 @@ function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, csm::Contac
     length(members) < 2 && return last_contact
     # the window ends before `ind`'s death, so `ind` is on the list
     pos = findfirst(m -> m === ind, members)
-    # a built list must not fill the cache this setting's method keeps for transmission
-    if members isa Vector{Individual}
+    # a list other than the living members must not fill the cache this setting's method keeps for transmission
+    if members isa Vector{Individual} || length(members) != _alive(s)
         csm = deepcopy(csm)
         membership_changed!(csm, s)
     end
@@ -490,14 +490,17 @@ end
 # Whether `m` was still alive at tick `t`.
 @inline _alive_at(m::Individual, t::Int16) = !dead(m) || death(m) > t
 
-# The members of leaf `s` alive at tick `t`. A view if those are the living members, which the setting's
-# sampling method already counts; a new vector otherwise.
+# The members of leaf `s` alive at tick `t`. The dead follow the living, latest death first, so those alive
+# at `t` are a prefix, returned as a view; a new vector if member edits after deaths broke that order.
 function _members_alive_at(s::IndividualSetting, t::Int16, ::Simulation)
     members = individuals(s)
-    alive = _alive(s)
-    # the dead follow the living
-    died_in_window = any(m -> _alive_at(m, t), view(members, (alive + 1):length(members)))
-    died_in_window || return view(members, 1:alive)
+    n = length(members)
+    k = _alive(s)
+    while k < n && _alive_at(@inbounds(members[k + 1]), t)
+        k += 1
+    end
+    # `add_member!` swaps a newcomer into the first dead slot
+    any(m -> _alive_at(m, t), view(members, (k + 1):n)) || return view(members, 1:k)
     return [m for m in members if _alive_at(m, t)]
 end
 
