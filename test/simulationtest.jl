@@ -2009,6 +2009,11 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         @test err isa ErrorException && occursin("transmission_prethinning = false", err.msg)
     end
 
+    @testset "The simulation keeps its layer seed" begin
+        @test layer_seed(Simulation(pop_size = 200, seed = 5)) == 5
+        @test layer_seed(Simulation(pop_size = 200, seed = 5, layer_seed = 9)) == 9
+    end
+
     @testset "Calibration parameters survive reset!" begin
         function run_with(x)
             s = Simulation(pop_size = 1000, seed = 4)

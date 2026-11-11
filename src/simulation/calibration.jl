@@ -222,6 +222,8 @@ function calibrate!(
     solve_kwargs = haskey(solve_kwargs, :maxiters) ? solve_kwargs : merge(solve_kwargs, Dict(:maxiters => maxiters))
     sol = Optimization.solve(prob, alg; solve_kwargs...)
     println(sol.stats)
+    # a calibration is only repeatable with the same layer network
+    println("Layer seed: ", layer_seed(sim))
     assign_values_to_parameters!(sim, x=sol.u, arg=arg_x0)
     reset!(sim)
     return sol

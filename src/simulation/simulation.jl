@@ -24,7 +24,7 @@ export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!,
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export InfectionSeed, seeding_schedule
-export rng, rngs, seed
+export rng, rngs, seed, layer_seed
 export contact_buffers
 
 export info
@@ -187,6 +187,7 @@ sim = Simulation(params)
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
     - `seed::Int64`: Seed used to initialize the main RNG
+    - `layer_seed::Int64`: Seed the setting layers were drawn with
     - `rngs::Vector{Xoshiro}`: RNG instances for each thread
 
 """
@@ -248,6 +249,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
 
     # RNG
     seed::Int64
+    layer_seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
     # TRANSMISSION PRE-THINNING
@@ -350,6 +352,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             stepmod,
 
             # RNG
+            seed,
+            # the layers' seed, which the keyword constructor sets
             seed,
             rngs,
 
@@ -603,6 +607,7 @@ function _BUILD_Simulation(;
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
     sim.prior_immunity = prior
+    sim.layer_seed = lseed
 
     # the population build drew from the RNGs; reseed as `reset!` does, so both start from the same streams
     sim.rngs = _thread_local_rngs(Xoshiro(sim.seed))
@@ -2308,6 +2313,13 @@ Returns seed associated with the simulation run.
 function seed(simulation::Simulation)
     return simulation.seed
 end
+
+"""
+    layer_seed(simulation::Simulation)
+
+Returns the seed the setting layers were drawn with.
+"""
+layer_seed(simulation::Simulation) = simulation.layer_seed
 
 
 """
