@@ -194,33 +194,37 @@ function _check_parent_links!(cntnr::SettingsContainer)
     for C in settingtypes_sorted(cntnr)
         C <: ContainerSetting || continue
         K = contains_type(C)
-        parents = get(cntnr.settings, C, ())
-        kids = get(cntnr.settings, K, ())
-        # ids are 1..n by now, so a child's id is its index
-        parent = zeros(Int32, length(kids))
-        for p in parents, k in p.contains
-            1 <= k <= length(kids) || error("$C $(id(p)) contains $K $k, which does not exist")
-            parent[k] == 0 || parent[k] == id(p) ||
-                error("$K $k is in $C $(parent[k]) and $C $(id(p)); a setting has one parent")
-            parent[k] = id(p)
-        end
-        filled = 0
-        for (k, kid) in enumerate(kids)
-            c = kid.contained
-            if c == DEFAULT_SETTING_ID
-                parent[k] == 0 && continue
-                kid.contained = parent[k]
-            elseif parent[k] == 0
-                1 <= c <= length(parents) || error("$K $k names $C $c as its parent, which does not exist")
-                push!(parents[c].contains, Int32(k))
-            else
-                c == parent[k] && continue
-                error("$K $k names $C $c as its parent, but $C $(parent[k]) contains it")
-            end
-            filled += 1
-        end
-        filled > 0 && @warn "Filled $filled one-sided links between $K and $C settings from the other side"
+        _check_parent_links!(get(cntnr.settings, C, ()), get(cntnr.settings, K, ()), C, K)
     end
+    return nothing
+end
+
+# The check for one container type `C` and its child type `K`, on their concretely typed vectors.
+function _check_parent_links!(parents, kids, ::Type{C}, ::Type{K}) where {C, K}
+    # ids are 1..n by now, so a child's id is its index
+    parent = zeros(Int32, length(kids))
+    for p in parents, k in p.contains
+        1 <= k <= length(kids) || error("$C $(id(p)) contains $K $k, which does not exist")
+        parent[k] == 0 || parent[k] == id(p) ||
+            error("$K $k is in $C $(parent[k]) and $C $(id(p)); a setting has one parent")
+        parent[k] = id(p)
+    end
+    filled = 0
+    for (k, kid) in enumerate(kids)
+        c = kid.contained
+        if c == DEFAULT_SETTING_ID
+            parent[k] == 0 && continue
+            kid.contained = parent[k]
+        elseif parent[k] == 0
+            1 <= c <= length(parents) || error("$K $k names $C $c as its parent, which does not exist")
+            push!(parents[c].contains, Int32(k))
+        else
+            c == parent[k] && continue
+            error("$K $k names $C $c as its parent, but $C $(parent[k]) contains it")
+        end
+        filled += 1
+    end
+    filled > 0 && @warn "Filled $filled one-sided links between $K and $C settings from the other side"
     return nothing
 end
 
