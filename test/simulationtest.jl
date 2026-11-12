@@ -1896,7 +1896,7 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         GEMS.apply_deaths!(sim)
         repack_dirty_pools!(cntnr)
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
-            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_index(e)))[GEMS.setting_id(e)]
             # still a member, but never drawn
             @test d in individuals(s)
             @test !(d in GEMS.living_members(s, cntnr))
@@ -1917,7 +1917,7 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         reset!(sim)
         pop_order = i -> GEMS._individual_index(population(sim), id(i))
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
-            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_index(e)))[GEMS.setting_id(e)]
             @test d in GEMS.living_members(s, cntnr)
             @test issorted(individuals(s); by = pop_order)
         end

@@ -275,7 +275,7 @@ function validate_plans(pop::Population, cntnr::SettingsContainer)
         error("the store holds $(length(plans.entries)) entries but $(length(plans.active)) active flags")
 
     for ind in individuals(pop), e in plan_entries(plans, ind)
-        T = setting_type_from_index(setting_type_of(e))
+        T = setting_type_from_index(setting_type_index(e))
         s = settings(cntnr, T)[setting_id(e)]
         idx = member_index(e)
         1 <= idx <= length(individuals(s)) ||

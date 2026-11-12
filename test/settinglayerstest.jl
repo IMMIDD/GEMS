@@ -1,5 +1,5 @@
 import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots, plan_add!,
-    plan_remove!, setting_type_of, setting_id, entry_active, entry_active!, entry_scale,
+    plan_remove!, setting_id, entry_active, entry_active!, entry_scale,
     setting_ids, declare_setting_type!, DeclaredSetting, DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX,
     NewSettingsAssignment, JoinAssignment, validate_plans, settingscontainer, settings,
     _membership_bit, _mask_slot, _type_scale_bound, _name_key,
@@ -46,7 +46,7 @@ function plans_well_formed(pop)
     store = activity_plans(pop)
     length(store) == sum(plan_length, individuals(pop)) || return false
     return all(individuals(pop)) do ind
-        types = [setting_type_of(store.entries[k]) for k in plan_slots(store, ind)]
+        types = [setting_type_index(store.entries[k]) for k in plan_slots(store, ind)]
         mask = reduce(|, (_membership_bit(t) for t in types if _mask_slot(t) != 0); init = UInt16(0))
         issorted(types) && ind.membership_mask == mask
     end
@@ -267,7 +267,7 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         hh = hand_additions(Household, [[100 + i] for i in 1:12])
         merge_into!(pop, hh)
         @test plans_well_formed(pop)
-        block_types(ind) = [setting_type_from_index(setting_type_of(store.entries[k])) for k in plan_slots(store, ind)]
+        block_types(ind) = [setting_type_from_index(setting_type_index(store.entries[k])) for k in plan_slots(store, ind)]
         @test block_types(inds[1]) == [Household, Household, Office, Office]
         @test _setting_id(inds[1], setting_type_index(Household), store) == 1
 

@@ -1263,7 +1263,7 @@ function _present_setting_types(plans::AbstractActivityPlanStore, inds::Vector{I
     Threads.@threads for c in eachindex(chunks)
         s = seen[c]
         @inbounds for i in chunks[c], slot in plan_slots(plans, inds[i])
-            s[setting_type_of(plans.entries[slot])] = true
+            s[setting_type_index(plans.entries[slot])] = true
         end
     end
     return UInt8.(findall(reduce(.|, seen; init = falses(typemax(UInt8)))))

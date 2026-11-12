@@ -35,11 +35,11 @@ function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, dra
     slots = plan_slots(plans, ind)
     # entries sort by type index, so the built-ins come first and any custom types after them
     for slot in slots
-        setting_type_of(@inbounds plans.entries[slot]) > _N_BUILTIN_SETTING_TYPES && break
+        setting_type_index(@inbounds plans.entries[slot]) > _N_BUILTIN_SETTING_TYPES && break
         _visit_slot(visit, slot, ind, sim, draw)
     end
     # custom types in rank order, which does not depend on when they were registered
-    has_custom = !isempty(slots) && setting_type_of(@inbounds plans.entries[last(slots)]) > _N_BUILTIN_SETTING_TYPES
+    has_custom = !isempty(slots) && setting_type_index(@inbounds plans.entries[last(slots)]) > _N_BUILTIN_SETTING_TYPES
     if has_custom
         for t in settingscontainer(sim).ranked_types, slot in _type_slots(plans, ind, t)
             _visit_slot(visit, slot, ind, sim, draw)

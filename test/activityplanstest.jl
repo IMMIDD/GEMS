@@ -2,7 +2,7 @@ import GEMS: PlanEntry, ActivityPlanStore, plan_slot, plan_add!, plan_remove!, p
     plan_length, plan_set_setting_id!, plan_set_member_index!, build_plans!, assign_settings!,
     assign_member_indices!, validate_plans, container_frame_index, membership_column,
     setting_type_index, setting_type_from_index, register_setting_type!, activity_plans,
-    member_index, setting_type_of, entry_scale, entry_active, entry_active!, plan_slots, set_scale!
+    member_index, entry_scale, entry_active, entry_active!, plan_slots, set_scale!
 
 # a registered and an unregistered setting type, for the type-index tests
 struct PlanTestSettingA <: IndividualSetting end
@@ -72,7 +72,7 @@ end
         e = PlanEntry(Office, Int32(7), Int32(3), 0.25)
         @test setting_id(e) == Int32(7)
         @test member_index(e) == Int32(3)
-        @test setting_type_of(e) == setting_type_index(Office)
+        @test setting_type_index(e) == setting_type_index(Office)
         @test entry_scale(e) == Float16(0.25)
         # a normal member by default
         @test entry_scale(PlanEntry(Household, Int32(1), Int32(1))) == Float16(1.0)
@@ -112,7 +112,7 @@ end
             plan_add!(store, i, PlanEntry(T, Int32(sid), Int32(1)))
         end
 
-        types = [setting_type_of(e) for e in plan_entries(store, i)]
+        types = [setting_type_index(e) for e in plan_entries(store, i)]
         @test issorted(types)
         @test plan_length(i) == 4
         @test length(plan_entries(store, i)) == 4
@@ -159,7 +159,7 @@ end
         for T in (Household, Office)
             slot = plan_slot(store, i, T)
             @test slot != 0
-            @test setting_type_of(store.entries[slot]) == setting_type_index(T)
+            @test setting_type_index(store.entries[slot]) == setting_type_index(T)
         end
         @test plan_slot(store, i, SchoolClass) == 0
 
@@ -514,7 +514,7 @@ end
         @test count_ones(i.membership_mask) < plan_length(i)
 
         # the block stays sorted and the repeat groups with its own kind
-        types = [setting_type_of(e) for e in plan_entries(store, i)]
+        types = [setting_type_index(e) for e in plan_entries(store, i)]
         @test issorted(types)
         @test types[1] == types[2] == setting_type_index(Household)
 
@@ -536,7 +536,7 @@ end
         # with the repeat gone the fast path comes back, and it is only correct over a
         # block the scan-path inserts left sorted
         @test count_ones(i.membership_mask) == plan_length(i)
-        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        @test issorted([setting_type_index(e) for e in plan_entries(store, i)])
         for (T, sid) in ((Household, kept), (Office, Int32(20)), (Municipality, Int32(40)))
             @test setting_id(store.entries[plan_slot(store, i, T)]) == sid
         end
@@ -637,7 +637,7 @@ end
         @test plan_slot(store, i, Office) == 0
         @test i.membership_mask & GEMS._membership_bit(setting_type_index(Office)) == 0
         # the survivors are untouched and still sorted
-        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        @test issorted([setting_type_index(e) for e in plan_entries(store, i)])
         for (T, sid) in ((Household, 10), (SchoolClass, 30), (Municipality, 40))
             @test setting_id(store.entries[plan_slot(store, i, T)]) == Int32(sid)
         end
@@ -727,7 +727,7 @@ end
         @test membership_column(Household) == :household
         # every entry block is sorted, and DEFAULT_SETTING_ID contributes none
         for ind in inds
-            @test issorted([setting_type_of(e) for e in plan_entries(plans, ind)])
+            @test issorted([setting_type_index(e) for e in plan_entries(plans, ind)])
         end
         @test plan_length(inds[1]) == 3
         @test plan_length(inds[2]) == 2   # no office
@@ -844,7 +844,7 @@ end
         @test setting_ids(i, Office, store) == Int32[21, 22, 20]
         @test !entry_active(store, plan_slot(store, i, Office))
         @test member_index(store.entries[plan_slot(store, i, Office)]) == Int32(2)
-        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        @test issorted([setting_type_index(e) for e in plan_entries(store, i)])
         @test setting_id(i, Household, store) == Int32(10)
         @test_throws ArgumentError set_primary!(store, i, Office, 99)
 
@@ -893,7 +893,7 @@ end
         @test setting_ids(b, Office, plans) == Int32[9, 8]
         @test setting_ids(c, Office, plans) == Int32[6]
         for ind in (a, b, c)
-            @test issorted([setting_type_of(e) for e in plan_entries(plans, ind)])
+            @test issorted([setting_type_index(e) for e in plan_entries(plans, ind)])
         end
         @test all(plans.active)
         @test a.membership_mask == GEMS._membership_bit(setting_type_index(Household)) |
@@ -1472,7 +1472,7 @@ end
         srng = Xoshiro(17)
         for ind in individuals(sim)[1:3:end], k in plan_slots(mplans, ind)
             e = mplans.entries[k]
-            set_scale!(sim, ind, setting_type_from_index(setting_type_of(e)), GEMS.setting_id(e), 3 * rand(srng))
+            set_scale!(sim, ind, setting_type_from_index(setting_type_index(e)), GEMS.setting_id(e), 3 * rand(srng))
             rand(srng) < 0.1 && entry_active!(mplans, ind, k, false)
         end
         GEMS.repack_dirty_pools!(GEMS.settingscontainer(sim))

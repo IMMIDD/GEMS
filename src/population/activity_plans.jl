@@ -5,7 +5,7 @@
 
 # EXPORTS
 export PlanEntry, ActivityPlanStore
-export member_index, entry_scale, setting_type_of
+export member_index, entry_scale
 export plan_entries, plan_length, entry_active, entry_active!
 export build_plans!, assign_settings!, assign_member_indices!, activity_plans, set_primary!, set_scale!
 export membership_column, memberships
@@ -24,7 +24,7 @@ struct PlanEntry
     setting_id::Int32
     member_index::Int32
     scale::Float16
-    setting_type::UInt8
+    type_index::UInt8
 end
 
 """
@@ -58,19 +58,19 @@ Returns the scale of the individual's contacts in the entry's setting, relative 
 @inline entry_scale(entry::PlanEntry)::Float16 = entry.scale
 
 """
-    setting_type_of(entry::PlanEntry)
+    setting_type_index(entry::PlanEntry)
 
-Returns the entry's dense setting-type index.
+Returns the dense type index of the entry's setting.
 """
-@inline setting_type_of(entry::PlanEntry)::UInt8 = entry.setting_type
+@inline setting_type_index(entry::PlanEntry)::UInt8 = entry.type_index
 
 # entries are immutable, so an edit rewrites the whole entry
 @inline _with_member_index(e::PlanEntry, idx::Integer) =
-    PlanEntry(e.setting_id, Int32(idx), e.scale, e.setting_type)
+    PlanEntry(e.setting_id, Int32(idx), e.scale, e.type_index)
 @inline _with_setting_id(e::PlanEntry, sid::Int32) =
-    PlanEntry(sid, e.member_index, e.scale, e.setting_type)
+    PlanEntry(sid, e.member_index, e.scale, e.type_index)
 @inline _with_scale(e::PlanEntry, scale::Real) =
-    PlanEntry(e.setting_id, e.member_index, Float16(scale), e.setting_type)
+    PlanEntry(e.setting_id, e.member_index, Float16(scale), e.type_index)
 
 ###
 ### PLAN STORE
@@ -170,7 +170,7 @@ end
 end
 
 @inline _raise_scale_bound!(plans::ActivityPlanStore, entry::PlanEntry) =
-    _raise_scale_bound!(plans, setting_type_of(entry), Float32(entry_scale(entry)))
+    _raise_scale_bound!(plans, setting_type_index(entry), Float32(entry_scale(entry)))
 
 # The largest scale any entry of setting type index `t` holds, at least 1.
 @inline _type_scale_bound(plans::ActivityPlanStore, t::UInt8)::Float32 =
@@ -208,12 +208,12 @@ function _plan_type_run_scan(plans::ActivityPlanStore, individual::Individual, t
     off = Int(individual.plan_offset)
     n = plan_length(individual)
     @inbounds for k in 0:(n - 1)
-        t = plans.entries[off + k].setting_type
+        t = plans.entries[off + k].type_index
         t < tidx && continue
         # types ascend, so a higher one means the run is empty
         t > tidx && return (k, 0)
         j = k + 1
-        while j < n && plans.entries[off + j].setting_type == tidx
+        while j < n && plans.entries[off + j].type_index == tidx
             j += 1
         end
         return (k, j - k)
@@ -297,13 +297,13 @@ end
     _unroll_entry_settings(use, cntnr, e, membership_setting_types(Individual)...)
 
 @inline function _unroll_entry_settings(use::U, cntnr::SettingsContainer, e::PlanEntry, ::Type{T}, rest...) where {U, T<:IndividualSetting}
-    setting_type_of(e) == setting_type_index(T) || return _unroll_entry_settings(use, cntnr, e, rest...)
+    setting_type_index(e) == setting_type_index(T) || return _unroll_entry_settings(use, cntnr, e, rest...)
     return use(settings(cntnr, T))
 end
 
 # no membership type matched: a setting type GEMS does not ship, looked up at runtime
 @inline _unroll_entry_settings(use::U, cntnr::SettingsContainer, e::PlanEntry) where {U} =
-    use(settings(cntnr, setting_type_from_index(setting_type_of(e))))
+    use(settings(cntnr, setting_type_from_index(setting_type_index(e))))
 
 ###
 ### MEMBERSHIP SCALE
@@ -521,7 +521,7 @@ function _add_table_rows!(plans::ActivityPlanStore, ind::Individual, rows, i::In
         t = rows.tidx[r]
         if rows.rescales[r]
             # the population row's entry is the first of its type, so this finds it
-            k = off - 1 + findfirst(e -> setting_type_of(e) == t, view(plans.entries, off:(at - 1)))
+            k = off - 1 + findfirst(e -> setting_type_index(e) == t, view(plans.entries, off:(at - 1)))
             plans.entries[k] = _with_scale(plans.entries[k], rows.scale[r])
             continue
         end
@@ -536,7 +536,7 @@ function _add_table_rows!(plans::ActivityPlanStore, ind::Individual, rows, i::In
         n <= MAX_PLAN_ENTRIES || throw(ArgumentError(
             "individual $(id(ind)) would hold $n plan entries; the cap is $MAX_PLAN_ENTRIES"))
         # stable, so each type keeps its primary first and the rest in file order
-        sort!(block; alg = InsertionSort, by = setting_type_of)
+        sort!(block; alg = InsertionSort, by = setting_type_index)
         _check_repeated_entries(block, ind)
     end
     foreach(e -> _raise_scale_bound!(plans, e), block)
@@ -611,9 +611,9 @@ function _check_repeated_entries(block, ind::Individual)
     for a in eachindex(block), b in (a + 1):lastindex(block)
         x = block[a]
         y = block[b]
-        (setting_type_of(x) == setting_type_of(y) && setting_id(x) == setting_id(y)) || continue
+        (setting_type_index(x) == setting_type_index(y) && setting_id(x) == setting_id(y)) || continue
         throw(ArgumentError(
-            "individual $(id(ind)) is given $(setting_type_from_index(setting_type_of(x))) $(setting_id(x)) twice"))
+            "individual $(id(ind)) is given $(setting_type_from_index(setting_type_index(x))) $(setting_id(x)) twice"))
     end
     return nothing
 end
@@ -659,7 +659,7 @@ function memberships(pop::Population)
     for ind in individuals(pop)
         prev = 0x00
         for e in plan_entries(plans, ind)
-            t = setting_type_of(e)
+            t = setting_type_index(e)
             # the population row holds only the first entry of each of its types, at scale 1; the rest go in the table
             if t == prev || !(t in column_tidx) || entry_scale(e) != 1
                 push!(ids, id(ind))
@@ -915,7 +915,7 @@ behind its kind, or in front of it as the new primary if `primary`. Throws if th
 already holds an entry for that setting.
 """
 function plan_add!(plans::ActivityPlanStore, individual::Individual, entry::PlanEntry; primary::Bool = false)
-    tidx = setting_type_of(entry)
+    tidx = setting_type_index(entry)
     # a second entry for one setting would put the individual in its member list twice
     _entry_slot(plans, individual, tidx, setting_id(entry)) == 0 || throw(ArgumentError(
         "individual $(id(individual)) already holds an entry for $(setting_type_from_index(tidx)) $(setting_id(entry))"))
@@ -963,7 +963,7 @@ function plan_remove!(plans::ActivityPlanStore, individual::Individual, slot::In
     (n > 0 && old <= slot <= old + n - 1) || throw(ArgumentError(
         "slot $slot does not hold one of individual $(id(individual))'s plan entries"))
 
-    tidx = @inbounds setting_type_of(plans.entries[slot])
+    tidx = @inbounds setting_type_index(plans.entries[slot])
     # an inactive entry made the individual scaled too
     scaled = _effective_scale(plans, slot) != 1
     pos = slot - old

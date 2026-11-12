@@ -126,7 +126,7 @@ end
 Returns all of the individual's memberships as `(type, id)` pairs, in plan order.
 """
 function settings_tuple(individual::Individual, plans::ActivityPlanStore)
-    return [(setting_type_from_index(setting_type_of(e)), setting_id(e))
+    return [(setting_type_from_index(setting_type_index(e)), setting_id(e))
             for e in plan_entries(plans, individual)]
 end
 
