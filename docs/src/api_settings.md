@@ -66,12 +66,14 @@ individuals(::ContainerSetting, ::Simulation)
 is_open(::Setting)
 lat(::Geolocated)
 lon(::Geolocated)
+living_members
 max_individuals(::Vector{Setting}, ::Simulation)
 min_individuals(::Vector{Setting}, ::Simulation)
 min_max_avg_individuals(::Vector{Setting}, ::Simulation)
 new_setting_ids!(::SettingsContainer, ::Dict)
 open!
 register_setting_type!
+repack_dirty_pools!
 schoolclass(::Individual, ::Simulation)
 sample_individuals
 setting(::SettingsContainer, ::DataType, ::Int32)

@@ -48,6 +48,7 @@ infections(::Simulation)
 info(::Simulation)
 interval
 label(::Simulation)
+layer_seed
 limit
 parameters
 pathogen!(::Simulation, ::Pathogen)

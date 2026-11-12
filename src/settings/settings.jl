@@ -1079,7 +1079,7 @@ _leaf_type(::Type{T}) where {T<:ContainerSetting} = _leaf_type(contains_type(T))
 """
     individuals(setting::IndividualSetting)
 
-Returns the individuals associated with the given setting, as a view of wherever they are stored.
+Returns the individuals associated with the given setting, as a view of wherever they are stored. Don't edit it; use `add_member!`/`remove_member!`.
 """
 function individuals(setting::IndividualSetting)
     members, offset, len = _member_storage(setting)
