@@ -27,18 +27,15 @@ Settings can hold an arbitrary number of individuals and can't be created during
 
 GEMS' base model architecture was designed with parallelization in mind.
 The model is segmented in disjunctive layers by setting type.
-This setup allows us to calculate all contacts and infections that happen during one timestep (e.g., one day) for all settings of a given type concurrently.
-If an individual who belongs to several settings is infected in more than one of them during the same timestep, only one of these infections takes effect.
+In each timestep, the infectious individuals are split across threads, and each thread draws their contacts and infections in all of their settings.
+If an individual who belongs to several settings is infected with the same pathogen in more than one of them during the same timestep, only one of these infections takes effect.
 The image below illustrates how individuals of the base population (green dots on the bottom layer) can be assigned to settings on each of the layers.
 A layer contains all settings of a given type (e.g., households).
 The edges between individuals on any of the upper layers indicates that these individuals each belong to the same setting of the respective type.
 
 ![GEMS Base Population Model](./assets/base-population.png)
 
-Moreover, we only simulate infections in so-called *Active Settings*.
-These are settings that contain infectious individuals and can therefore produce infectious contacts during the current timestep.
-Settings without infectious individuals (in-active settings) are not being simulated as they do not contribute to the overall infection dynamics.
-Active Settings in the image above are visualized with a white glow around the individuals.
+Only infectious individuals draw contacts, so settings without infectious members cost no time.
 Red circles are infectious individuals.
 
 This approach cuts the simulation execution time drastically.
