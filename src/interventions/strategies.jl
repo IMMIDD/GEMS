@@ -284,7 +284,7 @@ Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
 
 - `str::Strategy`: Strategy that the measure will be added to
 -  `measure::Measure`: Measure that will be added to te strategy
-- `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed.
+- `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed. With `0`, the measure acts on the triggering tick, before that tick's transmission.
 - `delay::Function = x -> 0` *(optional)*: Function of the focal object, and optionally the simulation as a second argument, that must resolve to an integer. The delay will extend the offset.
 - `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure. It may take the simulation as a second argument.
 

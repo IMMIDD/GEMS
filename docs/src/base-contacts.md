@@ -11,7 +11,7 @@ For each contact, the pathogen's `transmission_function` gives the infection pro
 ## Absent Members
 
 A dead or removed member leaves the setting: a household of four with one death draws like a household of three.
-A hospitalized, homebound or quarantined member, or a member of a closed setting, stays in it, but contacts drawn on them are dropped and they spread nothing there.
+A hospitalized, homebound or quarantined member, or a member of a closed setting, stays in it, but contacts drawn on them are dropped, not redrawn, and they spread nothing there.
 Household quarantine and homebound individuals still meet their household.
 
 In a hierarchy, a closed class stays part of its school; its members neither meet nor infect anyone at school level.
@@ -27,3 +27,4 @@ In a setting above both offices, such as their department, their scales add up, 
 ## Contact Counts
 
 `contactparameter` is the expected number of contacts drawn per tick, with replacement: someone drawn twice gets two transmission trials.
+Contact rates do not change over time; for weekday or seasonal patterns, write a `ContactSamplingMethod` whose `contact_rate` depends on the tick, with a `contact_rate_bound` that covers all ticks.

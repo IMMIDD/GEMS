@@ -40,7 +40,8 @@ The three dimensions of an import schedule are independent, and each accepts sev
 - `ticks`: *when* imports happen
     - `Integer`: a single import at that tick
     - `AbstractVector{<:Integer}`: exactly these ticks (ranges included); a repeated tick
-      schedules several imports on it
+      schedules several imports on it, which draw independently and can pick the same
+      individual, who is infected once
     - `Function`: `f(sim)` returning the ticks, resolved during `initialize!`
     - `NamedTuple`: window form `(start_tick =, stop_tick =, interval =, offset =)`, where
       `interval` (gap between imports) and `offset` (gap from `start_tick` to the first

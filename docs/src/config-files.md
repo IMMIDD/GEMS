@@ -220,6 +220,7 @@ The seed is being set upon creation of the `Simulation` object.
     ...
 ```
 The seed must be an integer value.
+A seed reproduces a run only at the same thread count.
 
 #### `layer_seed`
 Random seed of the setting layers' draws (see [`layer`](@ref config-layer) below).

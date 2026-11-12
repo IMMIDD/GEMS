@@ -7,6 +7,7 @@ export contact_samples
 Returns a dataframe with data on two individuals per row (contact).
 The contacts are sampled for a provided setting type according to the 
 `ContactSamplingMethod` of the desired setting. This also defines, how many contacts will be sampled per individual.
+Contacts are drawn with replacement, so someone drawn twice appears in two rows.
 If `include_non_contacts` is `true`, also the number of "non-contacts" (individuals for which the number of sampled contacts is zero) will be included in this dataframe. In this case, `b_id`, `b_age` and `b_sex` will have the value `-1`.
 The number of sampled contacts is limited by the global
 `CONTACT_SAMPLES` flag in the constants.jl file. It default is `100_000`.

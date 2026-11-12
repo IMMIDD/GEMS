@@ -66,6 +66,12 @@ Individual Settings in GEMS are `Household`, `SchoolClass`, `Office`, and `Munic
 Container Settings are available for school classes and offices on four layers each:
 `SchoolClass` -> `SchoolYear` -> `School` -> `SchoolComplex` and `Office` -> `Department` -> `Workplace` -> `WorkplaceSite`.
 
+Each individual setting type has at most one chain of containers above it.
+Types added with `declare_setting_type!` and settings created by setting layers have no container.
+
+Memberships and scales are the same on every tick; there are no weekday or calendar schedules yet.
+A `stepmod` can change them with `add_member!`, `remove_member!` and `set_scale!`.
+
 
 # [Inbuilt Population Generator](@id pop-generator)
 

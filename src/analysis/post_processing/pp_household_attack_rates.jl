@@ -18,6 +18,7 @@ at the same first tick, the one with the lowest infection id counts.
 Members who died by the first introduction are not counted as contacts.
 Households left with no one to infect, like single-person ones, are excluded.
 Members are the people whose primary household it is; an infection at home by anyone else brings the pathogen in.
+Chains count infections, so a member reinfected within one counts twice.
 
 # Returns
 
