@@ -392,7 +392,7 @@ end
     add_types!(sc, [SchoolClass, SchoolYear])
     foreach(x -> add!(sc, x), scs)
     foreach(x -> add!(sc, x), sys)
-    sim = Simulation()
+    sim = Simulation(seed = 1)
     pop = Population(inds)
     foreach(i -> fake_membership!(pop, inds[i], SchoolClass, div(i - 1, 2) + 1), 1:8)
     sim.population = pop
