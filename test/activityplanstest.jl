@@ -488,10 +488,11 @@ end
 
             # results carry a contact matrix for it, which plots after import by name alone
             rd = ResultData(sim)
-            @test aggregated_setting_age_contacts(rd, DeclaredSetting{:Gym}) isa ContactMatrix
+            m = aggregated_setting_age_contacts(rd, DeclaredSetting{:Gym})
+            @test m isa ContactMatrix && sum(m.data) > 0
             exportJLD(rd, dir)
             imported = import_resultdata(joinpath(dir, "resultdata.jld2"))
-            @test aggregated_setting_age_contacts(imported, "Gym") isa ContactMatrix
+            @test aggregated_setting_age_contacts(imported, "Gym").data == m.data
             @test gemsplot(imported, type = :AggregatedSettingAgeContacts) isa Plots.Plot
 
             # saving and loading again rebuilds the gym

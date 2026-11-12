@@ -1711,7 +1711,7 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
     end
 
     @testset "Closed pooled Setting in Step" begin
-        # closing a pooled class leaves its pool dirty; spreading must repack before it reads frames
+        # closing every class stops school contacts, at the class and at every level above it
         sim_cl = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
             settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
             stop_criterion = TimesUp(limit = 5), seed = 1)
@@ -1721,6 +1721,12 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         run!(sim_cl)
         @test tick(sim_cl) == 5
         @test !any(is_open, schoolclasses(sim_cl))
+        school = [settingchar(first(settings(sim_cl, T))) for T in (SchoolClass, SchoolYear, School, SchoolComplex)
+            if haskey(settings(sim_cl), T) && !isempty(settings(sim_cl, T))]
+        log = dataframe(infectionlogger(sim_cl))
+        @test !any(r -> r.tick >= 1 && r.setting_type in school, eachrow(log))
+        # spreading goes on elsewhere
+        @test any(r -> r.tick >= 1 && !(r.setting_type in school) && r.setting_type != '?', eachrow(log))
     end
 
     @testset "State log counts match a full scan" begin
