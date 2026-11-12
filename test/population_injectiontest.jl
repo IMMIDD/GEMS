@@ -1005,7 +1005,7 @@ end
         @test h7[2, :age] == Int8(43)
     end
 
-    @testset "death changepoint: flag row followed by the reason row" begin
+    @testset "death changepoint: flag and reason share the changepoint row" begin
         base_d = generate_test_population()
         base_d[!, :death] = Int8.(fill(-1, 100))
         base_d[!, :death_reason] = Int8.(fill(GEMS.DEFAULT_DEATH_REASON, 100))
@@ -1016,13 +1016,13 @@ end
         PI.stage_death!(inj_d, 1, GEMS.DEATH_REASON_NATURAL, Int16(10))
 
         h = PI.get_change_history(inj_d, 1, base_d)
-        @test size(h) == (4, 11)                    # base + age + death + death_reason
-        @test h[:, :timestamp] == [0, 5, 10, 10]
+        @test size(h) == (3, 11)                    # base + age + death/death_reason (same time point)
+        @test h[:, :timestamp] == [0, 5, 10]
         @test h[1, :death] == Int8(-1)              # base row: alive
-        @test h[3, :death] == 1                     # death row: the flag
-        @test h[3, :death_reason] == Int8(GEMS.DEFAULT_DEATH_REASON)   # reason not yet staged
-        @test h[4, :death] == 1                     # the flag carries into the reason row
-        @test h[4, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL)
+        @test h[1, :death_reason] == Int8(GEMS.DEFAULT_DEATH_REASON)
+        @test h[3, :age] == Int8(44)                # earlier changes carry into the changepoint row
+        @test h[3, :death] == 1                     # changepoint row: the flag
+        @test h[3, :death_reason] == Int8(GEMS.DEATH_REASON_NATURAL)   # ...and the reason, same row
     end
 
     @testset "hash verification" begin
