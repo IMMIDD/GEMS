@@ -98,8 +98,9 @@ mutable struct PostProcessor
         end
 
         # the population data of the infecter (_a) and the infectee (_b) that post processing reads
-        rows_a = _matching_rows(infections.id_a, pop.id)
-        rows_b = _matching_rows(infections.id_b, pop.id)
+        population_rows = _row_index(pop.id)
+        rows_a = _matching_rows(infections.id_a, population_rows)
+        rows_b = _matching_rows(infections.id_b, population_rows)
         infections.age_a = _gather(pop.age, rows_a)
         infections.age_b = _gather(pop.age, rows_b)
         # the household at infection
@@ -120,7 +121,7 @@ mutable struct PostProcessor
         insertcols!(infections, columnindex(infections, :recovery) + 1, :removed => removed)
 
         # join deaths with additional info from population DF
-        death_population_rows = _matching_rows(deaths.id, pop.id)
+        death_population_rows = _matching_rows(deaths.id, population_rows)
         for name in names(pop, Not(:id))
             deaths[!, name] = _gather(pop[!, name], death_population_rows)
         end
@@ -130,14 +131,14 @@ mutable struct PostProcessor
 
         # join vaccinations with additional info from population DF
         vaccinations = dataframe(vaccinationlogger(simulation))
-        vaccination_rows = _matching_rows(vaccinations.id, pop.id)
+        vaccination_rows = _matching_rows(vaccinations.id, population_rows)
         for name in names(pop, Not(:id))
             vaccinations[!, name] = _gather(pop[!, name], vaccination_rows)
         end
         vaccinations.household_ags = _ags_of_households(vaccinations.household, household_ags)
 
         # join tests with population data
-        test_population_rows = _matching_rows(tests.id, pop.id)
+        test_population_rows = _matching_rows(tests.id, population_rows)
         for name in names(pop, Not(:id))
             tests[!, name] = _gather(pop[!, name], test_population_rows)
         end
@@ -242,12 +243,21 @@ end
 
 # The row of `ids` holding each key, 0 where none does: a left join's matching, by array index.
 # `ids` must be unique integers; ids that are close together keep the index small.
-function _matching_rows(keys::AbstractVector, ids::AbstractVector)
+_matching_rows(keys::AbstractVector, ids::AbstractVector) = _matching_rows(keys, _row_index(ids))
+
+# The smallest of `ids` and the row of each id from there on, 0 for ids not in it, for `_matching_rows`.
+function _row_index(ids::AbstractVector)::Tuple{Int, Vector{Int32}}
     lo, hi = isempty(ids) ? (1, 0) : Int.(extrema(ids))
     row_of = zeros(Int32, hi - lo + 1)
     for (r, id) in enumerate(ids)
         row_of[id - lo + 1] = r
     end
+    return lo, row_of
+end
+
+# `_matching_rows` with an index `_row_index` built.
+function _matching_rows(keys::AbstractVector, (lo, row_of)::Tuple{Int, Vector{Int32}})
+    hi = lo + length(row_of) - 1
     rows = zeros(Int32, length(keys))
     for (k, key) in enumerate(keys)
         (ismissing(key) || key < lo || key > hi) && continue
@@ -761,10 +771,11 @@ function with_population_columns(infections::AbstractDataFrame, postProcessor::P
     unknown = setdiff(added, available)
     isempty(unknown) || throw(ArgumentError("Unknown population columns $unknown; available are $available"))
     out = DataFrame(infections; copycols = !(infections isa DataFrame))
+    population_rows = _row_index(pop.id)
     for (id_col, suffix) in (("id_a", "_a"), ("id_b", "_b"))
         side = filter(c -> endswith(c, suffix), added)
         isempty(side) && continue
-        rows = _matching_rows(out[!, id_col], pop.id)
+        rows = _matching_rows(out[!, id_col], population_rows)
         for c in side
             out[!, c] = _gather(pop[!, chop(c, tail = 2)], rows)
         end
