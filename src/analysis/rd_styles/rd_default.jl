@@ -17,6 +17,7 @@ and computationally intensive (memory & runtime) option.
         - `config_file_val::Dict{String, Any}`: Deep copy of the supplied TOML config file
         - `population_file::String`: Path to the population file
         - `population_params::Dict{String, Any}`: Parameters used to generate population
+        - `setting_type_names::Dict{String, String}`: Each setting type's log char (as a string) mapped to its name
         
     - `sim_data::Dict{String, Any}`
         - `label::String`: Label of this simulation run (needed for plotting)
@@ -31,8 +32,6 @@ and computationally intensive (memory & runtime) option.
         - `setting_sizes::Dict{Any, Any}`: Dictionary containing the setting sizes distributions for all included settingtypes
         - `region_info::Dataframe`: Municipality population size and area (if geolocalized model is used)
         - `pathogens::Vector{Pathogen}`: Array of all pathogen parameters in this simulation
-        - `vaccine::Vaccine`: Vaccine parameter [CURRENTLY DEACTIVATED]
-        - `vaccination_strategy::VaccineScheduler`: Vaccination strategy used in this model [CURRENTLY DEACTIVATED]
         - `tick_unit::String`: Unit of time that one tick corresponds to
         - `start_condition::StartCondition`: Initial setup of the simulation
         - `prior_immunity::Vector{AbstractPriorImmunity}`: Immunity some individuals acquired before the start
@@ -122,7 +121,8 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "config_file" => () -> pP |> simulation |> configfile,
                     "config_file_val" => () -> isfile(pP |> simulation |> configfile) ? TOML.parsefile(pP |> simulation |> configfile) : Dict(), #TODO potentially adapt for no config file
                     "population_file" => () -> pP |> simulation |> populationfile,
-                    "population_params" => () -> pP |> simulation |> population |> params
+                    "population_params" => () -> pP |> simulation |> population |> params,
+                    "setting_type_names" => () -> setting_type_names(pP |> simulation |> settingscontainer)
                 ),
             "sim_data" =>
                 Dict(
@@ -173,38 +173,26 @@ mutable struct DefaultResultData <: ResultDataStyle
                     #"GlobalSetting" => () -> setting_age_contacts(pP, GlobalSetting),
                 ),
 
-            "aggregated_setting_age_contacts" =>
-                Dict(
-                    # TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
-                    # TODO: This list should be determined dynamically depending on what settings are present in the simulation
-                    "Household" => () -> _mean_contacts_per_age_group(pP, Household, 5),
-                    "SchoolClass" => () -> _mean_contacts_per_age_group(pP, SchoolClass, 2),
-                    "SchoolYear" => () -> _mean_contacts_per_age_group(pP, SchoolYear, 2),
-                    "School" => () -> _mean_contacts_per_age_group(pP, School, 2),
-                    "SchoolComplex" => () -> _mean_contacts_per_age_group(pP, SchoolComplex, 2),
-                    "Office" => () -> _mean_contacts_per_age_group(pP, Office, 5), 
-                    "Department" => () -> _mean_contacts_per_age_group(pP, Department, 5), 
-                    "Workplace" => () -> _mean_contacts_per_age_group(pP, Workplace, 5), 
-                    "WorkplaceSite" => () -> _mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
-                    "Municipality" => () -> _mean_contacts_per_age_group(pP, Municipality, 5),
-                    "GlobalSetting" => () -> _mean_contacts_per_age_group(pP, GlobalSetting, 5)
-                ),
+            "aggregated_setting_age_contacts" => _present_setting_age_contacts(pP),
 
             "dataframes" =>
                 Dict(
                     "infections" => () -> pP |> infectionsDF,
                     "deaths" => () -> pP |> deathsDF,
+                    "vaccinations" => () -> pP |> vaccinationsDF,
                     "tests" => () -> pP |> testsDF,
                     "effectiveR" => () -> pP |> effectiveR,
                     "compartment_periods" => () -> pP |> compartment_periods,
                     "aggregated_compartment_periods" => () -> pP |> aggregated_compartment_periods,
                     "tick_cases" => () -> pP |> tick_cases,
                     "tick_deaths" => () -> pP |> tick_deaths,
+                    "tick_vaccinations" => () -> pP |> tick_vaccinations,
                     "tick_serial_intervals" => () -> pP |> _tick_serial_intervals,
                     "tick_generation_times" => () -> pP |> _tick_generation_times,
                     "cumulative_cases" => () -> pP |> cumulative_cases,
                     "compartment_fill" => () -> pP |> compartment_fill,
                     "cumulative_deaths" => () -> pP |> cumulative_deaths,
+                    "cumulative_vaccinations" => () -> pP |> cumulative_vaccinations,
                     "age_incidence" => () -> age_incidence(pP, 7, 100_000),
                     "population_pyramid" => () -> pP |> population_pyramid,
                     "cumulative_disease_progressions" => () -> pP |> cumulative_disease_progressions,
@@ -217,7 +205,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "observed_R" => () -> pP |> observed_R,
                     "time_to_detection" => () -> pP |> time_to_detection,
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
-                    "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
+                    "customlogger" => () -> pP |> customDF,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
                     "household_secondary_attack_rates" => () -> pP |> household_secondary_attack_rates,
                     "tick_hosptitalizations" => () -> pP |> _hospital_df,

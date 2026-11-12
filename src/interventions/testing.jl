@@ -242,7 +242,7 @@ function apply_test!(ind::Individual, testtype::TestType, sim::Simulation, repor
         !infected(ind, testtype.pathogen_id) && gems_rand(rng(sim)) > testtype |> specificity
 
     # record test result
-    record_test!(ind, test_registry(sim, ind), testtype.pathogen_id, sim |> tick, test_pos, reportable)
+    record_test!(ind, sim, testtype.pathogen_id, sim |> tick, test_pos, reportable)
     # a positive can set detection on an uninfected individual
     test_pos && _mark_active!(sim, ind)
  
@@ -288,17 +288,18 @@ take all individuals assigned to the specified setting.
     might lead to false negatives or false positives)
 """
 function apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation; subset::Union{Vector{Individual},Nothing}=nothing)
+    members = individuals(setting, sim)
     # if a subset is provided, check whether subset is ACTUALLY a subset of the setting
-    if subset !== nothing && !issubset(subset, setting |> individuals)
+    if subset !== nothing && !issubset(subset, members)
         throw(ArgumentError("Not all individuals of the provided 'subset' are found to be members of the specified settting."))
     end
 
     # no of individuals. If  no subset provided, use all individuals from setting
-    no_of_ind = subset === nothing ? setting |> individuals |> length : subset |> length
+    no_of_ind = subset === nothing ? length(members) : length(subset)
 
     # number of infected. If no subset provided, use all individuals from setting
     pid = pathogen_id(testtype)
-    no_of_inf = subset === nothing ? num_of_infected(individuals(setting), pid) : num_of_infected(subset, pid)
+    no_of_inf = subset === nothing ? num_of_infected(members, pid) : num_of_infected(subset, pid)
 
     # apply test
     test_pos = no_of_inf > 0 && gems_rand(rng(sim)) <= testtype |> sensitivity ||
@@ -308,7 +309,7 @@ function apply_pool_test!(setting::Setting, testtype::TestType, sim::Simulation;
     log!(
         sim |> pooltestlogger,
         setting |> id,
-        setting |> settingchar,
+        settingchar(setting, settingscontainer(sim)),
         sim |> tick,
         test_pos,
         Int16(no_of_ind),

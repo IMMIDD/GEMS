@@ -14,6 +14,7 @@ Order   = [:function]
 ## Structs
 ```@docs
 ContainerSetting
+DeclaredSetting
 Department
 GlobalSetting
 Household
@@ -32,13 +33,17 @@ WorkplaceSite
 
 ## Functions
 ```@docs
-activate!
 add!(::SettingsContainer, ::Setting)
+add_member!(::IndividualSetting, ::Individual, ::Population)
+add_member!(::IndividualSetting, ::Individual, ::Simulation)
+remove_member!(::IndividualSetting, ::Individual, ::Population)
+remove_member!(::IndividualSetting, ::Individual, ::Simulation)
 add_type!
 add_types!
 ags(::ContainerSetting, ::Simulation)
 ags(::IndividualSetting, ::Simulation)
 ags(::IndividualSetting)
+attending_members
 avg_individuals
 close!
 contact_sampling_method!
@@ -46,7 +51,7 @@ contact_sampling_method
 contained(::Setting)
 contained_type(::Setting)
 contains_type(::ContainerSetting)
-deactivate!(::Setting)
+declare_setting_type!
 delete_dangling_ids!(::SettingsContainer)
 geolocation
 get_contained!
@@ -59,18 +64,20 @@ individuals(::IndividualSetting)
 individuals(::IndividualSetting, ::Simulation)
 individuals(::ContainerSetting, ::Simulation)
 is_open(::Setting)
-isactive(::Setting)
 lat(::Geolocated)
 lon(::Geolocated)
+living_members
 max_individuals(::Vector{Setting}, ::Simulation)
 min_individuals(::Vector{Setting}, ::Simulation)
 min_max_avg_individuals(::Vector{Setting}, ::Simulation)
 new_setting_ids!(::SettingsContainer, ::Dict)
 open!
-present_individuals!
+register_setting_type!
+repack_dirty_pools!
 schoolclass(::Individual, ::Simulation)
 sample_individuals
 setting(::SettingsContainer, ::DataType, ::Int32)
+setting_type_names
 settingchar(::Setting)
 settings(::SettingsContainer)
 settings(::SettingsContainer, ::DataType)

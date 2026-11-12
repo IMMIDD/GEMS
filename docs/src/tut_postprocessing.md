@@ -6,7 +6,7 @@ This tutorial teaches you how to access the data and customize how data is being
 ## Internal Loggers
 
 Accessing a simulation's internal loggers is easy.
-They can be accessed via `infectionlogger(sim)`,  `deathlogger(sim)`,  `healthlogger(sim)`,  `testlogger(sim)`,  `pooltestlogger(sim)`,  `quarantinelogger(sim)`,  or `customlogger(sim)`.
+They can be accessed via `infectionlogger(sim)`,  `deathlogger(sim)`,  `vaccinationlogger(sim)`,  `healthlogger(sim)`,  `testlogger(sim)`,  `pooltestlogger(sim)`,  `quarantinelogger(sim)`,  or `customlogger(sim)`.
 Here's the data that is being logged for all infections:
 
 ```julia
@@ -46,7 +46,8 @@ dataframe(inf_logger)
 The `PostProcessor` is the binding element between the raw data coming from the simulation's internal loggers and the `ResultData` object.
 It is instantiated with the `Simulation` object and performs some initial operations and joins on the raw data, and stores the results in internal dataframes (`infectionsDF`, `populationDF`, `deathsDF`, `testsDF`, `pooltestsDF`, `quarantinesDF`).
 An exception is the `sim_infectionsDF`-dataframe which only contains infections that happened during the simulation, excluding all initial, seeding infections.
-This example shows how the `PostProcessor`'s internal infections-dataframe is already joined with data from the population-dataframe:
+This example shows how the `PostProcessor`'s internal infections-dataframe is already joined with data from the population-dataframe.
+It carries the infecter's and infectee's age (`age_a`, `age_b`), the infectee's household at infection (`household_b`) and both households' AGS (`household_ags_a`, `household_ags_b`); `with_population_columns(infectionsDF(pp), pp)` adds all other population columns (`sex_a`, `office_b`, ...), `with_population_columns(infectionsDF(pp), pp, "sex_b")` only the ones named:
 
 ```julia
 using GEMS

@@ -25,7 +25,7 @@ are host states (not per-pathogen), read from the simulation's `HealthLogger`.
 function _hospital_df(postProcessor::PostProcessor)
 
     sim = simulation(postProcessor)
-    events = dataframe(healthlogger(sim))
+    events = healthDF(postProcessor)
     base = DataFrame(tick = collect(Int16, 0:tick(sim)))
 
     # all event types counted per tick in one pass over the events

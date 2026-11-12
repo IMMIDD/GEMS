@@ -41,17 +41,17 @@ in case the test result is positive. A follow-up strategy could, for example,
 be a self-isolation strategy. While the above example does not have a follow-up
 strategy for a negative test, you can of couse have both.
 """
-struct Test <: IMeasure
+struct Test{PFU<:Union{IStrategy, Nothing}, NFU<:Union{IStrategy, Nothing}} <: IMeasure
     name::String    # name of testing measure (i.e. "test_after_symptoms")
     type:: AbstractTestType  # test type / brand / make
-    positive_followup::Union{IStrategy, Nothing}
-    negative_followup::Union{IStrategy, Nothing}
+    positive_followup::PFU
+    negative_followup::NFU
     reportable::Bool # whether a positive test from this event shall lead to a "detected case"
 
     function Test(name::String, type, positive_followup, negative_followup; reportable = true)
         length(name) <= 0 ? throw(ArgumentError("Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'")) : nothing
         isnothing(type) ? throw(ArgumentError("You need to specify a TestType, i.e. by supplying a keyworded argument type = MyTestType")) : nothing
-        return new(name, type, positive_followup, negative_followup, reportable)
+        return new{typeof(positive_followup), typeof(negative_followup)}(name, type, positive_followup, negative_followup, reportable)
     end
 
     Test(name, type; positive_followup = nothing, negative_followup = nothing, reportable = true) = 

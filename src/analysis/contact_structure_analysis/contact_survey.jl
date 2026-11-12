@@ -7,6 +7,7 @@ export contact_samples
 Returns a dataframe with data on two individuals per row (contact).
 The contacts are sampled for a provided setting type according to the 
 `ContactSamplingMethod` of the desired setting. This also defines, how many contacts will be sampled per individual.
+Contacts are drawn with replacement, so someone drawn twice appears in two rows.
 If `include_non_contacts` is `true`, also the number of "non-contacts" (individuals for which the number of sampled contacts is zero) will be included in this dataframe. In this case, `b_id`, `b_age` and `b_sex` will have the value `-1`.
 The number of sampled contacts is limited by the global
 `CONTACT_SAMPLES` flag in the constants.jl file. It default is `100_000`.
@@ -57,11 +58,18 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
     settingtype_vec = Vector{DataType}(undef, CONTACT_SAMPLES)
 
     cnt = 1
-    last_s = nothing
+    cntnr = settingscontainer(simulation)
+    # a run can end with deaths or member edits not yet repacked
+    repack_dirty_pools!(cntnr)
+    plans = activity_plans(simulation)
     # own RNG and buffers: post processing steps may run concurrently
     survey_rng = _post_processing_rng(simulation, "contact_samples/" * string(T))
-    present_inds = Individual[]
     contacts = Individual[]
+    draws = Individual[]
+
+    # batches are sorted, so consecutive samples usually hit the same setting; reuse its member view
+    last_s = nothing
+    frame = living_members(@inbounds(stngs[1]), cntnr)
 
     # reusable batch buffer
     batch = Vector{Int}(undef, CONTACT_SAMPLES)
@@ -80,20 +88,30 @@ function contact_samples(simulation::Simulation, settingtype::Type{T}, include_n
             cnt > CONTACT_SAMPLES && break
 
             s = stngs[sidx]::T
+            # nobody in a closed setting answers
+            is_open(s) || continue
 
             if s !== last_s
-                empty!(present_inds)
-                present_individuals!(present_inds, s, simulation)
+                frame = living_members(s, cntnr)
                 last_s = s
             end
 
-            isempty(present_inds) && continue
+            isempty(frame) && continue
 
-            ind_index = gems_rand(survey_rng, 1:length(present_inds))
-            ind = present_inds[ind_index]
+            ind_index = gems_rand(survey_rng, 1:length(frame))
+            ind = frame[ind_index]
+            # the dead, hospitalized and quarantined answer no survey, as they are never contacted
+            can_be_contacted(ind, s) || continue
 
-            empty!(contacts)
-            sample_contacts!(contacts, s.contact_sampling_method, s, ind_index, present_inds, tick(simulation), true, survey_rng)
+            s_host = _membership_scale(plans, ind, s, cntnr)
+            # nor does anyone who does not attend: a scale of 0, or no leaf open up to a container
+            s_host > 0 || continue
+            # the closure gets its own copy, as capturing `frame`, which the loop reassigns, would box it
+            members = frame
+            _with_sampling_method(s.contact_sampling_method) do csm
+                sample_scaled_contacts!(contacts, draws, csm, s, ind_index, members,
+                    tick(simulation), true, survey_rng, plans, cntnr, s_host, _scale_bound(s))
+            end
 
             if length(contacts) > 0
                 for contact in contacts

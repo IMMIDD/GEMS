@@ -37,16 +37,16 @@ Therefore, another `SStrategy` called 'my\\_str' is instantiated and an
 instance of the `IsOpen` measure is added with the 'find\\_coworkers\\_str'
 strategy being the positive follow-up.
 """
-struct IsOpen <: SMeasure
-    positive_followup::Union{SStrategy, Nothing}
-    negative_followup::Union{SStrategy, Nothing}
+struct IsOpen{PFU<:Union{SStrategy, Nothing}, NFU<:Union{SStrategy, Nothing}} <: SMeasure
+    positive_followup::PFU
+    negative_followup::NFU
 
     function IsOpen(;
         positive_followup::Union{SStrategy, Nothing} = nothing,
         negative_followup::Union{SStrategy, Nothing} = nothing)
 
         isnothing(positive_followup) && isnothing(negative_followup) ? throw(ArgumentError("At least one follow-up strategy is required to instantiate the 'IsOpen' measure")) : nothing
-        return new(positive_followup, negative_followup)
+        return new{typeof(positive_followup), typeof(negative_followup)}(positive_followup, negative_followup)
     end
 end
 

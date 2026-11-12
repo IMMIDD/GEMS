@@ -59,7 +59,7 @@ function _weekly_county_incidence(postProcessor::PostProcessor)
     # cross with all pathogens so every (ags, pathogen_id) gets an entry
     cnts = crossjoin(cnts, DataFrame(pathogen_id = collect(map(id, pathogens(simulation(postProcessor))))))
 
-    # counted in one pass over the infections instead of grouping each week's rows
+    # counted in one pass over the infections
     infs = infectionsDF(postProcessor)
     weekly = _weekly_county_infections(infs.tick, infs.household_ags_b, infs.pathogen_id, ft ÷ 7)
 
