@@ -205,6 +205,10 @@ end
         plan_remove!(store, i, plan_slot(store, i, nomask))
         @test GEMS._mask_locates_entries(i)
         @test setting_id(store.entries[plan_slot(store, i, Office)]) == Int32(20)
+
+        # give the slots back, so later tests' custom types get them as when their file runs alone
+        foreach(T -> GEMS.MASK_SLOTS[setting_type_index(T)] = 0, types)
+        @test maximum(GEMS.MASK_SLOTS) < GEMS.MEMBERSHIP_MASK_BITS
     end
 
     @testset "Custom setting types by name and char" begin
