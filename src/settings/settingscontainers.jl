@@ -532,10 +532,10 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
         else
             setting_vec = cntnr.settings[settingtype]
 
-            # Add the container settings from the dataframe
-            for nt in Tables.namedtupleiterator(df)
-                fields = (k => v for (k, v) in pairs(nt) if k ∉ _SETTINGS_FILE_STATE_FIELDS)
-                push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, fields...))
+            # Add the container settings from the dataframe, without its state columns
+            state_cols = intersect(names(df), string.(collect(_SETTINGS_FILE_STATE_FIELDS)))
+            for nt in Tables.namedtupleiterator(select(df, Not(state_cols); copycols = false))
+                push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
             end
 
             # Sort the vector of settings by ID
