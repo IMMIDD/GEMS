@@ -1464,6 +1464,9 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
             @test ids(GEMS.living_members(sch, sc)) == collect(1:9)
             # nothing closed and no gaps, so every container is a contiguous view
             @test contiguous(GEMS.living_members(sch, sc))
+            # the default show would print the pool, slack slots included
+            @test sprint(show, cs[1]) == "SchoolClass(id = 1, 3 individuals)"
+            @test sprint(show, sch) == "School(id = 1)"
         end
 
         @testset "Adding a member" begin

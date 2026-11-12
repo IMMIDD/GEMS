@@ -269,7 +269,8 @@ function _flat_storage(individuals, flat_pool, offset, len, cap)
 end
 
 # The default would print the whole pool
-Base.show(io::IO, s::FlatSetting) = print(io, setting_type_name(typeof(s)), "(id = ", id(s), ", ", s.len, " individuals)")
+Base.show(io::IO, s::IndividualSetting) = print(io, setting_type_name(typeof(s)), "(id = ", id(s), ", ", length(individuals(s)), " individuals)")
+Base.show(io::IO, s::ContainerSetting) = print(io, setting_type_name(typeof(s)), "(id = ", id(s), ")")
 
 ###
 ### SCHOOLCLASS
@@ -312,7 +313,7 @@ c2 = SchoolClass(id = 2, individuals = [i1, i2, i3])
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 - `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
-@with_kw mutable struct SchoolClass <: Geolocated
+@with_kw_noshow mutable struct SchoolClass <: Geolocated
     id::Int32 # 4 bytes
     type::Int32 = -1 # 1 byte
     contained::Int32 = DEFAULT_SETTING_ID # 4 bytes
@@ -376,7 +377,7 @@ y2 = SchoolYear(id = 2, contains = [13, 14, 15]) # contains IDs of school classe
 - `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
-@with_kw mutable struct SchoolYear <: ContainerSetting
+@with_kw_noshow mutable struct SchoolYear <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
@@ -436,7 +437,7 @@ s2 = School(id = 2, contains = [13, 14, 15]) # contains IDs of school years
 - `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
-@with_kw mutable struct School <: ContainerSetting
+@with_kw_noshow mutable struct School <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
@@ -493,7 +494,7 @@ sc2 = SchoolComplex(id = 2, contains = [13, 14, 15]) # contains IDs of schools
 - `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
-@with_kw mutable struct SchoolComplex <: ContainerSetting
+@with_kw_noshow mutable struct SchoolComplex <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
      type::Int32 = -1# 1 byte
@@ -552,7 +553,7 @@ ws2 = WorkplaceSite(id = 2, contains = [13, 14, 15]) # contains IDs of Workplace
 - `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
-@with_kw mutable struct WorkplaceSite <: ContainerSetting
+@with_kw_noshow mutable struct WorkplaceSite <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     type::Int32 = -1# 1 byte
@@ -609,7 +610,7 @@ ws2 = Workplace(id = 2, contains = [13, 14, 15]) # contains IDs of Departments
 - `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
-@with_kw mutable struct Workplace <: ContainerSetting
+@with_kw_noshow mutable struct Workplace <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
@@ -666,7 +667,7 @@ d2 = Department(id = 2, contains = [13, 14, 15]) # contains IDs of Offices
 - `closed_below` *(internal)*: How many settings below are closed.
 - `scale_bound` *(internal)*: Upper bound on the scales of the members below.
 """
-@with_kw mutable struct Department <: ContainerSetting
+@with_kw_noshow mutable struct Department <: ContainerSetting
     id::Int32 # 4 bytes
     contains::Vector{Int32} = [] # 40 + n*4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
@@ -733,7 +734,7 @@ o2 = Office(id = 2, individuals = [i1, i2, i3])
 - `scale_bound` *(internal)*: Upper bound on its members' scales.
 - `deceased` *(internal)*: How many members at the end of `individuals` have died.
 """
-@with_kw mutable struct Office <: Geolocated
+@with_kw_noshow mutable struct Office <: Geolocated
     id::Int32 # 4 bytes
     contained::Int32 = DEFAULT_SETTING_ID
     type::Int32 = -1# 1 byte
