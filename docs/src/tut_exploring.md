@@ -127,22 +127,12 @@ household(first_ind, sim)
 and one custom parameter.
 [ Info: 21:43:20 | └ Creating population
 [ Info: 21:43:21 | └ Creating simulation object
-Household
-  id: Int32 1
-  individuals: Array{Individual}((3,))
-  income: Int8 -1
-  dwelling: Int8 -1
-  contact_sampling_method: ContactparameterSampling
-  ags: AGS
-  lon: Float32 NaN32
-  lat: Float32 NaN32
-  isopen: Bool true
-  lock: ReentrantLock
+Household(id = 1, 3 individuals)
 ```
 
-Also try `office(i)`, `schoolclass(i)`, or `municipality(i)`.
+Also try `office(i, sim)`, `schoolclass(i, sim)`, or `municipality(i, sim)`.
 If an individual is not assigned to the respective setting (e.g., a child not being assigned to an office), these functions will throw an exception.
-You can make sure to not call these functions for individuals without a valid assignment by verifying `is_working(i)` or `is_student(i)` first.
+You can make sure to not call these functions for individuals without a valid assignment by verifying `is_working(i, sim)` or `is_student(i, sim)` first.
 
 
 ## Adjusting Individuals
@@ -203,18 +193,9 @@ households(sim)
 and one custom parameter.
 [ Info: 21:45:33 | └ Creating population
 [ Info: 21:45:35 | └ Creating simulation object
-33334-element Vector{Setting}:
- Household
-  id: Int32 1
-  individuals: Array{Individual}((2,))
-  income: Int8 -1
-  dwelling: Int8 -1
-  contact_sampling_method: ContactparameterSampling
-  ags: AGS
-  lon: Float32 NaN32
-  lat: Float32 NaN32
-  isopen: Bool true
-  lock: ReentrantLock
+33334-element Vector{Household}:
+ Household(id = 1, 2 individuals)
+ Household(id = 2, 5 individuals)
  ⋮
 ```
 

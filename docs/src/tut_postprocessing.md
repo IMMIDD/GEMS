@@ -47,7 +47,7 @@ The `PostProcessor` is the binding element between the raw data coming from the 
 It is instantiated with the `Simulation` object and performs some initial operations and joins on the raw data, and stores the results in internal dataframes (`infectionsDF`, `populationDF`, `deathsDF`, `testsDF`, `pooltestsDF`, `quarantinesDF`).
 An exception is the `sim_infectionsDF`-dataframe which only contains infections that happened during the simulation, excluding all initial, seeding infections.
 This example shows how the `PostProcessor`'s internal infections-dataframe is already joined with data from the population-dataframe.
-It carries the infecter's and infectee's age (`age_a`, `age_b`) and household; `with_population_columns(infectionsDF(pp), pp)` adds all other population columns (`sex_a`, `office_b`, ...), `with_population_columns(infectionsDF(pp), pp, "sex_b")` only the ones named:
+It carries the infecter's and infectee's age (`age_a`, `age_b`), the infectee's household at infection (`household_b`) and both households' AGS (`household_ags_a`, `household_ags_b`); `with_population_columns(infectionsDF(pp), pp)` adds all other population columns (`sex_a`, `office_b`, ...), `with_population_columns(infectionsDF(pp), pp, "sex_b")` only the ones named:
 
 ```julia
 using GEMS
