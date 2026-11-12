@@ -69,6 +69,10 @@ AgeBasedProgressionAssignment
 ```@docs
 AgeDependentTransmissionRate
 ConstantTransmissionRate
+max_transmission_probability
+max_transmission_probability_in_type
+max_transmission_factor
+max_transmission_factor_in_type
 ```
 
 ## Immunity
@@ -99,6 +103,7 @@ buildup_duration(::Vaccine)
 calculate_immunity
 calculate_severity_immunity
 susceptibility_factor
+susceptibility_bound
 calculate_waning_immunity
 calculate_waning_severity_immunity
 waning_level
@@ -112,5 +117,6 @@ previous_dose_interval
 
 ## Functions
 ```@docs
-
+next_infectiousness_change
+next_tick_after
 ```

@@ -2,7 +2,7 @@ import GEMS: PlanEntry, ActivityPlanStore, plan_slot, plan_add!, plan_remove!, p
     plan_length, plan_set_setting_id!, plan_set_member_index!, build_plans!, assign_settings!,
     assign_member_indices!, validate_plans, container_frame_index, membership_column,
     setting_type_index, setting_type_from_index, register_setting_type!, activity_plans,
-    member_index, setting_type_of, entry_scale, entry_active, entry_active!, plan_slots, set_scale!
+    member_index, entry_scale, entry_active, entry_active!, plan_slots, set_scale!
 
 # a registered and an unregistered setting type, for the type-index tests
 struct PlanTestSettingA <: IndividualSetting end
@@ -28,6 +28,7 @@ struct MaskTestContainer <: ContainerSetting end
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
     isopen::Bool = true
+    deceased::Int32 = 0
 end
 @with_kw mutable struct NameFoundSetting <: IndividualSetting
     id::Int32
@@ -35,8 +36,30 @@ end
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
     ags::AGS = AGS()
     isopen::Bool = true
+    deceased::Int32 = 0
 end
 struct NeverUsedSetting <: IndividualSetting end
+# a custom type without the `deceased` field GEMS needs, and one with only an id and a sampling method (`add!` reads it)
+@with_kw mutable struct NoDeceasedSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+end
+@with_kw mutable struct IdOnlySetting <: IndividualSetting
+    id::Int32
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+end
+# a custom type without `scale_bound`, whose members cannot have scales above 1
+@with_kw mutable struct UnboundSetting <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+    deceased::Int32 = 0
+end
 # a second type of the same name, as another package could define it
 module PlanTestOther
     using GEMS
@@ -49,7 +72,7 @@ end
         e = PlanEntry(Office, Int32(7), Int32(3), 0.25)
         @test setting_id(e) == Int32(7)
         @test member_index(e) == Int32(3)
-        @test setting_type_of(e) == setting_type_index(Office)
+        @test setting_type_index(e) == setting_type_index(Office)
         @test entry_scale(e) == Float16(0.25)
         # a normal member by default
         @test entry_scale(PlanEntry(Household, Int32(1), Int32(1))) == Float16(1.0)
@@ -89,7 +112,7 @@ end
             plan_add!(store, i, PlanEntry(T, Int32(sid), Int32(1)))
         end
 
-        types = [setting_type_of(e) for e in plan_entries(store, i)]
+        types = [setting_type_index(e) for e in plan_entries(store, i)]
         @test issorted(types)
         @test plan_length(i) == 4
         @test length(plan_entries(store, i)) == 4
@@ -136,7 +159,7 @@ end
         for T in (Household, Office)
             slot = plan_slot(store, i, T)
             @test slot != 0
-            @test setting_type_of(store.entries[slot]) == setting_type_index(T)
+            @test setting_type_index(store.entries[slot]) == setting_type_index(T)
         end
         @test plan_slot(store, i, SchoolClass) == 0
 
@@ -179,9 +202,13 @@ end
             @test GEMS._plan_type_run(store, i, tidx) == GEMS._plan_type_run_scan(store, i, tidx)
         end
         # without it, the mask locates every entry again
-        @test plan_remove!(store, i, plan_slot(store, i, nomask))
+        plan_remove!(store, i, plan_slot(store, i, nomask))
         @test GEMS._mask_locates_entries(i)
         @test setting_id(store.entries[plan_slot(store, i, Office)]) == Int32(20)
+
+        # give the slots back, so later tests' custom types get them as when their file runs alone
+        foreach(T -> GEMS.MASK_SLOTS[setting_type_index(T)] = 0, types)
+        @test maximum(GEMS.MASK_SLOTS) < GEMS.MEMBERSHIP_MASK_BITS
     end
 
     @testset "Custom setting types by name and char" begin
@@ -192,15 +219,15 @@ end
         foreach(ind -> assign_settings!(pop, ind, RoundTripSetting => 1), individuals(pop)[1:3])
         @test GEMS.setting_type_name(RoundTripSetting) == "RoundTripSetting"
         @test settingchar(RoundTripSetting(id = 1)) == 'R'
-        @test settingstring('R') == "RoundTripSetting"
-        @test setting_type_names()["R"] == "RoundTripSetting"
-        @test setting_type_names()["h"] == "Household"
+        cntnr = SettingsContainer()
+        add_type!(cntnr, RoundTripSetting)
+        @test settingstring('R', cntnr) == "RoundTripSetting"
+        @test setting_type_names(cntnr)["R"] == "RoundTripSetting"
+        @test setting_type_names(cntnr)["h"] == "Household"
 
-        # taken or reserved chars, a second char and a taken name are refused
-        @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = 'R')
+        # reserved chars and a taken name are refused; clashes between custom types are checked per simulation
         @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = 'h')
         @test_throws ArgumentError register_setting_type!(NeverUsedSetting; char = '?')
-        @test_throws ArgumentError register_setting_type!(RoundTripSetting; char = 'Q')
         @test_throws ArgumentError register_setting_type!(PlanTestOther.RoundTripSetting; char = 'Ω')
 
         # saving and loading carry it by name and rebuild the same plans
@@ -227,8 +254,10 @@ end
         @test !(NeverUsedSetting in settingtypes(settingscontainer(sim)))
         @test_throws ErrorException setting_type_index(NeverUsedSetting)
 
-        # results carry the names, so an imported ResultData labels custom types by itself
-        sim = Simulation(population = Population(df), infected_fraction = 0.0)
+        # results carry the names of their simulation's types, so an imported ResultData labels them by itself
+        both = DataFrame(id = Int32[1, 2, 3], setting_type = ["RoundTripSetting", "NameFoundSetting", "NameFoundSetting"],
+                         setting_id = Int32[1, 1, 1])
+        sim = Simulation(population = Population(df; memberships = both), infected_fraction = 0.0)
         run!(sim)
         rd = ResultData(sim; style = "EssentialResultData")
         mktempdir() do dir
@@ -236,6 +265,170 @@ end
             imported = import_resultdata(joinpath(dir, "resultdata.jld2"))
             @test setting_type_names(imported)["R"] == "RoundTripSetting"
             @test setting_type_names(imported)["N"] == "NameFoundSetting"
+        end
+    end
+
+    @testset "Custom setting types need the fields GEMS uses" begin
+        # default chars, whichever types other tests registered: clashes only count within one container
+        for (T, missing_fields) in ((NoDeceasedSetting, "`deceased`"), (IdOnlySetting, "`individuals`, `ags`, `isopen`, `deceased`"))
+            sc = SettingsContainer()
+            add_types!(sc, [T])
+            GEMS.add!(sc, T(id = Int32(1)))
+            err = try GEMS.build_pools!(sc); nothing catch e; e end
+            @test err isa ErrorException && occursin(missing_fields, err.msg)
+        end
+    end
+
+    @testset "Scales above 1 need a `scale_bound` field" begin
+        df = DataFrame(id = Int32.(1:3), sex = Int8.(zeros(3)), age = Int8.(fill(30, 3)), household = Int32[1, 1, 2])
+        scaled = DataFrame(id = Int32[1, 2], setting_type = ["UnboundSetting", "UnboundSetting"], setting_id = Int32[1, 1], scale = [1.0, 2.0])
+        # building the settings, by the simulation or by hand
+        @test_throws ArgumentError Simulation(population = Population(df; memberships = scaled), infected_fraction = 0.0)
+        pop = Population(df; memberships = scaled)
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [UnboundSetting])
+        GEMS.add!(cntnr, UnboundSetting(id = Int32(1), individuals = individuals(pop)[1:2]))
+        @test_throws ArgumentError assign_member_indices!(pop, cntnr)
+
+        # scales up to 1 build; raising one, or adding a member above 1, throws
+        sim = Simulation(population = Population(df; memberships = DataFrame(id = Int32[1, 2],
+            setting_type = ["UnboundSetting", "UnboundSetting"], setting_id = Int32[1, 1], scale = [1.0, 0.5])), infected_fraction = 0.0)
+        u = settings(sim, UnboundSetting)[1]
+        a, _, c = individuals(sim)
+        @test_throws ArgumentError set_scale!(sim, a, UnboundSetting, 1, 2.0)
+        @test_throws ArgumentError add_member!(u, c, sim; scale = 3.0)
+        @test length(individuals(u)) == 2
+        set_scale!(sim, a, UnboundSetting, 1, 0.5)
+        # and before the settings exist
+        unbuilt = Population(df)
+        assign_settings!(unbuilt, individuals(unbuilt)[1], UnboundSetting => 1)
+        @test_throws ArgumentError set_scale!(unbuilt, individuals(unbuilt)[1], UnboundSetting, 1, 2.0)
+    end
+
+    @testset "Only types that hold members take entries" begin
+        pop = Population(DataFrame(id = Int32[1], sex = Int8[0], age = Int8[8], household = Int32[1]))
+        ind = individuals(pop)[1]
+        @test_throws ArgumentError assign_settings!(pop, ind, School => 1)
+        @test_throws ArgumentError assign_settings!(pop, ind, GlobalSetting => 1)
+        @test plan_length(ind) == 1
+    end
+
+    @testset "add_member! refuses a full plan before storing" begin
+        n = Int(typemax(Int8))
+        df = DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[30, 30], household = Int32[1, 2], office = Int32[1, n])
+        # person 1 fills their plan: a household and offices 1 to n - 1
+        extra = DataFrame(id = fill(Int32(1), n - 2), setting_type = fill("Office", n - 2), setting_id = Int32.(2:(n - 1)))
+        sim = Simulation(population = Population(df; memberships = extra), infected_fraction = 0.0)
+        a, b = individuals(sim)
+        @test GEMS.plan_length(a) == n
+        last_office = settings(sim, Office)[n]
+        @test_throws ArgumentError add_member!(last_office, a, sim)
+        @test individuals(last_office) == [b]
+    end
+
+    @testset "Renamed setting ids keep each entry on its setting" begin
+        # ids 0 and 1 become 1 and 2; person 2 holds both, so renaming 0 to 1 must not hit their old id 1
+        df = DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[30, 30], household = Int32[1, 0])
+        table = DataFrame(id = Int32[2], setting_type = ["Household"], setting_id = Int32[1])
+        sim = @test_logs (:warn, r"not continuous") match_mode = :any Simulation(population = Population(df; memberships = table), infected_fraction = 0.0)
+        a, b = individuals(sim)
+        plans = GEMS.activity_plans(sim)
+        @test setting_ids(a, Household, plans) == Int32[2]
+        @test setting_ids(b, Household, plans) == Int32[1, 2]
+        @test individuals(households(sim)[1]) == [b]
+        @test GEMS.validate_plans(population(sim), settingscontainer(sim))
+    end
+
+    @testset "Indexing requires an entry for every member" begin
+        # a hand-built household listing someone without an entry for it
+        pop = Population(DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[30, 30], household = Int32[1, 1]))
+        a, b = individuals(pop)
+        cntnr = SettingsContainer()
+        add_types!(cntnr, [Household])
+        GEMS.add!(cntnr, Household(id = Int32(1), contact_sampling_method = RandomSampling(), individuals = [a, b]))
+        GEMS.add!(cntnr, Household(id = Int32(2), contact_sampling_method = RandomSampling(), individuals = [a]))
+        @test_throws ErrorException assign_member_indices!(pop, cntnr)
+    end
+
+    @testset "Custom setting types are ranked by name in each container" begin
+        # registered against name order, with own chars since both names start with R
+        zed = declare_setting_type!("RankZed"; char = 'ζ')
+        alpha = declare_setting_type!("RankAlpha"; char = 'α')
+        n = GEMS._N_BUILTIN_SETTING_TYPES
+        both = SettingsContainer()
+        add_types!(both, [Household, zed, alpha])
+        @test GEMS._type_rank(both, Household) == setting_type_index(Household)
+        @test GEMS._type_rank(both, alpha) == n + 1
+        @test GEMS._type_rank(both, zed) == n + 2
+        # another container ranks only its own types
+        one = SettingsContainer()
+        add_types!(one, [zed])
+        @test GEMS._type_rank(one, zed) == n + 1
+    end
+
+    @testset "Custom entries are visited in name order" begin
+        # registered against name order, so the global index would visit Zed first; own chars, since both start with V
+        zed = declare_setting_type!("VisitZed"; char = 'ž')
+        alpha = declare_setting_type!("VisitAlpha"; char = 'â')
+        df = DataFrame(id = Int32.(1:2), sex = Int8.(zeros(2)), age = Int8.(fill(30, 2)), household = Int32[1, 1])
+        table = DataFrame(id = Int32[1, 1, 2, 2], setting_type = ["VisitZed", "VisitAlpha", "VisitZed", "VisitAlpha"],
+                          setting_id = Int32[1, 1, 1, 1])
+        sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.0, seed = 1)
+        order = DataType[]
+        GEMS._foreach_spread_setting(individuals(sim)[1], sim, GEMS._draw_at_visit) do s, pos, drawn
+            push!(order, typeof(s))
+        end
+        @test order == [Household, alpha, zed]
+    end
+
+    @testset "Runs do not depend on the types registered before" begin
+        # one population under two pairs of names, registered in opposite orders, with the same chars
+        declare_setting_type!("PairOneA"; char = 'ǎ'); declare_setting_type!("PairOneB"; char = 'ƀ')
+        declare_setting_type!("PairTwoB"; char = 'ƀ'); declare_setting_type!("PairTwoA"; char = 'ǎ')
+        n = 60
+        df = DataFrame(id = Int32.(1:n), sex = Int8.(zeros(n)), age = Int8.(fill(30, n)), household = Int32.(1:n))
+        function run_pair(a, b)
+            table = DataFrame(id = Int32[1:n; 1:n], setting_type = [fill(a, n); fill(b, n)],
+                              setting_id = Int32[cld.(1:n, 30); mod.(1:n, 2) .+ 1])
+            sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.1, seed = 7)
+            for T in (DeclaredSetting{Symbol(a)}, DeclaredSetting{Symbol(b)}), s in settings(sim, T)
+                contact_sampling_method!(sim, s, ContactparameterSampling(2.0))
+            end
+            # an unrelated type registered between building and running
+            declare_setting_type!("PairLater" * a)
+            run!(sim)
+            return dataframe(infectionlogger(sim))
+        end
+        first_run = run_pair("PairOneA", "PairOneB")
+        second_run = run_pair("PairTwoA", "PairTwoB")
+        @test nrow(first_run) > 6
+        @test first_run == second_run
+    end
+
+    @testset "Setting chars are chosen per simulation" begin
+        garden = declare_setting_type!("CharGarden")
+        gym = declare_setting_type!("CharGym")
+        # both ask for 'C': fine in separate simulations, not in one
+        a = SettingsContainer(); add_type!(a, garden)
+        b = SettingsContainer(); add_type!(b, gym)
+        @test settingstring('C', a) == "CharGarden"
+        @test settingstring('C', b) == "CharGym"
+        @test_throws ArgumentError add_types!(SettingsContainer(), [garden, gym])
+        # a later simulation may ask for another char, and earlier ones keep theirs
+        declare_setting_type!("CharGarden"; char = 'Ŋ')
+        c = SettingsContainer(); add_types!(c, [garden, gym])
+        @test settingchar(garden(id = Int32(1)), c) == 'Ŋ'
+        @test settingchar(garden(id = Int32(1)), a) == 'C'
+        @test settingstring('C', c) == "CharGym"
+
+        # a saved infection log names the types of the simulation that wrote it
+        df = DataFrame(id = Int32.(1:2), sex = Int8.(zeros(2)), age = Int8.(fill(30, 2)), household = Int32[1, 1])
+        table = DataFrame(id = Int32[1, 2], setting_type = ["CharGym", "CharGym"], setting_id = Int32[1, 1])
+        sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.0, seed = 1)
+        mktempdir() do dir
+            path = joinpath(dir, "infections.jld2")
+            save_JLD2(GEMS.infectionlogger(sim), path; setting_type_names = setting_type_names(settingscontainer(sim)))
+            @test load(path, "setting_type_names")["C"] == "CharGym"
         end
     end
 
@@ -295,10 +488,11 @@ end
 
             # results carry a contact matrix for it, which plots after import by name alone
             rd = ResultData(sim)
-            @test aggregated_setting_age_contacts(rd, DeclaredSetting{:Gym}) isa ContactMatrix
+            m = aggregated_setting_age_contacts(rd, DeclaredSetting{:Gym})
+            @test m isa ContactMatrix && sum(m.data) > 0
             exportJLD(rd, dir)
             imported = import_resultdata(joinpath(dir, "resultdata.jld2"))
-            @test aggregated_setting_age_contacts(imported, "Gym") isa ContactMatrix
+            @test aggregated_setting_age_contacts(imported, "Gym").data == m.data
             @test gemsplot(imported, type = :AggregatedSettingAgeContacts) isa Plots.Plot
 
             # saving and loading again rebuilds the gym
@@ -308,11 +502,10 @@ end
             @test length(individuals(settings(again, DeclaredSetting{:Gym})[1])) == n - 1
         end
 
-        # declaring is idempotent, and refuses a second char or a name another type has
+        # declaring is idempotent, and refuses a name another type has
         @test declare_setting_type!("Gym") === DeclaredSetting{:Gym}
         # a SettingModifier resolves declared setting types by name
         @test SettingModifier(factors = Dict("Gym" => 2.0), default_factor = 1.0).factors[DeclaredSetting{:Gym}] == 2.0
-        @test_throws ArgumentError declare_setting_type!("Gym"; char = 'Y')
         @test_throws ArgumentError declare_setting_type!("Household")
         @test_throws ArgumentError declare_setting_type!("NeverUsedSetting")
         # a char on a section of a built-in type, and a char that is not one character, are refused
@@ -334,7 +527,7 @@ end
         @test count_ones(i.membership_mask) < plan_length(i)
 
         # the block stays sorted and the repeat groups with its own kind
-        types = [setting_type_of(e) for e in plan_entries(store, i)]
+        types = [setting_type_index(e) for e in plan_entries(store, i)]
         @test issorted(types)
         @test types[1] == types[2] == setting_type_index(Household)
 
@@ -348,7 +541,7 @@ end
 
         # removing one of a repeated type must not clear the type's bit
         kept = first_hh == Int32(10) ? Int32(11) : Int32(10)
-        @test plan_remove!(store, i, plan_slot(store, i, Household))
+        plan_remove!(store, i, plan_slot(store, i, Household))
         @test plan_slot(store, i, Household) != 0
         @test setting_id(store.entries[plan_slot(store, i, Household)]) == kept
         @test i.membership_mask & GEMS._membership_bit(setting_type_index(Household)) != 0
@@ -356,13 +549,13 @@ end
         # with the repeat gone the fast path comes back, and it is only correct over a
         # block the scan-path inserts left sorted
         @test count_ones(i.membership_mask) == plan_length(i)
-        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        @test issorted([setting_type_index(e) for e in plan_entries(store, i)])
         for (T, sid) in ((Household, kept), (Office, Int32(20)), (Municipality, Int32(40)))
             @test setting_id(store.entries[plan_slot(store, i, T)]) == sid
         end
 
         # the last entry of the type clears the bit
-        @test plan_remove!(store, i, plan_slot(store, i, Household))
+        plan_remove!(store, i, plan_slot(store, i, Household))
         @test plan_slot(store, i, Household) == 0
         @test i.membership_mask & GEMS._membership_bit(setting_type_index(Household)) == 0
     end
@@ -452,12 +645,12 @@ end
             plan_add!(store, i, PlanEntry(T, Int32(sid), Int32(1)))
         end
 
-        @test plan_remove!(store, i, plan_slot(store, i, Office))
+        plan_remove!(store, i, plan_slot(store, i, Office))
         @test plan_length(i) == 3
         @test plan_slot(store, i, Office) == 0
         @test i.membership_mask & GEMS._membership_bit(setting_type_index(Office)) == 0
         # the survivors are untouched and still sorted
-        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        @test issorted([setting_type_index(e) for e in plan_entries(store, i)])
         for (T, sid) in ((Household, 10), (SchoolClass, 30), (Municipality, 40))
             @test setting_id(store.entries[plan_slot(store, i, T)]) == Int32(sid)
         end
@@ -473,7 +666,7 @@ end
         # a slot outside the individual's block is rejected
         j = Individual(id = 2, sex = 0, age = 30)
         plan_add!(store, j, PlanEntry(Household, Int32(1), Int32(1)))
-        @test !plan_remove!(store, j, plan_slot(store, j, Household) + 5)
+        @test_throws ArgumentError plan_remove!(store, j, plan_slot(store, j, Household) + 5)
     end
 
     @testset "Freed blocks are reused" begin
@@ -547,7 +740,7 @@ end
         @test membership_column(Household) == :household
         # every entry block is sorted, and DEFAULT_SETTING_ID contributes none
         for ind in inds
-            @test issorted([setting_type_of(e) for e in plan_entries(plans, ind)])
+            @test issorted([setting_type_index(e) for e in plan_entries(plans, ind)])
         end
         @test plan_length(inds[1]) == 3
         @test plan_length(inds[2]) == 2   # no office
@@ -664,7 +857,7 @@ end
         @test setting_ids(i, Office, store) == Int32[21, 22, 20]
         @test !entry_active(store, plan_slot(store, i, Office))
         @test member_index(store.entries[plan_slot(store, i, Office)]) == Int32(2)
-        @test issorted([setting_type_of(e) for e in plan_entries(store, i)])
+        @test issorted([setting_type_index(e) for e in plan_entries(store, i)])
         @test setting_id(i, Household, store) == Int32(10)
         @test_throws ArgumentError set_primary!(store, i, Office, 99)
 
@@ -713,7 +906,7 @@ end
         @test setting_ids(b, Office, plans) == Int32[9, 8]
         @test setting_ids(c, Office, plans) == Int32[6]
         for ind in (a, b, c)
-            @test issorted([setting_type_of(e) for e in plan_entries(plans, ind)])
+            @test issorted([setting_type_index(e) for e in plan_entries(plans, ind)])
         end
         @test all(plans.active)
         @test a.membership_mask == GEMS._membership_bit(setting_type_index(Household)) |
@@ -783,8 +976,10 @@ end
 
             # the department spans both offices; the second copy is dropped from its frame
             dept = settings(sim, Department)[1]
-            @test count(m -> m === ind, present_members(dept, cntnr)) == 1
-            @test length(present_members(dept, cntnr)) == 3
+            @test count(m -> m === ind, living_members(dept, cntnr)) == 1
+            @test length(living_members(dept, cntnr)) == 3
+            # and measures, which read the members through the simulation, see them once too
+            @test count(m -> m === ind, individuals(dept, sim)) == 1
 
             @test validate_plans(population(sim), cntnr)
             step!(sim)
@@ -815,29 +1010,24 @@ end
         for x in vcat(cs, [sy]); GEMS.add!(cntnr, x); end
         GEMS.build_pools!(cntnr)
 
-        # the derived index must agree with the member's actual position in the frame
+        # the derived index must agree with the member's actual position in the frame, closed classes included
         function check_all()
-            frame = GEMS.present_members(sy, cntnr)
+            frame = GEMS.living_members(sy, cntnr)
             for c in cs, (k, ind) in enumerate(individuals(c))
                 idx = container_frame_index(cntnr, sy, c, k)
-                if GEMS.is_open(c)
-                    @test idx != GEMS.DEFAULT_MEMBER_INDEX
-                    @test frame[idx] === ind
-                else
-                    @test idx == GEMS.DEFAULT_MEMBER_INDEX
-                end
+                @test idx != GEMS.DEFAULT_MEMBER_INDEX
+                @test frame[idx] === ind
             end
         end
 
         # nothing closed: one unbroken span
         check_all()
-        # a closed edge leaves one run; like a member edit, it shows after the repack
-        close!(cs[1]); GEMS.repack_dirty_pools!(cntnr)
+        # closed classes stay in the year's frame, which needs no repack for it
+        close!(cs[1])
         check_all()
-        # a closed middle leaves two
-        open!(cs[1]); close!(cs[2]); GEMS.repack_dirty_pools!(cntnr)
+        open!(cs[1]); close!(cs[2])
         check_all()
-        open!(cs[2]); GEMS.repack_dirty_pools!(cntnr)
+        open!(cs[2])
 
         # a closed container holds nobody
         close!(sy); GEMS.repack_dirty_pools!(cntnr)
@@ -868,7 +1058,7 @@ end
         # inds[4] now sits in cs[1] and cs[2], so the year holds one of the two copies
         add_member!(cs[1], inds[4], pop)
         GEMS.repack_dirty_pools!(cntnr)
-        frame = GEMS.present_members(sy, cntnr)
+        frame = GEMS.living_members(sy, cntnr)
 
         kept = container_frame_index(cntnr, sy, cs[1], 4)
         @test kept != GEMS.DEFAULT_MEMBER_INDEX
@@ -876,13 +1066,13 @@ end
         # the dropped copy has no position, which is what gives it one turn and not two
         @test container_frame_index(cntnr, sy, cs[2], 1) == GEMS.DEFAULT_MEMBER_INDEX
 
-        # closing the class the kept copy is in hands the position to the other
-        close!(cs[1]); GEMS.repack_dirty_pools!(cntnr)
-        frame = GEMS.present_members(sy, cntnr)
-        promoted = container_frame_index(cntnr, sy, cs[2], 1)
-        @test promoted != GEMS.DEFAULT_MEMBER_INDEX
-        @test frame[promoted] === inds[4]
-        @test container_frame_index(cntnr, sy, cs[1], 4) == GEMS.DEFAULT_MEMBER_INDEX
+        # closing the class the kept copy is in moves nothing, and the member still attends the year
+        # through the other class, while someone only in the closed class does not
+        close!(cs[1])
+        @test container_frame_index(cntnr, sy, cs[1], 4) == kept
+        @test container_frame_index(cntnr, sy, cs[2], 1) == GEMS.DEFAULT_MEMBER_INDEX
+        @test GEMS._membership_scale(plans, inds[4], sy, cntnr) == 1.0f0
+        @test GEMS._membership_scale(plans, inds[1], sy, cntnr) == 0.0f0
         open!(cs[1])
     end
 
@@ -1124,7 +1314,7 @@ end
         csm = ContactparameterSampling(20.0)
         hh = Household(id = Int32(1), contact_sampling_method = csm,
                        individuals = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:10])
-        present = GEMS.present_members(hh, cntnr)
+        present = GEMS.living_members(hh, cntnr)
         draws = Individual[]
         sampled(s, p, rng, s_host, bound; replace = true, oversample = 1) = GEMS.sample_scaled_contacts!(Individual[], draws,
             contact_sampling_method(s), s, 1, p, Int16(1), replace, rng, plans, cntnr, Float32(s_host), Float32(bound);
@@ -1149,7 +1339,7 @@ end
         # in a pair the other member is the only candidate, so its own scale shows directly
         pair = [Individual(id = Int32(11), age = 30, sex = 1), Individual(id = Int32(12), age = 30, sex = 1)]
         hh2 = Household(id = Int32(2), contact_sampling_method = RandomSampling(), individuals = pair)
-        p2 = GEMS.present_members(hh2, cntnr)
+        p2 = GEMS.living_members(hh2, cntnr)
         plan_add!(plans, pair[2], PlanEntry(Household, Int32(2), Int32(2), 0.5))
         @test isapprox(mean_contacts(hh2, p2, 1, 1), 0.5; atol = 0.03)
         @test isapprox(mean_contacts(hh2, p2, 0.5, 1), 0.25; atol = 0.03)
@@ -1159,7 +1349,7 @@ end
         # without replacement several draws merge: nobody twice, and a pair at scale <= 1 meets at its scaled rate
         hh4 = Household(id = Int32(4), contact_sampling_method = ContactparameterSampling(3.0),
                         individuals = [Individual(id = Int32(20 + j), age = 30, sex = 1) for j in 1:10])
-        p4 = GEMS.present_members(hh4, cntnr)
+        p4 = GEMS.living_members(hh4, cntnr)
         target = p4[2]
         plan_add!(plans, target, PlanEntry(Household, Int32(4), Int32(2), 0.5))
         hits = 0
@@ -1176,7 +1366,7 @@ end
         # a pair above 1 caps when drawn repeatedly, and oversampling shrinks that bias
         hh5 = Household(id = Int32(5), contact_sampling_method = RandomSampling(),
                         individuals = [Individual(id = Int32(40 + j), age = 30, sex = 1) for j in 1:4])
-        p5 = GEMS.present_members(hh5, cntnr)
+        p5 = GEMS.living_members(hh5, cntnr)
         plan_add!(plans, p5[2], PlanEntry(Household, Int32(5), Int32(2), 1.2))
         meets(oversample) = count(_ -> p5[2] in sampled(hh5, p5, rng, 2, 2; replace = false, oversample = oversample), 1:n) / n
         # four calls draw it m ~ Binomial(4, 1/3) times, each worth 0.6 and capped at 1
@@ -1186,7 +1376,7 @@ end
         # a lone member could only meet itself, so no sampler is asked, not even one that would throw
         alone = Individual(id = Int32(13), age = 30, sex = 1)
         hh3 = Household(id = Int32(3), contact_sampling_method = RandomSampling(), individuals = [alone])
-        p3 = GEMS.present_members(hh3, cntnr)
+        p3 = GEMS.living_members(hh3, cntnr)
         @test_throws ArgumentError sample_contacts!(Individual[], RandomSampling(), hh3, 1, p3, Int16(1), true, Xoshiro(1))
         r3 = Xoshiro(5); r3_before = copy(r3)
         @test isempty(sampled(hh3, p3, r3, 1, 1))
@@ -1217,7 +1407,7 @@ end
         end
         r1 = Xoshiro(3); r2 = copy(r1)
         same = true
-        for s in (cs[1], cs[2], yr), c in GEMS.present_members(s, cntnr), _ in 1:20
+        for s in (cs[1], cs[2], yr), c in GEMS.living_members(s, cntnr), _ in 1:20
             sc = GEMS._membership_scale(plans, c, s, cntnr)
             # the setting's bound, and a bound equal to the contact's own scale
             for bound in unique((GEMS._scale_bound(s), sc))
@@ -1253,7 +1443,7 @@ end
         # contacts thin by `thin` whether the host draws once, several times, or against a raised bound
         hh = Household(id = Int32(1), contact_sampling_method = ContactparameterSampling(20.0),
                        individuals = [Individual(id = Int32(20 + j), age = 30, sex = 1) for j in 1:10])
-        present = GEMS.present_members(hh, empty_cntnr)
+        present = GEMS.living_members(hh, empty_cntnr)
         n = 4000
         mean_contacts(args...) = sum(_ -> length(sampled(args...)), 1:n) / n
         @test isapprox(mean_contacts(hh, present, 0.5, 1, 0.3), 3.0; atol = 0.15)
@@ -1263,7 +1453,7 @@ end
         # thinning acts per draw: five single draws give Binomial(5, 0.2), not one thinned call
         hh_r = Household(id = Int32(2), contact_sampling_method = RandomSampling(),
                          individuals = [Individual(id = Int32(40 + j), age = 30, sex = 1) for j in 1:10])
-        p_r = GEMS.present_members(hh_r, empty_cntnr)
+        p_r = GEMS.living_members(hh_r, empty_cntnr)
         counts = [length(sampled(hh_r, p_r, 5, 1, 0.2)) for _ in 1:20_000]
         @test isapprox(mean(counts), 1.0; atol = 0.03)
         @test isapprox(var(counts), 0.8; atol = 0.05)
@@ -1273,7 +1463,7 @@ end
         n = 20_000
         hh4 = Household(id = Int32(4), contact_sampling_method = ContactparameterSampling(3.0),
                         individuals = [Individual(id = Int32(60 + j), age = 30, sex = 1) for j in 1:10])
-        p4 = GEMS.present_members(hh4, empty_cntnr)
+        p4 = GEMS.living_members(hh4, empty_cntnr)
         plan_add!(scaled, p4[2], PlanEntry(Household, Int32(4), Int32(2), 0.5))
         hits = count(_ -> p4[2] in sampled(hh4, p4, 1.5, 1.5, 0.4; replace = false, store = scaled), 1:n)
         @test isapprox(hits / n, 0.4 * 0.75 * 3 / 9; atol = 0.012)
@@ -1281,7 +1471,7 @@ end
         # capped: four calls draw it m ~ Binomial(4, 1/3) times at 0.6 each, capped at 1, then thinned
         hh5 = Household(id = Int32(5), contact_sampling_method = RandomSampling(),
                         individuals = [Individual(id = Int32(80 + j), age = 30, sex = 1) for j in 1:4])
-        p5 = GEMS.present_members(hh5, empty_cntnr)
+        p5 = GEMS.living_members(hh5, empty_cntnr)
         plan_add!(scaled, p5[2], PlanEntry(Household, Int32(5), Int32(2), 1.2))
         meets = count(_ -> p5[2] in sampled(hh5, p5, 2, 2, 0.5; replace = false, store = scaled), 1:n)
         @test isapprox(meets / n, 0.5 * (0.6 * 32 + 33) / 81; atol = 0.02)
@@ -1295,7 +1485,7 @@ end
         srng = Xoshiro(17)
         for ind in individuals(sim)[1:3:end], k in plan_slots(mplans, ind)
             e = mplans.entries[k]
-            set_scale!(sim, ind, setting_type_from_index(setting_type_of(e)), GEMS.setting_id(e), 3 * rand(srng))
+            set_scale!(sim, ind, setting_type_from_index(setting_type_index(e)), GEMS.setting_id(e), 3 * rand(srng))
             rand(srng) < 0.1 && entry_active!(mplans, ind, k, false)
         end
         GEMS.repack_dirty_pools!(GEMS.settingscontainer(sim))
@@ -1316,6 +1506,21 @@ end
         # nobody has anyone to meet, which must give no contacts rather than a sampler error
         @test nrow(GEMS.contact_samples(sim, Household, false)) == 0
         @test all(==(-1), GEMS.contact_samples(sim, Household, true).b_id)
+    end
+
+    @testset "Contact survey asks only who attends" begin
+        n = 20
+        df = DataFrame(id = Int32.(1:n), sex = Int8.(zeros(n)), age = Int8.(fill(30, n)),
+                       household = Int32.(cld.(1:n, 2)))
+        sim = Simulation(population = Population(df), household_contacts = RandomSampling(), seed = 1)
+        @test nrow(GEMS.contact_samples(sim, Household, false)) > 0
+        # closed households keep their members, but nobody in them answers
+        foreach(close!, households(sim))
+        @test nrow(GEMS.contact_samples(sim, Household, true)) == 0
+        foreach(open!, households(sim))
+        # nor does anyone with scale 0, who would otherwise be logged without contacts
+        foreach(ind -> set_scale!(sim, ind, Household, household_id(ind, sim), 0.0), individuals(sim))
+        @test nrow(GEMS.contact_samples(sim, Household, true)) == 0
     end
 
     @testset "Gate: scales act on both ends" begin

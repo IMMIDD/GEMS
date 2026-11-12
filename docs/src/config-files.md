@@ -220,6 +220,7 @@ The seed is being set upon creation of the `Simulation` object.
     ...
 ```
 The seed must be an integer value.
+A seed reproduces a run only at the same thread count.
 
 #### `layer_seed`
 Random seed of the setting layers' draws (see [`layer`](@ref config-layer) below).
@@ -250,6 +251,15 @@ Boolean flag that adds a single setting containing all individuals of the simula
     ...
 ```
 Can be activated or deactivated with `true` or `false`.
+
+#### `pool_slack`
+Headroom left in the setting member pools for members added during a run, as a fraction of each block's length. More slack uses more memory; less makes settings move and repack more often. Defaults to `0.25`.
+
+```toml
+[Simulation]
+    pool_slack = 0.25
+    ...
+```
 
 #### `transmission_prethinning`
 Boolean flag that thins sampled contacts by an upper bound on their infection probability before attempting infections. This saves work without changing the distribution of results, but not the random draws of a seeded run. Defaults to `true`.
@@ -580,7 +590,7 @@ If a Julia struct of that name exists (see [Custom Setting Types](@ref custom-se
 ```
 The optional `char` is the single character that marks the setting type in the infection log.
 It defaults to the upper-case first letter of the name.
-If another setting type already uses that character, GEMS throws an error and asks you to set a different `char`.
+If another setting type of the same simulation uses that character, GEMS throws an error and asks you to set a different `char`.
 GEMS warns about a declared type that no individual belongs to once the simulation is set up, as that is usually a typo or a missing memberships file.
 
 #### [`layer`](@id config-layer)

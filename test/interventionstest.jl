@@ -123,6 +123,33 @@ end
         @test occursin("2:", output_measures)
     end
 
+    @testset "Conditions may take the simulation" begin
+        df = DataFrame(id = Int32.(1:2), age = Int8[30, 31], sex = Int8[1, 1], household = Int32[1, 2])
+        pop = Population(df)
+        assign_settings!(pop, individuals(pop)[1], Office => 1)
+        sim_c = Simulation(population = pop)
+        worker, other = individuals(sim_c)
+
+        # 2-arg accessors like `is_working` are bound to the simulation
+        str = IStrategy("workers", sim_c, condition = is_working)
+        @test GEMS.condition(str)(worker) && !GEMS.condition(str)(other)
+        add_measure!(str, SelfIsolation(1), condition = is_working, delay = (i, sim) -> is_working(i, sim) ? 2 : 0)
+        entry = measures(str)[end]
+        @test entry.condition(worker) && !entry.condition(other)
+        @test entry.delay(worker) == 2 && entry.delay(other) == 0
+        fm = FindMembers(str, selectionfilter = is_working)
+        @test GEMS.selectionfilter(fm)(worker) && !GEMS.selectionfilter(fm)(other)
+        s_str = SStrategy("busy", sim_c, condition = (s, sim) -> !isempty(individuals(s, sim)))
+        @test GEMS.condition(s_str)(households(sim_c)[1])
+        # a method for one setting type is enough for a setting condition
+        @test SStrategy("households only", sim_c, condition = (h::Household) -> true) isa SStrategy
+
+        # one that cannot take the focal object fails at setup, not mid-run
+        @test_throws ArgumentError IStrategy("bad", sim_c, condition = (h::Household) -> true)
+        @test_throws ArgumentError add_measure!(str, SelfIsolation(1), delay = (h::Household) -> 1)
+        @test_throws ArgumentError FindMembers(str, selectionfilter = (h::Household) -> true)
+    end
+
     @testset "SelfIsolation Measure" begin
         self_isolation = SelfIsolation(14)
         add_measure!(i_strategy, self_isolation)
@@ -224,8 +251,8 @@ end
         process_measure(sim4, a, FindSettingMembers(Household, i_fu), Int32(2))
         @test Set(followup_focals(drain_events!(eq))) == Set(individuals(households(sim4)[2]))
 
-        # FindSettings acts on every setting of the type; the queue, not the measure, orders them
-        fs = FindSettings(Office, fu)
+        # FindAllSettings acts on every setting of the type; the queue, not the measure, orders them
+        fs = FindAllSettings(Office, fu)
         @test settingtype(fs) === Office
         @test follow_up(fs) === fu
         process_measure(sim4, a, fs)
@@ -233,6 +260,7 @@ end
 
         # without a settings file the offices belong to no department: a clear error, and nothing to find
         @test_throws ArgumentError getsetting(a, sim4, Department)
+        @test isempty(setting_ids(a, Department, sim4))
         process_measure(sim4, a, FindSetting(Department, fu))
         process_measure(sim4, a, FindSettingMembers(Department, i_fu))
         @test isempty(eq)
@@ -252,12 +280,18 @@ end
             a5 = individuals(sim5)[1]
             @test setting_ids(a5, Office, sim5) == Int32[1, 2]
             @test setting_ids(a5, Department, sim5) == Int32[1]
+            # in two departments, the primary office's comes first
+            jldsave(joinpath(dir, "settings2.jld2"); data = Dict(
+                :Office => DataFrame(id = Int32[1, 2], contained = Int32[2, 1]),
+                :Department => DataFrame(id = Int32[1, 2], contains = [Int32[2], Int32[1]])))
+            sim6 = Simulation(population = path, membershipsfile = mpath, settingsfile = joinpath(dir, "settings2.jld2"))
+            @test setting_ids(individuals(sim6)[1], Department, sim6) == Int32[2, 1]
 
             dept_fu = SStrategy("find_departments_fu", sim5)
             add_measure!(dept_fu, CloseSetting())
             eq5 = queued_events(sim5)
             empty!(eq5)
-            process_measure(sim5, a5, FindSettings(Department, dept_fu))
+            process_measure(sim5, a5, FindAllSettings(Department, dept_fu))
             @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
 
             # FindSetting and FindSettingMembers reach the department through the offices below it
@@ -272,6 +306,15 @@ end
             process_measure(sim5, a5, FindSetting(Workplace, dept_fu))
             process_measure(sim5, a5, FindSettingMembers(Workplace, i_fu5))
             @test isempty(eq5)
+
+            # measures on the department itself see a5, a member of both offices, once
+            dept = settings(sim5, Department)[1]
+            process_measure(sim5, dept, FindMembers(i_fu5))
+            @test sort(id.(followup_focals(drain_events!(eq5)))) == id.(individuals(sim5))
+            process_measure(sim5, dept, FindMembers(i_fu5, sample_size = 2, selectionfilter = i -> true))
+            @test length(followup_focals(drain_events!(eq5))) == 2
+            GEMS.apply_pool_test!(dept, TestType("PCR", id(first_pathogen(sim5)), sim5), sim5)
+            @test only(GEMS.dataframe(GEMS.pooltestlogger(sim5)).no_of_individuals) == 3
         end
     end
 
@@ -455,7 +498,20 @@ end
 
         # resample_contacts defaults
         @test resample_contacts(trace_infectious) == false
-        @test settingtypes(trace_infectious) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
+        @test first(settingtypes(trace_infectious)) === Household
+        @test !any(in((GlobalSetting, Municipality)), settingtypes(trace_infectious))
+
+        # by default, every type the simulation has, layers' and declared ones included, Household first
+        GEMS.declare_setting_type!("TraceClub")
+        mktempdir() do dir
+            path, mpath, spath = joinpath(dir, "pop.csv"), joinpath(dir, "extra.csv"), joinpath(dir, "settings.jld2")
+            CSV.write(path, DataFrame(id = Int32.(1:2), age = Int8[30, 31], sex = Int8[1, 1], household = Int32[1, 1], office = Int32[1, 1]))
+            CSV.write(mpath, DataFrame(id = Int32[1], setting_type = ["TraceClub"], setting_id = Int32[1]))
+            jldsave(spath; data = Dict(:Office => DataFrame(id = Int32[1], contained = Int32[1]),
+                :Department => DataFrame(id = Int32[1], contains = [Int32[1]])))
+            sim_t = Simulation(population = path, membershipsfile = mpath, settingsfile = spath)
+            @test settingtypes(TraceInfectiousContacts(IStrategy("club", sim_t))) == DataType[Household, Office, Department, GEMS.DeclaredSetting{:TraceClub}]
+        end
 
         # one household of five; the index is infectious from tick 1 and infected no one
         pop4 = Population(n=5, avg_household_size=5, avg_school_size=1, rng = Xoshiro())
@@ -617,7 +673,7 @@ end
         @test follow_up(trace_source) === i_strategy5
         @test lookback(trace_source) == 14
         @test resample_contacts(trace_source) == false
-        @test settingtypes(trace_source) == DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite]
+        @test first(settingtypes(trace_source)) === Household
         @test contact_filter(trace_source) isa GEMS.ContactFilterFn
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = 0)
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, success_rate = 2.0)

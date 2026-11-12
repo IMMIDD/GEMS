@@ -1,3 +1,9 @@
+###
+### STAGED INFECTIONS
+### Transfer structs that threaded phases stage in per-thread buffers for the serial flushes.
+### Kept apart from infection_registry.jl, which is included before `Individual` exists.
+###
+
 """
     _PendingInfection
 

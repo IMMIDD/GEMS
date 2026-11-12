@@ -17,7 +17,7 @@ const MemberSlice = SubArray{Individual, 1, Vector{Individual}, Tuple{UnitRange{
     MemberRuns
 
 A container's frame when it is not one span: a member sits in two of its leaves at once, or
-something below it is closed or holds deceased members. The frame skips those positions.
+something below it holds deceased members. The frame skips those positions.
 
 # Fields
 
@@ -25,8 +25,8 @@ something below it is closed or holds deceased members. The frame skips those po
     and has `prefix[r]` frame members before it; the last run ends at the frame's length. This
     is the encoding `MemberView` indexes with.
 - `groups::Vector{Int32}`: The pool positions of each repeated member, one group after another,
-    ascending within a group. The same refresh reads them to keep the first copy still present
-    when a closure or death takes out another.
+    ascending within a group. The same refresh reads them to keep the first copy still in the
+    frame when a death takes out another.
 - `bounds::Vector{Int32}`: Group `g` is `groups[bounds[g]:(bounds[g + 1] - 1)]`.
 """
 struct MemberRuns
@@ -42,12 +42,9 @@ const NO_RUNS = Int32[]
 """
     MemberView
 
-A setting's present members, as a window onto its hierarchy's pool. Usually one unbroken span,
-described by `offset` and `len`. A container with closed descendants, deceased members or a member in
-two of its leaves needs several runs, and then `starts`/`prefix` describe them and indexing
-binary-searches `prefix`.
-
-The result aliases real member storage, so writing to it edits membership.
+A setting's living members as a window onto its pool: one span (`offset`, `len`), or several runs (`starts`, `prefix`)
+for a container with deceased or repeated members. It aliases the pool's storage, so writing to it edits membership, and
+it stays valid until the next membership edit, death or `repack_dirty_pools!`; a container read from a stale pool throws.
 """
 struct MemberView <: AbstractVector{Individual}
     members::Vector{Individual}
@@ -172,9 +169,7 @@ nblocks(bl::PoolBlocks) = length(bl.first_leaf) - 1
 """
     ContainerLevel
 
-One container type's settings, and everything a repack needs to find them. `C` is left
-unconstrained because `ContainerSetting` is defined in settings.jl, which this file precedes;
-in practice it is always a `ContainerSetting`.
+One container type's settings, and everything a repack needs to find them.
 
 # Fields
 
@@ -205,8 +200,7 @@ Keeping that layout means repacking after edits; settings no container holds use
 
 - `members::Vector{Individual}`: Every member of every leaf, plus block slack and any space
     stranded by a relocation. Only the spans a leaf or container names are meaningful.
-- `closed::Int`: How many settings in this hierarchy are currently closed. Zero is the
-    common case and lets a repack skip looking for leaves a closure removes.
+- `closed::Int`: How many settings in this hierarchy are currently closed.
 - `deceased::Int`: Deceased members across its leaves. Zero lets a repack skip narrowing the
     frames.
 - `repeats::Int`: Memberships beyond an individual's first within one block. Only a repeated
@@ -215,7 +209,7 @@ Keeping that layout means repacking after edits; settings no container holds use
 - `leaves::Vector`: Every leaf in the hierarchy, in the order their members are laid out in
     `members`. A repack walks this to rebuild that layout. Widened to hold a concretely
     typed vector of the pool's one leaf type, which the repack functions reach behind a barrier.
-- `container_groups::Tuple`: One `ContainerLevel` per container type, so each level's vectors
+- `container_levels::Tuple`: One `ContainerLevel` per container type, so each level's vectors
     stay concretely typed and a splat over the tuple specialises per level.
 - `blocks::PoolBlocks`: The leaves cut into independently repackable blocks.
 - `buffer::RepackBuffer` *(internal)*: What a repack on one task and `_count_repeats` work in.
@@ -228,15 +222,15 @@ mutable struct HierarchicalSettingPool
     deceased::Int
     repeats::Int
     leaves::Vector
-    container_groups::Tuple
+    container_levels::Tuple
     blocks::PoolBlocks
     buffer::RepackBuffer
     task_buffers::Vector{RepackBuffer}
 end
 
 # An empty pool over `leaves`, filled by the first repack.
-HierarchicalSettingPool(leaves::Vector, groups::Tuple, blocks::PoolBlocks, closed::Int, deceased::Int) =
-    HierarchicalSettingPool(Individual[], closed, deceased, 0, leaves, groups, blocks, RepackBuffer(), RepackBuffer[])
+HierarchicalSettingPool(leaves::Vector, levels::Tuple, blocks::PoolBlocks, closed::Int, deceased::Int) =
+    HierarchicalSettingPool(Individual[], closed, deceased, 0, leaves, levels, blocks, RepackBuffer(), RepackBuffer[])
 
 ###
 ### THE FLAT POOL

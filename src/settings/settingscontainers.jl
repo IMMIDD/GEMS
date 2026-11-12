@@ -4,7 +4,6 @@
 export SettingsContainer
 export add!, get, setting, settings
 export settingtypes, foreach_setting_vector, add_type!, add_types!
-export setting_type_index, setting_type_from_index, register_setting_type!, declare_setting_type!
 export municipalities, households, schoolclasses, schoolyears, schools, schoolcomplexes, offices, departments, workplaces, workplacesites 
 
 """
@@ -16,12 +15,8 @@ A container structure for all settings.
 - `settings::Dict{DataType, Vector}`: A dictionary holding all known settings
     structured by type. Each value is a concretely-typed `Vector{T}` where `T` is the
     corresponding setting type; the dict value type is widened to `Vector` to allow this.
-- `pools::Dict{DataType, HierarchicalSettingPool}`: Member storage for the hierarchies that have
-    containers, keyed by leaf type (`SchoolClass`, `Office`). Filled by `build_pools!`.
-    A hierarchy's leaves hold slices of its pool instead of their own vectors, so a
-    container addresses its members as a range rather than rebuilding a list each tick.
-    Setting types outside such a hierarchy are absent from this dict and keep their own
-    member vectors.
+- `pools::Dict{DataType, HierarchicalSettingPool}`: Member storage of the hierarchies with containers, keyed by
+    leaf type; filled by `build_pools!`.
 """
 mutable struct SettingsContainer
     settings::Dict{DataType, Vector}
@@ -31,6 +26,18 @@ mutable struct SettingsContainer
     flat_pools::Dict{DataType, FlatSettingPool}
     # per setting type index, at least the `contact_rate_bound` of each setting's method; Inf until scanned
     rate_bounds::Vector{Float64}
+    # per setting type index, its rank among this container's types: built-ins by index, then the rest by name
+    type_ranks::Vector{UInt8}
+    # the indices of this container's types other than the built-ins, in rank order
+    ranked_types::Vector{UInt8}
+    # per setting type index, the char a custom type is logged with in this simulation
+    type_chars::Vector{Char}
+    # every log char of this container's types, as a string, mapped to the type's name
+    type_names::Dict{String, String}
+    # per setting type index, the method `reset!` gives the type's settings, without cached member data
+    type_methods::Vector{Union{Nothing, ContactSamplingMethod}}
+    # per setting type index, whether one of its settings got another method since the last `reset!`
+    type_methods_changed::BitVector
 end
 
 
@@ -45,7 +52,8 @@ Return a empty container object.
 """
 function SettingsContainer()
     return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
-        Dict{DataType, FlatSettingPool}(), Float64[])
+        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[], UInt8[], Char[], _builtin_type_names(),
+        Union{Nothing, ContactSamplingMethod}[], BitVector())
 end
 
 
@@ -60,9 +68,15 @@ function add_type!(container::SettingsContainer, settingtype::DataType)
         # an unscanned type falls back to sampling each visit
         t = Int(register_setting_type!(settingtype))
         length(container.rate_bounds) < t && append!(container.rate_bounds, fill(Inf, t - length(container.rate_bounds)))
+        length(container.type_methods) < t && append!(container.type_methods, fill(nothing, t - length(container.type_methods)))
+        length(container.type_methods_changed) < t && append!(container.type_methods_changed, falses(t - length(container.type_methods_changed)))
     end
     if !haskey(container.settings, settingtype)
         container.settings[settingtype] = Vector{settingtype}()
+        if settingtype <: Setting
+            settingtype in BUILTIN_SETTING_TYPES_SET || _add_type_char!(container, settingtype)
+            _rank_types!(container)
+        end
     end
 end
 
@@ -473,6 +487,9 @@ end
 _unflatten_settings(offsets::AbstractVector{<:Integer}, values::AbstractVector) =
     [values[offsets[i]:offsets[i+1]-1] for i in 1:length(offsets)-1]
 
+# State columns the loader ignores in a settings file, so every setting starts in the same state.
+const _SETTINGS_FILE_STATE_FIELDS = (:isopen, :deceased, :scale_bound, :closed_below, :contact_sampling_method)
+
 # Adds what `_read_settings_jld2` read to `cntnr`, renaming ids through `d`.
 function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
     # Default sampling method
@@ -501,7 +518,7 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
             valid_cols = Symbol[]
             for col in names(df)
                 symcol = Symbol(col)
-                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len, :cap)
+                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len, :cap) && symcol ∉ _SETTINGS_FILE_STATE_FIELDS
                     push!(valid_cols, symcol)
                 end
             end
@@ -515,8 +532,9 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
         else
             setting_vec = cntnr.settings[settingtype]
 
-            # Add the container settings from the dataframe
-            for nt in Tables.namedtupleiterator(df)
+            # Add the container settings from the dataframe, without its state columns
+            state_cols = intersect(names(df), string.(collect(_SETTINGS_FILE_STATE_FIELDS)))
+            for nt in Tables.namedtupleiterator(select(df, Not(state_cols); copycols = false))
                 push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
             end
 
@@ -540,165 +558,3 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
     # Delete all ids that are out of bounds and set them to the default setting id
     delete_dangling_ids!(cntnr)
 end
-
-
-###
-### DENSE SETTING-TYPE INDEX
-###
-
-"""
-    setting_type_index(::Type{T}) where {T<:Setting}
-
-Returns the dense index identifying a setting type, so a `PlanEntry` can name one without
-storing a `DataType`. Built-in types resolve to a compile-time constant.
-"""
-function setting_type_index end
-
-"""
-    setting_type_from_index(idx::Integer)
-
-Returns the setting type an index refers to. Inverse of `setting_type_index`.
-"""
-function setting_type_from_index end
-
-for (i, T) in enumerate(BUILTIN_SETTING_TYPES)
-    @eval @inline setting_type_index(::Type{$T}) = $(UInt8(i))
-end
-
-const _N_BUILTIN_SETTING_TYPES = UInt8(length(BUILTIN_SETTING_TYPES))
-
-# indices for user types, numbered past the built-ins so a built-in's never shifts
-const EXTRA_SETTING_TYPE_INDEX = Dict{DataType, UInt8}()
-const EXTRA_SETTING_TYPES = DataType[]
-
-const MEMBERSHIP_MASK_BITS = 8 * sizeof(fieldtype(Individual, :membership_mask))
-
-# Whether a type's settings can sit in a plan; only those get a membership-mask bit.
-_holds_entries(::Type{T}) where {T<:Setting} = T <: IndividualSetting && T !== GlobalSetting
-
-# Each type's bit in the membership mask by type index, 0 for none. Slots ascend with the type
-# index, since a bit's rank is its entries' offset in the plan block.
-const MASK_SLOTS = let n = 0
-    UInt8[_holds_entries(T) ? (n += 1) : 0 for T in BUILTIN_SETTING_TYPES]
-end
-
-"""
-    _mask_slot(tidx::UInt8)
-
-Returns the membership-mask slot of the setting type with index `tidx`, or `0` if it has none.
-"""
-@inline _mask_slot(tidx::UInt8) = @inbounds MASK_SLOTS[tidx]
-
-# guards the registry's writes; a type first used inside a threaded phase registers there
-const SETTING_TYPE_LOCK = ReentrantLock()
-
-"""
-    register_setting_type!(::Type{T}; char::Union{Nothing, Char} = nothing) where {T<:Setting}
-
-Assigns `T` a dense setting-type index and the char its infections are logged with, by default
-the upper-case first letter of its name, and returns the index. Types register on first use, so
-this is only needed to pick the char.
-"""
-function register_setting_type!(::Type{T}; char::Union{Nothing, Char} = nothing) where {T<:Setting}
-    T in BUILTIN_SETTING_TYPES_SET && return setting_type_index(T)
-    return lock(SETTING_TYPE_LOCK) do
-        idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
-        if idx != 0
-            (char === nothing || char == SETTING_TYPE_CHARS[T]) || throw(ArgumentError(
-                "$T is already registered with char '$(SETTING_TYPE_CHARS[T])'"))
-            return idx
-        end
-        name = setting_type_name(T)
-        other = _registered_setting_type(name)
-        other === nothing || throw(ArgumentError(
-            "cannot register $T: $other is already registered as setting type \"$name\""))
-        c = char === nothing ? uppercase(first(name)) : char
-        _check_setting_char(c, name)
-        length(EXTRA_SETTING_TYPES) < typemax(UInt8) - Int(_N_BUILTIN_SETTING_TYPES) ||
-            error("no dense setting-type index left for $T; at most $(typemax(UInt8)) setting types are supported")
-        next = maximum(MASK_SLOTS) + 1
-        push!(MASK_SLOTS, _holds_entries(T) && next <= MEMBERSHIP_MASK_BITS ? next : 0)
-        push!(EXTRA_SETTING_TYPES, T)
-        new_idx = _N_BUILTIN_SETTING_TYPES + UInt8(length(EXTRA_SETTING_TYPES))
-        EXTRA_SETTING_TYPE_INDEX[T] = new_idx
-        SETTING_TYPE_CHARS[T] = c
-        return new_idx
-    end
-end
-
-# Refuses a char another setting type is logged with, and '?', which marks seeds and
-# unregistered types.
-function _check_setting_char(c::Char, name::AbstractString)
-    c == '?' && throw(ArgumentError(
-        "'?' marks seeds and unregistered types; give setting type \"$name\" another `char`"))
-    holder = get(setting_type_names(), string(c), nothing)
-    holder === nothing || throw(ArgumentError(
-        "setting type \"$name\" would be logged as '$c', which $holder already is; give it another `char`"))
-    return nothing
-end
-
-function setting_type_index(::Type{T}) where {T<:Setting}
-    idx = get(EXTRA_SETTING_TYPE_INDEX, T, UInt8(0))
-    idx == 0 && error("$T has no setting-type index; register it with `add_type!` first")
-    return idx
-end
-
-function setting_type_from_index(idx::Integer)
-    i = UInt8(idx)
-    i <= _N_BUILTIN_SETTING_TYPES && return BUILTIN_SETTING_TYPES[Int(i)]
-    extra = Int(i) - Int(_N_BUILTIN_SETTING_TYPES)
-    1 <= extra <= length(EXTRA_SETTING_TYPES) ||
-        throw(ArgumentError("no setting type registered for index $idx"))
-    return EXTRA_SETTING_TYPES[extra]
-end
-
-"""
-    setting_type_name(::Type{T}) where {T<:Setting}
-
-Returns the name configs, membership files and results use for setting type `T`.
-"""
-setting_type_name(::Type{T}) where {T<:Setting} = string(nameof(T))
-
-# The registered setting type called `name`, or `nothing`.
-function _registered_setting_type(name::AbstractString)
-    for T in BUILTIN_SETTING_TYPES
-        setting_type_name(T) == name && return T
-    end
-    for T in EXTRA_SETTING_TYPES
-        setting_type_name(T) == name && return T
-    end
-    return nothing
-end
-
-# The setting type called `name`, or `nothing`: a registered one, else the concrete
-# `IndividualSetting` subtype of that name, registered on the way with `char`.
-function _resolve_setting_type(name::AbstractString; char::Union{Nothing, Char} = nothing)
-    T = _registered_setting_type(name)
-    T === nothing || return T
-    found = filter(S -> setting_type_name(S) == name, _concrete_subtypes(IndividualSetting))
-    isempty(found) && return nothing
-    length(found) == 1 || throw(ArgumentError(
-        "several setting types are called \"$name\" ($(join(found, ", "))); register the one to use"))
-    register_setting_type!(only(found); char = char)
-    return only(found)
-end
-
-"""
-    declare_setting_type!(name::AbstractString; char::Union{Nothing, Char} = nothing)
-
-Declares the setting type `DeclaredSetting{Symbol(name)}`, registered with `char` as
-`register_setting_type!` does, and returns it. Errors if another type already has that name.
-"""
-function declare_setting_type!(name::AbstractString; char::Union{Nothing, Char} = nothing)
-    T = DeclaredSetting{Symbol(name)}
-    other = _registered_setting_type(name)
-    if other === nothing
-        structs = filter(S -> setting_type_name(S) == name, _concrete_subtypes(IndividualSetting))
-        isempty(structs) || (other = first(structs))
-    end
-    (other === nothing || other === T) || throw(ArgumentError(
-        "cannot declare setting type \"$name\": $other already has that name"))
-    register_setting_type!(T; char = char)
-    return T
-end
-

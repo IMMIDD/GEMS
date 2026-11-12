@@ -1,11 +1,11 @@
-export FindSettings
+export FindAllSettings
 
 ###
 ### STRUCT
 ###
 
 """
-    FindSettings <: IMeasure
+    FindAllSettings <: IMeasure
 
 Intervention struct to detect every setting of a particular type an individual belongs to and
 apply a follow-up strategy to each of them. Where `FindSetting` acts on the individual's
@@ -19,44 +19,44 @@ close_str = SStrategy("close-office", sim)
 add_measure!(close_str, CloseSetting())
 
 my_str = IStrategy("find-offices", sim)
-add_measure!(my_str, FindSettings(Office, close_str))
+add_measure!(my_str, FindAllSettings(Office, close_str))
 ```
 
 The above example closes every office the individual works in.
 """
-struct FindSettings{ST<:Setting, FU<:SStrategy} <: IMeasure
+struct FindAllSettings{ST<:Setting, FU<:SStrategy} <: IMeasure
     follow_up::FU
 
-    FindSettings(::Type{ST}, follow_up::FU) where {ST<:Setting, FU<:SStrategy} = new{ST, FU}(follow_up)
+    FindAllSettings(::Type{ST}, follow_up::FU) where {ST<:Setting, FU<:SStrategy} = new{ST, FU}(follow_up)
 end
 
 """
-    settingtype(fs::FindSettings)
+    settingtype(fs::FindAllSettings)
 
-Returns the `settingtype` attribute from a `FindSettings` struct.
+Returns the `settingtype` attribute from a `FindAllSettings` struct.
 """
-function settingtype(::FindSettings{ST}) where {ST}
+function settingtype(::FindAllSettings{ST}) where {ST}
     return(ST)
 end
 
 """
-    follow_up(fs::FindSettings)
+    follow_up(fs::FindAllSettings)
 
-Returns the `follow_up` strategy attribute from a `FindSettings` struct.
+Returns the `follow_up` strategy attribute from a `FindAllSettings` struct.
 """
-function follow_up(fs::FindSettings)
+function follow_up(fs::FindAllSettings)
     return(fs.follow_up)
 end
 
 
-_parallel_safe(::FindSettings, ::Bool) = true
+_parallel_safe(::FindAllSettings, ::Bool) = true
 
 ###
 ### PROCESS MEASURE
 ###
 
 """
-    process_measure(sim::Simulation, ind::Individual, measure::FindSettings)
+    process_measure(sim::Simulation, ind::Individual, measure::FindAllSettings)
 
 Hands the `follow_up` strategy to every setting of the measure's `settingtype` the individual
 belongs to, each once.
@@ -65,13 +65,13 @@ belongs to, each once.
 
 - `sim::Simulation`: Simulation object
 - `ind::Individual`: Individual that this measure will be applied to (focus individual)
-- `measure::FindSettings`: Measure instance
+- `measure::FindAllSettings`: Measure instance
 
 # Returns
 
 - `Nothing`: Triggers the `follow_up` strategy for each detected setting.
 """
-function process_measure(sim::Simulation, ind::Individual, measure::FindSettings)
+function process_measure(sim::Simulation, ind::Individual, measure::FindAllSettings)
     single = FindSetting(measure |> settingtype, measure |> follow_up)
     for sid in setting_ids(ind, measure |> settingtype, sim)
         process_measure(sim, ind, single, sid)

@@ -1,5 +1,5 @@
 import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots, plan_add!,
-    plan_remove!, setting_type_of, setting_id, entry_active, entry_active!, entry_scale,
+    plan_remove!, setting_id, entry_active, entry_active!, entry_scale, plan_length, activity_plans, PlanEntry,
     setting_ids, declare_setting_type!, DeclaredSetting, DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX,
     NewSettingsAssignment, JoinAssignment, validate_plans, settingscontainer, settings,
     _membership_bit, _mask_slot, _type_scale_bound, _name_key,
@@ -46,7 +46,7 @@ function plans_well_formed(pop)
     store = activity_plans(pop)
     length(store) == sum(plan_length, individuals(pop)) || return false
     return all(individuals(pop)) do ind
-        types = [setting_type_of(store.entries[k]) for k in plan_slots(store, ind)]
+        types = [setting_type_index(store.entries[k]) for k in plan_slots(store, ind)]
         mask = reduce(|, (_membership_bit(t) for t in types if _mask_slot(t) != 0); init = UInt16(0))
         issorted(types) && ind.membership_mask == mask
     end
@@ -66,7 +66,7 @@ merge_into!(pop, additions; kwargs...) = _merge_additions!(activity_plans(pop), 
 struct OneSettingTest <: NewSettingsAssignment end
 GEMS._partition(::OneSettingTest, members, ctx, rng) = ones(Int32, length(members))
 struct LowestIdTest <: JoinAssignment end
-GEMS._join_state(::LowestIdTest, ctx) = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx).ids
+GEMS._join_state(::LowestIdTest, ctx) = _JoinCandidates(ctx.plans, ctx.inds, ctx.tidx).ids
 function GEMS._choose(::LowestIdTest, i, held, ids, ctx, rng)
     k = findfirst(!in(held), ids)
     return k === nothing ? Int32(0) : ids[k]
@@ -129,6 +129,10 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test gym_layer.entries isa Poisson && gym_layer.scale isa Exponential
         @test SettingLayer(LayerGym; assignment = packed, entries = DiscreteUniform(0, 127)).entries isa DiscreteUniform
         @test SettingLayer(LayerGym; assignment = packed, entries = 0, scale = 0).entries === 0
+        # a config file gives a distribution as a table
+        from_config = GEMS.create_setting_layer(LayerGym, Dict("scale" => Dict("distribution" => "Uniform", "parameters" => [0.5, 1.5]),
+            "assignment" => Dict("type" => "PackedSettings", "size" => 10)), "LayerTestGym")
+        @test from_config.scale == Uniform(0.5, 1.5)
     end
 
     @testset "Layer validation" begin
@@ -243,8 +247,7 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # workers (1-6) get a second office, 7 and 8 their first ones, the rest none
         rows = [i <= 6 ? [10 + i] : [-1] for i in 1:12]
         rows[7], rows[8] = [20], [21, 22]
-        bytes = merge_into!(pop, hand_additions(Office, rows))
-        @test bytes >= sizeof(store.entries)
+        merge_into!(pop, hand_additions(Office, rows))
         @test plans_well_formed(pop)
         @test [_setting_id(i, office, store) for i in inds[1:6]] == primaries[1:6]
         @test all(plan_slot(store, inds[i], Office, Int32(10 + i)) != 0 for i in 1:6)
@@ -268,7 +271,7 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         hh = hand_additions(Household, [[100 + i] for i in 1:12])
         merge_into!(pop, hh)
         @test plans_well_formed(pop)
-        block_types(ind) = [setting_type_from_index(setting_type_of(store.entries[k])) for k in plan_slots(store, ind)]
+        block_types(ind) = [setting_type_from_index(setting_type_index(store.entries[k])) for k in plan_slots(store, ind)]
         @test block_types(inds[1]) == [Household, Household, Office, Office]
         @test _setting_id(inds[1], setting_type_index(Household), store) == 1
 

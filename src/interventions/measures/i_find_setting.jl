@@ -90,7 +90,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSetting,
     st = measure |> settingtype
 
     # setting object; someone without a setting of this type has none to find
-    s = sid == PRIMARY_SETTING_ID ? _primary_setting(ind, sim, st) : settings(sim, st)[sid]
+    s = _setting_or_primary(ind, sim, st, sid)
     isnothing(s) && return nothing
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$(s |> id)] at tick $(sim |> tick)"

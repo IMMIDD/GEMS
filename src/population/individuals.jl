@@ -155,13 +155,13 @@ A type to represent individuals that act as agents inside the simulation.
     plan_offset::Int32 = 0                          # off 20,  4B,  line 0
     plan_count::Int8 = 0                            # off 24,  1B,  line 0
     plan_scaled::Bool = false                       # off 25,  1B,  line 0
+    membership_mask::UInt16 = 0                     # off 26,  2B,  line 0
 
     # BOOKKEEPING
-    number_of_infections::Int8 = 0                  # off 26,  1B,  line 0
-    disease_flags::DiseaseFlags = DiseaseFlags()    # off 27,  1B,  line 0
-    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 28,  1B,  line 0
-    #                                                 off 29,  1B free (alignment)
-    membership_mask::UInt16 = 0                     # off 30,  2B,  line 0
+    number_of_infections::Int8 = 0                  # off 28,  1B,  line 0
+    disease_flags::DiseaseFlags = DiseaseFlags()    # off 29,  1B,  line 0
+    killing_pathogen_id::Int8 = DEFAULT_PATHOGEN_ID # off 30,  1B,  line 0
+    #                                                 off 31,  1B free (alignment)
 
     # INTERVENTIONS
     detected_mask::UInt32 = 0                       # off 32,  4B,  line 0
@@ -200,6 +200,7 @@ Create an individual with the provided properties. Properties must *have at leas
 `id`, `sex`, `age`.
 """
 function Individual(properties::Dict)::Individual
+    _check_no_memberships(keys(properties))
     ind = Individual(id=properties["id"], sex=properties["sex"], age=properties["age"])
 
     # set every field that is provided by properties
@@ -220,7 +221,18 @@ Create an individual with the provided properties. Properties must *have at leas
 `id`, `sex`, `age`.
 """
 function Individual(properties::DataFrameRow)::Individual
-    return Individual(; (Symbol(k) => v for (k, v) in pairs(properties))...)
+    _check_no_memberships(names(properties))
+    # derived state, as the Dict constructor leaves it out too
+    return Individual(; (Symbol(k) => v for (k, v) in pairs(properties) if !(Symbol(k) in _INDIVIDUAL_DERIVED_FIELDS))...)
+end
+
+# Throws if `cols` name membership columns: an `Individual` holds no settings, a `Population` builds them.
+function _check_no_memberships(cols)
+    reserved = map(membership_column, membership_setting_types(Individual))
+    found = [String(c) for c in cols if Symbol(c) in reserved]
+    isempty(found) || throw(ArgumentError(
+        "`$(join(found, "`, `"))` name settings, which an individual does not hold; build a `Population` from the table to keep them"))
+    return nothing
 end
 
 
@@ -859,7 +871,7 @@ function Base.show(io::IO, individual::Individual)
         "Is Dead" => is_dead(individual),
 
         # the plan itself lives on the population, so only its extent is visible from here
-        "Plan Entries" => individual.plan_count,
+        "Plan Entries" => plan_length(individual),
 
         "Number of Infections" => individual.number_of_infections,
         

@@ -15,7 +15,7 @@ measure effecively allows to switch between `SStrategy` and `IStrategy`.
 # Optional Arguments
 - `sample_size::Int64`: Limiting the number of individuals to an integer maximum
 - `sample_fraction::Float64`: Limiting the number of individuals to a fraction of the overall assigned members. Must be between (0-1)
-- `selectionfilter::Function`: Filters individuals based on their characteristics
+- `selectionfilter::Function`: Filters individuals based on their characteristics; may take the simulation as a second argument
 
 # Example
 
@@ -90,8 +90,11 @@ struct FindMembers{FU<:IStrategy} <: SMeasure
             throw(ArgumentError("Please provide either a sample_size or a sample_fraction. Both don't go together."))
         end
 
+        keep = _bind_sim(selectionfilter, Individual, follow_up.sim)
+        _check_condition(keep, Individual, "FindMembers")
+
         return(
-            new{typeof(follow_up)}(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all)
+            new{typeof(follow_up)}(follow_up, sample_size, sample_fraction, IPredicate(keep), selectionfilter !== _select_all)
         )
     end
 
@@ -190,17 +193,17 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
     # no sampling: trigger the follow-up for every (filtered) member without materializing a list
     if sample_size(measure) < 0 && sample_fraction(measure) >= 1
         if has_filter(measure)
-            apply_followup!(sim, individuals(s), fu, keep = selectionfilter(measure))
+            apply_followup!(sim, individuals(s, sim), fu, keep = selectionfilter(measure))
         else
-            apply_followup!(sim, individuals(s), fu)
+            apply_followup!(sim, individuals(s, sim), fu)
         end
         return nothing
     end
 
     # sampling: collect the candidates first, reusing the filter buffer when a filter is set
-    members = individuals(s)
+    members = individuals(s, sim)
     if has_filter(measure)
-        members = _filter_members!(empty!(_member_filter_buffer(sim)), individuals(s), selectionfilter(measure))
+        members = _filter_members!(empty!(_member_filter_buffer(sim)), members, selectionfilter(measure))
     end
 
     n = sample_size(measure) >= 0 ? sample_size(measure) : Int64(ceil(length(members) * sample_fraction(measure)))

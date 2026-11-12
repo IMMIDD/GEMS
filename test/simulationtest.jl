@@ -1,5 +1,12 @@
 import GEMS: increment!, infected!
 
+# a custom start condition that infects the first individual and leaves the infection staged
+struct InfectFirstCondition <: GEMS.StartCondition
+    pathogen::String
+end
+GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
+    infect!(individuals(sim)[1], tick(sim), first_pathogen(sim); sim = sim, rng = rng(sim))
+
 @testset "Simulation" begin
 
     # global parameters
@@ -223,6 +230,17 @@ import GEMS: increment!, infected!
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, transmission_prethinning = 1)
             @test_throws ArgumentError GEMS.determine_transmission_prethinning(config("yes"), nothing)
+
+            # POOL SLACK
+            # passing
+            slack_config(value) = Dict("Simulation" => Dict("pool_slack" => value))
+            @test settingscontainer(Simulation(pop_size = 100, pool_slack = 0.5)).flat_pools[Household].slack == 0.5
+            @test GEMS.determine_pool_slack(Dict(), nothing) == GEMS.DEFAULT_POOL_SLACK
+            @test GEMS.determine_pool_slack(slack_config(0), nothing) === 0.0
+            @test GEMS.determine_pool_slack(slack_config(0.1), 0.3) == 0.3
+            # failing
+            @test_throws ArgumentError Simulation(pop_size = 100, pool_slack = -0.1)
+            @test_throws ArgumentError GEMS.determine_pool_slack(slack_config("lots"), nothing)
         end
 
         @testset "Population & Settings" begin
@@ -513,6 +531,15 @@ import GEMS: increment!, infected!
             reset!(sim, reset_interventions=true)
             @test length(symptom_triggers(sim)) == 0
             @test length(strategies(sim)) == 0
+
+            # a reset sim starts from the RNG streams a fresh one starts from, with no staged work left
+            fresh = Simulation(pop_size = 100, seed = 5)
+            streams = copy.(fresh.rngs)
+            step!(fresh)
+            push!(fresh.staging_buffers.removals[1], GEMS._EndedInfection(individuals(fresh)[1], Int32(1), Int16(0), Int8(1), false))
+            reset!(fresh)
+            @test fresh.rngs == streams
+            @test all(isempty, fresh.staging_buffers.removals) && all(isempty, fresh.staging_buffers.infections)
 
             # reinitialize! is an alias for reset! kept for backwards compatibility.
             # It must behave identically to reset! in both modes.
@@ -1164,6 +1191,8 @@ import GEMS: increment!, infected!
             start_condition = ImportedCases(ticks = [3, 3], count = [2, 4]))
         @test length(seeding_schedule(dupsim)[Int16(3)]) == 2
         @test sort([s.count for s in seeding_schedule(dupsim)[Int16(3)]]) == [2, 4]
+        # a custom start condition's infections are flushed by the end of the constructor
+        @test infected(individuals(Simulation(pop_size = 100, start_condition = InfectFirstCondition("")))[1])
 
         # OFFSET
         # a fixed offset shifts the whole schedule
@@ -1693,7 +1722,7 @@ import GEMS: increment!, infected!
     end
 
     @testset "Closed pooled Setting in Step" begin
-        # closing a pooled class leaves its pool dirty; spreading must repack before it reads frames
+        # closing every class stops school contacts, at the class and at every level above it
         sim_cl = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
             settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
             stop_criterion = TimesUp(limit = 5), seed = 1)
@@ -1703,6 +1732,12 @@ import GEMS: increment!, infected!
         run!(sim_cl)
         @test tick(sim_cl) == 5
         @test !any(is_open, schoolclasses(sim_cl))
+        school = [settingchar(first(settings(sim_cl, T))) for T in (SchoolClass, SchoolYear, School, SchoolComplex)
+            if haskey(settings(sim_cl), T) && !isempty(settings(sim_cl, T))]
+        log = dataframe(infectionlogger(sim_cl))
+        @test !any(r -> r.tick >= 1 && r.setting_type in school, eachrow(log))
+        # spreading goes on elsewhere
+        @test any(r -> r.tick >= 1 && !(r.setting_type in school) && r.setting_type != '?', eachrow(log))
     end
 
     @testset "State log counts match a full scan" begin
@@ -1876,27 +1911,175 @@ import GEMS: increment!, infected!
     end
 
     @testset "The dead leave their settings' contacts" begin
-        sim = Simulation(seed = 1)
-        run!(sim)
-        dead_inds = filter(dead, individuals(sim))
-        @test !isempty(dead_inds)
+        sim = Simulation(pop_size = 500, seed = 1, global_setting = true)
         cntnr = settingscontainer(sim)
-        repack_dirty_pools!(cntnr)
         plans = GEMS.activity_plans(sim)
+        gs = settings(sim, GlobalSetting)[1]
+        inds = individuals(sim)
+        dead_inds = inds[[3, 17, 250, 499, 500]]
+        append!(sim.staging_buffers.newly_dead[1], dead_inds)
+        GEMS.apply_deaths!(sim)
+        repack_dirty_pools!(cntnr)
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
-            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_index(e)))[GEMS.setting_id(e)]
             # still a member, but never drawn
             @test d in individuals(s)
-            @test !(d in GEMS.present_members(s, cntnr))
+            @test !(d in GEMS.living_members(s, cntnr))
         end
+        # the GlobalSetting leaves them out too, and finds everyone alive where they now sit
+        @test length(GEMS.living_members(gs, cntnr)) == length(inds) - length(dead_inds)
+        @test !any(in(GEMS.living_members(gs, cntnr)), dead_inds)
+        @test all(i -> individuals(gs)[GEMS._global_position(i, sim)] === i, setdiff(inds, dead_inds))
+        # marking someone twice changes nothing
+        before = copy(individuals(gs))
+        push!(sim.staging_buffers.newly_dead[1], dead_inds[1])
+        GEMS.apply_deaths!(sim)
+        @test individuals(gs) == before
+        @test GEMS._deceased(gs) == length(dead_inds)
         @test GEMS.validate_plans(population(sim), cntnr)
 
-        # a reset brings them back
+        # a reset brings them back, every setting in population order
         reset!(sim)
+        pop_order = i -> GEMS._individual_index(population(sim), id(i))
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
-            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_of(e)))[GEMS.setting_id(e)]
-            @test d in GEMS.present_members(s, cntnr)
+            s = settings(sim, GEMS.setting_type_from_index(GEMS.setting_type_index(e)))[GEMS.setting_id(e)]
+            @test d in GEMS.living_members(s, cntnr)
+            @test issorted(individuals(s); by = pop_order)
         end
+        @test length(GEMS.living_members(gs, cntnr)) == length(inds)
+        @test isempty(gs.moved_positions)
+        @test GEMS._check_global_positions(population(sim), cntnr) === nothing
         @test GEMS.validate_plans(population(sim), cntnr)
+    end
+
+    @testset "A run after reset! repeats the first run" begin
+        sim = Simulation(pop_size = 2000, seed = 3, global_setting = true)
+        run!(sim)
+        first_run = dataframe(infectionlogger(sim))
+        # deaths reorder the settings, which the reset has to undo
+        @test length(deathlogger(sim)) > 0
+        reset!(sim)
+        run!(sim)
+        @test dataframe(infectionlogger(sim)) == first_run
+    end
+
+    @testset "reset! sorts settings edited after construction and reopens closed ones" begin
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+        sim = Simulation(population = joinpath(BASE_FOLDER, "test/testdata/people_muenster.jld2"),
+            settingsfile = joinpath(BASE_FOLDER, "test/testdata/settings_muenster.jld2"),
+            infected_fraction = 0.0, seed = 2)
+        cntnr = settingscontainer(sim)
+        plans = GEMS.activity_plans(sim)
+        pop_order = i -> GEMS._individual_index(population(sim), id(i))
+        # the first member of one class joins another class of its year, at the end, so the year
+        # holds them twice and the class is out of population order
+        classes, years = settings(sim, SchoolClass), settings(sim, SchoolYear)
+        y = years[findfirst(y -> length(y.contains) > 1, years)]
+        c1, c2 = classes[y.contains[1]], classes[y.contains[2]]
+        h = individuals(c1)[1]
+        @test pop_order(h) < pop_order(last(individuals(c2)))
+        add_member!(c2, h, sim)
+        @test !issorted(individuals(c2); by = pop_order)
+        # closing the year closes its classes too
+        close!(y, sim)
+        close!(households(sim)[1])
+        @test !is_open(c1) && cntnr.pools[SchoolClass].closed > 0
+
+        reset!(sim)
+        @test all(is_open, classes) && all(is_open, years) && is_open(households(sim)[1])
+        @test cntnr.pools[SchoolClass].closed == 0
+        @test all(s -> GEMS._closed_below(s) == 0, years)
+        @test issorted(individuals(c2); by = pop_order)
+        @test plans.membership_edits == 0
+        @test GEMS.validate_plans(population(sim), cntnr)
+        # the year's frame follows the sorted class: a full repack changes nothing
+        frame = copy(GEMS.living_members(y, cntnr))
+        GEMS._repack_all!(cntnr.pools[SchoolClass])
+        @test GEMS.living_members(y, cntnr) == frame
+    end
+
+    @testset "reset! restores contact methods changed during a run" begin
+        BASE_FOLDER = dirname(dirname(pathof(GEMS)))
+        abcs = AgeBasedContactSampling(contactparameter = 1.5, interval = 5,
+            contact_matrix_file = joinpath(BASE_FOLDER, "test/testdata/contact_matrix.txt"))
+        sim = Simulation(pop_size = 2000, seed = 3, global_setting = true, global_setting_contacts = abcs)
+        cntnr = settingscontainer(sim)
+        bounds = copy(cntnr.rate_bounds)
+        # changes ten households' methods mid-run, as a `ChangeContactMethod` measure would
+        function run_with_change!(sim)
+            foreach(_ -> step!(sim), 1:5)
+            foreach(h -> contact_sampling_method!(sim, h, ContactparameterSampling(4.0)), households(sim)[1:10])
+            run!(sim)
+            return dataframe(infectionlogger(sim))
+        end
+        first_run = run_with_change!(sim)
+        @test length(deathlogger(sim)) > 0
+
+        reset!(sim)
+        stored = GEMS._stored_type_method(cntnr, Household)
+        @test all(h -> contact_sampling_method(h) == stored, households(sim))
+        @test cntnr.rate_bounds == bounds
+        @test run_with_change!(sim) == first_run
+    end
+
+    @testset "A transmission bound below the probability says how to fix it" begin
+        # an infecter who is infectious by tick 2, and someone still uninfected then
+        p = Pathogen(id = 1, name = "BoundCheck", progressions = [Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 30)],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 0.5))
+        sim = Simulation(pop_size = 200, pathogens = (p,), infected_fraction = 0.0)
+        a = individuals(sim)[1]
+        infect!(a, tick(sim), p; sim = sim, rng = rng(sim))
+        GEMS.flush_pending_infections!(sim)
+        step!(sim); step!(sim)
+        b = first(i for i in individuals(sim) if !infected(i))
+        err = try GEMS._infection_probability(a, b, sim, p, households(sim)[1], 1e-9); nothing catch e; e end
+        @test err isa ErrorException && occursin("transmission_prethinning = false", err.msg)
+    end
+
+    @testset "The simulation keeps its layer seed" begin
+        @test layer_seed(Simulation(pop_size = 200, seed = 5)) == 5
+        @test layer_seed(Simulation(pop_size = 200, seed = 5, layer_seed = 9)) == 9
+    end
+
+    @testset "Calibration parameters survive reset!" begin
+        function run_with(x)
+            s = Simulation(pop_size = 1000, seed = 4)
+            GEMS.assign_values_to_parameters!(s; x = [x], arg = ["households"])
+            reset!(s)
+            run!(s)
+            return dataframe(infectionlogger(s))
+        end
+        sim = Simulation(pop_size = 1000, seed = 4)
+        GEMS.assign_values_to_parameters!(sim; x = [10.0], arg = ["households"])
+        # the type's bound covers the new rate, so a run needs no reset! first
+        run!(sim)
+        reset!(sim)
+        @test all(h -> contact_sampling_method(h).contactparameter == 10.0, households(sim))
+        # a later, lower value draws as in a simulation that never saw the higher one
+        GEMS.assign_values_to_parameters!(sim; x = [2.0], arg = ["households"])
+        reset!(sim)
+        run!(sim)
+        @test dataframe(infectionlogger(sim)) == run_with(2.0)
+    end
+
+    @testset "GlobalSetting deaths move members only within it" begin
+        inds = [Individual(id = Int32(j), age = 30, sex = 1) for j in 1:5]
+        pop = Population(inds)
+        gs = GlobalSetting(individuals = copy(inds), contact_sampling_method = RandomSampling())
+        pos(k) = GEMS._global_position(gs, inds[k], pop)
+        # 5 moves to 1, 4 to 2, 3 dies in place, then 5 dies and 4 moves a second time, to 1
+        for k in (1, 2, 3, 5)
+            GEMS.mark_deceased!(gs, inds[k], pop)
+        end
+        @test GEMS._deceased(gs) == 4
+        @test pos(4) == 1
+        @test individuals(gs)[1] === inds[4]
+        @test gs.moved_positions == Dict(Int32(4) => Int32(1))
+        GEMS.mark_deceased!(gs, inds[5], pop)
+        @test GEMS._deceased(gs) == 4
+
+        GEMS._restore_population_order!(gs, pop)
+        @test individuals(gs) == inds
+        @test isempty(gs.moved_positions)
     end
 end

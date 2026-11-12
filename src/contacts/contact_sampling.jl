@@ -8,7 +8,7 @@ export membership_changed!
 ###
 
 """
-    sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{Individual}, contact_sampling_method::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Fallback: determines which keyword-based method a user defined (mutating or non-mutating) and routes the internal positional call accordingly.
 A sampler written against `Vector{Individual}` still works, via a deprecated path that copies.
@@ -18,21 +18,21 @@ function sample_contacts!(
     csm::ContactSamplingMethod,
     setting::Setting,
     individual_index::Int,
-    present_inds::AbstractVector{Individual},
+    members::AbstractVector{Individual},
     tick::Int16,
     replace::Bool,
     rng::Xoshiro
 )
     # probe with the type the setting actually supplied
-    P = typeof(present_inds)
+    P = typeof(members)
 
     # mutating keyword method
     if _user_method(sample_contacts!, Tuple{Vector{Individual}, typeof(csm), Setting, Int, P, Int16}, 2)
-        return sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
+        return sample_contacts!(indivs, csm, setting, individual_index, members, tick; replace=replace, rng=rng)
 
     # non-mutating keyword method
     elseif _user_method(sample_contacts, Tuple{typeof(csm), Setting, Int, P, Int16}, 1)
-        new_contacts = sample_contacts(csm, setting, individual_index, present_inds, tick; replace=replace, rng=rng)
+        new_contacts = sample_contacts(csm, setting, individual_index, members, tick; replace=replace, rng=rng)
         append!(indivs, new_contacts)
         return indivs
 
@@ -40,8 +40,8 @@ function sample_contacts!(
     elseif P !== Vector{Individual} && (
             _user_method(sample_contacts!, Tuple{Vector{Individual}, typeof(csm), Setting, Int, Vector{Individual}, Int16}, 2) ||
             _user_method(sample_contacts, Tuple{typeof(csm), Setting, Int, Vector{Individual}, Int16}, 1))
-        @warn "$(typeof(csm)) types present_inds as Vector{Individual}. Widen it to AbstractVector{Individual} to avoid a copy per call." maxlog=1
-        return sample_contacts!(indivs, csm, setting, individual_index, collect(present_inds), tick, replace, rng)
+        @warn "$(typeof(csm)) types members as Vector{Individual}. Widen it to AbstractVector{Individual} to avoid a copy per call." maxlog=1
+        return sample_contacts!(indivs, csm, setting, individual_index, collect(members), tick, replace, rng)
 
     # if they defined neither, throw error
     else
@@ -54,7 +54,7 @@ end
         csm::ContactSamplingMethod,
         setting::Setting,
         individual_index::Int,
-        present_inds::AbstractVector{Individual},
+        members::AbstractVector{Individual},
         tick::Int16,
         replace::Bool,
         rng::Xoshiro
@@ -66,13 +66,13 @@ function sample_contacts(
     csm::ContactSamplingMethod,
     setting::Setting,
     individual_index::Int,
-    present_inds::AbstractVector{Individual},
+    members::AbstractVector{Individual},
     tick::Int16,
     replace::Bool,
     rng::Xoshiro
 )
     indivs = Vector{Individual}()
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+    sample_contacts!(indivs, csm, setting, individual_index, members, tick, replace, rng)
     return indivs
 end
 
@@ -81,7 +81,7 @@ end
         csm::ContactSamplingMethod,
         setting::Setting,
         individual_index::Int,
-        present_inds::AbstractVector{Individual},
+        members::AbstractVector{Individual},
         tick::Int16;
         replace::Bool = true,
         rng::Xoshiro = Xoshiro()
@@ -93,22 +93,22 @@ function sample_contacts(
     csm::ContactSamplingMethod,
     setting::Setting,
     individual_index::Int,
-    present_inds::AbstractVector{Individual},
+    members::AbstractVector{Individual},
     tick::Int16;
     replace::Bool = true,
     rng::Xoshiro = Xoshiro()
 )
-    return sample_contacts(csm, setting, individual_index, present_inds, tick, replace, rng)
+    return sample_contacts(csm, setting, individual_index, members, tick, replace, rng)
 end
 
 """
-    contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+    contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64
 
 The mean number of contacts `sample_contacts!` returns with `replace = true`. Defining it promises
 that number is Poisson and its contacts are independent of each other and of their number, which
 lets the simulation draw the number before it touches the setting.
 """
-function contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+function contact_rate(csm::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64
     error("$(typeof(csm)) defines no contact_rate. Was it set without `contact_sampling_method!(sim, setting, csm)`?")
 end
 
@@ -121,16 +121,16 @@ meaning `csm` defines no `contact_rate`.
 contact_rate_bound(csm::ContactSamplingMethod)::Float64 = Inf
 
 """
-    sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+    sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
 
 Appends exactly `k` contacts to `indivs`, each drawn as one of `sample_contacts!`'s with `replace = true`.
 Defaults to keeping the first `k` of repeated `sample_contacts!` calls, which `contact_rate`'s promise makes
 exact; define it to skip the discarded draws.
 """
 function sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting,
-        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+        individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
     k > 0 || return indivs
-    rate = contact_rate(csm, setting, individual_index, present_inds, tick)
+    rate = contact_rate(csm, setting, individual_index, members, tick)
     rate > 0 || error("$(typeof(csm)) has contact_rate 0 here, so it cannot draw $k contacts")
     # a method that keeps returning nobody has a wrong contact_rate
     limit = ceil(Int, 100 * k / rate) + 100
@@ -138,7 +138,7 @@ function sample_k_contacts!(indivs::Vector{Individual}, csm::ContactSamplingMeth
     calls = 0
     while k > 0
         (calls += 1) > limit && error("$(typeof(csm)) returns fewer contacts than its contact_rate")
-        sample_contacts!(empty!(draws), csm, setting, individual_index, present_inds, tick, true, rng)
+        sample_contacts!(empty!(draws), csm, setting, individual_index, members, tick, true, rng)
         n = min(k, length(draws))
         append!(indivs, view(draws, 1:n))
         k -= n
@@ -210,7 +210,7 @@ end
 ###
 
 """
-    sample_scaled_contacts!(contacts, draws, csm, setting, idx, present, tick, replace, rng, plans, cntnr,
+    sample_scaled_contacts!(contacts, draws, csm, setting, idx, members, tick, replace, rng, plans, cntnr,
         s_host, scale_bound; oversample = 1.0f0, thin = 1.0f0, drawn = DEFAULT_CONTACT_DRAW)
 
 Samples the host's contacts in `setting` into `contacts`, scaled by the host's and each contact's
@@ -222,8 +222,8 @@ scale there. Draws nothing extra while every scale involved is 1.
 - `draws::Vector{Individual}`: Scratch buffer for when the sampler has to be called more than once
 - `csm::ContactSamplingMethod`: The setting's sampling method
 - `setting::Setting`: Setting the host meets its contacts in
-- `idx::Int`: The host's position in `present`
-- `present::AbstractVector{Individual}`: Everyone present in `setting`, the host included
+- `idx::Int`: The host's position in `members`
+- `members::AbstractVector{Individual}`: The setting's living members, the host included
 - `tick::Int16`: Current tick
 - `replace::Bool`: Whether contacts are drawn with replacement
 - `rng::Xoshiro`: Random number generator
@@ -238,21 +238,21 @@ scale there. Draws nothing extra while every scale involved is 1.
   Drawing any ahead needs a method with `contact_rate` and `replace`
 """
 function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Individual},
-        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, members::AbstractVector{Individual},
         tick::Int16, replace::Bool, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
         s_host::Float32, scale_bound::Float32; oversample::Float32 = 1.0f0, thin::Float32 = 1.0f0,
         drawn::_ContactDraw = DEFAULT_CONTACT_DRAW)
     r = s_host * scale_bound
     empty!(contacts)
     # a lone member could only meet itself
-    (r == 0 || length(present) <= 1) && return contacts
+    (r == 0 || length(members) <= 1) && return contacts
 
     # a method with a contact rate: one count for the whole visit, at the visit's rate
     if replace && _has_contact_rate(csm)
         # a Poisson count, or the contacts drawn before the visit thinned to it
-        rate = _visit_rate(contact_rate(csm, setting, idx, present, tick), s_host, scale_bound, thin)
+        rate = _visit_rate(contact_rate(csm, setting, idx, members, tick), s_host, scale_bound, thin)
         k = _drawn_ahead(drawn) ? _thinned_count(drawn.n, rate / drawn.rate_bound, rng) : gems_rand(rng, Poisson(rate))
-        sample_k_contacts!(contacts, csm, setting, idx, present, tick, k, rng)
+        sample_k_contacts!(contacts, csm, setting, idx, members, tick, k, rng)
         # each kept by its contact's scale
         return _thin_by_scale!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
@@ -262,16 +262,16 @@ function sample_scaled_contacts!(contacts::Vector{Individual}, draws::Vector{Ind
 
     # scales up to 1: one call, thinned by `r * thin`, then by each contact's scale
     if r <= 1
-        _sample_thinned!(contacts, csm, setting, idx, present, tick, replace, rng, r * thin)
+        _sample_thinned!(contacts, csm, setting, idx, members, tick, replace, rng, r * thin)
         return _thin_by_scale!(contacts, scale_bound, plans, setting, cntnr, rng)
     end
 
     # above 1 without replacement: calls merged so a contact is met once, see `_sample_unique_scaled!`
     replace ||
-        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, oversample, scale_bound, thin)
+        return _sample_unique_scaled!(contacts, draws, csm, setting, idx, members, tick, rng, plans, cntnr, r, oversample, scale_bound, thin)
 
     # above 1 with replacement: `r` calls, see `_sample_repeated_scaled!`
-    return _sample_repeated_scaled!(contacts, draws, csm, setting, idx, present, tick, rng, plans, cntnr, r, scale_bound, thin)
+    return _sample_repeated_scaled!(contacts, draws, csm, setting, idx, members, tick, rng, plans, cntnr, r, scale_bound, thin)
 end
 
 # A visit's contact rate, see the section header. Monotone in each factor, also after rounding, so
@@ -292,7 +292,7 @@ end
 # met too rarely, a bias that `oversample` times the calls shrinks. Whole calls collect in `contacts`,
 # the fractional last one in `draws`.
 function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
-        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, members::AbstractVector{Individual},
         tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
         r::Float32, oversample::Float32, scale_bound::Float32, thin::Float32)
     total = r * oversample
@@ -301,11 +301,11 @@ function _sample_unique_scaled!(contacts::Vector{Individual}, draws::Vector{Indi
     unit = 1.0f0 / oversample
     for _ in 1:calls
         empty!(draws)
-        sample_contacts!(draws, csm, setting, idx, present, tick, false, rng)
+        sample_contacts!(draws, csm, setting, idx, members, tick, false, rng)
         append!(contacts, draws)
     end
     empty!(draws)
-    frac > 0 && sample_contacts!(draws, csm, setting, idx, present, tick, false, rng)
+    frac > 0 && sample_contacts!(draws, csm, setting, idx, members, tick, false, rng)
     # QuickSort needs no scratch buffer
     sort!(contacts; by = id, alg = QuickSort)
     sort!(draws; by = id, alg = QuickSort)
@@ -345,7 +345,7 @@ end
 
 # With replacement: `r` calls, the last for the fraction beyond the whole ones, each thinned on its own
 function _sample_repeated_scaled!(contacts::Vector{Individual}, draws::Vector{Individual},
-        csm::ContactSamplingMethod, setting::Setting, idx::Int, present::AbstractVector{Individual},
+        csm::ContactSamplingMethod, setting::Setting, idx::Int, members::AbstractVector{Individual},
         tick::Int16, rng::Xoshiro, plans::ActivityPlanStore, cntnr::SettingsContainer,
         r::Float32, scale_bound::Float32, thin::Float32)
     calls = floor(Int, r)
@@ -354,7 +354,7 @@ function _sample_repeated_scaled!(contacts::Vector{Individual}, draws::Vector{In
     for call in 1:(calls + (frac > 0))
         f = call > calls ? frac : 1.0f0
         empty!(draws)
-        _sample_thinned!(draws, csm, setting, idx, present, tick, true, rng, f * thin)
+        _sample_thinned!(draws, csm, setting, idx, members, tick, true, rng, f * thin)
         append!(contacts, _thin_by_scale!(draws, scale_bound, plans, setting, cntnr, rng))
     end
     return contacts
@@ -362,8 +362,8 @@ end
 
 # Samples as `sample_contacts!` does, then keeps each contact with probability `p`
 function _sample_thinned!(indivs::Vector{Individual}, csm::ContactSamplingMethod, setting::Setting, individual_index::Int,
-        present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
-    sample_contacts!(indivs, csm, setting, individual_index, present_inds, tick, replace, rng)
+        members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro, p::Float32)
+    sample_contacts!(indivs, csm, setting, individual_index, members, tick, replace, rng)
     return _thin_uniformly!(indivs, p, rng)
 end
 
@@ -462,15 +462,16 @@ function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, csm::Contac
     length(members) < 2 && return last_contact
     # the window ends before `ind`'s death, so `ind` is on the list
     pos = findfirst(m -> m === ind, members)
-    # a built list must not fill the cache this setting's method keeps for transmission
-    if members isa Vector{Individual}
+    # a list other than the living members must not fill the cache this setting's method keeps for transmission
+    if members isa Vector{Individual} || length(members) != _alive(s)
         csm = deepcopy(csm)
         membership_changed!(csm, s)
     end
     plans = activity_plans(sim)
     cntnr = settingscontainer(sim)
-    # scales are read once, today: if a schedule switches entries off, an entry off today counts as off for the whole window
-    s_host = _membership_scale(plans, ind, s, cntnr)
+    # scales are read once, today, and closures are ignored: if a schedule switches entries off, an entry off
+    # today counts as off for the whole window
+    s_host = _membership_scale(plans, ind, s, cntnr; ignore_closures = true)
     scale_bound = _scale_bound(s)
     contacts = contact_buffers(sim)[Threads.threadid()]
     draws = sim.scratch_buffers.draw[Threads.threadid()]
@@ -489,14 +490,17 @@ end
 # Whether `m` was still alive at tick `t`.
 @inline _alive_at(m::Individual, t::Int16) = !dead(m) || death(m) > t
 
-# The members of leaf `s` alive at tick `t`. A view if those are the living members, which the setting's
-# sampling method already counts; a new vector otherwise.
+# The members of leaf `s` alive at tick `t`. The dead follow the living, latest death first, so those alive
+# at `t` are a prefix, returned as a view; a new vector if member edits after deaths broke that order.
 function _members_alive_at(s::IndividualSetting, t::Int16, ::Simulation)
     members = individuals(s)
-    alive = _alive(s)
-    # the dead follow the living
-    died_in_window = any(m -> _alive_at(m, t), view(members, (alive + 1):length(members)))
-    died_in_window || return view(members, 1:alive)
+    n = length(members)
+    k = _alive(s)
+    while k < n && _alive_at(@inbounds(members[k + 1]), t)
+        k += 1
+    end
+    # `add_member!` swaps a newcomer into the first dead slot
+    any(m -> _alive_at(m, t), view(members, (k + 1):n)) || return view(members, 1:k)
     return [m for m in members if _alive_at(m, t)]
 end
 
@@ -539,7 +543,7 @@ function _keep_by_scale!(contacts::Vector{Individual}, scale_bound::Float32,
         plans::ActivityPlanStore, s::Setting, cntnr::SettingsContainer, rng::Xoshiro)
     kept = 0
     for c in contacts
-        p = _membership_scale(plans, c, s, cntnr) / scale_bound
+        p = _membership_scale(plans, c, s, cntnr; ignore_closures = true) / scale_bound
         (p >= 1 || gems_rand(rng) < p) && (contacts[kept += 1] = c)
     end
     return resize!(contacts, kept)

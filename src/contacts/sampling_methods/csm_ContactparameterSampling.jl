@@ -31,36 +31,36 @@ end
 #ContactparameterSampling() = ContactparameterSampling(0)
 
 """
-    sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Sample random contacts based on a Poisson-Distribution spread around `contactparameter_sampling.contactparameter`.
 The `replace` parameter determines whether contacts are sampled with replacement (`true`) or without replacement (`false`).
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
-    if isempty(present_inds)
+function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    if isempty(members)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
-    if length(present_inds) == 1
+    if length(members) == 1
         return indivs
     end
 
     if replace
         # a Poisson number of contacts, each drawn on its own
         number_of_contacts = gems_rand(rng, Poisson(contactparameter_sampling.contactparameter))
-        return sample_k_contacts!(indivs, contactparameter_sampling, setting, individual_index, present_inds, tick, number_of_contacts, rng)
+        return sample_k_contacts!(indivs, contactparameter_sampling, setting, individual_index, members, tick, number_of_contacts, rng)
     end
 
     # get number of contacts
     number_of_contacts = gems_rand(rng, Poisson(contactparameter_sampling.contactparameter))
-    number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
+    number_of_contacts = min(number_of_contacts, length(members) - 1)
     resize!(indivs, number_of_contacts)
 
-    gems_sample!(rng, @view(present_inds[1:end-1]), indivs; replace=false)
+    gems_sample!(rng, @view(members[1:end-1]), indivs; replace=false)
     for i = 1:length(indivs)
-        if indivs[i] === present_inds[individual_index]
-            indivs[i] = present_inds[end]
+        if indivs[i] === members[individual_index]
+            indivs[i] = members[end]
             break
         end
     end
@@ -68,12 +68,12 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
 end
 
 """
-    contact_rate(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+    contact_rate(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64
 
 Returns `contactparameter`, or 0 when nobody else is present.
 """
-contact_rate(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64 =
-    length(present_inds) > 1 ? contactparameter_sampling.contactparameter : 0.0
+contact_rate(contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64 =
+    length(members) > 1 ? contactparameter_sampling.contactparameter : 0.0
 
 """
     contact_rate_bound(contactparameter_sampling::ContactparameterSampling)::Float64
@@ -83,18 +83,18 @@ Returns `contactparameter`.
 contact_rate_bound(contactparameter_sampling::ContactparameterSampling)::Float64 = contactparameter_sampling.contactparameter
 
 """
-    sample_k_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+    sample_k_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
 
 Appends `k` contacts, each a uniform draw among everyone present but the individual.
 """
 function sample_k_contacts!(indivs::Vector{Individual}, contactparameter_sampling::ContactparameterSampling, setting::Setting,
-        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+        individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
     n0 = length(indivs)
     resize!(indivs, n0 + k)
     @inbounds for i in 1:k
-        offset = gems_rand(rng, 1:length(present_inds) - 1)
-        contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-        indivs[n0 + i] = present_inds[contact_index]
+        offset = gems_rand(rng, 1:length(members) - 1)
+        contact_index = mod(individual_index + offset - 1, length(members)) + 1
+        indivs[n0 + i] = members[contact_index]
     end
     return indivs
 end

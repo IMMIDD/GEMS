@@ -6,8 +6,7 @@
 
 # EXPORTS
 # setting membership and lookup
-export household, office, schoolclass, getsetting, settings_tuple
-export membership_setting_types
+export household, office, schoolclass, getsetting
 # registry-based getters
 export get_infection_state, get_immunity_state
 export infection_id
@@ -121,21 +120,24 @@ Returns the individual's position in the member frame of their primary setting o
 end
 
 """
-    settings_tuple(individual::Individual, plans::ActivityPlanStore)
+    memberships(individual::Individual, plans::ActivityPlanStore)
 
-Returns all of the individual's memberships as `(type, id)` pairs, in plan order.
+Returns all of the individual's memberships in plan order, each as `(setting_type, setting_id, scale, primary)`, where
+`primary` marks the first entry of its type.
 """
-function settings_tuple(individual::Individual, plans::ActivityPlanStore)
-    return [(setting_type_from_index(setting_type_of(e)), setting_id(e))
-            for e in plan_entries(plans, individual)]
+function memberships(individual::Individual, plans::ActivityPlanStore)
+    entries = plan_entries(plans, individual)
+    return [(setting_type = setting_type_from_index(setting_type_index(e)), setting_id = setting_id(e),
+             scale = Float64(entry_scale(e)), primary = k == 1 || setting_type_index(entries[k - 1]) != setting_type_index(e))
+            for (k, e) in enumerate(entries)]
 end
 
 """
-    settings_tuple(individual::Individual, sim::Simulation)
+    memberships(individual::Individual, sim::Simulation)
 
 Convenience for callers holding a `Simulation` rather than the store.
 """
-settings_tuple(individual::Individual, sim::Simulation) = settings_tuple(individual, activity_plans(sim))
+memberships(individual::Individual, sim::Simulation) = memberships(individual, activity_plans(sim))
 
 ### SETTING ACCESSORS ###
 # These resolve through the plan store, taken directly or via a `Simulation`.
@@ -287,6 +289,10 @@ function _primary_setting(i::Individual, sim::Simulation, ::Type{T}) where {T<:S
     ids = setting_ids(i, T, sim)
     return isempty(ids) ? nothing : settings(sim, T)[ids[1]]
 end
+
+# Setting `sid` of type `T`, or the individual's primary one for `PRIMARY_SETTING_ID`; `nothing` if they hold none.
+_setting_or_primary(i::Individual, sim::Simulation, ::Type{T}, sid::Int32) where {T<:Setting} =
+    sid == PRIMARY_SETTING_ID ? _primary_setting(i, sim, T) : settings(sim, T)[sid]
 
 """
     getsetting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}

@@ -115,7 +115,7 @@ mutable struct LightRD <: ResultDataStyle
                     "config_file_val" => () -> TOML.parsefile(pP |> simulation |> configfile),
                     "population_file" => () -> pP |> simulation |> populationfile,
                     "population_params" => () -> pP |> simulation |> population |> params,
-                    "setting_type_names" => () -> setting_type_names()
+                    "setting_type_names" => () -> setting_type_names(pP |> simulation |> settingscontainer)
                 ),
             "sim_data" =>
                 Dict(

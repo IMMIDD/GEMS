@@ -122,7 +122,7 @@ mutable struct DefaultResultData <: ResultDataStyle
                     "config_file_val" => () -> isfile(pP |> simulation |> configfile) ? TOML.parsefile(pP |> simulation |> configfile) : Dict(), #TODO potentially adapt for no config file
                     "population_file" => () -> pP |> simulation |> populationfile,
                     "population_params" => () -> pP |> simulation |> population |> params,
-                    "setting_type_names" => () -> setting_type_names()
+                    "setting_type_names" => () -> setting_type_names(pP |> simulation |> settingscontainer)
                 ),
             "sim_data" =>
                 Dict(

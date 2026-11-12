@@ -45,6 +45,10 @@ import GEMS: _mean_contacts_per_age_group,
         row_of = Dict(zip(pop.id, 1:nrow(pop)))
         @test all(r -> full.sex_b[r] == pop.sex[row_of[full.id_b[r]]], 1:nrow(full))
         @test isequal(full.age_b, infs.age_b)
+        # a seed has no infecter, so its infecter columns are missing
+        seeds = findall(<(1), full.id_a)
+        @test !isempty(seeds) && all(r -> ismissing(full.sex_a[r]), seeds)
+        @test all(r -> !ismissing(full.sex_a[r]), setdiff(1:nrow(full), seeds))
         # a subset of rows works as well
         @test nrow(with_population_columns(infs[2:end, :], pp)) == nrow(infs) - 1
         # selected columns only, named by string or symbol
@@ -165,6 +169,21 @@ import GEMS: _mean_contacts_per_age_group,
         end
     end
 
+    @testset "Infection-time households" begin
+        # person 1 lives in households 1 and 2, with 1 their primary when infected
+        df = DataFrame(id = Int32.(1:3), age = Int8.(fill(30, 3)), sex = Int8.(ones(3)), household = Int32[1, 2, 2])
+        table = DataFrame(id = Int32[1], setting_type = ["Household"], setting_id = Int32[2])
+        sim = Simulation(population = Population(df; memberships = table), infected_fraction = 0.0)
+        a = individuals(sim)[1]
+        infect!(a, tick(sim), first_pathogen(sim); sim = sim, rng = rng(sim))
+        GEMS.flush_pending_infections!(sim)
+        set_primary!(sim, a, Household, 2)
+        infs = infectionsDF(PostProcessor(sim))
+        # the seed keeps the household it had then, and stays without a location
+        @test only(infs.household_b) == 1
+        @test isnan(only(infs.lat))
+    end
+
     @testset "show" begin
         @test !isempty(@capture_out show(pp))
     end
@@ -190,14 +209,32 @@ import GEMS: _mean_contacts_per_age_group,
         @test dead == [1, 1, 0]
     end
 
+    @testset "Household attack rates on primary households" begin
+        # A (household 1) infected at work infects B at home in B's household 2, X at home, and X infects Y
+        inf_ids = Int32[1, 2, 3, 4]
+        sources = Int32[-1, 1, 1, 3]
+        types = ['o', 'h', 'h', 'h']
+        hh = Int32[1, 2, 1, 1]
+        chain, started = GEMS._home_chains(inf_ids, sources, types, hh)
+        # B starts household 2's chain; X and Y, three generations deep, stay in A's
+        @test chain == Int32[2, 0, 1, 0]
+        @test started == [true, true, false, false]
+        # without its source in the rows, B starts a chain all the same
+        @test GEMS._home_chains(inf_ids[2:4], sources[2:4], types[2:4], hh[2:4])[2] == [true, true, false]
+
+        # sizes count primary members only; someone without a household is skipped
+        @test GEMS._primary_household_sizes(Int32[1, 1, 2, -1], 2) == Int16[2, 1]
+        @test GEMS._unique_households(Int32[2, -1, 1, 2]) == Int32[2, 1]
+    end
+
     @testset "Household SAR" begin
         # household 1 has 5 members, member 5 died at 8. Index id 1 and co-primary id 2 at 10, secondaries id 3 at 11
         # (home) and id 4 at 24, the window's last tick. Id 1 again at 25, while id 4 is still infected, is no index;
         # id 2 again at 40 is the second index. Household 2 (size 3) has no cases, household 3 is a single.
-        sar_counts(; removed_4 = 30, death_tick = 8, pathogen_ids = Int8[1, 1, 1, 1, 1, 1], args...) =
+        sar_counts(; removed_4 = 30, death_tick = 8, pathogen_ids = Int8[1, 1, 1, 1, 1, 1], setting_ids = Int32[1, 1, 1, 1, 1, 1], args...) =
             _household_sar_counts(Int8[1, 2], pathogen_ids, Int32[1, 1, 1, 1, 1, 1], Int32[1, 2, 3, 4, 1, 2],
                 Int32[1, 2, 3, 4, 5, 6], Int16[10, 10, 11, 24, 25, 40], Int16[18, 18, 19, removed_4, 33, 48],
-                ['o', 'o', 'h', 'o', 'h', 'o'], Int16[5, 3, 1], Int32[1], Int32[5], Int16[death_tick];
+                ['o', 'o', 'h', 'o', 'h', 'o'], setting_ids, Int16[5, 3, 1], Int32[1], Int32[5], Int16[death_tick];
                 (window = 14, coprimary_days = 0, last_tick = 60, index_ticks = nothing, exclude_prior = true)..., args...)
         row(df, p, s) = only(eachrow(subset(df, :pathogen_id => ByRow(==(p)), :hh_size => ByRow(==(s)))))
 
@@ -211,6 +248,10 @@ import GEMS: _mean_contacts_per_age_group,
         @test isnan(row(df, 1, 3).sar)
         @test isnan(row(df, 1, 3).sar_home)
         @test row(df, 2, 5).episodes == 0
+
+        # id 3 infected at home in another household is still secondary, but not at home here
+        r = row(sar_counts(setting_ids = Int32[1, 1, 2, 1, 1, 1]), 1, 5)
+        @test (r.secondary, r.secondary_home) == (2, 0)
 
         # without exclude_prior, the second index has everyone but the dead member as contacts
         @test row(sar_counts(exclude_prior = false), 1, 5).contacts == 5

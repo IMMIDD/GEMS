@@ -605,6 +605,9 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
         # fields absent from dict keep their defaults
         @test education(i) == -1
         @test occupation(i) == -1
+
+        # a membership key used to set a field; now only a `Population` builds memberships
+        @test_throws ArgumentError Individual(Dict("id" => 3, "sex" => 1, "age" => 30, "household" => 3))
     end
 
     @testset "DataFrameRow Constructor" begin
@@ -625,6 +628,12 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
         i2 = Individual(df[2, :])
         @test id(i2) == Int32(2)
         @test occupation(i2) == Int8(2)
+
+        # a row of `dataframe(pop)` carries membership columns, which only a `Population` turns into settings
+        pop = Population(DataFrame(id = Int32[1], age = Int8[30], sex = Int8[1], household = Int32[1]))
+        @test_throws ArgumentError Individual(dataframe(pop)[1, :])
+        # derived columns are left out, as the Dict constructor does
+        @test Individual(hcat(df, DataFrame(plan_count = Int8[3, 3]))[1, :]).plan_count == 0
     end
 
     @testset "show" begin
@@ -713,23 +722,32 @@ import GEMS: infected!, infectious!, symptomatic!, severe!, critical!, dead!, de
         end
     end
 
-    @testset "Settings Tuple" begin
+    @testset "Memberships of an individual" begin
         plans = ActivityPlanStore()
         i = Individual(id = 1, sex = 0, age = 1)
         for (T, sid) in ((Household, 10), (Office, 20), (SchoolClass, 30), (Municipality, 40))
             plan_add!(plans, i, PlanEntry(T, Int32(sid), Int32(1)))
         end
 
-        # entries come back sorted by setting type index, not insertion order
-        res = settings_tuple(i, plans)
-        @test length(res) == 4
-        @test res[1] == (Household, Int32(10))
-        @test res[2] == (SchoolClass, Int32(30))
-        @test res[3] == (Office, Int32(20))
-        @test res[4] == (Municipality, Int32(40))
+        # a second office, scaled
+        plan_add!(plans, i, PlanEntry(Office, Int32(21), Int32(1), 2.0))
+
+        # entries come back sorted by setting type index, not insertion order; the first of a type is primary
+        res = memberships(i, plans)
+        @test [(m.setting_type, m.setting_id) for m in res] ==
+            [(Household, 10), (SchoolClass, 30), (Office, 20), (Office, 21), (Municipality, 40)]
+        @test [m.primary for m in res] == [true, true, true, false, true]
+        @test res[4].scale == 2.0 && res[3].scale == 1.0
 
         # an individual without a plan has no memberships to report
-        @test isempty(settings_tuple(Individual(id=2, sex = 0, age = 1), plans))
+        @test isempty(memberships(Individual(id=2, sex = 0, age = 1), plans))
+
+        # through a simulation, declared types included
+        GEMS.declare_setting_type!("MembershipsClub")
+        df = DataFrame(id = Int32[1], age = Int8[30], sex = Int8[1], household = Int32[1])
+        club = DataFrame(id = Int32[1], setting_type = ["MembershipsClub"], setting_id = Int32[1])
+        sim = Simulation(population = Population(df; memberships = club), infected_fraction = 0.0)
+        @test [m.setting_type for m in memberships(individuals(sim)[1], sim)] == [Household, GEMS.DeclaredSetting{:MembershipsClub}]
     end
 
     @testset "setting_id" begin

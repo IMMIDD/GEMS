@@ -790,20 +790,19 @@ using GEMS
     contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(contactparameter = 1.0)
     ags::AGS = AGS()
     isopen::Bool = true
+    deceased::Int32 = 0
     # fields of your own
     opening_hours::Int8 = 12
 end
 ```
 
-GEMS writes these fields itself: it renumbers `id` when it builds the settings, sets `isopen` when a measure opens or closes a setting, and changes `individuals` when someone joins or leaves.
+GEMS writes these fields itself: it renumbers `id` when it builds the settings, sets `isopen` when a measure opens or closes a setting, changes `individuals` when someone joins or leaves, and counts members who died in `deceased`, which keeps them out of the contacts.
 Post-processing reads `ags` to locate infections.
-Two more fields are optional.
-Members can only have a contact `scale` above `1` if the struct has a `scale_bound::Float32` field.
-With a `deceased::Int32` field, members who die are moved out of the way; without it, they stay in the list and can still be drawn as contacts.
+One more field is optional: members can only have a contact `scale` above `1` if the struct has a `scale_bound::Float32` field.
 
 You don't need to register a struct type.
 A config section or a memberships file that names `Gym` finds it, and so does `assign_settings!` or a `SettingLayer` that uses it.
-To choose the character it is logged with, add a `char` key to its config section or call `register_setting_type!(Gym; char = 'g')` before using it.
+To choose the character it is logged with, add a `char` key to its config section or call `register_setting_type!(Gym; char = 'Y')` before using it.
 If you add individuals to a new type during a run (e.g. in a `stepmod`), give it at least one member before the run starts.
 
 !!! info "Declared type or struct?"
@@ -813,8 +812,7 @@ If you add individuals to a new type during a run (e.g. in a `stepmod`), give it
 
 Custom setting types are a bit slower than the built-in ones: GEMS looks up their settings at runtime, and, for members with a `scale` other than `1`, once more per contact.
 Only the first twelve custom types get a fast lookup; for individuals who belong to further types, GEMS searches their settings at each lookup.
-GEMS numbers setting types in the order it first sees them, and this order decides the order in which a tick processes them.
-A simulation can therefore turn out differently depending on which custom types earlier simulations of the same Julia session used.
+A tick processes custom types in the order of their names, so a simulation turns out the same whatever custom types earlier simulations of the same Julia session used.
 
 ## [Custom Contact Sampling](@id custom-contacts)
 

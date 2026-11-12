@@ -37,7 +37,7 @@ newest infection has already ended, but at most `lookback` ticks back (default: 
 died since are not traced.
 
 With `resample_contacts = true`, non-infected contacts are traced as well. They are re-drawn in the index's settings of the given `settingtypes`
-(default: all built-in types except `GlobalSetting` and `Municipality`), from today's members and scales, so they are a
+(default: every setting type the simulation has, except `GlobalSetting` and `Municipality`, `Household` first), from today's members and scales, so they are a
 plausible set, not the contacts drawn during the run. A `contact_filter(setting, tick)` returning `false` skips a setting
 at that tick, e.g. to leave out a past closure.
 Infectees the re-draw missed replace re-drawn contacts of a shared setting where possible, keeping the count.
@@ -57,7 +57,7 @@ struct TraceInfectiousContacts{FU<:IStrategy} <: IMeasure
 
     function TraceInfectiousContacts(follow_up::IStrategy; success_rate::Union{Real, Function} = 1.0,
             lookback::Integer = 14, resample_contacts::Bool = false,
-            settingtypes::Vector{DataType} = DataType[Household, SchoolClass, SchoolYear, School, SchoolComplex, Office, Department, Workplace, WorkplaceSite],
+            settingtypes::Vector{DataType} = _all_trace_types(follow_up.sim),
             contact_filter::Function = _any_contact, max_contacts::Integer = typemax(Int))
         if lookback < 1
             throw(ArgumentError("lookback parameter must be at least 1"))
@@ -282,4 +282,15 @@ function _first_shared_setting(a::Individual, b::Individual, sim::Simulation, se
         end
     end
     return nothing
+end
+
+"""
+    _all_trace_types(sim::Simulation)
+
+Returns every setting type `sim` has settings of, except `GlobalSetting` and `Municipality`, in the simulation's type order.
+"""
+function _all_trace_types(sim::Simulation)
+    cntnr = settingscontainer(sim)
+    types = DataType[T for (T, stngs) in cntnr.settings if !isempty(stngs) && T !== GlobalSetting && T !== Municipality]
+    return sort!(types; by = T -> _type_rank(cntnr, T))
 end

@@ -94,7 +94,7 @@ In large simulations, interventions can take most of the run time. GEMS therefor
 
 **Measures that run on several threads**
 
-- For individuals: `Test` (also with a `SeroprevalenceTestType`), `SelfIsolation`, `CancelSelfIsolation`, `FindSetting`, `FindSettings`, `FindSettingMembers`, `Vaccinate`, `TraceInfectiousContacts` and `TraceSourceContacts`. Each person's measures run on the thread that owns that person.
+- For individuals: `Test` (also with a `SeroprevalenceTestType`), `SelfIsolation`, `CancelSelfIsolation`, `FindSetting`, `FindAllSettings`, `FindSettingMembers`, `Vaccinate`, `TraceInfectiousContacts` and `TraceSourceContacts`. Each person's measures run on the thread that owns that person.
 - For settings: `FindMembers`, `PoolTest`, `IsOpen` and `TestAll`.
 - `CustomIMeasure` and `CustomSMeasure`, if created with `threadsafe = true`.
 - Always serial: `CloseSetting`, `OpenSetting`, `ChangeContactMethod`, and custom measures without `threadsafe = true`.

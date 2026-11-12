@@ -5,9 +5,9 @@
 struct KwMutatingSampler <: ContactSamplingMethod end
 
 function GEMS.sample_contacts!(indivs::Vector{Individual}, csm::KwMutatingSampler,
-        setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual},
+        setting::Setting, individual_index::Int, members::AbstractVector{Individual},
         tick::Int16; replace::Bool = true, rng::Xoshiro = Xoshiro(1))
-    push!(indivs, present_inds[1])
+    push!(indivs, members[1])
     return indivs
 end
 
@@ -15,18 +15,18 @@ end
 struct KwNonMutatingSampler <: ContactSamplingMethod end
 
 function GEMS.sample_contacts(csm::KwNonMutatingSampler, setting::Setting,
-        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16;
+        individual_index::Int, members::AbstractVector{Individual}, tick::Int16;
         replace::Bool = true, rng::Xoshiro = Xoshiro(1))
-    return [present_inds[1], present_inds[end]]
+    return [members[1], members[end]]
 end
 
-# still types present_inds as Vector, so a pooled setting's view reaches it only by copying
+# still types members as Vector, so a pooled setting's view reaches it only by copying
 struct VectorOnlySampler <: ContactSamplingMethod end
 
 function GEMS.sample_contacts!(indivs::Vector{Individual}, csm::VectorOnlySampler,
-        setting::Setting, individual_index::Int, present_inds::Vector{Individual},
+        setting::Setting, individual_index::Int, members::Vector{Individual},
         tick::Int16; replace::Bool = true, rng::Xoshiro = Xoshiro(1))
-    append!(indivs, present_inds)
+    append!(indivs, members)
     return indivs
 end
 
@@ -55,7 +55,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
         # create empty setting
         empty_h = Household(id = 2, individuals = Vector{Individual}(), contact_sampling_method = rs)
 
-        # for these tests we assume that "present_inds" is equal to the individuals in "h" (so every individual of "h" is "present")
+        # for these tests we assume that "members" is equal to the individuals in "h" (so every individual of "h" is "present")
 
         # RandomSampling should only sample 1 contact
         @test length(sample_contacts(rs, h, i_index, individuals(h), GEMS.DEFAULT_TICK, rng = Xoshiro())) == 1
@@ -86,7 +86,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
         # create empty setting
         empty_h = Household(id = 2, individuals = Vector{Individual}(), contact_sampling_method = cps)
 
-        # for these tests we assume that "present_inds" is equal to the individuals in "h" (so every individual of "h" is "present")
+        # for these tests we assume that "members" is equal to the individuals in "h" (so every individual of "h" is "present")
         
         # all "ContactSamplingMethod"s should return vectors of individuals 
         @test typeof(sample_contacts(cps, h, i_index, individuals(h), GEMS.DEFAULT_TICK, rng = Xoshiro())) == Vector{Individual}
@@ -300,7 +300,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
         inds = [Individual(id = j, age = 10 * j, sex = 1) for j in 1:9]
         tick = GEMS.DEFAULT_TICK
         household(csm) = Household(id = 1, individuals = copy(inds), contact_sampling_method = csm)
-        plans, cntnr = ActivityPlanStore(), SettingsContainer()
+        plans, cntnr = GEMS.ActivityPlanStore(), SettingsContainer()
         scaled(csm, h, rng, s_host, thin) = GEMS.sample_scaled_contacts!(Individual[], Individual[], csm, h, 2, inds, tick, true, rng,
             plans, cntnr, Float32(s_host), 1.0f0; thin = Float32(thin))
 
@@ -392,7 +392,7 @@ end
     add_types!(sc, [SchoolClass, SchoolYear])
     foreach(x -> add!(sc, x), scs)
     foreach(x -> add!(sc, x), sys)
-    sim = Simulation()
+    sim = Simulation(seed = 1)
     pop = Population(inds)
     foreach(i -> fake_membership!(pop, inds[i], SchoolClass, div(i - 1, 2) + 1), 1:8)
     sim.population = pop
@@ -436,12 +436,12 @@ end
         for (k, c) in enumerate(cs), m in individuals(c)
             assign_settings!(pop, m, SchoolClass => k; scale = id(m) == 3 ? 0.0 : id(m) == 5 ? 0.5 : 0.25 * id(m))
         end
-        assign_member_indices!(pop, cntnr)
+        GEMS.assign_member_indices!(pop, cntnr)
         GEMS.repack_dirty_pools!(cntnr)
-        sim = Simulation(seed = 1)
+        sim = Simulation(pop_size = 100, seed = 1)
         sim.population = pop
         sim.settings = cntnr
-        return sim, cntnr, activity_plans(pop), pop, inds, cs, yr
+        return sim, cntnr, GEMS.activity_plans(pop), pop, inds, cs, yr
     end
     age_based() = AgeBasedContactSampling(2.0, 10, ContactMatrix{Float64}(ones(10, 10) ./ 10, 10, 100), Float64[])
     keep_all = GEMS.ContactFilterFn((s, t) -> true)
@@ -454,7 +454,7 @@ end
             same_draws = true
             same_rng = true
             for s in (cs[1], cs[2], yr)
-                frame = GEMS.present_members(s, cntnr)
+                frame = GEMS.living_members(s, cntnr)
                 @test collect(GEMS._members_alive_at(s, Int16(0), sim)) == collect(frame)
                 bound = GEMS._scale_bound(s)
                 for (pos, host) in enumerate(frame), t in Int16(1):Int16(5)
@@ -528,7 +528,7 @@ end
 
     @testset "the dead" begin
         sim, cntnr, plans, pop, inds, cs, yr = scaled_school(ContactparameterSampling(5.0))
-        kill(m, t) = (GEMS.dead!(m, true); m.death = Int16(t); mark_deceased!(cs[1], m, pop))
+        kill(m, t) = (GEMS.dead!(m, true); m.death = Int16(t); GEMS.mark_deceased!(cs[1], m, pop))
 
         # alive members: the view of the living, which the setting's method already counts
         @test GEMS._members_alive_at(cs[1], Int16(4), sim) isa SubArray
@@ -537,7 +537,9 @@ end
         kill(inds[2], 3)
         kill(inds[4], 8)
         members = GEMS._members_alive_at(cs[1], Int16(5), sim)
-        @test members isa Vector{Individual}
+        # the latest death sits first in the dead tail, so the list is still a prefix view
+        @test members isa SubArray
+        @test length(members) == 5
         @test inds[2] ∉ members
         @test inds[4] in members
         @test inds[2] ∉ GEMS._members_alive_at(yr, Int16(5), sim)
@@ -556,12 +558,18 @@ end
         traced = trace(inds[6], sim, [SchoolClass]; from = 1, to = 10, filter = (s, t) -> (s === cs[1] && push!(ticks, t); true))
         @test ticks == Int16[1, 2, 3]
         @test !isempty(traced)
+
+        # a newcomer swapped into the first dead slot breaks the death order, so the list is built
+        add_member!(cs[1], Individual(id = Int32(11), age = 30, sex = 1), pop)
+        members = GEMS._members_alive_at(cs[1], Int16(3), sim)
+        @test members isa Vector{Individual}
+        @test inds[4] in members && inds[6] in members && inds[2] ∉ members
     end
 
     @testset "the sampling method's cache" begin
         sim, cntnr, plans, pop, inds, cs, yr = scaled_school(age_based())
         csm = contact_sampling_method(yr)
-        frame = GEMS.present_members(yr, cntnr)
+        frame = GEMS.living_members(yr, cntnr)
 
         # a built list leaves an empty cache empty
         @test csm.rate_cache === nothing

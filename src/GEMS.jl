@@ -74,6 +74,7 @@ module GEMS
     include("settings/setting_pool.jl")
     include("settings/settings.jl") 
     include("settings/settingscontainers.jl")
+    include("settings/setting_types.jl")
     include("settings/setting_pool_methods.jl")
     include("population/activity_plans.jl")
     include("population/setting_layers/setting_layers.jl")

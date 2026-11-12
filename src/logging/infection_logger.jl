@@ -135,9 +135,11 @@ end
 
 Reserves `n` consecutive infection ids and returns the first. Call it from a serial point;
 the ids are then handed out without any cross-thread coordination. Reserving more than are
-used leaves gaps, so `last_infection_id` is an upper bound on the infection count.
+used leaves gaps, so `last_infection_id` is an upper bound on the infection count. Throws before the ids pass `typemax(Int32)`.
 """
 function reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+    n > typemax(Int32) - logger.last_infection_id && throw(OverflowError(
+        "infection ids would pass $(typemax(Int32)); the run has staged more infections than an `Int32` id can count"))
     first_id = logger.last_infection_id + Int32(1)
     logger.last_infection_id += Int32(n)
     return first_id
@@ -266,7 +268,7 @@ function dataframe(logger::InfectionLogger)
     )
 end
 
-function save_JLD2(logger::InfectionLogger, path::AbstractString)
+function save_JLD2(logger::InfectionLogger, path::AbstractString; setting_type_names::Dict{String, String} = Dict{String, String}())
     jldopen(path,"w") do file
         file["infection_id"] = vcat(logger.infection_id...)
         file["tick"] = vcat(logger.tick...)
@@ -283,7 +285,7 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["recovery"] = vcat(logger.recovery...)
         file["setting_id"] = vcat(logger.setting_id...)
         file["setting_type"] = vcat(logger.setting_type...)
-        file["setting_type_names"] = setting_type_names()
+        file["setting_type_names"] = setting_type_names
         file["household_id"] = vcat(logger.household_id...)
         file["source_infection_id"] = vcat(logger.source_infection_id...)
     end

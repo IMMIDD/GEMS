@@ -264,7 +264,7 @@ function _check_layer(layer::SettingLayer)
     end
     participation_ok || throw(ArgumentError("`participation` must be a probability in [0, 1], rows of " *
         "probabilities, or a function of an individual returning one; got $(p isa _ParticipationTable ? _describe(p) : repr(p))"))
-    n, cap = layer.entries, typemax(Int8)
+    n, cap = layer.entries, MAX_PLAN_ENTRIES
     if n isa Int
         entries_ok = 0 <= n <= cap
     else
@@ -395,10 +395,9 @@ it applied and recorded.
 - `seed`: seeds the layers' draws, together with each layer's name
 - `household_coordinates`: a table with each household's `id`, `lon` and `lat`, needed by
   `SpatialSettings` and `JoinNearby`
-- `id_floors`: internal; per setting type, an id the new settings' ids must stay above
 
-New entries go behind the ones an individual already holds of their type, so they become the
-primary only for those who held none: an `Office` layer makes `is_working` true for them.
+New entries go behind those an individual already holds of the type, so they become the primary only for
+individuals who held none: an `Office` layer makes `is_working` true for them.
 """
 function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Integer, household_coordinates = nothing,
                              id_floors::AbstractDict = Dict{DataType, Int}())
@@ -408,12 +407,11 @@ function add_setting_layers!(pop::Population, layers::SettingLayer...; seed::Int
     isempty(layers) && return pop
     names = _layer_names(layers, _layer_records(pop))
     coords = _layer_coordinates(layers, household_coordinates)
-    bytes = 0
     for (layer, name) in zip(layers, names)
-        bytes += _apply_layer!(pop, layer, name, seed, coords, get(id_floors, _layer_type(layer), 0))
+        _apply_layer!(pop, layer, name, seed, coords, get(id_floors, _layer_type(layer), 0))
     end
     added = sum(r -> r["entries"], last(_layer_records(pop), length(layers)))
-    @info "Setting layers added $added plan entries; merging them allocated $(round(bytes / 2^20; digits = 1)) MiB"
+    @info "Setting layers added $added plan entries"
     return pop
 end
 
@@ -425,38 +423,37 @@ function _layer_coordinates(layers, table)
     return _HomeCoordinates(table)
 end
 
-# Generates one layer, merges it into the plans and records it; returns the bytes the merge allocated.
+# Generates one layer, merges it into the plans and records it.
 function _apply_layer!(pop::Population, layer::SettingLayer, name::String, seed::Integer, coords, id_floor::Int)
-    store, inds = activity_plans(pop), individuals(pop)
+    plans, inds = activity_plans(pop), individuals(pop)
     streams = _LayerStreams(seed, name)
     entry_counts = _layer_entry_counts(layer, pop, streams)
     _check_room(entry_counts, inds)
     additions = _layer_additions(layer, entry_counts, streams)
-    ctx = _LayerContext(store, inds, additions.tidx, coords, streams.size, id_floor)
+    ctx = _LayerContext(plans, inds, additions.tidx, coords, streams.size, id_floor)
     shortfall = _assign!(additions, layer.assignment, ctx, streams.assignment)
     shortfall > 0 && @warn "Setting layer \"$name\" left out $shortfall entries: no " *
         "$(setting_type_name(_layer_type(layer))) was left that their individual did not already hold"
     added, ids = _added_entries(additions)
     # a layer that adds nothing leaves the plans as they are
-    bytes = added == 0 ? 0 : _merge_additions!(store, inds, additions)
-    added == 0 || _rescale_held_entries!(store, inds, additions, layer.rescale)
+    added == 0 || _merge_additions!(plans, inds, additions)
+    added == 0 || _rescale_held_entries!(plans, inds, additions, layer.rescale)
     push!(_layer_records!(pop), _layer_record(layer, name, seed, added, ids, shortfall))
-    return bytes
+    return nothing
 end
 
 # Multiplies each entry of a `rescale` type that an individual held before the layer by its factor,
 # for every individual the layer gave an entry. Checks every result before writing any.
-function _rescale_held_entries!(store::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions,
+function _rescale_held_entries!(plans::ActivityPlanStore, inds::Vector{Individual}, additions::_PlanAdditions,
                                 rescale::Vector{Tuple{UInt8, Float64}})
     isempty(rescale) && return nothing
     added(i) = count(k -> additions.sids[k] != DEFAULT_SETTING_ID, _addition_rows(additions, i))
     # the merge puts the layer's entries behind the earlier ones of their type
     function held(ind, t, n)
-        start, len = _plan_type_run(store, ind, t)
-        lo = Int(ind.plan_offset) + start
-        return lo:(lo + len - 1 - (t == additions.tidx ? n : 0))
+        r = _type_slots(plans, ind, t)
+        return t == additions.tidx ? (first(r):(last(r) - n)) : r
     end
-    rescaled(slot, factor) = Float64(entry_scale(store.entries[slot])) * factor
+    rescaled(slot, factor) = Float64(entry_scale(plans.entries[slot])) * factor
     for i in _addition_individuals(additions)
         n = added(i)
         n == 0 && continue
@@ -471,10 +468,10 @@ function _rescale_held_entries!(store::ActivityPlanStore, inds::Vector{Individua
         n == 0 && continue
         ind = inds[i]
         for (t, factor) in rescale, slot in held(ind, t, n)
-            store.entries[slot] = _with_scale(store.entries[slot], rescaled(slot, factor))
-            _raise_scale_bound!(store, store.entries[slot])
+            plans.entries[slot] = _with_scale(plans.entries[slot], rescaled(slot, factor))
+            _raise_scale_bound!(plans, plans.entries[slot])
         end
-        _refresh_plan_scaled!(store, ind)
+        _refresh_plan_scaled!(plans, ind)
     end
     return nothing
 end
@@ -558,21 +555,21 @@ _draw_size(rng::Xoshiro, d::Distribution) = max(1, round(Int, _rand_val(d, rng))
 Returns how many entries the layer gives each individual, by position, 0 for those not taking part.
 """
 function _layer_entry_counts(layer::SettingLayer, pop::Population, streams::_LayerStreams)
-    store, inds = activity_plans(pop), individuals(pop)
+    plans, inds = activity_plans(pop), individuals(pop)
     counts = zeros(UInt8, length(inds))
     # passed on as their own arguments, so the loop is compiled for their concrete types
-    _fill_entry_counts!(counts, layer, store, inds, streams, layer.participation_unit,
-        _unit_draws(layer.participation_unit, store, inds))
+    _fill_entry_counts!(counts, layer, plans, inds, streams, layer.participation_unit,
+        _unit_draws(layer.participation_unit, plans, inds))
     return counts
 end
 
-function _fill_entry_counts!(counts::Vector{UInt8}, layer::SettingLayer, store::ActivityPlanStore,
+function _fill_entry_counts!(counts::Vector{UInt8}, layer::SettingLayer, plans::ActivityPlanStore,
                              inds::Vector{Individual}, streams::_LayerStreams, unit, unit_draws)
     for (i, ind) in enumerate(inds)
         # drawn for everyone, so participants nest as participation or eligibility widen
-        u = _shared_draw!(unit_draws, unit, store, ind, _draw_participation(streams.participation))
+        u = _shared_draw!(unit_draws, unit, plans, ind, _draw_participation(streams.participation))
         n = _draw_entries(streams.entries, layer.entries)
-        _qualifies(layer, store, ind) || continue
+        _qualifies(layer, plans, ind) || continue
         u < _participation(layer.participation, ind) || continue
         counts[i] = min(n, typemax(UInt8))
     end
@@ -581,14 +578,14 @@ end
 
 # Each unit's shared draw by unit id, NaN until its first member draws; `nothing` without units.
 _unit_draws(::Nothing, ::ActivityPlanStore, ::Vector{Individual}) = nothing
-_unit_draws(unit::UInt8, store::ActivityPlanStore, inds::Vector{Individual}) =
-    fill(NaN, Int(_max_setting_id(store, inds, unit)))
+_unit_draws(unit::UInt8, plans::ActivityPlanStore, inds::Vector{Individual}) =
+    fill(NaN, Int(_max_setting_id(plans, inds, unit)))
 
 # The draw `ind` takes part by: their own `u`, or their unit's, which its first member's `u` sets.
 _shared_draw!(::Nothing, ::Nothing, ::ActivityPlanStore, ::Individual, u::Float64) = u
 
-function _shared_draw!(unit_draws::Vector{Float64}, unit::UInt8, store::ActivityPlanStore, ind::Individual, u::Float64)
-    unit_id = _setting_id(ind, unit, store)
+function _shared_draw!(unit_draws::Vector{Float64}, unit::UInt8, plans::ActivityPlanStore, ind::Individual, u::Float64)
+    unit_id = _setting_id(ind, unit, plans)
     # an individual outside every unit draws alone
     unit_id >= 1 || return u
     isnan(unit_draws[unit_id]) && (unit_draws[unit_id] = u)
@@ -596,13 +593,13 @@ function _shared_draw!(unit_draws::Vector{Float64}, unit::UInt8, store::Activity
 end
 
 # Whether `ind` is eligible and holds every type in `holding` and none in `not_holding`.
-function _qualifies(layer::SettingLayer, store::ActivityPlanStore, ind::Individual)
+function _qualifies(layer::SettingLayer, plans::ActivityPlanStore, ind::Individual)
     layer.eligible(ind) || return false
     for t in layer.holding
-        _plan_type_run(store, ind, t)[2] == 0 && return false
+        _plan_type_run(plans, ind, t)[2] == 0 && return false
     end
     for t in layer.not_holding
-        _plan_type_run(store, ind, t)[2] == 0 || return false
+        _plan_type_run(plans, ind, t)[2] == 0 || return false
     end
     return true
 end
@@ -611,8 +608,8 @@ end
 function _check_room(counts::Vector{UInt8}, inds::Vector{Individual})
     for (i, ind) in enumerate(inds)
         n = plan_length(ind) + counts[i]
-        n <= typemax(Int8) || throw(ArgumentError(
-            "the layer would give individual $(id(ind)) $n plan entries; the cap is $(typemax(Int8))"))
+        n <= MAX_PLAN_ENTRIES || throw(ArgumentError(
+            "the layer would give individual $(id(ind)) $n plan entries; the cap is $MAX_PLAN_ENTRIES"))
     end
     return nothing
 end

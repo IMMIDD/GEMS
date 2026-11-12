@@ -71,9 +71,10 @@ mutable struct PostProcessor
         infections = dataframe(infectionlogger(simulation))
 
         # the logger keeps the infectee's household; locate the infection there, with its setting's AGS
-        lats, lons = _household_coordinates(infections.household_id, households(simulation))
+        lats, lons = _household_coordinates(infections.household_id, infections.setting_id, households(simulation))
         infection_ags = _setting_ags(infections.setting_type, infections.setting_id, settingscontainer(simulation))
         insertcols!(infections, :household_id, :lat => lats, :lon => lons, :ags => infection_ags; after = true)
+        infection_households = infections.household_id
         DataFrames.select!(infections, Not(:household_id))
 
         # the logger stores the progression index; resolve it here, where pathogens are known
@@ -97,11 +98,13 @@ mutable struct PostProcessor
         end
 
         # the population data of the infecter (_a) and the infectee (_b) that post processing reads
-        rows_a = _matching_rows(infections.id_a, pop.id)
-        rows_b = _matching_rows(infections.id_b, pop.id)
+        population_rows = _row_index(pop.id)
+        rows_a = _matching_rows(infections.id_a, population_rows)
+        rows_b = _matching_rows(infections.id_b, population_rows)
         infections.age_a = _gather(pop.age, rows_a)
         infections.age_b = _gather(pop.age, rows_b)
-        infections.household_b = _gather(pop.household, rows_b)
+        # the household at infection
+        infections.household_b = infection_households
 
         sim_households = households(simulation)
 
@@ -118,7 +121,7 @@ mutable struct PostProcessor
         insertcols!(infections, columnindex(infections, :recovery) + 1, :removed => removed)
 
         # join deaths with additional info from population DF
-        death_population_rows = _matching_rows(deaths.id, pop.id)
+        death_population_rows = _matching_rows(deaths.id, population_rows)
         for name in names(pop, Not(:id))
             deaths[!, name] = _gather(pop[!, name], death_population_rows)
         end
@@ -128,14 +131,14 @@ mutable struct PostProcessor
 
         # join vaccinations with additional info from population DF
         vaccinations = dataframe(vaccinationlogger(simulation))
-        vaccination_rows = _matching_rows(vaccinations.id, pop.id)
+        vaccination_rows = _matching_rows(vaccinations.id, population_rows)
         for name in names(pop, Not(:id))
             vaccinations[!, name] = _gather(pop[!, name], vaccination_rows)
         end
         vaccinations.household_ags = _ags_of_households(vaccinations.household, household_ags)
 
         # join tests with population data
-        test_population_rows = _matching_rows(tests.id, pop.id)
+        test_population_rows = _matching_rows(tests.id, population_rows)
         for name in names(pop, Not(:id))
             tests[!, name] = _gather(pop[!, name], test_population_rows)
         end
@@ -240,12 +243,21 @@ end
 
 # The row of `ids` holding each key, 0 where none does: a left join's matching, by array index.
 # `ids` must be unique integers; ids that are close together keep the index small.
-function _matching_rows(keys::AbstractVector, ids::AbstractVector)
+_matching_rows(keys::AbstractVector, ids::AbstractVector) = _matching_rows(keys, _row_index(ids))
+
+# The smallest of `ids` and the row of each id from there on, 0 for ids not in it, for `_matching_rows`.
+function _row_index(ids::AbstractVector)::Tuple{Int, Vector{Int32}}
     lo, hi = isempty(ids) ? (1, 0) : Int.(extrema(ids))
     row_of = zeros(Int32, hi - lo + 1)
     for (r, id) in enumerate(ids)
         row_of[id - lo + 1] = r
     end
+    return lo, row_of
+end
+
+# `_matching_rows` with an index `_row_index` built.
+function _matching_rows(keys::AbstractVector, (lo, row_of)::Tuple{Int, Vector{Int32}})
+    hi = lo + length(row_of) - 1
     rows = zeros(Int32, length(keys))
     for (k, key) in enumerate(keys)
         (ismissing(key) || key < lo || key > hi) && continue
@@ -303,10 +315,10 @@ end
 # the pathogens of a simulation, sorted by id
 _sorted_pathogen_ids(pp::PostProcessor) = sort(collect(map(id, pathogens(simulation(pp)))))
 
-# The AGS of each row's household, `missing` without one. A column without `missing` values is a plain `Vector{AGS}`.
+# The AGS of each row's household, `missing` without one (`missing` or an id below 1). A column without `missing` values is a plain `Vector{AGS}`.
 function _ags_of_households(households::AbstractVector, household_ags::Vector{AGS})
     n = length(households)
-    out = (n == 0 || any(ismissing, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)
+    out = (n == 0 || any(h -> ismissing(h) || h < 1, households)) ? Vector{Union{Missing, AGS}}(undef, n) : Vector{AGS}(undef, n)
     _fill_ags!(out, households, household_ags)
     return out
 end
@@ -314,18 +326,27 @@ end
 function _fill_ags!(out::Vector, households::AbstractVector, household_ags::Vector{AGS})
     Threads.@threads for k in eachindex(households)
         h = households[k]
-        out[k] = ismissing(h) ? missing : household_ags[h]
+        out[k] = (ismissing(h) || h < 1) ? missing : household_ags[h]
     end
     return out
 end
 
-# Each row's household coordinates, NaN for a seed, which logs no household
-function _household_coordinates(household_ids::AbstractVector, households::Vector{Household})
+# Per household id, how many people have it as their primary household
+function _primary_household_sizes(households::AbstractVector, n_households::Int)
+    sizes = zeros(Int16, n_households)
+    for h in households
+        (ismissing(h) || h < 1) || (sizes[h] += Int16(1))
+    end
+    return sizes
+end
+
+# Each row's household coordinates, NaN for a seed, which has no setting to be located at
+function _household_coordinates(household_ids::AbstractVector, setting_ids::AbstractVector, households::Vector{Household})
     lat_of, lon_of = map(lat, households), map(lon, households)
     lats, lons = similar(lat_of, length(household_ids)), similar(lon_of, length(household_ids))
     Threads.@threads for k in eachindex(household_ids)
         h = household_ids[k]
-        lats[k], lons[k] = h == DEFAULT_SETTING_ID ? (NaN32, NaN32) : (lat_of[h], lon_of[h])
+        lats[k], lons[k] = (h == DEFAULT_SETTING_ID || setting_ids[k] == DEFAULT_SETTING_ID) ? (NaN32, NaN32) : (lat_of[h], lon_of[h])
     end
     return lats, lons
 end
@@ -338,7 +359,7 @@ function _setting_ags(setting_types::AbstractVector{Char}, setting_ids::Abstract
     for T in settingtypes(cntnr)
         stngs = settings(cntnr, T)
         isempty(stngs) && continue
-        c = settingchar(first(stngs))
+        c = settingchar(first(stngs), cntnr)
         isascii(c) ? (ascii_ids[codepoint(c) + 1] = _ags_ids(stngs)) : (other_ids[c] = _ags_ids(stngs))
     end
     out = Vector{Int32}(undef, length(setting_ids))
@@ -750,10 +771,11 @@ function with_population_columns(infections::AbstractDataFrame, postProcessor::P
     unknown = setdiff(added, available)
     isempty(unknown) || throw(ArgumentError("Unknown population columns $unknown; available are $available"))
     out = DataFrame(infections; copycols = !(infections isa DataFrame))
+    population_rows = _row_index(pop.id)
     for (id_col, suffix) in (("id_a", "_a"), ("id_b", "_b"))
         side = filter(c -> endswith(c, suffix), added)
         isempty(side) && continue
-        rows = _matching_rows(out[!, id_col], pop.id)
+        rows = _matching_rows(out[!, id_col], population_rows)
         for c in side
             out[!, c] = _gather(pop[!, chop(c, tail = 2)], rows)
         end

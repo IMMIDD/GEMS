@@ -39,8 +39,8 @@ end
 _finite(v) = !ismissing(v) && isfinite(v)
 
 # The individual's home in km, NaN if their household has no coordinates.
-function _home(coords::_HomeCoordinates, ind::Individual, store::ActivityPlanStore)
-    h = household_id(ind, store)
+function _home(coords::_HomeCoordinates, ind::Individual, plans::ActivityPlanStore)
+    h = household_id(ind, plans)
     1 <= h <= length(coords.x) || return NaN32, NaN32
     return @inbounds coords.x[h], coords.y[h]
 end
@@ -76,7 +76,7 @@ function _displaced_homes(spread, members::Vector{Int32}, ctx::_LayerContext{_Ho
     points = Vector{NTuple{2, Float32}}(undef, length(members))
     x0, x1, y0, y1 = Inf32, -Inf32, Inf32, -Inf32
     for (k, i) in enumerate(members)
-        hx, hy = _home(ctx.coords, ctx.inds[i], ctx.store)
+        hx, hy = _home(ctx.coords, ctx.inds[i], ctx.plans)
         # drawn for everyone, so the draws do not depend on who has coordinates
         dx, dy = _draw_displacement(rng, spread)
         points[k] = (hx + Float32(dx), hy + Float32(dy))
@@ -87,6 +87,9 @@ function _displaced_homes(spread, members::Vector{Int32}, ctx::_LayerContext{_Ho
     return points, (x0, x1, y0, y1)
 end
 
+# the Hilbert grid has 2^_HILBERT_BITS cells per side
+const _HILBERT_BITS = 15
+
 # The positions `located` in the order a Hilbert curve over the homes' bounding box `box` visits
 # their points, ties by position. Points displaced past the box count as on its edge, so a few far
 # draws don't coarsen the curve for everyone.
@@ -95,7 +98,7 @@ function _hilbert_order(points::Vector{NTuple{2, Float32}}, located::Vector{Int3
     x0, x1, y0, y1 = box
     # one scale for both axes, so the curve's cells are square
     side = max(x1 - x0, y1 - y0, eps(Float32))
-    scale = (2^15 - 1) / side
+    scale = ((1 << _HILBERT_BITS) - 1) / side
     keys = Vector{UInt64}(undef, length(located))
     for (k, p) in enumerate(located)
         x, y = clamp(points[p][1], x0, x0 + side), clamp(points[p][2], y0, y0 + side)
@@ -113,7 +116,7 @@ end
 Returns the position of cell `(x, y)` along a Hilbert curve through a 2^15 × 2^15 grid.
 """
 function _hilbert(x::Int, y::Int)
-    n = 1 << 15
+    n = 1 << _HILBERT_BITS
     d = 0
     s = n >> 1
     while s > 0
@@ -164,7 +167,7 @@ struct _NearbyState
 end
 
 function _join_state(::JoinNearby, ctx::_LayerContext{_HomeCoordinates})
-    c = _JoinCandidates(ctx.store, ctx.inds, ctx.tidx)
+    c = _JoinCandidates(ctx.plans, ctx.inds, ctx.tidx)
     return _NearbyState(_CentroidGrid(c, ctx), c, Int32[], Int[])
 end
 
@@ -200,10 +203,10 @@ function _centroids(c::_JoinCandidates, ctx::_LayerContext{_HomeCoordinates})
     position = zeros(Int32, isempty(c.ids) ? 0 : Int(last(c.ids)))
     position[c.ids] .= Int32(1):Int32(length(c.ids))
     @inbounds for ind in ctx.inds
-        hx, hy = _home(ctx.coords, ind, ctx.store)
+        hx, hy = _home(ctx.coords, ind, ctx.plans)
         isfinite(hx) || continue
-        for k in _type_slots(ctx.store, ind, ctx.tidx)
-            sid = setting_id(ctx.store.entries[k])
+        for k in _type_slots(ctx.plans, ind, ctx.tidx)
+            sid = setting_id(ctx.plans.entries[k])
             # as in `_JoinCandidates`, which counts ids from 1 only
             sid >= 1 || continue
             j = position[sid]
@@ -223,7 +226,7 @@ _cell_coords(x0, y0, cell, x, y) =
 _cell_coords(g::_CentroidGrid, x, y) = _cell_coords(g.x0, g.y0, g.cell, x, y)
 
 function _choose(a::JoinNearby, i::Int, held::Vector{Int32}, s::_NearbyState, ctx::_LayerContext{_HomeCoordinates}, rng::Xoshiro)
-    hx, hy = _home(ctx.coords, ctx.inds[i], ctx.store)
+    hx, hy = _home(ctx.coords, ctx.inds[i], ctx.plans)
     # drawn for everyone, so the draws do not depend on who has coordinates
     dx, dy = _draw_displacement(rng, a.spread)
     if isfinite(hx)

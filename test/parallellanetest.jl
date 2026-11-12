@@ -23,7 +23,7 @@ end
         @test GEMS._parallel_safe(FindMembers(lane_followup), false)
         lane_setting_followup = SStrategy("setting follow up", lane_sim)
         @test GEMS._parallel_safe(FindSetting(Household, lane_setting_followup), false)
-        @test GEMS._parallel_safe(FindSettings(Household, lane_setting_followup), false)
+        @test GEMS._parallel_safe(FindAllSettings(Household, lane_setting_followup), false)
         @test GEMS._parallel_safe(FindSettingMembers(Household, lane_followup), false)
         @test GEMS._parallel_safe(PoolTest("lane", lane_type), false)
         @test GEMS._parallel_safe(IsOpen(positive_followup = lane_setting_followup), false)

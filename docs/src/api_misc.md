@@ -52,6 +52,7 @@ AgeGroup
 ```@docs
 in_group
 check_continuity
+validate_plans
 ```
 
 ## Random Number Generation

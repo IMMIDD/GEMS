@@ -24,7 +24,7 @@ export symptom_triggers, add_symptom_trigger!, tick_triggers, add_tick_trigger!,
 export event_queue
 export add_strategy!, strategies, add_testtype!, testtypes
 export InfectionSeed, seeding_schedule
-export rng, rngs, seed
+export rng, rngs, seed, layer_seed
 export contact_buffers
 
 export info
@@ -75,42 +75,44 @@ If you provide a custom config file, the parameters in the config file will be u
 
 Here's a list of all available parameters:
 
-| Parameter                 | Type                                   | Description                                                                                                                                                                       |
-| :------------------------ | :------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `configfile`              | `String`                               | Path to the configuration file. If not provided, the default configuration will be used.                                                                                          |
-| `tickunit`                | `Char`                                 | Time unit of one simulation step (tick). Must be one of 'h' (hours), 'd' (days), or 'w' (weeks).                                                                                  |
-| `start_date`              | `Date`                                 | Start date of the simulation.                                                                                                                                                     |
-| `end_date`                | `Date`                                 | End date of the simulation.                                                                                                                                                       |
-| `label`                   | `String`                               | Label used for plot visualizations and aggregating simulations into batches.                                                                                                      |
-| `population`              | `String`, `Population`, or `DataFrame` | Path to a population file, a population identifier (e.g., 'DE'), a `Population` object, or a `DataFrame`.                                                                         |
-| `pop_size`                | `Int`                                  | Size of the population to be created. Will be ignored if a `population` is provided.                                                                                              |
-| `avg_household_size`      | `Float`                                | Average household size for the population to be created. Will be ignored if a `population` is provided.                                                                           |
-| `avg_office_size`         | `Float`                                | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
-| `avg_school_size`         | `Float`                                | Average school size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
-| `global_setting`          | `Bool`                                 | Flag indicating whether to use the global setting.                                                                                                                                |
-| `membershipsfile`         | `String`                               | Path to a CSV file holding settings beyond each type's primary (see `memberships`).                                                                                               |
-| `settingsfile`            | `String`                               | Path to a settings file.                                                                                                                                                          |
-| `setting_layers`          | `SettingLayer` or a collection of them | Layers of plan entries to add before the settings are built, instead of the config file's `layer` tables. Not applied to a passed `Population` object.                            |
-| `layer_seed`              | `Int`                                  | Seed of the setting layers' draws; defaults to `seed`.                                                                                                                            |
-| `household_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
-| `office_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
-| `department_contacts`     | `ContactSamplingMethod` or `Float`     | Method for sampling department contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                   |
-| `workplace_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling workplace contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
-| `workplace_site_contacts` | `ContactSamplingMethod` or `Float`     | Method for sampling workplace site contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
-| `school_class_contacts`   | `ContactSamplingMethod` or `Float`     | Method for sampling school class contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
-| `school_year_contacts`    | `ContactSamplingMethod` or `Float`     | Method for sampling school year contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                  |
-| `school_contacts`         | `ContactSamplingMethod` or `Float`     | Method for sampling school contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
-| `school_complex_contacts` | `ContactSamplingMethod` or `Float`     | Method for sampling school complex contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
-| `municipality_contacts`   | `ContactSamplingMethod` or `Float`     | Method for sampling municipality contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
-| `global_setting_contacts` | `ContactSamplingMethod` or `Float`     | Method for sampling global setting contacts or a fixed value that will be regarded as the expected value of a Poisson distribution. Requires `global_setting` to be true.         |
-| `start_condition`         | `StartCondition`                       | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
-| `infected_fraction`       | `Float`                                | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
-| `prior_immunity`          | `PriorImmunity` or `Vector`            | Natural immunity some individuals acquired before the start of the simulation. Applied before the start condition.                                                                |
-| `stop_criterion`          | `StopCriterion`                        | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
-| `pathogens`               | `Tuple`                                | A Tuple of `Pathogen`s to be simulated.                                                                                                                                           |
-| `transmission_function`   | `TransmissionFunction`                 | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
-| `transmission_rate`       | `Float`                                | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
-| `stepmod`                 | `Function`                             | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |                                                                                          
+| Parameter                  | Type                                   | Description                                                                                                                                                                       |
+| :------------------------- | :------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configfile`               | `String`                               | Path to the configuration file. If not provided, the default configuration will be used.                                                                                          |
+| `tickunit`                 | `Char`                                 | Time unit of one simulation step (tick). Must be one of 'h' (hours), 'd' (days), or 'w' (weeks).                                                                                  |
+| `start_date`               | `Date`                                 | Start date of the simulation.                                                                                                                                                     |
+| `end_date`                 | `Date`                                 | End date of the simulation.                                                                                                                                                       |
+| `label`                    | `String`                               | Label used for plot visualizations and aggregating simulations into batches.                                                                                                      |
+| `population`               | `String`, `Population`, or `DataFrame` | Path to a population file, a population identifier (e.g., 'DE'), a `Population` object, or a `DataFrame`.                                                                         |
+| `pop_size`                 | `Int`                                  | Size of the population to be created. Will be ignored if a `population` is provided.                                                                                              |
+| `avg_household_size`       | `Float`                                | Average household size for the population to be created. Will be ignored if a `population` is provided.                                                                           |
+| `avg_office_size`          | `Float`                                | Average office size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
+| `avg_school_size`          | `Float`                                | Average school size for the population to be created. Will be ignored if a `population` is provided.                                                                              |
+| `global_setting`           | `Bool`                                 | Flag indicating whether to use the global setting.                                                                                                                                |
+| `membershipsfile`          | `String`                               | Path to a CSV file holding settings beyond each type's primary (see `memberships`).                                                                                               |
+| `settingsfile`             | `String`                               | Path to a settings file.                                                                                                                                                          |
+| `setting_layers`           | `SettingLayer` or a collection of them | Layers of plan entries to add before the settings are built, instead of the config file's `layer` tables. Not applied to a passed `Population` object.                            |
+| `layer_seed`               | `Int`                                  | Seed of the setting layers' draws; defaults to `seed`.                                                                                                                            |
+| `household_contacts`       | `ContactSamplingMethod` or `Float`     | Method for sampling household contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
+| `office_contacts`          | `ContactSamplingMethod` or `Float`     | Method for sampling office contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
+| `department_contacts`      | `ContactSamplingMethod` or `Float`     | Method for sampling department contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                   |
+| `workplace_contacts`       | `ContactSamplingMethod` or `Float`     | Method for sampling workplace contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                    |
+| `workplace_site_contacts`  | `ContactSamplingMethod` or `Float`     | Method for sampling workplace site contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
+| `school_class_contacts`    | `ContactSamplingMethod` or `Float`     | Method for sampling school class contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
+| `school_year_contacts`     | `ContactSamplingMethod` or `Float`     | Method for sampling school year contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                  |
+| `school_contacts`          | `ContactSamplingMethod` or `Float`     | Method for sampling school contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                       |
+| `school_complex_contacts`  | `ContactSamplingMethod` or `Float`     | Method for sampling school complex contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                               |
+| `municipality_contacts`    | `ContactSamplingMethod` or `Float`     | Method for sampling municipality contacts or a fixed value that will be regarded as the expected value of a Poisson distribution.                                                 |
+| `global_setting_contacts`  | `ContactSamplingMethod` or `Float`     | Method for sampling global setting contacts or a fixed value that will be regarded as the expected value of a Poisson distribution. Requires `global_setting` to be true.         |
+| `start_condition`          | `StartCondition`                       | A `StartCondition` object defining the initial situation of the simulation.                                                                                                       |
+| `infected_fraction`        | `Float`                                | Fraction of the population to be initially infected. Will be ignored if a `start_condition` is provided.                                                                          |
+| `prior_immunity`           | `PriorImmunity` or `Vector`            | Natural immunity some individuals acquired before the start of the simulation. Applied before the start condition.                                                                |
+| `stop_criterion`           | `StopCriterion`                        | A `StopCriterion` object defining the termination condition of the simulation.                                                                                                    |
+| `pathogens`                | `Tuple`                                | A Tuple of `Pathogen`s to be simulated.                                                                                                                                           |
+| `transmission_function`    | `TransmissionFunction`                 | A `TransmissionFunction` object defining the transmission dynamics of the pathogen. Will be ignored if a `pathogen` is provided.                                                  |
+| `transmission_rate`        | `Float`                                | A fixed transmission rate that will be used to create a `ConstantTransmissionRate` transmission function. Will be ignored if a `pathogen` or `transmission_function` is provided. |
+| `stepmod`                  | `Function`                             | A single-argument function that runs custom code on the simulation object in each tick.                                                                                           |                                                                                          
+| `pool_slack`               | `Float`                                | Headroom in the setting member pools for members added during a run, as a fraction of each block's length. Defaults to 0.25.                                                      |
+| `transmission_prethinning` | `Bool`                                 | Thins sampled contacts by an upper bound on their infection probability before attempting infections. Same distribution of results, different random draws. Defaults to `true`.   |
 
 # Examples
 
@@ -187,6 +189,7 @@ sim = Simulation(params)
     - `stepmod::Function`: Single-argment function that runs custom code on the simulation object in each tick
 - RNG
     - `seed::Int64`: Seed used to initialize the main RNG
+    - `layer_seed::Int64`: Seed the setting layers were drawn with
     - `rngs::Vector{Xoshiro}`: RNG instances for each thread
 
 """
@@ -249,6 +252,7 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
 
     # RNG
     seed::Int64
+    layer_seed::Int64
     rngs::Vector{Xoshiro} # rng for each thread
 
     # TRANSMISSION PRE-THINNING
@@ -346,6 +350,8 @@ mutable struct Simulation{P<:Tuple, HP<:HealthProgression}
             stepmod,
 
             # RNG
+            seed,
+            # the layers' seed, which the keyword constructor sets
             seed,
             rngs,
 
@@ -591,11 +597,16 @@ function _BUILD_Simulation(;
     _finish_indexing!(activity_plans(sim.population), settingscontainer(sim))
     _check_global_positions(sim.population, settingscontainer(sim))
     _refresh_rate_bounds!(settingscontainer(sim))
+    _store_type_methods!(settingscontainer(sim))
 
     # update label
     sim.label = isnothing(label) || isempty(label) ? sim.label : string(label)
 
     sim.prior_immunity = prior
+    sim.layer_seed = lseed
+
+    # the population build drew from the RNGs; reseed as `reset!` does, so both start from the same streams
+    sim.rngs = _thread_local_rngs(Xoshiro(sim.seed))
 
     # initialize simulation
     initialize!(sim)
@@ -1067,11 +1078,11 @@ end
 # Warns when the population already holds entries of a declared type a layer creates new settings
 # of, as a saved population that had the layer applied would.
 function _warn_reapplied_layers(pop::Population, layers)
-    store = activity_plans(pop)
+    plans = activity_plans(pop)
     for layer in layers
         T = _layer_type(layer)
         (T <: DeclaredSetting && layer.assignment isa NewSettingsAssignment) || continue
-        any(ind -> _plan_type_run(store, ind, setting_type_index(T))[2] > 0, individuals(pop)) && @warn "The population " *
+        any(ind -> _plan_type_run(plans, ind, setting_type_index(T))[2] > 0, individuals(pop)) && @warn "The population " *
             "already holds $(setting_type_name(T)) entries and a setting layer adds more; if it was saved with the " *
             "layer applied, run it with a config without the layer"
     end
@@ -1196,12 +1207,17 @@ function determine_setting_types!(configfile_params::Dict)
     for name in sort!(collect(keys(sections)))
         section = sections[name]
         section isa Dict || continue
-        char = _config_char(section, name)
+        # this config's char, or the default, so an earlier simulation in the session does not decide it
+        char = something(_config_char(section, name), _default_setting_char(name))
         T = _registered_setting_type(name)
         if T !== nothing
-            # a type registered before keeps its char; a built-in's is fixed
-            (char === nothing || get(SETTING_TYPE_CHARS, T, nothing) == char) || throw(ArgumentError(
-                "[Settings.$name] sets char '$char', but $T is already registered with another char"))
+            if T in BUILTIN_SETTING_TYPES_SET
+                # a built-in's char is fixed
+                _config_char(section, name) === nothing || throw(ArgumentError(
+                    "[Settings.$name] sets a char, but the built-in $T's char is fixed"))
+            else
+                register_setting_type!(T; char = char)
+            end
             T <: DeclaredSetting && push!(declared, T)
             continue
         end
@@ -2235,6 +2251,13 @@ function seed(simulation::Simulation)
     return simulation.seed
 end
 
+"""
+    layer_seed(simulation::Simulation)
+
+Returns the seed the setting layers were drawn with.
+"""
+layer_seed(simulation::Simulation) = simulation.layer_seed
+
 
 """
     contact_buffers(simulation::Simulation)
@@ -2809,16 +2832,16 @@ Initializes the simulation model with its prior immunity and its start condition
 function initialize!(simulation::Simulation)
     _apply_prior_immunity!(simulation)
     initialize!(simulation, start_condition(simulation))
+    # a custom start condition may leave its infections staged
+    flush_pending_infections!(simulation)
 end
 
 """
     reset!(simulation::Simulation; reset_interventions::Bool = false)
 
-Resets the simulation model to its initial state according to its start condition.
-This resets all individuals, loggers, the event queue, tick, and RNGs, and
-re-applies the start condition.
-If `reset_interventions` is true (default), all intervention triggers and strategies
-are also cleared.
+Returns the simulation to the state its constructor built and applies the start condition again; memberships,
+scales and primaries changed after construction are kept. With `reset_interventions`, also clears all
+intervention triggers and strategies.
 """
 function reset!(simulation::Simulation; reset_interventions::Bool = false)
     # reset individual to initial state
@@ -2832,16 +2855,22 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # the dead are alive again, so they return to their settings' frames
     plans = activity_plans(simulation)
-    foreach_setting_vector(settingscontainer(simulation)) do vec
-        for s in vec
-            s isa IndividualSetting && _clear_deceased!(s, plans)
-        end
+    gs = get(settingscontainer(simulation).settings, GlobalSetting, nothing)
+    if !(gs === nothing || isempty(gs))
+        _restore_population_order!(gs[1], population(simulation))
+        _clear_deceased!(gs[1], plans)
     end
+    _restore_member_order!(simulation)
+    # open every setting, as the constructor built them
+    foreach_setting_vector(vec -> foreach(open!, vec), settingscontainer(simulation))
     repack_dirty_pools!(settingscontainer(simulation))
     foreach(empty!, simulation.staging_buffers.newly_dead)
     foreach(empty!, simulation.staging_buffers.newly_symptomatic)
+    # a run stopped mid-tick may leave staged infections and recoveries behind
+    foreach(empty!, simulation.staging_buffers.infections)
+    foreach(empty!, simulation.staging_buffers.removals)
     foreach(_reset!, simulation.state_log_counts)
-    # measures may have changed sampling methods since the last scan
+    _restore_type_methods!(settingscontainer(simulation))
     _refresh_rate_bounds!(settingscontainer(simulation))
 
     # Reset all loggers
@@ -2887,6 +2916,47 @@ function reset!(simulation::Simulation; reset_interventions::Bool = false)
 
     # Initialize the simulation's start condition
     initialize!(simulation)
+end
+
+# Puts the leaves a run reordered back in population order for `reset!`: those with deaths, and every
+# leaf after membership edits. Split like `apply_deaths!`, so no two tasks share a pool.
+function _restore_member_order!(sim::Simulation)
+    cntnr = settingscontainer(sim)
+    plans = activity_plans(sim)
+    edited = plans.membership_edits > 0
+    parts = Tuple{DataType, Int, Int}[]
+    for T in settingtypes(cntnr)
+        (T <: IndividualSetting && T !== GlobalSetting) || continue
+        n = hasfield(T, :pool) ? 1 : Threads.nthreads()
+        append!(parts, ((T, p, n) for p in 0:(n - 1)))
+    end
+    Threads.@threads :dynamic for (T, part, n) in parts
+        _restore_member_order!(sim, settings(cntnr, T), part, n, edited)
+    end
+    plans.membership_edits = 0
+    return nothing
+end
+
+# The leaves of one type with `id % n == part`.
+function _restore_member_order!(sim::Simulation, stngs::Vector{T}, part::Int, n::Int, edited::Bool) where {T<:IndividualSetting}
+    plans = activity_plans(sim)
+    pop = population(sim)
+    keys, perm, buf = Int32[], Int[], Individual[]
+    for s in stngs
+        id(s) % n == part || continue
+        dead = _deceased(s) > 0
+        (dead || edited) || continue
+        moved = _sort_members!(s, plans, pop, keys, perm, buf)
+        if dead
+            # also dirties the pool, refreshes the scale bound and notifies the sampling method
+            _clear_deceased!(s, plans)
+        elseif moved
+            pool = _pool(s)
+            pool === nothing || _mark_dirty!(pool, s)
+            membership_changed!(contact_sampling_method(s), s)
+        end
+    end
+    return nothing
 end
 
 """

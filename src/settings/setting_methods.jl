@@ -1,5 +1,5 @@
 export min_individuals, avg_individuals, max_individuals, min_max_avg_individuals, incidence, individuals, individuals!, individuals_in_ags, ags
-export geolocation, lat, lon, present_individuals, is_open, open!, close!
+export geolocation, lat, lon, attending_members, is_open, open!, close!
 export sample_individuals
 
 
@@ -150,10 +150,9 @@ function individuals(setting::IndividualSetting, simulation::Simulation)
 end
 
 """
-    individuals(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+    individuals(setting::ContainerSetting, simulation::Simulation)
 
-Returns the individuals associated with a given ContainerSetting by recursively getting the individuals of
-all contained settings using the `individuals!` function.
+Returns the members of all settings the container holds, each once, in the order of its leaves.
 """
 function individuals(setting::ContainerSetting, simulation::Simulation)
     indivs = Vector{Individual}()
@@ -161,6 +160,9 @@ function individuals(setting::ContainerSetting, simulation::Simulation)
     for s in setting.contains
         individuals!(indivs, stngs[s], simulation)
     end
+    # someone in two of its leaves comes twice; a container without a pool has no count of them
+    pool = _pool(setting)
+    (pool === nothing || pool.repeats > 0) && unique!(indivs)
     return indivs
 end
 
@@ -226,72 +228,41 @@ end
 
 
 """
-    present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
+    attending_members!(indivs::Vector{Individual}, setting::Setting, simulation::Simulation)
 
-Pushes the individuals present in a given IndividualSetting, i.e., only those in open settings to the provided `indivs` vector. 
-
-# Parameters
-
-- `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
-- `setting::IndividualSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
+Appends the members who attend `setting` today: in settings open at every level, alive, not kept
+away (`can_be_contacted`) and with an effective scale above 0. Someone in two leaves below a container
+is appended once.
 """
-function present_individuals!(indivs::Vector{Individual}, setting::IndividualSetting, simulation::Simulation)
-    if is_open(setting)
-        append!(indivs, view(individuals(setting), 1:_alive(setting)))
-    end
+function attending_members!(indivs::Vector{Individual}, setting::Setting, simulation::Simulation)
+    found = _append_attending!(Individual[], setting, setting, simulation)
+    setting isa ContainerSetting && unique!(found)
+    return append!(indivs, found)
 end
 
 """
-    present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
+    attending_members(setting::Setting, simulation::Simulation)
 
-Pushes the individuals present in a given ContainerSetting, i.e., only those in open contained settings to the provided `indivs` vector.  
-
-# Parameters
-
-- `indivs::Vector{Individual}`: List that will be appeneded with the setting's individuals
-- `setting::ContainerSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
+Returns the members who attend `setting` today, as `attending_members!` collects them.
 """
-function present_individuals!(indivs::Vector{Individual}, setting::ContainerSetting, simulation::Simulation)
-    # Check that setting and all containers are open
-    if setting |> is_open
-        stngs = settings(simulation, contains_type(typeof(setting)))
-        for s in setting |> contains
-            present_individuals!(indivs, stngs[s], simulation)
-        end
+attending_members(setting::Setting, simulation::Simulation) = attending_members!(Individual[], setting, simulation)
+
+# Walks the leaves below `s`, skipping closed settings; `top` is the setting asked about.
+function _append_attending!(indivs::Vector{Individual}, s::IndividualSetting, top::Setting, simulation::Simulation)
+    is_open(s) || return indivs
+    plans, cntnr = activity_plans(simulation), settingscontainer(simulation)
+    for m in view(individuals(s), 1:_alive(s))
+        can_be_contacted(m, top) && _membership_scale(plans, m, s, cntnr) > 0 && push!(indivs, m)
     end
-end
-
-"""
-    present_individuals!(setting::IndividualSetting, indivs::Vector{Individual}, simulation::Simulation)
-
-Pushes the individuals present in a given IndividualSetting, i.e., only those in open settings to the provided `indivs` vector. 
-
-# Parameters
-
-- `setting::IndividualSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
-"""
-function present_individuals(setting::IndividualSetting, simulation::Simulation)
-    indivs = Vector{Individual}()
-    present_individuals!(indivs, setting, simulation)
     return indivs
 end
 
-"""
-    present_individuals!(setting::ContainerSetting, indivs::Vector{Individual}, simulation::Simulation)
-
-Pushes the individuals present in a given ContainerSetting, i.e., only those in open contained settings to the provided `indivs` vector.  
-
-# Parameters
-
-- `setting::ContainerSetting`: Setting to get the individuals from
-- `simulation::Simulation`: Simulation object
-"""
-function present_individuals(setting::ContainerSetting, simulation::Simulation)
-    indivs = Vector{Individual}()
-    present_individuals!(indivs, setting, simulation)
+function _append_attending!(indivs::Vector{Individual}, c::ContainerSetting, top::Setting, simulation::Simulation)
+    is_open(c) || return indivs
+    stngs = settings(simulation, contains_type(typeof(c)))
+    for k in c.contains
+        _append_attending!(indivs, stngs[k], top, simulation)
+    end
     return indivs
 end
 
@@ -520,9 +491,7 @@ function open!(setting::Setting)
     setting.isopen = true
     pool = _pool(setting)
     if pool !== nothing
-        _count_closed!(pool, -1)
-        # the containers above now hold different members, so their block is repacked
-        _mark_dirty!(pool, setting)
+        _count_closed!(pool, setting, -1)
     end
     return nothing
 end
@@ -553,9 +522,7 @@ function close!(setting::Setting)
     setting.isopen = false
     pool = _pool(setting)
     if pool !== nothing
-        _count_closed!(pool, +1)
-        # the containers above now hold different members, so their block is repacked
-        _mark_dirty!(pool, setting)
+        _count_closed!(pool, setting, +1)
     end
     return nothing
 end
@@ -585,9 +552,13 @@ close!(setting::IndividualSetting, simulation::Simulation) = close!(setting)
 
 Removes all settings that have no individuals associated with them.
 In the end update all ids to ensure that they are still correspond to the
-entry in the settings container.
+entry in the settings container. Throws once the settings are built into pools.
 """
 function remove_empty_settings!(sim::Simulation)
+    cntnr = settingscontainer(sim)
+    # plan entries and pool layouts keep the old ids
+    (isempty(cntnr.pools) && isempty(cntnr.flat_pools)) || throw(ArgumentError(
+        "the settings are built already, and their members' plans name them by id; leave empty settings out of the population instead"))
     # Create a dictionary with the types as keys and the indices of the settings that should be removed as values
     rem_dict = Dict()
 
@@ -615,6 +586,61 @@ function remove_empty_settings!(sim::Simulation)
     new_setting_ids!(settingscontainer(sim))
 end 
 
+"""
+    contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
+
+Sets the setting's `ContactSamplingMethod` and raises the simulation's contact rate bound for its type to match.
+"""
+function contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
+    _assign_contact_sampling_method!(setting, csm)
+    cntnr = settingscontainer(sim)
+    _raise_rate_bound!(cntnr, setting)
+    # a setting outside the container has no stored method to restore
+    t = setting_type_index(typeof(setting))
+    t <= length(cntnr.type_methods_changed) && (cntnr.type_methods_changed[t] = true)
+    return setting.contact_sampling_method
+end
+
+# Gives every setting of type `T` a copy of `csm` and makes it the method `reset!` restores.
+function _set_type_contact_sampling_method!(sim::Simulation, ::Type{T}, csm::ContactSamplingMethod) where {T<:Setting}
+    cntnr = settingscontainer(sim)
+    t = setting_type_index(T)
+    stored = deepcopy(csm)
+    cntnr.type_methods[t] = stored
+    cntnr.type_methods_changed[t] = false
+    _set_contact_sampling_method!(settings(cntnr, T), stored, T)
+    # every setting of the type now holds it, so its bound is exact
+    cntnr.rate_bounds[t] = contact_rate_bound(csm)
+    return nothing
+end
+
+# The method `reset!` gives settings of type `T`, or `nothing` if none is stored.
+_stored_type_method(cntnr::SettingsContainer, ::Type{T}) where {T<:Setting} = cntnr.type_methods[setting_type_index(T)]
+
+# Stores a copy of each type's method, which the constructor gave all settings of the type, for `reset!`.
+function _store_type_methods!(cntnr::SettingsContainer)
+    for (T, stngs) in cntnr.settings
+        isempty(stngs) && continue
+        csm = deepcopy(contact_sampling_method(first(stngs)))
+        # drop what the copy cached about the first setting's members
+        membership_changed!(csm, first(stngs))
+        cntnr.type_methods[setting_type_index(T)] = csm
+    end
+    return nothing
+end
+
+# Gives the settings of each type whose method changed since the last `reset!` the stored one again.
+function _restore_type_methods!(cntnr::SettingsContainer)
+    for (t, changed) in enumerate(cntnr.type_methods_changed)
+        csm = cntnr.type_methods[t]
+        (changed && csm !== nothing) || continue
+        T = setting_type_from_index(UInt8(t))
+        _set_contact_sampling_method!(settings(cntnr, T), csm, T)
+    end
+    fill!(cntnr.type_methods_changed, false)
+    return nothing
+end
+
 
 ###
 ### SCALE BOUNDS
@@ -623,6 +649,13 @@ end
 ###
 
 @inline _scale_bound(s::T) where {T<:Setting} = hasfield(T, :scale_bound) ? s.scale_bound : 1.0f0
+
+# Throws if `scale` is above 1 for a type without `scale_bound`, whose contact draws could not cover it.
+function _check_scale_field(::Type{T}, scale::Real) where {T<:Setting}
+    (scale <= 1 || hasfield(T, :scale_bound)) && return nothing
+    throw(ArgumentError("$T has no `scale_bound` field, so its members cannot have scales above 1 (got $scale); " *
+        "add `scale_bound::Float32 = 1` to the struct"))
+end
 
 # recounts a leaf's bound from its members
 function _refresh_scale_bound!(plans::ActivityPlanStore, s::T) where {T<:IndividualSetting}
@@ -662,6 +695,22 @@ add_member!(setting::IndividualSetting, individual::Individual, sim::Simulation;
     add_member!(setting, individual, population(sim); primary = primary, scale = scale)
 
 """
+    remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Removes a member, taking the population from the simulation.
+"""
+remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    remove_member!(setting, individual, population(sim))
+
+"""
+    mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation)
+
+Marks a member deceased, taking the population from the simulation.
+"""
+mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
+    mark_deceased!(setting, individual, population(sim))
+
+"""
     set_primary!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
 
 Makes setting `sid` the individual's primary setting of type `T`, taking the population from
@@ -679,38 +728,11 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
     plans = activity_plans(sim)
     _set_entry_scale!(plans, individual, T, sid, scale)
     s = settings(sim, T)[sid]
-    # raising a scale can only raise the bound; lowering one may free it, so recount
-    # the bound must use the scale as rounded into the entry's Float16
-    stored = Float32(Float16(scale))
+    e = plans.entries[plan_slot(plans, individual, T, Int32(sid))]
+    stored = Float32(entry_scale(e))
     # a deceased member's scale does not count
-    deceased = _is_deceased(s, member_index(plans.entries[plan_slot(plans, individual, T, sid)]))
+    deceased = _is_deceased(s, member_index(e))
+    # raising a scale can only raise the bound; lowering one may free it, so recount
     !deceased && stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
     return nothing
 end
-
-"""
-    contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
-
-Sets the setting's `ContactSamplingMethod` and raises the simulation's contact rate bound for its type to match.
-"""
-function contact_sampling_method!(sim::Simulation, setting::Setting, csm::ContactSamplingMethod)
-    _assign_contact_sampling_method!(setting, csm)
-    _raise_rate_bound!(settingscontainer(sim), setting)
-    return setting.contact_sampling_method
-end
-
-"""
-    remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation)
-
-Removes a member, taking the population from the simulation.
-"""
-remove_member!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
-    remove_member!(setting, individual, population(sim))
-
-"""
-    mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation)
-
-Marks a member deceased, taking the population from the simulation.
-"""
-mark_deceased!(setting::IndividualSetting, individual::Individual, sim::Simulation) =
-    mark_deceased!(setting, individual, population(sim))

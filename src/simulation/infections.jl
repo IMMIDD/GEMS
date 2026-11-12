@@ -32,11 +32,27 @@ end
 # its setting is loaded, and a level that drew nobody is skipped; `_draw_at_visit` skips none.
 function _foreach_spread_setting(visit::V, ind::Individual, sim::Simulation, draw::D) where {V, D}
     plans = activity_plans(sim)
-    for slot in plan_slots(plans, ind)
-        e = @inbounds plans.entries[slot]
-        _with_entry_settings(leaves -> _visit_entry(visit, leaves, e, slot, ind, sim, draw), settingscontainer(sim), e)
+    slots = plan_slots(plans, ind)
+    # entries sort by type index, so the built-ins come first and any custom types after them
+    for slot in slots
+        setting_type_index(@inbounds plans.entries[slot]) > _N_BUILTIN_SETTING_TYPES && break
+        _visit_slot(visit, slot, ind, sim, draw)
+    end
+    # custom types in rank order, which does not depend on when they were registered
+    has_custom = !isempty(slots) && setting_type_index(@inbounds plans.entries[last(slots)]) > _N_BUILTIN_SETTING_TYPES
+    if has_custom
+        for t in settingscontainer(sim).ranked_types, slot in _type_slots(plans, ind, t)
+            _visit_slot(visit, slot, ind, sim, draw)
+        end
     end
     _visit_global(visit, ind, sim, draw)
+    return nothing
+end
+
+# Visits the setting of the entry at `slot`.
+@inline function _visit_slot(visit::V, slot::Int, ind::Individual, sim::Simulation, draw::D) where {V, D}
+    e = @inbounds activity_plans(sim).entries[slot]
+    _with_entry_settings(leaves -> _visit_entry(visit, leaves, e, slot, ind, sim, draw), settingscontainer(sim), e)
     return nothing
 end
 
@@ -48,7 +64,7 @@ function _visit_entry(visit::V, leaves::AbstractVector{S}, e::PlanEntry, slot::I
     any(_needs_visit, draws) || return nothing
     leaf = leaves[setting_id(e)]
     leaf_index = member_index(e)
-    # the dead are not in `present_members`
+    # the dead are not in `living_members`
     _is_deceased(leaf, leaf_index) && return nothing
     _visit_up(visit, leaf, leaf_index, leaf, leaf_index, draws, settingscontainer(sim))
     return nothing
@@ -82,18 +98,19 @@ function _visit_global(visit::V, ind::Individual, sim::Simulation, draw::D) wher
     return nothing
 end
 
-# `ind`'s position in the GlobalSetting, which equals its population index. 0 without a GlobalSetting
-# or for someone added to the population after it was built.
+# `ind`'s position in the GlobalSetting. 0 without a GlobalSetting or for someone added to the population
+# after it was built.
 function _global_position(ind::Individual, sim::Simulation)::Int
     # not `settings(sim, GlobalSetting)`, which allocates when there is none
     gs = get(settingscontainer(sim).settings, GlobalSetting, nothing)
     (gs === nothing || isempty(gs)) && return 0
-    k = _individual_index(population(sim), id(ind))
-    return k <= length(individuals(@inbounds (gs::Vector{GlobalSetting})[1])) ? k : 0
+    g = @inbounds (gs::Vector{GlobalSetting})[1]
+    k = _global_position(g, ind, population(sim))
+    return k <= length(individuals(g)) ? k : 0
 end
 
 # Samples `ind`'s contacts in `setting` and tries each pathogen they shed on them. `frame_pos` is `ind`'s
-# index in `present_members`, `drawn` the contacts drawn before the visit (see `_contact_draw`).
+# index in `living_members`, `drawn` the contacts drawn before the visit (see `_contact_draw`).
 function _spread_in!(setting::Setting, frame_pos::Int, ind::Individual, sim::Simulation, drawn)
     current_tick = tick(sim)
     can_infect(ind, setting, current_tick) || return nothing
@@ -108,12 +125,12 @@ function _spread_in!(setting::Setting, frame_pos::Int, ind::Individual, sim::Sim
     contacts = sim.scratch_buffers.contact[Threads.threadid()]
     _with_sampling_method(setting.contact_sampling_method) do csm
         sample_scaled_contacts!(contacts, sim.scratch_buffers.draw[Threads.threadid()], csm, setting, frame_pos,
-            present_members(setting, cntnr), current_tick, true, rng(sim), plans, cntnr,
+            living_members(setting, cntnr), current_tick, true, rng(sim), plans, cntnr,
             s_host, _scale_bound(setting); thin = thin, drawn = drawn)
     end
 
     # every contact passed `can_be_contacted` when it was sampled
-    type_rank = setting_type_index(typeof(setting))
+    type_rank = _type_rank(cntnr, typeof(setting))
     for c in contacts
         _try_to_infect!(ind, c, sim, setting, bounds, thin, Int32(frame_pos), type_rank)
     end
@@ -208,28 +225,7 @@ function can_infect(ind::Individual, setting::Setting, tick::Int16)::Bool
 end
 
 # `can_infect` without the open check, which needs only the setting's type.
-function _can_infect(ind::Individual, setting_type::Type{S})::Bool where {S<:Setting}
-    if !infectious(ind)
-        return false
-    end
-
-    if is_hospitalized(ind)
-        return false
-    end
-
-    # homebound hosts cannot leave the household
-    if is_homebound(ind) && (setting_type !== Household)
-        return false
-    end
-
-    if isquarantined(ind)
-        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (setting_type !== Household)
-            return false
-        end
-    end
-
-    return true
-end
+_can_infect(ind::Individual, ::Type{S}) where {S<:Setting} = infectious(ind) && !_kept_home(ind, S)
 
 """
     can_be_contacted(ind::Individual, setting::Setting)::Bool
@@ -238,27 +234,13 @@ Whether `ind` can be contacted, and so infected, in `setting`: alive, not hospit
 home neither by being homebound nor by household quarantine.
 """
 function can_be_contacted(ind::Individual, setting::Setting)::Bool
-    if dead(ind)
-        return false
-    end
-
-    if is_hospitalized(ind)
-        return false
-    end
-
-    # homebound hosts cannot leave the household
-    if is_homebound(ind) && (typeof(setting) != Household)
-        return false
-    end
-
-    if isquarantined(ind)
-        if quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE && (typeof(setting) != Household)
-            return false
-        end
-    end
-
-    return true
+    return !dead(ind) && !_kept_home(ind, typeof(setting))
 end
+
+# Whether `ind` stays out of settings of type `S`: in hospital, or kept home, which still allows the household.
+@inline _kept_home(ind::Individual, ::Type{S}) where {S<:Setting} =
+    is_hospitalized(ind) || (S !== Household && (is_homebound(ind) ||
+        (isquarantined(ind) && quarantine_status(ind) == QUARANTINE_STATE_HOUSEHOLD_QUARANTINE)))
 
 
 ###
@@ -319,7 +301,7 @@ function _try_to_infect!(infecter::Individual,
             rng(sim),
             id(infecter),
             id(setting),
-            settingchar(setting),
+            settingchar(setting, settingscontainer(sim)),
             infection_id(infecter, sim, id(pathogen)),
             infecter_position,
             type_rank)
@@ -342,7 +324,10 @@ function _infection_probability(infecter::Individual, infectee::Individual, sim:
         rng(sim)
     ))
     infection_probability > bound * (1 + 1e-9) &&
-        error("the transmission bound of $(typeof(transmission_function(pathogen))) is $bound, below its probability $infection_probability")
+        error("the transmission bound of $(typeof(transmission_function(pathogen))) is $bound, below its probability $infection_probability. " *
+            "Either a `max_effective_transmission_probability` or `susceptibility_bound` method returns too little, or an " *
+            "`effective_transmission_probability` or `susceptibility_factor` method was defined after the Simulation was built; " *
+            "define such methods before building it, or build it with `transmission_prethinning = false`")
     return infection_probability
 end
 
@@ -394,8 +379,8 @@ is staged for `flush_pending_infections!`, which assigns its id and logs it; ret
 - `setting_id::Int32`: ID of the setting the infection happens in
 - `setting_type::Char`: Setting type as char (e.g. 'h' for `Household`)
 - `source_infection_id::Int32`: Current infection ID of the infecting individual
-- `infecter_position::Int32`: Infecting individual's index in the setting's `present_members`
-- `type_rank::UInt8`: Index of the setting's type. With the setting id and `infecter_position`, it picks
+- `infecter_position::Int32`: Infecting individual's index in the setting's `living_members`
+- `type_rank::UInt8`: Rank of the setting's type among the container's types. With the setting id and `infecter_position`, it picks
   which infection is kept when an individual is infected twice in one tick
 """
 function infect!(infectee::Individual,

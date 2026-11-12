@@ -249,12 +249,7 @@ effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id:
 Upper bound on `effective_transmission_probability` over every possible infectee in `setting`, at most `1.0`.
 """
 function max_effective_transmission_probability(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, setting::Setting, tick::Int16, sim::Simulation)::Float64
-    profile = immunity_profile(get_pathogen(sim, pathogen_id))
-    p = max_transmission_probability(transFunc, pathogen_id, infecter, setting, tick, sim) *
-        infectiousness(infecter, sim, pathogen_id) / 100.0 *
-        susceptibility_bound(profile)
-    # a zero factor zeroes the probability, whatever an unbounded one says
-    return isnan(p) ? 0.0 : min(1.0, p)
+    return _effective_bound(max_transmission_probability(transFunc, pathogen_id, infecter, setting, tick, sim), pathogen_id, infecter, sim)
 end
 
 """
@@ -263,11 +258,14 @@ end
 Upper bound on `max_effective_transmission_probability` over every setting of type `S`, at most `1.0`.
 """
 function max_effective_transmission_probability_in_type(transFunc::TransmissionFunction, pathogen_id::Int8, infecter::Individual, ::Type{S}, tick::Int16, sim::Simulation)::Float64 where {S<:Setting}
+    return _effective_bound(max_transmission_probability_in_type(transFunc, pathogen_id, infecter, S, tick, sim), pathogen_id, infecter, sim)
+end
+
+# A transmission bound `max_tp` scaled by the infecter's infectiousness and the immunity profile's susceptibility bound, at most 1.
+@inline function _effective_bound(max_tp::Real, pathogen_id::Int8, infecter::Individual, sim::Simulation)::Float64
     profile = immunity_profile(get_pathogen(sim, pathogen_id))
-    p = max_transmission_probability_in_type(transFunc, pathogen_id, infecter, S, tick, sim) *
-        infectiousness(infecter, sim, pathogen_id) / 100.0 *
-        susceptibility_bound(profile)
-    # same expression as `max_effective_transmission_probability`, so equal bounds give equal values
+    p = max_tp * infectiousness(infecter, sim, pathogen_id) / 100.0 * susceptibility_bound(profile)
+    # a zero factor zeroes the probability, whatever an unbounded one says
     return isnan(p) ? 0.0 : min(1.0, p)
 end
 

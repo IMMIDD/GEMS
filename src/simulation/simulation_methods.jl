@@ -531,8 +531,8 @@ function _commit_infection!(sim::Simulation, ind::Individual, p::_PendingInfecti
         recovery(p.dp),
         p.setting_id,
         p.setting_type,
-        # an infection in a setting is located at the host's household; a seed has no location
-        p.setting_id == DEFAULT_SETTING_ID ? DEFAULT_SETTING_ID : household_id(ind, activity_plans(sim)),
+        # the host's household at infection, also for a seed
+        household_id(ind, activity_plans(sim)),
         p.source_infection_id
     )
     state = push_infection!(infections, ind, p.pathogen_id, infection_id, p.dp, p.progression_id)
@@ -788,6 +788,36 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     return _UpdateState(_next_update(indiv, infection_registry(sim, id(indiv)), sim.pathogens, tick), indiv)
 end
 
+"""
+    update_individuals!(sim::Simulation)
+
+Updates every active individual that has an update due and collects the infectious ones per thread for the transmission phase.
+"""
+function update_individuals!(sim::Simulation)
+    t = tick(sim)
+    inds = individuals(population(sim))
+    active = sim.active_individuals
+    states = sim.update_states
+    foreach(empty!, sim.infectious_individuals)
+    foreach(_reset!, sim.state_log_counts)
+    due(j) = @inbounds(active[j] && states[j].next_update <= t)
+    Threads.@threads :static for k in eachindex(inds)
+        _prefetch_flagged_ahead(due, inds, k)
+        @inbounds active[k] || continue
+        # only the pointer; an individual with nothing due is not read
+        i = @inbounds inds[k]
+        if due(k)
+            @inbounds states[k] = update_individual!(i, t, sim)
+            @inbounds active[k] = _stays_active(i)
+        end
+        s = @inbounds states[k]
+        # the transmission phase goes through exactly these
+        s.infectious && push!(sim.infectious_individuals[Threads.threadid()], i)
+        _count_for_state_log!(sim.state_log_counts[Threads.threadid()], i, s)
+    end
+    return nothing
+end
+
 # Prefetching for the loops over individuals: each one is a cache miss unless fetched ahead.
 
 # How many list positions ahead `_prefetch_listed_ahead` fetches individuals and their plan entries
@@ -834,48 +864,6 @@ const FLAGGED_PREFETCH_DISTANCE = 256
     return nothing
 end
 
-"""
-    update_individuals!(sim::Simulation)
-
-Updates every active individual that has an update due and collects the infectious ones per thread for the transmission phase.
-"""
-function update_individuals!(sim::Simulation)
-    t = tick(sim)
-    inds = individuals(population(sim))
-    active = sim.active_individuals
-    states = sim.update_states
-    foreach(empty!, sim.infectious_individuals)
-    foreach(_reset!, sim.state_log_counts)
-    due(j) = @inbounds(active[j] && states[j].next_update <= t)
-    Threads.@threads :static for k in eachindex(inds)
-        _prefetch_flagged_ahead(due, inds, k)
-        @inbounds active[k] || continue
-        # only the pointer; an individual with nothing due is not read
-        i = @inbounds inds[k]
-        if due(k)
-            @inbounds states[k] = update_individual!(i, t, sim)
-            @inbounds active[k] = _stays_active(i)
-        end
-        s = @inbounds states[k]
-        # the transmission phase goes through exactly these
-        s.infectious && push!(sim.infectious_individuals[Threads.threadid()], i)
-        _count_for_state_log!(sim.state_log_counts[Threads.threadid()], i, s)
-    end
-    return nothing
-end
-
-"""
-    mark_deceased!(individual::Individual, sim::Simulation)
-
-Marks a dead individual deceased in each of their settings.
-"""
-function mark_deceased!(individual::Individual, sim::Simulation)
-    for e in plan_entries(activity_plans(sim), individual)
-        _with_entry_setting(s -> mark_deceased!(s, individual, sim), settingscontainer(sim), e)
-    end
-    return nothing
-end
-
 # Marks this tick's dead deceased; `spread_infections!` repacks the pools. A mark swaps two members, so
 # each setting, and all settings of a pooled type, are marked by a single thread.
 function apply_deaths!(sim::Simulation)
@@ -884,12 +872,19 @@ function apply_deaths!(sim::Simulation)
     # (type, part, parts): a flat type split by setting id, a pooled type whole
     parts = Tuple{DataType, Int, Int}[]
     for T in settingtypes(cntnr)
-        (T <: IndividualSetting && hasfield(T, :deceased)) || continue
+        (T <: IndividualSetting && T !== GlobalSetting) || continue
         n = hasfield(T, :pool) ? 1 : Threads.nthreads()
         append!(parts, ((T, p, n) for p in 0:(n - 1)))
     end
     Threads.@threads :dynamic for (T, part, n) in parts
         _apply_deaths!(sim, settings(cntnr, T), part, n)
+    end
+    # nobody holds a plan entry for the GlobalSetting, so it is marked here, by one thread
+    gs = get(cntnr.settings, GlobalSetting, nothing)
+    if gs !== nothing && !isempty(gs)
+        for buf in sim.staging_buffers.newly_dead, ind in buf
+            mark_deceased!(gs[1], ind, sim)
+        end
     end
     foreach(empty!, sim.staging_buffers.newly_dead)
     return nothing

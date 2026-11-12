@@ -1,6 +1,6 @@
 export AgeBasedContactSampling
 
-# Per host age bin, the contact weight of all present members and of all but the host:
+# Per host age bin, the contact weight of all members contacts are drawn from and of all but the host:
 # `weight_with_host[a] = Σ_b c_b m_ab` and `weight_without_host[a] = Σ_b (c_b - δ_ab) m_ab` for bin counts `c`.
 struct _AgeRateCache
     weight_with_host::Vector{Float64}
@@ -37,7 +37,7 @@ mutable struct AgeBasedContactSampling <: ContactSamplingMethod
     row_max::Vector{Float64}
     # filled by the first `contact_rate`, and emptied with the age pyramid
     rate_cache::Union{Nothing, _AgeRateCache}
-    # present members per age bin, counted once and then kept current by `membership_changed!`
+    # members per age bin, counted once and then kept current by `membership_changed!`
     bin_counts::Vector{Int}
 
     function AgeBasedContactSampling(; contactparameter::Float64, contact_matrix_file::String, interval::Int64)
@@ -68,21 +68,21 @@ mutable struct AgeBasedContactSampling <: ContactSamplingMethod
 end
 
 """
-    sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
 
 Sample random contacts based on a spread around `contactparameter_sampling.contactparameter` with weighted sampling based on age distance.
 The `indivs` buffer is expected to be empty on entry and will be filled with the sampled contacts in-place.
 """
-function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
-    if isempty(present_inds)
+function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, replace::Bool, rng::Xoshiro)
+    if isempty(members)
         throw(ArgumentError("No Individual is present in $setting. Please provide a Setting, where at least 1 Individual is present!"))
     end
 
-    if length(present_inds) == 1
+    if length(members) == 1
         return indivs
     end
 
-    individual = present_inds[individual_index]
+    individual = members[individual_index]
 
     # get sampling parameters
     expected_number_of_contacts = contactparameter_sampling.contactparameter
@@ -98,7 +98,7 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
     
     # if age_pyramid is not ready compute it
     if size(age_pyramid)[1] == 0
-        counts = _bin_counts!(contactparameter_sampling, present_inds)
+        counts = _bin_counts!(contactparameter_sampling, members)
         age_pyramid = counts ./ sum(counts)
         contactparameter_sampling.age_pyramid = age_pyramid
     end
@@ -121,18 +121,18 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
         n0 = length(indivs)
         resize!(indivs, n0 + number_of_contacts)
         @inbounds for i in 1:number_of_contacts
-            offset = gems_rand(rng, 1:length(present_inds) - 1)
-            contact_index = mod(individual_index + offset - 1, length(present_inds)) + 1
-            indivs[n0 + i] = present_inds[contact_index]
+            offset = gems_rand(rng, 1:length(members) - 1)
+            contact_index = mod(individual_index + offset - 1, length(members)) + 1
+            indivs[n0 + i] = members[contact_index]
         end
     else
-        number_of_contacts = min(number_of_contacts, length(present_inds) - 1)
+        number_of_contacts = min(number_of_contacts, length(members) - 1)
         resize!(indivs, number_of_contacts)
 
-        gems_sample!(rng, @view(present_inds[1:end-1]), indivs; replace=false)
+        gems_sample!(rng, @view(members[1:end-1]), indivs; replace=false)
         for i = 1:length(indivs)
-            if indivs[i] === present_inds[individual_index]
-                indivs[i] = present_inds[end]
+            if indivs[i] === members[individual_index]
+                indivs[i] = members[end]
                 break
             end
         end
@@ -160,16 +160,16 @@ function sample_contacts!(indivs::Vector{Individual}, contactparameter_sampling:
 end
 
 """
-    contact_rate(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
+    contact_rate(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64
 
 Returns the mean number of contacts left after the age filter, `contactparameter` times the
 others' contact weight over everyone's, scaled by `n / (n - 1)`.
 """
-function contact_rate(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16)::Float64
-    n = length(present_inds)
+function contact_rate(contactparameter_sampling::AgeBasedContactSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16)::Float64
+    n = length(members)
     (n <= 1 || contactparameter_sampling.contactparameter == 0) && return 0.0
-    cache = _age_rate_cache!(contactparameter_sampling, present_inds)
-    a = _age_bin(contactparameter_sampling, present_inds[individual_index])
+    cache = _age_rate_cache!(contactparameter_sampling, members)
+    a = _age_bin(contactparameter_sampling, members[individual_index])
     others = cache.weight_without_host[a]
     # nobody but the host has weight in its row
     others > 0 || return 0.0
@@ -187,13 +187,13 @@ contact_rate_bound(contactparameter_sampling::AgeBasedContactSampling)::Float64 
 @inline _age_bin(csm::AgeBasedContactSampling, individual::Individual) =
     (min(individual.age, csm.contact_matrix.aggregation_bound - 1) ÷ csm.contact_matrix.interval_steps) + 1
 
-# The rate cache for `present_inds`, built on first use. Threads may build it at once, so it is
+# The rate cache for `members`, built on first use. Threads may build it at once, so it is
 # published whole.
-function _age_rate_cache!(csm::AgeBasedContactSampling, present_inds::AbstractVector{Individual})
+function _age_rate_cache!(csm::AgeBasedContactSampling, members::AbstractVector{Individual})
     cache = csm.rate_cache
     cache === nothing || return cache
     m = csm.contact_matrix.data
-    counts = _bin_counts!(csm, present_inds)
+    counts = _bin_counts!(csm, members)
     weight_with_host = [sum(counts[b] * m[a, b] for b in eachindex(counts)) for a in eachindex(counts)]
     # summed per term, so a host alone in its row's support gives exactly 0
     weight_without_host = [sum((counts[b] - (a == b)) * m[a, b] for b in eachindex(counts)) for a in eachindex(counts)]
@@ -202,12 +202,12 @@ function _age_rate_cache!(csm::AgeBasedContactSampling, present_inds::AbstractVe
     return cache
 end
 
-# The present members per age bin, counted on first use.
-function _bin_counts!(csm::AgeBasedContactSampling, present_inds::AbstractVector{Individual})
+# The members per age bin, counted on first use.
+function _bin_counts!(csm::AgeBasedContactSampling, members::AbstractVector{Individual})
     counts = csm.bin_counts
     isempty(counts) || return counts
     counts = zeros(Int, size(csm.contact_matrix.data, 1))
-    for ind in present_inds
+    for ind in members
         counts[_age_bin(csm, ind)] += 1
     end
     csm.bin_counts = counts
@@ -215,19 +215,19 @@ function _bin_counts!(csm::AgeBasedContactSampling, present_inds::AbstractVector
 end
 
 """
-    sample_k_contacts!(indivs::Vector{Individual}, csm::AgeBasedContactSampling, setting::Setting, individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+    sample_k_contacts!(indivs::Vector{Individual}, csm::AgeBasedContactSampling, setting::Setting, individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
 
 Appends `k` contacts by rejection: a uniform other, kept with its weight over the row's largest, as
 `sample_contacts!` keeps its candidates.
 """
 function sample_k_contacts!(indivs::Vector{Individual}, csm::AgeBasedContactSampling, setting::Setting,
-        individual_index::Int, present_inds::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
+        individual_index::Int, members::AbstractVector{Individual}, tick::Int16, k::Int, rng::Xoshiro)
     k > 0 || return indivs
-    n = length(present_inds)
-    a = _age_bin(csm, present_inds[individual_index])
+    n = length(members)
+    a = _age_bin(csm, members[individual_index])
     m = csm.contact_matrix.data
     m_max = csm.row_max[a]
-    others = _age_rate_cache!(csm, present_inds).weight_without_host[a]
+    others = _age_rate_cache!(csm, members).weight_without_host[a]
     others > 0 || error("nobody else in this setting has contact weight for age bin $a, so no contact can be drawn")
     # expected candidates per contact are m_max (n - 1) / others
     limit = ceil(Int, 100 * k * m_max * (n - 1) / others) + 100
@@ -235,7 +235,7 @@ function sample_k_contacts!(indivs::Vector{Individual}, csm::AgeBasedContactSamp
     while k > 0
         (tries += 1) > limit && error("drawing contacts by age did not finish; the contact rate cache may be stale")
         offset = gems_rand(rng, 1:(n - 1))
-        c = present_inds[mod(individual_index + offset - 1, n) + 1]
+        c = members[mod(individual_index + offset - 1, n) + 1]
         w = m[a, _age_bin(csm, c)]
         if w > 0.0 && gems_rand(rng) < w / m_max
             push!(indivs, c)

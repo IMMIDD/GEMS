@@ -171,7 +171,8 @@
             @test df1.recovery[end] >= t+10
             @test df1.setting_id[end] == GEMS.DEFAULT_SETTING_ID
             @test df1.setting_type[end] == '?'
-            @test df1.household_id[end] == GEMS.DEFAULT_SETTING_ID
+            # a seed has no setting, but logs the household it had
+            @test df1.household_id[end] == household_id(infecter, sim)
             @test df1.source_infection_id[end] == GEMS.DEFAULT_INFECTION_ID
 
             # infect another agent in a household setting
@@ -202,6 +203,14 @@
             @test df2.household_id[end] == id(h)
             @test df2.source_infection_id[end] == df1.infection_id[end]
 
+        end
+
+        @testset "Infection Ids Stop Before They Wrap" begin
+            il = InfectionLogger()
+            il.last_infection_id = typemax(Int32) - Int32(2)
+            @test GEMS.reserve_infection_ids!(il, 2) == typemax(Int32) - Int32(1)
+            @test_throws OverflowError GEMS.reserve_infection_ids!(il, 1)
+            @test il.last_infection_id == typemax(Int32)
         end
 
         @testset "Infecter Index" begin
@@ -401,7 +410,8 @@
             end
 
             @testset "Reset Drops The Index" begin
-                sim = Simulation(pop_size = 1000, seed = 7)
+                # a high rate, so the run has an infecter whatever the seed and thread count give
+                sim = Simulation(pop_size = 1000, seed = 7, transmission_rate = 0.5)
                 run!(sim, with_progressbar = false)
 
                 il = infectionlogger(sim)

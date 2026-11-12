@@ -96,9 +96,10 @@ executed once this strategy is triggered. All measures must be
 associated with individuals (rather than settings), thus being
 `IMeasure`s. An `IStrategy` also contains a string `name` and
 an optoional `condition` predicate function. The `condition`
-must be a one-argument function returning a boolean value. 
-The function is called once the strategy was triggered and can
-condition its execution. The argument is the respective individual.
+returns a boolean value for the individual, and may take the 
+simulation as a second argument. The function is called once 
+the strategy was triggered and can condition its execution. 
+The argument is the respective individual.
 """
 mutable struct IStrategy{S<:Simulation} <: Strategy
     name::String
@@ -166,6 +167,7 @@ mutable struct IStrategy{S<:Simulation} <: Strategy
 
     """
     function IStrategy(name::String, sim::S; condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
+        condition = _bind_sim(condition, Individual, sim)
         _check_condition(condition, Individual, "IStrategy '$name'")
         str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), condition === _always_true || threadsafe, sim)
         add_strategy!(sim, str)
@@ -182,9 +184,10 @@ executed once this strategy is triggered. All measures must be
 associated with settings (rather than individuals), thus being
 `SMeasure`s. An `SStrategy` also contains a string `name` and
 an optional `condition` predicate function. The `condition`
-must be a one-argument function returning a boolean value. 
-The function is called once the strategy was triggered and can
-condition its execution. The argument is the respective individual.
+returns a boolean value for the setting, and may take the 
+simulation as a second argument. The function is called once 
+the strategy was triggered and can condition its execution. 
+The argument is the respective setting.
 """
 mutable struct SStrategy{S<:Simulation} <: Strategy
     name::String
@@ -253,6 +256,7 @@ mutable struct SStrategy{S<:Simulation} <: Strategy
 
     """
     function SStrategy(name::String, sim::S; condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
+        condition = _bind_sim(condition, Setting, sim)
         _check_condition(condition, Setting, "SStrategy '$name'")
         str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), condition === _always_true || threadsafe, sim)
         add_strategy!(sim, str)
@@ -296,9 +300,9 @@ Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
 
 - `str::Strategy`: Strategy that the measure will be added to
 -  `measure::Measure`: Measure that will be added to te strategy
-- `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed.
-- `delay::Function = x -> 0` *(optional)*: Single-argument function that must resolve to an integer. The delay will extend the offset.
-- `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure.
+- `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed. With `0`, the measure acts on the triggering tick, before that tick's transmission.
+- `delay::Function = x -> 0` *(optional)*: Function of the focal object, and optionally the simulation as a second argument, that must resolve to an integer. The delay will extend the offset.
+- `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure. It may take the simulation as a second argument.
 - `threadsafe::Bool = false` *(optional)*: Promises that `delay`, `condition` and functions passed to `measure` (like a `selectionfilter`, or a tracing `success_rate` or `contact_filter`) only read the objects they are given and state that does not change while events run, and write nothing shared, so large tick triggers can evaluate `delay` on several threads and the measure can run in the parallel lane. Covers only the closures in this call.
 
 # Examples
@@ -335,6 +339,8 @@ calculated `delay` is added to the `offset` (if specified).
 function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = _no_delay, condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
     sim = str.sim
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
+    delay, condition = _bind_sim(delay, Individual, sim), _bind_sim(condition, Individual, sim)
+    _check_applicable(delay, Individual, "delay", "a measure of IStrategy '$(str.name)'")
     _check_condition(condition, Individual, "a measure of IStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn, _parallel_entry(measure, delay, condition, threadsafe)))
     str.parallel_trigger &= delay === _no_delay || threadsafe
@@ -346,6 +352,8 @@ end
 function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = _no_delay, condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
     sim = str.sim
     fn = SProcessFn(s -> process_measure(sim, s, measure))
+    delay, condition = _bind_sim(delay, Setting, sim), _bind_sim(condition, Setting, sim)
+    _check_applicable(delay, Setting, "delay", "a measure of SStrategy '$(str.name)'")
     _check_condition(condition, Setting, "a measure of SStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn, _parallel_entry(measure, delay, condition, threadsafe)))
     str.parallel_trigger &= delay === _no_delay || threadsafe
@@ -355,16 +363,29 @@ end
 """
     _check_condition(condition::Function, argtype::Type, owner::AbstractString)
 
-Throws an `ArgumentError` if `condition` can return something other than a `Bool` for an `argtype` argument.
-A condition whose return type Julia cannot infer is accepted.
+Throws an `ArgumentError` if `condition` has no method for an `argtype` argument, or can return something
+other than a `Bool` for one. A condition whose return type Julia cannot infer is accepted.
 """
 function _check_condition(condition::Function, argtype::Type, owner::AbstractString)
+    _check_applicable(condition, argtype, "condition", owner)
     for R in Base.return_types(condition, (argtype,))
         R === Any || R <: Bool ||
             throw(ArgumentError("The condition that you passed to $owner does not return a boolean value."))
     end
     return nothing
 end
+
+# Throws an `ArgumentError` if no method of `f` takes one `argtype` argument.
+function _check_applicable(f::Function, argtype::Type, what::AbstractString, owner::AbstractString)
+    # a method that may take some `argtype` (e.g. `f(::Household)` for `Setting`) returns something
+    all(R -> R === Union{}, Base.return_types(f, (argtype,))) && throw(ArgumentError(
+        "The $what that you passed to $owner takes neither one `$argtype` nor one `$argtype` and the simulation."))
+    return nothing
+end
+
+# `f` with `sim` as its second argument if it has such a method for an `argtype` first argument, else `f`.
+_bind_sim(f::Function, argtype::Type, sim::Simulation) =
+    isempty(methods(f, (argtype, typeof(sim)))) ? f : (x -> f(x, sim))
 
 
 """

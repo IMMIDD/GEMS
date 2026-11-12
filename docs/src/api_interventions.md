@@ -64,10 +64,10 @@ ChangeContactMethod
 CloseSetting
 CustomIMeasure
 CustomSMeasure
+FindAllSettings
 FindMembers
 FindSetting
 FindSettingMembers
-FindSettings
 IsOpen
 OpenSetting
 PoolTest
@@ -82,6 +82,7 @@ TraceSourceContacts
 ### Functions
 
 ```@docs
+apply_followup!
 apply_pool_test
 apply_test
 contact_filter(::TraceInfectiousContacts)
