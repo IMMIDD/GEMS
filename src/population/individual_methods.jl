@@ -288,6 +288,10 @@ function _primary_setting(i::Individual, sim::Simulation, ::Type{T}) where {T<:S
     return isempty(ids) ? nothing : settings(sim, T)[ids[1]]
 end
 
+# Setting `sid` of type `T`, or the individual's primary one for `PRIMARY_SETTING_ID`; `nothing` if they hold none.
+_setting_or_primary(i::Individual, sim::Simulation, ::Type{T}, sid::Int32) where {T<:Setting} =
+    sid == PRIMARY_SETTING_ID ? _primary_setting(i, sim, T) : settings(sim, T)[sid]
+
 """
     getsetting(i::Individual, sim::Simulation, ::Type{T}) where {T<:Setting}
 

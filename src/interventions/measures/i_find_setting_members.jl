@@ -108,7 +108,7 @@ function process_measure(sim::Simulation, ind::Individual, measure::FindSettingM
     st = measure |> settingtype
 
     # setting object; someone without a setting of this type has no members to find
-    s = sid == PRIMARY_SETTING_ID ? _primary_setting(ind, sim, st) : settings(sim, st)[sid]
+    s = _setting_or_primary(ind, sim, st, sid)
     isnothing(s) && return nothing
 
     INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identiying $(settingchar(s, settingscontainer(sim))) contacts $(map(x -> GEMS.id(x), [i for i in individuals(s, sim) if i != ind])) at tick $(sim |> tick)"

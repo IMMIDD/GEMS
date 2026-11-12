@@ -64,10 +64,10 @@ ChangeContactMethod
 CloseSetting
 CustomIMeasure
 CustomSMeasure
+FindAllSettings
 FindMembers
 FindSetting
 FindSettingMembers
-FindSettings
 IsOpen
 OpenSetting
 PoolTest

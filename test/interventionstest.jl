@@ -251,8 +251,8 @@ end
         process_measure(sim4, a, FindSettingMembers(Household, i_fu), Int32(2))
         @test Set(followup_focals(drain_events!(eq))) == Set(individuals(households(sim4)[2]))
 
-        # FindSettings acts on every setting of the type; the queue, not the measure, orders them
-        fs = FindSettings(Office, fu)
+        # FindAllSettings acts on every setting of the type; the queue, not the measure, orders them
+        fs = FindAllSettings(Office, fu)
         @test settingtype(fs) === Office
         @test follow_up(fs) === fu
         process_measure(sim4, a, fs)
@@ -284,7 +284,7 @@ end
             add_measure!(dept_fu, CloseSetting())
             eq5 = GEMS.event_queue(sim5)
             empty!(eq5)
-            process_measure(sim5, a5, FindSettings(Department, dept_fu))
+            process_measure(sim5, a5, FindAllSettings(Department, dept_fu))
             @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
 
             # FindSetting and FindSettingMembers reach the department through the offices below it
