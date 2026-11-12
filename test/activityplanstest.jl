@@ -301,6 +301,14 @@ end
         @test_throws ArgumentError set_scale!(unbuilt, individuals(unbuilt)[1], UnboundSetting, 1, 2.0)
     end
 
+    @testset "Only types that hold members take entries" begin
+        pop = Population(DataFrame(id = Int32[1], sex = Int8[0], age = Int8[8], household = Int32[1]))
+        ind = individuals(pop)[1]
+        @test_throws ArgumentError assign_settings!(pop, ind, School => 1)
+        @test_throws ArgumentError assign_settings!(pop, ind, GlobalSetting => 1)
+        @test plan_length(ind) == 1
+    end
+
     @testset "add_member! refuses a full plan before storing" begin
         n = Int(typemax(Int8))
         df = DataFrame(id = Int32[1, 2], sex = Int8[0, 0], age = Int8[30, 30], household = Int32[1, 2], office = Int32[1, n])

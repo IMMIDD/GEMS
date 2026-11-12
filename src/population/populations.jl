@@ -650,11 +650,6 @@ settings but no `membershipsfile` is given, rather than lose them.
 """
 function save(population::Population, path::AbstractString; membershipsfile::Union{Nothing, AbstractString} = nothing)
     table = memberships(population)
-    # the loader refuses entries of types that hold no members directly, so don't write them
-    for t in unique(table.setting_type)
-        _holds_entries(_resolve_setting_type(t)) || throw(ArgumentError(
-            "the population holds a $t membership, which a membership table cannot carry"))
-    end
     membershipsfile === nothing && nrow(table) > 0 && throw(ArgumentError(
         "the population holds settings beyond each type's primary; pass `membershipsfile` to save them"))
     result = CSV.write(path, dataframe(population))

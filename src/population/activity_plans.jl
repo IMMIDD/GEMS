@@ -28,10 +28,12 @@ end
     PlanEntry(::Type{T}, setting_id, member_index, scale = 1.0f0)
 
 Builds an entry for a setting of type `T`, resolving the dense type index and registering a
-custom type on first use.
+custom type on first use. Throws for a type whose settings hold no members directly.
 """
-PlanEntry(::Type{T}, setting_id::Integer, member_index::Integer, scale::Real = 1.0f0) where {T<:Setting} =
-    PlanEntry(Int32(setting_id), Int32(member_index), Float16(scale), register_setting_type!(T))
+function PlanEntry(::Type{T}, setting_id::Integer, member_index::Integer, scale::Real = 1.0f0) where {T<:Setting}
+    _holds_entries(T) || throw(ArgumentError("$T settings hold no members directly, so they take no plan entries"))
+    return PlanEntry(Int32(setting_id), Int32(member_index), Float16(scale), register_setting_type!(T))
+end
 
 """
     setting_id(entry::PlanEntry)
