@@ -71,6 +71,6 @@ setting, for tests that only need the id to resolve. `assign_settings!` refuses 
 plans are indexed, because a simulation must not hold such an entry.
 """
 function fake_membership!(pop::Population, ind::Individual, ::Type{T}, sid::Integer) where {T<:Setting}
-    GEMS.plan_add!(GEMS.activity_plans(pop), ind, PlanEntry(T, Int32(sid), GEMS.DEFAULT_MEMBER_INDEX))
+    GEMS.plan_add!(GEMS.activity_plans(pop), ind, GEMS.PlanEntry(T, Int32(sid), GEMS.DEFAULT_MEMBER_INDEX))
     return nothing
 end

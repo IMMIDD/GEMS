@@ -973,7 +973,7 @@ end
             leaver = first(c for c in classes if length(individuals(c)) > 2)
             remove_member!(leaver, individuals(leaver)[2], pop)
             GEMS.repack_dirty_pools!(cntnr)
-            @test pop.activity_plans isa ActivityPlanStore && cntnr.pools[SchoolClass].repeats > 0
+            @test pop.activity_plans isa GEMS.ActivityPlanStore && cntnr.pools[SchoolClass].repeats > 0
             agrees(sim)
 
             # closures at every level, and entries that do not apply

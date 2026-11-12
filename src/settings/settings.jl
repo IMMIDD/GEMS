@@ -8,7 +8,7 @@ export SchoolComplex, School, SchoolYear, SchoolClass
 export Department, Office, WorkplaceSite, Workplace
 export ContactSamplingMethod, contact_sampling_method, contact_sampling_method!
 export add!, remove!
-export add_member!, remove_member!, mark_deceased!
+export add_member!, remove_member!
 export id, individuals
 export open!, close!
 

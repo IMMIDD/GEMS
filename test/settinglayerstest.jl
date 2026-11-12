@@ -1,5 +1,5 @@
 import GEMS: setting_type_index, setting_type_from_index, plan_slot, plan_slots, plan_add!,
-    plan_remove!, setting_id, entry_active, entry_active!, entry_scale, plan_length,
+    plan_remove!, setting_id, entry_active, entry_active!, entry_scale, plan_length, activity_plans, PlanEntry,
     setting_ids, declare_setting_type!, DeclaredSetting, DEFAULT_SETTING_ID, DEFAULT_MEMBER_INDEX,
     NewSettingsAssignment, JoinAssignment, validate_plans, settingscontainer, settings,
     _membership_bit, _mask_slot, _type_scale_bound, _name_key,

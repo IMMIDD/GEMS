@@ -300,7 +300,7 @@ struct NoMethodSampler <: ContactSamplingMethod end
         inds = [Individual(id = j, age = 10 * j, sex = 1) for j in 1:9]
         tick = GEMS.DEFAULT_TICK
         household(csm) = Household(id = 1, individuals = copy(inds), contact_sampling_method = csm)
-        plans, cntnr = ActivityPlanStore(), SettingsContainer()
+        plans, cntnr = GEMS.ActivityPlanStore(), SettingsContainer()
         scaled(csm, h, rng, s_host, thin) = GEMS.sample_scaled_contacts!(Individual[], Individual[], csm, h, 2, inds, tick, true, rng,
             plans, cntnr, Float32(s_host), 1.0f0; thin = Float32(thin))
 
@@ -441,7 +441,7 @@ end
         sim = Simulation(pop_size = 100, seed = 1)
         sim.population = pop
         sim.settings = cntnr
-        return sim, cntnr, activity_plans(pop), pop, inds, cs, yr
+        return sim, cntnr, GEMS.activity_plans(pop), pop, inds, cs, yr
     end
     age_based() = AgeBasedContactSampling(2.0, 10, ContactMatrix{Float64}(ones(10, 10) ./ 10, 10, 100), Float64[])
     keep_all = GEMS.ContactFilterFn((s, t) -> true)
@@ -528,7 +528,7 @@ end
 
     @testset "the dead" begin
         sim, cntnr, plans, pop, inds, cs, yr = scaled_school(ContactparameterSampling(5.0))
-        kill(m, t) = (GEMS.dead!(m, true); m.death = Int16(t); mark_deceased!(cs[1], m, pop))
+        kill(m, t) = (GEMS.dead!(m, true); m.death = Int16(t); GEMS.mark_deceased!(cs[1], m, pop))
 
         # alive members: the view of the living, which the setting's method already counts
         @test GEMS._members_alive_at(cs[1], Int16(4), sim) isa SubArray
