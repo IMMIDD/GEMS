@@ -260,6 +260,7 @@ end
 
         # without a settings file the offices belong to no department: a clear error, and nothing to find
         @test_throws ArgumentError getsetting(a, sim4, Department)
+        @test isempty(setting_ids(a, Department, sim4))
         process_measure(sim4, a, FindSetting(Department, fu))
         process_measure(sim4, a, FindSettingMembers(Department, i_fu))
         @test isempty(eq)
@@ -279,6 +280,12 @@ end
             a5 = individuals(sim5)[1]
             @test setting_ids(a5, Office, sim5) == Int32[1, 2]
             @test setting_ids(a5, Department, sim5) == Int32[1]
+            # in two departments, the primary office's comes first
+            jldsave(joinpath(dir, "settings2.jld2"); data = Dict(
+                :Office => DataFrame(id = Int32[1, 2], contained = Int32[2, 1]),
+                :Department => DataFrame(id = Int32[1, 2], contains = [Int32[2], Int32[1]])))
+            sim6 = Simulation(population = path, membershipsfile = mpath, settingsfile = joinpath(dir, "settings2.jld2"))
+            @test setting_ids(individuals(sim6)[1], Department, sim6) == Int32[2, 1]
 
             dept_fu = SStrategy("find_departments_fu", sim5)
             add_measure!(dept_fu, CloseSetting())

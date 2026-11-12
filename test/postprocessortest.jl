@@ -45,6 +45,10 @@ import GEMS: _mean_contacts_per_age_group,
         row_of = Dict(zip(pop.id, 1:nrow(pop)))
         @test all(r -> full.sex_b[r] == pop.sex[row_of[full.id_b[r]]], 1:nrow(full))
         @test isequal(full.age_b, infs.age_b)
+        # a seed has no infecter, so its infecter columns are missing
+        seeds = findall(<(1), full.id_a)
+        @test !isempty(seeds) && all(r -> ismissing(full.sex_a[r]), seeds)
+        @test all(r -> !ismissing(full.sex_a[r]), setdiff(1:nrow(full), seeds))
         # a subset of rows works as well
         @test nrow(with_population_columns(infs[2:end, :], pp)) == nrow(infs) - 1
         # selected columns only, named by string or symbol

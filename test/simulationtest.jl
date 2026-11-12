@@ -230,6 +230,17 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
             # failing
             @test_throws ArgumentError Simulation(pop_size = 100, transmission_prethinning = 1)
             @test_throws ArgumentError GEMS.determine_transmission_prethinning(config("yes"), nothing)
+
+            # POOL SLACK
+            # passing
+            slack_config(value) = Dict("Simulation" => Dict("pool_slack" => value))
+            @test settingscontainer(Simulation(pop_size = 100, pool_slack = 0.5)).flat_pools[Household].slack == 0.5
+            @test GEMS.determine_pool_slack(Dict(), nothing) == GEMS.DEFAULT_POOL_SLACK
+            @test GEMS.determine_pool_slack(slack_config(0), nothing) === 0.0
+            @test GEMS.determine_pool_slack(slack_config(0.1), 0.3) == 0.3
+            # failing
+            @test_throws ArgumentError Simulation(pop_size = 100, pool_slack = -0.1)
+            @test_throws ArgumentError GEMS.determine_pool_slack(slack_config("lots"), nothing)
         end
 
         @testset "Population & Settings" begin

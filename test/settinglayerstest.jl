@@ -129,6 +129,10 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test gym_layer.entries isa Poisson && gym_layer.scale isa Exponential
         @test SettingLayer(LayerGym; assignment = packed, entries = DiscreteUniform(0, 127)).entries isa DiscreteUniform
         @test SettingLayer(LayerGym; assignment = packed, entries = 0, scale = 0).entries === 0
+        # a config file gives a distribution as a table
+        from_config = GEMS.create_setting_layer(LayerGym, Dict("scale" => Dict("distribution" => "Uniform", "parameters" => [0.5, 1.5]),
+            "assignment" => Dict("type" => "PackedSettings", "size" => 10)), "LayerTestGym")
+        @test from_config.scale == Uniform(0.5, 1.5)
     end
 
     @testset "Layer validation" begin
