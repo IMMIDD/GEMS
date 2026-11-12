@@ -251,6 +251,15 @@ Boolean flag that adds a single setting containing all individuals of the simula
 ```
 Can be activated or deactivated with `true` or `false`.
 
+#### `pool_slack`
+Headroom left in the setting member pools for members added during a run, as a fraction of each block's length. More slack uses more memory; less makes settings move and repack more often. Defaults to `0.25`.
+
+```toml
+[Simulation]
+    pool_slack = 0.25
+    ...
+```
+
 #### `transmission_prethinning`
 Boolean flag that thins sampled contacts by an upper bound on their infection probability before attempting infections. This saves work without changing the distribution of results, but not the random draws of a seeded run. Defaults to `true`.
 
