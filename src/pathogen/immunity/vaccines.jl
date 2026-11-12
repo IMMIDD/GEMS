@@ -160,3 +160,14 @@ The protection `vaccine` gives, checking its current values.
 VaccineProtection(vaccine::Vaccine) =
     VaccineProtection(peak(vaccine), severity_peak(vaccine), something(buildup_duration(vaccine), -1))
 
+# Protection of each registered vaccine by vaccine id and pathogen id. A vaccine's bit in `registered` is set only
+# after its entry is written, so reading an entry whose bit is set needs no lock.
+struct _VaccineTable
+    protection::Matrix{VaccineProtection}
+    registered::Vector{Threads.Atomic{UInt128}}
+    lock::ReentrantLock
+end
+
+_VaccineTable() = _VaccineTable(fill(VaccineProtection(), 127, MAX_PATHOGENS),
+    [Threads.Atomic{UInt128}(0) for _ in 1:MAX_PATHOGENS], ReentrantLock())
+

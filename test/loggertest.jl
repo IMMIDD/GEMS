@@ -399,6 +399,16 @@
                 @test infectionlogger(sim).infecter_index === nothing
             end
 
+            @testset "Built Before Events If A Strategy Traces" begin
+                sim = Simulation(pop_size = 1000, seed = 7)
+                add_measure!(IStrategy("trace", sim), TraceInfectiousContacts(IStrategy("traced", sim)))
+                @test infectionlogger(sim).infecter_index === nothing
+                step!(sim)
+                idx = infectionlogger(sim).infecter_index
+                @test idx isa GEMS.InfecterIndex
+                @test all(isempty, idx.staging)
+            end
+
             @testset "Reset Drops The Index" begin
                 # a high rate, so the run has an infecter whatever the seed and thread count give
                 sim = Simulation(pop_size = 1000, seed = 7, transmission_rate = 0.5)
@@ -530,6 +540,68 @@
 
             # all deaths should have been logged
             @test length(dl) == n_inf
+        end
+    end
+
+    @testset "Test Loggers" begin
+        # every field derives from id, so a misaligned column shows
+        log_test!(logger::GEMS.TestLogger, id, t, type) = log!(logger, Int32(id), Int16(t), iseven(id), isodd(id), Int32(id + 100), Int8(1), type, id > 2)
+        log_test!(logger::SeroprevalenceLogger, id, t, type) = log!(logger, Int32(id), Int16(t), iseven(id), isodd(id), id > 2, Int32(id + 100), Int8(1), type)
+
+        @testset "$(nameof(logger_type))" for logger_type in (GEMS.TestLogger, SeroprevalenceLogger)
+            @testset "Rows Stay Aligned And Types Decode" begin
+                logger = logger_type()
+                log_test!(logger, 1, 0, "PCR")
+                log_test!(logger, 2, 1, "Antigen")
+                log_test!(logger, 3, 1, "PCR")
+                df = dataframe(logger)
+                @test df.test_id == [1, 2, 3]
+                @test df.test_id isa Vector{Int64}
+                @test df.tick == Int16[0, 1, 1]
+                @test df.id == Int32[1, 2, 3]
+                @test df.test_result == [false, true, false]
+                @test df.infected == [true, false, true]
+                @test df.infection_id == Int32[101, 102, 103]
+                extra = logger_type === GEMS.TestLogger ? df.reportable : df.was_infected
+                @test extra == [false, false, true]
+                @test df.test_type == ["PCR", "Antigen", "PCR"]
+                @test df.test_type isa Vector{String}
+                @test logger.last_modified_tick[] == Int16(1)
+            end
+
+            @testset "Test Type Name Limit" begin
+                logger = logger_type()
+                for i in 1:typemax(Int8)
+                    log_test!(logger, i, 0, "type $i")
+                end
+                @test_throws ArgumentError log_test!(logger, 1, 0, "one too many")
+                # the lock is released and known names still work
+                log_test!(logger, 1, 1, "type 1")
+                @test dataframe(logger).test_type[end] == "type 1"
+            end
+
+            @testset "Empty Export Keeps Column Types" begin
+                df = dataframe(logger_type())
+                @test nrow(df) == 0
+                @test df.test_id isa Vector{Int64}
+                @test df.test_type isa Vector{String}
+            end
+
+            @testset "JLD2 Holds The Exported Columns" begin
+                logger = logger_type()
+                log_test!(logger, 1, 5, "PCR")
+                log_test!(logger, 2, 3, "Antigen")
+                path = tempname() * ".jld2"
+                save_JLD2(logger, path)
+                df = dataframe(logger)
+                jldopen(path, "r") do file
+                    @test sort(collect(keys(file))) == sort(names(df))
+                    for n in names(df)
+                        @test file[n] == df[!, n]
+                    end
+                end
+                rm(path; force=true)
+            end
         end
     end
 

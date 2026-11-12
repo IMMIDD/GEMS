@@ -473,8 +473,8 @@ function _sample_past_contacts_in!(last_contact::Dict{Int32, Int16}, csm::Contac
     # today counts as off for the whole window
     s_host = _membership_scale(plans, ind, s, cntnr; ignore_closures = true)
     scale_bound = _scale_bound(s)
-    contacts = sim.contact_buffers[Threads.threadid()]
-    draws = sim.draw_buffers[Threads.threadid()]
+    contacts = contact_buffers(sim)[Threads.threadid()]
+    draws = sim.scratch_buffers.draw[Threads.threadid()]
 
     for t in start_tick:end_tick
         contact_filter(s, t) || continue

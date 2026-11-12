@@ -97,6 +97,8 @@ function negative_followup(t::PoolTest)
     return(t.negative_followup)
 end
 
+_parallel_safe(::PoolTest, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###

@@ -75,6 +75,8 @@ function nonself(fsm::FindSettingMembers)
     return(fsm.nonself)
 end
 
+_parallel_safe(::FindSettingMembers, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###

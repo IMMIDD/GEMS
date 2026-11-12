@@ -7,7 +7,7 @@
 """
     _PendingInfection
 
-Per-thread transfer struct staged in `infection_buffers` during the threaded contact
+Per-thread transfer struct staged in `staging_buffers.infections` during the threaded contact
 phase, then logged and drained into the individual cache / registry by
 `flush_pending_infections!`, which assigns the infection id.
 """
@@ -36,7 +36,7 @@ const _DeduplicationKey = Tuple{UInt8, Int32, Int32}
 """
     _EndedInfection
 
-Per-thread transfer struct staged in `removal_buffers` when an infection ends, then drained
+Per-thread transfer struct staged in `staging_buffers.removals` when an infection ends, then drained
 by `flush_ended_infections!`. `index` is the cache slot index (`is_overflow == false`) or the
 overflow node index (`is_overflow == true`). `pathogen_id == DEFAULT_PATHOGEN_ID` grants no
 immunity (the death path).

@@ -50,3 +50,5 @@ abstract type Event end
 
 # supertype for the EventQueue, declared early so Simulation can type its event_queue field
 abstract type AbstractEventQueue end
+# supertype for _ParallelLane, declared early so Simulation can type its parallel_lane field
+abstract type AbstractParallelLane end

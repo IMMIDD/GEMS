@@ -69,6 +69,8 @@ Returns the follow-up `IStrategy` triggered after vaccination, or `nothing`.
 follow_up(m::Vaccinate) = m.follow_up
 
 
+_parallel_safe(::Vaccinate, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###
