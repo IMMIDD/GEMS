@@ -11,6 +11,17 @@ import GEMS: try_to_infect!, spread_infections!, update_individual!, get_contain
     deceased::Int32 = 0
 end
 
+# immunity profiles without `calculate_severity_immunity`: one that does not act on infection, one at half strength
+struct ReadOnlyImmunity <: GEMS.ImmunityProfile end
+GEMS.calculate_immunity(::ReadOnlyImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+    GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+GEMS.susceptibility_factor(::ReadOnlyImmunity, level::Int8) = 1.0
+
+struct HalvingImmunity <: GEMS.ImmunityProfile end
+GEMS.calculate_immunity(::HalvingImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+    GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+GEMS.susceptibility_factor(::HalvingImmunity, level::Int8) = 1.0 - 0.5 * level / 100.0
+
 @testset "Infections" begin
     @testset "Agent-Level" begin
 
@@ -469,7 +480,7 @@ end
             @test isapprox(count(t -> protect(s2, b, t) === Mild, 1:20000) / 20000, 0.75; atol = 0.015)
 
             # profiles without calculate_severity_immunity never downgrade, also when immunity doesn't act on infection
-            for profile in (SeverityOnlyImmunity(), HalfImmunity())
+            for profile in (ReadOnlyImmunity(), HalvingImmunity())
                 s3 = sim_with(profile)
                 c = individuals(s3)[1]
                 push_immunity!(GEMS.immunity_registry(s3, c), c, pid, GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), Int8(0))
