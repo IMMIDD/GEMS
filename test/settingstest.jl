@@ -337,7 +337,7 @@ import GEMS: settings_from_jld2!, settings_from_population, remove_empty_setting
     @testset "Contact rate bounds" begin
         sim = Simulation(pop_size = 1000, infected_fraction = 0.0)
         cntnr = GEMS.settingscontainer(sim)
-        t = setting_type_index(Household)
+        t = GEMS.setting_type_index(Household)
         bound() = GEMS._rate_bound(cntnr, t)
         # the build scans every method; the default config gives households contactparameter 1
         @test bound() == 1.0

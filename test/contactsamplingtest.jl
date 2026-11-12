@@ -436,7 +436,7 @@ end
         for (k, c) in enumerate(cs), m in individuals(c)
             assign_settings!(pop, m, SchoolClass => k; scale = id(m) == 3 ? 0.0 : id(m) == 5 ? 0.5 : 0.25 * id(m))
         end
-        assign_member_indices!(pop, cntnr)
+        GEMS.assign_member_indices!(pop, cntnr)
         GEMS.repack_dirty_pools!(cntnr)
         sim = Simulation(pop_size = 100, seed = 1)
         sim.population = pop

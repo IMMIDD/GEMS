@@ -2,7 +2,7 @@
 ### SETTING TYPES
 ###
 export settingchar, settingstring, setting_type_names
-export setting_type_index, setting_type_from_index, register_setting_type!, declare_setting_type!
+export register_setting_type!, declare_setting_type!
 
 ###
 ### SETTING UTILS

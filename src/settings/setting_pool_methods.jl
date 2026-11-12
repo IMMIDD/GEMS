@@ -1,7 +1,7 @@
 ###
 ### SETTING POOL METHODS
 ###
-export build_pools!, repack_dirty_pools!, living_members, container_frame_index
+export repack_dirty_pools!, living_members
 
 ###
 ### LIVING MEMBERS

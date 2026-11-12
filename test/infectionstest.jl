@@ -985,7 +985,7 @@ end
             GEMS.repack_dirty_pools!(cntnr)
             plans = GEMS.activity_plans(sim)
             for ind in individuals(sim), slot in GEMS.plan_slots(plans, ind)
-                rand(rng) < 0.02 && entry_active!(plans, ind, slot, false)
+                rand(rng) < 0.02 && GEMS.entry_active!(plans, ind, slot, false)
             end
             agrees(sim)
 

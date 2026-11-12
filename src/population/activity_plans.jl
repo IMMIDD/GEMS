@@ -5,9 +5,7 @@
 
 # EXPORTS
 export PlanEntry, ActivityPlanStore
-export member_index, entry_scale
-export plan_entries, plan_length, entry_active, entry_active!
-export build_plans!, assign_settings!, assign_member_indices!, activity_plans, set_primary!, set_scale!
+export assign_settings!, activity_plans, set_primary!, set_scale!
 export membership_column, memberships
 
 ###
