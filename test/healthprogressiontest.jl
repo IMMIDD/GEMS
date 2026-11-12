@@ -333,7 +333,7 @@ end
 
         # earliest death wins
         @test ind.death == 13
-        @test ind.killing_pathogen_id == 1
+        @test ind.death_reason == 1
         @test sched.wake_ticks == Set([Int16(13)])
     end
 
@@ -361,7 +361,7 @@ end
         s2 = push_infection!(reg, ind, Int8(2), Int32(-1), dp2)
         compute_health!(ind, reg, NoMortality(), lethal, s2, Int16(5), Xoshiro(1), sched)
         @test ind.death == 13
-        @test ind.killing_pathogen_id == 1
+        @test ind.death_reason == 1
     end
 
     @testset "contributions superpose: disjoint stay disjoint, overlapping merge" begin

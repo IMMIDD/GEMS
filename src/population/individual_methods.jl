@@ -6,7 +6,7 @@
 
 # EXPORTS
 # setting membership and lookup
-export household, office, schoolclass, getsetting, settings_tuple
+export household, office, schoolclass, getsetting, settings_tuple, setting_fieldmap
 # registry-based getters
 export get_infection_state, get_immunity_state
 export infection_id
@@ -73,6 +73,26 @@ Returns all individual's associated setting IDs as a Tuple of `(type, id)` pairs
 Derived from `membership_setting_types(Individual)`.
 """
 settings_tuple(individual::Individual) = map(T -> (T, setting_id(individual, T)), membership_setting_types(Individual))
+
+"""
+    setting_fieldmap()
+
+A `Dict{Symbol, DataType}` mapping each `Individual` id field to its setting type
+(e.g. `:household => Household`). Derived from `membership_setting_types(Individual)`
+and the `setting_id!` dispatch (the single source of truth for the type → field map),
+so no separate list has to be maintained.
+"""
+function setting_fieldmap()::Dict{Symbol,DataType}
+    m = Dict{Symbol,DataType}()
+    for T in membership_setting_types(Individual)
+        dummy = Individual(id = Int32(0), sex = Int8(1), age = Int8(25))
+        setting_id!(dummy, T, Int32(777))
+        for f in individual_base_fieldnames()
+            getfield(dummy, f) == Int32(777) && (m[Symbol(f)] = T; break)
+        end
+    end
+    return m
+end
 
 """
     activate_memberships!(c::Individual, sim::Simulation)
@@ -951,14 +971,14 @@ function _infectiousness_level(pathogen, state::InfectionState, individual::Indi
 end
 
 """
-    _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
+    _process_death!(individual::Individual, reason::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
 
 Handles the health flags and memory-management when an individual dies.
 """
-@inline function _process_death!(individual::Individual, pathogen_id::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
+@inline function _process_death!(individual::Individual, reason::Int8, infections::InfectionRegistry, removal_buf::Vector{_EndedInfection})
     individual.disease_flags = DiseaseFlags(FLAG_DEAD)
 
-    individual.killing_pathogen_id = pathogen_id
+    individual.death_reason = reason
     individual.active_pathogens_mask = 0
     individual.detected_mask = 0
 
@@ -1058,7 +1078,7 @@ function progress_disease!(
 
     # host death is driven by the precomputed host timeline, not per-infection
     if Int16(0) <= individual.death <= tick
-        _process_death!(individual, individual.killing_pathogen_id, infections, removal_buf)
+        _process_death!(individual, individual.death_reason, infections, removal_buf)
         return nothing
     end
 
@@ -1118,7 +1138,7 @@ function reset!(individual::Individual, infections::InfectionRegistry, immunitie
     individual.number_of_infections = 0
     individual.active_pathogens_mask = 0
     individual.detected_mask = 0
-    individual.killing_pathogen_id = DEFAULT_PATHOGEN_ID
+    individual.death_reason = DEFAULT_DEATH_REASON
 
     individual.immunity_cache = ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)
 
