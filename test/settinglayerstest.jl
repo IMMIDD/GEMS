@@ -724,6 +724,30 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         @test_throws ArgumentError bad(Dict("assignment" => Dict("type" => "PackedSettings", "size" => 10, "spread" => 1)))
         @test_throws ArgumentError bad(Dict("ages" => [65, 18], "assignment" => packed))
 
+        # stratified: `strata` rows and a nested `within` table (compared by description, as their keys hold vectors)
+        toml = """
+        [Settings.LayerConfGym.layer.assignment]
+            type = "StratifiedSettings"
+            strata = [
+                { column = "income", breaks = [1500, 3000] },
+                { column = "age", breaks = [20, 40, 65], jitter = 3 },
+                { setting = "Municipality" },
+            ]
+            [Settings.LayerConfGym.layer.assignment.within]
+                type = "PackedSettings"
+                size = 20
+        """
+        @test occursin("StratifiedSettings(strata = [income [1500, 3000], age [20, 40, 65] ± 3, Municipality], " *
+            "within = PackedSettings(size = 20.0))", _layer_description(only(GEMS.create_setting_layers(TOML.parse(toml)))))
+        stratified(strata, within = packed) =
+            bad(Dict("assignment" => Dict("type" => "StratifiedSettings", "strata" => strata, "within" => within)))
+        # a single table is one row
+        @test occursin("strata = [sex]", _layer_description(only(stratified(Dict("column" => "sex")))))
+        @test_throws ArgumentError stratified([Dict("column" => "age", "bins" => [20])])
+        @test_throws ArgumentError stratified([Dict("breaks" => [20])])
+        @test_throws ArgumentError stratified([Dict("setting" => "Office", "column" => "age")])
+        @test_throws r"assignment\] within needs a `type`" stratified([Dict("column" => "sex")], Dict("size" => 10))
+
         # layers passed in replace the config's; the layer seed defaults to the simulation's
         one_layer = SettingLayer(gym; assignment = PackedSettings(size = 10))
         @test GEMS.determine_setting_layers(config, one_layer) == (one_layer,)

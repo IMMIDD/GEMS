@@ -1947,7 +1947,7 @@ function create_setting_layer(::Type{T}, params::Dict, section::AbstractString) 
     if haskey(params, "participation")
         kw_args[:participation] = _config_participation(params["participation"], context)
     end
-    return SettingLayer(T; assignment = create_layer_assignment(params["assignment"], section), kw_args...)
+    return SettingLayer(T; assignment = create_layer_assignment(params["assignment"], "[Settings.$section.layer.assignment]"), kw_args...)
 end
 
 # Throws for a key of a config table that is not one of `allowed`.
@@ -2001,21 +2001,46 @@ function _config_participation(rows::AbstractVector, context::AbstractString)
     return _ParticipationTable(criteria, ps)
 end
 
-"""
-    create_layer_assignment(params::Dict, section::AbstractString)
+# A `StratifiedSettings`' `strata`: one table or an array of tables, each a `column` with optional
+# `breaks` and `jitter`, or a `setting`.
+_config_strata(value, ::AbstractString) = value
+_config_strata(row::Dict, context::AbstractString) = _config_strata([row], context)
 
-Creates a setting layer's `LayerAssignment` from its config table: `type` names it, the other keys
-are its keyword arguments, distribution sub-tables converted via `_config_value`.
+function _config_strata(rows::AbstractVector, context::AbstractString)
+    return map(enumerate(rows)) do (k, row)
+        row_context = "$context strata row $k"
+        row isa Dict || throw(ArgumentError("$row_context must be a table; got $(repr(row))"))
+        if haskey(row, "setting")
+            _check_config_keys(row, ("setting",), row_context)
+            return row["setting"]
+        end
+        haskey(row, "column") || throw(ArgumentError("$row_context needs a `column` or a `setting`."))
+        _check_config_keys(row, ("column", "breaks", "jitter"), row_context)
+        fields = (; (Symbol(f) => row[f] for f in ("breaks", "jitter") if haskey(row, f))...)
+        return isempty(fields) ? Symbol(row["column"]) : Symbol(row["column"]) => fields
+    end
+end
+
 """
-function create_layer_assignment(params::Dict, section::AbstractString)
-    haskey(params, "type") || throw(ArgumentError("[Settings.$section.layer.assignment] needs a `type`."))
+    create_layer_assignment(params::Dict, context::AbstractString)
+
+Creates a setting layer's `LayerAssignment` from its config table: the `type` key gives the assignment type and the
+other keys its keyword arguments. Error messages name the table by `context`.
+"""
+function create_layer_assignment(params::Dict, context::AbstractString)
+    haskey(params, "type") || throw(ArgumentError("$context needs a `type`."))
     assignment_type = _assignment_type(params["type"])
-    kw_args = Dict(Symbol(k) => _config_value(v) for (k, v) in params if k != "type")
+    kw_args = Dict{Symbol, Any}()
+    for (k, v) in params
+        k == "type" && continue
+        kw_args[Symbol(k)] = k == "within" && v isa Dict ? create_layer_assignment(v, "$context within") :
+            k == "strata" ? _config_strata(v, context) : _config_value(v)
+    end
     return try
         assignment_type(; kw_args...)
     catch e
         # a key the type does not take
-        e isa MethodError && throw(ArgumentError("[Settings.$section.layer.assignment] keys " *
+        e isa MethodError && throw(ArgumentError("$context keys " *
             "$(join(keys(kw_args), ", ")) do not fit $(params["type"]): $(sprint(showerror, e))"))
         rethrow()
     end
