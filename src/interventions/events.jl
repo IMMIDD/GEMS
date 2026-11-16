@@ -18,9 +18,8 @@ struct IMeasureEvent <: Event
     process_fn::IProcessFn
 end
 
-# convenience constructor that builds the process callback from the measure; used in tests.
-# The intervention hot path passes a prebuilt wrapper from the MeasureEntry instead. `sim` is
-# captured by the callback (see IProcessFn), so it must be supplied here.
+# builds the process callback from the measure, for tests; the simulation uses the MeasureEntry's.
+# The callback captures `sim` (see IProcessFn).
 IMeasureEvent(individual::Individual, measure::IMeasure, condition, sim::Simulation) =
     IMeasureEvent(individual, measure, condition, IProcessFn(ind -> process_measure(sim, ind, measure)))
 

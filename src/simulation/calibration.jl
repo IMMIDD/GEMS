@@ -24,21 +24,24 @@ function assign_values_to_parameters!(sim; x, arg)
         end
         param_key = Symbol(parts[end])
 
-        # if parameter involves settings names
+        # if parameter involves settings names: an accessor like `households`, or a setting type's
+        # name, as a declared type has no accessor
         if isdefined(@__MODULE__, param_key) && getfield(@__MODULE__, param_key) isa Function
             instances = getfield(@__MODULE__, param_key)(sim)
-            
-            if instances isa AbstractVector && eltype(instances) <: Setting
-                if !isempty(instances)
-                    csm_type = typeof(first(instances).contact_sampling_method)
-                    new_csm  = csm_type(value)
-                    # assign rate to all settings of specified type
-                    for s in instances
-                        contact_sampling_method!(s, new_csm)
-                    end
-                end      
-                continue 
+        else
+            T = _resolve_setting_type(parts[end])
+            instances = T === nothing ? nothing : settings(sim, T)
+        end
+        if instances isa AbstractVector && eltype(instances) <: Setting
+            if !isempty(instances)
+                T = typeof(first(instances))
+                # the type's own method, which a measure in the last run may have swapped on some settings
+                stored = _stored_type_method(settingscontainer(sim), T)
+                csm_type = typeof(something(stored, first(instances).contact_sampling_method))
+                # assign rate to all settings of specified type, and keep it through `reset!`
+                _set_type_contact_sampling_method!(sim, T, csm_type(value))
             end
+            continue
         end
 
         if length(parts) == 1
@@ -219,6 +222,8 @@ function calibrate!(
     solve_kwargs = haskey(solve_kwargs, :maxiters) ? solve_kwargs : merge(solve_kwargs, Dict(:maxiters => maxiters))
     sol = Optimization.solve(prob, alg; solve_kwargs...)
     println(sol.stats)
+    # a calibration is only repeatable with the same layer network
+    println("Layer seed: ", layer_seed(sim))
     assign_values_to_parameters!(sim, x=sol.u, arg=arg_x0)
     reset!(sim)
     return sol

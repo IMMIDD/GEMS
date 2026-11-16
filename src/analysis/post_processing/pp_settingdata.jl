@@ -29,7 +29,7 @@ function _settingdata(postProcessor::PostProcessor)
 
         (min_val, max_val, avg_val) = min_max_avg_individuals(sets, postProcessor |> simulation)
 
-        push!(stype, string(type))
+        push!(stype, setting_type_name(type))
         push!(cnt, length(sets))
         push!(min, isnothing(min_val) ? 0 : min_val)
         push!(max, isnothing(max_val) ? 0 : max_val)

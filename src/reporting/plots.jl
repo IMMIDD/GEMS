@@ -414,8 +414,8 @@ function _resolve_pathogen_id(rd::ResultData, pathogen)
     return Int8(pathogen)
 end
 
-# Filters df by pathogen (non-mutating), returns (filtered_data, sorted_pids, pnames, colors).
-# Fixes the filter! mutation bug: tick_cases(rd) etc. return references to stored DataFrames.
+# Filters df by pathogen, returns (filtered_data, sorted_pids, pnames, colors). Must not mutate `df`:
+# tick_cases(rd) etc. return the stored DataFrames.
 function _pathogen_setup(df::DataFrame, rd::ResultData, pathogen)
     pid_filter = _resolve_pathogen_id(rd, pathogen)
     data = isnothing(pid_filter) ? df : filter(row -> row.pathogen_id == pid_filter, df)

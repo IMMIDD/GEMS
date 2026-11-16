@@ -127,24 +127,12 @@ household(first_ind, sim)
 and one custom parameter.
 [ Info: 21:43:20 | └ Creating population
 [ Info: 21:43:21 | └ Creating simulation object
-Household
-  id: Int32 1
-  individuals: Array{Individual}((3,))
-  income: Int8 -1
-  dwelling: Int8 -1
-  last_infectious: Int16 -1
-  contact_sampling_method: ContactparameterSampling
-  ags: AGS
-  lon: Float32 NaN32
-  lat: Float32 NaN32
-  isactive: Bool false
-  isopen: Bool true
-  lock: ReentrantLock
+Household(id = 1, 5 individuals)
 ```
 
-Also try `office(i)`, `schoolclass(i)`, or `municipality(i)`.
+Also try `office(i, sim)`, `schoolclass(i, sim)`, or `municipality(i, sim)`.
 If an individual is not assigned to the respective setting (e.g., a child not being assigned to an office), these functions will throw an exception.
-You can make sure to not call these functions for individuals without a valid assignment by verifying `is_working(i)` or `is_student(i)` first.
+You can make sure to not call these functions for individuals without a valid assignment by verifying `is_working(i, sim)` or `is_student(i, sim)` first.
 
 
 ## Adjusting Individuals
@@ -183,10 +171,10 @@ settings(sim)
 and one custom parameter.
 [ Info: 21:44:52 | └ Creating population
 [ Info: 21:44:54 | └ Creating simulation object
-Dict{DataType, Vector{Setting}} with 3 entries:
-  Household   => [Household(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[],…  
-  SchoolClass => [SchoolClass(1, Individual[Individual(9, 1, 7, -1, -1, 0.0, 0.0, Bool[],…
-  Office      => [Office(1, Individual[Individual(1, 2, 29, -1, -1, 0.0, 0.0, Bool[],…
+Dict{DataType, Vector} with 3 entries:
+  SchoolClass => SchoolClass[SchoolClass(id = 1, 106 individuals), SchoolClass(id = 2, 110 …
+  Household   => Household[Household(id = 1, 5 individuals), Household(id = 2, 2 individual…
+  Office      => Office[Office(id = 1, 4 individuals), Office(id = 2, 3 individuals), Offic…
 ```
 
 The above example returns a dictionary where the key is the setting type and the value being the list of settings of that type.
@@ -205,20 +193,9 @@ households(sim)
 and one custom parameter.
 [ Info: 21:45:33 | └ Creating population
 [ Info: 21:45:35 | └ Creating simulation object
-33334-element Vector{Setting}:
- Household
-  id: Int32 1
-  individuals: Array{Individual}((2,))
-  income: Int8 -1
-  dwelling: Int8 -1
-  last_infectious: Int16 -1
-  contact_sampling_method: ContactparameterSampling
-  ags: AGS
-  lon: Float32 NaN32
-  lat: Float32 NaN32
-  isactive: Bool false
-  isopen: Bool true
-  lock: ReentrantLock
+33334-element Vector{Household}:
+ Household(id = 1, 5 individuals)
+ Household(id = 2, 2 individuals)
  ⋮
 ```
 

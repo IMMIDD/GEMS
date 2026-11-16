@@ -69,5 +69,7 @@ end
 
 _health_profile_type(::Type{Fatal}) = FatalHealthProfile
 
+severity_tier(::Type{Fatal}) = :critical
+
 calculate_progression(individual::Individual, tick::Int16, dp::Fatal, rng::Xoshiro) =
     calculate_progression(individual, tick, dp.inner, rng)

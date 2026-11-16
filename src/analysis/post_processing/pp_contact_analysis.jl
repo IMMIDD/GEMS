@@ -16,7 +16,7 @@ function _group_by_age(df::DataFrame)::DataFrame
 
     counts = _age_counts(df.age, Int(maximum(df.age)))
 
-    # ages nobody has count as 0.0, as the former join filled them; that makes the column `Real`
+    # ages nobody has count as 0.0, which makes the column `Real`
     sums = all(>(0), counts) ? counts : Real[c > 0 ? c : 0.0 for c in counts]
     return DataFrame(age = 0:(length(counts) - 1), sum = sums)
 end
@@ -277,6 +277,16 @@ function _mean_contacts_per_age_group(post_processor::PostProcessor, settingtype
 
     return contact_matrix
 end
+
+# The width of the age groups a setting type's contact matrix aggregates over
+# TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
+_contact_age_interval(::Type{<:Setting}) = 5
+_contact_age_interval(::Type{<:Union{SchoolClass, SchoolYear, School, SchoolComplex}}) = 2
+
+# The aggregated contact matrix of every setting type present, keyed by name
+_present_setting_age_contacts(pP::PostProcessor) = Dict{String, Function}(
+    setting_type_name(T) => (() -> _mean_contacts_per_age_group(pP, T, _contact_age_interval(T)))
+    for T in settingtypes(settingscontainer(simulation(pP))))
 
 """
     _weighted_error_sum(post_processor::PostProcessor, error_matrix::ContactMatrix{T})::T where T <: Number

@@ -76,6 +76,8 @@ end
 
 _health_profile_type(::Type{Severe}) = SevereHealthProfile
 
+severity_tier(::Type{Severe}) = :severe
+
 function calculate_progression(individual::Individual, tick::Int16, dp::Severe, rng::Xoshiro)
 
     # Calculate the time to infectiousness

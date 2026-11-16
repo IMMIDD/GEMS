@@ -28,11 +28,12 @@ end
 ### PLOT GENERATION
 ###
 
-function _tick_cases_by_setting_subplot(data, utick; plotargs...)
+function _tick_cases_by_setting_subplot(data, utick, names; plotargs...)
     p = plot(xlabel=utick, ylabel="Individuals", dpi=300, fontfamily = "Times Roman")
     for setting in sort(unique(data.setting_type))
         sub = filter(row -> row.setting_type == setting, data)
-        sum(sub.daily_cases) != 0 && plot!(p, sub.tick, sub.daily_cases, label=settingstring(setting))
+        label = get(names, string(setting), settingstring(setting))
+        sum(sub.daily_cases) != 0 && plot!(p, sub.tick, sub.daily_cases, label=label)
     end
     plot!(p; plotargs...)
     return p
@@ -67,7 +68,7 @@ function generate(plt::TickCasesBySetting, rd::ResultData; pathogen = nothing, p
     all_data, pids, pnames, _ = _pathogen_setup(tick_cases_per_setting(rd), rd, pathogen)
 
     subplots = [_tick_cases_by_setting_subplot(
-        filter(row -> row.pathogen_id == pid, all_data), utick;
+        filter(row -> row.pathogen_id == pid, all_data), utick, setting_type_names(rd);
         (length(pids) > 1 ? _pathogen_subargs(pid, pnames, plotargs) : NamedTuple(plotargs))...)
         for pid in pids]
     return _multi_pathogen_plot(subplots, plotargs)

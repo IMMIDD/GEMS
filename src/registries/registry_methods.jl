@@ -4,10 +4,8 @@
 ### SLOT ADDRESSING
 ###
 
-# A single record lives either in an individual's inline cache NTuple or in an overflow node of the
-# registry linked list; these markers name which, so the disease-update loops can
-# read/write/clear a slot through one dispatched interface instead of duplicating the cache-
-# and overflow-specific code.
+# A record lives in the individual's inline cache or in an overflow node of the registry; these markers
+# name which, so the disease-update loops read, write and clear both through one interface.
 
 struct _CacheSlot; i::Int32; end # inline cache slot index
 struct _OverflowNode; node::Int32; end # registry overflow linked-list node index
@@ -26,9 +24,9 @@ struct _OverflowNode; node::Int32; end # registry overflow linked-list node inde
 
 # Stage an ended infection; the defaults grant no immunity (death path).
 @inline _stage_ended_infection!(buf, ind, l::_CacheSlot, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
-    push!(buf, _EndedInfection(ind.id, l.i, recovery, pathogen_id, false))
+    push!(buf, _EndedInfection(ind, l.i, recovery, pathogen_id, false))
 @inline _stage_ended_infection!(buf, ind, l::_OverflowNode, pathogen_id::Int8 = DEFAULT_PATHOGEN_ID, recovery::Int16 = DEFAULT_TICK) =
-    push!(buf, _EndedInfection(ind.id, l.node, recovery, pathogen_id, true))
+    push!(buf, _EndedInfection(ind, l.node, recovery, pathogen_id, true))
 
 
 
@@ -248,7 +246,8 @@ Insert or update an overflow immunity record for `(ind, pathogen_id)`.
 Called only when the individual's `immunity_cache` is full.
 
 - Natural: updates `natural_acquired_tick`; vaccine fields unchanged.
-- Vaccine: updates `vaccine_acquired_tick` and `vaccine_id`; increments `dose_number`.
+- Vaccine: updates `vaccine_acquired_tick` and `vaccine_id`; increments `dose_number`; records the interval
+  since the previous dose.
 """
 function _push_immunity_overflow!(
     reg::ImmunityRegistry,
@@ -265,10 +264,11 @@ function _push_immunity_overflow!(
         if existing.pathogen_id == pathogen_id
             @inbounds reg.states[node] = if source == IMMUNITY_SOURCE_NATURAL
                 ImmunityState(existing.next, acquired_tick, existing.vaccine_acquired_tick,
-                              pathogen_id, existing.vaccine_id, existing.dose_number)
+                              pathogen_id, existing.vaccine_id, existing.dose_number, existing.prev_dose_interval)
             else
                 ImmunityState(existing.next, existing.natural_acquired_tick, acquired_tick,
-                              pathogen_id, vaccine_id, existing.dose_number + Int8(1))
+                              pathogen_id, vaccine_id, existing.dose_number + Int8(1),
+                              _dose_interval_since(existing, acquired_tick))
             end
             return nothing
         end
@@ -296,7 +296,7 @@ writes to a free cache slot; if the cache is full, falls back to
 - Natural immunity (`source == IMMUNITY_SOURCE_NATURAL`): updates
   `natural_acquired_tick`; vaccine fields are preserved.
 - Vaccine immunity: updates `vaccine_acquired_tick` and `vaccine_id`;
-  increments `dose_number`.
+  increments `dose_number`; records the interval since the previous dose.
 
 Called by `flush_pending_infections!` and `vaccinate!`.
 """
@@ -314,8 +314,10 @@ function push_immunity!(
         _is_active_immunity(s) && s.pathogen_id == pathogen_id || continue
         ind.immunity_cache = Base.setindex(ind.immunity_cache,
             source == IMMUNITY_SOURCE_NATURAL ?
-                ImmunityState(Int32(0), acquired_tick, s.vaccine_acquired_tick, pathogen_id, s.vaccine_id, s.dose_number) :
-                ImmunityState(Int32(0), s.natural_acquired_tick, acquired_tick, pathogen_id, vaccine_id, s.dose_number + Int8(1)),
+                ImmunityState(Int32(0), acquired_tick, s.vaccine_acquired_tick, pathogen_id, s.vaccine_id, s.dose_number,
+                    s.prev_dose_interval) :
+                ImmunityState(Int32(0), s.natural_acquired_tick, acquired_tick, pathogen_id, vaccine_id, s.dose_number + Int8(1),
+                    _dose_interval_since(s, acquired_tick)),
             i)
         return nothing
     end

@@ -3,20 +3,21 @@ export offset, measure, delay, condition
 export IStrategy, SStrategy
 export name, condition, measures, add_measure!
 
-# Concrete function-wrapper types for the per-strategy callbacks. Wrapping the user closures in
-# these keeps the callback fields (and the measure vector) concretely typed, so calling them on
-# the intervention hot path is type-stable instead of a dynamic dispatch. The focal object is an
-# Individual for IStrategies/IMeasures and a Setting for SStrategies/SMeasures.
+# Concrete wrappers for the per-strategy callbacks, so their fields are concretely typed and calls are
+# static. The focal object is an Individual for IStrategies/IMeasures, a Setting for SStrategies/SMeasures.
 const IPredicate = FunctionWrapper{Bool, Tuple{Individual}}
 const SPredicate = FunctionWrapper{Bool, Tuple{Setting}}
 const IDelayFn = FunctionWrapper{Int, Tuple{Individual}}
 const SDelayFn = FunctionWrapper{Int, Tuple{Setting}}
 
-# Per-measure process callbacks. Built once at `add_measure!` time, where the concrete measure
-# type and the `Simulation` are statically known, so the wrapped closure captures both and resolves
-# `process_measure` statically. The wrapper takes only the focal object; `Simulation` is kept out of
-# the argument tuple because it is a parametric (abstract) type and an abstract argument type would
-# make the call a dynamic dispatch.
+# Tracing probability by days since the contact, for the `success_rate` of tracing measures.
+const TraceRateFn = FunctionWrapper{Float64, Tuple{Int}}
+
+# Whether contacts in a setting are re-drawn at a past tick, for the `contact_filter` of tracing measures.
+const ContactFilterFn = FunctionWrapper{Bool, Tuple{Setting, Int16}}
+
+# Per-measure process callbacks, built in `add_measure!` with the measure and `sim` captured. They take
+# only the focal object, as the abstract `Simulation` type as an argument would make the call dynamic.
 const IProcessFn = FunctionWrapper{Any, Tuple{Individual}}
 const SProcessFn = FunctionWrapper{Any, Tuple{Setting}}
 
@@ -87,9 +88,10 @@ executed once this strategy is triggered. All measures must be
 associated with individuals (rather than settings), thus being
 `IMeasure`s. An `IStrategy` also contains a string `name` and
 an optoional `condition` predicate function. The `condition`
-must be a one-argument function returning a boolean value. 
-The function is called once the strategy was triggered and can
-condition its execution. The argument is the respective individual.
+returns a boolean value for the individual, and may take the 
+simulation as a second argument. The function is called once 
+the strategy was triggered and can condition its execution. 
+The argument is the respective individual.
 """
 struct IStrategy{S<:Simulation} <: Strategy
     name::String
@@ -153,6 +155,8 @@ struct IStrategy{S<:Simulation} <: Strategy
 
     """
     function IStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        condition = _bind_sim(condition, Individual, sim)
+        _check_condition(condition, Individual, "IStrategy '$name'")
         str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
@@ -168,9 +172,10 @@ executed once this strategy is triggered. All measures must be
 associated with settings (rather than individuals), thus being
 `SMeasure`s. An `SStrategy` also contains a string `name` and
 an optional `condition` predicate function. The `condition`
-must be a one-argument function returning a boolean value. 
-The function is called once the strategy was triggered and can
-condition its execution. The argument is the respective individual.
+returns a boolean value for the setting, and may take the 
+simulation as a second argument. The function is called once 
+the strategy was triggered and can condition its execution. 
+The argument is the respective setting.
 """
 struct SStrategy{S<:Simulation} <: Strategy
     name::String
@@ -235,6 +240,8 @@ struct SStrategy{S<:Simulation} <: Strategy
 
     """
     function SStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+        condition = _bind_sim(condition, Setting, sim)
+        _check_condition(condition, Setting, "SStrategy '$name'")
         str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), sim)
         add_strategy!(sim, str)
         return(str)
@@ -277,9 +284,9 @@ Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
 
 - `str::Strategy`: Strategy that the measure will be added to
 -  `measure::Measure`: Measure that will be added to te strategy
-- `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed.
-- `delay::Function = x -> 0` *(optional)*: Single-argument function that must resolve to an integer. The delay will extend the offset.
-- `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure.
+- `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed. With `0`, the measure acts on the triggering tick, before that tick's transmission.
+- `delay::Function = x -> 0` *(optional)*: Function of the focal object, and optionally the simulation as a second argument, that must resolve to an integer. The delay will extend the offset.
+- `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure. It may take the simulation as a second argument.
 
 # Examples
 
@@ -315,6 +322,9 @@ calculated `delay` is added to the `offset` (if specified).
 function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
+    delay, condition = _bind_sim(delay, Individual, sim), _bind_sim(condition, Individual, sim)
+    _check_applicable(delay, Individual, "delay", "a measure of IStrategy '$(str.name)'")
+    _check_condition(condition, Individual, "a measure of IStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
     return str
 end
@@ -324,9 +334,39 @@ end
 function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
     sim = str.sim
     fn = SProcessFn(s -> process_measure(sim, s, measure))
+    delay, condition = _bind_sim(delay, Setting, sim), _bind_sim(condition, Setting, sim)
+    _check_applicable(delay, Setting, "delay", "a measure of SStrategy '$(str.name)'")
+    _check_condition(condition, Setting, "a measure of SStrategy '$(str.name)'")
     push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
     return str
 end
+
+"""
+    _check_condition(condition::Function, argtype::Type, owner::AbstractString)
+
+Throws an `ArgumentError` if `condition` has no method for an `argtype` argument, or can return something
+other than a `Bool` for one. A condition whose return type Julia cannot infer is accepted.
+"""
+function _check_condition(condition::Function, argtype::Type, owner::AbstractString)
+    _check_applicable(condition, argtype, "condition", owner)
+    for R in Base.return_types(condition, (argtype,))
+        R === Any || R <: Bool ||
+            throw(ArgumentError("The condition that you passed to $owner does not return a boolean value."))
+    end
+    return nothing
+end
+
+# Throws an `ArgumentError` if no method of `f` takes one `argtype` argument.
+function _check_applicable(f::Function, argtype::Type, what::AbstractString, owner::AbstractString)
+    # a method that may take some `argtype` (e.g. `f(::Household)` for `Setting`) returns something
+    all(R -> R === Union{}, Base.return_types(f, (argtype,))) && throw(ArgumentError(
+        "The $what that you passed to $owner takes neither one `$argtype` nor one `$argtype` and the simulation."))
+    return nothing
+end
+
+# `f` with `sim` as its second argument if it has such a method for an `argtype` first argument, else `f`.
+_bind_sim(f::Function, argtype::Type, sim::Simulation) =
+    isempty(methods(f, (argtype, typeof(sim)))) ? f : (x -> f(x, sim))
 
 
 ###
@@ -336,7 +376,7 @@ end
 function Base.show(io::IO, s::Strategy)
     res = "$(typeof(s)): $(name(s))"
     for me in measures(s)
-        res *= "\n\u2514 $(offset(me)): $(typeof(measure(me)))"
+        res *= "\n\u2514 $(offset(me)): $(nameof(typeof(measure(me))))"
     end
     write(io, res)
 end

@@ -22,6 +22,8 @@ mutable struct Symptomatic <: ProgressionCategory
     end
 end
 
+severity_tier(::Type{Symptomatic}) = :mild
+
 # delegate to Mild
 calculate_progression(individual::Individual, tick::Int16, dp::Symptomatic, rng::Xoshiro) =
     calculate_progression(individual, tick, dp.inner, rng)

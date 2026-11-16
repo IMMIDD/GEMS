@@ -9,8 +9,8 @@ entries of the field-vectors at a given index. Data is thread-local to prevent l
 and stored in `ChunkedVector`s, which grow without reallocating.
 """
 @with_kw mutable struct InfectionLogger <: EventLogger
-    # Atomic counter for generating unique infection IDs safely across threads
-    infection_counter::Threads.Atomic{Int32} = Threads.Atomic{Int32}(0)
+    # Highest infection id issued. Reserved in blocks, so it exceeds the infection count.
+    last_infection_id::Int32 = Int32(0)
     # Atomic tick for the last modification
     last_modified_tick::Threads.Atomic{Int16} = Threads.Atomic{Int16}(DEFAULT_TICK)
 
@@ -23,7 +23,7 @@ and stored in `ChunkedVector`s, which grow without reallocating.
     # Infected data
     id_b::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
     pathogen_id::Vector{ChunkedVector{Int8}} = [ChunkedVector{Int8}() for _ in 1:Threads.maxthreadid()]
-    progression_category::Vector{ChunkedVector{Symbol}} = [ChunkedVector{Symbol}() for _ in 1:Threads.maxthreadid()]
+    progression_id::Vector{ChunkedVector{Int8}} = [ChunkedVector{Int8}() for _ in 1:Threads.maxthreadid()]
     infectiousness_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
     symptom_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
     severeness_onset::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
@@ -36,9 +36,7 @@ and stored in `ChunkedVector`s, which grow without reallocating.
     tick::Vector{ChunkedVector{Int16}} = [ChunkedVector{Int16}() for _ in 1:Threads.maxthreadid()]
     setting_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
     setting_type::Vector{ChunkedVector{Char}} = [ChunkedVector{Char}() for _ in 1:Threads.maxthreadid()]
-    lat::Vector{ChunkedVector{Float32}} = [ChunkedVector{Float32}() for _ in 1:Threads.maxthreadid()]
-    lon::Vector{ChunkedVector{Float32}} = [ChunkedVector{Float32}() for _ in 1:Threads.maxthreadid()]
-    ags::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
+    household_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
     source_infection_id::Vector{ChunkedVector{Int32}} = [ChunkedVector{Int32}() for _ in 1:Threads.maxthreadid()]
 
     # Individual id range of the logged population
@@ -50,12 +48,14 @@ and stored in `ChunkedVector`s, which grow without reallocating.
     infecter_index::Union{Nothing, InfecterIndex} = nothing
 end
 
+
 function log!(
         logger::InfectionLogger,
+        infection_id::Int32,
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
-        progression_category::Symbol,
+        progression_id::Int8,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -66,23 +66,18 @@ function log!(
         recovery::Int16,
         setting_id::Int32,
         setting_type::Char,
-        lat::Float32,
-        lon::Float32,
-        ags::Int32,
+        household_id::Int32,
         source_infection_id::Int32
     )
 
     tid = Threads.threadid()
 
-    # Safely generate a unique ID without a lock
-    new_infection_id = Threads.atomic_add!(logger.infection_counter, Int32(1)) + Int32(1)
-
     # push data directly to the thread-local arrays
-    push!(logger.infection_id[tid], new_infection_id)
+    push!(logger.infection_id[tid], infection_id)
     push!(logger.id_a[tid], a)
     push!(logger.id_b[tid], b)
     push!(logger.pathogen_id[tid], pathogen_id)
-    push!(logger.progression_category[tid], progression_category)
+    push!(logger.progression_id[tid], progression_id)
     push!(logger.tick[tid], tick)
     push!(logger.infectiousness_onset[tid], infectiousness_onset)
     push!(logger.symptom_onset[tid], symptom_onset)
@@ -93,26 +88,26 @@ function log!(
     push!(logger.recovery[tid], recovery)
     push!(logger.setting_id[tid], setting_id)
     push!(logger.setting_type[tid], setting_type)
-    push!(logger.lat[tid], lat)
-    push!(logger.lon[tid], lon)
-    push!(logger.ags[tid], ags)
+    push!(logger.household_id[tid], household_id)
     push!(logger.source_infection_id[tid], source_infection_id)
 
     # keep the infecter index up to date once it exists (see get_infections_between)
     idx = logger.infecter_index
-    idx === nothing || register!(idx, a, b, tick)
+    idx === nothing || register!(idx, a, b, tick, infection_id, infectiousness_onset, recovery)
 
-    Threads.atomic_xchg!(logger.last_modified_tick, tick)
+    # written only on change
+    logger.last_modified_tick[] == tick || Threads.atomic_xchg!(logger.last_modified_tick, tick)
 
-    return(new_infection_id)
+    return infection_id
 end
 
 function log!(;
         logger::InfectionLogger,
+        infection_id::Int32,
         a::Int32,
         b::Int32,
         pathogen_id::Int8,
-        progression_category::Symbol,
+        progression_id::Int8,
         tick::Int16,
         infectiousness_onset::Int16,
         symptom_onset::Int16,
@@ -123,18 +118,31 @@ function log!(;
         recovery::Int16,
         setting_id::Int32,
         setting_type::Char,
-        lat::Float32,
-        lon::Float32,
-        ags::Int32,
+        household_id::Int32,
         source_infection_id::Int32
     )
 
     return log!(
-        logger, a, b, pathogen_id, progression_category, tick,
+        logger, infection_id, a, b, pathogen_id, progression_id, tick,
         infectiousness_onset, symptom_onset, severeness_onset,
         critical_onset, critical_offset, severeness_offset,
-        recovery, setting_id, setting_type, lat, lon, ags, source_infection_id
+        recovery, setting_id, setting_type, household_id, source_infection_id
     )
+end
+
+"""
+    reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+
+Reserves `n` consecutive infection ids and returns the first. Call it from a serial point;
+the ids are then handed out without any cross-thread coordination. Reserving more than are
+used leaves gaps, so `last_infection_id` is an upper bound on the infection count. Throws before the ids pass `typemax(Int32)`.
+"""
+function reserve_infection_ids!(logger::InfectionLogger, n::Integer)
+    n > typemax(Int32) - logger.last_infection_id && throw(OverflowError(
+        "infection ids would pass $(typemax(Int32)); the run has staged more infections than an `Int32` id can count"))
+    first_id = logger.last_infection_id + Int32(1)
+    logger.last_infection_id += Int32(n)
+    return first_id
 end
 
 """
@@ -152,8 +160,8 @@ Creates the logger's `InfecterIndex`, backfilled from everything logged so far a
 from the population's declared id range.
 """
 function _build_infecter_index!(logger::InfectionLogger)
-    idx = InfecterIndex(logger.id_a, logger.id_b, logger.tick;
-        minid = logger.minid, maxid = logger.maxid)
+    idx = InfecterIndex(logger.infection_id, logger.id_a, logger.id_b, logger.tick,
+        logger.infectiousness_onset, logger.recovery; minid = logger.minid, maxid = logger.maxid)
     logger.infecter_index = idx
     return idx
 end
@@ -173,7 +181,48 @@ function get_infections_between(logger::InfectionLogger, infecter::Int32, start_
     idx === nothing && (idx = _build_infecter_index!(logger))
 
     _merge_staged!(idx)
+    return first(_walk_infections_between(idx, infecter, start_tick, end_tick))
+end
+
+"""
+    _infections_with_ticks_between(logger::InfectionLogger, infecter::Int32, start_tick::Int16, end_tick::Int16)
+
+Returns the ids of all individuals `infecter` infected in `[start_tick, end_tick]` and the
+tick of each of those infections, in chronological order.
+"""
+function _infections_with_ticks_between(logger::InfectionLogger, infecter::Int32, start_tick::Int16, end_tick::Int16)
+    idx = logger.infecter_index
+    idx === nothing && (idx = _build_infecter_index!(logger))
+
+    _merge_staged!(idx)
     return _walk_infections_between(idx, infecter, start_tick, end_tick)
+end
+
+"""
+    _infecter_of(logger::InfectionLogger, infection_id::Int32)
+
+Returns the infecter of the infection `infection_id`, or `0` for seeds and unknown ids.
+"""
+function _infecter_of(logger::InfectionLogger, infection_id::Int32)
+    idx = logger.infecter_index
+    idx === nothing && (idx = _build_infecter_index!(logger))
+
+    _merge_staged!(idx)
+    return _infecter_of(idx, infection_id)
+end
+
+"""
+    _last_infection(logger::InfectionLogger, id::Int32)
+
+Returns the newest infection of individual `id` as `(infection_id, infecter, exposure, infectiousness_onset, recovery)`,
+with `infecter` 0 for a seed, or `nothing` if they were never infected.
+"""
+function _last_infection(logger::InfectionLogger, id::Int32)
+    idx = logger.infecter_index
+    idx === nothing && (idx = _build_infecter_index!(logger))
+
+    _merge_staged!(idx)
+    return _last_infection(idx, id)
 end
 
 function save(logger::InfectionLogger, path::AbstractString)
@@ -187,7 +236,7 @@ function dataframe(logger::InfectionLogger)
         id_a = vcat(logger.id_a...),
         id_b = vcat(logger.id_b...),
         pathogen_id = vcat(logger.pathogen_id...),
-        progression_category = vcat(logger.progression_category...),
+        progression_id = vcat(logger.progression_id...),
         infectiousness_onset = vcat(logger.infectiousness_onset...),
         symptom_onset = vcat(logger.symptom_onset...),
         severeness_onset = vcat(logger.severeness_onset...),
@@ -197,22 +246,20 @@ function dataframe(logger::InfectionLogger)
         recovery = vcat(logger.recovery...),
         setting_id = vcat(logger.setting_id...),
         setting_type = vcat(logger.setting_type...),
-        lat = vcat(logger.lat...),
-        lon = vcat(logger.lon...),
-        ags = vcat(logger.ags...),
+        household_id = vcat(logger.household_id...),
         source_infection_id = vcat(logger.source_infection_id...);
         copycols = false
     )
 end
 
-function save_JLD2(logger::InfectionLogger, path::AbstractString)
+function save_JLD2(logger::InfectionLogger, path::AbstractString; setting_type_names::Dict{String, String} = Dict{String, String}())
     jldopen(path,"w") do file
         file["infection_id"] = vcat(logger.infection_id...)
         file["tick"] = vcat(logger.tick...)
         file["id_a"] = vcat(logger.id_a...)
         file["id_b"] = vcat(logger.id_b...)
         file["pathogen_id"] = vcat(logger.pathogen_id...)
-        file["progression_category"] = vcat(logger.progression_category...)
+        file["progression_id"] = vcat(logger.progression_id...)
         file["infectiousness_onset"] = vcat(logger.infectiousness_onset...)
         file["symptom_onset"] = vcat(logger.symptom_onset...)
         file["severeness_onset"] = vcat(logger.severeness_onset...)
@@ -222,9 +269,8 @@ function save_JLD2(logger::InfectionLogger, path::AbstractString)
         file["recovery"] = vcat(logger.recovery...)
         file["setting_id"] = vcat(logger.setting_id...)
         file["setting_type"] = vcat(logger.setting_type...)
-        file["lat"] = vcat(logger.lat...)
-        file["lon"] = vcat(logger.lon...)
-        file["ags"] = vcat(logger.ags...)
+        file["setting_type_names"] = setting_type_names
+        file["household_id"] = vcat(logger.household_id...)
         file["source_infection_id"] = vcat(logger.source_infection_id...)
     end
 end

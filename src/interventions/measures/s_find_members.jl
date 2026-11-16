@@ -15,7 +15,7 @@ measure effecively allows to switch between `SStrategy` and `IStrategy`.
 # Optional Arguments
 - `sample_size::Int64`: Limiting the number of individuals to an integer maximum
 - `sample_fraction::Float64`: Limiting the number of individuals to a fraction of the overall assigned members. Must be between (0-1)
-- `selectionfilter::Function`: Filters individuals based on their characteristics
+- `selectionfilter::Function`: Filters individuals based on their characteristics; may take the simulation as a second argument
 
 # Example
 
@@ -67,8 +67,8 @@ is always applied before the `sample_size` or `sample_fraction`.
 """
 _select_all(::Individual) = true
 
-struct FindMembers <: SMeasure
-    follow_up::IStrategy
+struct FindMembers{FU<:IStrategy} <: SMeasure
+    follow_up::FU
 
     sample_size::Int64
     sample_fraction::Float64
@@ -94,8 +94,11 @@ struct FindMembers <: SMeasure
             throw(ArgumentError("Please provide either a sample_size or a sample_fraction. Both don't go together."))
         end
 
+        keep = _bind_sim(selectionfilter, Individual, follow_up.sim)
+        _check_condition(keep, Individual, "FindMembers")
+
         return(
-            new(follow_up, sample_size, sample_fraction, IPredicate(selectionfilter), selectionfilter !== _select_all, Individual[], Individual[])
+            new{typeof(follow_up)}(follow_up, sample_size, sample_fraction, IPredicate(keep), selectionfilter !== _select_all, Individual[], Individual[])
         )
     end
 
@@ -146,6 +149,18 @@ function follow_up(fs::FindMembers)
     return(fs.follow_up)
 end
 
+"""
+    _filter_members!(buf::Vector{Individual}, members, keep::IPredicate)
+
+Appends the `members` that `keep` accepts to `buf` and returns `buf`.
+"""
+function _filter_members!(buf::Vector{Individual}, members, keep::IPredicate)
+    for i in members
+        keep(i) && push!(buf, i)
+    end
+    return buf
+end
+
 
 
 
@@ -180,22 +195,17 @@ function process_measure(sim::Simulation, s::Setting, measure::FindMembers)
     # no sampling: trigger the follow-up for every (filtered) member without materializing a list
     if sample_size(measure) < 0 && sample_fraction(measure) >= 1
         if has_filter(measure)
-            for i in individuals(s)
-                selectionfilter(measure)(i) && trigger_strategy(fu, i, sim)
-            end
+            apply_followup!(sim, individuals(s, sim), fu, keep = selectionfilter(measure))
         else
-            apply_followup!(sim, individuals(s), fu)
+            apply_followup!(sim, individuals(s, sim), fu)
         end
         return nothing
     end
 
     # sampling: collect the candidates first, reusing the filter buffer when a filter is set
-    members = individuals(s)
+    members = individuals(s, sim)
     if has_filter(measure)
-        members = empty!(measure.filter_buffer)
-        for i in individuals(s)
-            selectionfilter(measure)(i) && push!(members, i)
-        end
+        members = _filter_members!(empty!(measure.filter_buffer), members, selectionfilter(measure))
     end
 
     n = sample_size(measure) >= 0 ? sample_size(measure) : Int64(ceil(length(members) * sample_fraction(measure)))

@@ -42,16 +42,16 @@ in case the test result is positive. A follow-up strategy could, for example,
 be a school-closure strategy. While the above example does not have a follow-up
 strategy for a negative test, you can ofcouse have both.
 """
-struct PoolTest <: SMeasure
+struct PoolTest{PFU<:Union{SStrategy, Nothing}, NFU<:Union{SStrategy, Nothing}} <: SMeasure
     name::String    # name of testing measure (i.e. "test_after_symptoms")
     type::TestType  # test type / brand / make
-    positive_followup::Union{SStrategy, Nothing}
-    negative_followup::Union{SStrategy, Nothing}
+    positive_followup::PFU
+    negative_followup::NFU
 
     function PoolTest(name::String, type, positive_followup, negative_followup)
         length(name) <= 0 ? throw(ArgumentError("Plesae provide a test series name, i.e. by supplying a keyworded argument name = 'my_test_series'")) : nothing
         isnothing(type) ? throw(ArgumentError("You need to specify a TestType, i.e. by supplying a keyworded argument type = MyTestType")) : nothing
-        return new(name, type, positive_followup, negative_followup)
+        return new{typeof(positive_followup), typeof(negative_followup)}(name, type, positive_followup, negative_followup)
     end
 
     PoolTest(name, type; positive_followup = nothing, negative_followup = nothing) = 

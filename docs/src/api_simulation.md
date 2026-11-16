@@ -48,6 +48,7 @@ infections(::Simulation)
 info(::Simulation)
 interval
 label(::Simulation)
+layer_seed
 limit
 parameters
 pathogen!(::Simulation, ::Pathogen)
@@ -85,6 +86,8 @@ testtypes(::Simulation)
 tick(::Simulation)
 tick_triggers(::Simulation)
 tickunit(::Simulation)
+vaccinationlogger(::Simulation)
+vaccinations(::Simulation)
 ```
 
 ## Start Conditions

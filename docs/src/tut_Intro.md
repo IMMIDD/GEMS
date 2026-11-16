@@ -14,6 +14,7 @@ Pages = [
     "tut_postprocessing.md",
     "tut_npi.md",
     "tut_calibration.md",
+    "tut_networks.md",
     ]
 Depth = 2
 ```

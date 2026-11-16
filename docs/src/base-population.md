@@ -17,7 +17,8 @@ They can also be extended to hold additional characteristics.
 
 *Settings* are the (physical or social) contexts in which contacts can occur.
 A setting does always have a type (e.g., *Household* or *SchoolClass*) and can be geolocated.
-Individuals can belong to any setting type but only one of each type.
+Individuals can belong to any setting type, and to several settings of one type (e.g., a second office); the first one of each type is their *primary* setting.
+The population tutorial shows how to load such memberships or [generate them](@ref setting-layers).
 The exact settings an Individual belongs to can be changed during the simulation (e.g., a person moving to a different household).
 Settings can hold an arbitrary number of individuals and can't be created during the simulation.
 
@@ -26,18 +27,15 @@ Settings can hold an arbitrary number of individuals and can't be created during
 
 GEMS' base model architecture was designed with parallelization in mind.
 The model is segmented in disjunctive layers by setting type.
-We assume that each individual is only assigned to one setting of a particular setting type (i.e., no individual is assigned to two households).
-This setup allows us to calculate all contacts and infections that happen during one timestep (e.g., one day) for all settings of a given type concurrently.
+In each timestep, the infectious individuals are split across threads, and each thread draws their contacts and infections in all of their settings.
+If an individual who belongs to several settings is infected with the same pathogen in more than one of them during the same timestep, only one of these infections takes effect.
 The image below illustrates how individuals of the base population (green dots on the bottom layer) can be assigned to settings on each of the layers.
 A layer contains all settings of a given type (e.g., households).
 The edges between individuals on any of the upper layers indicates that these individuals each belong to the same setting of the respective type.
 
 ![GEMS Base Population Model](./assets/base-population.png)
 
-Moreover, we only simulate infections in so-called *Active Settings*.
-These are settings that contain infectious individuals and can therefore produce infectious contacts during the current timestep.
-Settings without infectious individuals (in-active settings) are not being simulated as they do not contribute to the overall infection dynamics.
-Active Settings in the image above are visualized with a white glow around the individuals.
+Only infectious individuals draw contacts, so settings without infectious members cost no time.
 Red circles are infectious individuals.
 
 This approach cuts the simulation execution time drastically.
@@ -67,6 +65,12 @@ The latter are the settings that aggregate the low-level settings to bigger ones
 Individual Settings in GEMS are `Household`, `SchoolClass`, `Office`, and `Municipality`.
 Container Settings are available for school classes and offices on four layers each:
 `SchoolClass` -> `SchoolYear` -> `School` -> `SchoolComplex` and `Office` -> `Department` -> `Workplace` -> `WorkplaceSite`.
+
+Each individual setting type has at most one chain of containers above it.
+Types added with `declare_setting_type!` and settings created by setting layers have no container.
+
+Memberships and scales are the same on every tick; there are no weekday or calendar schedules yet.
+A `stepmod` can change them with `add_member!`, `remove_member!` and `set_scale!`.
 
 
 # [Inbuilt Population Generator](@id pop-generator)
