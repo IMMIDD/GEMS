@@ -621,7 +621,7 @@ A layer table takes these keys:
 - `name` (optional): the layer's name in the population's records; it also seeds the layer's draws. Defaults to the type's name with a counter, e.g. `Gym[1]`.
 
 An individual has to match every attribute key a layer gives.
-Numbers can be replaced by a distribution everywhere except in `ages` and `participation`.
+Numbers can be replaced by a distribution everywhere except in `ages`, `participation`, `breaks`, and `jitter`.
 To cap `entries`, use a bounded distribution such as `Binomial`.
 
 For a `participation` that depends on attributes, give it as rows, each with a probability `p` and any of the keys `ages`, `sex`, `occupation`, and `education`:
@@ -650,12 +650,33 @@ The assignment `type` is one of these:
 | `GroupedSettings` | `size`, `by` | new settings of about `size` members that keep the members of a `by` setting together (by default `"Household"`); `size = 1` gives one setting per `by` setting |
 | `AgeSortedSettings` | `size` | new settings of `size` members of similar age |
 | `SpatialSettings` | `size`, `spread` | new settings of `size` members living near each other |
+| `StratifiedSettings` | `strata`, `within` | new settings that the `within` assignment creates within each stratum, so no setting mixes strata |
 | `JoinExisting` | - | existing settings of the type, each picked in proportion to its number of members |
 | `JoinNearby` | `spread` | existing settings near the participant's home |
 | `JoinVia` | `via`, `primary_only` | existing settings that someone in the participant's `via` setting (by default `"Household"`) already belongs to; with `primary_only = true`, only their primary settings of the type |
 
 `spread` is the distance in km by which a participant's home is moved before GEMS looks for settings nearby: a number is the standard deviation of a random shift, a distribution gives the shift's length in a random direction.
 `SpatialSettings` and `JoinNearby` take the household coordinates from the settings file.
+
+`StratifiedSettings` takes `strata` as an array of tables, each a `column` with optional `breaks` and `jitter`, or a `setting`, and `within` as a table of its own:
+
+```toml
+[Settings.Club]
+    [Settings.Club.layer]
+        [Settings.Club.layer.assignment]
+            type = "StratifiedSettings"
+            strata = [
+                { column = "income", breaks = [1500, 3000] },
+                { column = "age", breaks = [20, 40, 65], jitter = 3 },
+                { setting = "Municipality" },
+            ]
+            [Settings.Club.layer.assignment.within]
+                type = "SpatialSettings"
+                size = 20
+                spread = 2.0
+```
+The rows mean what the [setting layers](@ref setting-layers) section of the population tutorial describes.
+A column that isn't a field of the individuals, such as `income`, has to be added with `ind_extension` when you create the simulation.
 
 A layer can also add settings to a built-in type.
 This one gives 10% of all workers a second office, picked among the existing offices:

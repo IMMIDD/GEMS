@@ -208,6 +208,7 @@ The assignment decides whether a layer creates new settings or adds individuals 
 
 - `PackedSettings`, `RandomSettings`, `GroupedSettings`, `AgeSortedSettings`, and `SpatialSettings` create new settings of a given `size`, e.g. `PackedSettings(size = 20)`.
 - `JoinExisting`, `JoinNearby`, and `JoinVia` add individuals to settings that already exist. `JoinVia` picks a setting someone else in the individual's household (or another `via` setting) already belongs to, e.g. the gym of a household member.
+- `StratifiedSettings` splits individuals into strata first and creates new settings within each stratum (see below).
 
 With `participation_unit = Household`, the members of a household decide together whether they take part, e.g. to let whole families join a sports club.
 
@@ -215,6 +216,27 @@ With `participation_unit = Household`, the members of a household decide togethe
 Their `spread` is the distance in km by which a home is moved before GEMS looks for settings nearby.
 A small `spread` keeps settings local, while a distribution with a long tail (e.g. `Exponential(5.0)`) sends a few individuals far away.
 If no setting lies within reach of the moved home, or the household has no coordinates, `JoinNearby` picks any setting of the type.
+
+`StratifiedSettings` combines several criteria.
+It splits the participants into strata and puts each stratum into settings with another assignment, `within`, so no setting mixes strata.
+This layer groups club members by sex, income, age, and municipality, and within each stratum by where they live:
+
+```julia
+Club = declare_setting_type!("Club")
+clubs = SettingLayer(Club;
+    assignment = StratifiedSettings(
+        strata = [:sex, :income => [1500, 3000], :age => (breaks = [20, 40, 65], jitter = 3), Municipality],
+        within = SpatialSettings(size = 20, spread = 2.0)))
+```
+
+- `:sex` makes each value of the column a stratum.
+- `:income => [1500, 3000]` cuts the column at breaks: below 1500, 1500 to below 3000, and 3000 or more.
+- `:age => (breaks = [20, 40, 65], jitter = 3)` also cuts at breaks, but first shifts each age at random (standard deviation 3), so individuals near a break land on either side of it.
+- `Municipality` puts individuals who share a municipality into one stratum.
+
+Columns can be fields of the individuals or extension columns like `income` (see [Custom Individual Extensions](@ref)).
+`within` can be any assignment that creates new settings, except `RandomSettings`.
+Each stratum is filled on its own, so small strata give small settings.
 
 You can also apply layers to a population yourself before passing it to the simulation:
 
