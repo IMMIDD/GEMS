@@ -15,6 +15,15 @@ function layer_pop(n = 12)
     return Population(df)
 end
 
+# as `layer_pop`, with sex alternating, education 0-2 or unknown (-1) for every fourth, and an `income` extension
+function strata_pop(n = 1000)
+    df = DataFrame(id = Int32.(1:n), age = Int8.(mod.(5 .* (1:n), 90)), sex = Int8.(1 .+ mod.(1:n, 2)),
+                   education = Int8[i % 4 == 0 ? -1 : i % 3 for i in 1:n], income = Float64.(mod.(37 .* (1:n), 5000)),
+                   household = Int32.(cld.(1:n, 2)),
+                   office = Int32[i <= n ÷ 2 ? cld(i, 3) : -1 for i in 1:n])
+    return Population(df; ind_extension = [:income])
+end
+
 # where `layer_pop(1000)`'s household h sits on a grid 25 wide, from 0: the workers' households
 # (1-250) and the others' alternate, so both spread over the whole grid
 layer_place(h) = h <= 250 ? 2h - 2 : 2(h - 250) - 1
@@ -70,6 +79,11 @@ GEMS._join_state(::LowestIdTest, ctx) = _JoinCandidates(ctx.plans, ctx.inds, ctx
 function GEMS._choose(::LowestIdTest, i, held, ids, ctx, rng)
     k = findfirst(!in(held), ids)
     return k === nothing ? Int32(0) : ids[k]
+end
+
+# a plain struct as an individual's extension, for stratifying by its field
+struct StrataExtTest
+    income
 end
 
 # a population of 1000 with the layers added, and each individual's primary or every gym id
@@ -476,6 +490,89 @@ held_ids(pop) = [setting_ids(i, LayerGym, activity_plans(pop)) for i in individu
         # settings already held are skipped: four more offices for every worker, all different
         pop = spatial(SettingLayer(Office; assignment = JoinNearby(spread = 0.1), holding = Office, entries = 4))
         @test all(h -> length(h) == 5 && allunique(h), [setting_ids(i, Office, activity_plans(pop)) for i in individuals(pop)[1:500]])
+    end
+
+    @testset "Stratified layers" begin
+        strat(strata, within = PackedSettings(size = 10); kwargs...) =
+            SettingLayer(LayerGym; assignment = StratifiedSettings(strata = strata, within = within), kwargs...)
+        stratified(layer; pop = strata_pop(), kwargs...) = add_setting_layers!(pop, layer; seed = 1, kwargs...)
+        band(a) = searchsortedlast([20, 40, 65], a)
+        # whether every gym holds individuals of one value of `f` only
+        pure(pop, f) = (ids = gym_ids(pop);
+            all(allequal(f.(individuals(pop)[ids .== s])) for s in unique(ids) if s != DEFAULT_SETTING_ID))
+
+        # columns, banded or as they are, combine; no setting mixes strata
+        pop = stratified(strat([:age => [20, 40, 65], :sex, :income => [1500, 3000]]))
+        ids = gym_ids(pop)
+        @test all(!=(DEFAULT_SETTING_ID), ids) && maximum(values(countmap(ids))) == 10
+        @test pure(pop, i -> (band(age(i)), sex(i), searchsortedlast([1500, 3000], i.income)))
+        @test plans_well_formed(pop)
+        # breaks are left-closed: individual 4 is 20
+        @test all(>=(20), age.(individuals(pop)[ids .== ids[4]]))
+        # unknown education (-1) is a stratum of its own
+        @test pure(stratified(strat([:education])), education)
+
+        # setting keys: offices stay apart, households fill settings of 2 by themselves
+        pop = stratified(strat([Office], PackedSettings(size = 2); holding = Office))
+        @test pure(pop, i -> setting_id(i, Office, activity_plans(pop)))
+        ids = gym_ids(stratified(strat(["Household"], PackedSettings(size = 2))))
+        @test ids[1:2:end] == ids[2:2:end] && length(unique(ids)) == 500
+        # members without an office are refused
+        @test_throws r"holding = Office" stratified(strat([Office]))
+
+        # any assignment with a `_partition` inside: one setting per stratum, settings near home, nested strata
+        @test length(unique(gym_ids(stratified(strat([:sex], OneSettingTest()))))) == 2
+        @test_throws ArgumentError stratified(strat([:sex], SpatialSettings(size = 10, spread = 1)))
+        @test pure(stratified(strat([:sex], SpatialSettings(size = 10, spread = 1)); household_coordinates = layer_coords()), sex)
+        nested = StratifiedSettings(strata = [:age => [20, 40, 65]], within = PackedSettings(size = 10))
+        @test pure(stratified(strat([:sex], nested)), i -> (sex(i), band(age(i))))
+        # a function of the individual
+        @test pure(stratified(strat(i -> i.income < 2500)), i -> i.income < 2500)
+
+        # a second round gives a different setting, and ids stay compact
+        held = held_ids(stratified(strat([:sex]; entries = 2)))
+        @test all(h -> length(h) == 2 && h[1] != h[2], held)
+        ids = unique(reduce(vcat, held))
+        @test sort(ids) == 1:length(ids)
+
+        # jitter: the same seed, the same settings; some settings span two neighbouring bands
+        jittered = strat([:age => (breaks = [20, 40, 65], jitter = 5)])
+        ids = gym_ids(stratified(jittered))
+        @test ids == gym_ids(stratified(jittered))
+        ages = age.(individuals(strata_pop()))
+        @test any(s -> length(unique(band.(ages[ids .== s]))) == 2, unique(ids))
+
+        # a plain struct as extension works like an `AutoExtension`
+        ext_pop(f) = Population(DataFrame(id = Int32.(1:20), age = Int8.(1:20), sex = Int8.(ones(20)), household = Int32.(1:20));
+            ind_extension = ind -> StrataExtTest(f(ind.id)))
+        ids = gym_ids(stratified(strat([:income => [2500]], PackedSettings(size = 5)); pop = ext_pop(i -> i <= 10 ? 1000.0 : 4000.0)))
+        @test isdisjoint(ids[1:10], ids[11:20])
+
+        # values every participant must have
+        @test_throws r"`income` is missing" stratified(strat([:income]); pop = ext_pop(i -> i == 3 ? missing : 1.0))
+        @test_throws r"`income` is NaN" stratified(strat([:income]); pop = ext_pop(i -> i == 3 ? NaN : 1.0))
+        @test_throws r"no column `income`" stratified(strat([:income]); pop = layer_pop(1000))
+        @test_throws r"no column `wealth`" stratified(strat([:wealth]))
+        @test_throws r"write Office" stratified(strat([:Office]))
+
+        # what a stratified assignment can't hold
+        @test_throws ArgumentError strat([:sex], RandomSettings(size = 10))
+        @test_throws ArgumentError strat([:sex], JoinExisting())
+        @test_throws ArgumentError strat([])
+        @test_throws ArgumentError strat([:age => [40, 20]])
+        @test_throws ArgumentError strat([:age => [20, Inf]])
+        @test_throws ArgumentError strat([:age => Float64[]])
+        @test_throws ArgumentError strat([:age => (jitter = 3,)])
+        @test_throws ArgumentError strat([:age => (breaks = [20], jitter = -1)])
+        @test_throws MethodError strat([:age => (breaks = [20], jiter = 3)])
+
+        # a stratum per income: more strata than settings, warned once over both rounds
+        @test_logs (:warn, r"into 1000 strata") (:info,) stratified(strat([:income]; entries = 2))
+
+        # records name the keys and the assignment inside
+        @test occursin("StratifiedSettings(strata = [age [20, 40, 65] ± 2.5, Office], within = PackedSettings(size = 10.0))",
+            _layer_description(strat([:age => (breaks = [20, 40, 65], jitter = 2.5), Office])))
+        @test occursin("strata = custom", _layer_description(strat(i -> i.income < 2500)))
     end
 
     @testset "Scales, limits and merge checks" begin
