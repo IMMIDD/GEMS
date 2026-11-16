@@ -8,7 +8,10 @@ A single infecter-infectee link, buffered per thread until the next merge.
 struct _PendingLink
     infecter::Int32
     infectee::Int32
+    infection_id::Int32
     tick::Int16
+    infectiousness_onset::Int16
+    recovery::Int16
 end
 
 """
@@ -25,6 +28,9 @@ chains during the next (serial) merge, so `head` is never written from multiple 
 Chains are kept ordered by tick, newest first, which lets a query stop as soon as it walks
 past the start of its window.
 
+It also keeps each individual's newest infection and its ticks, so tracing can use infections
+that have already ended.
+
 The index is an implementation detail of the `InfectionLogger` and is built lazily on the
 first `get_infections_between` call.
 """
@@ -40,6 +46,17 @@ mutable struct InfecterIndex
     tick::Vector{Int16}
     prev::Vector{Int32}
 
+    # infection id -> infecter, 0 = seed or not yet merged
+    infecter_of::Vector{Int32}
+
+    # individual slot -> id of their newest infection, 0 = none
+    last_infection::Vector{Int32}
+
+    # infection id -> its ticks, kept for infections that ended
+    exposure_of::Vector{Int16}
+    infectiousness_onset_of::Vector{Int16}
+    recovery_of::Vector{Int16}
+
     # per-thread staging, drained by _merge_staged!
     staging::Vector{Vector{_PendingLink}}
 
@@ -51,21 +68,26 @@ mutable struct InfecterIndex
             Vector{Int32}(),
             Vector{Int16}(),
             Vector{Int32}(),
+            Vector{Int32}(),
+            zeros(Int32, slots),
+            Vector{Int16}(),
+            Vector{Int16}(),
+            Vector{Int16}(),
             [Vector{_PendingLink}() for _ in 1:Threads.maxthreadid()]
         )
     end
 end
 
 """
-    _infecter_id_range(id_a::AbstractVector{<:AbstractVector{Int32}})
+    _id_range(id_a::AbstractVector{<:AbstractVector{Int32}}, id_b::AbstractVector{<:AbstractVector{Int32}})
 
-Smallest and largest infecter id present in the sharded column, ignoring seed infections
-(`id < 1`). Returns an empty range when there are none.
+Smallest and largest individual id present in the sharded infecter and infectee columns,
+ignoring seed infections' infecters (`id < 1`). Returns an empty range when there are none.
 """
-function _infecter_id_range(id_a::AbstractVector{<:AbstractVector{Int32}})
+function _id_range(id_a::AbstractVector{<:AbstractVector{Int32}}, id_b::AbstractVector{<:AbstractVector{Int32}})
     lo = typemax(Int32)
     hi = Int32(0)
-    for shard in id_a
+    for col in (id_a, id_b), shard in col
         for a in shard
             a < 1 && continue
             a < lo && (lo = a)
@@ -76,23 +98,24 @@ function _infecter_id_range(id_a::AbstractVector{<:AbstractVector{Int32}})
 end
 
 """
-    InfecterIndex(id_a, id_b, ticks; minid, maxid)
+    InfecterIndex(infection_ids, id_a, id_b, ticks, onsets, recoveries; minid, maxid)
 
 Backfills an index from an `InfectionLogger`'s sharded columns. `minid`/`maxid` size
-`head` in one allocation; when unset (`maxid = 0`) they are taken from the infecter ids
-present in the data.
+`head` in one allocation; when unset (`maxid = 0`) they are taken from the ids present in the data.
 """
-function InfecterIndex(id_a::AbstractVector{<:AbstractVector{Int32}}, id_b::AbstractVector{<:AbstractVector{Int32}},
-        ticks::AbstractVector{<:AbstractVector{Int16}}; minid::Int32 = Int32(1), maxid::Int32 = Int32(0))
+function InfecterIndex(infection_ids::AbstractVector{<:AbstractVector{Int32}}, id_a::AbstractVector{<:AbstractVector{Int32}},
+        id_b::AbstractVector{<:AbstractVector{Int32}}, ticks::AbstractVector{<:AbstractVector{Int16}},
+        onsets::AbstractVector{<:AbstractVector{Int16}}, recoveries::AbstractVector{<:AbstractVector{Int16}};
+        minid::Int32 = Int32(1), maxid::Int32 = Int32(0))
 
-    maxid < minid && ((minid, maxid) = _infecter_id_range(id_a))
+    maxid < minid && ((minid, maxid) = _id_range(id_a, id_b))
     index = InfecterIndex(minid, maxid)
 
     # each shard is in tick order, which is what _link_merged! expects
     buffers = map(eachindex(id_a)) do s
         buf = Vector{_PendingLink}(undef, length(id_a[s]))
         @inbounds for i in eachindex(buf)
-            buf[i] = _PendingLink(id_a[s][i], id_b[s][i], ticks[s][i])
+            buf[i] = _PendingLink(id_a[s][i], id_b[s][i], infection_ids[s][i], ticks[s][i], onsets[s][i], recoveries[s][i])
         end
         return buf
     end
@@ -102,15 +125,14 @@ function InfecterIndex(id_a::AbstractVector{<:AbstractVector{Int32}}, id_b::Abst
 end
 
 """
-    register!(index::InfecterIndex, infecter::Int32, infectee::Int32, tick::Int16)
+    register!(index::InfecterIndex, infecter::Int32, infectee::Int32, tick::Int16, infection_id::Int32, infectiousness_onset::Int16, recovery::Int16)
 
 Stages an infection for inclusion in the index. Called from `log!` while infections are
-logged concurrently, so this only appends to a thread-local buffer. Seed infections
-(`infecter < 1`) are dropped, as they have no infecter to be traced back to.
+logged concurrently, so this only appends to a thread-local buffer.
 """
-@inline function register!(index::InfecterIndex, infecter::Int32, infectee::Int32, tick::Int16)
-    infecter < 1 && return nothing
-    push!(index.staging[Threads.threadid()], _PendingLink(infecter, infectee, tick))
+@inline function register!(index::InfecterIndex, infecter::Int32, infectee::Int32, tick::Int16, infection_id::Int32,
+        infectiousness_onset::Int16, recovery::Int16)
+    push!(index.staging[Threads.threadid()], _PendingLink(infecter, infectee, infection_id, tick, infectiousness_onset, recovery))
     return nothing
 end
 
@@ -124,9 +146,29 @@ Slot of an id in `head`. Callers bounds-check, as `get_individual_by_id` does.
 """
     _link!(index::InfecterIndex, link::_PendingLink)
 
-Appends an entry and splices it to the front of its infecter's chain.
+Records the infection's ticks as its infectee's newest infection. Unless it is a seed, also
+appends an entry, splices it to the front of its infecter's chain and records the infecter
+of its infection id.
 """
 @inline function _link!(index::InfecterIndex, link::_PendingLink)
+    k = Int(link.infection_id)
+    if k > length(index.infecter_of)
+        n = k - length(index.infecter_of)
+        append!(index.infecter_of, zeros(Int32, n))
+        append!(index.exposure_of, zeros(Int16, n))
+        append!(index.infectiousness_onset_of, zeros(Int16, n))
+        append!(index.recovery_of, zeros(Int16, n))
+    end
+    @inbounds index.exposure_of[k] = link.tick
+    @inbounds index.infectiousness_onset_of[k] = link.infectiousness_onset
+    @inbounds index.recovery_of[k] = link.recovery
+
+    # a logger without a declared id range grows with the infectees it sees
+    b = _slot(index, link.infectee)
+    b < 1 && throw(ArgumentError("infectee id $(link.infectee) is below the index range starting at $(index.offset)"))
+    b > length(index.last_infection) && append!(index.last_infection, zeros(Int32, b - length(index.last_infection)))
+    @inbounds index.last_infection[b] = link.infection_id
+
     a = link.infecter
     a < 1 && return nothing
 
@@ -142,6 +184,7 @@ Appends an entry and splices it to the front of its infecter's chain.
     push!(index.tick, link.tick)
     @inbounds push!(index.prev, index.head[slot])
     @inbounds index.head[slot] = Int32(length(index.infectee))
+    @inbounds index.infecter_of[k] = a
     return nothing
 end
 
@@ -199,25 +242,55 @@ end
 """
     _walk_infections_between(index::InfecterIndex, infecter::Int32, start_tick::Int16, end_tick::Int16)
 
-Returns the ids of all individuals `infecter` infected in `[start_tick, end_tick]`, in
-chronological order. Walks the infecter's chain newest first and stops once it passes the
-start of the window.
+Returns the ids of all individuals `infecter` infected in `[start_tick, end_tick]` and the
+ticks of those infections, in chronological order. Walks the infecter's chain newest first
+and stops once it passes the start of the window.
 """
 function _walk_infections_between(index::InfecterIndex, infecter::Int32, start_tick::Int16, end_tick::Int16)
     result = Vector{Int32}()
-    infecter < 1 && return result
+    ticks = Vector{Int16}()
+    infecter < 1 && return result, ticks
 
     slot = _slot(index, infecter)
-    (slot < 1 || slot > length(index.head)) && return result
+    (slot < 1 || slot > length(index.head)) && return result, ticks
 
     @inbounds e = index.head[slot]
     @inbounds while e != 0
         t = index.tick[e]
         t < start_tick && break
-        t <= end_tick && push!(result, index.infectee[e])
+        if t <= end_tick
+            push!(result, index.infectee[e])
+            push!(ticks, t)
+        end
         e = index.prev[e]
     end
 
     reverse!(result)
-    return result
+    reverse!(ticks)
+    return result, ticks
+end
+
+"""
+    _infecter_of(index::InfecterIndex, infection_id::Int32)
+
+Returns the infecter of the infection `infection_id`, or `0` for seeds and unknown ids.
+"""
+function _infecter_of(index::InfecterIndex, infection_id::Int32)
+    1 <= infection_id <= length(index.infecter_of) || return Int32(0)
+    return @inbounds index.infecter_of[infection_id]
+end
+
+"""
+    _last_infection(index::InfecterIndex, id::Int32)
+
+Returns the newest infection of individual `id` as `(infection_id, infecter, exposure, infectiousness_onset, recovery)`,
+with `infecter` 0 for a seed, or `nothing` if they were never infected.
+"""
+function _last_infection(index::InfecterIndex, id::Int32)
+    slot = _slot(index, id)
+    1 <= slot <= length(index.last_infection) || return nothing
+    k = @inbounds index.last_infection[slot]
+    k == 0 && return nothing
+    return @inbounds (infection_id = k, infecter = index.infecter_of[k], exposure = index.exposure_of[k],
+        infectiousness_onset = index.infectiousness_onset_of[k], recovery = index.recovery_of[k])
 end

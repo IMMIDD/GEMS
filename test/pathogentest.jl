@@ -12,6 +12,13 @@ GEMS.calculate_immunity(::HalfImmunity, s::ImmunityState, i::Individual, t::Int1
     GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
 GEMS.susceptibility_factor(::HalfImmunity, level::Int8) = 1.0 - 0.5 * level / 100.0
 
+# custom waning shapes: one that loses a level per tick, and one that defines no shape
+struct LinearWaning <: GEMS.WaningImmunity end
+GEMS.waning_level(::LinearWaning, peak::Int8, elapsed::Int16, s::ImmunityState, source::Symbol, r::Xoshiro) =
+    Int8(max(0, peak - elapsed))
+
+struct ShapelessWaning <: GEMS.WaningImmunity end
+
 # an assignment function that reads immunity, recording what it saw so tests can assert on it
 const SEEN_OWN = Ref(Int8(-1))
 const SEEN_OTHER = Ref(Int8(-1))
@@ -333,7 +340,8 @@ end
         sim = Simulation(pop_size = 1000, pathogen = p_custom, infected_fraction = 0.1)
         run!(sim)
         
-        flattened_pc = vcat(infectionlogger(sim).progression_category...)
+        flattened_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
 
         # check if all infections used the custom progression category in simulation
         @test all(pc -> pc == :TestProgression, flattened_pc)
@@ -511,7 +519,8 @@ end
         run!(sim)
         
         flat_id_b = vcat(infectionlogger(sim).id_b...)
-        flat_pc = vcat(infectionlogger(sim).progression_category...)
+        flat_pc = GEMS.progression_names(pathogens(sim),
+            vcat(infectionlogger(sim).pathogen_id...), vcat(infectionlogger(sim).progression_id...))
         
         # make sure that there were infections
         @test length(flat_id_b) > 0 
@@ -571,7 +580,7 @@ end
         @test SEEN_OTHER[] == Int8(100)
 
         # without a Simulation the hook gets `nothing` and reads no immunity rather than erroring
-        lone = Individual(id = 1, age = 30, sex = 1, household = 1)
+        lone = Individual(id = 1, age = 30, sex = 1)
         SEEN_OWN[] = Int8(-1)
         infect!(lone, Int16(0), mkpath_ia(1, "Lone"), rng = Xoshiro(1))
         @test SEEN_OWN[] == Int8(0)
@@ -1050,15 +1059,22 @@ end
             @test transmission_factor(mod, pid, ind1, ind2, office, Int16(0), sim_sm) ≈ 0.5
             @test transmission_probability(transmission_function(p_sm), pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
 
+            # every infectee in a setting gets its factor, so the bound is exact
+            @test max_transmission_factor(mod, pid, ind1, hh, Int16(0), sim_sm) ≈ 3.0
+            @test max_transmission_factor(mod, pid, ind1, office, Int16(0), sim_sm) ≈ 0.5
+
             # SettingTransmissionRate struct
-            tf_str = SettingTransmissionRate(transmission_rate=0.2, factors=Dict("Household" => 3.0), default_factor=0.5)
+            tf_str = SettingTransmissionRate(transmission_rate=0.2, factors=Dict("Household" => 3.0, "Office" => 0.0), default_factor=0.5)
             @test tf_str.transmission_rate == 0.2
             @test !isempty(@capture_out show(tf_str))
             @test_throws ArgumentError SettingTransmissionRate(transmission_rate=1.5, factors=Dict("Household" => 1.0), default_factor=1.0)
 
             # transmission_probability = base_rate × setting_factor
             @test transmission_probability(tf_str, pid, ind1, ind2, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
-            @test transmission_probability(tf_str, pid, ind1, ind2, office, Int16(0), sim_sm) ≈ 0.2 * 0.5
+            @test transmission_probability(tf_str, pid, ind1, ind2, office, Int16(0), sim_sm) == 0.0
+            @test max_transmission_probability(tf_str, pid, ind1, hh, Int16(0), sim_sm) ≈ 0.2 * 3.0
+            @test max_transmission_probability(tf_str, pid, ind1, office, Int16(0), sim_sm) == 0.0
+            @test max_transmission_probability(tf_str, pid, ind1, SchoolClass(id=1), Int16(0), sim_sm) ≈ 0.2 * 0.5
 
             # base rate above 1 is capped before infectiousness and immunity are applied
             tf_cap = SettingTransmissionRate(transmission_rate=0.5, factors=Dict("Household" => 3.0), default_factor=1.0)
@@ -1068,6 +1084,134 @@ end
             imm_sm = immunity_level(ind2, sim_sm, pid)
             @test transmission_probability(tf_cap, pid, ind1, ind2, hh, Int16(1), sim_sm) ≈ 1.5
             @test effective_transmission_probability(tf_cap, pid, ind1, ind2, hh, Int16(1), sim_sm) ≈ 1.0 * (inf_sm / 100.0) * (1.0 - imm_sm / 100.0)
+        end
+
+        @testset "Transmission Bounds" begin
+            # the infecter sheds pathogen 1; infectees cycle through immune to 1, immune to 2, infected with 2, naive
+            function bound_setup(tf; level = 100, profile = FullImmunity())
+                pa = Pathogen(id = 1, name = "BoundA",
+                    progressions = [Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 10)],
+                    transmission_function = tf, infectiousness_profile = ConstantInfectiousness(level = level),
+                    immunity_profile = profile)
+                pb = Pathogen(id = 2, name = "PathogenB",
+                    progressions = [Asymptomatic(exposure_to_infectiousness_onset = 0, infectiousness_onset_to_recovery = 10)])
+                s = Simulation(pop_size = 200, pathogens = (pa, pb), infected_fraction = 0.0, start_date = Date(2024, 1, 1))
+                infecter = individuals(s)[1]
+                infect!(infecter, Int16(0), first_pathogen(s), rng = Xoshiro())
+                GEMS.update_individual!(infecter, Int16(1), s)
+                infectees = individuals(s)[2:end]
+                for (k, ind) in enumerate(infectees)
+                    if k % 4 == 1 || k % 4 == 2
+                        push_immunity!(immunity_registry(s, ind), ind, Int8(k % 4),
+                            GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
+                    elseif k % 4 == 3
+                        push_infection!(infection_registry(s, ind), ind, Int8(2), Int32(k),
+                            DiseaseProgression(exposure = Int16(0), infectiousness_onset = Int16(1), recovery = Int16(400)))
+                    end
+                end
+                return s, infecter, infectees
+            end
+
+            ages = ["0-19", "20-59", "60-"]
+            tfs = (
+                ConstantTransmissionRate(transmission_rate = 0.3),
+                AgeDependentTransmissionRate(age_groups = ages, transmission_rates = [0.1, 0.5, 0.2]),
+                CrossImmunityTransmissionRate(transmission_rate = 0.4, cross_immunities = [("PathogenB", 0.6)], default_cross_factor = 0.3),
+                ViralInterferenceTransmissionRate(transmission_rate = 0.4, interferences = [("PathogenB", 0.4)], persistence = [("PathogenB", 10.0)]),
+                SinusoidalSeasonalTransmissionRate(transmission_rate = 0.4, amplitude = 0.5, peak_day = 30),
+                CompositeTransmissionRate(
+                    AgeDependentTransmissionRate(age_groups = ages, transmission_rates = [0.1, 0.5, 0.2]),
+                    CrossImmunityModifier(cross_immunities = [("PathogenB", 0.6)]),
+                    ViralInterferenceModifier(interferences = [("PathogenB", 0.4)], persistence = [("PathogenB", 10.0)]),
+                    SinusoidalSeasonalModifier(amplitude = 0.5, peak_day = 30)),
+                SettingTransmissionRate(transmission_rate = 0.2, factors = Dict("Household" => 2.0), default_factor = 1.0))
+
+            # the bound holds for every infectee, tick and infectiousness level
+            for tf in tfs, level in (40, 100)
+                s, infecter, infectees = bound_setup(tf; level = level)
+                hh = households(s)[1]
+                @test all(Int16.(0:15:360)) do t
+                    b = GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, hh, t, s)
+                    all(i -> effective_transmission_probability(tf, Int8(1), infecter, i, hh, t, s) <= b + 1e-12, infectees)
+                end
+                @test @inferred(GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, hh, Int16(1), s)) isa Float64
+            end
+
+            # a naive infectee reaches the bound
+            function reaches(tf, t, pick)
+                s, infecter, infectees = bound_setup(tf; level = 40)
+                naive = infectees[4:4:end][findfirst(pick, infectees[4:4:end])]
+                return GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, households(s)[1], t, s) ≈
+                    effective_transmission_probability(tf, Int8(1), infecter, naive, households(s)[1], t, s)
+            end
+            @test reaches(tfs[1], Int16(1), _ -> true)
+            @test reaches(tfs[2], Int16(1), i -> 20 <= age(i) <= 59)
+            @test all(t -> reaches(tfs[5], t, _ -> true), Int16.(0:60:360))
+            @test reaches(tfs[7], Int16(1), _ -> true)
+
+            # custom functions and modifiers fall back to no thinning
+            struct UnboundedTF <: GEMS.TransmissionFunction end
+            GEMS.transmission_probability(::UnboundedTF, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+                setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 0.5
+            struct DoublingModifier <: GEMS.TransmissionModifier end
+            GEMS.transmission_factor(::DoublingModifier, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+                setting::Setting, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 2.0
+
+            s, infecter, _ = bound_setup(UnboundedTF(); level = 40)
+            hh = households(s)[1]
+            @test max_transmission_probability(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) == 1.0
+            @test GEMS.max_effective_transmission_probability(UnboundedTF(), Int8(1), infecter, hh, Int16(1), s) ≈ 0.4
+            doubled = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.4), DoublingModifier())
+            @test max_transmission_probability(doubled, Int8(1), infecter, hh, Int16(1), s) == Inf
+            s, infecter, _ = bound_setup(doubled)
+            @test GEMS.max_effective_transmission_probability(doubled, Int8(1), infecter, households(s)[1], Int16(1), s) == 1.0
+            # a zero rate stays zero under an unbounded modifier
+            silenced = CompositeTransmissionRate(ConstantTransmissionRate(transmission_rate = 0.0), DoublingModifier())
+            @test max_transmission_probability(silenced, Int8(1), infecter, households(s)[1], Int16(1), s) == 0.0
+
+            # a built-in's type-level bound equals its bound in every setting of that type
+            for tf in tfs
+                s, infecter, _ = bound_setup(tf; level = 40)
+                @test all(GEMS.settingtypes(GEMS.settingscontainer(s))) do T
+                    stngs = GEMS.settings(s, T)
+                    isempty(stngs) || all(Int16.(0:60:360)) do t
+                        GEMS.max_effective_transmission_probability_in_type(tf, Int8(1), infecter, T, t, s) ==
+                            GEMS.max_effective_transmission_probability(tf, Int8(1), infecter, first(stngs), t, s)
+                    end
+                end
+                @test @inferred(GEMS.max_effective_transmission_probability_in_type(tf, Int8(1), infecter, Household, Int16(1), s)) isa Float64
+            end
+            # without one, the effective type-level bound is 1, which no probability exceeds
+            s, infecter, _ = bound_setup(UnboundedTF(); level = 40)
+            @test GEMS.max_transmission_probability_in_type(UnboundedTF(), Int8(1), infecter, Household, Int16(1), s) == Inf
+            @test GEMS.max_effective_transmission_probability_in_type(UnboundedTF(), Int8(1), infecter, Household, Int16(1), s) == 1.0
+            @test GEMS.max_transmission_probability_in_type(doubled, Int8(1), infecter, Household, Int16(1), s) == Inf
+            @test GEMS.max_transmission_probability_in_type(silenced, Int8(1), infecter, Household, Int16(1), s) == 0.0
+
+            # pathogens whose bounds pre-thinning may rely on
+            struct OwnEffectiveTF <: GEMS.TransmissionFunction end
+            GEMS.effective_transmission_probability(::OwnEffectiveTF, pathogen_id::Int8, infecter::Individual, infectee::Individual,
+                setting::Household, tick::Int16, sim::GEMS.Simulation, rng::Xoshiro) = 1.0
+            struct BoundedDoubleImmunity <: GEMS.ImmunityProfile end
+            GEMS.calculate_immunity(::BoundedDoubleImmunity, s::ImmunityState, i::Individual, t::Int16, r::Xoshiro) =
+                GEMS.immunity_active(s, t) ? Int8(100) : Int8(0)
+            GEMS.susceptibility_factor(::BoundedDoubleImmunity, level::Int8) = 2.0 - level / 100.0
+            GEMS.susceptibility_bound(::BoundedDoubleImmunity) = 2.0
+
+            prethinnable(tf, profile = FullImmunity()) =
+                GEMS._prethinnable(Pathogen(id = 1, name = "P", transmission_function = tf, immunity_profile = profile))
+            @test prethinnable(ConstantTransmissionRate())
+            @test prethinnable(UnboundedTF())
+            @test prethinnable(doubled)
+            @test all(prethinnable, tfs)
+            # an override for a narrower setting type counts
+            @test !prethinnable(OwnEffectiveTF())
+            @test !prethinnable(ConstantTransmissionRate(), HalfImmunity())
+            @test !prethinnable(ConstantTransmissionRate(), SeverityOnlyImmunity())
+            @test prethinnable(ConstantTransmissionRate(), BoundedDoubleImmunity())
+
+            s, infecter, _ = bound_setup(tfs[1]; level = 40, profile = BoundedDoubleImmunity())
+            @test GEMS.max_effective_transmission_probability(tfs[1], Int8(1), infecter, households(s)[1], Int16(1), s) ≈ 0.3 * 0.4 * 2.0
         end
 
     end
@@ -1176,6 +1320,7 @@ end
             @test_throws ArgumentError ExponentialWaning(floor=Int8(-1))
             @test_throws ArgumentError ExponentialWaning(floor=Int8(101))
             @test_throws ArgumentError ExponentialWaning(vaccine_buildup_duration=Int16(-1))
+            @test_throws ArgumentError ExponentialWaning(natural_peak=101)
 
             p = ExponentialWaning(halflife=180.0)
 
@@ -1206,6 +1351,7 @@ end
             @test_throws ArgumentError SigmoidalWaning(hill=-1.0)
             @test_throws ArgumentError SigmoidalWaning(floor=Int8(-1))
             @test_throws ArgumentError SigmoidalWaning(vaccine_buildup_duration=Int16(-1))
+            @test_throws ArgumentError SigmoidalWaning(natural_peak=-1)
 
             p = SigmoidalWaning(halflife=180.0, hill=3.0)
 
@@ -1228,6 +1374,163 @@ end
             p_sig_buildup = SigmoidalWaning(halflife=180.0, vaccine_buildup_duration=Int16(10))
             mid_buildup_sig = calculate_immunity(p_sig_buildup, vac_state(0), ind, Int16(5), rng)
             @test 0 < mid_buildup_sig < 100
+        end
+
+        @testset "Booster buildup" begin
+            dose(t, interval) = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, t, pid, 1, 2, GEMS._encode_dose_interval(interval))
+            booster = dose(120, 120)
+            no_prev = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, 120, pid, 1, 2)
+            overlap = dose(7, 7)
+
+            for p in (ExponentialWaning(halflife = 180.0, vaccine_buildup_duration = Int16(14)),
+                      SigmoidalWaning(halflife = 180.0, vaccine_buildup_duration = Int16(14)))
+                level(s, t) = calculate_immunity(p, s, ind, Int16(t), rng)
+                # no dip: during its buildup the booster stays at what the first dose still gives
+                @test all(t -> level(booster, t) >= level(vac_state(0), t) - 2, 120:133)
+                @test level(no_prev, 121) < level(booster, 121)
+                # it ends at the peak, and after its buildup it is a single dose (no accumulation)
+                @test level(booster, 134) == Int8(100)
+                @test all(t -> level(booster, t) == level(vac_state(120), t), 134:400)
+                # a first dose still ramps from 0
+                @test level(vac_state(0), 0) == Int8(0)
+                # a dose during the previous dose's buildup: the previous one keeps ramping
+                @test all(t -> level(overlap, t) >= level(vac_state(0), t), 7:21)
+            end
+
+            # without a buildup the interval changes nothing
+            p0 = ExponentialWaning(halflife = 180.0)
+            @test all(t -> calculate_immunity(p0, booster, ind, Int16(t), rng) == calculate_immunity(p0, no_prev, ind, Int16(t), rng), 100:200)
+        end
+
+        @testset "Vaccine peaks" begin
+            vp(peak, buildup = -1) = GEMS.VaccineProtection(peak, peak, buildup)
+            # built-ins implement the 6-arg method; a profile with only the deprecated 5-arg one warns at its pathogen
+            @test all(p -> GEMS._has_own_method(calculate_immunity, p), (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning()))
+            @test !GEMS._has_own_method(calculate_immunity, SeverityOnlyImmunity())
+            @test_logs (:warn, r"deprecated 5-arg") match_mode=:any Pathogen(id = 1, name = "Old", immunity_profile = SeverityOnlyImmunity())
+            # the profile's vaccine buildup is deprecated in favour of the vaccine's
+            @test_deprecated ExponentialWaning(vaccine_buildup_duration = Int16(5))
+            @test_deprecated SigmoidalWaning(vaccine_buildup_duration = Int16(5))
+
+            # a custom WaningImmunity only defines its shape and gets peaks, buildup and combination
+            @test FullImmunity() isa WaningImmunity && !(NoImmunity() isa WaningImmunity)
+            lw = LinearWaning()
+            @test GEMS._has_own_method(calculate_immunity, lw)
+            @test calculate_immunity(lw, nat_state(0), ind, Int16(30), rng) == Int8(70)
+            @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(5), rng) == Int8(30)
+            @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(30), rng) == Int8(40)
+            @test calculate_immunity(lw, both_state(0, 0), vp(60, 0), ind, Int16(30), rng) == Int8(79)
+            @test_throws ErrorException calculate_immunity(ShapelessWaning(), nat_state(0), ind, Int16(1), rng)
+            # config tables find profiles below WaningImmunity
+            @test GEMS.create_immunity_profile(Dict("type" => "FullImmunity")) isa FullImmunity
+            @test GEMS.create_immunity_profile(Dict("type" => "LinearWaning")) isa LinearWaning
+
+            # the 5-arg methods are the 6-arg ones with the default entry
+            for p in (FullImmunity(), ExponentialWaning(vaccine_buildup_duration = Int16(10)), SigmoidalWaning(vaccine_buildup_duration = Int16(10)))
+                @test all(t -> calculate_immunity(p, both_state(0, 3), ind, Int16(t), rng) ==
+                    calculate_immunity(p, both_state(0, 3), GEMS.VaccineProtection(), ind, Int16(t), rng), 0:300)
+            end
+            # FullImmunity: a dose ramps to the vaccine's peak over its buildup and stays there; natural stays full
+            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), ind, Int16(5), rng) == Int8(30)
+            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), ind, Int16(1000), rng) == Int8(60)
+            @test calculate_immunity(FullImmunity(), both_state(0, 0), vp(60), ind, Int16(1000), rng) == Int8(100)
+            # waning profiles cap the floor at the vaccine's peak
+            @test calculate_immunity(ExponentialWaning(halflife = 1.0, floor = Int8(30)), vac_state(0), vp(20), ind, Int16(500), rng) == Int8(20)
+            # a profile without the 6-arg method ignores the entry
+            @test calculate_immunity(SeverityOnlyImmunity(), vac_state(0), vp(20), ind, Int16(5), rng) ==
+                calculate_immunity(SeverityOnlyImmunity(), vac_state(0), ind, Int16(5), rng)
+
+            # old positional constructors, and natural_peak from a config table
+            @test ExponentialWaning(180.0, 0, 0) == ExponentialWaning()
+            @test SigmoidalWaning(180.0, 3.0, 0, 0) == SigmoidalWaning()
+            @test GEMS.create_immunity_profile(Dict("type" => "ExponentialWaning", "parameters" => Dict("natural_peak" => 70))).natural_peak == Int8(70)
+        end
+
+        @testset "Severity" begin
+            vp(peak, severity_peak = peak, buildup = -1) = GEMS.VaccineProtection(peak, severity_peak, buildup)
+            inf(p, s, v, t) = calculate_immunity(p, s, v, ind, Int16(t), rng)
+            sev(p, s, v, t) = calculate_severity_immunity(p, s, v, ind, Int16(t), rng)
+
+            # only the peaks are ordered; the message names both fields
+            err = try
+                ExponentialWaning(natural_peak = 80, severity_natural_peak = 70)
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("severity_natural_peak", err.msg)
+            @test_throws ArgumentError SigmoidalWaning(severity_natural_peak = 101)
+            @test_throws ArgumentError ExponentialWaning(severity_halflife = 0.0)
+            @test_throws ArgumentError SigmoidalWaning(severity_floor = Int8(-1))
+            @test ExponentialWaning(halflife = 90.0, severity_halflife = 10.0) isa ExponentialWaning
+
+            # by default the severity curve is the infection curve, so there is no severity protection
+            @test ExponentialWaning(halflife = 50.0, floor = Int8(5)).severity_halflife == 50.0f0
+            for p in (FullImmunity(), ExponentialWaning(halflife = 90.0), SigmoidalWaning(halflife = 90.0), LinearWaning())
+                @test all(((s, t),) -> sev(p, s, vp(60), t) == inf(p, s, vp(60), t),
+                    Iterators.product((nat_state(0), vac_state(0), both_state(0, 30)), 0:20:300))
+            end
+
+            # its own peak, halflife and floor, and the vaccine's severity_peak
+            p = ExponentialWaning(halflife = 90.0, natural_peak = 80, severity_natural_peak = 100,
+                severity_halflife = 360.0, severity_floor = Int8(20))
+            @test inf(p, nat_state(0), vp(60), 90) == Int8(40)
+            @test sev(p, nat_state(0), vp(60), 360) == Int8(50)
+            @test sev(p, nat_state(0), vp(60), 10000) == Int8(20)
+            @test sev(p, vac_state(0), vp(50, 90), 0) == Int8(90)
+            @test sev(p, vac_state(0), vp(50, 90), 360) == Int8(45)
+            # hybrid immunity on both endpoints
+            @test inf(p, both_state(0, 0), vp(50, 90), 180) == Int8(30)
+            @test sev(p, both_state(0, 0), vp(50, 90), 180) == Int8(90)
+            # a booster keeps the severity curve up during its buildup
+            booster = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, 120, pid, 1, 2, GEMS._encode_dose_interval(120))
+            @test all(t -> sev(p, booster, vp(50, 90, 14), t) >= sev(p, vac_state(0), vp(50, 90, 14), t) - 2, 120:133)
+
+            # profiles without severity protection of their own return nothing; WaningImmunity subtypes have it
+            @test isnothing(sev(SeverityOnlyImmunity(), nat_state(0), vp(60), 1))
+            @test isnothing(sev(NoImmunity(), nat_state(0), vp(60), 1))
+            @test sev(LinearWaning(), nat_state(0), vp(60), 30) == Int8(70)
+
+            # old positional constructors keep the default severity curve; severity keys from a config table
+            old = ExponentialWaning(90.0, 10, 0)
+            @test (old.natural_peak, old.severity_natural_peak, old.severity_halflife, old.severity_floor) == (100, 100, 90.0f0, 10)
+            q = GEMS.create_immunity_profile(Dict("type" => "SigmoidalWaning",
+                "parameters" => Dict("severity_halflife" => 365, "severity_floor" => 20)))
+            @test q.severity_halflife == 365.0f0 && q.severity_floor == Int8(20) && q.halflife == 180.0f0
+
+            # the downgrade probability given infection: severe cases prevented beyond infection protection
+            dp(p, i, s) = GEMS._severity_downgrade_probability(p, Int8(i), Int8(s))
+            @test dp(FullImmunity(), 50, 90) ≈ 0.8
+            @test dp(FullImmunity(), 50, 50) == 0.0
+            @test dp(FullImmunity(), 60, 40) == 0.0
+            @test dp(FullImmunity(), 100, 100) == 0.0
+            @test all(((i, s),) -> 0.0 <= dp(FullImmunity(), i, s) <= 1.0, Iterators.product(0:5:100, 0:5:100))
+            # with the profile's own susceptibility_factor: HalfImmunity at level 100 halves infections
+            @test dp(HalfImmunity(), 100, 75) ≈ 0.5
+
+            # severity tiers of the built-in categories; undeclared categories have none
+            @test GEMS.severity_tier.((Asymptomatic, Mild, Symptomatic)) == (:asymptomatic, :mild, :mild)
+            @test all(==(:severe), GEMS.severity_tier.((Severe, Ward, Hospitalized)))
+            @test all(==(:critical), GEMS.severity_tier.((Critical, ICU, Fatal, LegacyCritical)))
+            struct UntieredCategory <: ProgressionCategory end
+            struct MistieredCategory <: ProgressionCategory end
+            GEMS.severity_tier(::Type{MistieredCategory}) = :Severe
+            @test isnothing(GEMS.severity_tier(UntieredCategory))
+            @test_throws ArgumentError Pathogen(name = "mistiered", progressions = [MistieredCategory()])
+
+            # a protected :severe category becomes the first :mild one, else the first :asymptomatic one
+            mild = Mild(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1, symptom_onset_to_recovery = 5)
+            asymp = Asymptomatic(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_recovery = 5)
+            severe = Severe(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+                symptom_onset_to_severeness_onset = 1, severeness_onset_to_severeness_offset = 3, severeness_offset_to_recovery = 2)
+            critical = Critical(exposure_to_infectiousness_onset = 1, infectiousness_onset_to_symptom_onset = 1,
+                symptom_onset_to_severeness_onset = 1, severeness_onset_to_critical_onset = 1, critical_onset_to_critical_offset = 3,
+                critical_offset_to_severeness_offset = 2, severeness_offset_to_recovery = 3)
+            @test GEMS._severe_category((mild, severe), Severe) && GEMS._severe_category((mild, critical), Critical)
+            @test !GEMS._severe_category((mild, severe), Mild) && !GEMS._severe_category((asymp, severe), Asymptomatic)
+            @test !GEMS._severe_category((mild,), Severe)
+            @test GEMS._downgrade_target((asymp, mild, severe)) === Mild
+            @test GEMS._downgrade_target((asymp, severe)) === Asymptomatic
+            @test isnothing(GEMS._downgrade_target((severe, UntieredCategory())))
         end
 
         @testset "Abstract ImmunityProfile fallbacks" begin
@@ -1436,6 +1739,36 @@ end
                 @test m * spread + 1 ≈ 2.0
                 @test (1 - m) * spread + 1 ≈ 5.0
             end
+        end
+
+        @testset "next_infectiousness_change" begin
+            st = mk_state(DiseaseProgression(
+                exposure=Int16(1), infectiousness_onset=Int16(3), symptom_onset=Int16(5),
+                severeness_onset=Int16(8), severeness_offset=Int16(20),
+                critical_onset=Int16(10), critical_offset=Int16(15), recovery=Int16(25)))
+            staged = StagedInfectiousness(asymptomatic=Int8(10), presymptomatic=Int8(30),
+                symptomatic=Int8(70), severe=Int8(90), critical=Int8(100))
+
+            # the level holds from `tick` up to the tick returned
+            for p in (ConstantInfectiousness(), staged, BetaInfectiousness()), t in Int16(0):Int16(30)
+                next = GEMS.next_infectiousness_change(p, st, t)
+                @test next > t
+                level = calculate_infectiousness(p, st, ind, t, rng)
+                @test all(u -> calculate_infectiousness(p, st, ind, Int16(u), rng) == level, t:min(next - 1, 40))
+            end
+
+            # Constant and Staged wait for a threshold, Beta changes every tick while infectious
+            @test GEMS.next_infectiousness_change(ConstantInfectiousness(), st, Int16(4)) == 25
+            @test GEMS.next_infectiousness_change(staged, st, Int16(5)) == 8
+            @test GEMS.next_infectiousness_change(BetaInfectiousness(), st, Int16(4)) == 5
+            @test GEMS.next_infectiousness_change(BetaInfectiousness(), st, Int16(1)) == 3
+            @test GEMS.next_infectiousness_change(ConstantInfectiousness(), st, Int16(25)) == typemax(Int16)
+            # a profile without the method is due every tick
+            @test GEMS.next_infectiousness_change(UnimplementedInfectiousnessProfile(), st, Int16(4)) == 5
+
+            # the first of the ticks after `tick`; unset ticks never are
+            @test next_tick_after(Int16(4), Int16(-1), Int16(9), Int16(6), Int16(4)) == 6
+            @test next_tick_after(Int16(4), Int16(-1), Int16(2)) == typemax(Int16)
         end
 
     end

@@ -1,4 +1,4 @@
-export test_sim, test_sim_r, geolocated_sim, settingfile_sim
+export test_sim, test_sim_r, geolocated_sim, settingfile_sim, validate_plans
 
 """
     test_sim()
@@ -259,6 +259,82 @@ function getundocumented()
         end
     end
     return undocumented
+end
+
+"""
+    validate_plans(pop::Population, cntnr::SettingsContainer)
+
+Errors unless every entry indexes back to its own individual, and every setting member holds
+a matching entry. A full check of the activity plans against the settings, for tests and
+debugging; a simulation builds member indices from the entries, so it needs no check.
+"""
+function validate_plans(pop::Population, cntnr::SettingsContainer)
+    plans = activity_plans(pop)
+    _check_indexed(plans)
+    length(plans.active) == length(plans.entries) ||
+        error("the store holds $(length(plans.entries)) entries but $(length(plans.active)) active flags")
+
+    for ind in individuals(pop), e in plan_entries(plans, ind)
+        T = setting_type_from_index(setting_type_of(e))
+        s = settings(cntnr, T)[setting_id(e)]
+        idx = member_index(e)
+        1 <= idx <= length(individuals(s)) ||
+            error("individual $(id(ind)) has member index $idx in $T $(setting_id(e)), which holds $(length(individuals(s))) members")
+        individuals(s)[idx] === ind ||
+            error("individual $(id(ind)) has member index $idx in $T $(setting_id(e)), but that slot holds individual $(id(individuals(s)[idx]))")
+        0 <= entry_scale(e) <= floatmax(Float16) ||
+            error("individual $(id(ind)) has scale $(entry_scale(e)) in $T $(setting_id(e)), outside [0, $(floatmax(Float16))]")
+        # a deceased member's scale does not count toward the bound
+        (_is_deceased(s, idx) || entry_scale(e) <= _scale_bound(s)) ||
+            error("the scale bound of $T $(setting_id(e)) is below individual $(id(ind))'s scale $(entry_scale(e))")
+    end
+
+    for ind in individuals(pop)
+        # an inactive entry has scale 0, so it counts as scaled
+        ind.plan_scaled == any(k -> _effective_scale(plans, k) != 1, plan_slots(plans, ind)) ||
+            error("individual $(id(ind)) has plan_scaled = $(ind.plan_scaled), which its entries contradict")
+    end
+
+    for T in settingtypes(cntnr)
+        (T <: IndividualSetting && T !== GlobalSetting) || continue
+        _check_member_entries(plans, cntnr, T)
+        for s in settings(cntnr, T)
+            0 <= _deceased(s) <= length(individuals(s)) ||
+                error("$T $(id(s)) counts $(_deceased(s)) deceased among $(length(individuals(s))) members")
+        end
+    end
+    for (T, pool) in cntnr.pools
+        pool.deceased == sum(_deceased, pool.leaves; init = 0) ||
+            error("the $T pool counts $(pool.deceased) deceased, its leaves $(sum(_deceased, pool.leaves; init = 0))")
+    end
+    for T in settingtypes(cntnr)
+        T <: FlatSetting && _check_flat_ranges(settings(cntnr, T))
+    end
+    return true
+end
+
+# Each flat setting's slots lie inside its pool and hold its members, no two settings of one pool
+# share a slot, and a pool's slots and stranded slots account for all of it.
+function _check_flat_ranges(stngs::Vector{T}) where {T<:FlatSetting}
+    slots = IdDict{FlatSettingPool, Vector{UnitRange{Int}}}()
+    for s in stngs
+        pool = s.flat_pool
+        r = Int(s.offset):(Int(s.offset) + Int(s.cap) - 1)
+        (s.offset >= 1 && 0 <= s.len <= s.cap && last(r) <= length(pool.members)) ||
+            error("$T $(id(s)) holds $(s.len) members in slots $r of a pool of $(length(pool.members))")
+        push!(get!(Vector{UnitRange{Int}}, slots, pool), r)
+    end
+    for (pool, rs) in slots
+        used = sum(length, rs) + pool.dead
+        used == length(pool.members) ||
+            error("the $T pool holds $(length(pool.members)) slots, its settings and stranded slots $used")
+        filter!(!isempty, rs)
+        sort!(rs, by = first)
+        for k in 2:length(rs)
+            first(rs[k]) > last(rs[k - 1]) || error("two $T settings share pool slots: $(rs[k - 1]) and $(rs[k])")
+        end
+    end
+    return nothing
 end
 
 

@@ -190,11 +190,12 @@ Each pathogen's `immunity_profile` turns these records into an immunity level be
 The level scales every transmission probability by `1 - level/100`, so a level of `100` means the individual cannot be infected.
 GEMS comes with four profiles:
 
-- `FullImmunity` (default): full protection after recovery or vaccination, which never wanes
-- `NoImmunity`: no protection at all
+- `FullImmunity` (default): immunity never wanes; recovery gives full protection, a vaccine dose its own [`peak`](@ref immunity-vaccines) (by default also full protection)
+- `NoImmunity`: no protection at all, neither from recovery nor from vaccination
 - `ExponentialWaning`: protection halves every `halflife` ticks, down to a `floor` (default `0`)
 - `SigmoidalWaning`: protection stays high at first, then falls steeply around `halflife` ticks
 
+In the waning profiles, natural immunity starts at `natural_peak` (default `100`) at recovery, so recovered individuals can also be only partly protected.
 To use waning immunity, set the profile in the pathogen section of your config file:
 
 ```@TOML
@@ -207,12 +208,56 @@ To use waning immunity, set the profile in the pathogen section of your config f
             [Pathogens.Covid19.immunity_profile.parameters]
                 halflife = 90
                 floor = 10
+                natural_peak = 80
 ```
+
+### [Protection against severe disease](@id immunity-severity)
+
+The waning profiles keep a second curve for protection against severe disease, with its own `severity_natural_peak`, `severity_halflife` and `severity_floor`.
+They default to their infection counterparts, so by default immunity protects against severe disease exactly as much as against infection.
+
+Protection against severe disease counts per exposure, compared with unprotected individuals, like published vaccine effectiveness against hospitalisation.
+It includes the severe cases that protection against infection already prevents, rather than adding to it.
+Therefore, `severity_natural_peak` must be at least `natural_peak`, and where the severity curve falls below the infection curve, only the protection against infection counts.
+GEMS reaches this protection by turning severe cases of protected individuals into `Mild` (else `Asymptomatic`) cases, whatever the progression assignment.
+
+```@TOML
+[Pathogens.Covid19.immunity_profile.parameters]
+    halflife = 90
+    natural_peak = 60
+    severity_natural_peak = 90
+    severity_halflife = 180
+```
+
+Here, a recovered individual is 60% protected against reinfection and 90% against a severe course, and protection against severe disease wanes half as fast.
+There is no separate protection against death, so it equals the protection against severe disease.
+
+### [Vaccines](@id immunity-vaccines)
+
+Vaccines are set up in Julia, for example in a `Vaccinate` measure of an intervention strategy, or directly before a run.
+Each `Vaccine` has its own `peak` (protection against infection, default `100`), `severity_peak` (protection against severe disease, default `peak`) and `buildup_duration` (ticks from a dose to its peak, default `0`).
+The pathogen's immunity profile decides how this protection wanes afterwards; a repeat dose starts over at its peak rather than adding up.
+
+```julia
+flu_shot = Vaccine(id = 1, name = "Flu", target_pathogen_id = 1, peak = 40, severity_peak = 70, buildup_duration = 14)
+
+# last season's vaccinations: negative ticks, given in tick order
+for ind in individuals(sim)[1:2:end]
+    vaccinate!(ind, sim, flu_shot, Int16(-120))
+end
+```
+
+!!! tip "Choosing peaks"
+    - `peak` is protection against any infection. Published effectiveness is mostly against symptomatic disease, which is higher, so using it as `peak` overstates protection against infection.
+    - `severity_peak` is effectiveness against severe disease among all exposed individuals, not among the infected.
+    - Take the values of all vaccines in a run from the same population, time window and variant.
+
+### Custom immunity profiles
 
 If none of the built-in profiles fit, you can write your own.
 For this example, we want an individual to be fully immune for exactly 50 days after recovery.
 Define a keyworded struct that inherits from `ImmunityProfile`, and a `calculate_immunity()` method for it that returns the immunity level at `tick`.
-The `state` argument holds the individual's immunity records for the pathogen, e.g., the recovery tick in `state.natural_acquired_tick`.
+The `state` argument holds the individual's immunity records for the pathogen, e.g., the recovery tick in `state.natural_acquired_tick`, and `vaccine_protection` the values of the vaccine recorded in `state`, which this profile ignores.
 
 ```julia
 using GEMS
@@ -226,7 +271,7 @@ import GEMS.calculate_immunity
 end
 
 # override immunity calculation for your struct
-function GEMS.calculate_immunity(profile::FixedWaning, state::ImmunityState,
+function GEMS.calculate_immunity(profile::FixedWaning, state::ImmunityState, vaccine_protection::VaccineProtection,
     individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
     # no protection before the first recovery
@@ -261,6 +306,25 @@ To use your profile in a config file, give its name as the `type` and its fields
             [Pathogens.Covid19.immunity_profile.parameters]
                 waning_time = 50
 ```
+
+A custom profile protects against severe disease as against infection, unless you also define `calculate_severity_immunity` with the same arguments.
+
+For a curve that falls from a peak, inherit from `WaningImmunity` instead and only define `waning_level`, the level `elapsed` ticks after a recovery or dose reached `peak`.
+GEMS then handles the vaccines' peaks and buildup, boosters, protection against severe disease and the combination of natural and vaccine immunity:
+
+```julia
+@with_kw struct LinearWaning <: WaningImmunity
+    duration::Int16 = 365
+end
+
+GEMS.waning_level(profile::LinearWaning, peak::Int8, elapsed::Int16, state::ImmunityState, source::Symbol, rng::Xoshiro) =
+    Int8(max(0, round(Int, peak * (1 - elapsed / profile.duration))))
+```
+
+!!! note "Deprecated"
+    The older `calculate_immunity` form without `vaccine_protection` still works, but profiles that only define it ignore the vaccines' peaks and buildup.
+    The `vaccine_buildup_duration` of `ExponentialWaning` and `SigmoidalWaning` is deprecated; set `buildup_duration` on the vaccine instead.
+    Both will be removed in the next major release.
 
 ## Prior Immunity
 
@@ -367,6 +431,10 @@ run!(sim)
 ```
 
 Every infection now follows this custom timeline, with illness length tied to each individual's incubation period rather than drawn independently.
+
+To take part in [protection against severe disease](@ref immunity-severity), declare how severe your category is, e.g. `GEMS.severity_tier(::Type{CorrelatedProgression}) = :mild`.
+The tiers are `:asymptomatic`, `:mild`, `:severe` and `:critical`.
+Protection turns `:severe` and `:critical` cases into the pathogen's first `:mild` category, else its first `:asymptomatic` one; categories without a tier are neither turned milder nor a target.
 
 !!! info "DiseaseProgression struct"
     The `calculate_progression()` needs to return a `DiseaseProgression` struct. This struct contains discrete values for the time points when an individual transitions from one disease state into another. These events are: `exposure`, `infectiousness_onset`, `symptom_onset`, `severeness_onset`, `critical_onset`, `critical_offset`, `severeness_offset`, and `recovery`. The `DiseaseProgression` struct does internal validity checks (e.g., to prevent an individual from reaching critical severity without first passing through severeness onset). Please look up the `DiseaseProgression` documentation.
@@ -506,6 +574,10 @@ In GEMS, disease progressions are split into two concepts: the **Progression** (
 While the default model uses an `AgeBasedProgressionAssignment` to distribute cases based on age groups, you might want to assign disease tracks based on other individual attributes, such as their vaccination status.
 
 Here is how you can create a custom assignment method that protects vaccinated individuals from severe progressions.
+
+!!! note "Built-in protection against severe disease"
+    GEMS already has [protection against severe disease](@ref immunity-severity) that acts on top of every assignment.
+    If your assignment reads immunity or vaccination status, like the one below, keep the severity parameters of the profile and the vaccines at their defaults, so that protection isn't counted twice.
 
 First, define a struct inheriting from `ProgressionAssignmentFunction`. We use the `@with_kw` macro so we can easily pass parameters from a TOML file later.
 
@@ -698,6 +770,51 @@ _tp(tf::MyTransFunc, ea::MyExt, eb::MyExt, pathogen_id, setting, tick, sim, rng)
 ## Custom Start Conditions
 
 coming soon ...
+
+## [Custom Setting Types](@id custom-setting-types)
+
+Besides households, offices, schools, and their containers, you can add setting types of your own.
+The quickest way is a config file section: `[Settings.Gym]` declares a setting type called `Gym` (see [declaring setting types](@ref config-setting-types) in the config file documentation).
+In Julia, this type is `DeclaredSetting{:Gym}`, which `declare_setting_type!("Gym")` also returns.
+You can dispatch on it like on any other setting type, e.g. to give gyms a custom contact sampling method.
+
+If your settings need fields of their own, define a struct instead.
+It has to be a mutable subtype of `IndividualSetting` with a keyword constructor and these fields:
+
+```julia
+using GEMS
+
+@kwdef mutable struct Gym <: IndividualSetting
+    id::Int32
+    individuals::Vector{Individual} = Individual[]
+    contact_sampling_method::GEMS.ContactSamplingMethod = ContactparameterSampling(contactparameter = 1.0)
+    ags::AGS = AGS()
+    isopen::Bool = true
+    # fields of your own
+    opening_hours::Int8 = 12
+end
+```
+
+GEMS writes these fields itself: it renumbers `id` when it builds the settings, sets `isopen` when a measure opens or closes a setting, and changes `individuals` when someone joins or leaves.
+Post-processing reads `ags` to locate infections.
+Two more fields are optional.
+Members can only have a contact `scale` above `1` if the struct has a `scale_bound::Float32` field.
+With a `deceased::Int32` field, members who die are moved out of the way; without it, they stay in the list and can still be drawn as contacts.
+
+You don't need to register a struct type.
+A config section or a memberships file that names `Gym` finds it, and so does `assign_settings!` or a `SettingLayer` that uses it.
+To choose the character it is logged with, add a `char` key to its config section or call `register_setting_type!(Gym; char = 'g')` before using it.
+If you add individuals to a new type during a run (e.g. in a `stepmod`), give it at least one member before the run starts.
+
+!!! info "Declared type or struct?"
+    A declared type stores its members in one array that all its settings share, like the built-in households, offices, and school classes.
+    A struct keeps one vector per setting, which costs more memory when you have millions of small settings.
+    Prefer a declared type unless you need extra fields.
+
+Custom setting types are a bit slower than the built-in ones: GEMS looks up their settings at runtime, and, for members with a `scale` other than `1`, once more per contact.
+Only the first twelve custom types get a fast lookup; for individuals who belong to further types, GEMS searches their settings at each lookup.
+GEMS numbers setting types in the order it first sees them, and this order decides the order in which a tick processes them.
+A simulation can therefore turn out differently depending on which custom types earlier simulations of the same Julia session used.
 
 ## [Custom Contact Sampling](@id custom-contacts)
 

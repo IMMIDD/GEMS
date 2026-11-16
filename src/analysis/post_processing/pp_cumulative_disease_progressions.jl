@@ -11,8 +11,7 @@ function calc_cum_dis_values(df)
     return _progression_counts(df.infectiousness_onset, df.symptom_onset, df.removed)
 end
 
-# Every state is a tick interval per infection, so each is counted with a difference array instead of one pass
-# over all infections per tick.
+# Each state is a tick interval per infection, so it is counted with a difference array.
 function _progression_counts(infectiousness_onset::AbstractVector, symptom_onset::AbstractVector, removed::AbstractVector)
     last_tick = Int(maximum(removed))
     # columns latent, pre-symptomatic, symptomatic, asymptomatic; one spare row for intervals ending after last_tick

@@ -138,7 +138,157 @@ end
 
 title!(plot::Plots.Plot, title::String) = plot!(plot, title = title)
 titlefontsize!(plot::Plots.Plot, size::Int) = plot!(plot, titlefontsize = size)
+
+
+# Default margins for all GEMS plots
+const DEFAULT_GEMS_PLOT_MARGINS = (
+    left_margin   = 10Plots.mm,
+    right_margin  = 8Plots.mm,
+    top_margin    = 8Plots.mm,
+    bottom_margin = 12Plots.mm
+)
+
+"""
+    default_plot_margins(plotargs)
+
+Adds default margins to plot arguments.
+User-provided margins always take priority.
+"""
+
+function default_plot_margins(plotargs)
+    return merge(
+        DEFAULT_GEMS_PLOT_MARGINS,
+        (; plotargs...)
+    )
+end
    
+"""
+    wrap_plot_title(title::AbstractString; max_chars::Int = 55)
+
+Wraps long plot titles at word boundaries.
+"""
+function wrap_plot_title(title::AbstractString; max_chars::Int = 55)
+
+    wrapped_lines = String[]
+
+    for paragraph in split(title, '\n'; keepempty = true)
+
+        words = split(strip(paragraph))
+
+        if isempty(words)
+            push!(wrapped_lines, "")
+            continue
+        end
+
+        current_line = String(first(words))
+
+        for word in Iterators.drop(words, 1)
+
+            if length(current_line) + 1 + length(word) > max_chars
+                push!(wrapped_lines, current_line)
+                current_line = String(word)
+            else
+                current_line = current_line * " " * word
+            end
+        end
+
+        push!(wrapped_lines, current_line)
+    end
+
+    return join(wrapped_lines, "\n")
+end
+
+
+function plot_title_args(
+    plotargs;
+    default_title::Union{Nothing, AbstractString} = nothing,
+    max_chars::Int = 55,
+    title_attribute::Symbol = :title
+)
+
+    kwargs = (; plotargs...)
+
+    # Get the user-provided title
+    selected_title = get(kwargs, :title, nothing)
+
+    if !(selected_title isa AbstractString)
+        selected_title = get(kwargs, :plot_title, nothing)
+    end
+
+    # Fall back to the default GEMS title
+    if !(selected_title isa AbstractString)
+        selected_title = default_title
+    end
+
+    # Remove title-related attributes
+    other_kwargs = (;
+        (k => v for (k, v) in pairs(kwargs)
+         if !(k in (
+             :title,
+             :plot_title,
+             :title_gap,
+             :plot_titlevspan
+         )))...
+    )
+
+    # Apply default margins
+    other_kwargs = default_plot_margins(other_kwargs)
+
+    if selected_title isa AbstractString
+
+        wrapped_title = wrap_plot_title(
+            selected_title;
+            max_chars = max_chars
+        )
+
+        if title_attribute == :plot_title
+            return merge(
+                other_kwargs,
+                (
+                    plot_title = wrapped_title,
+                    plot_titlevspan = get(kwargs, :plot_titlevspan, 0.11)
+                )
+            )
+        elseif title_attribute == :title
+            return merge(
+                other_kwargs,
+                (title = wrapped_title,)
+            )
+        else
+            throw(ArgumentError(
+                "title_attribute must be :title or :plot_title"
+            ))
+        end
+
+    elseif title_attribute == :plot_title &&
+           haskey(kwargs, :plot_titlevspan)
+
+        return merge(
+            other_kwargs,
+            (plot_titlevspan = kwargs.plot_titlevspan,)
+        )
+    end
+
+    return other_kwargs
+end
+
+
+function subplot_plot_args(plotargs)
+
+    kwargs = (; plotargs...)
+
+    return (;
+        (k => v for (k, v) in pairs(kwargs)
+         if !(k in (
+             :title,
+             :plot_title,
+             :title_gap,
+             :plot_titlevspan,
+             :size,       
+             :layout
+         )))...
+    )
+end
 
 
 ###
@@ -311,14 +461,24 @@ function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :a
 
     # if multiple types were passed
     if isa(type, Tuple{Vararg{Symbol}})
-        p = plot(((t -> gemsplot(rd, type = t; combined = combined, plotargs...)).(type))...,
-            titlefontsize = 12,
-            plot_titlefontsize = 12,
-            labelfontsize = 8,
-            layout = (length(type), 1),
-            size = (600, 250 * length(type)),
-            bottom_margin = 4Plots.mm)
-        plot!(p, ; plotargs...)
+        kwargs = plot_title_args(
+            plotargs;
+            max_chars = 55,
+            title_attribute = :plot_title
+        )
+        subplotargs = subplot_plot_args(kwargs)
+
+        p = plot(
+            ((t -> gemsplot(rd, type=t; combined=combined, subplotargs...)).(type))...,
+            titlefontsize=12,
+            plot_titlefontsize=12,
+            labelfontsize=8,
+            layout=(length(type), 1),
+            size=(600, 250 * length(type)),
+            #bottom_margin=4Plots.mm
+        )
+
+        plot!(p; kwargs...)
         return p
     end
 
@@ -339,29 +499,38 @@ function gemsplot(rd::Vector{ResultData}; type = :nothing, combined::Symbol = :a
 
     # actually generate plot
 
+    kwargs = plot_title_args(
+            plotargs;
+            default_title = title(plt),
+            max_chars = 55
+        )
+
     # if one RD was passed
     if length(rd) == 1
-        return generate(plt, rd[1]; plot_title = title(plt), plotargs...)
+
+        return generate(plt, rd[1]; kwargs...)
     end
 
-    # if multiple RDs were passed and plot has a multi-RD implementation, call that.
-    # if not, build a multiplot with one plot per RD object
+    # if multiple RDs were passed and plot has a multi-RD implementation
+
+    plotkwargs = merge((; titlefontsize = 10), kwargs)
+
     if hasmethod(generate, (typeof(plt), Vector{ResultData}))
 
         # handle combined keyword
-        # generate individual plots if :single is passed
         if combined == :single
-            p = splitplot(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
-        # separate plots by group if :bygroup is passed
+            p = splitplot(plt, rd; plotkwargs...)
+
         elseif combined == :bygroup
-            p = splitgroup(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
-        # default is a combined plot of everything
+            p = splitgroup(plt, rd; plotkwargs...)
+
         else
-            p = generate(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
+            p = generate(plt, rd; plotkwargs...)
         end
+
     else
-        # NOTE: THIS WILL NOW ONLY WORK WITH PLOTS FROM THE PLOTS.JS PACKAGE
-        p = splitplot(plt, rd; plot_title = title(plt), titlefontsize = 10, plotargs...)
+        # NOTE: This will only work with plots from the Plots.jl package
+        p = splitplot(plt, rd; plotkwargs...)
     end
 
     return p
@@ -414,8 +583,8 @@ function _resolve_pathogen_id(rd::ResultData, pathogen)
     return Int8(pathogen)
 end
 
-# Filters df by pathogen (non-mutating), returns (filtered_data, sorted_pids, pnames, colors).
-# Fixes the filter! mutation bug: tick_cases(rd) etc. return references to stored DataFrames.
+# Filters df by pathogen, returns (filtered_data, sorted_pids, pnames, colors). Must not mutate `df`:
+# tick_cases(rd) etc. return the stored DataFrames.
 function _pathogen_setup(df::DataFrame, rd::ResultData, pathogen)
     pid_filter = _resolve_pathogen_id(rd, pathogen)
     data = isnothing(pid_filter) ? df : filter(row -> row.pathogen_id == pid_filter, df)
@@ -476,13 +645,16 @@ function gemsplot(bd::BatchData; type = :nothing, plotargs...)
     end
 
     if isa(type, Tuple{Vararg{Symbol}})
+        kwargs = plot_title_args(plotargs; max_chars=55)
+        subplotargs = subplot_plot_args(kwargs)
         p = plot(((t -> gemsplot(bd, type = t; plotargs...)).(type))...,
             titlefontsize = 12,
             plot_titlefontsize = 12,
             labelfontsize = 8,
             layout = (length(type), 1),
             size = (600, 250 * length(type)),
-            bottom_margin = 4Plots.mm)
+            #bottom_margin = 4Plots.mm
+            )
         plot!(p; plotargs...)
         return p
     end
@@ -498,7 +670,10 @@ function gemsplot(bd::BatchData; type = :nothing, plotargs...)
     hasmethod(generate, (typeof(plt), BatchData)) || error(
         "$(typeof(plt)) has no BatchData overload. Re-run with keep_rundata=true and use gemsplot(runs(bd)) for individual-trace batch plots.")
 
-    return generate(plt, bd; plot_title = title(plt), titlefontsize = 10, plotargs...)
+    kwargs = plot_title_args(plotargs; default_title=title(plt), max_chars=55)
+    plotkwargs = merge((; titlefontsize=10), kwargs)
+
+    return generate(plt, bd; plotkwargs...)
 end
 
 
@@ -524,7 +699,29 @@ Returns a split side-by-side plot for multiple `ResultData` objects.
 
 - `Plots.Plot`: Plot using the `Plots.jl` package's struct.
 """
-splitplot(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...) = plot((map(rd -> generate(plt, rd, title = label(rd); _remove_kw(:plot_title, plotargs)...), rds))...; plotargs...)
+function splitplot(
+    plt::SimulationPlot,
+    rds::Vector{ResultData};
+    plotargs...
+)
+
+    subplotargs = subplot_plot_args(plotargs)
+
+    subplots = [
+        generate(
+            plt,
+            rd;
+            title = label(rd),
+            subplotargs...
+        )
+        for rd in rds
+    ]
+
+    return plot(
+        subplots...;
+        plotargs...
+    )
+end
 
 
 """
@@ -556,11 +753,24 @@ function splitgroup(plt::SimulationPlot, rds::Vector{ResultData}; plotargs...)
     end
 
     # generate one plot for each label
-    plts = [generate(plt, rd,
-                title = lab,
-                color = colors[lab];
-                _remove_kw(:plot_title, plotargs)...) for (lab, rd) in data]
-    return plot(plts..., plot_title = title(plt), layout = (1, length(labels)); plotargs...)
+    subplotargs = subplot_plot_args(plotargs)
+
+    plts = [
+        generate(
+            plt,
+            rd;
+            title = lab,
+            color = colors[lab],
+            subplotargs...
+        )
+        for (lab, rd) in data
+    ]
+
+    return plot(
+        plts...;
+        layout = (1, length(labels)),
+        plotargs...
+)
 end
 
 """

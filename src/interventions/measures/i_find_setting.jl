@@ -34,18 +34,19 @@ that detects the individual's office setting and calls the previously defined
 of strategy once an individual experiences symptoms. The example will
 close the office an individual is associated with if it experiences symptoms.
 """
-struct FindSetting <: IMeasure
-    settingtype::DataType
-    follow_up::SStrategy
+struct FindSetting{ST<:Setting, FU<:SStrategy} <: IMeasure
+    follow_up::FU
+
+    FindSetting(::Type{ST}, follow_up::FU) where {ST<:Setting, FU<:SStrategy} = new{ST, FU}(follow_up)
 end
 
 """
     settingtype(fs::FindSetting)
 
-Returns the `settingtype` attribute from a `FindSetting` struct. 
+Returns the `settingtype` attribute from a `FindSetting` struct.
 """
-function settingtype(fs::FindSetting)
-    return(fs.settingtype)
+function settingtype(::FindSetting{ST}) where {ST}
+    return(ST)
 end
 
 """
@@ -63,7 +64,7 @@ end
 ###
 
 """
-    process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
+    process_measure(sim::Simulation, ind::Individual, measure::FindSetting, sid::Int32 = PRIMARY_SETTING_ID)
 
 Detects a particular setting (specified by the `FindSetting` measure's `settingtype` attribute)
 for an individual and hands over a `follow_up` strategy for the respective setting object.
@@ -73,20 +74,24 @@ for an individual and hands over a `follow_up` strategy for the respective setti
 - `sim::Simulation`: Simulation object
 - `ind::Individual`: Individual that this measure will be applied to (focus individual)
 - `measure::FindSetting`: Measure instance
+- `sid::Int32 = PRIMARY_SETTING_ID` *(optional)*: Id of the setting to hand over; the
+    individual's primary setting of the type by default
 
 # Returns
 
-- `Nothing`: Triggers the `follow_up` strategy for the detected setting.
+- `Nothing`: Triggers the `follow_up` strategy for the detected setting; does nothing for an
+    individual who holds no setting of the type.
 """
-function process_measure(sim::Simulation, ind::Individual, measure::FindSetting)
+function process_measure(sim::Simulation, ind::Individual, measure::FindSetting, sid::Int32 = PRIMARY_SETTING_ID)
 
     # setting type
     st = measure |> settingtype
 
-    # setting object
-    s = getsetting(ind, sim, st)
+    # setting object; someone without a setting of this type has none to find
+    s = sid == PRIMARY_SETTING_ID ? _primary_setting(ind, sim, st) : settings(sim, st)[sid]
+    isnothing(s) && return nothing
 
-        INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$sid] at tick $(sim |> tick)"
+    INTERVENTION_DEBUG && @debug "Individual $(ind |> id) identifying $(string(st))[$(s |> id)] at tick $(sim |> tick)"
 
     # trigger the follow-up strategy for the detected setting
     apply_followup!(sim, s, measure |> follow_up)
