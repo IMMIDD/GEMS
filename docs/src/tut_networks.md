@@ -1,10 +1,13 @@
 # [11 - Friendship Networks](@id tut_networks)
 
+Besides households, offices, and school classes, GEMS can use [setting types of your own](@ref custom-setting-types).
+Individuals can belong to several settings, either listed in a [memberships file](@ref tut_pops) or generated with [setting layers](@ref setting-layers), e.g. to let 30% of all adults visit a gym of about 20 members.
+Friendship networks are one example of what these tools can do, and this tutorial walks through it.
+
 Households, offices, and school classes are groups: everyone in such a setting can meet everyone else.
 Friendships work differently.
 If Anna is friends with Ben and Ben is friends with Clara, Anna and Clara are not necessarily friends.
 This tutorial shows how to model such networks with a custom setting type, once from a memberships file and once with a setting layer.
-It builds on the [memberships](@ref tut_pops) and [setting layers](@ref setting-layers) sections of the population tutorial and on [custom setting types](@ref custom-setting-types).
 
 
 ## One Setting per Friendship

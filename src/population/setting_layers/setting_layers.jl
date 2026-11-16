@@ -5,7 +5,7 @@
 
 # EXPORTS
 export SettingLayer, add_setting_layers!
-export PackedSettings, RandomSettings, GroupedSettings, AgeSortedSettings, SpatialSettings
+export PackedSettings, RandomSettings, GroupedSettings, AgeSortedSettings, SpatialSettings, StratifiedSettings
 export JoinExisting, JoinNearby, JoinVia
 
 ###
@@ -92,6 +92,18 @@ end
 SpatialSettings(; size, spread) = SpatialSettings(_layer_value(size), _layer_value(spread))
 
 """
+    StratifiedSettings(; strata, within)
+
+New settings: participants split into strata by `strata` (columns, setting types, or a function of
+an `Individual`), each stratum put into settings by `within`, so no setting mixes strata.
+"""
+struct StratifiedSettings{K, W<:LayerAssignment} <: NewSettingsAssignment
+    strata::K
+    within::W
+end
+StratifiedSettings(; strata, within::LayerAssignment) = StratifiedSettings(_strata(strata), within)
+
+"""
     JoinExisting()
 
 Existing settings, each drawn with probability proportional to its member count.
@@ -141,6 +153,17 @@ function _check_assignment(a::SpatialSettings)
     _check_positive(a.spread, "`spread`")
     return nothing
 end
+function _check_assignment(a::StratifiedSettings)
+    w = a.within
+    # `hasmethod` would miss `SpatialSettings`, whose method narrows the context's type
+    (w isa NewSettingsAssignment && !isempty(methods(_partition, (typeof(w), Any, Any, Any)))) || throw(ArgumentError(
+        "`within` must create settings through `_partition`, e.g. `PackedSettings` or `SpatialSettings`; got $(nameof(typeof(w)))"))
+    _check_assignment(w)
+    a.strata isa Function && return nothing
+    isempty(a.strata) && throw(ArgumentError("`strata` must name at least one column or setting type"))
+    foreach(_check_stratum_key, a.strata)
+    return nothing
+end
 _check_assignment(a::JoinNearby) = _check_positive(a.spread, "`spread`")
 
 # Throws unless `x` is a finite number > 0 or a non-negative distribution, with a finite
@@ -161,6 +184,7 @@ end
 # Whether an assignment places by household coordinates.
 _needs_coordinates(::LayerAssignment) = false
 _needs_coordinates(::Union{SpatialSettings, JoinNearby}) = true
+_needs_coordinates(a::StratifiedSettings) = _needs_coordinates(a.within)
 
 # The assignment type called `name`, as a config file names it. Both kinds are searched, as
 # `get_subtype` sees direct subtypes only.
@@ -379,6 +403,59 @@ function _participation(f::Function, ind::Individual)
         "`participation` gave $(repr(p)) for individual $(id(ind)); it must be a probability in [0, 1]"))
     return Float64(p)
 end
+
+###
+### STRATA
+### What a `StratifiedSettings`' `strata` are built from, each with how a record describes it.
+###
+
+# A `strata` key: a column, cut at `breaks` (`nothing` keeps each value) after a Gaussian shift
+# with standard deviation `jitter`, or the primary setting of a type.
+struct _ColumnKey
+    column::Symbol
+    breaks::Union{Nothing, Vector{Float64}}
+    jitter::Float64
+end
+
+struct _SettingKey
+    setting::UInt8
+end
+
+# `strata` as stored: a function as given, else one key per entry.
+_strata(f::Function) = f
+_strata(keys) = Union{_ColumnKey, _SettingKey}[_stratum_key(k) for k in keys]
+
+_stratum_key(column::Symbol) = _column_key(column)
+_stratum_key(p::Pair{Symbol, <:AbstractVector}) = _column_key(p.first; breaks = p.second)
+# keywords, so a misspelt field is an error rather than ignored
+_stratum_key(p::Pair{Symbol, <:NamedTuple}) = _column_key(p.first; p.second...)
+_stratum_key(T::Union{Type, AbstractString}) = _SettingKey(_layer_type_index(T, "`strata`"))
+
+_column_key(column::Symbol; breaks = nothing, jitter::Real = 0.0) =
+    _ColumnKey(column, breaks === nothing ? nothing : Float64.(breaks), Float64(jitter))
+
+# Throws if a key's breaks or jitter are out of range; `_check_assignment` calls it.
+_check_stratum_key(::_SettingKey) = nothing
+function _check_stratum_key(k::_ColumnKey)
+    b = k.breaks
+    b === nothing || (!isempty(b) && all(isfinite, b) && all(>(0), diff(b))) || throw(ArgumentError(
+        "the breaks of `$(k.column)` must be finite and strictly increasing; got $b"))
+    (isfinite(k.jitter) && k.jitter >= 0) || throw(ArgumentError(
+        "the jitter of `$(k.column)` must be a finite number ≥ 0; got $(k.jitter)"))
+    (k.jitter == 0 || b !== nothing) || throw(ArgumentError(
+        "the jitter of `$(k.column)` needs breaks to shift values across"))
+    return nothing
+end
+
+_describe(keys::Vector{Union{_ColumnKey, _SettingKey}}) = "[" * join(_describe.(keys), ", ") * "]"
+_describe(k::_SettingKey) = _describe(k.setting)
+function _describe(k::_ColumnKey)
+    text = string(k.column)
+    k.breaks === nothing || (text *= " [" * join(_describe_number.(k.breaks), ", ") * "]")
+    k.jitter == 0 || (text *= " ± " * _describe_number(k.jitter))
+    return text
+end
+_describe_number(x::Float64) = isinteger(x) ? string(Int(x)) : string(x)
 
 ###
 ### APPLYING LAYERS

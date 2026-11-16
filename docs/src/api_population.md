@@ -56,6 +56,7 @@ RandomSettings
 GroupedSettings
 AgeSortedSettings
 SpatialSettings
+StratifiedSettings
 JoinExisting
 JoinNearby
 JoinVia

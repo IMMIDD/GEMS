@@ -250,6 +250,99 @@ function _fill_groups(starts::Vector{Int32}, positions::Vector{Int32}, order::Ve
     return labels
 end
 
+function _partition(a::StratifiedSettings, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
+    isempty(members) && return Int32[]
+    starts, positions = _group_members(_stratum_ids(a.strata, members, ctx, rng))
+    _warn_many_strata(a, length(starts) - 1, length(members), ctx)
+    labels = Vector{Int32}(undef, length(members))
+    last = Int32(0)
+    for g in 1:(length(starts) - 1)
+        group = view(positions, starts[g]:(starts[g + 1] - 1))
+        within = _partition(a.within, members[group], ctx, rng)
+        # past the labels of the strata before
+        for (k, p) in enumerate(group)
+            labels[p] = last + within[k]
+        end
+        last += maximum(within)
+    end
+    return labels
+end
+
+# Each member's stratum, numbered from 1 in order of first appearance.
+function _stratum_ids(f::Function, members::Vector{Int32}, ctx::_LayerContext, ::Xoshiro)
+    ids = Dict{Any, Int32}()
+    return Int32[get!(ids, f(ctx.inds[i]), Int32(length(ids) + 1)) for i in members]
+end
+
+function _stratum_ids(keys::Vector, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
+    sids, codes = ones(Int32, length(members)), Vector{Int32}(undef, length(members))
+    combined = Dict{Tuple{Int32, Int32}, Int32}()
+    for key in keys
+        _stratum_codes!(codes, key, members, ctx, rng)
+        # the strata so far, split by this key's codes
+        empty!(combined)
+        for k in eachindex(sids)
+            sids[k] = get!(combined, (sids[k], codes[k]), Int32(length(combined) + 1))
+        end
+    end
+    return sids
+end
+
+# Fills `codes` with each member's code under `key`; members with one code share a stratum.
+function _stratum_codes!(codes::Vector{Int32}, key::_SettingKey, members::Vector{Int32}, ctx::_LayerContext, ::Xoshiro)
+    for (k, i) in enumerate(members)
+        sid = _setting_id(ctx.inds[i], key.setting, ctx.plans)
+        if sid < 1
+            T = setting_type_name(setting_type_from_index(key.setting))
+            throw(ArgumentError("individual $(id(ctx.inds[i])) holds no $T for `strata`; add `holding = $T` to the layer"))
+        end
+        codes[k] = sid
+    end
+    return codes
+end
+
+function _stratum_codes!(codes::Vector{Int32}, key::_ColumnKey, members::Vector{Int32}, ctx::_LayerContext, rng::Xoshiro)
+    values = Dict{Any, Int32}()
+    for (k, i) in enumerate(members)
+        v = _column_value(ctx.inds[i], key.column)
+        if key.breaks === nothing
+            codes[k] = get!(values, v, Int32(length(values) + 1))
+        else
+            v isa Real || throw(ArgumentError("individual $(id(ctx.inds[i]))'s `$(key.column)` is $(repr(v)), not a number to cut at breaks"))
+            x = key.jitter > 0 ? v + key.jitter * gems_randn(rng) : Float64(v)
+            codes[k] = Int32(searchsortedlast(key.breaks, x) + 1)
+        end
+    end
+    return codes
+end
+
+# The individual's value of column `col`, a core or extension field; throws if they have none.
+function _column_value(ind::Individual, col::Symbol)
+    ext = getfield(ind, :extensions)
+    names = ext === nothing ? () : ext isa AutoExtension ? fieldnames(fieldtype(typeof(ext), :data)) : fieldnames(typeof(ext))
+    if !(hasfield(Individual, col) || col in names)
+        hint = _registered_setting_type(String(col)) === nothing ? "" : "; for the setting type, write $(col) or \"$(col)\""
+        throw(ArgumentError("individual $(id(ind)) has no column `$col` for `strata`$hint"))
+    end
+    v = getproperty(ind, col)
+    (ismissing(v) || (v isa AbstractFloat && isnan(v))) && throw(ArgumentError(
+        "individual $(id(ind))'s `$col` is $v; `strata` needs a value for every participant"))
+    return v
+end
+
+# Warns once per assignment if the strata outnumber the settings their members would fill; a
+# nested `StratifiedSettings` warns for its own strata.
+function _warn_many_strata(a::StratifiedSettings, strata::Int, n::Int, ctx::_LayerContext)
+    hasfield(typeof(a.within), :size) || return nothing
+    size = mean(a.within.size)
+    strata <= n / size && return nothing
+    T = setting_type_name(setting_type_from_index(ctx.tidx))
+    message = "StratifiedSettings put $n members of a layer of type $T into $strata strata, more than " *
+        "the $(round(Int, n / size)) settings of size $size they would fill; most settings will be smaller"
+    @warn message maxlog=1 _id=objectid(a)
+    return nothing
+end
+
 ###
 ### JOINING EXISTING SETTINGS
 ###
