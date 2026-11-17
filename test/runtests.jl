@@ -46,6 +46,7 @@ include("testutils.jl")
         "contactmatrixtest.jl",
         "contactdistributiontest.jl",
         "interventionstest.jl",
+        "parallellanetest.jl",
         "vaccinetest.jl",
         "codevalidationtest.jl",
         "movietest.jl",

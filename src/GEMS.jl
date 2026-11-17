@@ -82,6 +82,7 @@ module GEMS
     include("population/setting_layers/setting_layers_spatial.jl")
     include("simulation/update_states.jl")
     include("logging/state_log_counts.jl")
+    include("simulation/simulation_buffers.jl")
     include("simulation/simulation.jl")
     include("registries/registry_iterators.jl")
     include("simulation/batch.jl")

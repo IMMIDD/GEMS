@@ -21,6 +21,12 @@ const ContactFilterFn = FunctionWrapper{Bool, Tuple{Setting, Int16}}
 const IProcessFn = FunctionWrapper{Any, Tuple{Individual}}
 const SProcessFn = FunctionWrapper{Any, Tuple{Setting}}
 
+# Defaults of the `condition` and `delay` callbacks; a strategy tells them from user closures by identity.
+_always_true(_) = true
+_no_delay(_) = 0
+# The same for the `contact_filter` of tracing measures
+_any_contact(_, _) = true
+
 """
     MeasureEntry{O}
 
@@ -40,6 +46,8 @@ struct MeasureEntry{O}
     condition::FunctionWrapper{Bool, Tuple{O}}
     # type-erased `process_measure` callback for this measure (see IProcessFn/SProcessFn above)
     process_fn::FunctionWrapper{Any, Tuple{O}}
+    # whether this entry can run in the parallel lane
+    parallel::Bool
 end
 
 
@@ -93,7 +101,7 @@ simulation as a second argument. The function is called once
 the strategy was triggered and can condition its execution. 
 The argument is the respective individual.
 """
-struct IStrategy{S<:Simulation} <: Strategy
+mutable struct IStrategy{S<:Simulation} <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
     measures::Vector{MeasureEntry{Individual}}
@@ -101,6 +109,9 @@ struct IStrategy{S<:Simulation} <: Strategy
     # One-Argument boolean function used to condition the execution of
     # this strategy. The argument will be the focal individual
     condition::IPredicate
+
+    # whether the closures run when the strategy is triggered can run on several threads
+    parallel_trigger::Bool
 
     # the simulation this strategy is bound to; captured by the per-measure process callbacks
     # (see IProcessFn) so `sim` is concretely typed at `add_measure!` time
@@ -114,7 +125,7 @@ struct IStrategy{S<:Simulation} <: Strategy
     # this would require to loop up all measures recursively,
     # in order to identify potential nested strategies
     @doc """
-        IStrategy(name::String, sim::Simulation; condition::Function = x -> true)
+        IStrategy(name::String, sim::Simulation; condition::Function = x -> true, threadsafe::Bool = false)
 
     Creates an IStrategy object.
 
@@ -122,6 +133,7 @@ struct IStrategy{S<:Simulation} <: Strategy
       - `name::String`: Name of the strategy
       - `sim::Simulation`: Simulation object (required to interlink test with simulation)
       - `condition::Function = x -> true` *(optional)*: Predicate function than can be used to limit the execution of this strategy to only cerain individuals.
+      - `threadsafe::Bool = false` *(optional)*: Promises that `condition` only reads the focal individual and state that does not change while events run, and writes nothing shared, so it can be evaluated on several threads, on large tick triggers and in the parallel lane. Covers only the closures in this call.
 
     # Examples
 
@@ -154,10 +166,10 @@ struct IStrategy{S<:Simulation} <: Strategy
     individuals who experience symptoms and are 65 or older.
 
     """
-    function IStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+    function IStrategy(name::String, sim::S; condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
         condition = _bind_sim(condition, Individual, sim)
         _check_condition(condition, Individual, "IStrategy '$name'")
-        str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), sim)
+        str = new{S}(name, MeasureEntry{Individual}[], IPredicate(condition), condition === _always_true || threadsafe, sim)
         add_strategy!(sim, str)
         return(str)
     end
@@ -177,7 +189,7 @@ simulation as a second argument. The function is called once
 the strategy was triggered and can condition its execution. 
 The argument is the respective setting.
 """
-struct SStrategy{S<:Simulation} <: Strategy
+mutable struct SStrategy{S<:Simulation} <: Strategy
     name::String
     # OFFSET, MEASURE, DELAY, CONDITION
     measures::Vector{MeasureEntry{Setting}}
@@ -185,6 +197,9 @@ struct SStrategy{S<:Simulation} <: Strategy
     # One-Argument boolean function used to condition the execution of
     # this strategy. The argument will be the focal setting
     condition::SPredicate
+
+    # whether the closures run when the strategy is triggered can run on several threads
+    parallel_trigger::Bool
 
     # the simulation this strategy is bound to; captured by the per-measure process callbacks
     # (see SProcessFn) so `sim` is concretely typed at `add_measure!` time
@@ -198,7 +213,7 @@ struct SStrategy{S<:Simulation} <: Strategy
     # this would require to loop up all measures recursively,
     # in order to identify potential nested strategies
     @doc """
-        SStrategy(name::String, sim::Simulation; condition::Function = x -> true)
+        SStrategy(name::String, sim::Simulation; condition::Function = x -> true, threadsafe::Bool = false)
 
     Creates an SStrategy object.
 
@@ -206,6 +221,7 @@ struct SStrategy{S<:Simulation} <: Strategy
     - `name::String`: Name of the strategy
     - `sim::Simulation`: Simulation object (required to interlink test with simulation)
     - `condition::Function = x -> true` *(optional)*: Predicate function than can be used to limit the execution of this strategy to only cerain settings.
+    - `threadsafe::Bool = false` *(optional)*: Promises that `condition` only reads the focal setting and state that does not change while events run, and writes nothing shared, so large tick triggers can evaluate it on several threads. Covers only the closures in this call.
 
     # Examples
 
@@ -239,10 +255,10 @@ struct SStrategy{S<:Simulation} <: Strategy
     settings that have more than 10 individuals associated.
 
     """
-    function SStrategy(name::String, sim::S; condition::Function = x -> true) where {S<:Simulation}
+    function SStrategy(name::String, sim::S; condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
         condition = _bind_sim(condition, Setting, sim)
         _check_condition(condition, Setting, "SStrategy '$name'")
-        str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), sim)
+        str = new{S}(name, MeasureEntry{Setting}[], SPredicate(condition), condition === _always_true || threadsafe, sim)
         add_strategy!(sim, str)
         return(str)
     end
@@ -276,7 +292,7 @@ function measures(str::Strategy)
 end
 
 """
-    add_measure!(str::Strategy, measure::Measure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true)
+    add_measure!(str::Strategy, measure::Measure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true, threadsafe::Bool = false)
 
 Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
 
@@ -287,6 +303,7 @@ Adds `IMeasure`s to `IStrategy`s and `SMeasure`s to `SStrategy`s.
 - `offset::Int64 = 0` *(optional)*: The number of ticks between the time the measure was triggered and the time the measure will be executed. With `0`, the measure acts on the triggering tick, before that tick's transmission.
 - `delay::Function = x -> 0` *(optional)*: Function of the focal object, and optionally the simulation as a second argument, that must resolve to an integer. The delay will extend the offset.
 - `condition::Function = x -> true` *(optional)*: Predicate function conditioning the exeuction of a measure. It may take the simulation as a second argument.
+- `threadsafe::Bool = false` *(optional)*: Promises that `delay`, `condition` and functions passed to `measure` (like a `selectionfilter`, or a tracing `success_rate` or `contact_filter`) only read the objects they are given and state that does not change while events run, and write nothing shared, so large tick triggers can evaluate `delay` on several threads and the measure can run in the parallel lane. Covers only the closures in this call.
 
 # Examples
 
@@ -319,25 +336,27 @@ This example only lets individuals go into self-isolation who are 65 and above.
 All these optional arguments and predicate functions can be combined. The
 calculated `delay` is added to the `offset` (if specified).
 """
-function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
+function add_measure!(str::IStrategy{S}, measure::IMeasure; offset::Int64 = 0, delay::Function = _no_delay, condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
     sim = str.sim
     fn = IProcessFn(ind -> process_measure(sim, ind, measure))
     delay, condition = _bind_sim(delay, Individual, sim), _bind_sim(condition, Individual, sim)
     _check_applicable(delay, Individual, "delay", "a measure of IStrategy '$(str.name)'")
     _check_condition(condition, Individual, "a measure of IStrategy '$(str.name)'")
-    push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn))
+    push!(str.measures, MeasureEntry{Individual}(offset, measure, IDelayFn(delay), IPredicate(condition), fn, _parallel_entry(measure, delay, condition, threadsafe)))
+    str.parallel_trigger &= delay === _no_delay || threadsafe
     return str
 end
 # `where {S}` forces specialization on the strategy type so `str.sim` is concretely typed and the
 # closure captures `sim` concretely.
 
-function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = x -> 0, condition::Function = x -> true) where {S<:Simulation}
+function add_measure!(str::SStrategy{S}, measure::SMeasure; offset::Int64 = 0, delay::Function = _no_delay, condition::Function = _always_true, threadsafe::Bool = false) where {S<:Simulation}
     sim = str.sim
     fn = SProcessFn(s -> process_measure(sim, s, measure))
     delay, condition = _bind_sim(delay, Setting, sim), _bind_sim(condition, Setting, sim)
     _check_applicable(delay, Setting, "delay", "a measure of SStrategy '$(str.name)'")
     _check_condition(condition, Setting, "a measure of SStrategy '$(str.name)'")
-    push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn))
+    push!(str.measures, MeasureEntry{Setting}(offset, measure, SDelayFn(delay), SPredicate(condition), fn, _parallel_entry(measure, delay, condition, threadsafe)))
+    str.parallel_trigger &= delay === _no_delay || threadsafe
     return str
 end
 
@@ -368,6 +387,52 @@ end
 _bind_sim(f::Function, argtype::Type, sim::Simulation) =
     isempty(methods(f, (argtype, typeof(sim)))) ? f : (x -> f(x, sim))
 
+
+"""
+    _parallel_entry(measure::Measure, delay::Function, condition::Function, threadsafe::Bool)
+
+Returns whether a strategy entry with these closures can run in the parallel lane.
+"""
+_parallel_entry(measure::Measure, delay::Function, condition::Function, threadsafe::Bool) =
+    _parallel_safe(measure, threadsafe) && (threadsafe || (delay === _no_delay && condition === _always_true))
+
+"""
+    _parallel_strategy(str::IStrategy)
+
+Returns whether `str` can run in the parallel lane as a whole, including its condition and delays.
+"""
+_parallel_strategy(str::IStrategy) = str.parallel_trigger && all(me -> me.parallel, measures(str))
+
+"""
+    _closures_hold_back(str::Strategy)
+
+Returns whether marking the closures of `str` as `threadsafe` would let it use more threads.
+"""
+_closures_hold_back(str::IStrategy) = !isempty(measures(str)) && !_parallel_strategy(str) &&
+    all(me -> _parallel_safe(measure(me), true), measures(str))
+_closures_hold_back(str::SStrategy) = !isempty(measures(str)) && (!str.parallel_trigger ||
+    any(me -> !me.parallel && _parallel_safe(measure(me), true), measures(str)))
+
+"""
+    _hint_threadsafe_option(sim::Simulation)
+
+Logs once per session which strategies of a large threaded run are held back by closures not marked `threadsafe`.
+"""
+function _hint_threadsafe_option(sim::Simulation)
+    Threads.nthreads() > 1 || return nothing
+    isempty(tick_triggers(sim)) && return nothing
+    length(individuals(sim)) < TICK_TRIGGER_THREADING_MIN && return nothing
+    held_back = [name(str) for str in strategies(sim) if _closures_hold_back(str)]
+    isempty(held_back) && return nothing
+    @info "Strategies $(join(held_back, ", ")) run serially because of closures not marked `threadsafe = true`. \
+        If a closure only reads its focal individual or setting and state that does not change while events run \
+        (like `i -> age(i) >= 65`), and neither reads nor writes other people's state, counters or capacity limits, \
+        add `threadsafe = true` to the call that passes it (`IStrategy`, `SStrategy` or `add_measure!`, \
+        which also covers functions passed to the measure it adds), \
+        so large interventions can use all threads. A mark covers only the closures in its own call. \
+        A wrong promise causes races that silently change results. See `?add_measure!`." maxlog = 1
+    return nothing
+end
 
 ###
 ### PRINTING

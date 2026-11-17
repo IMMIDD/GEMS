@@ -121,6 +121,13 @@ Returns a list of all `SMeasure` types available.
 """
 s_measuretypes() = subtypes(SMeasure)
 
+"""
+    _parallel_safe(measure::Measure, vouched::Bool)
+
+Returns whether `measure` can run in the parallel lane; `vouched` is the `threadsafe = true` of its `add_measure!` call.
+"""
+_parallel_safe(::Measure, ::Bool) = false
+
 "Abstract wrapper function for intervention processing. Requires contrete subtype implementation"
 function process_measure(sim::Simulation, ind::Individual, intervention::IMeasure)
     error("process_intervention(...) is not defined for concrete IndividualMeasure $(typeof(intervention))")

@@ -115,12 +115,16 @@ end
 Tests every member with `tt` and returns the number of positive results.
 """
 function _apply_tests!(members, tt::TestType, sim::Simulation, reportable::Bool)
+    # in the parallel lane, `_process_setting_event` (parallel_lane.jl) tests the members instead; keep both in step
+    @assert !_in_slot(_event_context(sim)) "TestAll tested members inside a phase of the parallel lane"
     n = 0
     for i in members
         n += apply_test!(i, tt, sim, reportable)
     end
     return n
 end
+
+_parallel_safe(::TestAll, ::Bool) = true
 
 
 ###
@@ -134,6 +138,7 @@ Apply a test of `TestType` (as specified in the `TestAll` measure) to each indiv
 The test results will automatically be logged in the `Simulation`'s internal loggers.
 If a follow-up strategy is set (for either positive or negative results), the 
 follow-up strategy is handed over to the `EventQueue` for this setting.
+In the parallel lane, the members are tested in parallel and the follow-up is triggered later in the same tick.
 
 # Parameters
 

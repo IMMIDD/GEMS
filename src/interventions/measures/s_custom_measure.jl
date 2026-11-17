@@ -6,6 +6,7 @@ export CustomSMeasure, measure_logic
 
 """
     CustomSMeasure <: SMeasure
+    CustomSMeasure(measure_logic::Function; threadsafe::Bool = false)
 
 Intervention struct to apply custom logic to a setting when this measure is executed.
 The field `measure_logic` must contain a two-argument function where the first argument
@@ -28,9 +29,17 @@ contains conditioned logic to demonstrate how the `CustomSMeasure` works. You ca
 of course, achieve the same effect as in the example, if you use a regular `CloseSetting`
 measure and limit its execution to large settings by supplying the `condition` keyword
 to the `add_measure!` function.
+
+`threadsafe = true` lets large interventions run the measure on several threads. It promises that `measure_logic`
+changes nothing: it may read the setting and its members, draw random numbers with `gems_rand(sim)` and trigger
+strategies, but not close the setting, change its contacts, edit activity plans or update counters. A wrong promise
+causes races that silently change results.
 """
 struct CustomSMeasure <: SMeasure 
     measure_logic::Function
+    threadsafe::Bool
+
+    CustomSMeasure(measure_logic::Function; threadsafe::Bool = false) = new(measure_logic, threadsafe)
 end
 
 """
@@ -41,6 +50,8 @@ Returns the `measure_logic` (function) attribute from a `CustomSMeasure` struct.
 function measure_logic(measure::CustomSMeasure)
     return(measure.measure_logic)
 end
+
+_parallel_safe(m::CustomSMeasure, ::Bool) = m.threadsafe
 
 ###
 ### PROCESS MEASURE

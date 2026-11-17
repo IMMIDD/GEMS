@@ -22,6 +22,8 @@ an instance of the `CancelSelfIsolation` measure to the strategy.
 struct CancelSelfIsolation <: IMeasure end
 
 
+_parallel_safe(::CancelSelfIsolation, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###
