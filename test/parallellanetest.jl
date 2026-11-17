@@ -298,11 +298,12 @@ end
         @testset "Tracing Runs In The Owner Phase" begin
             # a short run, so the infection log has infecters with infectees
             function traced_sim()
-                sim = Simulation(pop_size = 1000, seed = 11)
+                sim = Simulation(pop_size = 1000, seed = 11, infected_fraction = 0.05)
                 foreach(_ -> step!(sim), 1:20)
                 isolate = IStrategy("isolate", sim)
                 add_measure!(isolate, SelfIsolation(2))
                 infections = dataframe(infectionlogger(sim))
+                @test any(>(0), infections.id_a)
                 index = argmax(countmap(filter(>(0), infections.id_a)))
                 return (; sim, isolate, infections, index, isolated = i -> isquarantined(i, tick(sim)))
             end
