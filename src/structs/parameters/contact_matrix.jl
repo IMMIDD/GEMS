@@ -96,3 +96,6 @@ struct ContactMatrix{T <: Number}
         return ContactMatrix{T}(data, interval_steps, nothing)
     end
 end
+
+# opt out of deepcopy: read-only, safe (and often large) to share across settings
+Base.deepcopy_internal(cm::ContactMatrix, ::IdDict) = cm

@@ -749,12 +749,17 @@ end
 """
     _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
 
-Internal function barrier to calculate the number of individuals in setting `x`. Mutates the pre-allocated `indivs` buffer to ensure type stability and avoid memory allocations during iteration.
+Internal function barrier to set the contact sampling method on every setting in
+`setting_list` without dynamic dispatch. The concrete `settingtype` assertion inside
+the loop ensures type-stable field access.
+
+Deepcopies `method` per setting so settings don't share a mutable sampling-method cache
+(e.g. `AgeBasedContactSampling.age_pyramid`) across concurrently-processed settings.
 """
 function _set_contact_sampling_method!(setting_list::Vector{Setting}, method, settingtype::Type{T}) where {T <: Setting}
     for s_abs in setting_list
         s = s_abs::settingtype
-        s.contact_sampling_method = method
+        s.contact_sampling_method = deepcopy(method)
     end
 end
 """
