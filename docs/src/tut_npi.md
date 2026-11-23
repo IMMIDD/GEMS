@@ -69,8 +69,8 @@ The execution of measures and strategies can be conditioned.
 Here's the self-isolation scenario again but it shall only apply to students.
 School kids that are symptomatic shall be isolated for 14 days.
 We can achieve this by passing the optional `condition`-argument to the `add_measure!(...)` function.
-The condition itself must be a one-argument predicate function (a function that returns `true` or `false`) that is being evaluated once the measure is being triggered.
-In the example below, we pass the `is_student(individual)` function that returns `true` if an individual is a student.
+The condition itself must be a predicate function (a function that returns `true` or `false`) that takes the individual, or the individual and the simulation, and is being evaluated once the measure is being triggered.
+In the example below, we pass the `is_student` function that returns `true` if an individual is a student.
 
 **Scenario Summary**:
 

@@ -162,8 +162,7 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
     _update_multicol_grouped!(bp.compartments, cumulative_disease_progressions(pp), :tick, :pathogen_id)
     _update_multicol!(bp.quarantines, cumulative_quarantines(pp), :tick)
     for (testtype, df) in tick_tests(pp)
-        # exclude derived rate columns — they are 0 for no-test ticks (not undefined),
-        # which would bias the Welford mean; counts are accumulated instead
+        # skip the rate columns: they are 0 on ticks without tests, which biases the mean
         _update_multicol!(
             get!(bp.tests, testtype, Dict{String, Dict{Int, _WelfordState}}()),
             select(df, Not(intersect(["positive_rate", "rolling_positive_rate"], names(df)))),
@@ -171,9 +170,8 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
         )
     end
 
-    # Dark figure fraction per tick (non-linear — accumulate the fraction, not raw columns)
-    # Only accumulate ticks where there are active infections: active == 0 means the
-    # epidemic hasn't started or has ended, not that all cases are detected.
+    # dark figure fraction per tick, only over ticks with active infections: at active == 0 the
+    # epidemic hasn't started or has ended, which says nothing about detection
     cf = compartment_fill(pp)
     if !isempty(cf) && hasproperty(cf, :exposed_cnt) && hasproperty(cf, :infectious_cnt) && hasproperty(cf, :detected_cnt)
         for row in eachrow(cf)

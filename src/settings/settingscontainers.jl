@@ -15,9 +15,29 @@ A container structure for all settings.
 - `settings::Dict{DataType, Vector}`: A dictionary holding all known settings
     structured by type. Each value is a concretely-typed `Vector{T}` where `T` is the
     corresponding setting type; the dict value type is widened to `Vector` to allow this.
+- `pools::Dict{DataType, HierarchicalSettingPool}`: Member storage of the hierarchies with containers, keyed by
+    leaf type; filled by `build_pools!`.
 """
 mutable struct SettingsContainer
     settings::Dict{DataType, Vector}
+    # member storage for hierarchies that have containers, keyed by leaf type
+    pools::Dict{DataType, HierarchicalSettingPool}
+    # the pool the built settings of a type without containers share, keyed by that type
+    flat_pools::Dict{DataType, FlatSettingPool}
+    # per setting type index, at least the `contact_rate_bound` of each setting's method; Inf until scanned
+    rate_bounds::Vector{Float64}
+    # per setting type index, its rank among this container's types: built-ins by index, then the rest by name
+    type_ranks::Vector{UInt8}
+    # the indices of this container's types other than the built-ins, in rank order
+    ranked_types::Vector{UInt8}
+    # per setting type index, the char a custom type is logged with in this simulation
+    type_chars::Vector{Char}
+    # every log char of this container's types, as a string, mapped to the type's name
+    type_names::Dict{String, String}
+    # per setting type index, the method `reset!` gives the type's settings, without cached member data
+    type_methods::Vector{Union{Nothing, ContactSamplingMethod}}
+    # per setting type index, whether one of its settings got another method since the last `reset!`
+    type_methods_changed::BitVector
 end
 
 
@@ -31,7 +51,9 @@ end
 Return a empty container object.
 """
 function SettingsContainer()
-    return SettingsContainer(Dict{DataType, Vector}())
+    return SettingsContainer(Dict{DataType, Vector}(), Dict{DataType, HierarchicalSettingPool}(),
+        Dict{DataType, FlatSettingPool}(), Float64[], UInt8[], UInt8[], Char[], _builtin_type_names(),
+        Union{Nothing, ContactSamplingMethod}[], BitVector())
 end
 
 
@@ -42,8 +64,19 @@ Add a settingtype to the container if it is not yet included.
 Creates a new concretely-typed vector for the provided type in the settings dictionary.
 """
 function add_type!(container::SettingsContainer, settingtype::DataType)
+    if settingtype <: Setting
+        # an unscanned type falls back to sampling each visit
+        t = Int(register_setting_type!(settingtype))
+        length(container.rate_bounds) < t && append!(container.rate_bounds, fill(Inf, t - length(container.rate_bounds)))
+        length(container.type_methods) < t && append!(container.type_methods, fill(nothing, t - length(container.type_methods)))
+        length(container.type_methods_changed) < t && append!(container.type_methods_changed, falses(t - length(container.type_methods_changed)))
+    end
     if !haskey(container.settings, settingtype)
         container.settings[settingtype] = Vector{settingtype}()
+        if settingtype <: Setting
+            settingtype in BUILTIN_SETTING_TYPES_SET || _add_type_char!(container, settingtype)
+            _rank_types!(container)
+        end
     end
 end
 
@@ -129,7 +162,48 @@ Add a setting to the container.
 """
 function add!(container::SettingsContainer, setting::Setting)
     push!(container.settings[typeof(setting)], setting)
+    _raise_rate_bound!(container, setting)
 end
+
+# Raises the contact rate bound of `setting`'s type to cover its method; only a scan lowers one.
+function _raise_rate_bound!(container::SettingsContainer, setting::Setting)
+    t = Int(setting_type_index(typeof(setting)))
+    b = container.rate_bounds
+    length(b) < t && append!(b, fill(Inf, t - length(b)))
+    @inbounds b[t] = max(b[t], contact_rate_bound(contact_sampling_method(setting)))
+    return nothing
+end
+
+# Sets each type's contact rate bound to the largest `contact_rate_bound` among its settings' methods.
+# A type without settings stays Inf, so one added later without `add!` still falls back.
+function _refresh_rate_bounds!(container::SettingsContainer)
+    for T in settingtypes(container)
+        T <: Setting || continue
+        t = Int(setting_type_index(T))
+        b = container.rate_bounds
+        length(b) < t && append!(b, fill(Inf, t - length(b)))
+        @inbounds b[t] = _max_rate_bound(settings(container, T))
+    end
+    return container
+end
+
+function _max_rate_bound(stngs::Vector{T}) where {T<:Setting}
+    isempty(stngs) && return Inf
+    bound = 0.0
+    # settings of a type usually share one method object, so look each up once
+    last_csm = nothing
+    for s in stngs
+        csm = contact_sampling_method(s)
+        csm === last_csm && continue
+        last_csm = csm
+        bound = max(bound, contact_rate_bound(csm))
+    end
+    return bound
+end
+
+# The contact rate bound of setting type index `t`, Inf for a type the container does not know.
+@inline _rate_bound(container::SettingsContainer, t::UInt8) =
+    Int(t) <= length(container.rate_bounds) ? @inbounds(container.rate_bounds[t]) : Inf
 
 """
     get(container::SettingsContainer, type::DataType)
@@ -162,8 +236,9 @@ Type-stable accessor: returns `Vector{T}` for the given concrete setting type `T
 Returns an empty `Vector{T}` when the type is not present in the container.
 """
 function settings(container::SettingsContainer, ::Type{T}) where {T<:Setting}
-    haskey(container.settings, T) || return T[]
-    return container.settings[T]::Vector{T}
+    v = get(container.settings, T, nothing)
+    v === nothing && return T[]
+    return v::Vector{T}
 end
 
 """
@@ -412,6 +487,9 @@ end
 _unflatten_settings(offsets::AbstractVector{<:Integer}, values::AbstractVector) =
     [values[offsets[i]:offsets[i+1]-1] for i in 1:length(offsets)-1]
 
+# State columns the loader ignores in a settings file, so every setting starts in the same state.
+const _SETTINGS_FILE_STATE_FIELDS = (:isopen, :deceased, :scale_bound, :closed_below, :contact_sampling_method)
+
 # Adds what `_read_settings_jld2` read to `cntnr`, renaming ids through `d`.
 function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
     # Default sampling method
@@ -431,7 +509,7 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
         end
 
         # Handle individualsettings and containersettings differently
-        if :individuals in fieldnames(settingtype)
+        if settingtype <: IndividualSetting
             setting_vec = cntnr.settings[settingtype]
             renaming_dict = haskey(d, settingtype) ? d[settingtype] : nothing
             id_data = df[!, "id"]
@@ -440,7 +518,7 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
             valid_cols = Symbol[]
             for col in names(df)
                 symcol = Symbol(col)
-                if symcol in fieldnames(settingtype) && symcol != :individuals && symcol != :id
+                if symcol in fieldnames(settingtype) && symcol ∉ (:individuals, :id, :flat_pool, :offset, :len, :cap) && symcol ∉ _SETTINGS_FILE_STATE_FIELDS
                     push!(valid_cols, symcol)
                 end
             end
@@ -454,8 +532,9 @@ function _add_jld2_settings!(settings::Dict, cntnr::SettingsContainer, d::Dict)
         else
             setting_vec = cntnr.settings[settingtype]
 
-            # Add the container settings from the dataframe
-            for nt in Tables.namedtupleiterator(df)
+            # Add the container settings from the dataframe, without its state columns
+            state_cols = intersect(names(df), string.(collect(_SETTINGS_FILE_STATE_FIELDS)))
+            for nt in Tables.namedtupleiterator(select(df, Not(state_cols); copycols = false))
                 push!(setting_vec, settingtype(; contact_sampling_method = default_sampling, nt...))
             end
 

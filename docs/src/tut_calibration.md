@@ -180,6 +180,7 @@ Pass `nothing` instead of a bound vector to leave one or both sides unconstraine
 Because epidemic simulations are stochastic, a single run can be a noisy estimate of the expected output.
 Setting `n > 1` tells `calibrate!` to run the simulation `n` times per loss evaluation, each with a different seed, and average the resulting loss.
 This makes the optimisation landscape smoother at the cost of runtime.
+All runs use the layer network `sim` was built with; only the seed of each run changes. `calibrate!` prints that network's `Layer seed`, and setting `layer_seed` under `[Simulation]` builds the same network again.
 
 ```julia
 truth = Simulation(pop_size = 5_000, seed = 1)

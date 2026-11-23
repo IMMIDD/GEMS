@@ -97,35 +97,3 @@ struct InfectionRegistry
 
     InfectionRegistry() = new(InfectionState[], Int32[])
 end
-
-
-"""
-    _PendingInfection
-
-Per-thread transfer struct staged in `infection_buffers` during the threaded
-contact phase, then drained into the individual cache / registry by
-`flush_pending_infections!`.
-"""
-struct _PendingInfection
-    host_id::Int32
-    infection_id::Int32
-    pathogen_id::Int8
-    progression_id::Int8
-    dp::DiseaseProgression
-end
-
-"""
-    _EndedInfection
-
-Per-thread transfer struct staged in `removal_buffers` when an infection ends, then drained
-by `flush_ended_infections!`. `index` is the cache slot index (`is_overflow == false`) or the
-overflow node index (`is_overflow == true`). `pathogen_id == DEFAULT_PATHOGEN_ID` grants no
-immunity (the death path).
-"""
-struct _EndedInfection
-    host_id::Int32
-    index::Int32
-    recovery::Int16
-    pathogen_id::Int8
-    is_overflow::Bool
-end

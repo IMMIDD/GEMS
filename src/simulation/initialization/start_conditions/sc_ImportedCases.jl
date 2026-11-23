@@ -40,7 +40,8 @@ The three dimensions of an import schedule are independent, and each accepts sev
 - `ticks`: *when* imports happen
     - `Integer`: a single import at that tick
     - `AbstractVector{<:Integer}`: exactly these ticks (ranges included); a repeated tick
-      schedules several imports on it
+      schedules several imports on it, which draw independently and can pick the same
+      individual, who is infected once
     - `Function`: `f(sim)` returning the ticks, resolved during `initialize!`
     - `NamedTuple`: window form `(start_tick =, stop_tick =, interval =, offset =)`, where
       `interval` (gap between imports) and `offset` (gap from `start_tick` to the first
@@ -111,8 +112,7 @@ end
 Base.show(io::IO, c::ImportedCases) = write(io,
     "ImportedCases($(_label(c.count)) per import, $(_label(c.ticks)))")
 
-# compact display for whichever form a field holds; the fallback keeps a form that predates
-# its own label printable instead of throwing
+# compact display of whichever form a field holds; the fallback prints forms without their own label
 _label(x) = string(x)
 _label(t::Vector{Int16}) = "$(length(t)) tick$(length(t) == 1 ? "" : "s")"
 _label(c::Vector{Int}) = "$(sum(c)) in total"
