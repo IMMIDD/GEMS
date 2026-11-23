@@ -594,6 +594,67 @@ end
         @test_throws ArgumentError entry_active!(store, i, plan_slot(store, j, Household), false)
     end
 
+    @testset "set_active!" begin
+        # a holds two offices, the second scaled; c holds none
+        df = DataFrame(id = Int32[1, 2, 3], sex = Int8[0, 0, 0], age = Int8[31, 32, 33],
+                       household = Int32[1, 2, 3], office = Int32[1, 2, -1])
+        pop = Population(df)
+        assign_settings!(pop, individuals(pop)[1], Office => 2; scale = 2.5)
+        sim = Simulation(population = pop, infected_fraction = 0.0)
+        plans = activity_plans(sim)
+        cntnr = GEMS.settingscontainer(sim)
+        a, b, c = individuals(sim)
+        k1 = plan_slot(plans, a, Office, Int32(1))
+        k2 = plan_slot(plans, a, Office, Int32(2))
+        eff(k) = GEMS._effective_scale(plans, k)
+
+        # one entry: off counts as 0, on restores the stored scale
+        @test set_active!(sim, a, Office, 2, false) === nothing
+        @test eff(k2) == 0.0f0 && eff(k1) == 1.0f0
+        @test validate_plans(population(sim), cntnr)
+        set_active!(sim, a, Office, 2, true)
+        @test eff(k2) == 2.5f0
+        set_active!(sim, b, Office, 2, false)
+        @test eff(plan_slot(plans, b, Office)) == 0.0f0 && b.plan_scaled
+        set_active!(sim, b, Office, 2, true)
+        @test !b.plan_scaled
+
+        # every entry of the type, and nothing else
+        @test set_active!(sim, a, Office, false) === nothing
+        @test eff(k1) == 0.0f0 && eff(k2) == 0.0f0
+        @test eff(plan_slot(plans, a, Household)) == 1.0f0
+        @test validate_plans(population(sim), cntnr)
+        set_active!(sim, a, Office, true)
+        @test eff(k1) == 1.0f0 && eff(k2) == 2.5f0
+        # someone without an office is left alone
+        @test set_active!(sim, c, Office, false) === nothing
+        @test !c.plan_scaled
+
+        # a missing entry, and types whose settings hold no entries
+        @test_throws ArgumentError set_active!(sim, c, Office, 1, false)
+        @test_throws ArgumentError set_active!(sim, a, Office, 99, false)
+        @test_throws ArgumentError set_active!(sim, a, School, false)
+        @test_throws ArgumentError set_active!(sim, a, GlobalSetting, 1, false)
+
+        # one-person households, so infections can only happen at the office
+        n = 40
+        office_df = DataFrame(id = Int32.(1:n), sex = Int8.(zeros(n)), age = Int8.(fill(30, n)),
+                              household = Int32.(1:n), office = Int32.(cld.(1:n, 10)))
+        p = Pathogen(id = 1, name = "TestPathogen",
+            progressions = [Asymptomatic(
+                exposure_to_infectiousness_onset = 0,
+                infectiousness_onset_to_recovery = 7)],
+            transmission_function = ConstantTransmissionRate(transmission_rate = 1.0))
+        function office_run(switch_off::Bool)
+            osim = Simulation(population = Population(office_df), pathogens = (p,), infected_fraction = 0.1, seed = 1)
+            switch_off && foreach(ind -> set_active!(osim, ind, Office, false), individuals(osim))
+            run!(osim)
+            return dataframe(infectionlogger(osim)).setting_type
+        end
+        @test 'o' in office_run(false)
+        @test !('o' in office_run(true))
+    end
+
     @testset "Id-qualified lookup" begin
         store = ActivityPlanStore()
         i = Individual(id = 1, sex = 0, age = 30)

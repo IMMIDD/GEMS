@@ -4,7 +4,7 @@
 ###
 
 # EXPORTS
-export assign_settings!, set_primary!, set_scale!
+export assign_settings!, set_primary!, set_scale!, set_active!
 export memberships
 
 ###

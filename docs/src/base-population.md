@@ -70,7 +70,8 @@ Each individual setting type has at most one chain of containers above it.
 Types added with `declare_setting_type!` and settings created by setting layers have no container.
 
 Memberships and scales are the same on every tick; there are no weekday or calendar schedules yet.
-A `stepmod` can change them with `add_member!`, `remove_member!` and `set_scale!`.
+A `stepmod` can change them with `add_member!`, `remove_member!` and `set_scale!`, or switch single entries off and back on with `set_active!`, for example offices at weekends.
+A `stepmod` runs at the end of a tick, so its changes apply from the next one; contact tracing replays past days with the current switches.
 
 
 # [Inbuilt Population Generator](@id pop-generator)

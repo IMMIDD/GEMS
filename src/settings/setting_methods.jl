@@ -736,3 +736,33 @@ function set_scale!(sim::Simulation, individual::Individual, ::Type{T}, sid::Int
     !deceased && stored >= _scale_bound(s) ? _set_scale_bound!(s, stored) : _refresh_scale_bound!(plans, s)
     return nothing
 end
+
+"""
+    set_active!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, active::Bool) where {T<:Setting}
+
+Switches the individual's entry for setting `sid` of type `T` off, so it counts as scale 0, or back on at its
+stored scale. Not thread-safe; call it serially, e.g. from a `stepmod`.
+"""
+function set_active!(sim::Simulation, individual::Individual, ::Type{T}, sid::Integer, active::Bool) where {T<:Setting}
+    _holds_entries(T) || throw(ArgumentError("$T settings hold no members directly, so they take no plan entries"))
+    plans = activity_plans(sim)
+    slot = plan_slot(plans, individual, T, Int32(sid))
+    slot == 0 && throw(ArgumentError("individual $(id(individual)) holds no entry for $T $sid"))
+    entry_active!(plans, individual, slot, active)
+    return nothing
+end
+
+"""
+    set_active!(sim::Simulation, individual::Individual, ::Type{T}, active::Bool) where {T<:Setting}
+
+Switches all of the individual's entries of type `T` off or on, and does nothing if it has none.
+Not thread-safe; call it serially, e.g. from a `stepmod`.
+"""
+function set_active!(sim::Simulation, individual::Individual, ::Type{T}, active::Bool) where {T<:Setting}
+    _holds_entries(T) || throw(ArgumentError("$T settings hold no members directly, so they take no plan entries"))
+    plans = activity_plans(sim)
+    for slot in plan_slots(plans, individual, T)
+        entry_active!(plans, individual, slot, active)
+    end
+    return nothing
+end
