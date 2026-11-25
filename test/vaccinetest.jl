@@ -86,6 +86,12 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
         @test vl.dose_number == [Int8(1), Int8(2)]
         @test vl.tick == [Int16(10), Int16(30)]
 
+        # a dose before the recorded one replaces it and warns
+        @test_logs (:warn, r"before its recorded dose") vaccinate!(i_v, sim_v, v, Int16(20))
+        @test vaccination_tick(i_v, sim_v, pid) == Int16(20)
+        # doses at the same tick don't warn
+        @test_logs vaccinate!(i_v, sim_v, v, Int16(20))
+
         # vaccination does not flag for the disease update; the level is computed on read
         k = findfirst(!, sim_v.active_individuals)
         member = individuals(sim_v)[k]
@@ -131,7 +137,7 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
         @test_throws ArgumentError vaccinate!(ind, s, Vaccine(id=3, name="Elsewhere", target_pathogen_id=Int8(5)), Int16(0))
 
         # registration doesn't log, whatever the vaccine sets
-        @test_logs vaccinate!(ind, s, Vaccine(id=4, name="Flu", target_pathogen_id=pid, peak=50, buildup_duration=14), Int16(0))
+        @test_logs vaccinate!(ind, s, Vaccine(id=4, name="Flu", target_pathogen_id=pid, peak=50, buildup_duration=14), Int16(4))
 
         # the same vaccine id for two pathogens with non-contiguous ids
         a = Pathogen(id = 3, name = "A", immunity_profile = NoImmunity())

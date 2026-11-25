@@ -907,6 +907,8 @@ function vaccinate!(individual::Individual, sim::Simulation, vaccine::Vaccine, t
     _register_vaccine!(sim, vaccine)
     registry = immunity_registry(sim, individual)
     pid = target_pathogen_id(vaccine)
+    tick < vaccination_tick(individual, registry, pid) &&
+        @warn "Vaccinating individual $(id(individual)) at tick $tick, before its recorded dose at tick $(vaccination_tick(individual, registry, pid)); the later dose is replaced, so give doses in tick order." maxlog=1
     push_immunity!(registry, individual, pid, IMMUNITY_SOURCE_VACCINE, tick, id(vaccine))
     log!(vaccinationlogger(sim), id(individual), pid, id(vaccine), number_of_vaccinations(individual, registry, pid), tick)
     return nothing
