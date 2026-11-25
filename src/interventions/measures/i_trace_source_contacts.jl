@@ -32,7 +32,8 @@ With `resample_contacts = true`, non-infected contacts from the same window are 
 They are re-drawn from the index's settings of the given `settingtypes` (default: `Household`,
 `Office`, `SchoolClass`) using today's memberships, so they are a plausible set, not the contacts
 drawn during the run. A `contact_filter(setting, tick)` returning `false` skips re-drawing in that
-setting at that tick, e.g. to leave out a past school closure.
+setting at that tick, e.g. to leave out a past school closure. Past quarantines, hospital stays and
+homebound days of the index are not known, so re-drawn contacts may include settings it could not visit at the time.
 
 The optional `max_contacts` caps how many contacts the index names; a random subset of that size is
 picked before the `success_rate` draws (default: no cap).

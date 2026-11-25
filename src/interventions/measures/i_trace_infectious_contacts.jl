@@ -42,6 +42,8 @@ using today's memberships, so they are a plausible set, not the contacts drawn d
 Infectees the re-draw missed replace re-drawn contacts of a shared setting where possible, keeping the count.
 Past closures are unknown to GEMS; a `contact_filter(setting, tick)` returning `false` skips
 re-drawing in that setting at that tick, e.g. `(s, t) -> !(s isa SchoolClass && 30 <= t <= 44)`.
+Past quarantines, hospital stays and homebound days of the index are not known either, so re-drawn
+contacts may include settings it could not visit at the time.
 
 The optional `max_contacts` caps how many contacts the index names; a random subset of that size is
 picked before the `success_rate` draws (default: no cap).
