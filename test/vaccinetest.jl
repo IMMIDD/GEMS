@@ -102,7 +102,7 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
         s = Simulation(pop_size = 100)
         ind = individuals(s)[1]
         pid = Int8(1)
-        registered(sim, p, vid) = sim.vaccine_registered[p] & (UInt128(1) << (vid - 1)) != 0
+        registered(sim, p, vid) = sim.vaccine_table.registered[p][] & (UInt128(1) << (vid - 1)) != 0
 
         # the record: defaults, built from a vaccine, checked
         @test GEMS.VaccineProtection() == GEMS.VaccineProtection(100, 100, -1)
@@ -114,11 +114,11 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
         v1 = Vaccine(id=1, name="V1", target_pathogen_id=pid)
         vaccinate!(ind, s, v1, Int16(0))
         @test registered(s, pid, 1)
-        @test s.vaccine_protection[1, pid] == GEMS.VaccineProtection()
+        @test s.vaccine_table.protection[1, pid] == GEMS.VaccineProtection()
         vaccinate!(ind, s, Vaccine(id=1, name="V1 again", target_pathogen_id=pid), Int16(1))
         # another vaccine under a registered id conflicts instead of overwriting
         @test_throws ArgumentError vaccinate!(ind, s, Vaccine(id=1, name="V1b", target_pathogen_id=pid, peak=60), Int16(2))
-        @test s.vaccine_protection[1, pid] == GEMS.VaccineProtection()
+        @test s.vaccine_table.protection[1, pid] == GEMS.VaccineProtection()
         # values are frozen at the first dose, and a mutated vaccine is checked again
         v1.peak = Int8(80)
         @test_throws ArgumentError vaccinate!(ind, s, v1, Int16(3))
@@ -140,8 +140,8 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
         ind3 = individuals(s3)[1]
         vaccinate!(ind3, s3, Vaccine(id=1, name="ForA", target_pathogen_id=Int8(3), peak=60), Int16(0))
         vaccinate!(ind3, s3, Vaccine(id=1, name="ForB", target_pathogen_id=Int8(7), peak=80), Int16(0))
-        @test s3.vaccine_protection[1, 3].peak == Int8(60)
-        @test s3.vaccine_protection[1, 7].peak == Int8(80)
+        @test s3.vaccine_table.protection[1, 3].peak == Int8(60)
+        @test s3.vaccine_table.protection[1, 7].peak == Int8(80)
 
         # the deprecated path registers nothing and warns once per vaccine about ignored peaks
         reg = ImmunityRegistry()
@@ -155,10 +155,10 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
 
         # reset! clears the registrations, so a sweep can reuse an id with other values
         reset!(s)
-        @test all(==(UInt128(0)), s.vaccine_registered)
-        @test all(==(GEMS.VaccineProtection()), s.vaccine_protection)
+        @test all(bits -> bits[] == 0, s.vaccine_table.registered)
+        @test all(==(GEMS.VaccineProtection()), s.vaccine_table.protection)
         vaccinate!(individuals(s)[1], s, Vaccine(id=1, name="Sweep", target_pathogen_id=pid, peak=40), Int16(0))
-        @test s.vaccine_protection[1, pid].peak == Int8(40)
+        @test s.vaccine_table.protection[1, pid].peak == Int8(40)
     end
 
     @testset "Peaks" begin

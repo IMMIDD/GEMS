@@ -36,6 +36,8 @@ function duration(si::SelfIsolation)
 end
 
 
+_parallel_safe(::SelfIsolation, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###

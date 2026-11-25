@@ -59,6 +59,8 @@ function follow_up(fs::FindSetting)
 end
 
 
+_parallel_safe(::FindSetting, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###

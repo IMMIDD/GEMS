@@ -107,6 +107,8 @@ function reportable(t::Test)
 end
 
 
+_parallel_safe(::Test, ::Bool) = true
+
 ###
 ### PROCESS MEASURE
 ###

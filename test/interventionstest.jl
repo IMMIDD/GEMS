@@ -1,4 +1,4 @@
-import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, stage!, flush_staging!, peek, peektick
+import GEMS: MeasureEntry, EventQueue, enqueue!, dequeue!, peek, peektick
 
 # helpers to inspect what a measure resolved to: built-in measures now trigger their
 # follow-up directly (enqueuing events) and return nothing, so drain the queue to check
@@ -185,7 +185,7 @@ end
         fs_fu = SStrategy("find_setting_fu", sim)
         add_measure!(fs_fu, CloseSetting())
         find_setting_proc = FindSetting(Household, fs_fu)
-        eq = GEMS.event_queue(sim)
+        eq = queued_events(sim)
         empty!(eq)
         @test process_measure(sim, i, find_setting_proc) === nothing
         evs = drain_events!(eq)
@@ -218,7 +218,7 @@ end
         #test process measure: members now get the follow-up triggered directly
         add_measure!(i_strategy2, SelfIsolation(Int16(1)))   # sentinel so events are enqueued
         individuals_from_sim = individuals(sim2)
-        eq2 = GEMS.event_queue(sim2)
+        eq2 = queued_events(sim2)
         empty!(eq2)
         @test process_measure(sim2, first(individuals_from_sim), find_setting_members3) === nothing
         evs = drain_events!(eq2)
@@ -236,7 +236,7 @@ end
         sim4 = Simulation(population = pop)
         fu = SStrategy("find_settings_fu", sim4)
         add_measure!(fu, CloseSetting())
-        eq = GEMS.event_queue(sim4)
+        eq = queued_events(sim4)
         empty!(eq)
 
         # FindSetting acts on the primary, or on the setting it is given
@@ -289,7 +289,7 @@ end
 
             dept_fu = SStrategy("find_departments_fu", sim5)
             add_measure!(dept_fu, CloseSetting())
-            eq5 = GEMS.event_queue(sim5)
+            eq5 = queued_events(sim5)
             empty!(eq5)
             process_measure(sim5, a5, FindAllSettings(Department, dept_fu))
             @test followup_focals(drain_events!(eq5)) == [settings(sim5, Department)[1]]
@@ -365,7 +365,7 @@ end
 
         i_test_neg = Individual(id=201, sex=0, age=31)
         fake_membership!(population(sim), i_test_neg, Household, 1)
-        eq = GEMS.event_queue(sim)
+        eq = queued_events(sim)
         empty!(eq)
         @test process_measure(sim, i_test_neg, test_measure3) === nothing   # negative result → negative follow-up
         evs = drain_events!(eq)
@@ -433,7 +433,7 @@ end
         fake_membership!(population(sim), i_sero, Household, 1)
         infect!(i_sero, Int16(0), first_pathogen(sim), rng = Xoshiro())
         GEMS.push_immunity!(immunity_registry(sim, i_sero), i_sero, id(first_pathogen(sim)), GEMS.IMMUNITY_SOURCE_NATURAL, Int16(0), GEMS.DEFAULT_VACCINE_ID)
-        eq = GEMS.event_queue(sim)
+        eq = queued_events(sim)
         empty!(eq)
         @test process_measure(sim, i_sero, s_test_measure2) === nothing   # positive result → positive follow-up
         evs = drain_events!(eq)
@@ -472,7 +472,7 @@ end
         GEMS.increment!(sim3)
 
         add_measure!(i_strategy3, SelfIsolation(Int16(1)))   # sentinel so the traced contact gets an event
-        eq3 = GEMS.event_queue(sim3)
+        eq3 = queued_events(sim3)
         empty!(eq3)
         @test process_measure(sim3, ind1, trace_infectious2) === nothing
         evs = drain_events!(eq3)
@@ -522,7 +522,7 @@ end
         index4 = first(inds4)
         set_progression!(index4, DiseaseProgression(exposure=Int16(0), infectiousness_onset=Int16(1), recovery=Int16(20)), id(first_pathogen(sim4)))
         foreach(_ -> GEMS.increment!(sim4), 1:3)
-        eq4 = GEMS.event_queue(sim4)
+        eq4 = queued_events(sim4)
 
         # without resampling, only infectees are traced
         empty!(eq4)
@@ -565,7 +565,7 @@ end
         log_ended_infection!(sim6, early, id(recovered), 2, 4, 9)
         log_ended_infection!(sim6, late, id(recovered), 5, 7, 12)
         foreach(_ -> GEMS.increment!(sim6), 1:10)
-        eq6 = GEMS.event_queue(sim6)
+        eq6 = queued_events(sim6)
 
         # the ended infectious period is traced, within the lookback
         empty!(eq6)
@@ -683,7 +683,7 @@ end
         infect!(seeded, Int16(0), pat5, sim = sim5, rng = rng(sim5))
         GEMS.flush_pending_infections!(sim5)
         GEMS.increment!(sim5)
-        eq5 = GEMS.event_queue(sim5)
+        eq5 = queued_events(sim5)
 
         empty!(eq5)
         process_measure(sim5, index5, trace_source)
@@ -769,7 +769,7 @@ end
         @test sample_fraction(find_members3) == 0.5
 
         #test processing measure: each found member gets the follow-up triggered directly
-        eq = GEMS.event_queue(sim)
+        eq = queued_events(sim)
         empty!(eq)
         @test process_measure(sim, gs, find_members) === nothing
         evs = drain_events!(eq)
@@ -872,7 +872,7 @@ end
         @test positive_followup(is_open3) === nothing
 
         #test processing measure
-        eq = GEMS.event_queue(sim)
+        eq = queued_events(sim)
         empty!(eq)
         @test process_measure(sim, gs, is_open) === nothing   # gs open → positive follow-up
         evs = drain_events!(eq)
@@ -917,7 +917,7 @@ end
         end
 
         #test processing measure:
-        eq = GEMS.event_queue(sim)
+        eq = queued_events(sim)
         empty!(eq)
         @test process_measure(sim, gs, pool_test3) === nothing   # no infected → negative follow-up
         evs = drain_events!(eq)
@@ -952,7 +952,7 @@ end
         ind_a = Individual(id = 10, sex = 0, age = 30)
         # vaccinate an individual
         ind_a = Individual(id = 10, sex = 0, age = 30)
-        eqv = GEMS.event_queue(vacc_sim)
+        eqv = queued_events(vacc_sim)
         empty!(eqv)
         @test process_measure(vacc_sim, ind_a, vacc_measure) === nothing
 
@@ -1026,7 +1026,7 @@ end
         end
 
         #test processing measure:
-        eq = GEMS.event_queue(sim)
+        eq = queued_events(sim)
         empty!(eq)
         @test process_measure(sim, gs2, test_all3) === nothing   # no infected → negative follow-up
         evs = drain_events!(eq)
@@ -1053,6 +1053,98 @@ end
         @test gs.isopen == false
         process_measure(sim, gs, custom_s_measure)
         @test gs.isopen == true
+    end
+
+    @testset "Symptom Trigger Closures Run Serially" begin
+        counting_sim = Simulation(pop_size = 1000, seed = 7)
+        conditions = Ref(0)
+        processed = Ref(0)
+        counting = IStrategy("count", counting_sim, condition = i -> (conditions[] += 1; true))
+        add_measure!(counting, CustomIMeasure((i, s) -> (processed[] += 1)))
+        add_symptom_trigger!(counting_sim, SymptomTrigger(counting))
+        run!(counting_sim, with_progressbar = false)
+        # the plain counter in the condition loses no updates against the one in the serial measure
+        @test conditions[] > 0
+        @test conditions[] == processed[]
+        @test all(isempty, counting_sim.staging_buffers.newly_symptomatic)
+
+        # reset! drops people still waiting to fire
+        push!(counting_sim.staging_buffers.newly_symptomatic[1], first(individuals(counting_sim)))
+        GEMS.reset!(counting_sim)
+        @test all(isempty, counting_sim.staging_buffers.newly_symptomatic)
+    end
+
+    @testset "Tick Trigger Closures" begin
+        @testset "Flags" begin
+            flag_sim = Simulation(pop_size = 100, seed = 7)
+            no_closures = IStrategy("no closures", flag_sim)
+            add_measure!(no_closures, SelfIsolation(1))
+            @test no_closures.parallel_trigger
+            @test !IStrategy("condition", flag_sim, condition = i -> true).parallel_trigger
+            @test IStrategy("marked", flag_sim, condition = i -> true, threadsafe = true).parallel_trigger
+            # an entry condition runs at processing time, so it does not count
+            entry_condition = IStrategy("entry condition", flag_sim)
+            add_measure!(entry_condition, SelfIsolation(1), condition = i -> true)
+            @test entry_condition.parallel_trigger
+            marked_delay = IStrategy("marked delay", flag_sim)
+            add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0, threadsafe = true)
+            @test marked_delay.parallel_trigger
+            # a later measure with an unmarked delay turns it off
+            add_measure!(marked_delay, SelfIsolation(1), delay = i -> 0)
+            @test !marked_delay.parallel_trigger
+        end
+
+        large_sim = Simulation(pop_size = GEMS.TICK_TRIGGER_THREADING_MIN + 1000, seed = 7)
+
+        @testset "Individual Closures" begin
+            # an unmarked closure runs serially: its plain counter loses no updates
+            calls = Ref(0)
+            counting = IStrategy("count", large_sim, condition = i -> (calls[] += 1; false))
+            GEMS.trigger(ITickTrigger(counting), large_sim)
+            @test calls[] == length(individuals(large_sim))
+
+            # marked closures run on the owners, unmarked ones here; both reach the same people
+            function tested_ids(str, test_type)
+                GEMS.trigger(ITickTrigger(str), large_sim)
+                GEMS.process_events!(large_sim)
+                df = dataframe(testlogger(large_sim))
+                return sort(df.id[df.test_type .== test_type])
+            end
+            named_test_type(name) = TestType(name, pathogen(large_sim), large_sim)
+            unmarked = IStrategy("unmarked", large_sim, condition = i -> isodd(id(i)))
+            add_measure!(unmarked, GEMS.Test("unmarked", named_test_type("unmarked")))
+            marked = IStrategy("marked", large_sim, condition = i -> isodd(id(i)), threadsafe = true)
+            add_measure!(marked, GEMS.Test("marked", named_test_type("marked")))
+            marked_ids = tested_ids(marked, "marked")
+            @test !isempty(marked_ids)
+            @test marked_ids == tested_ids(unmarked, "unmarked")
+        end
+
+        @testset "Setting Closures" begin
+            # marked and unmarked setting closures queue the same events in the same order
+            function queued_settings(str)
+                many = repeat(households(large_sim), 3)
+                @test length(many) >= GEMS.TICK_TRIGGER_THREADING_MIN
+                GEMS._trigger_all!(str, many, large_sim)
+                @test all(isempty, GEMS._parallel_lane(large_sim).staged_setting_events)
+                bucket(q) = [id(e.setting) for e in q.s_buckets[tick(large_sim) + 1]]
+                ids = (lane = bucket(GEMS._setting_queue(large_sim)), serial = bucket(GEMS.event_queue(large_sim)))
+                empty!(queued_events(large_sim))
+                return ids
+            end
+            setting_followup = IStrategy("setting follow-up", large_sim)
+            unmarked_settings = SStrategy("unmarked", large_sim, condition = s -> isodd(id(s)))
+            marked_settings = SStrategy("marked", large_sim, condition = s -> isodd(id(s)), threadsafe = true)
+            for str in (unmarked_settings, marked_settings)
+                add_measure!(str, FindMembers(setting_followup))
+                add_measure!(str, CloseSetting())
+            end
+            @test !GEMS._can_thread_trigger(unmarked_settings)
+            @test GEMS._can_thread_trigger(marked_settings)
+            marked_settings_ids = queued_settings(marked_settings)
+            @test !isempty(marked_settings_ids.lane) && !isempty(marked_settings_ids.serial)
+            @test marked_settings_ids == queued_settings(unmarked_settings)
+        end
     end
 
     @testset "Triggers" begin
@@ -1352,28 +1444,6 @@ end
             @test peektick(eq) == Int16(7)
             @test peek(eq) === i_measure_event
 
-            # staged events are not visible until flush_staging! merges them in
-            empty!(eq)
-            stage!(eq, s_measure_event, Int16(4))
-            stage!(eq, i_measure_event, Int16(2))
-            @test length(eq) == 0
-            @test isempty(eq) === true
-
-            flush_staging!(eq)
-            @test length(eq) == 2
-            @test peektick(eq) == Int16(2)
-            @test peek(eq) === i_measure_event
-
-            # flush clears the staging buffers: a second flush adds nothing
-            flush_staging!(eq)
-            @test length(eq) == 2
-
-            # empty! also clears any staged-but-unflushed events
-            stage!(eq, i_measure_event, Int16(9))
-            empty!(eq)
-            flush_staging!(eq)
-            @test length(eq) == 0
-
             # s events drain before i events when both are scheduled for the same tick
             empty!(eq)
             enqueue!(eq, i_measure_event, Int16(4))
@@ -1393,16 +1463,15 @@ end
             @test peektick(eq) == Int16(2)
             @test dequeue!(eq) === i_measure_event
 
-            # head is pulled back when flush_staging! inserts into a tick the queue has
-            # already advanced past (the two-source drain scenario)
+            # head is pulled back when an event is inserted into a tick the queue has
+            # already advanced past
             empty!(eq)
             enqueue!(eq, i_measure_event, Int16(3))
             enqueue!(eq, i_measure_event, Int16(5))
             dequeue!(eq)
             dequeue!(eq)
             @test isempty(eq)
-            stage!(eq, s_measure_event, Int16(3))
-            flush_staging!(eq)
+            enqueue!(eq, s_measure_event, Int16(3))
             @test length(eq) == 1
             @test peektick(eq) == Int16(3)
             @test dequeue!(eq) === s_measure_event

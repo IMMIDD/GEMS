@@ -894,7 +894,7 @@ GEMS.susceptibility_factor(::HalvingImmunity, level::Int8) = 1.0 - 0.5 * level /
             @test household < office
 
             # push the office attempt first, so buffer order and canonical order disagree
-            buf = sim.infection_buffers[Threads.threadid(), GEMS._owner_shard(id(host))]
+            buf = sim.staging_buffers.infections[Threads.threadid(), GEMS._owner_shard(id(host))]
             push!(buf, stage(office, 'o', 20))
             push!(buf, stage(household, 'h', 10))
 
@@ -1226,11 +1226,11 @@ GEMS.susceptibility_factor(::HalvingImmunity, level::Int8) = 1.0 - 0.5 * level /
             for _ in 1:reps
                 GEMS.spread_infections!(sim)
                 rep = Dict{Tuple{Int32, Char, Int8}, Int}()
-                for buf in sim.infection_buffers, p in buf
+                for buf in sim.staging_buffers.infections, p in buf
                     key = (p.infecter_id, p.setting_type, p.pathogen_id)
                     rep[key] = get(rep, key, 0) + 1
                 end
-                foreach(empty!, sim.infection_buffers)
+                foreach(empty!, sim.staging_buffers.infections)
                 per_type = Dict{Tuple{Char, Int8}, Int}()
                 for (key, v) in rep
                     acc = get!(() -> [0.0, 0.0], cells, key)
@@ -1303,7 +1303,7 @@ GEMS.susceptibility_factor(::HalvingImmunity, level::Int8) = 1.0 - 0.5 * level /
             e
         end
         cntnr.rate_bounds[hh] = drawn_bounds[hh]
-        foreach(empty!, sim.infection_buffers)
+        foreach(empty!, sim.staging_buffers.infections)
         @test err !== nothing && occursin("exceeds the bound", sprint(showerror, err))
 
         # once compiled, walking with draws allocates nothing, and each level's draw is concretely typed

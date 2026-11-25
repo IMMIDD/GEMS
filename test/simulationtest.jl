@@ -536,10 +536,10 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
             fresh = Simulation(pop_size = 100, seed = 5)
             streams = copy.(fresh.rngs)
             step!(fresh)
-            push!(fresh.removal_buffers[1], GEMS._EndedInfection(individuals(fresh)[1], Int32(1), Int16(0), Int8(1), false))
+            push!(fresh.staging_buffers.removals[1], GEMS._EndedInfection(individuals(fresh)[1], Int32(1), Int16(0), Int8(1), false))
             reset!(fresh)
             @test fresh.rngs == streams
-            @test all(isempty, fresh.removal_buffers) && all(isempty, fresh.infection_buffers)
+            @test all(isempty, fresh.staging_buffers.removals) && all(isempty, fresh.staging_buffers.infections)
 
             # reinitialize! is an alias for reset! kept for backwards compatibility.
             # It must behave identically to reset! in both modes.
@@ -1875,17 +1875,25 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
 
         # run! releases the capacity the buffers grew to, down to what they still hold
         capacity(v) = length(v.ref.mem)
-        @test any(b -> capacity(b) > 0, sim.infection_buffers)  # reserved up front
+        @test any(b -> capacity(b) > 0, sim.staging_buffers.infections)  # reserved up front
         run!(sim)
         @test all(b -> capacity(b) == length(b), sim.infectious_individuals)
         @test all(b -> capacity(b) == length(b), contact_buffers(sim))
-        @test all(b -> capacity(b) == length(b), sim.draw_buffers)
-        @test all(b -> capacity(b) == length(b), sim.newly_dead)
+        @test all(b -> capacity(b) == length(b), sim.scratch_buffers.draw)
+        @test all(b -> capacity(b) == length(b), sim.scratch_buffers.member_filter)
+        @test all(b -> capacity(b) == length(b), sim.scratch_buffers.member_sample)
+        @test all(b -> capacity(b) == length(b), sim.staging_buffers.newly_dead)
+        @test all(b -> capacity(b) == length(b), sim.staging_buffers.newly_symptomatic)
+        @test all(b -> capacity(b) == length(b), GEMS._parallel_lane(sim).owner_requests)
+        @test all(b -> capacity(b) == length(b), GEMS._parallel_lane(sim).next_owner_requests)
+        @test all(b -> capacity(b) == length(b), GEMS._parallel_lane(sim).serial_individual_requests)
+        @test all(b -> capacity(b) == length(b), GEMS._parallel_lane(sim).serial_setting_requests)
+        @test all(b -> capacity(b) == length(b), GEMS._parallel_lane(sim).staged_setting_events)
         @test all(t -> capacity(t.in_care) == length(t.in_care), sim.state_log_counts)
-        @test all(b -> capacity(b) == length(b), sim.infection_buffers)
-        @test all(b -> capacity(b) == length(b), sim.removal_buffers)
+        @test all(b -> capacity(b) == length(b), sim.staging_buffers.infections)
+        @test all(b -> capacity(b) == length(b), sim.staging_buffers.removals)
         # reserved up front too; a Dict shrinks to the table its last tick's winners need
-        @test all(d -> length(d.slots) <= max(16, 4 * length(d)), sim.deduplication_winners)
+        @test all(d -> length(d.slots) <= max(16, 4 * length(d)), sim.scratch_buffers.deduplication_winners)
 
         # rngs returns one Xoshiro RNG per thread, seeded from the simulation seed.
         rng_vec = rngs(sim)
@@ -1909,7 +1917,7 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         gs = settings(sim, GlobalSetting)[1]
         inds = individuals(sim)
         dead_inds = inds[[3, 17, 250, 499, 500]]
-        append!(sim.newly_dead[1], dead_inds)
+        append!(sim.staging_buffers.newly_dead[1], dead_inds)
         GEMS.apply_deaths!(sim)
         repack_dirty_pools!(cntnr)
         for d in dead_inds, e in GEMS.plan_entries(plans, d)
@@ -1924,7 +1932,7 @@ GEMS.initialize!(sim::Simulation, ::InfectFirstCondition) =
         @test all(i -> individuals(gs)[GEMS._global_position(i, sim)] === i, setdiff(inds, dead_inds))
         # marking someone twice changes nothing
         before = copy(individuals(gs))
-        push!(sim.newly_dead[1], dead_inds[1])
+        push!(sim.staging_buffers.newly_dead[1], dead_inds[1])
         GEMS.apply_deaths!(sim)
         @test individuals(gs) == before
         @test GEMS._deceased(gs) == length(dead_inds)

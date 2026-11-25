@@ -15,11 +15,19 @@ export is_disease_active
 """
     process_events!(simulation::Simulation)
 
-Executes the `process_measure` function for all measures in the 
-simulation's `EventQueue` for the current tick.
+Processes all events due at the current tick, in rounds until none are left: the serial lane, then
+the setting and owner phases of the parallel lane, then what those phases requested from serial code.
 """
 function process_events!(simulation::Simulation)
-    process_due!(event_queue(simulation), simulation, tick(simulation))
+    t = tick(simulation)
+    _prepare_infecter_index!(simulation)
+    while _events_due(simulation, t) || _owner_requests_pending(simulation)
+        process_due!(event_queue(simulation), simulation, t)
+        _run_setting_phase!(simulation, t)
+        _run_owner_phase!(simulation, t)
+        _run_serial_requests!(simulation)
+    end
+    return nothing
 end
 
 """
@@ -320,10 +328,9 @@ function step!(simulation::Simulation)
     # update disease state and apply deaths
     update_population!(simulation, dormant)
 
-    # fire hospitalization_triggers
+    # fire hospitalization and symptom triggers
     fire_hospitalization_triggers!(simulation)
-    # merge per-thread staged trigger events into the queue before processing
-    flush_staging!(event_queue(simulation))
+    fire_symptom_triggers!(simulation)
 
     # trigger tick triggers
     for tt in simulation |> tick_triggers
@@ -372,8 +379,7 @@ function is_dormant(simulation::Simulation)
     current_t = tick(simulation)
 
     # wake up if an event is scheduled for today (or was missed)
-    eq = event_queue(simulation)
-    if !isempty(eq) && peektick(eq) <= current_t
+    if _events_due(simulation, current_t) || _owner_requests_pending(simulation)
         return false
     end
 
@@ -395,7 +401,7 @@ function is_dormant(simulation::Simulation)
     end
 
     # wake up if infections were staged outside the spreading phase
-    if any(!isempty, simulation.infection_buffers)
+    if any(!isempty, simulation.staging_buffers.infections)
         return false
     end
 
@@ -433,7 +439,7 @@ end
 """
     flush_pending_infections!(sim::Simulation)
  
-Commits every `_PendingInfection` staged in `sim.infection_buffers`, keeping one winner per
+Commits every `_PendingInfection` staged in `sim.staging_buffers.infections`, keeping one winner per
 `(host, pathogen)` and dropping the rest. Empties each buffer when done.
 
 Two passes: the first records the smallest `_deduplication_key` per
@@ -452,20 +458,20 @@ function flush_pending_infections!(sim::Simulation)
     @inbounds for shard_id in 1:num_shards
         arrivals = 0
         for producer_id in 1:num_shards
-            arrivals += length(sim.infection_buffers[producer_id, shard_id])
+            arrivals += length(sim.staging_buffers.infections[producer_id, shard_id])
         end
         id_bases[shard_id] = reserve_infection_ids!(logger, arrivals)
     end
 
     Threads.@threads :static for shard_id in 1:num_shards
         infections = sim.infection_registries[shard_id]
-        best = sim.deduplication_winners[shard_id]
+        best = sim.scratch_buffers.deduplication_winners[shard_id]
         next_id = id_bases[shard_id]
 
         # pass 1: pick canonical winner of each contest, over the whole column
         empty!(best)
         @inbounds for producer_id in 1:num_shards
-            for p in sim.infection_buffers[producer_id, shard_id]
+            for p in sim.staging_buffers.infections[producer_id, shard_id]
                 k = _deduplication_key(p)
                 hp = (p.host_id, p.pathogen_id)
                 cur = get(best, hp, nothing)
@@ -476,7 +482,7 @@ function flush_pending_infections!(sim::Simulation)
         # pass 2: commit the winners. The mask guard skips the losers' host and settles exact ties.
         counts = sim.state_log_counts[Threads.threadid()]
         @inbounds for producer_id in 1:num_shards
-            buf = sim.infection_buffers[producer_id, shard_id]
+            buf = sim.staging_buffers.infections[producer_id, shard_id]
             for j in eachindex(buf)
                 # hosts and their plan entries, read for the log's household, are cache misses unless fetched ahead
                 _prefetch_listed_ahead(i -> buf[i].host, length(buf), j, plans)
@@ -542,7 +548,7 @@ end
 """
     flush_ended_infections!(sim)
  
-Drains `removal_buffers` after the threaded update phase: grants the natural immunity each
+Drains `staging_buffers.removals` after the threaded update phase: grants the natural immunity each
 ended infection leaves behind, clears `slot_to_row` entries for infections that ended during
 this tick, and returns their indices to the free list so they can be reused.
 """
@@ -554,7 +560,7 @@ function flush_ended_infections!(sim::Simulation)
         immunities = sim.immunity_registries[shard_id]
 
         @inbounds for producer_id in 1:num_shards
-            buf = sim.removal_buffers[producer_id, shard_id]
+            buf = sim.staging_buffers.removals[producer_id, shard_id]
             for r in buf
                 r.pathogen_id == DEFAULT_PATHOGEN_ID && continue
                 ind = r.host
@@ -680,8 +686,23 @@ function fire_hospitalization_triggers!(sim::Simulation)
     for sched in sim.health_schedules, host_id in sched.admitted
         indiv = get_individual_by_id(pop, host_id)
         for ht in triggers
-            trigger(ht, indiv, sim, staged = true)
+            trigger(ht, indiv, sim)
         end
+    end
+    return nothing
+end
+
+"""
+    fire_symptom_triggers!(sim::Simulation)
+
+Fires the symptom triggers for everyone who became symptomatic in this tick's disease update.
+"""
+function fire_symptom_triggers!(sim::Simulation)
+    for buf in sim.staging_buffers.newly_symptomatic
+        for indiv in buf, st in symptom_triggers(sim)
+            trigger(st, indiv, sim)
+        end
+        empty!(buf)
     end
     return nothing
 end
@@ -751,20 +772,18 @@ function update_individual!(indiv::Individual, tick::Int16, sim::Simulation)
     if infected(indiv) || (Int16(0) <= indiv.death && !was_dead)
         shard_id = _owner_shard(id(indiv))
 
-        progress_disease!(indiv, sim.infection_registries[shard_id], sim.pathogens, sim.removal_buffers[Threads.threadid(), shard_id], tick, sim.seed)
+        progress_disease!(indiv, sim.infection_registries[shard_id], sim.pathogens, sim.staging_buffers.removals[Threads.threadid(), shard_id], tick, sim.seed)
 
         if !was_dead && dead(indiv)
             log!(deathlogger(sim), id(indiv), indiv.killing_pathogen_id, tick)
             _close_care_at_death!(indiv, healthlogger(sim), tick)
             # leaves its settings in `apply_deaths!`, after this threaded loop
-            push!(sim.newly_dead[Threads.threadid()], indiv)
+            push!(sim.staging_buffers.newly_dead[Threads.threadid()], indiv)
         end
     end
 
-    if !was_symptomatic && symptomatic(indiv)
-        for st in sim |> symptom_triggers
-            trigger(st, indiv, sim, staged = true)
-        end
+    if !was_symptomatic && symptomatic(indiv) && !isempty(symptom_triggers(sim))
+        push!(sim.staging_buffers.newly_symptomatic[Threads.threadid()], indiv)
     end
     return _UpdateState(_next_update(indiv, infection_registry(sim, id(indiv)), sim.pathogens, tick), indiv)
 end
@@ -819,6 +838,12 @@ const ID_MAP_PREFETCH_DISTANCE = 16
     return nothing
 end
 
+# As `_prefetch_listed_ahead`, for loops that do not read plans: prefetches only the `Individual`.
+@inline function _prefetch_individual_ahead(individual_at::F, n::Int, k::Int) where {F}
+    k + LISTED_PREFETCH_DISTANCE <= n && _prefetch(pointer_from_objref(individual_at(k + LISTED_PREFETCH_DISTANCE)), sizeof(Individual))
+    return nothing
+end
+
 # While a loop works on item `k` of `n`, prefetches the `id_map` entry of the id `ID_MAP_PREFETCH_DISTANCE` ahead.
 @inline function _prefetch_id_map_ahead(id_at::F, n::Int, k::Int, population::Population) where {F}
     if k + ID_MAP_PREFETCH_DISTANCE <= n
@@ -842,7 +867,7 @@ end
 # Marks this tick's dead deceased; `spread_infections!` repacks the pools. A mark swaps two members, so
 # each setting, and all settings of a pooled type, are marked by a single thread.
 function apply_deaths!(sim::Simulation)
-    any(!isempty, sim.newly_dead) || return nothing
+    any(!isempty, sim.staging_buffers.newly_dead) || return nothing
     cntnr = settingscontainer(sim)
     # (type, part, parts): a flat type split by setting id, a pooled type whole
     parts = Tuple{DataType, Int, Int}[]
@@ -857,11 +882,11 @@ function apply_deaths!(sim::Simulation)
     # nobody holds a plan entry for the GlobalSetting, so it is marked here, by one thread
     gs = get(cntnr.settings, GlobalSetting, nothing)
     if gs !== nothing && !isempty(gs)
-        for buf in sim.newly_dead, ind in buf
+        for buf in sim.staging_buffers.newly_dead, ind in buf
             mark_deceased!(gs[1], ind, sim)
         end
     end
-    foreach(empty!, sim.newly_dead)
+    foreach(empty!, sim.staging_buffers.newly_dead)
     return nothing
 end
 
@@ -869,7 +894,7 @@ end
 # order the disease update found them, which is population order whichever thread found a death.
 function _apply_deaths!(sim::Simulation, stngs::Vector{T}, part::Int, n::Int) where {T<:IndividualSetting}
     plans = activity_plans(sim)
-    for buf in sim.newly_dead, ind in buf, slot in plan_slots(plans, ind, T)
+    for buf in sim.staging_buffers.newly_dead, ind in buf, slot in plan_slots(plans, ind, T)
         sid = setting_id(@inbounds plans.entries[slot])
         sid % n == part && mark_deceased!(stngs[sid], ind, sim)
     end
@@ -931,6 +956,7 @@ function (step!) until the stop criterion is met.
 """
 function run!(simulation::Simulation; with_progressbar::Bool = true)
     _printinfo("Running Simulation $(label(simulation))")
+    _hint_threadsafe_option(simulation)
 
     sc = stop_criterion(simulation)
     
