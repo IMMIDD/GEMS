@@ -1241,33 +1241,35 @@ end
 
         @testset "Booster buildup" begin
             dose(t, interval) = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, t, pid, 1, 2, GEMS._encode_dose_interval(interval))
-            booster = dose(120, 120)
-            no_prev = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, 120, pid, 1, 2)
+            # intervals of 180 and 7 ticks decode exactly
+            booster = dose(180, 180)
+            no_prev = ImmunityState(0, GEMS.NO_IMMUNITY_TICK, 180, pid, 1, 2)
             overlap = dose(7, 7)
 
             for p in (ExponentialWaning(halflife = 180.0, vaccine_buildup_duration = Int16(14)),
                       SigmoidalWaning(halflife = 180.0, vaccine_buildup_duration = Int16(14)))
                 level(s, t) = calculate_immunity(p, s, ind, Int16(t), rng)
-                # no dip: during its buildup the booster stays at what the first dose still gives
-                @test all(t -> level(booster, t) >= level(vac_state(0), t) - 2, 120:133)
-                @test level(no_prev, 121) < level(booster, 121)
+                # during its buildup the booster is the higher of its ramp and what the first dose still gives
+                @test all(t -> level(booster, t) == max(level(vac_state(180), t), level(vac_state(0), t)), 180:193)
+                @test level(no_prev, 181) < level(booster, 181)
                 # it ends at the peak, and after its buildup it is a single dose (no accumulation)
-                @test level(booster, 134) == Int8(100)
-                @test all(t -> level(booster, t) == level(vac_state(120), t), 134:400)
+                @test level(booster, 194) == Int8(100)
+                @test all(t -> level(booster, t) == level(vac_state(180), t), 194:400)
                 # a first dose still ramps from 0
                 @test level(vac_state(0), 0) == Int8(0)
                 # a dose during the previous dose's buildup: the previous one keeps ramping
-                @test all(t -> level(overlap, t) >= level(vac_state(0), t), 7:21)
+                @test all(t -> level(overlap, t) == max(level(vac_state(7), t), level(vac_state(0), t)), 7:20)
             end
 
             # without a buildup the interval changes nothing
             p0 = ExponentialWaning(halflife = 180.0)
-            @test all(t -> calculate_immunity(p0, booster, ind, Int16(t), rng) == calculate_immunity(p0, no_prev, ind, Int16(t), rng), 100:200)
+            @test all(t -> calculate_immunity(p0, booster, ind, Int16(t), rng) == calculate_immunity(p0, no_prev, ind, Int16(t), rng), 160:260)
         end
 
         @testset "Vaccine peaks" begin
             vp(peak, buildup = -1) = GEMS.VaccineProtection(peak, peak, buildup)
-            # built-ins implement the 6-arg method; a profile with only the deprecated 5-arg one warns at its pathogen
+            no_prev = GEMS.VaccineProtection()
+            # built-ins implement the 7-arg method; a profile with only the deprecated 5-arg one warns at its pathogen
             @test all(p -> GEMS._has_own_method(calculate_immunity, p), (FullImmunity(), NoImmunity(), ExponentialWaning(), SigmoidalWaning()))
             @test !GEMS._has_own_method(calculate_immunity, SeverityOnlyImmunity())
             @test_logs (:warn, r"deprecated 5-arg") match_mode=:any Pathogen(id = 1, name = "Old", immunity_profile = SeverityOnlyImmunity())
@@ -1280,27 +1282,27 @@ end
             lw = LinearWaning()
             @test GEMS._has_own_method(calculate_immunity, lw)
             @test calculate_immunity(lw, nat_state(0), ind, Int16(30), rng) == Int8(70)
-            @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(5), rng) == Int8(30)
-            @test calculate_immunity(lw, vac_state(0), vp(60, 10), ind, Int16(30), rng) == Int8(40)
-            @test calculate_immunity(lw, both_state(0, 0), vp(60, 0), ind, Int16(30), rng) == Int8(79)
+            @test calculate_immunity(lw, vac_state(0), vp(60, 10), no_prev, ind, Int16(5), rng) == Int8(30)
+            @test calculate_immunity(lw, vac_state(0), vp(60, 10), no_prev, ind, Int16(30), rng) == Int8(40)
+            @test calculate_immunity(lw, both_state(0, 0), vp(60, 0), no_prev, ind, Int16(30), rng) == Int8(79)
             @test_throws ErrorException calculate_immunity(ShapelessWaning(), nat_state(0), ind, Int16(1), rng)
             # config tables find profiles below WaningImmunity
             @test GEMS.create_immunity_profile(Dict("type" => "FullImmunity")) isa FullImmunity
             @test GEMS.create_immunity_profile(Dict("type" => "LinearWaning")) isa LinearWaning
 
-            # the 5-arg methods are the 6-arg ones with the default entry
+            # the 5-arg methods are the 7-arg ones with the default entries
             for p in (FullImmunity(), ExponentialWaning(vaccine_buildup_duration = Int16(10)), SigmoidalWaning(vaccine_buildup_duration = Int16(10)))
                 @test all(t -> calculate_immunity(p, both_state(0, 3), ind, Int16(t), rng) ==
-                    calculate_immunity(p, both_state(0, 3), GEMS.VaccineProtection(), ind, Int16(t), rng), 0:300)
+                    calculate_immunity(p, both_state(0, 3), no_prev, no_prev, ind, Int16(t), rng), 0:300)
             end
             # FullImmunity: a dose ramps to the vaccine's peak over its buildup and stays there; natural stays full
-            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), ind, Int16(5), rng) == Int8(30)
-            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), ind, Int16(1000), rng) == Int8(60)
-            @test calculate_immunity(FullImmunity(), both_state(0, 0), vp(60), ind, Int16(1000), rng) == Int8(100)
+            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), no_prev, ind, Int16(5), rng) == Int8(30)
+            @test calculate_immunity(FullImmunity(), vac_state(0), vp(60, 10), no_prev, ind, Int16(1000), rng) == Int8(60)
+            @test calculate_immunity(FullImmunity(), both_state(0, 0), vp(60), no_prev, ind, Int16(1000), rng) == Int8(100)
             # waning profiles cap the floor at the vaccine's peak
-            @test calculate_immunity(ExponentialWaning(halflife = 1.0, floor = Int8(30)), vac_state(0), vp(20), ind, Int16(500), rng) == Int8(20)
-            # a profile without the 6-arg method ignores the entry
-            @test calculate_immunity(SeverityOnlyImmunity(), vac_state(0), vp(20), ind, Int16(5), rng) ==
+            @test calculate_immunity(ExponentialWaning(halflife = 1.0, floor = Int8(30)), vac_state(0), vp(20), no_prev, ind, Int16(500), rng) == Int8(20)
+            # a profile without the 7-arg method ignores the entries
+            @test calculate_immunity(SeverityOnlyImmunity(), vac_state(0), vp(20), no_prev, ind, Int16(5), rng) ==
                 calculate_immunity(SeverityOnlyImmunity(), vac_state(0), ind, Int16(5), rng)
 
             # old positional constructors, and natural_peak from a config table
@@ -1311,8 +1313,8 @@ end
 
         @testset "Severity" begin
             vp(peak, severity_peak = peak, buildup = -1) = GEMS.VaccineProtection(peak, severity_peak, buildup)
-            inf(p, s, v, t) = calculate_immunity(p, s, v, ind, Int16(t), rng)
-            sev(p, s, v, t) = calculate_severity_immunity(p, s, v, ind, Int16(t), rng)
+            inf(p, s, v, t, pv = v) = calculate_immunity(p, s, v, pv, ind, Int16(t), rng)
+            sev(p, s, v, t, pv = v) = calculate_severity_immunity(p, s, v, pv, ind, Int16(t), rng)
 
             # only the peaks are ordered; the message names both fields
             err = try

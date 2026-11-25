@@ -257,7 +257,7 @@ end
 If none of the built-in profiles fit, you can write your own.
 For this example, we want an individual to be fully immune for exactly 50 days after recovery.
 Define a keyworded struct that inherits from `ImmunityProfile`, and a `calculate_immunity()` method for it that returns the immunity level at `tick`.
-The `state` argument holds the individual's immunity records for the pathogen, e.g., the recovery tick in `state.natural_acquired_tick`, and `vaccine_protection` the values of the vaccine recorded in `state`, which this profile ignores.
+The `state` argument holds the individual's immunity records for the pathogen, e.g., the recovery tick in `state.natural_acquired_tick`, and `vaccine_protection` and `prev_vaccine_protection` the values of the vaccines of the current and the previous dose recorded in `state`, which this profile ignores.
 
 ```julia
 using GEMS
@@ -272,7 +272,7 @@ end
 
 # override immunity calculation for your struct
 function GEMS.calculate_immunity(profile::FixedWaning, state::ImmunityState, vaccine_protection::VaccineProtection,
-    individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+    prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
     # no protection before the first recovery
     natural_immunity_active(state, tick) || return Int8(0)

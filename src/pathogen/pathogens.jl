@@ -126,7 +126,7 @@ mutable struct Pathogen{PRG<:Tuple, PA<:ProgressionAssignmentFunction, TF<:Trans
         end
 
         _has_own_method(calculate_immunity, immunity_profile) ||
-            @warn "Immunity profile $(nameof(typeof(immunity_profile))) only implements the deprecated 5-arg calculate_immunity, so it ignores vaccine peaks and buildup; implement calculate_immunity(profile, state, vaccine_protection, individual, tick, rng)." maxlog=1 _id=(:five_arg_calculate_immunity, typeof(immunity_profile))
+            @warn "Immunity profile $(nameof(typeof(immunity_profile))) only implements the deprecated 5-arg calculate_immunity, so it ignores vaccine peaks and buildup; implement calculate_immunity(profile, state, vaccine_protection, prev_vaccine_protection, individual, tick, rng)." maxlog=1 _id=(:five_arg_calculate_immunity, typeof(immunity_profile))
 
         # convert progression vector to a typed tuple
         prg_tuple = (progressions...,)

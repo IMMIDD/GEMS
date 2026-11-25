@@ -1,6 +1,6 @@
 # a custom profile without calculate_severity_immunity: protects at 40 once anything is recorded
 struct PlainImmunity <: GEMS.ImmunityProfile end
-GEMS.calculate_immunity(::PlainImmunity, s::ImmunityState, v::GEMS.VaccineProtection, i::Individual, t::Int16, r::Xoshiro) =
+GEMS.calculate_immunity(::PlainImmunity, s::ImmunityState, v::GEMS.VaccineProtection, pv::GEMS.VaccineProtection, i::Individual, t::Int16, r::Xoshiro) =
     GEMS.immunity_active(s, t) ? Int8(40) : Int8(0)
 
 # a waning curve whose halflife is drawn once per acquisition, between 30 and 330 ticks
@@ -9,8 +9,8 @@ function GEMS.waning_level(::RandomHalflifeWaning, peak::Int8, elapsed::Int16, s
     halflife = 30 + 300 * rand(immunity_rng!(r, s, source))
     return Int8(round(Int, peak * 0.5^(elapsed / halflife)))
 end
-GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.VaccineProtection, i::Individual, t::Int16, r::Xoshiro) =
-    calculate_waning_immunity(p, s, v, t, r)
+GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.VaccineProtection, pv::GEMS.VaccineProtection, i::Individual, t::Int16, r::Xoshiro) =
+    calculate_waning_immunity(p, s, v, pv, t, r)
 
 @testset "Vaccines" begin
 
@@ -191,18 +191,19 @@ GEMS.calculate_immunity(p::RandomHalflifeWaning, s::ImmunityState, v::GEMS.Vacci
             @test (level(s, a, 180), level(s, b, 180), level(s, c, 180)) == (40, 45, 25)
         end
 
-        # product switches: the previous dose is read with the current product's peak
+        # product switches: the previous dose is read with its own product's peak
         s = sim_with(ExponentialWaning(halflife = 180.0, vaccine_buildup_duration = 14))
         a, b = individuals(s)[1:2]
-        # weak -> strong: dose 2 (peak 70) on day 21 skips its buildup at ~70 * w(7)
+        # weak -> strong: dose 2 (peak 70) on day 21 starts at what dose 1 still gives, ~30 * w(7)
         vaccinate!(a, s, Vaccine(id=1, name="Dose 1", target_pathogen_id=pid, peak=30), Int16(0))
         vaccinate!(a, s, Vaccine(id=2, name="Dose 2", target_pathogen_id=pid, peak=70), Int16(21))
-        @test level(s, a, 21) == Int8(68)
-        # strong -> weak: a booster below the remaining protection lowers it at the dose
+        @test level(s, a, 21) == Int8(29)
+        @test level(s, a, 35) == Int8(70)
+        # strong -> weak: the booster keeps the remaining protection during its buildup, then gives its own peak
         vaccinate!(b, s, Vaccine(id=3, name="Strong", target_pathogen_id=pid, peak=90), Int16(0))
         before = level(s, b, 180)
         vaccinate!(b, s, Vaccine(id=4, name="Weak", target_pathogen_id=pid, peak=40), Int16(180))
-        @test level(s, b, 180) < before
+        @test level(s, b, 180) == before
         @test level(s, b, 194) == Int8(40)
     end
 

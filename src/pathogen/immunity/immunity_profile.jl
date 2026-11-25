@@ -11,11 +11,11 @@ struct FullImmunity <: WaningImmunity end
 
 @inline waning_level(profile::FullImmunity, peak::Int8, elapsed::Int16, state::ImmunityState, source::Symbol, rng::Xoshiro)::Int8 = peak
 
-@inline calculate_immunity(profile::FullImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_waning_immunity(profile, state, vaccine_protection, tick, rng)
+@inline calculate_immunity(profile::FullImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_immunity(profile, state, vaccine_protection, prev_vaccine_protection, tick, rng)
 
-@inline calculate_severity_immunity(profile::FullImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_waning_severity_immunity(profile, state, vaccine_protection, tick, rng)
+@inline calculate_severity_immunity(profile::FullImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_severity_immunity(profile, state, vaccine_protection, prev_vaccine_protection, tick, rng)
 
 """
     NoImmunity <: ImmunityProfile
@@ -25,12 +25,12 @@ history.
 """
 struct NoImmunity <: ImmunityProfile end
 
-@inline function calculate_immunity(profile::NoImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+@inline function calculate_immunity(profile::NoImmunity, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     return Int8(0)
 end
 
 @inline calculate_immunity(profile::NoImmunity, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_immunity(profile, state, VaccineProtection(), individual, tick, rng)
+    calculate_immunity(profile, state, VaccineProtection(), VaccineProtection(), individual, tick, rng)
 
 """
     ExponentialWaning <: WaningImmunity
@@ -109,11 +109,11 @@ natural_peak(profile::ExponentialWaning)::Int8 = profile.natural_peak
 
 severity_natural_peak(profile::ExponentialWaning)::Int8 = profile.severity_natural_peak
 
-@inline calculate_immunity(profile::ExponentialWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_waning_immunity(profile, state, vaccine_protection, tick, rng)
+@inline calculate_immunity(profile::ExponentialWaning, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_immunity(profile, state, vaccine_protection, prev_vaccine_protection, tick, rng)
 
-@inline calculate_severity_immunity(profile::ExponentialWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_waning_severity_immunity(profile, state, vaccine_protection, tick, rng)
+@inline calculate_severity_immunity(profile::ExponentialWaning, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_severity_immunity(profile, state, vaccine_protection, prev_vaccine_protection, tick, rng)
 
 # deprecated with `vaccine_buildup_duration`; remove both in the next major release
 _profile_vaccine_buildup(profile::ExponentialWaning)::Int16 = profile.vaccine_buildup_duration
@@ -204,11 +204,11 @@ natural_peak(profile::SigmoidalWaning)::Int8 = profile.natural_peak
 
 severity_natural_peak(profile::SigmoidalWaning)::Int8 = profile.severity_natural_peak
 
-@inline calculate_immunity(profile::SigmoidalWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_waning_immunity(profile, state, vaccine_protection, tick, rng)
+@inline calculate_immunity(profile::SigmoidalWaning, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_immunity(profile, state, vaccine_protection, prev_vaccine_protection, tick, rng)
 
-@inline calculate_severity_immunity(profile::SigmoidalWaning, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
-    calculate_waning_severity_immunity(profile, state, vaccine_protection, tick, rng)
+@inline calculate_severity_immunity(profile::SigmoidalWaning, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+    calculate_waning_severity_immunity(profile, state, vaccine_protection, prev_vaccine_protection, tick, rng)
 
 # deprecated with `vaccine_buildup_duration`; remove both in the next major release
 _profile_vaccine_buildup(profile::SigmoidalWaning)::Int16 = profile.vaccine_buildup_duration

@@ -26,21 +26,23 @@ struct ImmunityState
     vaccine_id::Int8              # DEFAULT_VACCINE_ID if not vaccinated
     dose_number::Int8             # 0 if not vaccinated
     prev_dose_interval::UInt8     # ticks since the previous dose, log-encoded; 0 if none
+    prev_vaccine_id::Int8         # vaccine of the previous dose; DEFAULT_VACCINE_ID if none
 
     ImmunityState(next::Int32, natural_acquired_tick::Int16, vaccine_acquired_tick::Int16, pathogen_id::Int8,
-        vaccine_id::Int8, dose_number::Int8, prev_dose_interval::UInt8) =
-        new(next, natural_acquired_tick, vaccine_acquired_tick, pathogen_id, vaccine_id, dose_number, prev_dose_interval)
+        vaccine_id::Int8, dose_number::Int8, prev_dose_interval::UInt8, prev_vaccine_id::Int8) =
+        new(next, natural_acquired_tick, vaccine_acquired_tick, pathogen_id, vaccine_id, dose_number, prev_dose_interval,
+            prev_vaccine_id)
 end
 
 """
-    ImmunityState(next, natural_acquired_tick, vaccine_acquired_tick, pathogen_id, vaccine_id, dose_number[, prev_dose_interval::UInt8])
+    ImmunityState(next, natural_acquired_tick, vaccine_acquired_tick, pathogen_id, vaccine_id, dose_number[, prev_dose_interval::UInt8[, prev_vaccine_id]])
 
 Converting constructor; without `prev_dose_interval` the state has no previous dose.
 """
 ImmunityState(next::Integer, natural_acquired_tick::Integer, vaccine_acquired_tick::Integer, pathogen_id::Integer,
-        vaccine_id::Integer, dose_number::Integer, prev_dose_interval::UInt8 = 0x00) =
+        vaccine_id::Integer, dose_number::Integer, prev_dose_interval::UInt8 = 0x00, prev_vaccine_id::Integer = DEFAULT_VACCINE_ID) =
     ImmunityState(Int32(next), Int16(natural_acquired_tick), Int16(vaccine_acquired_tick), Int8(pathogen_id),
-        Int8(vaccine_id), Int8(dose_number), prev_dose_interval)
+        Int8(vaccine_id), Int8(dose_number), prev_dose_interval, Int8(prev_vaccine_id))
 
 """
     ImmunityState(next, natural_acquired_tick, vaccine_acquired_tick, immunity_level, pathogen_id, vaccine_id, dose_number)
@@ -153,6 +155,12 @@ end
 # the encoded interval a new dose at `tick` has since the dose recorded in `s`
 @inline _dose_interval_since(s::ImmunityState, tick::Int16)::UInt8 =
     vaccine_immunity_recorded(s) ? _encode_dose_interval(Int(tick) - Int(s.vaccine_acquired_tick)) : 0x00
+
+# `prev_dose_interval` and `prev_vaccine_id` of a new dose at `tick` after `s`; both empty without a usable interval
+@inline function _previous_dose_since(s::ImmunityState, tick::Int16)::Tuple{UInt8, Int8}
+    interval = _dose_interval_since(s, tick)
+    return interval, interval == 0x00 ? DEFAULT_VACCINE_ID : s.vaccine_id
+end
 
 """
     ImmunityRegistry

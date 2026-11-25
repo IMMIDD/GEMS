@@ -410,19 +410,25 @@ end
 
 # the registered protection of the vaccine recorded in `state`; the default without a vaccine record
 @inline _recorded_vaccine_protection(sim::Simulation, state::ImmunityState)::VaccineProtection =
-    vaccine_immunity_recorded(state) ? _vaccine_protection(sim, state.pathogen_id, state.vaccine_id) : VaccineProtection()
+    _vaccine_protection(sim, state.pathogen_id, state.vaccine_id)
+
+# the registered protection of the previous dose's vaccine in `state`; the default without a previous dose
+@inline _recorded_prev_vaccine_protection(sim::Simulation, state::ImmunityState)::VaccineProtection =
+    _vaccine_protection(sim, state.pathogen_id, state.prev_vaccine_id)
 
 # level of a recorded `state` from the already looked-up `pathogen`
 @inline function _immunity_level(pathogen, state::ImmunityState, individual::Individual, sim::Simulation, t::Int16)::Int8
     rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
-    return calculate_immunity(immunity_profile(pathogen), state, _recorded_vaccine_protection(sim, state), individual, t, rng)
+    return calculate_immunity(immunity_profile(pathogen), state, _recorded_vaccine_protection(sim, state),
+        _recorded_prev_vaccine_protection(sim, state), individual, t, rng)
 end
 
 # protection against severe disease of a recorded `state` from the already looked-up `pathogen`; `nothing` for
 # profiles without severity protection of their own
 @inline function _severity_immunity_level(pathogen, state::ImmunityState, individual::Individual, sim::Simulation, t::Int16)::Union{Int8, Nothing}
     rng = _keyed_immunity_rng(sim.seed, id(individual), state.pathogen_id)
-    return calculate_severity_immunity(immunity_profile(pathogen), state, _recorded_vaccine_protection(sim, state), individual, t, rng)
+    return calculate_severity_immunity(immunity_profile(pathogen), state, _recorded_vaccine_protection(sim, state),
+        _recorded_prev_vaccine_protection(sim, state), individual, t, rng)
 end
 
 """

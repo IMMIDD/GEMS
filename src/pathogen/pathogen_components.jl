@@ -215,14 +215,15 @@ function calculate_infectiousness(profile::InfectiousnessProfile, state::Infecti
 end
 
 """
-    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
+    calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
 
-Returns the immunity level (0-100) of `state` at `tick`, given the peaks and buildup of the vaccine recorded in
-`state` (only meaningful if `state` has a vaccine record). Called on every read from any thread, so it must be
-cheap and deterministic and must not yield or read other levels. `rng` draws the same numbers on every read for
-this host and pathogen; re-key it per acquisition with `immunity_rng!`. Falls back to the deprecated 5-arg method.
+Returns the immunity level (0-100) of `state` at `tick`, given the peaks and buildup of the vaccines of the current
+and the previous dose recorded in `state` (each only meaningful if `state` records that dose). Called on every read
+from any thread, so it must be cheap and deterministic and must not yield or read other levels. `rng` draws the same
+numbers on every read for this host and pathogen; re-key it per acquisition with `immunity_rng!`. Falls back to the
+deprecated 5-arg method.
 """
-@inline calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
+@inline calculate_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Int8 =
     calculate_immunity(profile, state, individual, tick, rng)
 
 """
@@ -233,7 +234,7 @@ built-in profile gives the level with the default vaccine values.
 """
 function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16, rng::Xoshiro)::Int8
     error("calculate_immunity is not implemented for ImmunityProfile type $(typeof(profile)); implement " *
-        "calculate_immunity(profile, state, vaccine_protection, individual, tick, rng).")
+        "calculate_immunity(profile, state, vaccine_protection, prev_vaccine_protection, individual, tick, rng).")
 end
 
 """
@@ -243,17 +244,17 @@ For profiles that don't draw: passes the default vaccine values and a fresh, unk
 from reads during a simulation.
 """
 @inline function calculate_immunity(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Int8
-    return calculate_immunity(profile, state, VaccineProtection(), individual, tick, Xoshiro())
+    return calculate_immunity(profile, state, VaccineProtection(), VaccineProtection(), individual, tick, Xoshiro())
 end
 
 """
-    calculate_severity_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Union{Int8, Nothing}
+    calculate_severity_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Union{Int8, Nothing}
 
 Returns the protection against severe disease (0-100) of `state` at `tick`, per exposure against unprotected hosts, so
 it includes the severe cases that protection against infection prevents; otherwise as `calculate_immunity`. Defaults
 to `nothing`: protection as against infection, and a vaccine's `severity_peak` has no effect.
 """
-calculate_severity_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Nothing = nothing
+calculate_severity_immunity(profile::ImmunityProfile, state::ImmunityState, vaccine_protection::VaccineProtection, prev_vaccine_protection::VaccineProtection, individual::Individual, tick::Int16, rng::Xoshiro)::Nothing = nothing
 
 """
     immunity_is_stable(profile::ImmunityProfile, state::ImmunityState, individual::Individual, tick::Int16)::Bool
@@ -281,10 +282,10 @@ susceptibility_factor(profile::ImmunityProfile, level::Int8)::Float64 = 1.0 - le
     return (p_sev - p_inf) / (1.0 - p_inf)
 end
 
-# whether `profile` has its own 6-arg method of `f` (`calculate_immunity` or `calculate_severity_immunity`), not only
+# whether `profile` has its own 7-arg method of `f` (`calculate_immunity` or `calculate_severity_immunity`), not only
 # the `ImmunityProfile` fallback
 function _has_own_method(f, profile::ImmunityProfile)::Bool
-    args = (ImmunityState, VaccineProtection, Individual, Int16, Xoshiro)
+    args = (ImmunityState, VaccineProtection, VaccineProtection, Individual, Int16, Xoshiro)
     return which(f, Tuple{typeof(profile), args...}) !== which(f, Tuple{ImmunityProfile, args...})
 end
 

@@ -575,9 +575,11 @@ import GEMS: try_to_infect!, spread_infection!, update_individual!, get_containe
             booster = Vaccine(id=2, name="Booster", target_pathogen_id=pid, peak=60, severity_peak=95, buildup_duration=14)
             s = sim_with(ExponentialWaning(halflife = 200))
             a, b = individuals(s)[1:2]
-            foreach(i -> vaccinate!(i, s, primary, Int16(-100)), (a, b))
+            foreach(i -> vaccinate!(i, s, primary, Int16(-180)), (a, b))
             vaccinate!(b, s, booster, Int16(0))
             @test all(t -> severity_immunity_level(b, s, pid, Int16(t)) >= severity_immunity_level(a, s, pid, Int16(t)), 0:60)
+            # the primary dose keeps its own severity_peak and buildup
+            @test severity_immunity_level(b, s, pid, Int16(1)) == severity_immunity_level(a, s, pid, Int16(1))
             @test severity_immunity_level(b, s, pid, Int16(14)) == 95
 
             # both products downgrade in a threaded run; unprotected cases stay severe
