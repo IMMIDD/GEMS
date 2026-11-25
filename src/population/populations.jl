@@ -558,8 +558,6 @@ homogeneous).
 | `id`                    | `Int32` | Individual id                            |
 | `sex`                   | `Int8`  | Individual sex                           |
 | `age`                   | `Int8`  | Individual age                           |
-| `number_of_vaccinations`| `Int16` | Number of vaccinations received          |
-| `vaccination_tick`      | `Int32` | Tick of last vaccination                 |
 | `education`             | `Int8`  | Individual education level               |
 | `occupation`            | `Int16` | Individual occupation group              |
 | `household`             | `Int32` | Individual associated household          |

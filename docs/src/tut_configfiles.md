@@ -565,7 +565,7 @@ As with the other custom types, you can also configure the policy from a config 
 ```
 
 !!! warning "Module Visibility"
-    As with custom transmission functions and progressions, if you define `SevereWithDeathProgression` in an external script or module, make sure it is loaded into your Julia environment *before* you initialize `Simulation("config.toml")`. The TOML parser needs the struct definition to exist in the global scope to build it.
+    As with custom transmission functions and progressions, if you define `SevereWithDeathProgression` in an external script or module, make sure it is loaded into your Julia environment *before* you initialize `Simulation(configfile = "config.toml")`. The TOML parser needs the struct definition to exist in the global scope to build it.
 
 ## Custom Progression Assignment
 
@@ -591,13 +591,14 @@ using Parameters, Random
 end
 ```
 
-Next, extend the `GEMS.assign` function. This function takes the individual, your custom assignment struct, and a random number generator. It must return the `DataType` of the progression category the individual should be assigned to (e.g., returning the type `Mild`, not an instance of it).
+Next, extend the `GEMS.assign` function. This function takes the individual, your custom assignment struct, the simulation, the pathogen's id, the current tick, and a random number generator. It must return the `DataType` of the progression category the individual should be assigned to (e.g., returning the type `Mild`, not an instance of it).
 
 ```julia
-function GEMS.assign(individual::Individual, pa::VaccBasedAssignment, rng::AbstractRNG)
+function GEMS.assign(individual::Individual, pa::VaccBasedAssignment, sim::Union{Simulation, Nothing},
+        pathogen_id::Int8, tick::Int16, rng::Xoshiro)
     
-    # Check the custom attribute we might have assigned during population creation
-    if individual.number_of_vaccinations > 0
+    # sim is nothing when infect! is called without a simulation
+    if !isnothing(sim) && isvaccinated(individual, sim, pathogen_id)
         return Mild # Vaccinated individuals always get a mild track
     else
         # Unvaccinated individuals have a risk of severe progression
@@ -619,15 +620,17 @@ Finally, to use this in a simulation, you simply define it in your custom config
         prob_severe_unvaxxed = 0.5
 ```
 
-When you load this config file using `sim = Simulation("path/to/config.toml")`, GEMS will automatically apply your custom vaccination-based logic to every newly infected individual using your `assign` function. We can easily verify that our custom assignment works by running two scenarios: one baseline where no individuals are vaccinated, and one where we manually vaccinate the entire population before running.
+When you load this config file using `sim = Simulation(configfile = "path/to/config.toml")`, GEMS will automatically apply your custom vaccination-based logic to every newly infected individual using your `assign` function. We can easily verify that our custom assignment works by running two scenarios: one baseline where no individuals are vaccinated, and one where we vaccinate the entire population before running.
+The vaccine's `peak = 0` keeps it from protecting on its own, so only the assignment changes the outcome.
 
 ```julia
 # Scenario 1: Baseline (0% Vaccinated)
-sim_baseline = Simulation("path/to/config.toml", label = "0% Vaccinated")
+sim_baseline = Simulation(configfile = "path/to/config.toml", label = "0% Vaccinated")
 
 # Scenario 2: 100% Vaccinated
-sim_vaxxed = Simulation("path/to/config.toml", label = "100% Vaccinated")
-foreach(i -> i.number_of_vaccinations = 1, individuals(sim_vaxxed))
+sim_vaxxed = Simulation(configfile = "path/to/config.toml", label = "100% Vaccinated")
+marker = Vaccine(id = 1, name = "Marker", target_pathogen_id = id(first_pathogen(sim_vaxxed)), peak = 0)
+foreach(i -> vaccinate!(i, sim_vaxxed, marker, Int16(0)), individuals(sim_vaxxed))
 
 run!(sim_baseline)
 run!(sim_vaxxed)
@@ -740,7 +743,7 @@ Extension fields behave exactly like built-in fields regardless of how they were
 
 !!! warning "Extension names must not collide with core fields"
     Extension fields share the `Individual` property namespace, so their names must differ from
-    the built-in fields (e.g. `sex`, `age`, `household`, `office`, `number_of_vaccinations`, …).
+    the built-in fields (e.g. `sex`, `age`, `household`, `office`, `schoolclass`, …).
     Reusing a core name is rejected at load time with an explicit error (otherwise `ind.sex`
     would silently return the built-in attribute instead of your value, and the population could
     not be exported back to a `DataFrame`). Rename the offending column or struct field.
