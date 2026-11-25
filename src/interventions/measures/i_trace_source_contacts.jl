@@ -66,7 +66,7 @@ struct TraceSourceContacts <: IMeasure
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
 
-        return(new(success_rate, follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
+        return(new(Float64(success_rate), follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
     end
 end
 
@@ -179,6 +179,8 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceSourceC
     # the window ends where forward tracing of the index starts
     start_tick = max(Int16(0), now - lookback(measure))
     end_tick = min(infectious_at - Int16(1), now - Int16(1))
+    # the dead make no contacts from their death tick on
+    Int16(0) <= death(ind) && (end_tick = min(end_tick, death(ind) - Int16(1)))
 
     # get the living infecters of the index's infections from logger; seeds have none
     contact_ids = Int32[]

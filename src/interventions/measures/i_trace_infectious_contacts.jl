@@ -75,7 +75,7 @@ struct TraceInfectiousContacts <: IMeasure
             throw(ArgumentError("success_rate parameter must be between 0 and 1"))
         end
 
-        return(new(success_rate, follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
+        return(new(Float64(success_rate), follow_up, Int16(lookback), resample_contacts, settingtypes, ContactFilterFn(contact_filter), max_contacts))
     end
 end
 
@@ -182,8 +182,10 @@ function process_measure(sim::Simulation, ind::Individual, measure::TraceInfecti
         # never infected, or never infectious
         (isnothing(last) || last.infectiousness_onset < 0) && return nothing
         infectious_from = last.infectiousness_onset
-        end_tick = min(last.recovery, now - Int16(1))
+        end_tick = min(last.recovery - Int16(1), now - Int16(1))
     end
+    # the dead make no contacts from their death tick on
+    Int16(0) <= death(ind) && (end_tick = min(end_tick, death(ind) - Int16(1)))
     start_tick = max(infectious_from, now - lookback(measure))
     start_tick > end_tick && return nothing
 

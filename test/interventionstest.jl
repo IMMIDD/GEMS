@@ -331,6 +331,7 @@ end
         @test process_measure(sim, i, trace_infectious) === nothing
 
         @test_throws ArgumentError TraceInfectiousContacts(i_strategy, success_rate=2.0)
+        @test success_rate(TraceInfectiousContacts(i_strategy, success_rate = 1)) === 1.0
 
         pop = Population(n=2, avg_household_size=2, avg_school_size=2, avg_office_size=2, rng = Xoshiro())
         sim3 = Simulation(population=pop, transmission_rate=1.0, household_contacts=1.0)
@@ -456,6 +457,19 @@ end
             contact_filter = (s, t) -> (push!(drawn, t); true)))
         @test drawn == Int16.(5:9)
 
+        # re-draws stop before the recovery tick, as it is not infectious
+        drawn = Int16[]
+        process_measure(sim6, recovered, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16.(1:5)
+
+        # nor past the index's death
+        recovered_today.death = Int16(7)
+        drawn = Int16[]
+        process_measure(sim6, recovered_today, TraceInfectiousContacts(i_strategy6, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test drawn == Int16.(5:6)
+
         # a dead infectee is not traced and takes no max_contacts slot
         empty!(eq6)
         GEMS.dead!(early, true)
@@ -531,6 +545,7 @@ end
         @test contact_filter(trace_source) isa GEMS.ContactFilterFn
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, lookback = 0)
         @test_throws ArgumentError TraceSourceContacts(i_strategy5, success_rate = 2.0)
+        @test success_rate(TraceSourceContacts(i_strategy5, success_rate = 1)) === 1.0
 
         # the source infects the index at tick 0; the seeded infection has no source; traced at tick 1
         infect!(index5, Int16(0), pat5, sim = sim5, infecter_id = id(source), rng = rng(sim5))
@@ -573,6 +588,13 @@ end
         process_measure(sim5, healthy, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household],
             contact_filter = (s, t) -> (push!(drawn, t); true)))
         @test drawn == Int16[0]
+
+        # nor past the index's death
+        healthy.death = Int16(0)
+        drawn = Int16[]
+        process_measure(sim5, healthy, TraceSourceContacts(i_strategy5, resample_contacts = true, settingtypes = DataType[Household],
+            contact_filter = (s, t) -> (push!(drawn, t); true)))
+        @test isempty(drawn)
         empty!(eq5)
 
         # a recovered index traces the source of its ended infection
