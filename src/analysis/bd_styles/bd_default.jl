@@ -100,6 +100,7 @@ mutable struct DefaultBatchData <: BatchDataStyle
                     "cumulative_disease_progressions" => () -> cumulative_disease_progressions(bP),
                     "dark_figure" => () -> dark_figure(bP),
                     "cumulative_cases" => () -> cumulative_cases(bP),
+                    "cumulative_vaccinations" => () -> cumulative_vaccinations(bP),
                     "generation_times" => () -> generation_times(bP),
                     "hospitalizations" => () -> hospitalizations(bP),
                     "observed_R" => () -> observed_R(bP),

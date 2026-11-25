@@ -166,6 +166,7 @@ import GEMS: BatchProcessor, n_runs, rundata
             @test bd |> generation_times isa Dict  # per-pathogen in multipathogen
             @test bd |> hospitalizations isa Dict
             @test bd |> observed_R isa Dict
+            @test bd |> cumulative_vaccinations isa Dict
             @test bd |> pool_tests isa Dict
             @test bd |> sero_tests isa Dict
             # scalar fields
@@ -331,6 +332,24 @@ import GEMS: BatchProcessor, n_runs, rundata
             @test haskey(bp.total_tests, "PCR")
             @test haskey(bp.pool_tests, "PCR")
             @test haskey(bp.sero_tests, "Sero")
+        end
+
+        @testset "AccumulateVaccinations" begin
+            # two runs with 3 and 5 doses at tick 0
+            bp = BatchProcessor(keep_rundata = false)
+            pid = Int8(0)
+            for n in (3, 5)
+                sim = Simulation(pop_size = 100, infected_fraction = 0.0, stop_criterion = TimesUp(limit = 5))
+                pid = id(first_pathogen(sim))
+                vacc = Vaccine(id = 1, name = "V", target_pathogen_id = pid)
+                foreach(i -> vaccinate!(i, sim, vacc, Int16(0)), individuals(sim)[1:n])
+                run!(sim, with_progressbar = false)
+                GEMS.accumulate!(bp, PostProcessor(sim))
+            end
+            cv = cumulative_vaccinations(bp)[pid]["vaccinations_cum"]
+            @test only(cv[cv.tick .== 0, :mean]) == 4.0
+            @test only(cv[cv.tick .== 0, :minimum]) == 3
+            @test only(cv[cv.tick .== 0, :maximum]) == 5
         end
 
         @testset "NewScalarAccessors" begin

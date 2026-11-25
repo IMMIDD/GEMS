@@ -28,6 +28,7 @@ mutable struct BatchProcessor
     generation_times::Dict{Int8, Dict{Int, _WelfordState}}
     hospitalizations::Dict{String, Dict{Int, _WelfordState}}
     observed_R::Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}
+    cumulative_vaccinations::Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}
 
     # Scalar Welford accumulators
     total_infections::_WelfordState
@@ -80,6 +81,7 @@ mutable struct BatchProcessor
             Dict{Int8, Dict{Int, _WelfordState}}(),                 # generation_times
             Dict{String, Dict{Int, _WelfordState}}(),               # hospitalizations
             Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # observed_R
+            Dict{Int8, Dict{String, Dict{Int, _WelfordState}}}(),   # cumulative_vaccinations
             _WelfordState(), Dict{Int8, _WelfordState}(), Dict{Int8, _WelfordState}(),
             Dict{Int8, Dict{String, _WelfordState}}(), _WelfordState(),
             Dict{String, _WelfordState}(),
@@ -186,6 +188,9 @@ function accumulate!(bp::BatchProcessor, pp::PostProcessor; rd_style::String = "
 
     # Cumulative cases (multi-column per tick, pathogen-keyed)
     _update_multicol_grouped!(bp.cumulative_cases, cumulative_cases(pp), :tick, :pathogen_id)
+
+    # Cumulative vaccinations (multi-column per tick, pathogen-keyed)
+    _update_multicol_grouped!(bp.cumulative_vaccinations, cumulative_vaccinations(pp), :tick, :pathogen_id)
 
     # Mean generation time per tick
     gt = _tick_generation_times(pp)
@@ -498,6 +503,16 @@ Returns a `Dict{Int8, Dict{String, DataFrame}}` keyed by pathogen id then column
 """
 function cumulative_cases(bp::BatchProcessor)
     return Dict(pid => _welford_df_to_stats_df_multicol(inner, :tick) for (pid, inner) in bp.cumulative_cases)
+end
+
+"""
+    cumulative_vaccinations(bp::BatchProcessor)
+
+Returns aggregated cumulative vaccination counts per tick across all runs, as a `Dict{Int8, Dict{String, DataFrame}}`
+keyed by pathogen id then column name (`vaccinations_cum`, `vaccinated_cum`).
+"""
+function cumulative_vaccinations(bp::BatchProcessor)
+    return Dict(pid => _welford_df_to_stats_df_multicol(inner, :tick) for (pid, inner) in bp.cumulative_vaccinations)
 end
 
 """

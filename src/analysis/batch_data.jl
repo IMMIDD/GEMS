@@ -506,6 +506,16 @@ function cumulative_cases(bd::BatchData)
 end
 
 """
+    cumulative_vaccinations(bd::BatchData)
+
+Returns aggregated cumulative vaccination counts per tick across simulation runs, per pathogen.
+Returns a `Dict{Int8, Dict{String, DataFrame}}` keyed by pathogen id then column name (`vaccinations_cum`, `vaccinated_cum`).
+"""
+function cumulative_vaccinations(bd::BatchData)
+    return(get(bd |> dataframes, "cumulative_vaccinations", Dict()))
+end
+
+"""
     generation_times(bd::BatchData)
 
 Returns aggregated mean generation times per tick across simulation runs as a `DataFrame`.
