@@ -77,6 +77,19 @@ function _hh_attack_rate_panel(har_sub, rd; ar_only::Bool = false, markersize = 
     return p
 end
 
+# Default plotting settings for HouseholdAttackRate
+function _household_attack_rate_plotargs(plotargs)
+    defaults = (
+        legend = :outertop,
+        legendfontsize = 6,
+        size = (900, 800),
+        dpi = 300
+    )
+
+    # User-provided arguments override the defaults
+    return merge(defaults, (; plotargs...))
+end
+
 """
     generate(plt::HouseholdAttackRate, rd::ResultData; plotargs...)
 
@@ -99,6 +112,8 @@ However, be aware that the keyword arguments might be applied to each of the sub
 function generate(plt::HouseholdAttackRate, rd::ResultData; ar_only::Bool = false,
     pathogen = nothing, markersize = 5, plotargs...)
 
+    kwargs = _household_attack_rate_plotargs(plotargs)
+
     desc = "This graph shows the in-household attack rates stratified by household size and over time. "
     desc *= "The in-household attack rate is defined as the fraction of individuals in a given household "
     desc *= "that got infected within the household (in-household infection chain) caused by the *first* "
@@ -111,9 +126,9 @@ function generate(plt::HouseholdAttackRate, rd::ResultData; ar_only::Bool = fals
     subplots = [_hh_attack_rate_panel(
         filter(row -> row.pathogen_id == pid, har_all), rd;
         ar_only, markersize,
-        (length(pids) > 1 ? _pathogen_subargs(pid, pnames, plotargs) : NamedTuple(plotargs))...)
+        (length(pids) > 1 ? _pathogen_subargs(pid, pnames, kwargs) : NamedTuple(kwargs))...)
         for pid in pids]
-    return _multi_pathogen_plot(subplots, plotargs; width_per_plot = 700, height = ar_only ? 300 : 500)
+    return _multi_pathogen_plot(subplots, kwargs; width_per_plot = 700, height = ar_only ? 300 : 500)
 end
 
 
@@ -137,6 +152,8 @@ However, be aware that the keyword arguments might be applied to each of the sub
 """
 function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; pathogen = nothing, plotargs...)
 
+    kwargs = _household_attack_rate_plotargs(plotargs)
+
     pid_filter = _resolve_pathogen_id(rds[1], pathogen)
 
     function _scatter_for_pid(pid)
@@ -149,7 +166,7 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; pathogen = 
                 groupby(har, :hh_size) |>
                     x -> combine(x, :hh_attack_rate => mean => :mean_hh_attack_rate) |>
                     x -> transform(x, :hh_size => ByRow(_ -> label(rd)) => :label) |>
-                    x -> transform(x, :label => ByRow(l -> (haskey(plotargs, :color) ? plotargs[:color] : colors[l])) => :color)
+                    x -> transform(x, :label => ByRow(l -> (haskey(kwargs, :color) ? kwargs[:color] : colors[l])) => :color)
             )
         end
         data = vcat(data...)
@@ -163,10 +180,10 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; pathogen = 
             plot!(p,
                 means.hh_size[means.label .== lab],
                 means.total_mean[means.label .== lab],
-                color = haskey(plotargs, :color) ? plotargs[:color] : colors[lab],
+                color = haskey(kwargs, :color) ? kwargs[:color] : colors[lab],
                 linewidth = 1.5, alpha = .5, label = "Mean of $lab")
         end
-        plot!(p; plotargs...)
+        plot!(p; kwargs...)
         return p
     end
 
@@ -177,23 +194,24 @@ function generate(plt::HouseholdAttackRate, rds::Vector{ResultData}; pathogen = 
     pids = sort(unique(vcat([unique(household_attack_rates(rd).pathogen_id) for rd in rds]...)))
     pnames = pathogen_names(rds[1])
 
-    isempty(pids) && return plot!(emptyplot("No data available for any pathogen."); plotargs...)
+    isempty(pids) && return plot!(emptyplot("No data available for any pathogen."); kwargs...)
     length(pids) == 1 && return _scatter_for_pid(pids[1])
 
     subplots = [begin
         p = _scatter_for_pid(pid)
-        plot!(p; title = get(pnames, pid, "Pathogen $pid"), _remove_kw(:plot_title, plotargs)...)
+        plot!(p; title = get(pnames, pid, "Pathogen $pid"), _remove_kw(:plot_title, kwargs)...)
         p
     end for pid in pids]
-    return plot(subplots..., layout = (1, length(pids)), size = (600 * length(pids), 400); plotargs...)
+    return plot(subplots..., layout = (1, length(pids)), size = (600 * length(pids), 400); kwargs...)
 end
 
 function generate(plt::HouseholdAttackRate, bd::BatchData; plotargs...)
+    kwargs = _household_attack_rate_plotargs(plotargs)
     rep = median_run(bd)
-    !isnothing(rep) && return generate(plt, rep; plotargs...)
-    label_plts = _per_group_representative_plots(plt, bd; plotargs...)
+    !isnothing(rep) && return generate(plt, rep; kwargs...)
+    label_plts = _per_group_representative_plots(plt, bd; kwargs...)
     !isnothing(label_plts) && return label_plts
     r = runs(bd)
     isnothing(r) && error("HouseholdAttackRate batch plots require per-run data. Re-run with median_by = pp -> nrow(infectionsDF(pp)) (the default) to plot the median run, or with keep_rundata = true to plot all runs.")
-    generate(plt, r; plotargs...)
+    generate(plt, r; kwargs...)
 end
