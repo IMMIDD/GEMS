@@ -40,7 +40,8 @@ makedocs(
             "7 - Calibration" => "tut_calibration.md",
             "8 - Logging & Post-Processing" => "tut_postprocessing.md",
             "9 - Plotting" =>"tut_plotting.md",
-            "10 - Advanced Parameterization" => "tut_configfiles.md"
+            "10 - Advanced Parameterization" => "tut_configfiles.md",
+            "11 - Friendship Networks" => "tut_networks.md"
         ],
         "Config Files" => "config-files.md",
         # modules/API - docstrings and functions

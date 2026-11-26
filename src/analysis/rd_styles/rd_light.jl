@@ -21,6 +21,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `config_file_val::Dict{String, Any}`: Deep copy of the supplied TOML config file
         - `population_file::String`: Path to the population file
         - `population_params::Dict{String, Any}`: Parameters used to generate population
+        - `setting_type_names::Dict{String, String}`: Each setting type's log char (as a string) mapped to its name
         
     - `sim_data::Dict{String, Any}`
         - `label::String`: Label of this simulation run (needed for plotting)
@@ -76,6 +77,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `effectiveR::DataFrame`: Effective R value over time
         - `tick_cases::DataFrame`: Infections per tick
         - `tick_deaths::DataFrame`: Deaths per tick
+        - `tick_vaccinations::DataFrame`: Vaccinations per tick
         - `tick_serial_intervals::DataFrame`: Aggregated data on serial intervals per tick
         - `tick_generation_times::DataFrame`: Aggregated data on generation timess per tick        
         - `tick_tests::DataFrame`: Number of tests performed per tick
@@ -87,6 +89,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `aggregated_compartment_periods::DataFrame`: Statistics on time individuals spend in each disease compartment
         - `cumulative_cases::DataFrame`: Cumulative infections over time
         - `cumulative_deaths::DataFrame`: Cumulative deaths over time
+        - `cumulative_vaccinations::DataFrame`: Cumulative vaccinations over time
         - `cumulative_disease_progressions::DataFrame`: Cumulative information on disease states N ticks after exposure
         - `cumulative_quarantines::DataFrame`: Number of quarantined individuals per tick
         - `age_incidence::DataFrame`: Incidence over time stratified by age groups
@@ -111,7 +114,8 @@ mutable struct LightRD <: ResultDataStyle
                     "config_file" => () -> pP |> simulation |> configfile,
                     "config_file_val" => () -> TOML.parsefile(pP |> simulation |> configfile),
                     "population_file" => () -> pP |> simulation |> populationfile,
-                    "population_params" => () -> pP |> simulation |> population |> params
+                    "population_params" => () -> pP |> simulation |> population |> params,
+                    "setting_type_names" => () -> setting_type_names()
                 ),
             "sim_data" =>
                 Dict(
@@ -127,8 +131,6 @@ mutable struct LightRD <: ResultDataStyle
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "region_info" => () -> pP |> simulation |> region_info,
                     "pathogens" => () -> collect(pathogens(simulation(pP))),
-#                    "vaccine" => () -> pP |> simulation |> vaccine,
-#                    "vaccination_strategy" => () -> pP |> simulation |> vaccination_schedule,
                     "tick_unit" => () -> pP |> simulation |> tickunit,
                     "start_condition" => () -> pP |> simulation |> start_condition,
                     "prior_immunity" => () -> pP |> simulation |> prior_immunity,
@@ -156,35 +158,21 @@ mutable struct LightRD <: ResultDataStyle
                     "git_commit" => () -> _read_git_commit()#,
                 ),
 
-            "aggregated_setting_age_contacts" =>
-                Dict(
-                    # TODO: interval_steps shouldn't be hard coded. They rather should be defined in the config file.
-                    # TODO: This list should be determined dynamically depending on what settings are present in the simulation
-                    "Household" => () -> _mean_contacts_per_age_group(pP, Household, 5),
-                    "SchoolClass" => () -> _mean_contacts_per_age_group(pP, SchoolClass, 2),
-                    "School" => () -> _mean_contacts_per_age_group(pP, School, 2),
-                    "SchoolComplex" => () -> _mean_contacts_per_age_group(pP, SchoolComplex, 2),
-                    "Office" => () -> _mean_contacts_per_age_group(pP, Office, 5), 
-                    "Department" => () -> _mean_contacts_per_age_group(pP, Department, 5), 
-                    "Workplace" => () -> _mean_contacts_per_age_group(pP, Workplace, 5), 
-                    "WorkplaceSite" => () -> _mean_contacts_per_age_group(pP, WorkplaceSite, 5), 
-                    "Municipality" => () -> _mean_contacts_per_age_group(pP, Municipality, 5),
-                    "GlobalSetting" => () -> _mean_contacts_per_age_group(pP, GlobalSetting, 5)
-                ),
+            "aggregated_setting_age_contacts" => _present_setting_age_contacts(pP),
 
             "dataframes" =>
                 Dict(
                     "effectiveR" => () -> pP |> effectiveR,
                     "tick_cases" => () -> pP |> tick_cases,
                     "tick_deaths" => () -> pP |> tick_deaths,
-#                    "tick_vaccinations" => () -> pP |> tick_vaccinations,
+                    "tick_vaccinations" => () -> pP |> tick_vaccinations,
                     "tick_serial_intervals" => () -> pP |> _tick_serial_intervals,
                     "tick_generation_times" => () -> pP |> _tick_generation_times,
                     "cumulative_cases" => () -> pP |> cumulative_cases,
                     "compartment_fill" => () -> pP |> compartment_fill,
                     "aggregated_compartment_periods" => () -> pP |> aggregated_compartment_periods,
                     "cumulative_deaths" => () -> pP |> cumulative_deaths,
-#                    "cumulative_vaccinations" => () -> pP |> cumulative_vaccinations,
+                    "cumulative_vaccinations" => () -> pP |> cumulative_vaccinations,
                     "age_incidence" => () -> age_incidence(pP, 7, 100_000),
                     "population_pyramid" => () -> pP |> population_pyramid,
                     "cumulative_disease_progressions" => () -> pP |> cumulative_disease_progressions,
@@ -197,7 +185,7 @@ mutable struct LightRD <: ResultDataStyle
                     "observed_R" => () -> pP |> observed_R,
                     "time_to_detection" => () -> pP |> time_to_detection,
                     "tick_cases_per_setting" => () -> pP |> tick_cases_per_setting,
-                    "customlogger" => () -> pP |> simulation |> customlogger |> dataframe,
+                    "customlogger" => () -> pP |> customDF,
                     "household_attack_rates" => () -> pP |> household_attack_rates,
                     "household_secondary_attack_rates" => () -> pP |> household_secondary_attack_rates,
                     "tick_hosptitalizations" => () -> pP |> _hospital_df,

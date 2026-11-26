@@ -90,6 +90,7 @@ function main(configfile::String, population::String, outputdir::String;
         @timeit to "3 Data Export" begin
             save(infectionlogger(sim), outputdir * "/output/infections.csv")
             save(deathlogger(sim), outputdir * "/output/deaths.csv")
+            save(vaccinationlogger(sim), outputdir * "/output/vaccinations.csv")
             save(testlogger(sim), outputdir * "/output/tests.csv")
         end
     end
@@ -99,6 +100,7 @@ function main(configfile::String, population::String, outputdir::String;
     @timeit to "3 Data Export" begin
         save_JLD2(infectionlogger(sim), outputdir * "/output_JLD2/infections.jld2")
         save_JLD2(deathlogger(sim), outputdir * "/output_JLD2/deaths.jld2")
+        save_JLD2(vaccinationlogger(sim), outputdir * "/output_JLD2/vaccinations.jld2")
         save_JLD2(testlogger(sim), outputdir * "/output_JLD2/tests.jld2")
     end
 

@@ -41,6 +41,8 @@ calculate_age_contact_distribution
 calculate_zero_contact_distribution
 ContactMatrix{T}(::Matrix{T}, ::Int64, ::Union{Int64, Nothing}) where T <: Number
 ContactMatrix{T}(::Matrix{T}, ::Int64) where T <: Number
+contact_rate
+contact_rate_bound
 contact_samples
 get_ageGroup_contact_distribution
 get_age_contact_distribution
@@ -49,5 +51,6 @@ get_contacts
 mean_contacts_per_age_group
 membership_changed!
 sample_contacts!
+sample_k_contacts!
 setting_age_contacts
 ```
