@@ -29,16 +29,15 @@ dataframe(pop)</code></pre><p><strong>Output</strong></p><pre><code class="nohig
 and one custom parameter.
 [ Info: 21:40:37 | └ Creating population
 [ Info: 21:40:39 | └ Creating simulation object
-100000×10 DataFrame
-    Row │ id      sex   age   number_of_vaccinations  vaccination_tick  education  ⋯
-        │ Int32   Int8  Int8  Int8                    Int16             Int8       ⋯
-────────┼─────────────────────────────────────────────────────────────────────────────
-      1 │      1     2    43                       0                -1         -1  ⋯
-      2 │      2     1    50                       0                -1         -1  ⋯
-   ⋮    │   ⋮      ⋮     ⋮              ⋮                    ⋮              ⋮          ⋮ 
-  99999 │  99999     1     5                       0                -1         -1  ⋯  
- 100000 │ 100000     1    42                       0                -1         -1  ⋯ 
-99996 rows omitted   </code></pre><p>Additionally, there are a number of functions allowing you to check an individual&#39;s infection- or quarantine status. This example checks if the first individual in the list of individuals is infected:</p><pre><code class="language-julia hljs">using GEMS
+100000×8 DataFrame
+    Row │ id      sex   age   education  occupation  household  office  schoolclass
+        │ Int32   Int8  Int8  Int8       Int16       Int32      Int32   Int32
+────────┼───────────────────────────────────────────────────────────────────────────
+      1 │      1     1    34         -1          -1          1    9891           -1
+      2 │      2     2    10         -1          -1          2      -1           50
+   ⋮    │   ⋮      ⋮     ⋮        ⋮          ⋮           ⋮        ⋮          ⋮
+ 100000 │ 100000     2    61         -1          -1      10980    3760           -1
+                                                                  99997 rows omitted</code></pre><p>Additionally, there are a number of functions allowing you to check an individual&#39;s infection- or quarantine status. This example checks if the first individual in the list of individuals is infected:</p><pre><code class="language-julia hljs">using GEMS
 sim = Simulation()
 first_ind = individuals(sim) |&gt; first
 infected(first_ind)</code></pre><p><strong>Output</strong></p><pre><code class="nohighlight hljs">[ Info: 21:42:31 | Initializing Simulation [Simulation 4] with default configuration
@@ -118,4 +117,4 @@ and custom parameters.
      ⋮
  57705
  87052
- 94858</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_gettingstarted/">« 1 - Getting Started</a><a class="docs-footer-nextpage" href="../tut_pops/">3 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Monday 9 November 2026 19:13">Monday 9 November 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 94858</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tut_gettingstarted/">« 1 - Getting Started</a><a class="docs-footer-nextpage" href="../tut_pops/">3 - Creating Populations »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Friday 27 November 2026 08:40">Friday 27 November 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
