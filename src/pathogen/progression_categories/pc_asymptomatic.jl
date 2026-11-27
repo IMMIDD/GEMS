@@ -32,6 +32,8 @@ dp = Asymptomatic(
     infectiousness_onset_to_recovery::Union{Distribution, Real}
 end
 
+severity_tier(::Type{Asymptomatic}) = :asymptomatic
+
 
 function calculate_progression(individual::Individual, tick::Int16, dp::Asymptomatic, rng::Xoshiro)
         

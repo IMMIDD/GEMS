@@ -273,6 +273,44 @@ import GEMS: _mean_contacts_per_age_group,
         end
     end
 
+    @testset "Vaccinations" begin
+        sim_v = Simulation(pop_size = 500, seed = 42)
+        vacc = Vaccine(id = 2, name = "V", target_pathogen_id = Int8(1))
+        inds = individuals(sim_v)
+        for ind in inds[1:3]
+            vaccinate!(ind, sim_v, vacc, Int16(0))
+        end
+        vaccinate!(inds[1], sim_v, vacc, Int16(5))
+        run!(sim_v, with_progressbar = false)
+        pp_v = PostProcessor(sim_v)
+
+        vdf = vaccinationsDF(pp_v)
+        @test nrow(vdf) == 4
+        @test sort(vdf.dose_number) == Int8[1, 1, 1, 2]
+        @test all(==(Int8(2)), vdf.vaccine_id)
+        # joined with the population
+        ages = Dict(id(i) => age(i) for i in inds)
+        @test vdf.age == [ages[i] for i in vdf.id]
+        @test :household_ags in propertynames(vdf)
+
+        tv = tick_vaccinations(pp_v)
+        @test nrow(tv) == tick(sim_v) + 1
+        @test only(tv.vaccination_cnt[tv.tick .== 0]) == 3
+        @test only(tv.vaccination_cnt[tv.tick .== 5]) == 1
+        @test sum(tv.vaccination_cnt) == 4
+        # the second dose at tick 5 is not a first dose
+        @test only(tv.first_dose_cnt[tv.tick .== 0]) == 3
+        @test only(tv.first_dose_cnt[tv.tick .== 5]) == 0
+        cv = cumulative_vaccinations(pp_v)
+        @test last(cv.vaccinations_cum) == 4
+        @test last(cv.vaccinated_cum) == 3
+
+        # no vaccinations still gives one zero row per tick
+        @test nrow(vaccinationsDF(pp)) == 0
+        @test all(==(0), tick_vaccinations(pp).vaccination_cnt)
+        @test all(==(0), tick_vaccinations(pp).first_dose_cnt)
+    end
+
     @testset "Contact Matrices" begin
 
         simulation_contact_matrix_data = setting_age_contacts(pp, Household)

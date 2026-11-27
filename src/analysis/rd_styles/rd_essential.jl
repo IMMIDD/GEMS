@@ -25,6 +25,7 @@ mutable struct EssentialResultData <: ResultDataStyle
                 Dict(
                     "infections" => () -> pP |> infectionsDF,
                     "deaths" => () -> pP |> deathsDF,
+                    "vaccinations" => () -> pP |> vaccinationsDF,
                     "tests" => () -> pP |> testsDF,
                     "cumulative_quarantines" => () -> pP |> cumulative_quarantines,
                 )         

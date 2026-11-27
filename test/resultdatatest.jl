@@ -149,8 +149,6 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         @test rd |> total_mem_size > 0
         @test rd |> free_mem_size > 0
 
-        @test tick_vaccinations(rd) == Dict()
-
         # contact data
 
         matrix_data = aggregated_setting_age_contacts(rd, Household).data
@@ -167,6 +165,9 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         @test rd |> tick_deaths |> nrow > 0
         @test rd |> cumulative_cases |> nrow > 0
         @test rd |> cumulative_deaths |> nrow > 0
+        @test rd |> vaccinations isa DataFrame
+        @test rd |> tick_vaccinations |> nrow > 0
+        @test rd |> cumulative_vaccinations |> nrow > 0
         @test rd |> age_incidence |> nrow > 0
         @test rd |> population_pyramid |> nrow > 0
         @test rd |> household_secondary_attack_rates isa DataFrame
@@ -435,9 +436,6 @@ import GEMS: _infections_hash, _data_hash, _hashes,
         # Logical consistency on first row
         @test first_row.min_time_to_detection <= first_row.mean_time_to_detection <= first_row.max_time_to_detection
         @test first_row.lower_95_time_to_detection <= first_row.mean_time_to_detection <= first_row.upper_95_time_to_detection
-
-        #TODO
-        @test vaccinations(rd) == Dict()
 
     end
 

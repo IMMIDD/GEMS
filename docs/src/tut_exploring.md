@@ -74,16 +74,15 @@ dataframe(pop)
 and one custom parameter.
 [ Info: 21:40:37 | └ Creating population
 [ Info: 21:40:39 | └ Creating simulation object
-100000×10 DataFrame
-    Row │ id      sex   age   number_of_vaccinations  vaccination_tick  education  ⋯
-        │ Int32   Int8  Int8  Int8                    Int16             Int8       ⋯
-────────┼─────────────────────────────────────────────────────────────────────────────
-      1 │      1     2    43                       0                -1         -1  ⋯
-      2 │      2     1    50                       0                -1         -1  ⋯
-   ⋮    │   ⋮      ⋮     ⋮              ⋮                    ⋮              ⋮          ⋮ 
-  99999 │  99999     1     5                       0                -1         -1  ⋯  
- 100000 │ 100000     1    42                       0                -1         -1  ⋯ 
-99996 rows omitted   
+100000×8 DataFrame
+    Row │ id      sex   age   education  occupation  household  office  schoolclass
+        │ Int32   Int8  Int8  Int8       Int16       Int32      Int32   Int32
+────────┼───────────────────────────────────────────────────────────────────────────
+      1 │      1     1    34         -1          -1          1    9891           -1
+      2 │      2     2    10         -1          -1          2      -1           50
+   ⋮    │   ⋮      ⋮     ⋮        ⋮          ⋮           ⋮        ⋮          ⋮
+ 100000 │ 100000     2    61         -1          -1      10980    3760           -1
+                                                                  99997 rows omitted
 ```
 
 Additionally, there are a number of functions allowing you to check an individual's infection- or quarantine status.

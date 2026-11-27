@@ -138,12 +138,12 @@ Look up the settings-file section of the API documentation to learn about the in
 
 ## Adjusting Populations
 
-In some cases, you might want to manually adjust populations after they have been loaded (e.g., to manually set a certain vaccination status for each individual).
+In some cases, you might want to manually adjust populations after they have been loaded (e.g., to set how likely each individual is to comply with mandates).
 This can be done using the `each!(...)` function that applies a given function on each individual in a provided `Population`.
-Here's an example where we decide whether an individual has been vaccinated once with increasing probability, depending on their age.
+Here's an example where we decide whether an individual complies with mandates with increasing probability, depending on their age.
 We exclude everybody below the age of 18.
-The `sample_vacc!` function that we define does just that for an individual. We then call `each!` to apply this function to all individuals in the population.
-After that, we build up a dataframe with ages and numbers of vaccinations for all individuals, group them by age, and visualize the fraction of vaccinated individuals per by age.
+The `sample_compliance!` function that we define does just that for an individual. We then call `each!` to apply this function to all individuals in the population.
+After that, we build up a dataframe with ages and mandate compliance for all individuals, group them by age, and visualize the fraction of compliant individuals by age.
 
 ```julia
 using GEMS, Plots, DataFrames
@@ -151,23 +151,23 @@ sim = Simulation()
 pop = population(sim)
 
 # function to adjust individual
-function sample_vaccs!(i)
+function sample_compliance!(i)
     if age(i) >= 18 && rand(1:100) < age(i)
-        i.number_of_vaccinations = 1
+        i.mandate_compliance = 1.0
     end
 end
 
 # apply function to each individual
-each!(sample_vaccs!, pop)
+each!(sample_compliance!, pop)
 
 # plot to verify that everything worked
 inds = individuals(pop)
-df = DataFrame(age = age.(inds), vaccinations = number_of_vaccinations.(inds))
+df = DataFrame(age = age.(inds), compliance = mandate_compliance.(inds))
 df_grouped = groupby(df, :age)
-df_combined = combine(df_grouped, :vaccinations => (v -> sum(v) / length(v)) => :vacc_fraction)
-plot(df_combined.age, df_combined.vacc_fraction,
+df_combined = combine(df_grouped, :compliance => (c -> count(==(1), c) / length(c)) => :compliant_fraction)
+plot(df_combined.age, df_combined.compliant_fraction,
     xlabel = "Age",
-    ylabel = "Vaccination Coverage",
+    ylabel = "Compliant Fraction",
     legend = false)
 ```
 

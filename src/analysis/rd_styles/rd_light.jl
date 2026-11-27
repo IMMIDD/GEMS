@@ -76,6 +76,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `effectiveR::DataFrame`: Effective R value over time
         - `tick_cases::DataFrame`: Infections per tick
         - `tick_deaths::DataFrame`: Deaths per tick
+        - `tick_vaccinations::DataFrame`: Vaccinations per tick
         - `tick_serial_intervals::DataFrame`: Aggregated data on serial intervals per tick
         - `tick_generation_times::DataFrame`: Aggregated data on generation timess per tick        
         - `tick_tests::DataFrame`: Number of tests performed per tick
@@ -87,6 +88,7 @@ This RD-style cannot be used to generate geographical maps or infection videos.
         - `aggregated_compartment_periods::DataFrame`: Statistics on time individuals spend in each disease compartment
         - `cumulative_cases::DataFrame`: Cumulative infections over time
         - `cumulative_deaths::DataFrame`: Cumulative deaths over time
+        - `cumulative_vaccinations::DataFrame`: Cumulative vaccinations over time
         - `cumulative_disease_progressions::DataFrame`: Cumulative information on disease states N ticks after exposure
         - `cumulative_quarantines::DataFrame`: Number of quarantined individuals per tick
         - `age_incidence::DataFrame`: Incidence over time stratified by age groups
@@ -127,8 +129,6 @@ mutable struct LightRD <: ResultDataStyle
                     "setting_sizes" => () -> pP |> setting_sizes,
                     "region_info" => () -> pP |> simulation |> region_info,
                     "pathogens" => () -> collect(pathogens(simulation(pP))),
-#                    "vaccine" => () -> pP |> simulation |> vaccine,
-#                    "vaccination_strategy" => () -> pP |> simulation |> vaccination_schedule,
                     "tick_unit" => () -> pP |> simulation |> tickunit,
                     "start_condition" => () -> pP |> simulation |> start_condition,
                     "prior_immunity" => () -> pP |> simulation |> prior_immunity,
@@ -177,14 +177,14 @@ mutable struct LightRD <: ResultDataStyle
                     "effectiveR" => () -> pP |> effectiveR,
                     "tick_cases" => () -> pP |> tick_cases,
                     "tick_deaths" => () -> pP |> tick_deaths,
-#                    "tick_vaccinations" => () -> pP |> tick_vaccinations,
+                    "tick_vaccinations" => () -> pP |> tick_vaccinations,
                     "tick_serial_intervals" => () -> pP |> _tick_serial_intervals,
                     "tick_generation_times" => () -> pP |> _tick_generation_times,
                     "cumulative_cases" => () -> pP |> cumulative_cases,
                     "compartment_fill" => () -> pP |> compartment_fill,
                     "aggregated_compartment_periods" => () -> pP |> aggregated_compartment_periods,
                     "cumulative_deaths" => () -> pP |> cumulative_deaths,
-#                    "cumulative_vaccinations" => () -> pP |> cumulative_vaccinations,
+                    "cumulative_vaccinations" => () -> pP |> cumulative_vaccinations,
                     "age_incidence" => () -> age_incidence(pP, 7, 100_000),
                     "population_pyramid" => () -> pP |> population_pyramid,
                     "cumulative_disease_progressions" => () -> pP |> cumulative_disease_progressions,

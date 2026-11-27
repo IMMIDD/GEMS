@@ -479,6 +479,8 @@ import GEMS: increment!, infected!
             # Add data to loggers
             log!(deathlogger(sim), Int32(1), Int8(1), Int16(2))
             @test length(deathlogger(sim)) == 1
+            log!(vaccinationlogger(sim), Int32(1), Int8(1), Int8(1), Int8(1), Int16(2))
+            @test length(vaccinationlogger(sim)) == 1
             
             # Add NPI triggers and strategies
             test_strategy = IStrategy("test strategy", sim)
@@ -491,6 +493,7 @@ import GEMS: increment!, infected!
             @test tick(sim) == 0
             @test !isinfected(individuals(sim)[1])
             @test length(deathlogger(sim)) == 0
+            @test length(vaccinationlogger(sim)) == 0
             @test length(symptom_triggers(sim)) == 1
             @test length(strategies(sim)) == 1
 

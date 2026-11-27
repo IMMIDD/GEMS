@@ -184,11 +184,12 @@ A type to represent individuals that act as agents inside the simulation.
 
     # IMMUNITY
     immunity_cache::NTuple{IMMUNITY_CACHE_SIZE, ImmunityState} =
-        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 96,  12B, line 1
-    immunity_head::Int32 = 0                        # off 108, 4B,  line 1
+        ntuple(_ -> ImmunityState(), IMMUNITY_CACHE_SIZE)     # off 96,  16B, line 1
+    immunity_head::Int32 = 0                        # off 112, 4B,  line 1
+    #                                                 off 116, 4B free (alignment)
 
     # EXTENSIONS
-    extensions::Any = nothing                       # off 112, 8B,  line 1
+    extensions::Any = nothing                       # off 120, 8B,  line 1
 end
 
 # CONSTRUCTOR

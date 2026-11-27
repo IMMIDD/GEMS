@@ -34,16 +34,16 @@ add_measure!(vacc_strategy, Vaccinate(my_vaccine))
 
 ```julia
 second_dose = IStrategy("second-dose", sim)
-add_measure!(second_dose, Vaccinate(my_vaccine))
+add_measure!(second_dose, Vaccinate(my_vaccine), delay = _ -> 21)
 
 first_dose = IStrategy("first-dose", sim)
-add_measure!(first_dose, Vaccinate(my_vaccine, follow_up = second_dose), delay = _ -> 21)
+add_measure!(first_dose, Vaccinate(my_vaccine, follow_up = second_dose))
 ```
 
 ## Only vaccinate individuals who have not yet been vaccinated
 
 ```julia
-vacc_strategy = IStrategy("vaccinate", sim, condition = ind -> !isvaccinated(ind))
+vacc_strategy = IStrategy("vaccinate", sim, condition = ind -> !isvaccinated(ind, sim, target_pathogen_id(my_vaccine)))
 add_measure!(vacc_strategy, Vaccinate(my_vaccine))
 ```
 """
